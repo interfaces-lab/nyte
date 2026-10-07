@@ -18,6 +18,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
+import type { RecordedStart, RootStartInput, RootStartOutcome } from "../bridge.ts";
+import { draftOf, previewOf } from "../recorded-starts.ts";
 import type { Oid, SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
@@ -72,11 +74,12 @@ import {
   useHostState,
   useMentionFiles,
   usePluginCatalog,
-  usePluginSettings,
+  useRecordedStarts,
   useRenameSession,
   useSetPreference,
   useSession,
   useSessionSnapshot,
+  RECORDED_STARTS,
 } from "../queries.ts";
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
@@ -116,6 +119,7 @@ import type { SubagentSession } from "../conversation/subagent-sessions.ts";
 import { clientActions, clientActionShortcut, clientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { pickerDefaults } from "../preference-projection.ts";
+import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 
 const EMPTY_TURNS: readonly Turn[] = [];
 
@@ -212,17 +216,12 @@ function PaneHeader({
 async function applyBranchChoice({
   sessionId,
   choice,
-  fastEnabled,
 }: {
   readonly sessionId: SessionId;
   readonly choice: BranchModelChoice;
-  readonly fastEnabled: ReadonlySet<string>;
 }): Promise<void> {
   if (choice.model !== undefined) {
-    const configuration = {
-      sessionId,
-      model: { provider: choice.model.provider, id: choice.model.id },
-    };
+    const configuration = { sessionId, model: modelRefFor(choice.model, choice.fast) };
 
     const configured = await nyte.sessions.configure(
       choice.thinkingLevel === undefined
@@ -236,23 +235,6 @@ async function applyBranchChoice({
 
     if (configured.kind === "unknown_agent") {
       throw new Error("The selected mode is no longer available.");
-    }
-  }
-
-  for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
-    const before = fastEnabled.has(settingId);
-    const after = choice.fastEnabled.has(settingId);
-
-    if (before === after) continue;
-
-    const applied = await nyte.plugins.settings.apply({
-      sessionId,
-      id: settingId,
-      choiceId: after ? "on" : "off",
-    });
-
-    if (applied.kind !== "applied") {
-      throw new Error("That model setting is no longer available.");
     }
   }
 }
@@ -270,7 +252,6 @@ async function applyMessageEdit({
   tip,
   content,
   choice,
-  fastEnabled,
   stopped = false,
 }: {
   readonly sessionId: SessionId;
@@ -279,7 +260,6 @@ async function applyMessageEdit({
   readonly tip: Oid | null;
   readonly content: UserTurnPart["content"];
   readonly choice: BranchModelChoice;
-  readonly fastEnabled: ReadonlySet<string>;
   /** The run was already stopped for this edit; a second `busy` is not retried. */
   readonly stopped?: boolean;
 }): Promise<void> {
@@ -292,7 +272,7 @@ async function applyMessageEdit({
       }
 
       try {
-        await applyBranchChoice({ sessionId, choice, fastEnabled });
+        await applyBranchChoice({ sessionId, choice });
         await outbox.submit({ sessionId, content });
       } catch (cause: unknown) {
         throw new Error(
@@ -301,7 +281,6 @@ async function applyMessageEdit({
       }
 
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
-      void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
 
       return;
     case "busy": {
@@ -315,7 +294,6 @@ async function applyMessageEdit({
         tip: settled.tip,
         content,
         choice,
-        fastEnabled,
         stopped: true,
       });
     }
@@ -416,37 +394,19 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   const ready = snapshot.data !== undefined;
   const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
 
-  const pluginSettings = usePluginSettings(
-    sessionId,
-    modelOptions.some((option) => option.fastMode.kind === "available"),
-  );
-
-  const fastEnabled = useMemo(
-    () =>
-      new Set(
-        (pluginSettings.data ?? [])
-          .filter((setting) => setting.current === "on")
-          .map((setting) => setting.id),
-      ),
-    [pluginSettings.data],
-  );
-
   const configuredModel = snapshot.data?.config.model;
   const thinkingLevel = snapshot.data?.config.thinkingLevel;
 
-  const branchModel = useMemo<BranchModelPicker>(
-    () => ({
+  const branchModel = useMemo<BranchModelPicker>(() => {
+    const selected = selectedModelOption(modelOptions, configuredModel);
+
+    return {
       catalog: catalog.data,
-      model: modelOptions.find(
-        (option) =>
-          option.id === configuredModel?.id &&
-          (configuredModel.provider === undefined || option.provider === configuredModel.provider),
-      ),
+      model: selected?.option,
       thinkingLevel,
-      fastEnabled,
-    }),
-    [catalog.data, configuredModel, fastEnabled, modelOptions, thinkingLevel],
-  );
+      fast: selected?.fast === true,
+    };
+  }, [catalog.data, configuredModel, modelOptions, thinkingLevel]);
 
   // These walk the transcript, so they are keyed on the durable inputs: a
   // streaming frame re-renders this component and must not repeat them.
@@ -513,10 +473,9 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
         tip: snapshot.data?.tip ?? null,
         content,
         choice,
-        fastEnabled,
       }).finally(() => setNavigating(false));
     },
-    [fastEnabled, sessionId, snapshot.data?.tip],
+    [sessionId, snapshot.data?.tip],
   );
 
   const childBySession = useMemo(() => {
@@ -782,17 +741,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   );
 }
 
-/**
- * Turns fast mode on for a new chat. The throw lives here because the React
- * Compiler cannot lower a `throw` inside `try`/`catch`, and the bailout would
- * cost the blank composer its memoization.
- */
-async function enableFastMode(sessionId: SessionId, settingId: string): Promise<void> {
-  const outcome = await nyte.plugins.settings.apply({ sessionId, id: settingId, choiceId: "on" });
-
-  if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
-}
-
 function BlankConversation({
   paneId,
   inputRef,
@@ -817,6 +765,12 @@ function BlankConversation({
   >();
 
   const [sending, setSending] = useState(false);
+  const recordedStarts = useRecordedStarts();
+
+  const unconfirmed = (recordedStarts.data ?? []).filter(
+    (record) => record.outcome.kind === "unanswered",
+  );
+
   const attachments = viewState.composer.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
@@ -834,14 +788,8 @@ function BlankConversation({
   const setPreference = useSetPreference();
   const defaults = catalog.data?.defaults;
 
-  const current = catalog.data?.models.find(
-    (option) => option.provider === defaults?.model.provider && option.id === defaults.model.id,
-  );
-
-  const fastSettingId =
-    defaults?.fast === true && current?.fastMode.kind === "available"
-      ? current.fastMode.settingId
-      : undefined;
+  const selected = selectedModelOption(catalog.data?.models ?? [], defaults?.model);
+  const current = selected?.option;
 
   const start = async (
     submission: ComposerSubmission,
@@ -887,6 +835,25 @@ function BlankConversation({
     });
 
     try {
+      // A registry host starts the root itself, on record under this request id; the
+      // renderer creates, configures and queues the first message everywhere else.
+      const starts = nyte.host.starts;
+
+      if (starts !== undefined) {
+        const input: RootStartInput = {
+          requestId: crypto.randomUUID(),
+          message: { content: plan.content, delivery: plan.delivery },
+        };
+
+        const started = await starts.start(
+          defaults === undefined
+            ? input
+            : { ...input, model: defaults.model, thinkingLevel: defaults.thinkingLevel },
+        );
+
+        return settleStart(started, submitted);
+      }
+
       const session = await nyte.sessions.create();
 
       if (defaults !== undefined) {
@@ -895,8 +862,6 @@ function BlankConversation({
           thinkingLevel: defaults.thinkingLevel,
         });
       }
-
-      if (fastSettingId !== undefined) await enableFastMode(session.sessionId, fastSettingId);
 
       await outbox.submit(composerSendInput(session.sessionId, plan));
       await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
@@ -911,6 +876,60 @@ function BlankConversation({
 
       return false;
     }
+  };
+
+  /**
+   * Act on the host's answer to this pane's start. A refusal gives the draft
+   * back as it was taken, attachments and all. A lost answer is not a draft:
+   * the host may have the chat, so the start stays on record and its notice
+   * offers a retry of the same request.
+   */
+  const settleStart = (
+    started: RootStartOutcome,
+    submitted: ReturnType<typeof viewStore.takeBlank>,
+  ): boolean => {
+    setSending(false);
+    void queryClient.invalidateQueries({ queryKey: RECORDED_STARTS });
+
+    switch (started.kind) {
+      case "accepted":
+        setAttachmentError(undefined);
+        actions.openSessionInPane(paneId, started.sessionId);
+
+        return true;
+      case "refused":
+        viewStore.restoreBlank(paneId, submitted);
+        setStartFailure({ kind: "refused", message: started.message });
+
+        return false;
+      case "unanswered":
+        return false;
+      default: {
+        const _exhaustive: never = started;
+
+        return _exhaustive;
+      }
+    }
+  };
+
+  /** Ask again about a start on record, exactly as recorded, whichever folder is open now. */
+  const retryStart = async (record: RecordedStart): Promise<void> => {
+    const starts = nyte.host.starts;
+
+    if (starts === undefined || sending) return;
+    setSending(true);
+    setStartFailure(undefined);
+    const started = await starts.retry(record.requestId).catch(() => undefined);
+
+    if (started === undefined) {
+      setSending(false);
+      void queryClient.invalidateQueries({ queryKey: RECORDED_STARTS });
+
+      return;
+    }
+
+    // `restoreBlank` stamps the time the draft comes back.
+    settleStart(started, { composer: draftOf(record.message.content), updatedAt: 0 });
   };
 
   const addFiles = useCallback(
@@ -1012,12 +1031,16 @@ function BlankConversation({
                 catalog={catalog.data}
                 current={current}
                 thinkingLevel={defaults?.thinkingLevel}
-                fastEnabled={new Set(fastSettingId === undefined ? [] : [fastSettingId])}
+                fast={selected?.fast === true}
                 disabled={sending || host.data === undefined}
                 onChange={(change) =>
                   setPreference.mutate(
                     pickerDefaults(
-                      { model: current, thinkingLevel: defaults?.thinkingLevel },
+                      {
+                        model: current,
+                        thinkingLevel: defaults?.thinkingLevel,
+                        fast: selected?.fast === true,
+                      },
                       change,
                     ),
                   )
@@ -1036,6 +1059,14 @@ function BlankConversation({
                 : startFailure.message}
             </div>
           )}
+          {unconfirmed.map((record) => (
+            <div key={record.requestId} role="alert" {...props(intent.danger, threadStyles.error)}>
+              The host didn’t confirm this chat: “{previewOf(record.message.content)}”{" "}
+              <Button size="sm" disabled={sending} onClick={() => void retryStart(record)}>
+                Retry
+              </Button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1136,7 +1167,9 @@ function TypeToCompose({
         event.altKey ||
         event.key.length !== 1 ||
         (event.key === " " && owner !== document.body) ||
-        owner?.closest(KEY_OWNERS)
+        event
+          .composedPath()
+          .some((target) => target instanceof Element && target.matches(KEY_OWNERS))
       )
         return;
       input.current?.focus({ preventScroll: true });

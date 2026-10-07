@@ -5,7 +5,7 @@
  * environment's relay, which answers enrollments as its desktop would and
  * records resets and revocations. The real relay runs in `relay.test.ts`.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   DESKTOP_ROUTES,
@@ -17,6 +17,7 @@ import {
   LeaseResponse,
   LinkResponse,
   TOKEN_TYPES,
+  randomUserCode,
 } from "@nyte-ai/connect";
 import type { BrokerKeys, PublicJwk } from "@nyte-ai/connect";
 import {
@@ -47,6 +48,7 @@ export const ORIGIN = "https://connect.test.example";
 export const ISSUER = "https://clerk.test.example";
 export const AZP = "https://app.test.example";
 const TABLES = [
+  "link_transactions",
   "devices",
   "environments",
   "owners",
@@ -291,6 +293,33 @@ export interface Harness {
     input: { readonly deviceId: string; readonly environmentId?: string; readonly body?: string },
   ): Promise<Answer>;
   removeEnvironment(actor: Actor, environmentId: string): Promise<Answer>;
+  /** A host opens a link transaction under its key; `operationId` and `userCode` default to fresh ones. */
+  openTransaction(input: {
+    readonly desktop: FakeDesktop;
+    readonly name?: string;
+    readonly operationId?: string;
+    readonly userCode?: string;
+  }): Promise<{ readonly answer: Answer; readonly operationId: string; readonly userCode: string }>;
+  /** A signed-in browser looks a code up. */
+  lookupTransaction(input: {
+    readonly userId: string;
+    readonly sessionId?: string;
+    readonly userCode: string;
+  }): Promise<Answer>;
+  /** A signed-in browser approves or denies by transaction id. */
+  decideTransaction(input: {
+    readonly userId: string;
+    readonly sessionId?: string;
+    readonly transactionId: string;
+    readonly decision: "approve" | "deny";
+    readonly fingerprint?: string;
+  }): Promise<Answer>;
+  /** The host's proof-bound calls on its transaction. */
+  transactionCall(input: {
+    readonly desktop: FakeDesktop;
+    readonly transactionId: string;
+    readonly step: "poll" | "complete" | "cancel";
+  }): Promise<Answer>;
   webhook(
     event: unknown,
     input?: { readonly secret?: string; readonly timestamp?: number },
@@ -329,9 +358,12 @@ export async function createHarness(): Promise<Harness> {
     remoteBindings: false,
   });
   const db = proxy.env.DB;
-  const migration = readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8");
+  const migrations = new URL("../migrations/", import.meta.url);
 
-  await db.batch(unstable_splitSqlQuery(migration).map((statement) => db.prepare(statement)));
+  for (const file of readdirSync(migrations).toSorted()) {
+    const migration = readFileSync(new URL(file, migrations), "utf8");
+    await db.batch(unstable_splitSqlQuery(migration).map((statement) => db.prepare(statement)));
+  }
   const clerkKeys = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
   const brokerSigningKey = { ...(await generateMachineKey()), kid: "broker-test-1" };
   const clerkSecretKey = `sk_test_${random()}`;
@@ -602,6 +634,86 @@ export async function createHarness(): Promise<Harness> {
         method: "DELETE",
         path,
         headers: await actorHeaders(actor, { method: "DELETE", path }),
+      });
+    },
+
+    async openTransaction(input) {
+      const operationId = input.operationId ?? randomId();
+      const userCode =
+        input.userCode ?? randomUserCode((count) => crypto.getRandomValues(new Uint8Array(count)));
+      const body = JSON.stringify({
+        publicKey: input.desktop.publicKey,
+        name: input.name ?? "Build box",
+        operationId,
+        userCode,
+      });
+      const answer = await send({
+        method: "POST",
+        path: "/v1/link-transactions",
+        headers: {
+          "content-type": "application/json",
+          "nyte-proof": await proof({
+            key: input.desktop.key,
+            issuer: await keyThumbprint(input.desktop.publicKey),
+            method: "POST",
+            path: "/v1/link-transactions",
+            body,
+          }),
+        },
+        body,
+      });
+
+      return { answer, operationId, userCode };
+    },
+
+    async lookupTransaction(input) {
+      const body = JSON.stringify({ userCode: input.userCode });
+
+      return send({
+        method: "POST",
+        path: "/v1/link-transactions/lookup",
+        headers: {
+          authorization: `Bearer ${await sessionToken({ userId: input.userId, sessionId: input.sessionId })}`,
+          "content-type": "application/json",
+        },
+        body,
+      });
+    },
+
+    async decideTransaction(input) {
+      const fingerprint = input.fingerprint ?? "0000-0000-0000-0000";
+      const body = input.decision === "approve" ? JSON.stringify({ fingerprint }) : "";
+
+      return send({
+        method: "POST",
+        path: `/v1/link-transactions/${input.transactionId}/${input.decision}`,
+        headers: {
+          authorization: `Bearer ${await sessionToken({ userId: input.userId, sessionId: input.sessionId })}`,
+          ...(body === "" ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === "" ? {} : { body }),
+      });
+    },
+
+    async transactionCall(input) {
+      const method = input.step === "cancel" ? "DELETE" : "POST";
+      const path =
+        input.step === "cancel"
+          ? `/v1/link-transactions/${input.transactionId}`
+          : `/v1/link-transactions/${input.transactionId}/${input.step}`;
+
+      return send({
+        method,
+        path,
+        headers: {
+          "nyte-proof": await proof({
+            key: input.desktop.key,
+            issuer: await keyThumbprint(input.desktop.publicKey),
+            method,
+            path,
+            body: "",
+          }),
+        },
       });
     },
 

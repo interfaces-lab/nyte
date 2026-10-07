@@ -361,14 +361,14 @@ describe("outbox", () => {
 
   test("activate replaces the rows with what storage holds and sends them", async () => {
     const { outbox, sends, sentKeys, stored } = harness([
-      { key: "stored", input: { sessionId: SESSION, content: "stored" }, at: 1 },
+      { key: "stored", input: { sessionId: SESSION, content: "stored" }, at: 2_000 },
     ]);
     await outbox.submit({ sessionId: SESSION, content: "live" });
 
     await outbox.activate();
     assert.deepEqual(
       outbox.rows().map((row) => row.key),
-      ["stored", "key-1"],
+      ["key-1", "stored"],
     );
     assert.deepEqual(sentKeys(), ["key-1", "stored", "key-1"]);
 
@@ -376,25 +376,62 @@ describe("outbox", () => {
     sends[0]?.resolve({ kind: "queued", change: "c1" });
     await tick();
     assert.equal(stored.has("key-1"), false);
-    assert.deepEqual(outbox.rows()[1]?.state, { kind: "sending", attempts: 1 });
+    assert.deepEqual(outbox.rows()[0]?.state, { kind: "sending", attempts: 1 });
     sends[2]?.resolve({ kind: "duplicate", change: "c1" });
     await tick();
-    assert.deepEqual(outbox.rows()[1]?.state, { kind: "durable", change: "c1" });
+    assert.deepEqual(outbox.rows()[0]?.state, { kind: "durable", change: "c1" });
   });
 
-  test("rows keep submission order and subscribers hear each change", async () => {
-    const { outbox, advance } = harness();
+  test("after deactivate nothing sends until the next activate, and a new message is refused", async () => {
+    const { outbox, sends, advance, stored } = harness();
+    const key = await outbox.submit({ sessionId: SESSION, content: "for host A" });
+    sends[0]?.reject(new Error("offline"));
+    await tick();
+
+    // The connection is about to change hosts.
+    outbox.deactivate();
+    advance(60_000);
+    await tick();
+    assert.equal(sends.length, 1);
+    assert.deepEqual(outbox.rows(), []);
+    assert.equal(outbox.withdraw(key), undefined);
+    await assert.rejects(
+      outbox.submit({ sessionId: SESSION, content: "typed meanwhile" }),
+      /connect/i,
+    );
+    assert.equal(sends.length, 1);
+    // A's message stays stored for A's next activation.
+    assert.deepEqual([...stored.keys()], [key]);
+  });
+
+  test("a message whose write lands after deactivate stays stored and sends at the next activation", async () => {
+    const { outbox, sends, sentKeys, stored, holdPuts } = harness();
+    const release = holdPuts();
+    const submitted = outbox.submit({ sessionId: SESSION, content: "hello" });
+    await tick();
+
+    outbox.deactivate();
+    release();
+    assert.equal(await submitted, "key-1");
+    await tick();
+    assert.equal(sends.length, 0);
+    assert.equal(stored.has("key-1"), true);
+
+    await outbox.activate();
+    assert.deepEqual(sentKeys(), ["key-1"]);
+  });
+
+  test("subscribers hear row changes until they unsubscribe", async () => {
+    const { outbox } = harness();
     const seen: number[] = [];
     const unsubscribe = outbox.subscribe(() => seen.push(outbox.rows().length));
     await outbox.submit({ sessionId: SESSION, content: "first" });
-    advance(1);
-    await outbox.submit({ sessionId: SESSION, content: "second" });
+    assert.equal(seen.at(-1), 1);
 
-    assert.deepEqual(
-      outbox.rows().map((row) => row.input.content),
-      ["first", "second"],
-    );
-    assert.ok(seen.length >= 2);
     unsubscribe();
+    const heard = seen.length;
+    await outbox.submit({ sessionId: SESSION, content: "second" });
+    assert.equal(outbox.rows().length, 2);
+    assert.equal(seen.length, heard);
   });
 });

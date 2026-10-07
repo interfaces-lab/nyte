@@ -15,6 +15,9 @@ import {
   ErrorBody,
   LeaseResponse,
   LinkResponse,
+  LinkTransactionCompletion,
+  LinkTransactionOpened,
+  LinkTransactionStatus,
   PROOF_HEADER,
   ProofClaims,
   REQUEST_TIMEOUT_MS,
@@ -23,7 +26,7 @@ import {
   isBrokerOrigin,
   relayAddress,
 } from "../index.ts";
-import type { PublicJwk } from "../index.ts";
+import type { LinkTransactionRequest, PublicJwk } from "../index.ts";
 import { createProof, keyThumbprint, publicKeyOf } from "../signing.ts";
 import type { PrivateJwk } from "../signing.ts";
 
@@ -89,7 +92,7 @@ async function limitedText(response: Response): Promise<string> {
 }
 
 export class DesktopBroker {
-  private readonly origin: string;
+  readonly origin: string;
   private readonly send: BrokerFetch;
 
   constructor(options: DesktopBrokerOptions) {
@@ -147,6 +150,89 @@ export class DesktopBroker {
     });
 
     return this.parse(LinkResponse, answer);
+  }
+
+  /**
+   * Open a link transaction for a host with no browser. The proof's issuer is
+   * the key's thumbprint; the operation id and code are the caller's, kept
+   * before this call, so a retry resumes the same transaction.
+   */
+  async openLinkTransaction(input: {
+    readonly key: PrivateJwk;
+    readonly name: string;
+    readonly operationId: string;
+    readonly userCode: string;
+    readonly signal: AbortSignal;
+  }): Promise<LinkTransactionOpened> {
+    const publicKey: PublicJwk = publicKeyOf(input.key);
+    const body: LinkTransactionRequest = {
+      publicKey,
+      name: input.name,
+      operationId: input.operationId,
+      userCode: input.userCode,
+    };
+
+    const answer = await this.request({
+      key: input.key,
+      issuer: await keyThumbprint(publicKey),
+      method: "POST",
+      path: BROKER_ROUTES.linkTransactions,
+      body,
+      signal: input.signal,
+    });
+
+    return this.parse(LinkTransactionOpened, answer);
+  }
+
+  async pollLinkTransaction(input: {
+    readonly key: PrivateJwk;
+    readonly transactionId: string;
+    readonly signal: AbortSignal;
+  }): Promise<LinkTransactionStatus> {
+    return this.parse(LinkTransactionStatus, await this.transactionCall(input, "poll"));
+  }
+
+  /** Claim the environment the approval allows, or learn what stopped the transaction. */
+  async completeLinkTransaction(input: {
+    readonly key: PrivateJwk;
+    readonly transactionId: string;
+    readonly signal: AbortSignal;
+  }): Promise<LinkTransactionCompletion> {
+    return this.parse(LinkTransactionCompletion, await this.transactionCall(input, "complete"));
+  }
+
+  /** Give the transaction up. The answer is what stands: `consumed` means completion won. */
+  async cancelLinkTransaction(input: {
+    readonly key: PrivateJwk;
+    readonly transactionId: string;
+    readonly signal: AbortSignal;
+  }): Promise<LinkTransactionStatus> {
+    return this.parse(LinkTransactionStatus, await this.transactionCall(input, "cancel"));
+  }
+
+  private async transactionCall(
+    input: {
+      readonly key: PrivateJwk;
+      readonly transactionId: string;
+      readonly signal: AbortSignal;
+    },
+    step: "poll" | "complete" | "cancel",
+  ): Promise<{ readonly status: number; readonly body: unknown }> {
+    const transactionId = id(input.transactionId);
+    const path =
+      step === "poll"
+        ? BROKER_ROUTES.linkTransactionPoll(transactionId)
+        : step === "complete"
+          ? BROKER_ROUTES.linkTransactionComplete(transactionId)
+          : BROKER_ROUTES.linkTransaction(transactionId);
+
+    return this.request({
+      key: input.key,
+      issuer: await keyThumbprint(publicKeyOf(input.key)),
+      method: step === "cancel" ? "DELETE" : "POST",
+      path,
+      signal: input.signal,
+    });
   }
 
   async lease(input: {

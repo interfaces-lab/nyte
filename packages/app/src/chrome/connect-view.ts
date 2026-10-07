@@ -54,6 +54,8 @@ export function unavailableDetail(reason: ConnectUnavailable): string {
       return "This build of Nyte isn’t set up for Nyte accounts.";
     case "store_failed":
       return "Nyte can’t use ~/.nyte/connect.json. Remote access is off.";
+    case "origin_changed":
+      return "This Mac is linked through a different Nyte service than this build uses. Unlink it first.";
     default: {
       const _exhaustive: never = reason;
 
@@ -90,6 +92,10 @@ export function linkFailure(reason: ConnectLinkFailure): string | undefined {
       return "This Nyte account is locked or disabled, so it can’t link Macs.";
     case "session_revoked":
       return "Your sign-in was revoked. Sign in again, then link this Mac.";
+    case "denied":
+      return "The link request was declined.";
+    case "expired":
+      return "The link request expired before it was approved.";
     case "refused":
       return "Nyte refused to link this Mac.";
     default: {

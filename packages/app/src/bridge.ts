@@ -25,6 +25,7 @@ import type {
   SessionEvent,
   SessionId,
   SessionInfo,
+  StartInput,
   UsageSnapshot,
   UsageWindow,
   WorkspaceInfo,
@@ -337,6 +338,50 @@ export interface HostState {
   readonly platform: NodeJS.Platform;
   /** This computer's name. The web app's host has none to give. */
   readonly machineName?: string;
+  /**
+   * The host's verified identity and the principal it named this client.
+   * Present on registry hosts, where the selected folder and anything queued
+   * for it belong to this binding and no other.
+   */
+  readonly binding?: { readonly hostId: string; readonly principal: string };
+}
+
+/** A root chat's first message under a request id this client minted; the folder is the one selected when it is recorded. */
+export type RootStartInput = Omit<StartInput, "workspace">;
+
+export type RootStartOutcome =
+  | { readonly kind: "accepted"; readonly sessionId: SessionId }
+  | { readonly kind: "refused"; readonly message: string }
+  /** No answer came. The host may have the chat; the start stays on record and only its retry asks again. */
+  | { readonly kind: "unanswered" };
+
+/** A root start on record that the renderer has yet to act on. */
+export interface RecordedStart {
+  readonly requestId: string;
+  /** The message as recorded, so a refusal gives it back. */
+  readonly message: StartInput["message"];
+  readonly outcome: RootStartOutcome;
+}
+
+/**
+ * Root starts on a registry host, durable by request id. A start is on record
+ * before the host hears of it, fixed to this host, this principal and the
+ * folder selected then; every retry sends that record unchanged. An answer
+ * nobody was waiting for stays on record until the renderer acts on it.
+ */
+export interface RootStarts {
+  /** Record, then send. Rejects only when nothing was recorded or sent. */
+  start(input: RootStartInput): Promise<RootStartOutcome>;
+  /**
+   * Ask again about a recorded start, exactly as recorded, or take the answer
+   * already on record. An answer leaves the record: the caller acts on it.
+   * Undefined when the start is not on record here or is being asked about now.
+   */
+  retry(requestId: string): Promise<RootStartOutcome | undefined>;
+  /** Starts on record that nobody is asking about right now, oldest first. */
+  list(): Promise<readonly RecordedStart[]>;
+  /** The renderer has acted on this start; its record goes. */
+  dismiss(requestId: string): Promise<void>;
 }
 
 /** CSS family names discovered by the native host; font-file paths never cross IPC. */
@@ -345,11 +390,24 @@ export interface LocalFontCatalog {
   readonly monospace: readonly string[];
 }
 
+/**
+ * What the host showed the owner before asking for trust: the host, the
+ * registry row, and the directory it named at that moment. The grant echoes
+ * exactly this, so consent binds to what was seen; a directory that changed
+ * since is refused by the host and asked about again.
+ */
+export interface TrustConsent {
+  readonly hostId: string;
+  readonly id: string;
+  readonly path: string;
+  readonly identity: string;
+}
+
 export type OpenWorkspaceOutcome =
   /** The folder is current. `needsTrust`: it carries project input and no decision yet, so ask now. */
   | { kind: "opened"; workspace: WorkspaceInfo; needsTrust: boolean }
   /** The host would not make the folder current until it is trusted there; a remote server's answer. */
-  | { kind: "needs_trust"; path: string }
+  | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
@@ -512,6 +570,8 @@ export type HostEvent =
   /** Remote access started, stopped, or moved folders; re-read its state. */
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
+  /** A recorded root start was answered or asked about; re-read `starts.list`. */
+  | { kind: "starts_changed" }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   /** The page asked for a new tab: a Cmd+click, a `target="_blank"` link. */
@@ -654,10 +714,19 @@ export interface HostBridge {
   readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
   /**
    * Grant trust and open in one step; the renderer's trust dialog confirms
-   * first. Absent where trust is granted on another machine.
+   * first. Absent where trust is granted on another machine. A registry host
+   * needs the `consent` its open answered with and refuses without it.
    */
-  readonly trustWorkspace?: (input: { path: string }) => Promise<OpenWorkspaceOutcome>;
+  readonly trustWorkspace?: (input: {
+    path: string;
+    consent?: TrustConsent;
+  }) => Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
+  /**
+   * Root starts on a registry host, where `sessions.create` is refused. Absent
+   * where the renderer creates, configures and sends itself.
+   */
+  readonly starts?: RootStarts;
   /** A session reads its owning host's catalog. Omit the input for local provider settings. */
   catalog(input?: { readonly sessionId: SessionId }): Promise<DesktopCatalog>;
   /**

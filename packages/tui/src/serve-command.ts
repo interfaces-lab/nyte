@@ -1,19 +1,25 @@
 /**
  * `nyte serve`: this binary as a headless host. One profile, its registered
- * folders, one address, no terminal UI and no Nyte account. The process is
- * the host: it runs while this command runs, and Ctrl-C ends the listener,
- * then the runtime, then the process.
+ * folders, one direct address, no terminal UI. With `--account`, the
+ * profile's Nyte account link also serves through the Connect relay on a
+ * second, loopback listener: its devices are controllers there, owners only
+ * when both the device enrolled as one and `--device-admin` says so. The
+ * process is the host: it runs while this command runs, and Ctrl-C ends the
+ * listeners, then the runtime, then the process.
  */
 import { resolve } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { createNyteModels } from "@nyte-ai/ai";
+import type { ConnectView } from "@nyte-ai/connect";
+import { ConnectRuntime, machineName } from "@nyte-ai/connect/host";
 import { WorkerStore } from "@nyte-ai/core/store";
 import { openHostRuntime, openProfile } from "@nyte-ai/host/runtime";
 import type { HostRuntime } from "@nyte-ai/host/runtime";
 import { createOtelExport } from "@nyte-ai/host/otel";
-import { startHeadless } from "@nyte-ai/serve/headless";
+import { accountShare, startHeadless } from "@nyte-ai/serve/headless";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
+import { CONNECT_UNCONFIGURED, readConnectConfig } from "./connect-config.ts";
 import type { RunFlags } from "./flags.ts";
 import { storeWorkerLocation } from "./host.ts";
 import { createBunPluginSources } from "./plugin-loader.ts";
@@ -23,13 +29,15 @@ import { FileSettingsStore } from "./settings.ts";
 import { VERSION } from "./version.ts";
 
 export const SERVE_HELP = [
-  "Usage: nyte serve [--workspace <path>]... [--trust] [--profile <name>] [--host <address>] [--port <number>]",
-  "Run this machine as a headless Nyte host: no terminal UI, no Nyte account.",
+  "Usage: nyte serve [--workspace <path>]... [--trust] [--profile <name>] [--host <address>] [--port <number>] [--account [--device-admin]]",
+  "Run this machine as a headless Nyte host: no terminal UI.",
   "--workspace registers a folder on the host (default: the current directory); --trust grants it as it is now.",
   "--profile names the host identity and history under ~/.nyte/hosts (default: default).",
-  "--host and --port choose the address to bind (default: 127.0.0.1, a free port).",
+  "--host and --port choose the direct address to bind (default: 127.0.0.1, a free port).",
+  "--account also serves the profile's Nyte account link through the Connect relay; link first with `nyte account login`.",
+  "--device-admin lets devices that enrolled as admins add folders and manage providers; without it every device only runs sessions.",
   "The bearer for direct access is in the profile's token file; roots start through environment.start.",
-  "Example: nyte serve --workspace ~/code/app --trust --port 5180",
+  "Example: nyte serve --workspace ~/code/app --trust --account",
 ].join("\n");
 
 interface ServeArgs {
@@ -38,6 +46,8 @@ interface ServeArgs {
   readonly trust: boolean;
   readonly hostname: string | undefined;
   readonly port: number;
+  readonly account: boolean;
+  readonly deviceAdmin: boolean;
 }
 
 export function parseServeArgs(args: readonly string[]): ServeArgs {
@@ -50,6 +60,8 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
       trust: { type: "boolean" },
       host: { type: "string" },
       port: { type: "string" },
+      account: { type: "boolean" },
+      "device-admin": { type: "boolean" },
     },
   });
 
@@ -59,12 +71,18 @@ export function parseServeArgs(args: readonly string[]): ServeArgs {
     throw new Error("--port must be a number from 0 to 65535. Run `nyte serve --help`.");
   }
 
+  if (values["device-admin"] === true && values.account !== true) {
+    throw new Error("--device-admin applies to --account. Run `nyte serve --help`.");
+  }
+
   return {
     profile: values.profile ?? "default",
     workspaces: (values.workspace ?? [process.cwd()]).map((folder) => resolve(folder)),
     trust: values.trust ?? false,
     hostname: values.host,
     port,
+    account: values.account ?? false,
+    deviceAdmin: values["device-admin"] ?? false,
   };
 }
 
@@ -112,10 +130,99 @@ class Acquired {
   }
 }
 
-async function registerFolders(
-  runtime: HostRuntime,
+/** The relay's standing, one line per change; devices get in only under a current lease. */
+function connectStanding(view: ConnectView): string {
+  switch (view.kind) {
+    case "unavailable":
+      return `Account sharing: unavailable (${view.reason.replaceAll("_", " ")})`;
+    case "unlinked":
+      return "Account sharing: not linked";
+    case "linked": {
+      const relay = view.connection.kind === "retrying" ? "retrying" : view.connection.kind;
+      const lease =
+        view.lease.kind === "lapsed"
+          ? `lapsed (${view.lease.reason.replaceAll("_", " ")})`
+          : view.lease.kind;
+
+      return `Account sharing: relay ${relay}, lease ${lease}, devices ${String(view.devices.length)}`;
+    }
+    default: {
+      const _exhaustive: never = view;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Serve the account link beside the direct address: a loopback listener the
+ * relay forwards to, admitting the link's devices as the principals the
+ * owner's consent allows.
+ */
+async function serveAccount(
+  host: HostRuntime,
   parsed: ServeArgs,
+  acquired: Acquired,
+  output: Output,
 ): Promise<void> {
+  const config = readConnectConfig();
+
+  if (config === undefined) throw new Error(CONNECT_UNCONFIGURED);
+  let standing = "";
+
+  const report = (): void => {
+    void connect.view().then((view) => {
+      const line = connectStanding(view);
+
+      if (line === standing) return;
+      standing = line;
+      output.write(`${line}\n`);
+    });
+  };
+
+  const connect = new ConnectRuntime({
+    config,
+    home: host.profile.directory,
+    storePath: host.profile.connectPath,
+    authorizer: undefined,
+    onChange: report,
+    name: machineName(),
+  });
+  acquired.hold(() => connect.close());
+  const before = await connect.view();
+
+  if (before.kind === "unavailable") {
+    throw new Error(
+      before.reason === "origin_changed"
+        ? "This host is linked through another Nyte Connect origin. Unlink it first."
+        : `Can't use ${host.profile.connectPath}. Remove it to start over.`,
+    );
+  }
+
+  if (before.kind === "unlinked") {
+    throw new Error("This host isn't linked to a Nyte account. Run `nyte account login` first.");
+  }
+
+  const share = accountShare({
+    runtime: host,
+    version: VERSION,
+    deviceAdmin: parsed.deviceAdmin,
+    onError: (failure) => output.error(`${failure.route} failed: ${String(failure.cause)}`),
+  });
+
+  await connect.setEnabled({ enabled: true, share });
+  output.write(
+    `Account: ${before.owner.label} as "${before.environment.name}" at ${before.environment.address}\n`,
+  );
+
+  if (parsed.deviceAdmin) {
+    output.write("Devices enrolled as admins can add folders and manage providers on this host.\n");
+  }
+
+  report();
+}
+
+async function registerFolders(runtime: HostRuntime, parsed: ServeArgs): Promise<void> {
   for (const folder of parsed.workspaces) {
     const registered = await runtime.workspaces.register(folder);
 
@@ -126,7 +233,11 @@ async function registerFolders(
     const { workspace } = registered;
 
     if (parsed.trust && workspace.trust.kind !== "granted") {
-      const granted = await runtime.workspaces.grant(workspace.id, workspace.path, workspace.identity);
+      const granted = await runtime.workspaces.grant(
+        workspace.id,
+        workspace.path,
+        workspace.identity,
+      );
 
       if (granted.kind !== "granted") {
         throw new Error(`Cannot trust ${folder}: ${granted.kind.replaceAll("_", " ")}.`);
@@ -141,7 +252,13 @@ export async function serveCommand(args: readonly string[], output: Output): Pro
   // Global settings only: a folder named on the command line is registered, not yet trusted,
   // and its own settings must not shape a host that serves other folders too.
   const settings = await new FileSettingsStore().readGlobal();
-  const flags: RunFlags = { resume: { kind: "new" }, print: false, json: false, quiet: false, rest: [] };
+  const flags: RunFlags = {
+    resume: { kind: "new" },
+    print: false,
+    json: false,
+    quiet: false,
+    rest: [],
+  };
   const signedIn = await resolveRuntime(flags, settings);
   // No stored provider credential blocks runs, not the host: folders, trust and
   // sign-in through an authorized client still need the host up. Starting a
@@ -199,6 +316,8 @@ export async function serveCommand(args: readonly string[], output: Output): Pro
     }
 
     output.write(`Bearer token: ${profile.tokenPath}\n`);
+
+    if (parsed.account) await serveAccount(host, parsed, acquired, output);
   } catch (cause) {
     await acquired.release().catch((failure: unknown) => output.error(String(failure)));
     throw cause;

@@ -67,8 +67,13 @@ function respond(answer: RouteAnswer): Response {
   );
 }
 
+/** The request as device authorization reads it: the bearer header, nothing else. */
+export interface AuthorizingRequest {
+  readonly headers: { get(name: string): string | null };
+}
+
 /** `Authorization: Bearer <token>`, read the way `@nyte-ai/server` reads it. */
-export function bearerToken(request: Request): string | undefined {
+export function bearerToken(request: AuthorizingRequest): string | undefined {
   const header = request.headers.get("authorization");
 
   if (header === null) return undefined;

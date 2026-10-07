@@ -203,7 +203,7 @@ async function setUp(): Promise<Setup> {
   const runtime: ConnectRuntime = new ConnectRuntime({
     config: CONFIG,
     home: state,
-    account,
+    authorizer: { kind: "session", account },
     onChange: () =>
       void runtime.view().then((view) => {
         const current = view.kind === "linked" ? view.connection.kind : view.kind;

@@ -54,6 +54,7 @@ export const WORKERD_ISSUER = "https://clerk.test.example";
 export const WORKERD_AUTHORIZED_PARTY = "https://app.test.example";
 
 const TABLES = [
+  "link_transactions",
   "devices",
   "environments",
   "owners",
@@ -380,7 +381,15 @@ export interface WorkerdBroker {
   close(): Promise<void>;
 }
 
-export async function startWorkerdBroker(): Promise<WorkerdBroker> {
+/**
+ * `origin` replaces `WORKERD_ORIGIN` as `CONNECT_ORIGIN`, for a caller that
+ * fronts the local Worker at a real address of its own, such as an HTTPS
+ * proxy a compiled binary reaches over the network.
+ */
+export async function startWorkerdBroker(
+  options: { readonly origin?: string } = {},
+): Promise<WorkerdBroker> {
+  const origin = options.origin ?? WORKERD_ORIGIN;
   const clerkKeys = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
   const signingKey = { ...(await generateMachineKey()), kid: "broker-test-1" };
   const clerkSecretKey = `sk_test_${random()}`;
@@ -394,7 +403,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
       {
         configPath: "./workerd.jsonc",
         secrets: {
-          CONNECT_ORIGIN: WORKERD_ORIGIN,
+          CONNECT_ORIGIN: origin,
           CONNECT_WEB_ORIGINS: "https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
           CLERK_ISSUER: WORKERD_ISSUER,
           CLERK_AUTHORIZED_PARTIES: `${WORKERD_AUTHORIZED_PARTY},https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179`,
@@ -426,7 +435,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
     if (url.origin === "https://api.clerk.com")
       return clerk.handle(url, input instanceof Request ? input : (init ?? {}));
 
-    if (url.origin === WORKERD_ORIGIN) return broker.fetch(input, init);
+    if (url.origin === origin) return broker.fetch(input, init);
 
     if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return original(input, init);
 
@@ -434,7 +443,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
   };
 
   const broker: WorkerdBroker = {
-    origin: WORKERD_ORIGIN,
+    origin,
     local,
     brokerKeys,
     clerk,
@@ -447,7 +456,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         return broker.fetch(new Request(input, init));
       const url = new URL(input instanceof Request ? input.url : input);
 
-      if (url.origin !== WORKERD_ORIGIN) return original(input, init);
+      if (url.origin !== origin) return original(input, init);
       const response = await worker.fetch(
         url.href,
         input instanceof Request
@@ -487,7 +496,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         iss: WORKERD_ISSUER,
         sub: input.userId,
         sid: input.sessionId ?? `sess_${input.userId}`,
-        aud: WORKERD_ORIGIN,
+        aud: origin,
         sts: "active",
         v: 2,
         iat,
@@ -530,7 +539,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         publicKey: publicKeyOf(key),
         name: input.name ?? "Studio Mac",
       });
-      const response = await broker.fetch(`${WORKERD_ORIGIN}${BROKER_ROUTES.environments}`, {
+      const response = await broker.fetch(`${origin}${BROKER_ROUTES.environments}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${await broker.sessionToken({ userId: input.userId })}`,
@@ -538,7 +547,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
           "nyte-proof": await createProof({
             key,
             issuer: await keyThumbprint(publicKeyOf(key)),
-            audience: WORKERD_ORIGIN,
+            audience: origin,
             method: "POST",
             path: BROKER_ROUTES.environments,
             body,
@@ -556,7 +565,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
 
     async attach(input) {
       const desktop = new RelayDesktop(
-        localUrl(`${WORKERD_ORIGIN}${BROKER_ROUTES.relay(input.environmentId)}`),
+        localUrl(`${origin}${BROKER_ROUTES.relay(input.environmentId)}`),
       );
 
       await desktop.opened();
@@ -565,7 +574,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         proof: await createProof({
           key: input.key,
           issuer: input.environmentId,
-          audience: WORKERD_ORIGIN,
+          audience: origin,
           method: "GET",
           path: BROKER_ROUTES.relay(input.environmentId),
           body: "",

@@ -28,6 +28,7 @@ import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
 import { runTui } from "./interactive.ts";
+import { ACCOUNT_HELP, accountCommand } from "./account-command.ts";
 import { SERVE_HELP, serveCommand } from "./serve-command.ts";
 
 const invocationArgs = process.argv.slice(2);
@@ -380,6 +381,20 @@ async function main(): Promise<PrintOutcome | undefined> {
     // The host owns its signals: Ctrl-C stops the listener, then the runtime.
     invocation.handoff();
     await serveCommand(invocationArgs.slice(1), output);
+
+    return undefined;
+  }
+
+  if (command === "account") {
+    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+      console.log(ACCOUNT_HELP);
+
+      return undefined;
+    }
+
+    // Linking waits on a browser; Ctrl-C cancels the request at the broker, then exits.
+    invocation.handoff();
+    await accountCommand(invocationArgs.slice(1), output);
 
     return undefined;
   }

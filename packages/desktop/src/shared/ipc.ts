@@ -167,10 +167,12 @@ export type WatchEnvelope =
 
 /**
  * The desktop carries every host capability the contract leaves optional for
- * browsers. It opens sign-in pages itself, so it never takes a code back.
+ * browsers, except two: it opens sign-in pages itself, so it never takes a
+ * code back, and its roots start in the renderer over `sessions.create`, so
+ * it has no durable `starts` of its own.
  */
 export type DesktopBridge = Omit<NyteBridge, "host"> & {
-  readonly host: Required<Omit<HostBridge, "answerLogin">>;
+  readonly host: Required<Omit<HostBridge, "answerLogin" | "starts">>;
 };
 
 /** Walk `sessions.create` / `host.github.state` to the matching DesktopBridge method. */

@@ -59,7 +59,7 @@ import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { connectRouteHandler } from "@nyte-ai/connect/host";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
-import type { ConnectTiming } from "@nyte-ai/connect/host";
+import type { ConnectTiming, LinkAuthorizer } from "@nyte-ai/connect/host";
 import { RelayServer } from "./fixtures/relay-server.ts";
 
 const ORIGIN = "https://connect.nyte.test";
@@ -571,6 +571,9 @@ interface Desktop {
   readonly events: HostEvent[];
 }
 
+const sessionAuthorizer = (account: AccountSession | undefined): LinkAuthorizer | undefined =>
+  account === undefined ? undefined : { kind: "session", account };
+
 async function desktop(
   setup: Fixture,
   options: {
@@ -587,7 +590,7 @@ async function desktop(
   const runtime = new ConnectRuntime({
     config: "config" in options ? options.config : CONFIG,
     home: setup.state,
-    account: "account" in options ? options.account : setup.account,
+    authorizer: sessionAuthorizer("account" in options ? options.account : setup.account),
     onChange: () => events.push({ kind: "remote_access_changed" }),
     name: "Fixture Mac",
     fetch: setup.broker.fetch,
@@ -1742,11 +1745,12 @@ test("the build configuration must be canonical HTTPS with a bare Clerk host", (
   };
 
   assert.deepEqual(readConnectConfig(env), CONFIG);
-  assert.ok(
+  assert.deepEqual(
     readConnectConfig({
       ...env,
       MAIN_VITE_NYTE_CONNECT_ORIGIN: "https://nyte-connect.example.workers.dev",
     }),
+    { ...CONFIG, origin: "https://nyte-connect.example.workers.dev" },
   );
 
   for (const [name, value] of [

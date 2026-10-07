@@ -27,7 +27,10 @@ async function directory(): Promise<string> {
   return root;
 }
 
+const ORIGIN = "https://connect.test.example";
+
 const pending = (environmentId: string, key: Awaited<ReturnType<typeof generateMachineKey>>) => ({
+  origin: ORIGIN,
   environmentId,
   key,
   at: 1,
@@ -62,7 +65,7 @@ test("each change builds on the last, and a fresh store reads what was written",
       result: undefined,
     })),
     store.update((file) => ({
-      file: { ...file, linkKey: { key: linkKey, owner: "user_a" } },
+      file: { ...file, linkKey: { kind: "session", origin: ORIGIN, key: linkKey, owner: "user_a" } },
       result: undefined,
     })),
   ]);
@@ -70,7 +73,7 @@ test("each change builds on the last, and a fresh store reads what was written",
   const expected = {
     ...EMPTY_CONNECT_FILE,
     enabled: true,
-    linkKey: { key: linkKey, owner: "user_a" },
+    linkKey: { kind: "session", origin: ORIGIN, key: linkKey, owner: "user_a" },
     unlinks: [
       pending("3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", first),
       pending("4f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", second),
@@ -114,16 +117,26 @@ test("a file that does not parse, or is from another version, is failed, not rep
 
   for (const text of [
     "{",
-    '{"version":3}',
-    JSON.stringify({ ...EMPTY_CONNECT_FILE, version: 2 }),
-    JSON.stringify({ ...EMPTY_CONNECT_FILE, version: 4 }),
+    '{"version":4}',
+    JSON.stringify({ ...EMPTY_CONNECT_FILE, version: 3 }),
+    JSON.stringify({ ...EMPTY_CONNECT_FILE, version: 5 }),
     JSON.stringify({
       ...EMPTY_CONNECT_FILE,
-      linkKey: { key: publicPart, owner: null },
+      linkKey: { kind: "session", origin: ORIGIN, key: publicPart, owner: null },
     }),
     JSON.stringify({
       ...EMPTY_CONNECT_FILE,
-      unlinks: [{ environmentId: "3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", key: "not-a-key", at: 1 }],
+      linkKey: { kind: "session", origin: "http://connect.test.example", key, owner: null },
+    }),
+    JSON.stringify({
+      ...EMPTY_CONNECT_FILE,
+      unlinks: [
+        { origin: ORIGIN, environmentId: "3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", key: "not-a-key", at: 1 },
+      ],
+    }),
+    JSON.stringify({
+      ...EMPTY_CONNECT_FILE,
+      unlinks: [{ environmentId: "3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", key, at: 1 }],
     }),
   ]) {
     await writeFile(path, text, { mode: 0o600 });

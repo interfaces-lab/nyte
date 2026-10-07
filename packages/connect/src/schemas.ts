@@ -123,10 +123,10 @@ export const BROKER_ROUTES = {
   linkTransactionDeny: (transactionId: string) => `/v1/link-transactions/${transactionId}/deny`,
   /** `POST` with a key proof: the transaction's state. */
   linkTransactionPoll: (transactionId: string) => `/v1/link-transactions/${transactionId}/poll`,
-  /** `POST` with a key proof after approval: claim the environment, once. */
+  /** `POST` with a key proof after approval: claim the environment, once; the same key may ask again for the same answer. */
   linkTransactionComplete: (transactionId: string) =>
     `/v1/link-transactions/${transactionId}/complete`,
-  /** `DELETE` with a key proof: the host gives up. */
+  /** `DELETE` with a key proof: the host gives up. Answers the state that stands, `consumed` when completion won. */
   linkTransaction: (transactionId: string) => `/v1/link-transactions/${transactionId}`,
 } as const;
 
@@ -292,28 +292,51 @@ export const LinkedEnvironment = Type.Object({
 
 export type LinkedEnvironment = Static<typeof LinkedEnvironment>;
 
-/** `XXXX-XXXX`, as typed; the broker normalizes case and the dash. */
-export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$" });
+/** `XXXX-XXXX`, as typed; the broker normalizes case and the separator. */
+export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$" });
 
 export type UserCode = Static<typeof UserCode>;
 
-/** What the host opens; the proof's `iss` is the key's thumbprint. `operationId` makes a retried open idempotent. */
+/**
+ * What the host opens; the proof's `iss` is the key's thumbprint. The host
+ * mints the code from `USER_CODE_ALPHABET` and sends it here, signed, so a
+ * retry with the same `operationId` and code resumes the same transaction
+ * while the broker stores only the code's hash. Any other input under a
+ * known operation id conflicts.
+ */
 export const LinkTransactionRequest = strict({
   publicKey: PublicJwk,
   name: Name,
   operationId: RandomId,
+  userCode: UserCode,
 });
 
 export type LinkTransactionRequest = Static<typeof LinkTransactionRequest>;
 
+export const LINK_TRANSACTION_STATES = [
+  "pending",
+  "approved",
+  "denied",
+  "expired",
+  "cancelled",
+  "consumed",
+] as const;
+
+export type LinkTransactionState = (typeof LINK_TRANSACTION_STATES)[number];
+
 export const LinkTransactionOpened = Type.Object({
   transactionId: Uuid,
-  userCode: UserCode,
   /** Where the owner signs in and enters the code: the web app's link page. */
   verifyUrl: Type.String({ maxLength: 2048 }),
   /** Epoch milliseconds. */
   expiresAt: Type.Integer({ minimum: 0 }),
   pollIntervalMs: Type.Integer({ minimum: 1000 }),
+  /**
+   * `pending` for a new open. An exact retry of an open the broker already
+   * holds answers that transaction as it stands, ended or not; it is never
+   * reopened, and the host settles it before opening another.
+   */
+  state: Type.Enum(LINK_TRANSACTION_STATES),
 });
 
 export type LinkTransactionOpened = Static<typeof LinkTransactionOpened>;
@@ -339,17 +362,6 @@ export const LinkTransactionApproveRequest = strict({
 
 export type LinkTransactionApproveRequest = Static<typeof LinkTransactionApproveRequest>;
 
-export const LINK_TRANSACTION_STATES = [
-  "pending",
-  "approved",
-  "denied",
-  "expired",
-  "cancelled",
-  "consumed",
-] as const;
-
-export type LinkTransactionState = (typeof LINK_TRANSACTION_STATES)[number];
-
 export const LinkTransactionStatus = Type.Object({ state: Type.Enum(LINK_TRANSACTION_STATES) });
 
 export type LinkTransactionStatus = Static<typeof LinkTransactionStatus>;
@@ -370,6 +382,21 @@ export const LinkResponse = Type.Object({
 });
 
 export type LinkResponse = Static<typeof LinkResponse>;
+
+/**
+ * What `complete` answers: the link once the transaction is consumed, by
+ * this call or an earlier one with the same key, else the state that stops
+ * it. A consumed transaction whose environment was since unlinked answers
+ * `revoked` instead, never a stale link.
+ */
+export const LinkTransactionCompletion = Type.Union([
+  Type.Object({ state: Type.Literal("consumed"), link: LinkResponse }),
+  Type.Object({
+    state: Type.Enum(["pending", "approved", "denied", "expired", "cancelled"]),
+  }),
+]);
+
+export type LinkTransactionCompletion = Static<typeof LinkTransactionCompletion>;
 
 /**
  * `POST /v1/environments/:id/lease` with an environment proof and an empty
@@ -539,13 +566,23 @@ export function keyFingerprint(thumbprint: string): string {
   return thumbprint.slice(0, 16).replace(/(.{4})(?=.)/gu, "$1-");
 }
 
+/** A fresh code from the alphabet, `XXXX-XXXX`, minted by the host that opens a transaction. */
+export function randomUserCode(randomBytes: (count: number) => Uint8Array): string {
+  const raw = Array.from(
+    randomBytes(USER_CODE_LENGTH),
+    (byte) => USER_CODE_ALPHABET[byte % USER_CODE_ALPHABET.length],
+  ).join("");
+
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+const USER_CODE = new RegExp(`^[${USER_CODE_ALPHABET}]{${String(USER_CODE_LENGTH)}}$`, "u");
+
 /** A code as typed, normalized: uppercase, one dash. Undefined when it is not a code at all. */
 export function normalizeUserCode(input: string): string | undefined {
   const raw = input.toUpperCase().replaceAll("-", "").replaceAll(" ", "");
 
-  if (raw.length !== USER_CODE_LENGTH || [...raw].some((c) => !USER_CODE_ALPHABET.includes(c))) {
-    return undefined;
-  }
+  if (!USER_CODE.test(raw)) return undefined;
 
   return `${raw.slice(0, 4)}-${raw.slice(4)}`;
 }

@@ -9,7 +9,13 @@ import {
   PROOF_HEADER,
   TOKEN_TYPES,
 } from "@nyte-ai/connect";
-import type { EnvironmentList, LeaseClaims, LeaseResponse, LinkResponse } from "@nyte-ai/connect";
+import type {
+  EnvironmentList,
+  ErrorCode,
+  LeaseClaims,
+  LeaseResponse,
+  LinkResponse,
+} from "@nyte-ai/connect";
 import { nowSeconds, publicKeySet, signClaims } from "@nyte-ai/connect/signing";
 import { Type } from "typebox";
 import { lookupOwner, ownerStanding, verifySession } from "./clerk.ts";
@@ -19,18 +25,14 @@ import { Refusal, json, noContent, parseBody, requestText } from "./http.ts";
 import { verifyEnvironmentProof, verifyLinkProof } from "./proof.ts";
 import { revokeRelay } from "./relay-stub.ts";
 import {
-  ENVIRONMENT_LIMIT,
-  countLiveEnvironments,
-  findEnvironmentByThumbprint,
+  claimEnvironment,
   findOwnedEnvironment,
-  insertEnvironment,
   leaseSnapshot,
   listActiveEnvironments,
-  renameEnvironment,
   revokeEnvironment,
   touchEnvironment,
 } from "./store.ts";
-import type { Environment } from "./store.ts";
+import type { ClaimOutcome, Environment } from "./store.ts";
 
 const EmptyObject = Type.Object({}, { additionalProperties: false });
 
@@ -77,52 +79,6 @@ export async function listEnvironments(context: Context, request: Request): Prom
 }
 
 /**
- * The environment this key links: a new one within the owner's limit, or the
- * key's existing link, renamed. A key linked to another owner, or revoked, is
- * refused.
- */
-async function claimEnvironment(
-  context: Context,
-  input: {
-    readonly userId: string;
-    readonly thumbprint: string;
-    readonly request: LinkRequest;
-  },
-): Promise<Environment> {
-  const resume = async (environment: Environment): Promise<Environment> => {
-    if (environment.owner_id !== input.userId) throw new Refusal("conflict");
-
-    if (environment.state === "revoked") throw new Refusal("revoked");
-    await renameEnvironment(context.db, { id: environment.id, name: input.request.name });
-
-    return { ...environment, name: input.request.name };
-  };
-  const existing = await findEnvironmentByThumbprint(context.db, input.thumbprint);
-
-  if (existing !== undefined) return resume(existing);
-  const id = crypto.randomUUID();
-  const inserted = await insertEnvironment(context.db, {
-    id,
-    ownerId: input.userId,
-    thumbprint: input.thumbprint,
-    publicKey: input.request.publicKey.x,
-    name: input.request.name,
-    now: context.now(),
-  });
-  const claimed = await findEnvironmentByThumbprint(context.db, input.thumbprint);
-
-  if (inserted && claimed !== undefined) return claimed;
-
-  if (claimed !== undefined) return resume(claimed);
-
-  throw new Refusal(
-    (await countLiveEnvironments(context.db, input.userId)) >= ENVIRONMENT_LIMIT
-      ? "limit"
-      : "conflict",
-  );
-}
-
-/**
  * Link a desktop to the caller's account, or resume the link with the same
  * key. The owner is looked up in Clerk first: a banned, locked, or unknown
  * user links nothing, and the owner label is Clerk's primary email, username,
@@ -146,18 +102,45 @@ export async function linkEnvironment(context: Context, request: Request): Promi
     throw new Refusal("owner_disabled");
   const label =
     (lookup.kind === "found" ? lookup.label : undefined) ?? session.email ?? session.userId;
-  const environment = await claimEnvironment(context, {
-    userId: session.userId,
+  const claimed = await claimEnvironment(context.db, {
+    kind: "session",
+    ownerId: session.userId,
+    sessionId: session.sessionId,
     thumbprint,
-    request: body,
+    publicKey: body.publicKey.x,
+    name: body.name,
+    now: context.now(),
   });
+
+  if (claimed.kind !== "linked") throw new Refusal(claimRefusal(claimed));
   const response: LinkResponse = {
-    environment: { id: environment.id, name: environment.name },
+    environment: { id: claimed.environment.id, name: claimed.environment.name },
     owner: { id: session.userId, label },
     brokerKeys: publicKeySet(context.config.signing.all),
   };
 
   return json(201, response);
+}
+
+/** The error a claim that did not link answers with. */
+export function claimRefusal(outcome: Exclude<ClaimOutcome, { kind: "linked" }>): ErrorCode {
+  switch (outcome.kind) {
+    case "conflict":
+    case "limit":
+    case "revoked":
+    case "owner_disabled":
+    case "session_revoked":
+      return outcome.kind;
+    case "recovered":
+      return "conflict";
+    case "transaction":
+      return "forbidden";
+    default: {
+      const _exhaustive: never = outcome;
+
+      return _exhaustive;
+    }
+  }
 }
 
 /**

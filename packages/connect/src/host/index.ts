@@ -15,7 +15,9 @@ export type {
   ConnectRuntimeOptions,
   ConnectShare,
   ConnectTiming,
+  DeviceDecision,
   HostConnectConfig,
+  LinkAuthorizer,
 } from "./runtime.ts";
 export {
   CONSUMED_LIMIT,
@@ -26,11 +28,11 @@ export {
   UNLINK_LIMIT,
   writePrivateFile,
 } from "./store.ts";
-export type { ConnectFile, PendingUnlink, StoredDevice, StoredLink } from "./store.ts";
+export type { ConnectFile, LinkKey, PendingUnlink, StoredDevice, StoredLink } from "./store.ts";
 export { DesktopBroker } from "./broker.ts";
 export type { BrokerFetch, LeaseAnswer } from "./broker.ts";
 export { RelayConnection } from "./relay.ts";
 export type { RelayConnectionOptions, RelayDial, RelayTiming } from "./relay.ts";
 export { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
-export type { RouteAnswer } from "./routes.ts";
+export type { AuthorizingRequest, RouteAnswer } from "./routes.ts";
 export { machineName } from "./machine-name.ts";

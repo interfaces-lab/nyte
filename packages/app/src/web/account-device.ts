@@ -1,4 +1,12 @@
-import { base64Url, ClientId, DeviceToken, Name, relayAddress, Uuid } from "@nyte-ai/connect";
+import {
+  base64Url,
+  ClientId,
+  DeviceRole,
+  DeviceToken,
+  Name,
+  relayAddress,
+  Uuid,
+} from "@nyte-ai/connect";
 import type { AccountConfig } from "@nyte-ai/connect/account-config";
 import type { DeviceCrypto } from "@nyte-ai/connect/enrollment";
 import { Type } from "typebox";
@@ -19,6 +27,8 @@ const AccountDevice = Type.Object(
     deviceId: Uuid,
     name: Name,
     token: DeviceToken,
+    /** What this browser enrolled as; the host grants `owner` only with its operator's consent. */
+    role: DeviceRole,
   },
   { additionalProperties: false },
 );

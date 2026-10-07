@@ -20,6 +20,15 @@ import {
   removeEnvironment,
 } from "./environments.ts";
 import { Refusal, json, refusal } from "./http.ts";
+import {
+  approveTransaction,
+  cancelTransaction,
+  completeTransaction,
+  denyTransaction,
+  lookupTransaction,
+  openTransaction,
+  pollTransaction,
+} from "./link-transactions.ts";
 import { errorName } from "./log.ts";
 import { connectRelay, relayPublic } from "./public-relay.ts";
 import { handleWebhook } from "./webhook.ts";
@@ -35,12 +44,23 @@ const ENVIRONMENT_PATH = new RegExp(
   "u",
 );
 
+const TRANSACTION_PATH = new RegExp(
+  `^/v1/link-transactions/(${UUID})(?:/(approve|deny|poll|complete))?$`,
+  "u",
+);
+
 function browserMethods(url: URL): readonly string[] {
   const target = publicRelayTarget(url);
 
   if (target !== undefined) return PUBLIC_RELAY_METHODS[target.kind];
 
   if (url.pathname === BROKER_ROUTES.environments) return ["GET"];
+
+  if (url.pathname === BROKER_ROUTES.linkTransactionLookup) return ["POST"];
+  const transaction = TRANSACTION_PATH.exec(url.pathname);
+
+  if (transaction !== null)
+    return transaction[2] === "approve" || transaction[2] === "deny" ? ["POST"] : [];
   const match = ENVIRONMENT_PATH.exec(url.pathname);
 
   if (match === null) return [];
@@ -83,6 +103,48 @@ async function route(context: Context, request: Request): Promise<Response> {
     if (method === "POST") return linkEnvironment(context, request);
 
     return methodNotAllowed("GET, POST");
+  }
+
+  if (pathname === BROKER_ROUTES.linkTransactions) {
+    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
+
+    return method === "POST" ? openTransaction(context, request) : methodNotAllowed("POST");
+  }
+
+  if (pathname === BROKER_ROUTES.linkTransactionLookup) {
+    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
+
+    return method === "POST" ? lookupTransaction(context, request) : methodNotAllowed("POST");
+  }
+
+  const transaction = TRANSACTION_PATH.exec(pathname);
+
+  if (transaction !== null) {
+    const [, transactionId = "", step] = transaction;
+    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
+
+    switch (step) {
+      case "approve":
+        return method === "POST"
+          ? approveTransaction(context, request, transactionId)
+          : methodNotAllowed("POST");
+      case "deny":
+        return method === "POST"
+          ? denyTransaction(context, request, transactionId)
+          : methodNotAllowed("POST");
+      case "poll":
+        return method === "POST"
+          ? pollTransaction(context, request, transactionId)
+          : methodNotAllowed("POST");
+      case "complete":
+        return method === "POST"
+          ? completeTransaction(context, request, transactionId)
+          : methodNotAllowed("POST");
+      default:
+        return method === "DELETE"
+          ? cancelTransaction(context, request, transactionId)
+          : methodNotAllowed("DELETE");
+    }
   }
 
   const match = ENVIRONMENT_PATH.exec(pathname);

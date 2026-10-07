@@ -112,6 +112,10 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte status", detail: "list stored credentials" },
   { label: "nyte serve [--workspace <path>]", detail: "run a headless host for other clients" },
   {
+    label: "nyte account <login|status|unlink>",
+    detail: "link a host profile to your Nyte account",
+  },
+  {
     label: "nyte update [version|--check|--models]",
     detail: "install nyte, check for an update, or refresh models",
   },

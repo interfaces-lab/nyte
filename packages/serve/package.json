@@ -20,6 +20,7 @@
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/app": "workspace:*",
+    "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",

@@ -3,15 +3,18 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
-import { keys, loadLocalResources, queryClient } from "./queries.ts";
+import { keys, loadLocalResources, queryClient, RECORDED_STARTS } from "./queries.ts";
 import { currentRouteSession, Shell } from "./router.tsx";
 import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
 import { useMountEffect } from "./use-mount-effect.ts";
 import { activePaneController, paneControllerForWorkspace } from "./layout/pane-context.tsx";
+import type { PaneController } from "./layout/pane-controller.ts";
 import { windowTabs } from "./tabs/window-tabs.ts";
-import { BLANK_SELECTION, activeSelection } from "./layout/pane-layout.ts";
+import { BLANK_SELECTION, activePane, activeSelection } from "./layout/pane-layout.ts";
+import { reviewRecordedStarts } from "./recorded-starts.ts";
+import type { StartNotice } from "./recorded-starts.ts";
 import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
@@ -44,7 +47,7 @@ function focusedSession(): SessionId | undefined {
 /** Host events reshape the world; queries re-read it. */
 function useHostEvents(router: AppRouter): void {
   useMountEffect(() => {
-    return nyte.host.onEvent((event) => {
+    const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
         case "workspace_trust_required":
           requestTrust(event.path);
@@ -101,6 +104,11 @@ function useHostEvents(router: AppRouter): void {
           toast.add({ title: event.message });
 
           return;
+        case "starts_changed":
+          void queryClient.invalidateQueries({ queryKey: RECORDED_STARTS });
+          reviewStarts(router);
+
+          return;
         case "browser_changed":
         case "browser_download":
         case "browser_open_tab":
@@ -125,7 +133,78 @@ function useHostEvents(router: AppRouter): void {
         }
       }
     });
+
+    // Answers that arrived before this shell mounted are on record; act on them now.
+    reviewStarts(router);
+
+    return unsubscribe;
   });
+}
+
+let reviewing: Promise<void> = Promise.resolve();
+
+/** Answered root starts, one review at a time, so a refused message comes back once. */
+function reviewStarts(router: AppRouter): void {
+  const starts = nyte.host.starts;
+
+  if (starts === undefined) return;
+  reviewing = reviewing
+    .then(async () => {
+      const host = await nyte.host.state();
+      const controller = activePaneController(host.workspace?.path);
+
+      const notices = await reviewRecordedStarts({
+        starts,
+        restore: (composer) =>
+          controller.viewState.restoreBlank(activePane(controller.getSnapshot().layout).id, {
+            composer,
+            updatedAt: Date.now(),
+          }),
+      });
+
+      for (const notice of notices) showStartNotice(router, controller, notice);
+    })
+    .catch(() => undefined);
+}
+
+function showStartNotice(router: AppRouter, controller: PaneController, notice: StartNotice): void {
+  switch (notice.kind) {
+    case "accepted": {
+      const id = toast.add({
+        type: "success",
+        title: "Chat started",
+        description: notice.preview,
+        actionProps: {
+          children: "Open",
+          onClick: () => {
+            toast.close(id);
+            controller.selectSession(notice.sessionId);
+            void router.navigate({
+              to: "/session/$sessionId",
+              params: { sessionId: notice.sessionId },
+            });
+          },
+        },
+      });
+
+      return;
+    }
+
+    case "refused":
+      toast.add({
+        type: "error",
+        title: "Chat didn’t start",
+        description: `${notice.message} The message is back in your drafts.`,
+        timeout: 0,
+      });
+
+      return;
+    default: {
+      const _exhaustive: never = notice;
+
+      return _exhaustive;
+    }
+  }
 }
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {

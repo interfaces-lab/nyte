@@ -22,8 +22,9 @@
  * once to the broker, and are never kept. Everything after that, the lease
  * heartbeat and the relay's proof included, signs with the machine key.
  */
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
+import { scheduler } from "node:timers/promises";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -35,20 +36,33 @@ import {
   EnrollmentClaims,
   HEARTBEAT_INTERVAL_SECONDS,
   LEASE_LIFETIME_SECONDS,
+  LINK_POLL_INTERVAL_SECONDS,
   LeaseClaims,
   PROOF_LIFETIME_SECONDS,
   TOKEN_TYPES,
+  keyFingerprint,
+  randomUserCode,
 } from "../index.ts";
-import type { BrokerKeys, PublicJwk, ReceiptClaims } from "../index.ts";
+import type {
+  BrokerKeys,
+  DeviceRole,
+  LinkResponse,
+  LinkTransactionState,
+  PublicJwk,
+  ReceiptClaims,
+} from "../index.ts";
 import { machineName } from "./machine-name.ts";
 import {
   brokerKey,
   generateMachineKey,
+  keyThumbprint,
   nowSeconds,
+  publicKeyOf,
+  randomId,
   signClaims,
   verifyClaims,
 } from "../signing.ts";
-import type { AuthDecision, ServerAuth } from "@nyte-ai/server";
+import type { PrivateJwk } from "../signing.ts";
 import type {
   ConnectLease,
   ConnectLinkFailure,
@@ -64,7 +78,7 @@ import type { BrokerFetch, LeaseAnswer } from "./broker.ts";
 import { RelayConnection } from "./relay.ts";
 import type { RelayDial, RelayTiming } from "./relay.ts";
 import { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
-import type { RouteAnswer } from "./routes.ts";
+import type { AuthorizingRequest, RouteAnswer } from "./routes.ts";
 import {
   CONSUMED_LIMIT,
   ConnectStore,
@@ -72,12 +86,25 @@ import {
   REVOCATION_LIMIT,
   UNLINK_LIMIT,
 } from "./store.ts";
-import type { ConnectFile, StoredDevice, StoredLink } from "./store.ts";
+import type { ConnectFile, LinkKey, StoredDevice, StoredLink } from "./store.ts";
 import { ConnectError } from "./errors.ts";
+
+/**
+ * Who a relayed request is, decided here on every request. The embedding
+ * turns an allowed device into its own principal; `principal` is a stable
+ * name for a server that takes the decision as it is.
+ */
+export type DeviceDecision =
+  | {
+      readonly kind: "allow";
+      readonly principal: string;
+      readonly device: { readonly id: string; readonly name: string; readonly role: DeviceRole };
+    }
+  | { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" };
 
 /** What the host binds for account remote access. */
 export interface ConnectListen {
-  readonly auth: ServerAuth;
+  readonly authorize: (request: AuthorizingRequest) => Promise<DeviceDecision>;
   readonly handle: (request: Request) => Promise<Response | undefined>;
 }
 
@@ -107,6 +134,8 @@ export interface ConnectTiming {
   readonly keysMs: number;
   /** How long a self-revocation's own response has before every stream is dropped. */
   readonly dropDelayMs: number;
+  /** How often a linking host asks the broker whether the owner approved. */
+  readonly linkPollMs: number;
   readonly relay?: Partial<RelayTiming>;
 }
 
@@ -127,6 +156,7 @@ const DEFAULT_TIMING: ConnectTiming = {
   readinessRetryMs: 2_000,
   keysMs: 300_000,
   dropDelayMs: 250,
+  linkPollMs: LINK_POLL_INTERVAL_SECONDS * 1_000,
 };
 
 /** The broker this runtime talks to. A desktop build adds its Clerk configuration beside it. */
@@ -135,6 +165,19 @@ export interface HostConnectConfig {
   readonly origin: string;
 }
 
+/**
+ * How this host gets an owner's approval to link. A desktop asks its own
+ * sign-in for a session JWT; a headless host opens a broker transaction and
+ * shows the code and fingerprint for the owner to approve elsewhere.
+ */
+export type LinkAuthorizer =
+  | { readonly kind: "session"; readonly account: AccountSession }
+  | {
+      readonly kind: "transaction";
+      /** The transaction is open: show where to approve, the code and the fingerprint to compare. */
+      readonly onOpened: (opened: Extract<ConnectLinking, { kind: "awaiting_approval" }>) => void;
+    };
+
 export interface ConnectRuntimeOptions {
   /** Absent in a build without the public connect configuration. */
   readonly config: HostConnectConfig | undefined;
@@ -142,7 +185,7 @@ export interface ConnectRuntimeOptions {
   readonly home: string;
   /** The Connect state file; default `<home>/connect.json`. A host profile passes its own. */
   readonly storePath?: string;
-  readonly account: AccountSession | undefined;
+  readonly authorizer: LinkAuthorizer | undefined;
   /** Something Settings shows has changed. Carries nothing itself. */
   readonly onChange: () => void;
   /** This Mac's name at the broker; defaults to the host name. */
@@ -217,6 +260,36 @@ function closed(): ConnectError {
   return new ConnectError({ code: "closed", message: "Nyte is quitting." });
 }
 
+function originChanged(): ConnectError {
+  return new ConnectError({
+    code: "forbidden",
+    message: "This host is linked through another broker. Unlink it before linking here.",
+  });
+}
+
+/** The owner, the clock or this host ended the transaction before it was completed. */
+class LinkStopped extends Error {
+  readonly state: "pending" | "approved" | "denied" | "expired" | "cancelled";
+
+  constructor(state: "pending" | "approved" | "denied" | "expired" | "cancelled") {
+    super(`Link transaction ${state}`);
+    this.name = "LinkStopped";
+    this.state = state;
+  }
+}
+
+type TransactionLinkKey = Extract<LinkKey, { kind: "transaction" }>;
+
+/** One `link()` run, from its first broker call to its last word on disk. */
+interface LinkAttempt {
+  readonly controller: AbortController;
+  done: Promise<void>;
+  /** The user gave the link up; a transaction then ends at the broker too. Closing alone keeps it. */
+  cancelled: boolean;
+  /** The environment this attempt put on disk as the link, once it has. */
+  persisted: string | undefined;
+}
+
 function refusedCode(cause: unknown): string | undefined {
   return cause instanceof BrokerError && cause.failure.kind === "refused"
     ? cause.failure.code
@@ -252,6 +325,17 @@ function sessionSubject(token: string): string | null {
 function linkFailure(cause: unknown, signal: AbortSignal): ConnectLinkFailure {
   if (signal.aborted || cause instanceof AccountCancelled) return "cancelled";
 
+  if (cause instanceof LinkStopped) {
+    switch (cause.state) {
+      case "denied":
+      case "expired":
+      case "cancelled":
+        return cause.state;
+      default:
+        return "refused";
+    }
+  }
+
   if (!(cause instanceof BrokerError)) return "refused";
 
   switch (cause.failure.kind) {
@@ -286,9 +370,7 @@ export class ConnectRuntime {
   private epoch = 0;
   private serving: Serving | undefined;
   private linking: ConnectLinking = { kind: "idle" };
-  private linkAttempt:
-    | { readonly controller: AbortController; readonly done: Promise<void> }
-    | undefined;
+  private linkAttempt: LinkAttempt | undefined;
   private readonly accountOpens = new Set<AbortController>();
   private notice: ConnectNotice = { kind: "none" };
   /** Refused here before the store has caught up. */
@@ -301,6 +383,8 @@ export class ConnectRuntime {
   private unlinking: Promise<void> | undefined;
   private unlinkTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  /** The one teardown every `close()` caller waits on. */
+  private closing: Promise<void> | undefined;
 
   constructor(options: ConnectRuntimeOptions) {
     this.options = options;
@@ -321,8 +405,14 @@ export class ConnectRuntime {
     const read = await this.store.read();
 
     if (read.kind === "failed") return { kind: "unavailable", reason: "store_failed" };
-    const account = this.options.account?.state() ?? { kind: "unavailable" };
+    const account = this.account?.state() ?? { kind: "unavailable" };
     const { link } = read.file;
+
+    if (
+      (link !== null && link.origin !== broker.origin) ||
+      (read.file.linkKey !== null && read.file.linkKey.origin !== broker.origin)
+    )
+      return { kind: "unavailable", reason: "origin_changed" };
 
     if (link === null) {
       return {
@@ -371,7 +461,7 @@ export class ConnectRuntime {
   async link(): Promise<ConnectView> {
     await this.requireUsable();
 
-    if (this.options.account === undefined) throw unavailable();
+    if (this.options.authorizer === undefined) throw unavailable();
     const pending = this.linkAttempt;
 
     if (pending !== undefined) {
@@ -390,17 +480,27 @@ export class ConnectRuntime {
     }
 
     const controller = new AbortController();
-    const done = this.runLink(controller);
-    this.linkAttempt = { controller, done };
-    await done;
+
+    const attempt: LinkAttempt = {
+      controller,
+      done: Promise.resolve(),
+      cancelled: false,
+      persisted: undefined,
+    };
+
+    this.linkAttempt = attempt;
+    attempt.done = this.runLink(attempt);
+    await attempt.done;
 
     return this.view();
   }
 
+  /** The user gives the link up: the attempt ends and an open transaction is cancelled at the broker. */
   async cancel(): Promise<void> {
     const pending = this.linkAttempt;
 
     if (pending === undefined) return;
+    pending.cancelled = true;
     pending.controller.abort();
     await pending.done;
   }
@@ -466,13 +566,24 @@ export class ConnectRuntime {
    * cannot be reached is retried on later runs with the key kept for it.
    */
   async unlink(): Promise<void> {
-    this.linkAttempt?.controller.abort();
+    await this.cancel();
+    await this.queueUnlink(undefined);
+    this.changed();
+    await this.retryUnlinks();
+  }
+
+  /**
+   * Refuse every account device, stop serving, and move the link (`expected`
+   * when given, whichever is on disk otherwise) into the unlink queue, keeping
+   * its key for the broker call.
+   */
+  private async queueUnlink(expected: string | undefined): Promise<void> {
     this.denyAll();
     await this.serial(async () => {
       const file = await this.readyFile();
       const { link } = file;
 
-      if (link === null) return;
+      if (link === null || (expected !== undefined && link.environment.id !== expected)) return;
       await this.stopServing();
       await this.change((current) =>
         current.link === null
@@ -486,19 +597,23 @@ export class ConnectRuntime {
                 ...current.unlinks.filter(
                   (pending) => pending.environmentId !== link.environment.id,
                 ),
-                { environmentId: link.environment.id, key: link.key, at: Date.now() },
+                {
+                  origin: link.origin,
+                  environmentId: link.environment.id,
+                  key: link.key,
+                  at: Date.now(),
+                },
               ],
             },
       );
       this.forgetLink();
       this.notice = { kind: "none" };
     });
-    this.changed();
-    await this.retryUnlinks();
   }
 
   /** Refuse the device here at once and close every stream, then revoke it at the broker. */
   async revokeDevice(input: { readonly deviceId: string }): Promise<void> {
+    await this.requireUsable();
     await this.forgetDevice(input.deviceId, "revoke");
   }
 
@@ -509,7 +624,7 @@ export class ConnectRuntime {
    * user can sign in, and drop it unused.
    */
   async openAccount(): Promise<void> {
-    const account = this.options.account;
+    const { account } = this;
 
     if (account === undefined) throw unavailable();
 
@@ -536,7 +651,7 @@ export class ConnectRuntime {
 
   /** Sign out of the account here. The link and remote access are unchanged. */
   async signOut(): Promise<void> {
-    const account = this.options.account;
+    const { account } = this;
 
     if (account === undefined) throw unavailable();
     // A link waiting on this session would otherwise finish under the signed-out account.
@@ -569,91 +684,506 @@ export class ConnectRuntime {
     void this.beat(serving);
   }
 
-  /** Stop serving for this run. The link, devices, and toggle stay as they are. */
-  async close(): Promise<void> {
-    if (this.closed) return;
+  /**
+   * Stop serving for this run. The link, devices, and toggle stay as they are.
+   * Every caller waits on the same teardown: access is refused at once, the
+   * link attempt and the cleanup it started settle, and the last write lands
+   * before any caller hears it is closed.
+   */
+  close(): Promise<void> {
+    this.closing ??= this.shutDown();
+
+    return this.closing;
+  }
+
+  private async shutDown(): Promise<void> {
     this.closed = true;
-    this.linkAttempt?.controller.abort();
+    this.denyAll();
+    const attempt = this.linkAttempt;
+    attempt?.controller.abort();
 
     for (const controller of this.accountOpens) controller.abort();
     clearTimeout(this.unlinkTimer);
+    // The attempt's last word on disk lands before anything it depends on goes.
+    await attempt?.done;
     this.lifetime.abort();
-    this.denyAll();
     await this.serial(() => this.stopServing());
-    await this.options.account?.close();
+    // Broker calls are aborted; acknowledgements already being written still land.
+    await Promise.allSettled([this.unlinking, this.revoking]);
+    await this.store.idle();
+    await this.account?.close();
   }
 
   // -------------------------------------------------------------------------
   // Linking
   // -------------------------------------------------------------------------
 
-  private async runLink(controller: AbortController): Promise<void> {
-    const account = this.options.account;
+  /**
+   * One attempt. How it ends decides what the pending intent becomes: a
+   * tombstoned key is dropped; the user's cancellation abandons an open
+   * transaction at the broker; a transaction the broker ended is cleared so
+   * the next attempt opens a new one on the same key; anything else, a lost
+   * answer or a close, leaves the intent exactly as it is for the next attempt
+   * to settle. A cancel that arrives while the link is being written is still
+   * the user's answer: the link goes into the unlink queue before the attempt
+   * resolves.
+   */
+  private async runLink(attempt: LinkAttempt): Promise<void> {
+    const { authorizer } = this.options;
     const broker = this.broker;
-    this.setLinking({ kind: "waiting_for_account" });
+    const { controller } = attempt;
 
     try {
-      if (account === undefined || broker === undefined) throw unavailable();
-      const sessionToken = await account.requestSessionToken({ signal: controller.signal });
+      if (authorizer === undefined || broker === undefined) throw unavailable();
 
-      if (controller.signal.aborted) throw new AccountCancelled();
-      await this.serial(async () => {
-        if (controller.signal.aborted || this.closed) throw new AccountCancelled();
-        const file = await this.readyFile();
+      if (authorizer.kind === "session")
+        await this.linkWithSession(authorizer.account, broker, attempt);
+      else await this.linkWithTransaction(authorizer, broker, attempt);
 
-        if (file.link !== null) return;
-        this.setLinking({ kind: "linking" });
-        const owner = sessionSubject(sessionToken);
-        const pending = file.linkKey;
-
-        // A key the broker may already hold resumes that link instead of leaving it orphaned,
-        // unless another account began it.
-        const resumable =
-          pending !== null && (pending.owner === null || owner === null || pending.owner === owner);
-
-        const key = resumable ? pending.key : await generateMachineKey();
-
-        if (!resumable) await this.change((current) => ({ ...current, linkKey: { key, owner } }));
-
-        const linked = await broker.link({
-          key,
-          name: this.options.name ?? machineName(),
-          sessionToken,
-          signal: controller.signal,
-        });
-
-        // An answer that lands after cancel links nothing; the kept key resumes it next time.
-        if (controller.signal.aborted || this.closed) throw new AccountCancelled();
-        await this.change((current) => {
-          if (current.linkKey === null) throw new AccountCancelled();
-
-          return {
-            ...current,
-            enabled: false,
-            linkKey: null,
-            link: {
-              environment: { id: linked.environment.id, name: linked.environment.name },
-              owner: { id: linked.owner.id, label: linked.owner.label },
-              key: current.linkKey.key,
-              brokerKeys: linked.brokerKeys,
-              devices: [],
-              revocations: [],
-              consumed: [],
-            },
-          };
-        });
-        this.forgetLink();
-        this.notice = { kind: "none" };
-      });
-      this.setLinking({ kind: "idle" });
+      if (attempt.cancelled && attempt.persisted !== undefined) {
+        await this.queueUnlink(attempt.persisted);
+        void this.retryUnlinks();
+        this.setLinking({ kind: "failed", reason: "cancelled" });
+      } else this.setLinking({ kind: "idle" });
     } catch (cause) {
-      // The broker tombstoned the key this link was resuming; the next try starts with a new one.
-      if (refusedCode(cause) === "revoked")
+      if (refusedCode(cause) === "revoked") {
         await this.change((file) => ({ ...file, linkKey: null })).catch(() => undefined);
+      } else if (authorizer?.kind === "transaction") {
+        if (attempt.cancelled) await this.abandonTransaction(broker);
+        else if (cause instanceof LinkStopped) await this.clearEndedTransaction();
+      }
+
       this.setLinking({ kind: "failed", reason: linkFailure(cause, controller.signal) });
     } finally {
       if (this.linkAttempt?.controller === controller) this.linkAttempt = undefined;
     }
+  }
+
+  /** The broker ended the transaction: its id is gone from the intent, the key stays for the next one. */
+  private async clearEndedTransaction(): Promise<void> {
+    await this.change((current) =>
+      current.linkKey?.kind === "transaction"
+        ? {
+            ...current,
+            linkKey: this.nextOperation(current.linkKey),
+          }
+        : current,
+    ).catch(() => undefined);
+  }
+
+  /** A new operation on the same key, after the broker ended the last one; it carries the name the host has now. */
+  private nextOperation(ended: TransactionLinkKey): TransactionLinkKey {
+    return {
+      ...ended,
+      name: this.options.name ?? machineName(),
+      transaction: null,
+      abandoned: false,
+      ...this.mintOperation(),
+    };
+  }
+
+  /** A fresh operation id and code; the broker knows this pair only once an open is answered. */
+  private mintOperation(): { readonly operationId: string; readonly userCode: string } {
+    return {
+      operationId: randomId(),
+      userCode: randomUserCode((count) => new Uint8Array(randomBytes(count))),
+    };
+  }
+
+  /** The desktop's link: one fresh session JWT, sent once with the key's proof. */
+  private async linkWithSession(
+    account: AccountSession,
+    broker: DesktopBroker,
+    attempt: LinkAttempt,
+  ): Promise<void> {
+    const { controller } = attempt;
+    this.setLinking({ kind: "waiting_for_account" });
+    const sessionToken = await account.requestSessionToken({ signal: controller.signal });
+
+    if (controller.signal.aborted) throw new AccountCancelled();
+    await this.serial(async () => {
+      if (controller.signal.aborted || this.closed) throw new AccountCancelled();
+      const file = await this.readyFile();
+
+      if (file.link !== null) return;
+      this.setLinking({ kind: "linking" });
+      const owner = sessionSubject(sessionToken);
+      const pending = file.linkKey;
+
+      // A key the broker may already hold resumes that link instead of leaving it orphaned,
+      // unless another account or another broker began it.
+      const resumable =
+        pending !== null &&
+        pending.kind === "session" &&
+        pending.origin === broker.origin &&
+        (pending.owner === null || owner === null || pending.owner === owner);
+
+      const key = resumable ? pending.key : await generateMachineKey();
+
+      if (!resumable)
+        await this.change((current) => ({
+          ...current,
+          linkKey: { kind: "session", origin: broker.origin, key, owner },
+        }));
+
+      const linked = await broker.link({
+        key,
+        name: this.options.name ?? machineName(),
+        sessionToken,
+        signal: controller.signal,
+      });
+
+      // An answer that lands after cancel links nothing; the kept key resumes it next time.
+      if (controller.signal.aborted || this.closed) throw new AccountCancelled();
+      await this.persistLink(linked, key, broker.origin, attempt);
+    });
+  }
+
+  /**
+   * A headless host's link: the key, operation id and code are on disk before
+   * the broker hears of them, the transaction's answer lands beside them, and
+   * the owner approves from a browser elsewhere while this host polls with
+   * fresh proofs. A transaction left from an earlier run is asked about first:
+   * one the owner already approved and this host completed is recovered, not
+   * reopened.
+   */
+  private async linkWithTransaction(
+    authorizer: Extract<LinkAuthorizer, { kind: "transaction" }>,
+    broker: DesktopBroker,
+    attempt: LinkAttempt,
+  ): Promise<void> {
+    this.setLinking({ kind: "linking" });
+    const { signal } = attempt.controller;
+
+    const prepared = await this.serial(async (): Promise<TransactionLinkKey | undefined> => {
+      if (signal.aborted || this.closed) throw new AccountCancelled();
+      const file = await this.readyFile();
+
+      if (file.link !== null) return undefined;
+      let pending = file.linkKey;
+
+      if (pending !== null && pending.origin !== broker.origin) throw originChanged();
+
+      // An exact replay may answer a transaction that already ended or was approved;
+      // it is settled like any other before a new one opens. A fresh open is pending.
+      for (;;) {
+        let intent: TransactionLinkKey;
+
+        if (pending === null || pending.kind !== "transaction") {
+          intent = this.freshTransaction(broker.origin, await generateMachineKey());
+        } else {
+          const settled = await this.settleTransaction(pending, broker, signal, attempt);
+
+          switch (settled.kind) {
+            case "linked":
+              return undefined;
+            case "open":
+              return pending;
+            case "opening":
+              intent = pending;
+              break;
+            case "ended":
+              intent = this.nextOperation(pending);
+              break;
+            case "retired":
+              intent = this.freshTransaction(broker.origin, await generateMachineKey());
+              break;
+            default: {
+              const _exhaustive: never = settled.kind;
+
+              return _exhaustive;
+            }
+          }
+        }
+
+        // The immutable open is on disk before the broker hears it; a lost answer replays this exact input.
+        if (intent !== pending) await this.change((current) => ({ ...current, linkKey: intent }));
+        const { kept, state } = await this.open(intent, broker, signal);
+
+        if (state === "pending") return kept;
+        pending = kept;
+      }
+    });
+
+    if (prepared?.transaction === null || prepared?.transaction === undefined) return;
+    const { key, userCode } = prepared;
+    const { transaction } = prepared;
+
+    const awaiting: ConnectLinking = {
+      kind: "awaiting_approval",
+      verifyUrl: transaction.verifyUrl,
+      userCode,
+      fingerprint: keyFingerprint(await keyThumbprint(publicKeyOf(key))),
+      expiresAt: transaction.expiresAt,
+    };
+    this.setLinking(awaiting);
+    authorizer.onOpened(awaiting);
+
+    for (;;) {
+      await scheduler.wait(this.timing.linkPollMs, { signal }).catch(() => {
+        throw new AccountCancelled();
+      });
+      let state: LinkTransactionState;
+
+      try {
+        state = (await broker.pollLinkTransaction({ key, transactionId: transaction.id, signal }))
+          .state;
+      } catch (cause) {
+        if (signal.aborted) throw new AccountCancelled();
+
+        if (Date.now() >= transaction.expiresAt) throw new LinkStopped("expired");
+
+        if (refusedCode(cause) !== undefined) throw cause;
+        continue;
+      }
+
+      if (state === "approved" || state === "consumed") break;
+
+      if (state !== "pending") throw new LinkStopped(state);
+    }
+
+    this.setLinking({ kind: "linking" });
+    await this.serial(async () => {
+      if (signal.aborted || this.closed) throw new AccountCancelled();
+      const file = await this.readyFile();
+
+      if (file.link !== null) return;
+
+      if (file.linkKey?.kind !== "transaction" || file.linkKey.transaction?.id !== transaction.id)
+        throw new AccountCancelled();
+      const completion = await broker.completeLinkTransaction({
+        key,
+        transactionId: transaction.id,
+        signal,
+      });
+
+      if (completion.state !== "consumed") throw new LinkStopped(completion.state);
+
+      if (signal.aborted || this.closed) throw new AccountCancelled();
+      await this.persistLink(completion.link, key, broker.origin, attempt);
+    });
+  }
+
+  /**
+   * Send the intent's open exactly as it is on disk and keep the answer beside
+   * it. The broker answers an operation it already holds as it stands now.
+   */
+  private async open(
+    intent: TransactionLinkKey,
+    broker: DesktopBroker,
+    signal: AbortSignal,
+  ): Promise<{ readonly kept: TransactionLinkKey; readonly state: LinkTransactionState }> {
+    const opened = await broker.openLinkTransaction({
+      key: intent.key,
+      name: intent.name,
+      operationId: intent.operationId,
+      userCode: intent.userCode,
+      signal,
+    });
+
+    const transaction = {
+      id: opened.transactionId,
+      verifyUrl: opened.verifyUrl,
+      expiresAt: opened.expiresAt,
+    };
+
+    const kept: TransactionLinkKey = { ...intent, transaction };
+    await this.change((current) =>
+      current.linkKey?.kind === "transaction" &&
+      current.linkKey.operationId === intent.operationId &&
+      current.linkKey.key.x === intent.key.x
+        ? { ...current, linkKey: { ...kept, abandoned: current.linkKey.abandoned } }
+        : current,
+    );
+
+    return { kept, state: opened.state };
+  }
+
+  /** A new intent on `key`: operation id, code and the name the broker will be told, nothing opened yet. */
+  private freshTransaction(origin: string, key: PrivateJwk): TransactionLinkKey {
+    return {
+      kind: "transaction",
+      origin,
+      key,
+      name: this.options.name ?? machineName(),
+      ...this.mintOperation(),
+      abandoned: false,
+      transaction: null,
+    };
+  }
+
+  /**
+   * What a transaction left on disk is now. `opening`: the broker never
+   * answered the open, so the same input is sent again. Consumed means an
+   * earlier run completed it and lost the answer, or the owner approved while
+   * this host was away: the same key gets the same link back. One this host
+   * meant to cancel is cancelled now, its id first learned by replaying the
+   * exact open if that answer was lost; if completion had won, its environment
+   * is queued for unlinking and the key goes with it (`retired`), never
+   * silently kept. `open` means keep waiting on it; `ended` means the broker
+   * closed it and the key may open another.
+   */
+  private async settleTransaction(
+    pending: TransactionLinkKey,
+    broker: DesktopBroker,
+    signal: AbortSignal,
+    attempt: LinkAttempt | undefined,
+  ): Promise<{ readonly kind: "linked" | "open" | "opening" | "ended" | "retired" }> {
+    if (pending.abandoned) {
+      const known =
+        pending.transaction === null ? (await this.open(pending, broker, signal)).kept : pending;
+
+      const cancelled = await this.cancelTransaction(known, broker, signal);
+
+      return { kind: cancelled === "unlinked" ? "retired" : "ended" };
+    }
+
+    const { transaction, key } = pending;
+
+    if (transaction === null) return { kind: "opening" };
+
+    const status = await broker.pollLinkTransaction({ key, transactionId: transaction.id, signal });
+
+    switch (status.state) {
+      case "pending":
+      case "approved":
+        return { kind: "open" };
+      case "consumed": {
+        const completion = await broker.completeLinkTransaction({
+          key,
+          transactionId: transaction.id,
+          signal,
+        });
+
+        if (completion.state !== "consumed") return { kind: "ended" };
+
+        if (signal.aborted || this.closed) throw new AccountCancelled();
+        await this.persistLink(completion.link, key, broker.origin, attempt);
+
+        return { kind: "linked" };
+      }
+      case "denied":
+      case "expired":
+      case "cancelled":
+        return { kind: "ended" };
+      default: {
+        const _exhaustive: never = status.state;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  /**
+   * This host gives its intent up: that is on disk first, whether or not the
+   * broker ever answered the open, so a cancel the broker never hears of is
+   * settled before any new link. If completion won meanwhile, the environment
+   * is recovered and queued for unlinking, since the user wanted no link.
+   */
+  private async abandonTransaction(broker: DesktopBroker | undefined): Promise<void> {
+    if (broker === undefined) return;
+    const read = this.store.snapshot();
+    const pending = read?.kind === "ready" ? read.file.linkKey : null;
+
+    if (pending === null || pending?.kind !== "transaction" || pending.origin !== broker.origin)
+      return;
+    const abandoned: TransactionLinkKey = { ...pending, abandoned: true };
+
+    try {
+      await this.change((current) =>
+        current.linkKey?.kind === "transaction" &&
+        current.linkKey.operationId === pending.operationId &&
+        current.linkKey.key.x === pending.key.x
+          ? { ...current, linkKey: { ...current.linkKey, abandoned: true } }
+          : current,
+      );
+      await this.settleTransaction(abandoned, broker, this.lifetime.signal, undefined);
+    } catch {
+      // The intent stays on disk; the next link settles it first.
+    }
+  }
+
+  /**
+   * Cancel at the broker. `cancelled` leaves the key free; `unlinked` means
+   * completion had won, the environment it made is queued for unlinking and
+   * the key is retired with it, since the broker tombstones it on removal.
+   */
+  private async cancelTransaction(
+    pending: TransactionLinkKey,
+    broker: DesktopBroker,
+    signal: AbortSignal,
+  ): Promise<"cancelled" | "unlinked"> {
+    const { transaction, key } = pending;
+
+    if (transaction === null) return "cancelled";
+    const status = await broker.cancelLinkTransaction({
+      key,
+      transactionId: transaction.id,
+      signal,
+    });
+
+    if (status.state === "consumed") {
+      const completion = await broker.completeLinkTransaction({
+        key,
+        transactionId: transaction.id,
+        signal,
+      });
+
+      if (completion.state === "consumed") {
+        const { environment } = completion.link;
+        await this.change((current) => ({
+          ...current,
+          linkKey: null,
+          unlinks: [
+            ...current.unlinks.filter((entry) => entry.environmentId !== environment.id),
+            { origin: broker.origin, environmentId: environment.id, key, at: Date.now() },
+          ],
+        }));
+        void this.retryUnlinks();
+
+        return "unlinked";
+      }
+    }
+
+    await this.change((current) =>
+      current.linkKey?.kind === "transaction" && current.linkKey.transaction?.id === transaction.id
+        ? { ...current, linkKey: null }
+        : current,
+    );
+
+    return "cancelled";
+  }
+
+  /** The link is on disk before anyone hears of it; the pending key becomes the link's. */
+  private async persistLink(
+    linked: LinkResponse,
+    key: PrivateJwk,
+    origin: string,
+    attempt: LinkAttempt | undefined,
+  ): Promise<void> {
+    await this.change((current) => {
+      if (current.linkKey === null) throw new AccountCancelled();
+
+      return {
+        ...current,
+        enabled: false,
+        linkKey: null,
+        link: {
+          origin,
+          environment: { id: linked.environment.id, name: linked.environment.name },
+          owner: { id: linked.owner.id, label: linked.owner.label },
+          key,
+          brokerKeys: linked.brokerKeys,
+          devices: [],
+          revocations: [],
+          consumed: [],
+        },
+      };
+    });
+
+    if (attempt !== undefined) attempt.persisted = linked.environment.id;
+    this.forgetLink();
+    this.notice = { kind: "none" };
   }
 
   private setLinking(linking: ConnectLinking): void {
@@ -676,6 +1206,8 @@ export class ConnectRuntime {
     if (broker === undefined) throw unavailable();
 
     if (link === null) throw notLinked();
+
+    if (link.origin !== broker.origin) throw originChanged();
     const url = broker.relayUrl(link.environment.id);
     const epoch = this.epoch;
 
@@ -696,7 +1228,7 @@ export class ConnectRuntime {
     };
 
     const local = await share({
-      auth: { kind: "custom", authorize: (request) => this.authorize(serving, request) },
+      authorize: (request) => this.authorize(serving, request),
       handle: connectRouteHandler({
         host: () => (serving.port === undefined ? undefined : `127.0.0.1:${String(serving.port)}`),
         enroll: (authorization) => this.enroll(serving, authorization),
@@ -1045,7 +1577,7 @@ export class ConnectRuntime {
   // Devices
   // -------------------------------------------------------------------------
 
-  private async authorize(serving: Serving, request: Request): Promise<AuthDecision> {
+  private async authorize(serving: Serving, request: AuthorizingRequest): Promise<DeviceDecision> {
     const token = bearerToken(request);
 
     if (token === undefined) return { kind: "deny", reason: "unauthorized" };
@@ -1053,14 +1585,19 @@ export class ConnectRuntime {
     const device = this.deviceFor(serving, digest);
 
     if (device === undefined) return { kind: "deny", reason: "forbidden" };
+    const allowed = (): DeviceDecision => ({
+      kind: "allow",
+      principal: `device:${device.id}`,
+      device: { id: device.id, name: device.name, role: device.role },
+    });
 
-    if (this.listed(serving, device.id)) return { kind: "allow" };
+    if (this.listed(serving, device.id)) return allowed();
 
     if (!this.awaitsLease(serving, device)) return { kind: "deny", reason: "forbidden" };
     await this.refreshFor(serving, device);
 
     return this.deviceFor(serving, digest)?.id === device.id && this.listed(serving, device.id)
-      ? { kind: "allow" }
+      ? allowed()
       : { kind: "deny", reason: "forbidden" };
   }
 
@@ -1222,6 +1759,7 @@ export class ConnectRuntime {
           name: claims.clientName,
           digest: claims.digest,
           createdAt: now,
+          role: claims.role ?? "controller",
         };
 
         return {
@@ -1405,12 +1943,14 @@ export class ConnectRuntime {
   private async sendRevocationsOnce(): Promise<void> {
     const broker = this.broker;
 
-    if (broker === undefined) return;
+    if (broker === undefined || this.closed) return;
     this.revocationsSentAt = Date.now();
     const read = this.store.snapshot();
-    const link = read?.kind === "ready" ? read.file.link : null;
+    const stored = read?.kind === "ready" ? read.file.link : null;
+    // Only this broker's link signs for this broker; another origin's queue waits for its build.
+    const link = stored === null ? undefined : this.currentLink(stored.environment.id);
 
-    if (link === null || link.revocations.length === 0) return;
+    if (link === undefined || link.revocations.length === 0) return;
 
     for (const sent of link.revocations) {
       const input = {
@@ -1498,6 +2038,8 @@ export class ConnectRuntime {
     let remaining = 0;
 
     for (const pending of read.file.unlinks) {
+      // Another broker's cleanup waits for a build that names that broker.
+      if (pending.origin !== broker.origin) continue;
       let sent: boolean;
 
       try {
@@ -1575,8 +2117,21 @@ export class ConnectRuntime {
     if (this.closed) throw closed();
 
     if (this.broker === undefined) throw unavailable();
+    const read = await this.store.read();
 
-    if ((await this.store.read()).kind === "failed") throw storeFailed();
+    if (read.kind === "failed") throw storeFailed();
+
+    if (read.file.link !== null && read.file.link.origin !== this.broker.origin)
+      throw originChanged();
+
+    if (read.file.linkKey !== null && read.file.linkKey.origin !== this.broker.origin)
+      throw originChanged();
+  }
+
+  private get account(): AccountSession | undefined {
+    const { authorizer } = this.options;
+
+    return authorizer?.kind === "session" ? authorizer.account : undefined;
   }
 
   private async readyFile(): Promise<ConnectFile> {
@@ -1589,9 +2144,12 @@ export class ConnectRuntime {
 
   private currentLink(environmentId: string): StoredLink | undefined {
     const read = this.store.snapshot();
+    const link = read?.kind === "ready" ? read.file.link : null;
 
-    return read?.kind === "ready" && read.file.link?.environment.id === environmentId
-      ? read.file.link
+    return link !== null &&
+      link.environment.id === environmentId &&
+      link.origin === this.broker?.origin
+      ? link
       : undefined;
   }
 

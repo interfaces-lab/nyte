@@ -22,8 +22,10 @@ import {
   BrokerKeys,
   ClientId,
   DEVICE_LIMIT,
+  DeviceRole,
   Name,
   RandomId,
+  UserCode,
   Uuid,
 } from "../index.ts";
 import { PrivateJwk } from "../signing.ts";
@@ -42,6 +44,9 @@ const strict = <P extends TProperties>(properties: P) =>
 
 const Time = Type.Integer({ minimum: 0 });
 
+/** The broker a record was made with. Proofs and cleanup for it go there and nowhere else. */
+const Origin = Type.String({ pattern: "^https://[^/?#]+$", maxLength: 256 });
+
 const StoredDevice = strict({
   id: Uuid,
   clientId: ClientId,
@@ -49,11 +54,14 @@ const StoredDevice = strict({
   digest: Base64Url32,
   /** When this desktop recorded it, by this desktop's clock. */
   createdAt: Time,
+  /** What the enrolling browser asked for; the host's own policy decides whether `owner` counts. */
+  role: DeviceRole,
 });
 
 export type StoredDevice = Static<typeof StoredDevice>;
 
 const StoredLink = strict({
+  origin: Origin,
   environment: strict({ id: Uuid, name: Name }),
   owner: strict({
     id: Type.String({ minLength: 1, maxLength: 128 }),
@@ -83,27 +91,58 @@ const StoredLink = strict({
 
 export type StoredLink = Static<typeof StoredLink>;
 
-const PendingUnlink = strict({ environmentId: Uuid, key: PrivateJwk, at: Time });
+const PendingUnlink = strict({ origin: Origin, environmentId: Uuid, key: PrivateJwk, at: Time });
+
+/**
+ * The key of a link the broker may have begun. A `session` link is the
+ * desktop's: `owner` is the session JWT's `sub` as read here, bookkeeping so
+ * another account's retry starts a fresh key. A `transaction` link is a
+ * headless host's: the operation id and code are minted and kept here before
+ * the broker hears of them, and `transaction` is what it answered.
+ */
+const LinkKey = Type.Union([
+  strict({
+    kind: Type.Literal("session"),
+    origin: Origin,
+    key: PrivateJwk,
+    owner: Type.Union([Type.String({ minLength: 1, maxLength: 128 }), Type.Null()]),
+  }),
+  strict({
+    kind: Type.Literal("transaction"),
+    origin: Origin,
+    key: PrivateJwk,
+    operationId: RandomId,
+    userCode: UserCode,
+    /** The name the open carries; a replayed open must say the same. */
+    name: Name,
+    /**
+     * This host gave the intent up. Set before or after the broker answered
+     * the open: the next attempt first learns the transaction by replaying the
+     * exact open, cancels it, and unlinks a completion that won.
+     */
+    abandoned: Type.Boolean(),
+    transaction: Type.Union([
+      strict({
+        id: Uuid,
+        verifyUrl: Type.String({ maxLength: 2048 }),
+        expiresAt: Time,
+      }),
+      Type.Null(),
+    ]),
+  }),
+]);
+
+export type LinkKey = Static<typeof LinkKey>;
 
 export type PendingUnlink = Static<typeof PendingUnlink>;
 
 const ConnectFileType = strict({
-  version: Type.Literal(3),
+  version: Type.Literal(4),
   /** Serve whenever Nyte runs. Off by default. */
   enabled: Type.Boolean(),
   link: Type.Union([StoredLink, Type.Null()]),
-  /**
-   * The key of a link the broker may have begun; a retry by the same
-   * account resumes it. `owner` is the session JWT's `sub` as read here, for
-   * this bookkeeping only; the broker decides who owns what.
-   */
-  linkKey: Type.Union([
-    strict({
-      key: PrivateJwk,
-      owner: Type.Union([Type.String({ minLength: 1, maxLength: 128 }), Type.Null()]),
-    }),
-    Type.Null(),
-  ]),
+  /** A link the broker may have begun; a retry resumes it rather than leaving it orphaned. */
+  linkKey: Type.Union([LinkKey, Type.Null()]),
   unlinks: Type.Array(PendingUnlink, { maxItems: UNLINK_LIMIT }),
 });
 
@@ -112,7 +151,7 @@ const connectFile = Compile(ConnectFileType);
 export type ConnectFile = Static<typeof ConnectFileType>;
 
 export const EMPTY_CONNECT_FILE: ConnectFile = {
-  version: 3,
+  version: 4,
   enabled: false,
   link: null,
   linkKey: null,
@@ -234,6 +273,16 @@ export class ConnectStore {
     this.writes = run.catch(() => undefined);
 
     return run;
+  }
+
+  /** Settles once every change queued so far, and any queued while waiting, has landed or failed. */
+  async idle(): Promise<void> {
+    let tail: Promise<unknown>;
+
+    do {
+      tail = this.writes;
+      await tail;
+    } while (tail !== this.writes);
   }
 
   private async load(): Promise<ConnectRead> {

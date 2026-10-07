@@ -2,28 +2,64 @@
  * The bridge a browser installs: the SDK namespaces over `@nyte-ai/client`,
  * and a host namespace for remote-safe host operations. Native capabilities
  * such as terminals and browser surfaces are absent.
+ *
+ * Two kinds of host answer. A cursor host (a desktop share) selects a
+ * folder on the server and lists its store. A registry host
+ * (`info.workspaces.kind === "registry"`) exposes folders by id and starts
+ * roots by request id; the selected folder is this browser's own, kept per
+ * host identity and principal, and a root starts through `host.starts`.
  */
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
-import type { ServerInfo, WorkspaceSelectInput, WorkspaceSelectOutcome } from "@nyte-ai/protocol";
-import type { GitHubBridge, HostEvent, NyteBridge, OpenWorkspaceOutcome } from "../bridge.ts";
+import type {
+  HostIdentity,
+  ServerInfo,
+  WorkspaceSelectInput,
+  WorkspaceSelectOutcome,
+  WorkspaceTarget,
+} from "@nyte-ai/protocol";
+import type {
+  GitHubBridge,
+  HostEvent,
+  NyteBridge,
+  OpenWorkspaceOutcome,
+  RootStartInput,
+  TrustConsent,
+} from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { serverCatalog } from "../server-connection.ts";
+import { deactivateOutbox } from "../use-outbox.ts";
+import { requestFolderPath } from "./add-folder.tsx";
 import { createSessionDirectory } from "./directory.ts";
+import { IdentityChanged, randomNonce, verifyIdentityChallenge } from "./identity.ts";
+import { createRegistryController } from "./registry.ts";
+import type { RegistryController } from "./registry.ts";
 import { createEnvironmentSignIn, webPageUrl } from "./sign-in.ts";
+import { createIndexedDbStartJournal, createMemoryStartJournal } from "./start-journal.ts";
 
 export interface Connection {
   readonly url: string;
   readonly token: string;
 }
 
+export interface ConnectOptions {
+  readonly signal?: AbortSignal;
+  readonly relay?: true;
+  /**
+   * The host identity this browser pinned when it first paired here. The
+   * signed challenge must match it; a host that answers with another key is
+   * refused with `IdentityChanged`. Absent on the first pairing: the identity
+   * `info` reports is the one to pin.
+   */
+  readonly identity?: HostIdentity;
+  /** The principal the host knows this browser as: a device id on the relay, the bearer otherwise. */
+  readonly principal?: string;
+}
+
 export interface WebBridge {
   readonly bridge: NyteBridge;
   /** Verify with GET /v1/info, then route every call to this server. Rejects with the client's NyteWireError/NyteTransportError on failure. */
-  connect(
-    connection: Connection,
-    options?: { readonly signal?: AbortSignal; readonly relay?: true },
-  ): Promise<ServerInfo>;
+  connect(connection: Connection, options?: ConnectOptions): Promise<ServerInfo>;
 }
 
 const REFRESH_MS = 10_000;
@@ -71,8 +107,12 @@ export function createWebBridge(): WebBridge {
   let client: NyteClient | undefined;
   let environment: ServerInfo["environment"];
   let relay: true | undefined;
+  let registry: RegistryController | undefined;
   let polling = false;
   const listeners = new Set<(event: HostEvent) => void>();
+
+  const journal =
+    typeof indexedDB === "undefined" ? createMemoryStartJournal() : createIndexedDbStartJournal();
 
   const connected = (): Promise<NyteClient> =>
     client === undefined ? Promise.reject(new Error(NOT_CONNECTED)) : Promise.resolve(client);
@@ -92,8 +132,15 @@ export function createWebBridge(): WebBridge {
   const signIn = createEnvironmentSignIn({ environment: environmentCall, emit });
 
   const directory = createSessionDirectory({
-    current: call((current) => current.workspace.current),
-    list: call((current) => current.sessions.list),
+    current: () =>
+      registry === undefined
+        ? call((current) => current.workspace.current)()
+        : registry.selection(),
+    list: async (input) => {
+      const page = await call((current) => current.sessions.list)(input);
+
+      return registry === undefined ? page : registry.sessions(page);
+    },
     emit,
   });
 
@@ -111,6 +158,36 @@ export function createWebBridge(): WebBridge {
       return result;
     };
 
+  /**
+   * Where a workspace operation acts. The renderer names the open folder as
+   * the host's cursor; on a registry host that is this browser's selected
+   * folder by id. A session target already names its own folder and passes.
+   */
+  const retarget = (
+    route: RegistryController | undefined,
+    target: WorkspaceTarget,
+  ): WorkspaceTarget => {
+    if (route === undefined || target.kind !== "workspace") return target;
+    const selected = route.selectedId();
+
+    if (selected === undefined) throw new Error("Choose a folder on the host first.");
+
+    return { kind: "registered", id: selected };
+  };
+
+  /** The client and the registry are read together, so a target always goes to the host it names. */
+  const targeted =
+    <I extends { readonly target: WorkspaceTarget }, R>(
+      pick: (client: NyteClient) => (input: I) => Promise<R>,
+    ) =>
+    (input: I): Promise<R> => {
+      const route = registry;
+
+      return connected().then((current) =>
+        pick(current)({ ...input, target: retarget(route, input.target) }),
+      );
+    };
+
   const select = async (input: WorkspaceSelectInput): Promise<WorkspaceSelectOutcome> => {
     const outcome = await call((current) => current.workspace.select)(input);
 
@@ -120,11 +197,27 @@ export function createWebBridge(): WebBridge {
     return outcome;
   };
 
-  const openWorkspace = ({ path }: { path: string }): Promise<OpenWorkspaceOutcome> =>
-    select({ kind: "project", path }).then(openOutcome, (cause): OpenWorkspaceOutcome => ({
+  const openOn = (route: RegistryController, path: string): Promise<OpenWorkspaceOutcome> => {
+    const opening = route.open({ path });
+    void opening.then(refreshQuietly);
+
+    return opening;
+  };
+
+  /** A dialog answered after the connection moved on belongs to the host it was asked for. */
+  const CONNECTION_CHANGED: OpenWorkspaceOutcome = {
+    kind: "failed",
+    message: "The connection changed while this was open. Try again on this host.",
+  };
+
+  const openWorkspace = ({ path }: { path: string }): Promise<OpenWorkspaceOutcome> => {
+    if (registry !== undefined) return openOn(registry, path);
+
+    return select({ kind: "project", path }).then(openOutcome, (cause): OpenWorkspaceOutcome => ({
       kind: "failed",
       message: errorMessage(cause),
     }));
+  };
 
   const poll = (): void => {
     if (document.visibilityState === "visible") refreshQuietly();
@@ -177,25 +270,29 @@ export function createWebBridge(): WebBridge {
       move: mutate((current) => current.heads.move),
     },
     workspace: {
-      list: call((current) => current.workspace.list),
-      forget: mutate((current) => current.workspace.forget),
-      files: call((current) => current.workspace.files),
-      read: call((current) => current.workspace.read),
-      save: call((current) => current.workspace.save),
-      format: call((current) => current.workspace.format),
-      search: call((current) => current.workspace.search),
-      blame: call((current) => current.workspace.blame),
+      list: (input) =>
+        registry === undefined ? call((current) => current.workspace.list)(input) : registry.list(),
+      forget: (input) =>
+        registry === undefined
+          ? mutate((current) => current.workspace.forget)(input)
+          : registry.forget(input).then(refreshQuietly),
+      files: targeted((current) => current.workspace.files),
+      read: targeted((current) => current.workspace.read),
+      save: targeted((current) => current.workspace.save),
+      format: targeted((current) => current.workspace.format),
+      search: targeted((current) => current.workspace.search),
+      blame: targeted((current) => current.workspace.blame),
       vcs: {
-        snapshot: call((current) => current.workspace.vcs.snapshot),
-        diff: call((current) => current.workspace.vcs.diff),
-        contents: call((current) => current.workspace.vcs.contents),
-        log: call((current) => current.workspace.vcs.log),
-        refs: call((current) => current.workspace.vcs.refs),
-        stage: call((current) => current.workspace.vcs.stage),
-        discard: call((current) => current.workspace.vcs.discard),
-        commit: call((current) => current.workspace.vcs.commit),
-        createBranch: call((current) => current.workspace.vcs.createBranch),
-        push: call((current) => current.workspace.vcs.push),
+        snapshot: targeted((current) => current.workspace.vcs.snapshot),
+        diff: targeted((current) => current.workspace.vcs.diff),
+        contents: targeted((current) => current.workspace.vcs.contents),
+        log: targeted((current) => current.workspace.vcs.log),
+        refs: targeted((current) => current.workspace.vcs.refs),
+        stage: targeted((current) => current.workspace.vcs.stage),
+        discard: targeted((current) => current.workspace.vcs.discard),
+        commit: targeted((current) => current.workspace.vcs.commit),
+        createBranch: targeted((current) => current.workspace.vcs.createBranch),
+        push: targeted((current) => current.workspace.vcs.push),
       },
     },
     provider: {
@@ -238,6 +335,7 @@ export function createWebBridge(): WebBridge {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
       state: async () => {
+        if (registry !== undefined) return registry.state();
         const selection = await call((current) => current.workspace.current)();
 
         return {
@@ -248,10 +346,67 @@ export function createWebBridge(): WebBridge {
       sessionDirectory: () => directory.snapshot(),
       fonts: () => Promise.resolve({ sans: [], monospace: [] }),
       openWorkspace,
+      get pickWorkspace() {
+        const current = registry;
+
+        if (current === undefined) return undefined;
+
+        return async (): Promise<OpenWorkspaceOutcome> => {
+          const path = await requestFolderPath(current.binding.hostId);
+
+          if (path === undefined) return { kind: "cancelled" };
+
+          return registry === current ? openOn(current, path) : CONNECTION_CHANGED;
+        };
+      },
+      get trustWorkspace() {
+        const current = registry;
+
+        return current === undefined
+          ? undefined
+          : async (input: {
+              path: string;
+              consent?: TrustConsent;
+            }): Promise<OpenWorkspaceOutcome> => {
+              if (registry !== current) return CONNECTION_CHANGED;
+              const outcome = await current.trust(input);
+              refreshQuietly();
+
+              return outcome;
+            };
+      },
       closeWorkspace: async () => {
+        if (registry !== undefined) {
+          registry.close();
+          refreshQuietly();
+
+          return;
+        }
+
         const outcome = await select({ kind: "home" });
 
         if (outcome.kind === "failed") throw new Error(outcome.message);
+      },
+      get starts() {
+        const current = registry;
+
+        return current === undefined
+          ? undefined
+          : {
+              ...current.starts,
+              start: async (input: RootStartInput) => {
+                const outcome = await current.starts.start(input);
+                refreshQuietly();
+
+                return outcome;
+              },
+              retry: async (requestId: string) => {
+                const outcome = await current.starts.retry(requestId);
+                refreshQuietly();
+
+                return outcome;
+              },
+            };
       },
       catalog: async () => {
         const current = await connected();
@@ -273,8 +428,9 @@ export function createWebBridge(): WebBridge {
         emit({ kind: "catalog_changed" });
       },
       setPreference: (change) => environmentCall("environment.setPreference", change),
+      // Registry hosts serve no `environment.github.*`; only a cursor host's environment offers it.
       get github() {
-        return environment ? github : undefined;
+        return environment && registry === undefined ? github : undefined;
       },
       server: {
         state: () => Promise.resolve({ kind: "none" }),
@@ -341,13 +497,40 @@ export function createWebBridge(): WebBridge {
       });
 
       const info = await next.info();
+      // The identity this browser binds selections, starts and queued messages to: the pin, or on
+      // first pairing the one announced. Either way the host signs for it before anything is adopted.
+      const proving = options?.identity ?? info.identity;
+
+      if (proving !== undefined) {
+        if (info.identity?.hostId !== proving.hostId) throw new IdentityChanged();
+        const nonce = randomNonce();
+        const challenge = await next.identity(nonce);
+
+        if (!(await verifyIdentityChallenge({ challenge, pinned: proving, nonce })))
+          throw new IdentityChanged();
+      }
 
       if (verification.aborted) throw new Error("Connecting stopped.");
       verifying = false;
+      // Rows queued for the host being left stop before the next one is adopted; they stay
+      // stored under their own binding and send again only when that binding is active.
+      deactivateOutbox();
       client = next;
       environment = info.environment;
       relay = options?.relay;
+      registry =
+        info.workspaces?.kind === "registry" && info.identity !== undefined
+          ? createRegistryController({
+              client: next,
+              binding: { hostId: info.identity.hostId, principal: options?.principal ?? "bearer" },
+              storage: sessionStorage,
+              journal,
+              platform: browserPlatform(),
+              emit,
+            })
+          : undefined;
       directory.reset();
+      void registry?.replay().then(refreshQuietly);
 
       if (!polling) {
         polling = true;

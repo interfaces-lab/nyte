@@ -2993,7 +2993,8 @@ export class DesktopHost {
 
       try {
         serving = await this.serveShare(cursor, environment.operations, {
-          ...listen,
+          auth: { kind: "custom", authorize: listen.authorize },
+          handle: listen.handle,
           hostname: "127.0.0.1",
         });
       } catch (cause) {

@@ -1,5 +1,5 @@
 // The bridge goes in before `theme/boot.ts` or any screen reads it.
-import { webBridge } from "./install.ts";
+import "./install.ts";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
 import "@fontsource-variable/jetbrains-mono/wght.css";
@@ -19,11 +19,14 @@ import { createAppRouter } from "../router.tsx";
 import { serverConnectionProblem } from "../server-connection.ts";
 import { startRendererStartup } from "../startup.ts";
 import type { Connection } from "./bridge.ts";
-import { ConnectScreen } from "./connect-screen.tsx";
+import { AddFolderDialogHost } from "./add-folder.tsx";
+import { connectAddress, connectFailure, ConnectScreen } from "./connect-screen.tsx";
+import type { ConnectFailure } from "./connect-screen.tsx";
 import { releaseStoredAccountDevice } from "./account-connection.ts";
 import { readAccountDevice } from "./account-device.ts";
 import { accountConfig } from "./account-config.ts";
 import { AccountScreen } from "./account-screen.tsx";
+import { LinkScreen } from "./link-screen.tsx";
 import {
   displayAddress,
   forgetConnection,
@@ -85,6 +88,7 @@ function start(
       mount(
         <StrictMode>
           <App appIcon="/icon.svg" router={router} />
+          <AddFolderDialogHost />
         </StrictMode>,
       );
     },
@@ -107,14 +111,14 @@ function start(
   });
 }
 
-function showConnectScreen(initial?: Connection, problem?: string): void {
+function showConnectScreen(initial?: Connection, failure?: ConnectFailure): void {
   root.render(
     initial === undefined && accountConfig !== undefined ? (
       <AccountScreen config={accountConfig} onConnected={start} />
     ) : (
       <ConnectScreen
         initial={initial}
-        problem={problem}
+        failure={failure}
         onConnected={start}
         onBack={accountConfig === undefined ? undefined : () => showConnectScreen()}
       />
@@ -126,15 +130,17 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   if (fromLink) await releaseStoredAccountDevice(accountConfig);
 
   try {
-    await webBridge.connect(connection);
+    await connectAddress(connection, false);
   } catch (cause) {
-    const problem = serverConnectionProblem(cause);
-    const refused = problem.kind === "authentication";
+    const refused = serverConnectionProblem(cause).kind === "authentication";
 
     // A refused saved token never works again: a local or Tailscale token ends
     // with its share, and a removed device's token stays revoked.
     if (refused && !fromLink) forgetConnection();
-    showConnectScreen(refused ? { url: connection.url, token: "" } : connection, problem.message);
+    showConnectScreen(
+      refused ? { url: connection.url, token: "" } : connection,
+      connectFailure(cause),
+    );
 
     return;
   }
@@ -148,5 +154,8 @@ const accountDevice =
 
 const known = pairing ?? (accountDevice === undefined ? loadConnection() : undefined);
 
-if (known === undefined) showConnectScreen();
+// The link page approves a host for the account; it never connects this browser to one.
+if (location.pathname === "/link" && accountConfig !== undefined) {
+  root.render(<LinkScreen config={accountConfig} />);
+} else if (known === undefined) showConnectScreen();
 else void resume(known, pairing !== undefined);

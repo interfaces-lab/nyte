@@ -74,11 +74,18 @@ export type RuntimeAuthDecision =
   | { readonly kind: "allow"; readonly principal: string }
   | { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" };
 
+/**
+ * Names callers the bearer does not, on one listener: a relay device behind
+ * the account route. Consulted only when the request does not carry the
+ * owner token. Returns the device principal, or `undefined` to refuse.
+ */
+export type DeviceResolver = (request: AuthorizingRequest) => Promise<Principal | undefined>;
+
 type WorkspacePlugins = Extract<HostPlugins, { readonly kind: "workspace" }>;
 
 export interface HostRuntimeOptions {
   readonly profile: HostProfile;
-  /** Opened at `profile.storePath` by the caller (a worker store in Bun, SQLite in Node); closed by `close()`. */
+  /** Opened at `profile.storePath` by the caller (a worker store in Bun, SQLite in Node); the runtime closes it, whether opening succeeds or not. */
   readonly store: Store;
   readonly models: MutableModels;
   readonly model: Model<Api>;
@@ -89,12 +96,6 @@ export interface HostRuntimeOptions {
   readonly plugins?: Pick<WorkspacePlugins, "extra" | "sources" | "codemode">;
   /** Canonical directories registration is confined to. */
   readonly roots?: readonly string[];
-  /**
-   * Names callers the bearer does not: a relay device, once Connect is
-   * composed in. Consulted only when the request does not carry the owner
-   * token. Returns the device principal, or `undefined` to refuse.
-   */
-  readonly devices?: (request: AuthorizingRequest) => Promise<Principal | undefined>;
   readonly onDiagnostic: (message: string) => void;
   /** Time for a provider's account-usage read before Usage paints without it. */
   readonly accountLimitsTimeoutMs?: number;
@@ -114,8 +115,8 @@ export interface HostRuntime {
   readonly environment: Environment;
   readonly workspaces: RuntimeWorkspaces;
   readonly permissions: HostPermissions;
-  /** The server's authorizer: owner token, else a device, else refused. */
-  authorize(request: AuthorizingRequest): Promise<RuntimeAuthDecision>;
+  /** A listener's authorizer: owner token, else a device that listener's resolver names, else refused. */
+  authorize(request: AuthorizingRequest, devices?: DeviceResolver): Promise<RuntimeAuthDecision>;
   sign(nonce: string): IdentityChallenge;
   /** `environment.start` for an in-process owner (the host's own terminal). */
   start(principal: Principal, input: StartInput): Promise<StartReceipt>;
@@ -138,7 +139,9 @@ function bearerDigest(request: AuthorizingRequest): Buffer | undefined {
 
   if (space === -1 || header.slice(0, space).toLowerCase() !== "bearer") return undefined;
 
-  return createHash("sha256").update(header.slice(space + 1).trim()).digest();
+  return createHash("sha256")
+    .update(header.slice(space + 1).trim())
+    .digest();
 }
 
 /** Work on one key runs one at a time; a waiter joins the queue behind the holder. */
@@ -168,52 +171,105 @@ export class HostClosing extends Error {
   }
 }
 
+/** Every step runs, in order; every failure is reported, none hides another. */
+async function releaseAll(steps: readonly (() => Promise<void> | void)[]): Promise<void> {
+  const failures: unknown[] = [];
+
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (cause) {
+      failures.push(cause);
+    }
+  }
+
+  if (failures.length > 0) throw new AggregateError(failures, "Failed to close the host runtime");
+}
+
+/**
+ * Everything the runtime acquires, from the store and profile it is handed to
+ * the SDK it builds, is released in reverse by `close()`, or by this factory
+ * when anything before the return fails: the caller has no runtime to close.
+ */
 export async function openHostRuntime(options: HostRuntimeOptions): Promise<HostRuntime> {
+  const acquired: (() => Promise<void> | void)[] = [
+    () => options.profile.release(),
+    () => options.store.close(),
+  ];
+  const release = (): Promise<void> => releaseAll(acquired.toReversed());
+
+  try {
+    return await composeRuntime(options, (step) => acquired.push(step), release);
+  } catch (cause) {
+    try {
+      await release();
+    } catch (failure) {
+      options.onDiagnostic(`releasing after a failed open: ${String(failure)}`);
+    }
+
+    throw cause;
+  }
+}
+
+async function composeRuntime(
+  options: HostRuntimeOptions,
+  hold: (release: () => Promise<void> | void) => void,
+  release: () => Promise<void>,
+): Promise<HostRuntime> {
   const { profile, models, store } = options;
   const registry = new WorkspaceRegistry({ path: profile.registryPath, roots: options.roots });
   const starts = new StartJournal(profile.startsPath);
+  hold(() => starts.close());
   const preferences = createModelPreferencesStore();
   const environment = await environmentId();
   const recents = new WorkspaceStore(`${profile.directory}/recents.json`);
   /** Where core puts a root created with no workspace: the one place an unsealed root may be repaired from. */
   const defaultCwd = homedir();
-  let sdk: Nyte;
 
-  try {
-    sdk = await createHost({
-      store,
-      models,
-      model: options.model,
-      thinkingLevel: options.thinkingLevel,
-      telemetry: options.telemetry,
-      compaction: options.compaction,
-      streamOptions: options.streamOptions,
-      onDiagnostic: (diagnostic) =>
-        options.onDiagnostic(
-          `${diagnostic.operation} failed (${diagnostic.correlationId}): ${String(diagnostic.cause)}`,
-        ),
-      workspace: createWorkspaceBackend(recents),
-      registeredWorkspace: async (id) => {
-        const resolved = await registry.resolve(id);
+  const sdk = await createHost({
+    store,
+    models,
+    model: options.model,
+    thinkingLevel: options.thinkingLevel,
+    telemetry: options.telemetry,
+    compaction: options.compaction,
+    streamOptions: options.streamOptions,
+    onDiagnostic: (diagnostic) =>
+      options.onDiagnostic(
+        `${diagnostic.operation} failed (${diagnostic.correlationId}): ${String(diagnostic.cause)}`,
+      ),
+    workspace: createWorkspaceBackend(recents),
+    registeredWorkspace: async (id) => {
+      const resolved = await registry.resolve(id);
 
-        return resolved.kind === "ready" ? resolved.path : undefined;
-      },
-      resolveWorkspace: (cwd) => registry.resolveCwd(cwd),
-      plugins: {
-        kind: "workspace",
-        target: { kind: "home" },
-        ...options.plugins,
-        onFailure: (failure) => options.onDiagnostic(`plugin ${failure.path}: ${failure.error}`),
-      },
-    });
-  } catch (cause) {
-    starts.close();
-    throw cause;
-  }
+      return resolved.kind === "ready" ? resolved.path : undefined;
+    },
+    resolveWorkspace: (cwd) => registry.resolveCwd(cwd),
+    plugins: {
+      kind: "workspace",
+      target: { kind: "home" },
+      ...options.plugins,
+      onFailure: (failure) => options.onDiagnostic(`plugin ${failure.path}: ${failure.error}`),
+    },
+  });
+  hold(() => sdk.close());
 
   let closing: Promise<void> | undefined;
   const sessions = new KeyedQueue();
   const workspaces = new KeyedQueue();
+  /** Work accepted before closing began; close lets it settle before its dependencies go. */
+  const accepted = new Set<Promise<unknown>>();
+
+  const accept = <T>(work: Promise<T>): Promise<T> => {
+    const done = (): void => {
+      accepted.delete(work);
+    };
+
+    accepted.add(work);
+    void work.then(done, done);
+
+    return work;
+  };
 
   // -------------------------------------------------------------------------
   // Trees: the root's start decides for every session under it
@@ -263,7 +319,10 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
   const ownerDigest = createHash("sha256").update(profile.token).digest();
   const principals = new Map<string, Principal>();
 
-  const authorize = async (request: AuthorizingRequest): Promise<RuntimeAuthDecision> => {
+  const authorize = async (
+    request: AuthorizingRequest,
+    devices?: DeviceResolver,
+  ): Promise<RuntimeAuthDecision> => {
     const presented = bearerDigest(request);
 
     if (presented === undefined) return { kind: "deny", reason: "unauthorized" };
@@ -275,7 +334,7 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
       return { kind: "allow", principal: principalName(owner) };
     }
 
-    const device = await options.devices?.(request);
+    const device = await devices?.(request);
 
     if (device === undefined) return { kind: "deny", reason: "forbidden" };
     const name = principalName(device);
@@ -362,7 +421,11 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
    * before anything can happen in it. A root with history, a child, or a
    * root bound to some other real folder is not this start's to touch.
    */
-  const ensureBound = async (record: StartRecord, input: StartInput, cwd: string): Promise<void> => {
+  const ensureBound = async (
+    record: StartRecord,
+    input: StartInput,
+    cwd: string,
+  ): Promise<void> => {
     const id = sessionId(record.sessionId);
     const workspace = { kind: "local", id: environment, cwd } as const;
     let info: SessionInfo | undefined = await sdk.sessions.get({ sessionId: id });
@@ -371,7 +434,8 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
       info = await sdk.sessions.create({ sessionId: id, name: input.name, workspace });
     }
 
-    if (info.parent !== undefined) throw new Error(`Start ${record.requestId} names a child session`);
+    if (info.parent !== undefined)
+      throw new Error(`Start ${record.requestId} names a child session`);
 
     if (info.workspace.cwd === cwd && info.workspace.id === environment) return;
 
@@ -414,7 +478,8 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
             ...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
           });
 
-          if (configured.kind !== "queued") throw new Error(`Start configuration ${configured.kind}`);
+          if (configured.kind !== "queued")
+            throw new Error(`Start configuration ${configured.kind}`);
         }
 
         current = starts.advance(current, "configured");
@@ -452,7 +517,8 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
     const hash = startInputHash(input);
     const running = inFlight.get(key);
 
-    if (running !== undefined) return running.hash === hash ? running.receipt : { kind: "conflict" };
+    if (running !== undefined)
+      return running.hash === hash ? running.receipt : { kind: "conflict" };
 
     const receipt = workspaces.run(input.workspace.id, async (): Promise<StartReceipt> => {
       const resolved = await registry.resolve(input.workspace.id);
@@ -499,7 +565,7 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
       return advance(record, input, resolved.path);
     });
 
-    inFlight.set(key, { hash, receipt });
+    inFlight.set(key, { hash, receipt: accept(receipt) });
 
     try {
       return await receipt;
@@ -586,13 +652,19 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
         (await visible(input.sessionId)) ? sdk.sessions.snapshot(input) : undefined,
       metadata: async (input) =>
         (await visible(input.sessionId)) ? sdk.sessions.metadata(input) : undefined,
-      delete: async (input) => {
-        const root = await rootOf(input.sessionId);
+      delete: (input) => {
+        if (closing !== undefined) return Promise.reject(new HostClosing());
 
-        if (root === undefined) return;
+        return accept(
+          (async () => {
+            const root = await rootOf(input.sessionId);
 
-        if (root.sessionId === input.sessionId) return deleteRoot(root.sessionId);
-        await sessions.run(root.sessionId, () => deleteTree(input.sessionId));
+            if (root === undefined) return;
+
+            if (root.sessionId === input.sessionId) return deleteRoot(root.sessionId);
+            await sessions.run(root.sessionId, () => deleteTree(input.sessionId));
+          })(),
+        );
       },
     },
   };
@@ -651,6 +723,7 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
     },
     logout: (provider) => models.logout(provider),
   });
+  hold(() => providers.close());
 
   const principalOf = (context: EnvironmentCallContext | undefined): Principal => {
     const principal =
@@ -724,27 +797,11 @@ export async function openHostRuntime(options: HostRuntimeOptions): Promise<Host
     start,
     close() {
       closing ??= (async () => {
-        // No new admission from here on; what is admitted settles before its dependencies close.
-        await Promise.allSettled([...inFlight.values()].map((entry) => entry.receipt));
+        // No new admission from here on; what was accepted settles before its dependencies close.
+        await Promise.allSettled(accepted);
 
-        for (const id of [...attachments.keys()]) detachRoot(id);
-        const failures: unknown[] = [];
-
-        const attempt = async (step: () => Promise<void> | void): Promise<void> => {
-          try {
-            await step();
-          } catch (cause) {
-            failures.push(cause);
-          }
-        };
-
-        await attempt(() => providers.close());
-        await attempt(() => sdk.close());
-        await attempt(() => starts.close());
-        await attempt(() => store.close());
-        await attempt(() => profile.release());
-
-        if (failures.length > 0) throw new AggregateError(failures, "Failed to close the host runtime");
+        for (const id of attachments.keys()) detachRoot(id);
+        await release();
       })();
 
       return closing;

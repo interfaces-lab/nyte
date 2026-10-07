@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import type { MutableModels, Provider } from "@nyte-ai/ai";
 import { createNyteClient, NyteWireError } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
+import type { Store } from "@nyte-ai/core/store";
 import {
   openHostRuntime,
   openProfile,
@@ -29,7 +30,7 @@ import {
   readProfile,
   verifyIdentityChallenge,
 } from "@nyte-ai/host/runtime";
-import type { HostRuntime, Principal } from "@nyte-ai/host/runtime";
+import type { HostProfile, HostRuntime, Principal } from "@nyte-ai/host/runtime";
 import type { Api, Model } from "@nyte-ai/schema";
 import type { StartInput } from "@nyte-ai/protocol";
 import { WorkspaceRegistry } from "../../host/src/runtime/registry.ts";
@@ -117,14 +118,19 @@ async function fixture() {
 /** A second bearer the runtime answers as a controller device. */
 const CONTROLLER_TOKEN = "controller-token-controller-token";
 
-async function run(home: string, name = "default") {
+async function run(home: string, name = "default", store?: (path: string) => Store) {
   const profile = await openProfile(name, home);
   const runtime: HostRuntime = await openHostRuntime({
     profile,
-    store: new SqliteStore(profile.storePath),
+    store: store === undefined ? new SqliteStore(profile.storePath) : store(profile.storePath),
     models: offlineModels(),
     model,
     onDiagnostic: () => undefined,
+  });
+  cleanups.push(() => runtime.close());
+  const serving = await startHeadless({
+    runtime,
+    version: "test",
     devices: async (request) => {
       const header = request.headers.get("authorization");
       const controller: Principal = { kind: "device", id: "phone", grant: "controller" };
@@ -132,8 +138,6 @@ async function run(home: string, name = "default") {
       return header === `Bearer ${CONTROLLER_TOKEN}` ? controller : undefined;
     },
   });
-  cleanups.push(() => runtime.close());
-  const serving = await startHeadless({ runtime, version: "test" });
   cleanups.push(() => serving.close());
   const owner = createNyteClient({ baseUrl: serving.address, token: profile.token });
   const controller = createNyteClient({ baseUrl: serving.address, token: CONTROLLER_TOKEN });
@@ -744,7 +748,10 @@ test("a child inherits its root's tree state, and deleting a root deletes the tr
     parent: { sessionId: root, runId: "run-1", callId: "call-1", depth: 1 },
   });
   assert.ok(await owner.sessions.get({ sessionId: child }));
-  assert.equal(await wireCode(() => owner.messages.send({ sessionId: child, content: "hi" })), "ok");
+  assert.equal(
+    await wireCode(() => owner.messages.send({ sessionId: child, content: "hi" })),
+    "ok",
+  );
 
   // An interrupted root deletion: the tombstone landed, the store rows did not go.
   const journal = new StartJournal(profile.startsPath);
@@ -752,8 +759,14 @@ test("a child inherits its root's tree state, and deleting a root deletes the tr
   journal.close();
 
   assert.equal(await owner.sessions.get({ sessionId: child }), undefined);
-  assert.equal(await wireCode(() => owner.messages.send({ sessionId: child, content: "more" })), "forbidden");
-  assert.equal(await wireCode(() => owner.sessions.rename({ sessionId: child, name: "x" })), "forbidden");
+  assert.equal(
+    await wireCode(() => owner.messages.send({ sessionId: child, content: "more" })),
+    "forbidden",
+  );
+  assert.equal(
+    await wireCode(() => owner.sessions.rename({ sessionId: child, name: "x" })),
+    "forbidden",
+  );
   assert.equal(
     await wireCode(async () => {
       for await (const event of owner.watch({ sessionId: child, live: true })) void event;
@@ -804,9 +817,15 @@ test("losing the folder keeps stop and delete, and the owner can consent to a re
   await rm(project, { recursive: true, force: true });
   await mkdir(join(project, ".nyte", "plugins"), { recursive: true });
 
-  assert.equal(await wireCode(() => owner.messages.send({ sessionId: session, content: "x" })), "forbidden");
+  assert.equal(
+    await wireCode(() => owner.messages.send({ sessionId: session, content: "x" })),
+    "forbidden",
+  );
   assert.equal(await wireCode(() => owner.runs.abort({ sessionId: session })), "ok");
-  assert.equal(await wireCode(() => owner.sessions.rename({ sessionId: session, name: "kept" })), "ok");
+  assert.equal(
+    await wireCode(() => owner.sessions.rename({ sessionId: session, name: "kept" })),
+    "ok",
+  );
   assert.equal(await wireCode(() => owner.sessions.delete({ sessionId: session })), "ok");
 
   // Recovery: the list shows the new directory's identity; approving it is fresh consent.
@@ -824,7 +843,10 @@ test("losing the folder keeps stop and delete, and the owner can consent to a re
     identity: listed!.identity,
   });
   assert.equal(fresh.kind, "granted");
-  assert.equal((await owner.environment("environment.start", startInput(row.id, "after"))).kind, "accepted");
+  assert.equal(
+    (await owner.environment("environment.start", startInput(row.id, "after"))).kind,
+    "accepted",
+  );
   void tmp;
 });
 
@@ -833,13 +855,131 @@ test("closing refuses new admission and settles what was admitted first", async 
   const { owner, runtime, serving } = await run(home);
   const { id } = await registered(owner, plain);
   const [started] = await Promise.all([
-    owner.environment("environment.start", startInput(id, "closing")).catch((error: unknown) => error),
+    owner
+      .environment("environment.start", startInput(id, "closing"))
+      .catch((error: unknown) => error),
     runtime.close(),
   ]);
   assert.ok(
-    (typeof started === "object" && started !== null && "kind" in started && started.kind === "accepted") ||
+    (typeof started === "object" &&
+      started !== null &&
+      "kind" in started &&
+      started.kind === "accepted") ||
       started instanceof NyteWireError,
   );
-  await assert.rejects(runtime.start({ kind: "owner" }, startInput(id, "late")), { name: "HostClosing" });
+  await assert.rejects(runtime.start({ kind: "owner" }, startInput(id, "late")), {
+    name: "HostClosing",
+  });
+  await serving.close();
+});
+
+/** A store that reports when it is closed and can hold a session deletion at the store boundary. */
+class ObservedStore extends SqliteStore {
+  readonly events: string[] = [];
+  readonly deleting = Promise.withResolvers<void>();
+  readonly gate = Promise.withResolvers<void>();
+  held = false;
+
+  override async delete(id: string): Promise<void> {
+    if (this.held) {
+      this.deleting.resolve();
+      await this.gate.promise;
+    }
+
+    await super.delete(id);
+    this.events.push(`deleted ${id}`);
+  }
+
+  override async close(): Promise<void> {
+    this.events.push("store closed");
+    await super.close();
+  }
+}
+
+/** Open the profile's runtime with a store that reports its own closure; expect the open to fail. */
+async function failedOpen(home: string, profile: HostProfile, failure: RegExp): Promise<void> {
+  const store = new ObservedStore(profile.storePath);
+  const diagnostics: string[] = [];
+
+  await assert.rejects(
+    openHostRuntime({
+      profile,
+      store,
+      models: offlineModels(),
+      model,
+      onDiagnostic: (message) => diagnostics.push(message),
+    }),
+    failure,
+  );
+
+  assert.deepEqual(store.events, ["store closed"]);
+  assert.deepEqual(diagnostics, []);
+  // The journal's connection is gone: SQLite removes the WAL only when its last connection closes.
+  assert.equal(await stat(`${profile.startsPath}-wal`).catch(() => undefined), undefined);
+  // The profile lock is released, so the same profile can be opened again.
+  const again = await openProfile(profile.name, home);
+  cleanups.push(() => again.release());
+}
+
+test("an open that fails while recovering releases everything it acquired before rejecting", async () => {
+  const { home, plain } = await fixture();
+  const profile = await openProfile("default", home);
+  const registry = new WorkspaceRegistry({ path: profile.registryPath });
+  const row = await registry.register(plain);
+  assert.equal(row.kind, "registered");
+
+  if (row.kind !== "registered") return;
+  const input = startInput(row.workspace.id, "pending", "finish me");
+  const journal = new StartJournal(profile.startsPath);
+  journal.begin({
+    principal: "owner",
+    requestId: input.requestId,
+    inputHash: startInputHash(input),
+    input: JSON.stringify(input),
+    workspaceId: input.workspace.id,
+    sessionId: "77777777-7777-4777-8777-777777777777",
+    messageKey: input.requestId,
+  });
+  journal.close();
+  // Resuming that start reads the registry, which is now unreadable.
+  await writeFile(profile.registryPath, "{ not json\n");
+  await failedOpen(home, profile, /Corrupt registry/);
+});
+
+test("an open that fails before the SDK exists releases the journal, store and profile", async () => {
+  const { home } = await fixture();
+  const profile = await openProfile("default", home);
+  await writeFile(join(home, "environment-id"), "not-a-uuid\n");
+  await failedOpen(home, profile, /Corrupt environment id/);
+});
+
+test("closing drains an accepted deletion before its dependencies close, and refuses a new one", async () => {
+  const { home, plain } = await fixture();
+  let observed: ObservedStore | undefined;
+
+  const { owner, runtime, serving } = await run(home, "default", (path) => {
+    observed = new ObservedStore(path);
+
+    return observed;
+  });
+
+  if (observed === undefined) throw new Error("unreachable");
+  const store = observed;
+  const { id } = await registered(owner, plain);
+  const first = await admittedRoot(owner, id, "first");
+  const second = await admittedRoot(owner, id, "second");
+
+  store.held = true;
+  const deleting = runtime.sdk.sessions.delete({ sessionId: first });
+  await store.deleting.promise;
+  const closed = runtime.close();
+  await assert.rejects(runtime.sdk.sessions.delete({ sessionId: second }), { name: "HostClosing" });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(store.events, []);
+
+  store.gate.resolve();
+  await deleting;
+  await closed;
+  assert.deepEqual(store.events, [`deleted ${first}`, "store closed"]);
   await serving.close();
 });

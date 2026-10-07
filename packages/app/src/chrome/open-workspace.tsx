@@ -12,10 +12,10 @@ import { useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionActivationState } from "@nyte-ai/protocol";
 import { Button } from "@nyte-ai/ui/button";
-import { keys, queryClient } from "../queries.ts";
+import { keys, queryClient, useHostState } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { nyte } from "../nyte.ts";
-import type { HostBridge, OpenWorkspaceOutcome } from "../bridge.ts";
+import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../bridge.ts";
 
 const styles = create({
   popup: {
@@ -45,6 +45,8 @@ const styles = create({
 interface TrustPrompt {
   readonly path: string;
   readonly origin: "open" | "action";
+  /** What the host showed for this folder; the grant echoes it unchanged. */
+  readonly consent?: TrustConsent;
 }
 
 let prompt: TrustPrompt | undefined;
@@ -86,7 +88,7 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "needs_trust":
       toast.close("workspace-open");
-      setPrompt({ path: outcome.path, origin: "open" });
+      setPrompt({ path: outcome.path, origin: "open", consent: outcome.consent });
 
       return;
     case "failed":
@@ -186,14 +188,29 @@ function declineTrust(path: string): void {
   setPrompt(undefined);
 }
 
+/**
+ * Open the folder again on the connected host, so the owner sees what a grant
+ * would bind to now. A registry host's answer, with its snapshot, becomes the
+ * prompt; the grant never takes a snapshot nobody was shown.
+ */
+function reviewTrust(prompt: TrustPrompt): void {
+  setPrompt(undefined);
+  void nyte.host.openWorkspace({ path: prompt.path }).then((outcome) => {
+    if (outcome.kind === "needs_trust" && outcome.consent !== undefined)
+      setPrompt({ path: outcome.path, origin: prompt.origin, consent: outcome.consent });
+    else handleOpenOutcome(outcome);
+  });
+}
+
 function grantTrust(
   trust: NonNullable<HostBridge["trustWorkspace"]>,
-  path: string,
+  prompt: TrustPrompt,
 ): Promise<boolean> {
+  const { path, consent } = prompt;
   declined.delete(path);
   setPrompt(undefined);
 
-  return trust({ path }).then((outcome) => {
+  return trust({ path, consent }).then((outcome) => {
     handleOpenOutcome(outcome);
     void queryClient.invalidateQueries({ queryKey: keys.workspaces });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
@@ -214,12 +231,16 @@ export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
   const trust = nyte.host.trustWorkspace;
   const router = useRouter();
+  const host = useHostState();
 
   if (current === undefined) return null;
-  const { path, origin } = current;
+  const { path, origin, consent } = current;
+  const binding = host.data?.binding;
+  // A registry host grants only a snapshot it showed for itself; without one the folder is looked at again.
+  const unseen = binding !== undefined && consent?.hostId !== binding.hostId;
 
   const grant = (grantWith: NonNullable<typeof trust>): void => {
-    void grantTrust(grantWith, path).then((granted) => {
+    void grantTrust(grantWith, current).then((granted) => {
       if (granted && origin === "open")
         void router.navigate({ to: "/", search: {}, replace: true });
     });
@@ -232,10 +253,18 @@ export function WorkspaceDialogHost(): ReactElement | null {
           {trust === undefined ? "This folder is not trusted" : "Trust Folder"}
         </Dialog.Title>
         <div {...props(styles.path)}>{path}</div>
+        {consent !== undefined && !unseen && (
+          <>
+            <div {...props(styles.path)}>Host {consent.hostId}</div>
+            <div {...props(styles.path)}>Folder identity {consent.identity}</div>
+          </>
+        )}
         <Dialog.Description>
           {trust === undefined
             ? "This folder has plugins or skills of its own. Trust it on the machine running the server to load them."
-            : "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files here."}
+            : binding === undefined
+              ? "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files here."
+              : "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files there, on this host."}
         </Dialog.Description>
         <Dialog.Footer>
           {trust === undefined ? (
@@ -243,9 +272,15 @@ export function WorkspaceDialogHost(): ReactElement | null {
           ) : (
             <>
               <Button onClick={() => declineTrust(path)}>Cancel</Button>
-              <Button variant="solid" tone="primary" onClick={() => grant(trust)}>
-                Trust Folder
-              </Button>
+              {unseen ? (
+                <Button variant="solid" tone="primary" onClick={() => reviewTrust(current)}>
+                  Review Folder
+                </Button>
+              ) : (
+                <Button variant="solid" tone="primary" onClick={() => grant(trust)}>
+                  Trust Folder
+                </Button>
+              )}
             </>
           )}
         </Dialog.Footer>

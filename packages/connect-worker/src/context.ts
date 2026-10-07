@@ -65,6 +65,13 @@ const RATE_LIMITS = {
   revoke: { windowMs: 60_000, limit: 30 },
   /** Three heartbeats a minute, plus readiness refreshes after enrollments. */
   lease: { windowMs: 60_000, limit: 20 },
+  /** Transactions one key may open; a retry of the same operation counts too. */
+  linkOpen: { windowMs: 600_000, limit: 10 },
+  /** Code lookups by one owner: a code is eight characters, so guessing must stay slow. */
+  linkLookup: { windowMs: 60_000, limit: 10 },
+  linkApprove: { windowMs: 60_000, limit: 10 },
+  /** Polls, completions and cancels of one transaction: one every five seconds, with room to retry. */
+  linkPoll: { windowMs: 60_000, limit: 30 },
   /** Every relayed phone request from one client address, before its bearer is checked. */
   relayAddress: { windowMs: 60_000, limit: 1200 },
   /** Relayed phone requests to one environment, after its bearer is checked. */

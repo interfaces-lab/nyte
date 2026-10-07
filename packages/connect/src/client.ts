@@ -13,11 +13,18 @@ import {
   EnrollResponse,
   EnvironmentList,
   ErrorBody,
+  LinkTransactionLookup,
+  LinkTransactionStatus,
   REQUEST_TIMEOUT_MS,
   RESPONSE_LIMIT_BYTES,
   UUID_PATTERN,
 } from "./schemas.ts";
-import type { EnrollRequest, ErrorCode } from "./schemas.ts";
+import type {
+  EnrollRequest,
+  ErrorCode,
+  LinkTransactionApproveRequest,
+  LinkTransactionLookupRequest,
+} from "./schemas.ts";
 
 export type BrokerFailure =
   /** No signed-in Clerk session to authenticate with. */
@@ -81,6 +88,21 @@ export interface BrokerClient {
     readonly environmentId: string;
     readonly signal?: AbortSignal;
   }): Promise<void>;
+  /** What a link code names: the host's own name and the fingerprint to compare. Creates and binds nothing. */
+  lookupLinkTransaction(input: {
+    readonly userCode: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionLookup>;
+  /** Bind this account to the key whose fingerprint the user compared. */
+  approveLinkTransaction(input: {
+    readonly transactionId: string;
+    readonly fingerprint: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionStatus>;
+  denyLinkTransaction(input: {
+    readonly transactionId: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionStatus>;
 }
 
 const UUID = new RegExp(UUID_PATTERN, "u");
@@ -324,6 +346,40 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
         await request({
           method: "DELETE",
           path: BROKER_ROUTES.environment(id(environmentId)),
+          signal,
+        }),
+      );
+    },
+
+    async lookupLinkTransaction({ userCode, signal }) {
+      const body: LinkTransactionLookupRequest = { userCode };
+
+      return parse(
+        LinkTransactionLookup,
+        await request({ method: "POST", path: BROKER_ROUTES.linkTransactionLookup, body, signal }),
+      );
+    },
+
+    async approveLinkTransaction({ transactionId, fingerprint, signal }) {
+      const body: LinkTransactionApproveRequest = { fingerprint };
+
+      return parse(
+        LinkTransactionStatus,
+        await request({
+          method: "POST",
+          path: BROKER_ROUTES.linkTransactionApprove(id(transactionId)),
+          body,
+          signal,
+        }),
+      );
+    },
+
+    async denyLinkTransaction({ transactionId, signal }) {
+      return parse(
+        LinkTransactionStatus,
+        await request({
+          method: "POST",
+          path: BROKER_ROUTES.linkTransactionDeny(id(transactionId)),
           signal,
         }),
       );

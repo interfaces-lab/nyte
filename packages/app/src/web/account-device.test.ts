@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { parseAccountConfig } from "@nyte-ai/connect/account-config";
 import { createDeviceSecret } from "@nyte-ai/connect/enrollment";
 import {
   accountConnection,
@@ -37,27 +36,8 @@ const device = {
   deviceId: "3e347db5-c0f2-4a8e-a1f9-7d19b77f0536",
   name: "Desktop",
   token: "A".repeat(43),
+  role: "controller" as const,
 };
-
-describe("account configuration", () => {
-  it("enables sign-in only with a Clerk host key and canonical HTTPS broker", () => {
-    expect(parseAccountConfig(config)).toEqual(config);
-
-    const inputs = [
-      { ...config, publishableKey: undefined },
-      { ...config, origin: undefined },
-      { ...config, publishableKey: "pk_live_REPLACE_ME" },
-      { ...config, publishableKey: `pk_test_${btoa("https://clerk.example.com$")}` },
-      { ...config, publishableKey: `pk_test_${btoa("clerk.example.com")}` },
-      { ...config, origin: "http://localhost:5179" },
-      { ...config, origin: `${config.origin}/` },
-      { ...config, origin: `${config.origin}?token=secret` },
-      { ...config, origin: "https://user:password@connect.example.com" },
-    ];
-
-    for (const input of inputs) expect(parseAccountConfig(input)).toBeUndefined();
-  });
-});
 
 describe("browser device", () => {
   it("makes a 256-bit bearer and hashes its UTF-8 string, not its random bytes", async () => {

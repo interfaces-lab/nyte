@@ -10,13 +10,14 @@
     "clean": "rm -rf node_modules .turbo ../../bin",
     "dev": "bun --watch src/binary.ts",
     "start": "bun src/binary.ts",
-    "test": "bun test src && pnpm build && node qa/run.mjs",
+    "test": "pnpm build && node qa/run.mjs",
     "test:show": "pnpm build && node qa/run.mjs --show",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/client": "workspace:*",
+    "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",

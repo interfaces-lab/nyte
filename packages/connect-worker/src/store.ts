@@ -4,6 +4,7 @@
  * `policy` in the same transaction; a revoked row never changes back.
  */
 import { DEVICE_LIMIT } from "@nyte-ai/connect";
+import type { LinkTransactionState } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -49,6 +50,34 @@ const OwnerRow = Type.Object({
 });
 
 export type Owner = Static<typeof OwnerRow>;
+
+const LinkTransactionRow = Type.Object({
+  id: Type.String(),
+  thumbprint: Type.String(),
+  public_key: Type.String(),
+  operation_id: Type.String(),
+  name: Type.String(),
+  code_hash: Type.String(),
+  state: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("approved"),
+    Type.Literal("denied"),
+    Type.Literal("expired"),
+    Type.Literal("cancelled"),
+    Type.Literal("consumed"),
+  ]),
+  created_at: Type.Integer(),
+  expires_at: Type.Integer(),
+  owner_id: Nullable(Type.String()),
+  session_id: Nullable(Type.String()),
+  owner_label: Nullable(Type.String()),
+  approved_at: Nullable(Type.Integer()),
+  authorization_expires_at: Nullable(Type.Integer()),
+  environment_id: Nullable(Type.String()),
+  consumed_at: Nullable(Type.Integer()),
+});
+
+export type LinkTransaction = Static<typeof LinkTransactionRow>;
 
 const IdRow = Type.Object({ id: Type.String() });
 const RelayDeviceRow = Type.Object({
@@ -160,51 +189,210 @@ export async function countLiveEnvironments(db: D1Database, ownerId: string): Pr
 }
 
 /**
- * Insert an active environment, unless the owner already has
- * `ENVIRONMENT_LIMIT` of them or the key is taken. One statement, so
- * concurrent links cannot overshoot the limit.
+ * Who may claim an environment, as one SQL predicate used by every statement
+ * of a claim: an owner the broker has not heard is disabled or deleted, and a
+ * session the broker has not denied. `owner` and `session` are bound
+ * parameters or columns qualified with their outer table, never bare names,
+ * since the subqueries have columns of those names themselves.
  */
-export async function insertEnvironment(
-  db: D1Database,
-  input: {
-    readonly id: string;
-    readonly ownerId: string;
-    readonly thumbprint: string;
-    readonly publicKey: string;
-    readonly name: string;
-    readonly now: number;
-  },
-): Promise<boolean> {
-  return changed(
+const standing = (owner: string, session: string, now: string) => `
+  NOT EXISTS (SELECT 1 FROM owners WHERE user_id = ${owner} AND status != 'active')
+  AND NOT EXISTS (SELECT 1 FROM denied_sessions
+                  WHERE session_id = ${session} AND (expires_at IS NULL OR expires_at > ${now}))`;
+
+const CLAIM_INSERT = `INSERT INTO environments
+  (id, owner_id, thumbprint, public_key, name, state, generation, policy, created_at)`;
+
+/**
+ * What a claim asks for. A `session` claim is the signed-in browser's own
+ * link; a `transaction` claim derives owner, session, key and name from the
+ * approved transaction it names, never from the host.
+ */
+export type ClaimInput =
+  | {
+      readonly kind: "session";
+      readonly ownerId: string;
+      readonly sessionId: string;
+      readonly thumbprint: string;
+      readonly publicKey: string;
+      readonly name: string;
+      readonly now: number;
+    }
+  | {
+      readonly kind: "transaction";
+      readonly transactionId: string;
+      readonly thumbprint: string;
+      readonly now: number;
+    };
+
+export type ClaimOutcome =
+  | { readonly kind: "linked"; readonly environment: Environment; readonly fresh: boolean }
+  /** The key belongs to another owner's environment. */
+  | { readonly kind: "conflict" }
+  /** The key's environment was unlinked; the key is never reused. */
+  | { readonly kind: "revoked" }
+  | { readonly kind: "limit" }
+  | { readonly kind: "owner_disabled" }
+  | { readonly kind: "session_revoked" }
+  /** A transaction claim: the transaction is not approved. */
+  | { readonly kind: "transaction"; readonly state: Exclude<LinkTransactionState, "consumed"> }
+  /** A transaction claim whose transaction was consumed earlier by this same key: the receipt comes back. */
+  | {
+      readonly kind: "recovered";
+      readonly environment: Environment;
+      readonly transaction: LinkTransaction;
+    };
+
+/**
+ * The one way an environment is created or resumed. One batch: insert a new
+ * active environment within the owner's limit, or rename the owner's active
+ * one for this key; for a transaction, consume it only when that exact
+ * active environment exists; then read what stands. Every statement carries
+ * the same eligibility, so a revoked owner, denied session, lapsed approval
+ * or cancelled transaction changes nothing. The answer is read after the
+ * batch, never before it.
+ */
+export async function claimEnvironment(db: D1Database, input: ClaimInput): Promise<ClaimOutcome> {
+  const id = crypto.randomUUID();
+
+  if (input.kind === "session") {
+    const eligible = standing("?2", "?8", "?7");
+    const [inserted, renamed, row] = await db.batch([
+      db
+        .prepare(
+          `${CLAIM_INSERT}
+           SELECT ?1, ?2, ?3, ?4, ?5, 'active', 1, 1, ?7
+           WHERE ${eligible}
+             AND NOT EXISTS (SELECT 1 FROM environments WHERE thumbprint = ?3)
+             AND (SELECT count(*) FROM environments WHERE owner_id = ?2 AND state = 'active') < ?6`,
+        )
+        .bind(
+          id,
+          input.ownerId,
+          input.thumbprint,
+          input.publicKey,
+          input.name,
+          ENVIRONMENT_LIMIT,
+          input.now,
+          input.sessionId,
+        ),
+      db
+        .prepare(
+          `UPDATE environments SET name = ?5
+           WHERE thumbprint = ?3 AND owner_id = ?2 AND state = 'active'
+             AND ${standing("?2", "?4", "?1")}`,
+        )
+        .bind(input.now, input.ownerId, input.thumbprint, input.sessionId, input.name),
+      db.prepare("SELECT * FROM environments WHERE thumbprint = ?1").bind(input.thumbprint),
+    ]);
+    const environment = one(EnvironmentRow, row?.results[0]);
+    const wrote = (inserted?.meta.changes ?? 0) + (renamed?.meta.changes ?? 0) > 0;
+
+    if (environment !== undefined) {
+      if (environment.state === "revoked") return { kind: "revoked" };
+
+      if (environment.owner_id !== input.ownerId) return { kind: "conflict" };
+
+      // The owner's active key, yet neither statement touched it: eligibility refused the write.
+      if (!wrote)
+        return refusedClaim(db, {
+          ownerId: input.ownerId,
+          sessionId: input.sessionId,
+          now: input.now,
+        });
+
+      return { kind: "linked", environment, fresh: environment.id === id };
+    }
+
+    return refusedClaim(db, { ownerId: input.ownerId, sessionId: input.sessionId, now: input.now });
+  }
+
+  // A transaction's owner, session, key and name are its own columns: `t` throughout.
+  const approved = `t.id = ?1 AND t.thumbprint = ?2 AND t.state = 'approved'
+    AND t.authorization_expires_at > ?3 AND ${standing("t.owner_id", "t.session_id", "?3")}`;
+  const [, , consumed, environmentRow, transactionRow] = await db.batch([
     db
       .prepare(
-        `INSERT INTO environments
-           (id, owner_id, thumbprint, public_key, name, state, generation, policy, created_at)
-         SELECT ?1, ?2, ?3, ?4, ?5, 'active', 1, 1, ?6
-         WHERE (SELECT count(*) FROM environments WHERE owner_id = ?2 AND state = 'active') < ?7
-         ON CONFLICT DO NOTHING`,
+        `${CLAIM_INSERT}
+         SELECT ?4, t.owner_id, t.thumbprint, t.public_key, t.name, 'active', 1, 1, ?3
+         FROM link_transactions t
+         WHERE ${approved}
+           AND NOT EXISTS (SELECT 1 FROM environments WHERE thumbprint = t.thumbprint)
+           AND (SELECT count(*) FROM environments WHERE owner_id = t.owner_id AND state = 'active') < ?5`,
       )
-      .bind(
-        input.id,
-        input.ownerId,
-        input.thumbprint,
-        input.publicKey,
-        input.name,
-        input.now,
-        ENVIRONMENT_LIMIT,
-      ),
-  );
+      .bind(input.transactionId, input.thumbprint, input.now, id, ENVIRONMENT_LIMIT),
+    db
+      .prepare(
+        `UPDATE environments SET name = (SELECT t.name FROM link_transactions t WHERE ${approved})
+         WHERE thumbprint = ?2 AND state = 'active'
+           AND owner_id = (SELECT t.owner_id FROM link_transactions t WHERE ${approved})`,
+      )
+      .bind(input.transactionId, input.thumbprint, input.now),
+    db
+      .prepare(
+        `UPDATE link_transactions SET state = 'consumed', consumed_at = ?3,
+           environment_id = (SELECT e.id FROM environments e
+                             WHERE e.thumbprint = ?2 AND e.state = 'active' AND e.owner_id = link_transactions.owner_id)
+         WHERE id = ?1 AND thumbprint = ?2 AND state = 'approved' AND authorization_expires_at > ?3
+           AND ${standing("link_transactions.owner_id", "link_transactions.session_id", "?3")}
+           AND EXISTS (SELECT 1 FROM environments e
+                       WHERE e.thumbprint = ?2 AND e.state = 'active' AND e.owner_id = link_transactions.owner_id)`,
+      )
+      .bind(input.transactionId, input.thumbprint, input.now),
+    db.prepare("SELECT * FROM environments WHERE thumbprint = ?1").bind(input.thumbprint),
+    db
+      .prepare("SELECT * FROM link_transactions WHERE id = ?1 AND thumbprint = ?2")
+      .bind(input.transactionId, input.thumbprint),
+  ]);
+  const environment = one(EnvironmentRow, environmentRow?.results[0]);
+  const transaction = one(LinkTransactionRow, transactionRow?.results[0]);
+
+  if (transaction === undefined) return { kind: "transaction", state: "cancelled" };
+
+  if (transaction.state === "consumed") {
+    if (
+      environment === undefined ||
+      environment.id !== transaction.environment_id ||
+      environment.state === "revoked"
+    )
+      return { kind: "revoked" };
+
+    return (consumed?.meta.changes ?? 0) === 1
+      ? { kind: "linked", environment, fresh: environment.id === id }
+      : { kind: "recovered", environment, transaction };
+  }
+
+  if (transaction.state !== "approved" || transaction.authorization_expires_at === null)
+    return { kind: "transaction", state: transaction.state };
+
+  if (transaction.authorization_expires_at <= input.now)
+    return { kind: "transaction", state: "expired" };
+
+  if (environment?.state === "revoked") return { kind: "revoked" };
+
+  if (environment !== undefined && environment.owner_id !== transaction.owner_id)
+    return { kind: "conflict" };
+
+  return refusedClaim(db, {
+    ownerId: transaction.owner_id ?? "",
+    sessionId: transaction.session_id ?? "",
+    now: input.now,
+  });
 }
 
-/** The name a resumed link gives its environment. */
-export async function renameEnvironment(
+/** Why a claim that changed nothing was refused: standing first, then the limit. */
+async function refusedClaim(
   db: D1Database,
-  input: { readonly id: string; readonly name: string },
-): Promise<void> {
-  await db
-    .prepare("UPDATE environments SET name = ?2 WHERE id = ?1 AND state = 'active'")
-    .bind(input.id, input.name)
-    .run();
+  input: { readonly ownerId: string; readonly sessionId: string; readonly now: number },
+): Promise<ClaimOutcome> {
+  const owner = await findOwner(db, input.ownerId);
+
+  if (owner !== undefined && owner.status !== "active") return { kind: "owner_disabled" };
+
+  if (await isSessionDenied(db, { sessionId: input.sessionId, now: input.now }))
+    return { kind: "session_revoked" };
+
+  return { kind: "limit" };
 }
 
 const REVOKE_ENVIRONMENTS = `UPDATE environments
@@ -683,6 +871,235 @@ export async function deferSessionRevocation(
     )
     .bind(input.sessionId, input.nextAttemptAt)
     .run();
+}
+
+// ---------------------------------------------------------------------------
+// Link transactions
+// ---------------------------------------------------------------------------
+
+/** Pending transactions one key may hold; a retried open resumes rather than adds. */
+export const LINK_TRANSACTION_PENDING_LIMIT = 3;
+
+export type OpenTransactionOutcome =
+  | { readonly kind: "opened"; readonly transaction: LinkTransaction }
+  /** The same key and operation id with a different name or key material. */
+  | { readonly kind: "conflict" }
+  /** Another pending transaction already holds this code. */
+  | { readonly kind: "code_taken" }
+  | { readonly kind: "limit" };
+
+/**
+ * Open a transaction, or find the one this key already opened under the same
+ * operation id. Insert-or-read, so a retried open after a lost answer gets
+ * the same row; its immutable name, key and code are compared.
+ */
+export async function openLinkTransaction(
+  db: D1Database,
+  input: {
+    readonly id: string;
+    readonly thumbprint: string;
+    readonly publicKey: string;
+    readonly operationId: string;
+    readonly name: string;
+    readonly codeHash: string;
+    readonly now: number;
+    readonly expiresAt: number;
+  },
+): Promise<OpenTransactionOutcome> {
+  const existing = await findLinkTransactionByOperation(db, {
+    thumbprint: input.thumbprint,
+    operationId: input.operationId,
+  });
+
+  if (existing === undefined) {
+    let inserted: boolean;
+
+    try {
+      inserted = await changed(
+        db
+          .prepare(
+            `INSERT INTO link_transactions
+               (id, thumbprint, public_key, operation_id, name, code_hash, state, created_at, expires_at)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8
+             WHERE (SELECT count(*) FROM link_transactions WHERE thumbprint = ?2 AND state = 'pending') < ?9
+             ON CONFLICT (thumbprint, operation_id) DO NOTHING`,
+          )
+          .bind(
+            input.id,
+            input.thumbprint,
+            input.publicKey,
+            input.operationId,
+            input.name,
+            input.codeHash,
+            input.now,
+            input.expiresAt,
+            LINK_TRANSACTION_PENDING_LIMIT,
+          ),
+      );
+    } catch {
+      // The partial unique index on pending codes is the only other constraint that can fail.
+      return { kind: "code_taken" };
+    }
+
+    const row = await findLinkTransactionByOperation(db, {
+      thumbprint: input.thumbprint,
+      operationId: input.operationId,
+    });
+
+    if (row === undefined) return { kind: "limit" };
+
+    if (inserted) return { kind: "opened", transaction: row };
+
+    return sameOpen(row, input);
+  }
+
+  return sameOpen(existing, input);
+}
+
+function sameOpen(
+  row: LinkTransaction,
+  input: { readonly publicKey: string; readonly name: string; readonly codeHash: string },
+): OpenTransactionOutcome {
+  return row.public_key === input.publicKey &&
+    row.name === input.name &&
+    row.code_hash === input.codeHash
+    ? { kind: "opened", transaction: row }
+    : { kind: "conflict" };
+}
+
+async function findLinkTransactionByOperation(
+  db: D1Database,
+  input: { readonly thumbprint: string; readonly operationId: string },
+): Promise<LinkTransaction | undefined> {
+  return one(
+    LinkTransactionRow,
+    await db
+      .prepare("SELECT * FROM link_transactions WHERE thumbprint = ?1 AND operation_id = ?2")
+      .bind(input.thumbprint, input.operationId)
+      .first(),
+  );
+}
+
+export async function findLinkTransaction(
+  db: D1Database,
+  id: string,
+): Promise<LinkTransaction | undefined> {
+  return one(
+    LinkTransactionRow,
+    await db.prepare("SELECT * FROM link_transactions WHERE id = ?1").bind(id).first(),
+  );
+}
+
+/** The pending, unexpired transaction a code names. Expired ones are invisible before the sweep marks them. */
+export async function findPendingLinkTransaction(
+  db: D1Database,
+  input: { readonly codeHash: string; readonly now: number },
+): Promise<LinkTransaction | undefined> {
+  return one(
+    LinkTransactionRow,
+    await db
+      .prepare(
+        "SELECT * FROM link_transactions WHERE code_hash = ?1 AND state = 'pending' AND expires_at > ?2",
+      )
+      .bind(input.codeHash, input.now)
+      .first(),
+  );
+}
+
+/** Bind the owner to a pending, unexpired transaction, once. False when it is no longer pending. */
+export async function approveLinkTransaction(
+  db: D1Database,
+  input: {
+    readonly id: string;
+    readonly ownerId: string;
+    readonly sessionId: string;
+    readonly ownerLabel: string;
+    readonly now: number;
+    readonly authorizationExpiresAt: number;
+  },
+): Promise<boolean> {
+  return changed(
+    db
+      .prepare(
+        `UPDATE link_transactions
+         SET state = 'approved', owner_id = ?2, session_id = ?3, owner_label = ?4,
+             approved_at = ?5, authorization_expires_at = ?6
+         WHERE id = ?1 AND state = 'pending' AND expires_at > ?5`,
+      )
+      .bind(
+        input.id,
+        input.ownerId,
+        input.sessionId,
+        input.ownerLabel,
+        input.now,
+        input.authorizationExpiresAt,
+      ),
+  );
+}
+
+/** The owner refuses a pending transaction. False when it is no longer pending. */
+export async function denyLinkTransaction(
+  db: D1Database,
+  input: { readonly id: string; readonly now: number },
+): Promise<boolean> {
+  return changed(
+    db
+      .prepare(
+        "UPDATE link_transactions SET state = 'denied' WHERE id = ?1 AND state = 'pending' AND expires_at > ?2",
+      )
+      .bind(input.id, input.now),
+  );
+}
+
+const UNBIND = `owner_id = NULL, session_id = NULL, owner_label = NULL,
+  approved_at = NULL, authorization_expires_at = NULL`;
+
+/**
+ * The host gives up: an unfinished transaction ends cancelled with its
+ * binding dropped. A consumed one is left as it is; the row read back says
+ * which happened.
+ */
+export async function cancelLinkTransaction(
+  db: D1Database,
+  input: { readonly id: string; readonly thumbprint: string },
+): Promise<LinkTransaction | undefined> {
+  const [, row] = await db.batch([
+    db
+      .prepare(
+        `UPDATE link_transactions SET state = 'cancelled', ${UNBIND}
+         WHERE id = ?1 AND thumbprint = ?2 AND state IN ('pending', 'approved')`,
+      )
+      .bind(input.id, input.thumbprint),
+    db
+      .prepare("SELECT * FROM link_transactions WHERE id = ?1 AND thumbprint = ?2")
+      .bind(input.id, input.thumbprint),
+  ]);
+
+  return one(LinkTransactionRow, row?.results[0]);
+}
+
+/**
+ * Lapse what the owner never approved and what the host never completed.
+ * Terminal rows are kept: a consumed row is the only way a key that lost the
+ * answer finds its environment again, and a cancelled or lapsed row is what
+ * keeps the same signed open from reopening under a new id. Nothing in a
+ * terminal row is a secret: the code hash only ever matched while pending,
+ * and the binding is dropped with the state.
+ */
+export async function expireLinkTransactions(db: D1Database, now: number): Promise<void> {
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE link_transactions SET state = 'expired' WHERE state = 'pending' AND expires_at <= ?1",
+      )
+      .bind(now),
+    db
+      .prepare(
+        `UPDATE link_transactions SET state = 'expired', ${UNBIND}
+         WHERE state = 'approved' AND authorization_expires_at <= ?1`,
+      )
+      .bind(now),
+  ]);
 }
 
 // ---------------------------------------------------------------------------

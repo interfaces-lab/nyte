@@ -15,6 +15,13 @@
  * Storage is optional. With it, a row is written before its first send and
  * removed at its receipt, so `activate` resumes every unsent message after a
  * reload under its original key.
+ *
+ * Rows send within a lifetime: from one `activate` to the next `activate` or
+ * `deactivate`. A row only ever sends in the lifetime it was opened in, and
+ * nothing sends between a `deactivate` and the next `activate`, so a caller
+ * that deactivates before replacing the connection behind `send` never has a
+ * row addressed to one host reach another. A row whose write lands after its
+ * lifetime ended stays stored for the activation that loads it.
  */
 import type { Oid, SendInput, SendReceipt } from "@nyte-ai/protocol";
 import type { SessionUpdate } from "./session/session-follow.ts";
@@ -59,14 +66,24 @@ export interface OutboxOptions {
 }
 
 export interface Outbox {
-  /** Mint a key, draw the row, store it, and start sending. Resolves to the key once stored. */
+  /**
+   * Mint a key, draw the row, store it, and start sending. Resolves to the key
+   * once stored. Rejects while deactivated: there is no connection to send it to.
+   */
   readonly submit: (input: OutboxSubmission) => Promise<string>;
   /** Stop retrying and drop the row; answers whether an attempt already reached the store. */
   readonly withdraw: (key: string) => Promise<OutboxOutcome> | undefined;
   /** The observer published an update; durable rows it draws or withdraws leave. */
   readonly observe: (update: SessionUpdate) => void;
-  /** Replace the rows with what storage holds and send them. */
+  /** Begin a lifetime: replace the rows with what storage holds and send them. */
   readonly activate: () => Promise<void>;
+  /**
+   * End the lifetime: stop every flight and drop the rows without touching
+   * storage. Nothing sends again until the next `activate`, which reloads what
+   * storage holds for whoever is connected then. Call it before the connection
+   * behind `send` is replaced.
+   */
+  readonly deactivate: () => void;
   /** Oldest first. Stable until the outbox changes. */
   readonly rows: () => readonly OutboxRow[];
   readonly subscribe: (listener: () => void) => () => void;
@@ -141,6 +158,8 @@ interface Flight {
   cancelRetry: (() => void) | undefined;
   stored: PromiseWithResolvers<void>;
   settled: PromiseWithResolvers<OutboxOutcome>;
+  /** The lifetime the flight was opened in; it sends in no other. */
+  readonly lifetime: number;
 }
 
 export function createOutbox(options: OutboxOptions): Outbox {
@@ -150,6 +169,10 @@ export function createOutbox(options: OutboxOptions): Outbox {
   const flights = new Map<string, Flight>();
   const listeners = new Set<() => void>();
   let rows: readonly OutboxRow[] = [];
+  let lifetime = 0;
+  let deactivated = false;
+  /** Writes still landing; an activation reads storage only after them. */
+  const writes = new Set<Promise<unknown>>();
 
   const refresh = (): void => {
     rows = flights
@@ -177,7 +200,16 @@ export function createOutbox(options: OutboxOptions): Outbox {
   /** Still the flight the map holds; false once withdrawn or replaced by an activation. */
   const current = (flight: Flight): boolean => flights.get(flight.row.key) === flight;
 
+  /** The flight's lifetime is the one running; outside it, the flight never sends. */
+  const live = (flight: Flight): boolean => !deactivated && flight.lifetime === lifetime;
+
   const attempt = async (flight: Flight, attempts: number): Promise<void> => {
+    if (!live(flight)) {
+      flight.settled.resolve({ kind: "withdrawn" });
+
+      return;
+    }
+
     const { key, input } = flight.row;
     draw(flight, { kind: "sending", attempts });
     let receipt: SendReceipt;
@@ -230,6 +262,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
       cancelRetry: undefined,
       stored,
       settled: Promise.withResolvers(),
+      lifetime,
     };
 
     flights.set(record.key, flight);
@@ -244,7 +277,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
   const restoreWithdrawal = (flight: Flight): void => {
     const held = flights.get(flight.row.key);
 
-    if (held !== undefined && held !== flight) return;
+    if ((held !== undefined && held !== flight) || !live(flight)) return;
     flight.withdrawing = false;
     flight.settled = Promise.withResolvers();
     flights.set(flight.row.key, flight);
@@ -262,25 +295,36 @@ export function createOutbox(options: OutboxOptions): Outbox {
     refresh();
   };
 
-  let activation = 0;
+  const end = (): void => {
+    lifetime += 1;
+
+    for (const flight of flights.values()) flight.cancelRetry?.();
+    flights.clear();
+    refresh();
+  };
 
   return {
     submit: async (input) => {
+      if (deactivated) throw new Error("Not connected. Send again once the connection is back.");
       const record: OutboxRecord = { key: mintKey(), input, at: now() };
       const flight = open(record, false);
+      const write = options.storage?.put(record) ?? Promise.resolve();
+      writes.add(write);
 
       try {
-        await options.storage?.put(record);
+        await write;
         flight.stored.resolve();
       } catch (cause) {
         flight.stored.resolve();
         settle(flight, { kind: "withdrawn" });
         throw cause;
+      } finally {
+        writes.delete(write);
       }
 
-      // Activation may have replaced this flight while its write was landing.
-      if (!current(flight)) void options.storage?.remove(record.key).catch(() => undefined);
-      else if (!flight.withdrawing) void attempt(flight, 1);
+      // A lifetime that ended while the write landed leaves the record stored
+      // where it was written; the activation that loads it sends it.
+      if (current(flight) && !flight.withdrawing) void attempt(flight, 1);
 
       return record.key;
     },
@@ -382,16 +426,19 @@ export function createOutbox(options: OutboxOptions): Outbox {
       }
     },
     activate: async () => {
-      const generation = ++activation;
-
-      for (const flight of flights.values()) flight.cancelRetry?.();
-      flights.clear();
-      refresh();
+      end();
+      deactivated = false;
+      const generation = lifetime;
+      await Promise.allSettled(writes);
       const records = (await options.storage?.load()) ?? [];
 
-      if (generation !== activation) return;
+      if (generation !== lifetime) return;
 
       for (const record of records) void attempt(open(record, true), 1);
+    },
+    deactivate: () => {
+      end();
+      deactivated = true;
     },
     rows: () => rows,
     subscribe: (listener) => {

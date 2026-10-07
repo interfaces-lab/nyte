@@ -8,6 +8,7 @@ import {
   releaseOnHost,
   RELEASE_TIMEOUT_MS,
 } from "@nyte-ai/connect/enrollment";
+import type { DeviceRole } from "@nyte-ai/connect";
 import { AcceptanceError } from "./account-copy.ts";
 import {
   accountConnection,
@@ -19,12 +20,36 @@ import {
 } from "./account-device.ts";
 import type { AccountDevice } from "./account-device.ts";
 import { webBridge } from "./install.ts";
+import { connectPinned } from "./pins.ts";
+import type { PinRoute } from "./pins.ts";
 
+/** The pin an account environment's host proves: by broker, owner and environment, never by device. */
+export function accountRoute(
+  device: Pick<AccountDevice, "origin" | "ownerId" | "environmentId">,
+): PinRoute {
+  return {
+    kind: "account",
+    origin: device.origin,
+    ownerId: device.ownerId,
+    environmentId: device.environmentId,
+  };
+}
+
+/**
+ * Enroll this browser with the environment and connect through the relay.
+ * `role: "owner"` asks for folder administration; the host honors it only
+ * when its operator started it with `--device-admin`. The host must prove the
+ * identity pinned for this environment, or on first pairing or `repair` the
+ * identity it announces. A host that cannot rejects with `IdentityChanged`
+ * and enrolls nothing lasting: the device is released and the pin stays.
+ */
 export async function connectAccountEnvironment(input: {
   readonly broker: BrokerClient;
   readonly config: AccountConfig;
   readonly ownerId: string;
   readonly environment: EnvironmentSummary;
+  readonly role: DeviceRole;
+  readonly repair: boolean;
   readonly signal: AbortSignal;
 }): Promise<AccountDevice | undefined> {
   const secret = await createDeviceSecret(deviceCrypto);
@@ -37,6 +62,7 @@ export async function connectAccountEnvironment(input: {
       clientId: readClientId(sessionStorage, input.ownerId),
       clientName: "Web browser",
       digest: secret.digest,
+      role: input.role,
     },
     signal: input.signal,
   });
@@ -48,6 +74,7 @@ export async function connectAccountEnvironment(input: {
     deviceId: enrolled.deviceId,
     name: input.environment.name,
     token: secret.token,
+    role: input.role,
   };
 
   const connection = {
@@ -68,12 +95,21 @@ export async function connectAccountEnvironment(input: {
     if (acceptance === "cancelled" || input.signal.aborted) return undefined;
 
     if (acceptance !== "accepted") throw new AcceptanceError(acceptance);
-    await webBridge.connect(connection, {
-      signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
-      relay: true,
+    await connectPinned({
+      bridge: webBridge,
+      storage: localStorage,
+      route: accountRoute(device),
+      connection,
+      repair: input.repair,
+      options: {
+        signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
+        relay: true,
+        principal: device.deviceId,
+      },
     });
 
     if (input.signal.aborted) return undefined;
+
     saveAccountDevice(sessionStorage, device);
     kept = true;
 

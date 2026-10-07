@@ -15,6 +15,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
 import { SessionActions } from "./session-actions.ts";
 import {
+  acknowledgedThrough,
   projectSessionConfiguration,
   sessionConfigurationOptions,
 } from "./session-configuration.ts";
@@ -60,7 +61,7 @@ import { SessionDirectoryFeed } from "./session-directory-feed.ts";
 // this cache; neither module touches the other while it evaluates.
 import { readSessionSnapshot, sessionSelection } from "./live.ts";
 import { nyte } from "./nyte.ts";
-import { activateOutbox, useOptimisticSessionIds } from "./use-outbox.ts";
+import { outboxActivation, useOptimisticSessionIds } from "./use-outbox.ts";
 import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 
@@ -200,7 +201,7 @@ const readUsage = (input: UsageWindow) => nyte.host.usage(input);
 
 const readPluginCatalog = (): Promise<PluginCatalog> => nyte.plugins.catalog();
 
-const readSession = async (sessionId: SessionId) =>
+export const readSession = async (sessionId: SessionId) =>
   (await nyte.sessions.get({ sessionId })) ?? null;
 
 export function useHostState() {
@@ -383,6 +384,7 @@ export function useSessionSnapshot(sessionId: SessionId) {
       session: projectSessionConfiguration(
         projection.session(snapshot.session) ?? snapshot.session,
         pending,
+        acknowledgedThrough(queryClient, sessionId),
       ),
     }),
     refetchOnMount: "always",
@@ -792,6 +794,19 @@ export function usePluginCatalog() {
   return useQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog });
 }
 
+export const RECORDED_STARTS = ["starts"] as const;
+
+/** Root starts on record on a registry host: one per host and principal, whichever folder is open. */
+export function useRecordedStarts() {
+  const starts = nyte.host.starts;
+
+  return useQuery({
+    queryKey: RECORDED_STARTS,
+    queryFn: () => starts?.list() ?? [],
+    enabled: starts !== undefined,
+  });
+}
+
 export function useSessionCommands(sessionId: SessionId) {
   return useQuery({
     queryKey: keys.sessionCommands(sessionId),
@@ -835,6 +850,8 @@ export function commitHostWorkspace(workspace: WorkspaceInfo | undefined): void 
 /** Refill workspace caches after a host transition, committing host state last. */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
+  // Taken with the host read below, so the partition and the client it sends through agree.
+  const activateOutbox = outboxActivation();
 
   const [host, workspaces, catalog, sessionDirectory] = await Promise.all([
     readHost(),
@@ -846,7 +863,11 @@ export async function loadLocalResources(): Promise<void> {
   if (version !== localLoadVersion) return;
 
   if (typeof indexedDB !== "undefined") {
-    const activation = activateOutbox(host.workspace?.path).catch(() => undefined);
+    const activation = activateOutbox({
+      host: host.binding?.hostId ?? null,
+      principal: host.binding?.principal ?? null,
+      workspace: host.workspace?.path ?? null,
+    }).catch(() => undefined);
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, OUTBOX_WARM_MS);
       void activation.then(() => {
@@ -980,25 +1001,12 @@ export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
     }, settings);
 }
 
-export function usePluginSettings(sessionId: SessionId, enabled = true) {
-  const project = usePluginSettingsProjection(sessionId);
-
-  return useQuery({
-    queryKey: keys.pluginSettings(sessionId),
-    queryFn: () => nyte.plugins.settings.list({ sessionId }),
-    select: project,
-    enabled,
-    staleTime: SNAPSHOT_WARM_MS,
-    refetchOnMount: true,
-  });
-}
-
 export function useApplyPluginSetting(sessionId: SessionId | undefined) {
   const client = useQueryClient();
 
   return useMutation({
     mutationKey: ["plugins", "apply", sessionId],
-    scope: { id: `plugin-settings:${sessionId}` },
+    networkMode: "always",
     mutationFn: async ({ id, choiceId }: ApplyPluginSettingInput) => {
       if (sessionId === undefined) throw new Error("Open a chat to change its settings");
       const outcome = await nyte.plugins.settings.apply({ sessionId, id, choiceId });
@@ -1036,11 +1044,8 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
       }),
     onSettled: () => {
       if (sessionId === undefined) return;
-
-      return Promise.all([
-        client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId), exact: true }),
-        client.invalidateQueries({ queryKey: ["customize", sessionId], exact: true }),
-      ]);
+      void client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId), exact: true });
+      void client.invalidateQueries({ queryKey: ["customize", sessionId], exact: true });
     },
   });
 }

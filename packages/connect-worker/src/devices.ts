@@ -152,6 +152,7 @@ export async function enrollDevice(
     clientId: body.clientId,
     clientName: body.clientName,
     digest: body.digest,
+    ...(body.role === undefined ? {} : { role: body.role }),
   };
   const reserved = await reserveDevice(context.db, {
     id: grant.deviceId,

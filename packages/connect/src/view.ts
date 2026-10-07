@@ -8,7 +8,9 @@ export type ConnectUnavailable =
   /** The build carries no usable broker origin or Clerk keys. */
   | "not_configured"
   /** `~/.nyte/connect.json` cannot be used; nothing is accepted. */
-  | "store_failed";
+  | "store_failed"
+  /** The stored link was made with another broker than this build names; it is neither served nor reinterpreted. */
+  | "origin_changed";
 
 /** The Clerk session on this desktop. Display only; never a credential. */
 export type ConnectAccount =
@@ -22,12 +24,27 @@ export type ConnectLinkFailure =
   | "limit"
   | "owner_disabled"
   | "session_revoked"
+  /** The owner refused the transaction, or let it lapse. */
+  | "denied"
+  | "expired"
   | "refused";
 
 export type ConnectLinking =
   | { readonly kind: "idle" }
   /** The sign-in dialog is open and the user has not finished signing in. */
   | { readonly kind: "waiting_for_account" }
+  /**
+   * A headless host's transaction is open: the owner signs in at `verifyUrl`
+   * on another device, enters `userCode`, and compares `fingerprint` with
+   * what the host shows before approving.
+   */
+  | {
+      readonly kind: "awaiting_approval";
+      readonly verifyUrl: string;
+      readonly userCode: string;
+      readonly fingerprint: string;
+      readonly expiresAt: number;
+    }
   /** The broker is registering this Mac. */
   | { readonly kind: "linking" }
   | { readonly kind: "failed"; readonly reason: ConnectLinkFailure };

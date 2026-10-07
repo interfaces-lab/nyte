@@ -84,7 +84,9 @@ export class StartJournal {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
-    this.db.exec(`
+
+    try {
+      this.db.exec(`
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS starts (
         principal TEXT NOT NULL,
@@ -102,6 +104,10 @@ export class StartJournal {
       );
       CREATE INDEX IF NOT EXISTS starts_session ON starts (session_id);
     `);
+    } catch (cause) {
+      this.db.close();
+      throw cause;
+    }
   }
 
   private row(principal: string, requestId: string): StartRecord | undefined {

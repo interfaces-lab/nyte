@@ -333,7 +333,7 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
   return new ConnectRuntime({
     config,
     home: nyteHome(),
-    account,
+    authorizer: account === undefined ? undefined : { kind: "session", account },
     onChange: () => broadcast({ kind: "remote_access_changed" }),
   });
 }
