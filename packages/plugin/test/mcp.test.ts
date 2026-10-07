@@ -20,7 +20,7 @@ import {
 } from "@earendil-works/pi-codemode/declarations";
 import { ToolError } from "@nyte-ai/core/plugins";
 import { Value } from "typebox/value";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { SessionEvent, StreamFn } from "@nyte-ai/core";
 
 import {
@@ -315,13 +315,14 @@ test("a failing server is a warning the client sees, and the session still answe
   await attached;
   // The manifest gains a server that cannot start: the reload warns, the session keeps working.
   const config = { broken: { command: process.execPath, args: ["-e", "process.exit(1)"] } };
-  await sdk.setPlugins([
+  await workspace.setPlugins(sdk, [
     withPluginSource(mcpPlugin({ servers, config }), {
       source: "inline",
       version: mcpConfigVersion(config),
     }),
   ]);
   assert.deepEqual(await prompt(sdk, sessionId, "hello"), { kind: "idle" });
+  await expect.poll(() => notices.length, { timeout: 4_000 }).toBeGreaterThan(0);
   controller.abort();
   await watching;
   assert.deepEqual(

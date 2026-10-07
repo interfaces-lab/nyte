@@ -13,6 +13,7 @@ import {
   type SessionId,
 } from "../src/kernel/sdk/types.ts";
 import { definePlugin } from "../src/plugins/index.ts";
+import { withPluginSource } from "../src/plugins/source.ts";
 import { createBashToolDefinition } from "../src/tools/bash.ts";
 import type { StreamFn } from "../src/kernel/loop/types.ts";
 import {
@@ -22,6 +23,7 @@ import {
   localWorkspace,
   only,
   openStore,
+  reloadable,
   storePath,
   within,
 } from "./kernel/helpers.ts";
@@ -197,6 +199,7 @@ async function fixture(background: boolean, continuingParent = false) {
       },
     }),
   ];
+  const source = reloadable(plugins);
   const open = () =>
     createNyte({
       store: openStore(path),
@@ -207,8 +210,8 @@ async function fixture(background: boolean, continuingParent = false) {
         getModel: () => model,
         getAvailable: async () => [model],
       },
-      ...localOptions(cwd, plugins),
-      trust: () => ({ kind: "trusted" }),
+      ...localOptions(cwd),
+      trust: source.trust,
     });
   const nyte = await open();
   await nyte.sessions.create({ sessionId: parent });
@@ -238,8 +241,13 @@ async function fixture(background: boolean, continuingParent = false) {
       await expect.poll(() => existsSync(pidPath), poll).toBe(true);
       return only(await nyte.jobs.list({ sessionId: parent }));
     },
+    /** A new revision of the same plugins; the foreground call in flight keeps it queued. */
     async reload() {
-      await nyte.setPlugins(plugins);
+      await source.set(
+        plugins.map((plugin) =>
+          withPluginSource({ ...plugin }, { source: "inline", version: "reloaded" }),
+        ),
+      );
     },
     executions() {
       return readFileSync(startsPath, "utf8").trim().split("\n").length;
@@ -764,6 +772,14 @@ test("foreground work waits and returns a normal tool result, including after pl
     expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
     expect(f.requests.filter((request) => request.text === "start")).toHaveLength(2);
     expect(f.executions()).toBe(1);
+    await expect
+      .poll(
+        async () =>
+          (await f.nyte.plugins.list({ sessionId: f.parent })).find(
+            (plugin) => plugin.id === "job-test-tools",
+          )?.version,
+      )
+      .toBe("reloaded");
   } finally {
     await f.close();
   }

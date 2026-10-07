@@ -245,14 +245,14 @@ test.each(["openai", "openai-codex"])(
 
     await prompt(sdk, sessionId, "Remember this.");
     await assertContextWindow(sdk, sessionId, 1_000_000);
-    await sdk.setPlugins([nativeCompaction]);
+    await world.setPlugins(sdk, [nativeCompaction]);
     await assertContextWindow(sdk, sessionId, 800_000);
     await prompt(sdk, sessionId, "Use the catalog threshold now.");
     assert.deepEqual(await checkpoints(sdk, sessionId), []);
     await prompt(sdk, sessionId, "Compact at the catalog limit.");
     assert.equal((await checkpoints(sdk, sessionId)).length, 1);
 
-    await sdk.setPlugins([astra, nativeCompaction]);
+    await world.setPlugins(sdk, [astra, nativeCompaction]);
     await assertContextWindow(sdk, sessionId, 1_000_000);
     await prompt(sdk, sessionId, "Restore Astra's threshold.");
     await prompt(sdk, sessionId, "Continue with the restored policy.");
@@ -295,14 +295,14 @@ test.each([
     const sessionId = world.sessionId;
 
     await prompt(sdk, sessionId, "Reach 420k.");
-    await sdk.setPlugins([astra, nativeCompaction, override]);
+    await world.setPlugins(sdk, [astra, nativeCompaction, override]);
     await assertContextWindow(sdk, sessionId, contextWindow);
     await prompt(sdk, sessionId, "Wait until the workspace threshold.");
     assert.deepEqual(await checkpoints(sdk, sessionId), []);
     await prompt(sdk, sessionId, "Compact at 450k.");
     assert.equal((await checkpoints(sdk, sessionId)).length, 1);
 
-    await sdk.setPlugins([astra, nativeCompaction]);
+    await world.setPlugins(sdk, [astra, nativeCompaction]);
     await assertContextWindow(sdk, sessionId, 1_000_000);
     await prompt(sdk, sessionId, "Use Astra's threshold again.");
     assert.equal((await checkpoints(sdk, sessionId)).length, 2);

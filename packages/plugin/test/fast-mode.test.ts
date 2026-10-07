@@ -113,7 +113,7 @@ describe("fast mode plugin", () => {
     assert.equal(requests.at(-1)?.fast, true);
 
     // Later plugins patch over earlier ones.
-    await sdk.setPlugins([
+    await world.setPlugins(sdk, [
       ...plugins,
       definePlugin({
         id: "normal-tier",

@@ -182,8 +182,6 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
     assert.deepEqual(await old.plugins.commands.run({ ...input, name: "where" }), {
       kind: "not_found",
     });
-    await assert.rejects(old.setPlugins(plugins("unsafe-reload"), input), /not active/);
-    await old.setPlugins(plugins("global"));
     assert.deepEqual(await old.plugins.list(input), []);
     oldGrants.set(setup.destination, plugins("destination"));
     await expect.poll(() => old.relocate({ ...input, workspace })).toEqual({ kind: "relocated" });
@@ -292,7 +290,6 @@ test("children follow the root across moves and resume without bypassing trust",
   });
   try {
     await nyte.plugins.list(childInput);
-    await nyte.setPlugins(plugins("global"));
     assert.ok((await nyte.plugins.list(childInput)).some((plugin) => plugin.id === "destination"));
     assert.equal(await nyte.sessionCwd(oldChildInput), workspace.cwd);
     assert.equal(await nyte.sessionCwd(childInput), workspace.cwd);
@@ -314,7 +311,6 @@ test("children follow the root across moves and resume without bypassing trust",
       .toEqual({ kind: "relocated" });
     await within(resumed.runs.wait(childInput));
     assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "active");
-    await resumed.setPlugins(plugins("global-after-restore"));
     assert.ok(
       (await resumed.plugins.list(childInput)).some((plugin) => plugin.id === "destination"),
     );
@@ -371,7 +367,6 @@ test("spawned subagents follow a later parent move", async () => {
     await within(nyte.runs.wait(childInput));
     await expect.poll(async () => (await nyte.runs.current(input))?.phase.kind).toBe("done");
     assert.equal(await nyte.sessionCwd(childInput), workspace.cwd);
-    await nyte.setPlugins(plugins("global"));
     assert.ok((await nyte.plugins.list(childInput)).some((plugin) => plugin.id === "destination"));
     const elsewhere = dirname(storePath());
     const nextWorkspace = localWorkspace(elsewhere);

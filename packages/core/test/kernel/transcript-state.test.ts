@@ -21,7 +21,7 @@ import { Type } from "typebox";
 import { branch } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import { type Nyte, type SessionId } from "../../src/kernel/sdk/types.ts";
+import { type Nyte, type NyteOptions, type SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { AgentTool, ExecutableTool, StreamFn } from "../../src/kernel/loop/types.ts";
@@ -37,6 +37,7 @@ import {
   localOptions,
   message,
   openStore,
+  reloadable,
   seedHead,
   setHead,
   storePath,
@@ -141,8 +142,20 @@ function script(onRequest?: (context: Context, session: Session) => Promise<void
 
 const sessions = new Map<number, Session>();
 
-async function host(store: Store, streamFn: StreamFn, plugins: readonly Plugin[]): Promise<Nyte> {
-  return createNyte({ store, model, models, streamFn, ...localOptions("/tmp/nowhere", plugins) });
+async function host(
+  store: Store,
+  streamFn: StreamFn,
+  plugins: readonly Plugin[],
+  trust?: NyteOptions["trust"],
+): Promise<Nyte> {
+  return createNyte({
+    store,
+    model,
+    models,
+    streamFn,
+    ...localOptions("/tmp/nowhere", plugins),
+    trust,
+  });
 }
 
 async function mainBranch(session: Session): Promise<Commit[]> {
@@ -235,12 +248,13 @@ test("a changed catalog declares the delta: removed tools, redefined tools, repl
     sections: { intro: { text: "two", order: 0 } },
     version: "v2",
   });
-  const nyte = await host(store, scripted.streamFn, [before]);
+  const source = reloadable([before]);
+  const nyte = await host(store, scripted.streamFn, [], source.trust);
   const { sessionId: id } = await nyte.sessions.create();
   try {
     nyte.attach();
     await ask(nyte, id, "hello");
-    assert.deepEqual(await nyte.setPlugins([after]), { kind: "applied" });
+    await source.set([after], { nyte, sessionId: id });
     await ask(nyte, id, "call grep");
   } finally {
     await nyte.close();
@@ -283,9 +297,10 @@ test("a rewound head redeclares against the replayed older tip, and a forked hea
   const path = storePath();
   const scripted = script();
   const store = openStore(path);
-  const nyte = await host(store, scripted.streamFn, [
+  const source = reloadable([
     catalog({ tools: [tool("grep")], sections: { intro: { text: "one", order: 0 } } }),
   ]);
+  const nyte = await host(store, scripted.streamFn, [], source.trust);
   const { sessionId: id } = await nyte.sessions.create();
   try {
     nyte.attach();
@@ -293,15 +308,15 @@ test("a rewound head redeclares against the replayed older tip, and a forked hea
     const session = await store.open(id);
     const [opening] = await branch(session.objects, await session.refs.read(headRef("main")));
     assert.ok(opening);
-    assert.deepEqual(
-      await nyte.setPlugins([
+    await source.set(
+      [
         catalog({
           tools: [tool("grep")],
           sections: { intro: { text: "two", order: 0 } },
           version: "v2",
         }),
-      ]),
-      { kind: "applied" },
+      ],
+      { nyte, sessionId: id },
     );
 
     // A fork from the declared tip carries the declaration; its next response patches only the prompt.

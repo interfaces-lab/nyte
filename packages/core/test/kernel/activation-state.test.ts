@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { expect, test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { schemas } from "@nyte-ai/protocol";
 import { Value } from "typebox/value";
@@ -21,6 +21,7 @@ import {
   localWorkspace,
   message,
   openStore,
+  reloadable,
   seedHead,
   storePath,
   usage,
@@ -95,13 +96,13 @@ test("session reads expose requires without instantiating plugins", async () => 
     pluginSessions += 1;
   });
   const nyte = await openHost({
+    plugins: [plugin],
     trust: () => ({
       kind: "requires",
       requirement: { kind: "workspace_trust", cwd: "/workspace" },
     }),
   });
   try {
-    await nyte.setPlugins([plugin]);
     nyte.attach();
     const created = await nyte.sessions.create();
     assert.deepEqual(created.activation, {
@@ -446,7 +447,7 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
   });
 }
 
-test("a new plugin set recovers a root whose own plugins failed to start", async () => {
+test("a source change recovers a root whose plugins failed to start, and its child", async () => {
   const broken = definePlugin({
     id: "broken-plugin",
     session(api) {
@@ -459,7 +460,8 @@ test("a new plugin set recovers a root whose own plugins failed to start", async
   const working = countingPlugin(() => {
     started += 1;
   });
-  const nyte = await openHost({ trust: () => ({ kind: "trusted" }), plugins: [broken] });
+  const source = reloadable([broken]);
+  const nyte = await openHost({ trust: source.trust });
   const controller = new AbortController();
   try {
     const root = (await nyte.sessions.create()).sessionId;
@@ -473,34 +475,33 @@ test("a new plugin set recovers a root whose own plugins failed to start", async
       .watch({ sessionId: root, live: true, signal: controller.signal })
       [Symbol.asyncIterator]();
     assert.equal((await nextActivation(watching)).activation.kind, "failed");
-    assert.deepEqual(await nyte.setPlugins([working]), { kind: "applied" });
-    assert.equal((await nyte.sessions.get({ sessionId: root }))?.activation.kind, "active");
-    assert.equal((await nyte.sessions.get({ sessionId: child }))?.activation.kind, "active");
-    assert.equal(started, 2);
+    await source.set([working]);
     assert.equal((await nextActivation(watching)).activation.kind, "active");
-    await nyte.sessions.setPinned({ sessionId: root, pinned: true });
-    const activations: SessionEvent[] = [];
-    for (;;) {
-      const result = await within(watching.next());
-      if (result.done) assert.fail("watch ended before the pin");
-      if (result.value.kind === "fact" && result.value.key === "pinned") break;
-      if (result.value.kind === "activation_changed") activations.push(result.value);
-    }
-    assert.deepEqual(activations, []);
+    await expect
+      .poll(async () => (await nyte.sessions.get({ sessionId: child }))?.activation.kind)
+      .toBe("active");
+    assert.equal(started, 2);
   } finally {
     controller.abort();
     await nyte.close();
   }
 });
 
-test("a new plugin set recovers a child read before its failed root", async () => {
+test("a source change recovers a session whose project plugins failed to load", async () => {
   const path = storePath();
   let broken = false;
+  const listeners = new Set<() => void>();
   const trust: NonNullable<NyteOptions["trust"]> = () => ({
     kind: "trusted",
     plugins: async () => {
       if (broken) throw new Error("project plugins failed");
       return [];
+    },
+    changes: (notify) => {
+      listeners.add(notify);
+      return () => {
+        listeners.delete(notify);
+      };
     },
   });
   const first = await openHost({ trust, store: openStore(path) });
@@ -514,9 +515,68 @@ test("a new plugin set recovers a child read before its failed root", async () =
     assert.equal((await nyte.sessions.get({ sessionId: child }))?.activation.kind, "failed");
     assert.equal((await nyte.sessions.list({ parent: root })).items[0]?.activation.kind, "failed");
     broken = false;
-    await nyte.setPlugins([]);
-    assert.equal((await nyte.sessions.list({ parent: root })).items[0]?.activation.kind, "active");
+    for (const notify of listeners) notify();
+    await expect
+      .poll(async () => (await nyte.sessions.list({ parent: root })).items[0]?.activation.kind)
+      .toBe("active");
   } finally {
+    await nyte.close();
+  }
+});
+
+test("reloads of one session land in order, so a slow older load never replaces a newer set", async () => {
+  const release = Promise.withResolvers<void>();
+  let version = "v1";
+  const listeners = new Set<() => void>();
+  const plugin = (tag: string): Plugin =>
+    definePlugin({
+      id: "ordered",
+      session(api) {
+        api.commands.add((draft) => draft.set("which", { description: tag, run: () => tag }));
+      },
+    });
+  const trust: NonNullable<NyteOptions["trust"]> = () => ({
+    kind: "trusted",
+    plugins: async () => {
+      const tag = version;
+      // The first reload is slow; everything after it is immediate.
+      if (tag === "v1") await release.promise;
+      return [plugin(tag)];
+    },
+    changes: (notify) => {
+      listeners.add(notify);
+      return () => {
+        listeners.delete(notify);
+      };
+    },
+  });
+  version = "v0";
+  const nyte = await openHost({ trust });
+  try {
+    const { sessionId } = await nyte.sessions.create();
+    assert.deepEqual(await nyte.plugins.commands.run({ sessionId, name: "which" }), {
+      kind: "ran",
+      output: "v0",
+    });
+    version = "v1";
+    for (const notify of listeners) notify();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    version = "v2";
+    for (const notify of listeners) notify();
+    release.resolve();
+    await expect
+      .poll(async () => {
+        const outcome = await nyte.plugins.commands.run({ sessionId, name: "which" });
+        return outcome.kind === "ran" ? outcome.output : outcome.kind;
+      })
+      .toBe("v2");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(await nyte.plugins.commands.run({ sessionId, name: "which" }), {
+      kind: "ran",
+      output: "v2",
+    });
+  } finally {
+    release.resolve();
     await nyte.close();
   }
 });

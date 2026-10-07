@@ -258,9 +258,7 @@ The kernel stops every runner in the tree, holds every head lease while the
 destination's plugins activate, and writes the root's `refs/workspace` as a
 CAS against the value read when the move began. A lost CAS returns `busy`.
 Descendants drop their activations and resolve through the root on their next
-use. Global `setPlugins` reaches only roots created in the default workspace and
-never moved; a host reloads any other tree with
-`setPlugins(plugins, { sessionId })`.
+use, and reload from the destination's trust answer.
 
 A runner checks before each step, and before it prepares, sends or runs tools,
 that its environment still matches the stored workspace. When another host has

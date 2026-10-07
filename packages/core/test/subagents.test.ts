@@ -215,7 +215,6 @@ test("a foreground parent waits for the child and receives its answer", async ()
   try {
     const { sessionId: parent } = await nyte.sessions.create();
     nyte.attach();
-    await nyte.setPlugins(plugins());
     await nyte.messages.send({ sessionId: parent, content: "delegate openai/script-model" });
     assert.equal((await within(nyte.runs.wait({ sessionId: parent }), 10_000)).kind, "waiting");
 

@@ -10,7 +10,6 @@ import {
   type PluginRegistries,
   type PluginHostTarget,
   type PluginNotice,
-  type PreparedPluginReplacement,
 } from "../../plugins/host.ts";
 import { withBudget } from "../../plugins/scope.ts";
 import { pluginFactKey, storedChoice } from "../../plugins/storage.ts";
@@ -100,10 +99,6 @@ export interface Activation {
   runCommand(name: string, argument?: string): Promise<CommandResult>;
   setPlugins(plugins: readonly Plugin[], applied?: () => void): Promise<PluginReplacement>;
   observeRun(run: Run): void;
-  preparePlugins(
-    plugins: readonly Plugin[],
-    applied?: () => void,
-  ): Promise<PreparedPluginReplacement>;
   offeredTurn(runId: string): TurnResolution | undefined;
   offerTurn(input: TurnInput, resolution: TurnResolution, attempt?: number): void;
   releaseTurn(runId: string): void;
@@ -224,6 +219,8 @@ export async function activate(input: {
   target: ActivationTarget;
   plugins: readonly Plugin[];
   env: ExecutionEnv;
+  /** Hears every notice, including those plugins emit while they instantiate. */
+  onNotice?: (notice: Notice) => void | Promise<void>;
 }): Promise<ActivationOutcome> {
   const registries = createRegistries();
   const env = wrappedEnvironment(input.env, () => registries.environmentWraps.values());
@@ -232,6 +229,8 @@ export async function activate(input: {
   const session = input.target.kind === "session" ? input.target.session : undefined;
   const facts = session === undefined ? transientFacts() : factsFor(session);
   const listeners = new Set<(notice: Notice) => void | Promise<void>>();
+
+  if (input.onNotice !== undefined) listeners.add(input.onNotice);
   let closePromise: Promise<void> | undefined;
   const offered = new Map<string, { head: string; attempt: number; resolution: TurnResolution }>();
   const blockedHeads = new Map<string, string>();
@@ -607,7 +606,6 @@ export async function activate(input: {
       return result ?? undefined;
     },
     setPlugins: (next, applied) => plugins.activate(next, applied),
-    preparePlugins: (next, applied) => plugins.prepare(next, applied),
     subscribe,
     close: () => {
       if (closePromise !== undefined) return closePromise;

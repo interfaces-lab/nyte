@@ -104,7 +104,7 @@ plugins.settings.list  plugins.settings.apply  plugins.resources.list  plugins.s
 Not carried, on purpose: `runs.wait` and `runs.compact` take an `AbortSignal`
 and hold a request open for a model call. A remote client waits by watching
 `run` events and reading `runs.current`; compaction stays off the wire until
-dispatch can carry the request's signal. `attach`, `setPlugins`, and
+dispatch can carry the request's signal. `attach` and
 `close` are host lifecycle; step execution is never remote in this revision.
 The read operations the desktop does not use (`messages.list`, `heads.list`, and
 so on) wait for a later revision. `OPERATIONS` is the authoritative list.

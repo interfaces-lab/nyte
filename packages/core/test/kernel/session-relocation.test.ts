@@ -13,6 +13,7 @@ import {
   localOptions,
   localWorkspace,
   openStore,
+  regrant,
   storePath,
   trustGrants,
   within,
@@ -87,12 +88,11 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
       ...localOptions(cwd, [toolsFsPlugin()]),
       trust: trustGrants(grants),
     });
-  const nyte = await open(
-    new Map([
-      [cwd, [locationPlugin("original")]],
-      [destination, [locationPlugin("destination")]],
-    ]),
-  );
+  const grants = new Map([
+    [cwd, [locationPlugin("original")]],
+    [destination, [locationPlugin("destination")]],
+  ]);
+  const nyte = await open(grants);
   const selected = await nyte.sessions.create();
   const other = await nyte.sessions.create();
   const input = { sessionId: selected.sessionId };
@@ -110,13 +110,15 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
       kind: "ran",
       output: workspace.cwd,
     });
-    await nyte.setPlugins([locationPlugin("global-reload")]);
+    regrant(grants, cwd, [locationPlugin("reloaded")]);
+    await expect
+      .poll(async () =>
+        (await nyte.plugins.list({ sessionId: other.sessionId })).some(
+          (plugin) => plugin.id === "reloaded",
+        ),
+      )
+      .toBe(true);
     assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "destination"));
-    assert.ok(
-      (await nyte.plugins.list({ sessionId: other.sessionId })).some(
-        (plugin) => plugin.id === "global-reload",
-      ),
-    );
     await nyte.messages.send({ ...input, content: "second" });
     await within(nyte.runs.wait(input));
     assert.equal(readFileSync(join(destination, "result.txt"), "utf8"), "2");
@@ -124,8 +126,8 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
     assert.equal(existsSync(join(destination, ".nyte", "sessions.db")), false);
     const transcript = await nyte.messages.list(input);
     await nyte.close();
-    const grants = new Map([[cwd, [locationPlugin("original")]]]);
-    const resumed = await open(grants);
+    const resumedGrants = new Map([[cwd, [locationPlugin("original")]]]);
+    const resumed = await open(resumedGrants);
     try {
       assert.equal((await resumed.sessionWorkspace(input)).cwd, workspace.cwd);
       assert.deepEqual((await resumed.sessions.get(input))?.activation, {
@@ -136,7 +138,7 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
       assert.deepEqual(await resumed.messages.list(input), transcript);
       // Pending work can be restored to the saved directory, but not relocated elsewhere.
       await resumed.messages.send({ ...input, content: "third" });
-      grants.set(destination, [locationPlugin("destination")]);
+      resumedGrants.set(destination, [locationPlugin("destination")]);
       assert.deepEqual(await resumed.relocate({ ...input, workspace }), { kind: "relocated" });
       resumed.attach({ sessions: [selected.sessionId] });
       await within(resumed.runs.wait(input));
@@ -199,17 +201,16 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
   const workspace = localWorkspace(destination);
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  const grants = new Map([
+    [cwd, [locationPlugin("original")]],
+    [destination, [locationPlugin("destination")]],
+  ]);
   const nyte = await createNyte({
     store: openStore(path),
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     ...localOptions(cwd),
-    trust: trustGrants(
-      new Map([
-        [cwd, [locationPlugin("original")]],
-        [destination, [locationPlugin("destination")]],
-      ]),
-    ),
+    trust: trustGrants(grants),
     streamFn: () => {
       const stream = createAssistantMessageEventStream();
       started.resolve();
@@ -228,9 +229,8 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
     await nyte.messages.send({ ...input, content: "keep running" });
     await within(started.promise);
     const run = await nyte.runs.current(input);
-    assert.deepEqual(await nyte.setPlugins([locationPlugin("reloaded")], input), {
-      kind: "queued",
-    });
+    // The change lands mid-response, so the reload waits for the run.
+    regrant(grants, destination, [locationPlugin("reloaded")]);
     assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "destination"));
     assert.deepEqual(await nyte.plugins.commands.run({ ...input, name: "where" }), {
       kind: "ran",
@@ -250,7 +250,9 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
     release.resolve();
     await within(nyte.runs.wait(input));
     assert.equal((await nyte.runs.current(input))?.phase.kind, "done");
-    assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "reloaded"));
+    await expect
+      .poll(async () => (await nyte.plugins.list(input)).some((plugin) => plugin.id === "reloaded"))
+      .toBe(true);
   } finally {
     release.resolve();
     await nyte.close();

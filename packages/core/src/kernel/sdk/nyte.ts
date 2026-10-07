@@ -351,115 +351,123 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       async configure(input): Promise<ConfigureOutcome> {
         pool.alive();
         validateHeadName(input.head ?? MAIN);
-        const pooled = await pool.open(input.sessionId);
 
-        if (
-          input.model !== undefined &&
-          options.models.getModel(input.model.provider, input.model.id) === undefined
-        ) {
-          return { kind: "unknown_model" };
-        }
+        return pool.inOrder(input.sessionId, async () => {
+          const pooled = await pool.open(input.sessionId);
 
-        if (input.agent !== undefined) {
-          const activation = await pool.activationFor(input.sessionId, pooled);
-
-          const known = activation
-            ?.agents()
-            .some((agent) => agent.id === input.agent && agent.disabled !== true);
-
-          if (known !== true) return { kind: "unknown_agent" };
-        }
-
-        const config = { kind: "config" } satisfies CommitBody;
-        const withModel = input.model === undefined ? config : { ...config, model: input.model };
-
-        const withThinking =
-          input.thinkingLevel === undefined
-            ? withModel
-            : { ...withModel, thinkingLevel: input.thinkingLevel };
-
-        const body =
-          input.agent === undefined ? withThinking : { ...withThinking, agent: input.agent };
-
-        const head = input.head ?? MAIN;
-        const current = await pool.readRun(pooled.session, head);
-
-        const outcome = await submit(
-          pooled.session,
-          attributed(
-            {
-              head,
-              kind: "passive",
-              delivery:
-                current !== undefined && !isTerminalPhase(current.run.phase) ? "steer" : "next",
-              body,
-              preparation: { kind: "none" },
-            },
-            options.actor,
-          ),
-        );
-
-        void (async () => {
-          try {
-            await runners.reconcileRunner(input.sessionId, pooled);
-          } catch (error) {
-            detached.push(error);
+          if (
+            input.model !== undefined &&
+            options.models.getModel(input.model.provider, input.model.id) === undefined
+          ) {
+            return { kind: "unknown_model" };
           }
-        })();
 
-        return { kind: "queued", change: outcome.change };
+          if (input.agent !== undefined) {
+            const activation = await pool.activationFor(input.sessionId, pooled);
+
+            const known = activation
+              ?.agents()
+              .some((agent) => agent.id === input.agent && agent.disabled !== true);
+
+            if (known !== true) return { kind: "unknown_agent" };
+          }
+
+          const config = { kind: "config" } satisfies CommitBody;
+          const withModel = input.model === undefined ? config : { ...config, model: input.model };
+
+          const withThinking =
+            input.thinkingLevel === undefined
+              ? withModel
+              : { ...withModel, thinkingLevel: input.thinkingLevel };
+
+          const body =
+            input.agent === undefined ? withThinking : { ...withThinking, agent: input.agent };
+
+          const head = input.head ?? MAIN;
+          const current = await pool.readRun(pooled.session, head);
+
+          const outcome = await submit(
+            pooled.session,
+            attributed(
+              {
+                head,
+                kind: "passive",
+                delivery:
+                  current !== undefined && !isTerminalPhase(current.run.phase) ? "steer" : "next",
+                body,
+                preparation: { kind: "none" },
+              },
+              options.actor,
+            ),
+          );
+
+          void (async () => {
+            try {
+              await runners.reconcileRunner(input.sessionId, pooled);
+            } catch (error) {
+              detached.push(error);
+            }
+          })();
+
+          return { kind: "queued", change: outcome.change };
+        });
       },
     },
 
     messages: {
       async send(input: SendInput): Promise<SendReceipt> {
         pool.alive();
-        const pooled = await pool.open(input.sessionId);
-        const { session } = pooled;
-        const head = input.head ?? MAIN;
-        const live = await pool.readRun(session, head);
-        const delivery =
-          input.delivery ??
-          (live !== undefined && !isTerminalPhase(live.run.phase) ? "steer" : "next");
 
-        // Clients attach whatever the OS handed them; bound it before it lands.
-        const content = Array.isArray(input.content)
-          ? [...(await normalizeImageContent(input.content))]
-          : input.content;
+        return pool.inOrder(input.sessionId, async () => {
+          const pooled = await pool.open(input.sessionId);
+          const { session } = pooled;
+          const head = input.head ?? MAIN;
+          const live = await pool.readRun(session, head);
+          const delivery =
+            input.delivery ??
+            (live !== undefined && !isTerminalPhase(live.run.phase) ? "steer" : "next");
 
-        const message = {
-          kind: "message",
-          message: { role: "user", content, timestamp: Date.now() },
-        } satisfies CommitBody;
+          // Clients attach whatever the OS handed them; bound it before it lands.
+          const content = Array.isArray(input.content)
+            ? [...(await normalizeImageContent(input.content))]
+            : input.content;
 
-        const sourced = input.source === undefined ? message : { ...message, source: input.source };
-        const participantSend = await delegation.participantSend(input.sessionId, pooled);
+          const message = {
+            kind: "message",
+            message: { role: "user", content, timestamp: Date.now() },
+          } satisfies CommitBody;
 
-        const submission = attributed(
-          {
-            head,
-            kind: "user",
-            delivery,
-            body: input.agent === undefined ? sourced : { ...sourced, agent: input.agent },
-            ...participantSend,
-          },
-          options.actor,
-        );
+          const sourced =
+            input.source === undefined ? message : { ...message, source: input.source };
 
-        const receipt = await submit(
-          session,
-          input.key === undefined ? submission : { ...submission, key: input.key },
-        );
+          const participantSend = await delegation.participantSend(input.sessionId, pooled);
 
-        void (async () => {
-          try {
-            await runners.reconcileRunner(input.sessionId, pooled);
-          } catch (error) {
-            detached.push(error);
-          }
-        })();
+          const submission = attributed(
+            {
+              head,
+              kind: "user",
+              delivery,
+              body: input.agent === undefined ? sourced : { ...sourced, agent: input.agent },
+              ...participantSend,
+            },
+            options.actor,
+          );
 
-        return receipt;
+          const receipt = await submit(
+            session,
+            input.key === undefined ? submission : { ...submission, key: input.key },
+          );
+
+          void (async () => {
+            try {
+              await runners.reconcileRunner(input.sessionId, pooled);
+            } catch (error) {
+              detached.push(error);
+            }
+          })();
+
+          return receipt;
+        });
       },
       async cancel(input) {
         pool.alive();
@@ -1004,24 +1012,27 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         },
         async run(input): Promise<CommandOutcome> {
           pool.alive();
-          const pooled = await pool.open(input.sessionId);
-          const activation = await pool.activationFor(input.sessionId, pooled);
 
-          if (activation === undefined) return { kind: "not_found" };
+          return pool.inOrder(input.sessionId, async () => {
+            const pooled = await pool.open(input.sessionId);
+            const activation = await pool.activationFor(input.sessionId, pooled);
 
-          if (!activation.commands().has(input.name)) return { kind: "not_found" };
+            if (activation === undefined) return { kind: "not_found" };
 
-          try {
-            const output = await activation.runCommand(input.name, input.argument ?? "");
+            if (!activation.commands().has(input.name)) return { kind: "not_found" };
 
-            if (output === undefined) return { kind: "ran" };
+            try {
+              const output = await activation.runCommand(input.name, input.argument ?? "");
 
-            if (isCommandPrompt(output)) return { kind: "prompt", prompt: output.prompt };
+              if (output === undefined) return { kind: "ran" };
 
-            return { kind: "ran", output };
-          } catch (error) {
-            return { kind: "failed", message: errorMessage(error) };
-          }
+              if (isCommandPrompt(output)) return { kind: "prompt", prompt: output.prompt };
+
+              return { kind: "ran", output };
+            } catch (error) {
+              return { kind: "failed", message: errorMessage(error) };
+            }
+          });
         },
       },
       settings: {
@@ -1034,12 +1045,15 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         },
         async apply(input): Promise<ApplyOutcome> {
           pool.alive();
-          const pooled = await pool.open(input.sessionId);
-          const activation = await pool.activationFor(input.sessionId, pooled);
 
-          return activation === undefined
-            ? { kind: "not_found" }
-            : activation.applySetting(input.id, input.choiceId);
+          return pool.inOrder(input.sessionId, async () => {
+            const pooled = await pool.open(input.sessionId);
+            const activation = await pool.activationFor(input.sessionId, pooled);
+
+            return activation === undefined
+              ? { kind: "not_found" }
+              : activation.applySetting(input.id, input.choiceId);
+          });
         },
       },
       resources: {

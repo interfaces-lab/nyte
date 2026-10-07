@@ -14,6 +14,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import {
   type Drain,
   type Nyte,
+  type NyteOptions,
   type SessionEvent,
   type SessionId,
   type Workspace,
@@ -28,6 +29,7 @@ import {
   localOptions,
   localWorkspace,
   openStore,
+  reloadable,
   sleep,
   usage,
   within,
@@ -123,6 +125,7 @@ function plugins(): Plugin[] {
 async function open(
   streamFn: StreamFn = echo(),
   extra: {
+    readonly trust?: NyteOptions["trust"];
     readonly drain?: Drain;
     readonly store?: Store;
     readonly telemetry?: TelemetryContext;
@@ -693,7 +696,8 @@ test("deleting a session under a live run ends the run and forgets the session",
 });
 
 test("a plugin change reaches every watcher of an open session", async () => {
-  const nyte = await open();
+  const source = reloadable([]);
+  const nyte = await open(echo(), { trust: source.trust });
   try {
     const { sessionId: id } = await nyte.sessions.create();
     nyte.attach();
@@ -706,7 +710,7 @@ test("a plugin change reaches every watcher of an open session", async () => {
 
     await nyte.messages.send({ sessionId: id, content: "hello" });
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
-    await nyte.setPlugins([]);
+    await source.set([definePlugin({ id: "changed", session() {} })], { nyte, sessionId: id });
     let changed = false;
     for (;;) {
       const next = await within(events.next(), 5_000);
@@ -790,7 +794,7 @@ test("closing while a run is still streaming does not hang", async () => {
   release?.();
 });
 
-test("the prospective plugin catalog is sessionless, cached, and invalidated by setPlugins", async () => {
+test("the prospective plugin catalog is sessionless, cached, and invalidated by workspace changes", async () => {
   const store = openStore();
   let activations = 0;
   let commandRuns = 0;
@@ -829,19 +833,21 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
         );
       },
     });
+  const source = reloadable([catalogPlugin("first-plugin", "first")]);
   const nyte = await createNyte({
     store,
     streamFn: echo(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    ...localOptions("/tmp/nowhere", [catalogPlugin("first-plugin", "first")]),
+    ...localOptions("/tmp/nowhere"),
+    trust: source.trust,
   });
   try {
     const first = await nyte.plugins.catalog();
     assert.deepEqual(first, {
       plugins: [
-        { id: "first-plugin", version: "inline", source: "inline", status: "active" },
         { id: "local-environment", version: "inline", source: "inline", status: "active" },
+        { id: "first-plugin", version: "inline", source: "inline", status: "active" },
       ],
       commands: [{ name: "first", owner: "first-plugin", description: "Run first" }],
       skills: [
@@ -870,7 +876,7 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
     assert.equal(commandRuns, 0);
     assert.deepEqual(await store.list(), []);
 
-    await nyte.setPlugins([catalogPlugin("second-plugin", "second")]);
+    await source.set([catalogPlugin("second-plugin", "second")]);
     assert.deepEqual((await nyte.plugins.catalog()).commands, [
       { name: "second", owner: "second-plugin", description: "Run second" },
     ]);

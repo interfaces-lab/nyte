@@ -30,6 +30,7 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/core";
 import type { ToolTurnPart } from "@nyte-ai/protocol";
+import { pluginSource } from "@nyte-ai/core/plugin-source";
 import { branch, SqliteStore, type Store } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model, ToolCall, ToolResultMessage } from "@nyte-ai/schema";
 import {
@@ -133,6 +134,8 @@ export class TestWorkspace {
   readonly store: SqliteStore;
   private sessionIdValue: SessionId | undefined;
   private readonly opened: Nyte[] = [];
+  private project: readonly Plugin[] = [];
+  private readonly changed = new Set<() => void>();
 
   private constructor(directory: string) {
     this.directory = directory;
@@ -151,13 +154,25 @@ export class TestWorkspace {
   }
 
   async open(options: OpenOptions): Promise<Nyte> {
+    this.project = options.plugins;
     const base: NyteOptions = {
       store: this.store,
       streamFn: options.streamFn,
       models: catalogOf(...(options.models ?? [options.model])),
       model: options.model,
-      plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID }), ...options.plugins],
+      plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID })],
       defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd: this.directory },
+      // The test's plugins are the workspace's: `setPlugins` changes them like a saved source would.
+      trust: () => ({
+        kind: "trusted",
+        plugins: async () => this.project,
+        changes: (notify) => {
+          this.changed.add(notify);
+          return () => {
+            this.changed.delete(notify);
+          };
+        },
+      }),
     };
     const sdk = await createNyte(
       options.compaction === undefined ? base : { ...base, compaction: options.compaction },
@@ -167,6 +182,42 @@ export class TestWorkspace {
     this.sessionIdValue ??= (await sdk.sessions.create()).sessionId;
     sdk.attach();
     return sdk;
+  }
+
+  /** Replaces the workspace's plugins and waits until the session publishes the new set. */
+  async setPlugins(sdk: Nyte, plugins: readonly Plugin[]): Promise<void> {
+    const expected = plugins
+      .map((plugin) => `${plugin.id}@${pluginSource(plugin)?.version ?? "inline"}`)
+      .join("\n");
+    const controller = new AbortController();
+    const armed = Promise.withResolvers<void>();
+    const published = (async () => {
+      for await (const event of sdk.watch({
+        sessionId: this.sessionId,
+        live: true,
+        signal: controller.signal,
+      })) {
+        if (event.kind === "synced") armed.resolve();
+        if (event.kind !== "plugins_changed") continue;
+        const listed = event.plugins
+          .filter((plugin) => plugins.some((item) => item.id === plugin.id))
+          .map((plugin) => `${plugin.id}@${plugin.version}`)
+          .join("\n");
+        if (listed === expected) return;
+      }
+      throw new Error("watch ended before the plugins changed");
+    })();
+    await armed.promise;
+    this.project = plugins;
+    for (const notify of this.changed) notify();
+    const timeout = sleep(5_000).then(() => {
+      throw new Error("plugins never reloaded");
+    });
+    try {
+      await Promise.race([published, timeout]);
+    } finally {
+      controller.abort();
+    }
   }
 
   async close(): Promise<void> {

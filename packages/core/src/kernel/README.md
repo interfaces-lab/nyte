@@ -456,7 +456,11 @@ active in the environment the host's workspace backend reads, else `undefined`.
 
 Each `Nyte` opens a workspace once. The host's `trust(workspace)` answers first,
 then the provider for its `kind` opens it, then the trust answer's `plugins`
-loader loads the project plugins. Without `trust`, only `defaultWorkspace` is
+loader loads the project plugins. The loader runs again before every response,
+and again for every session active in the workspace when the answer's `changes`
+fires; a session replaces its own plugin set, keeps its environment, and reports
+a failed reload as a `plugins` diagnostic. The prospective catalog follows the
+same signal. Without `trust`, only `defaultWorkspace` is
 trusted and any other workspace reports `requires/workspace_trust`. `createNyte`
 rejects when no plugin provides `defaultWorkspace.kind`. A refusal opens and
 loads nothing and reaches clients as `inactive` or `requires`. A kind with no
@@ -476,11 +480,7 @@ state with nothing moved. The kernel holds every head lease in the tree while
 the destination's plugins activate, then writes the root's `refs/workspace` as a
 CAS against the value it read when the move began. Every descendant follows the
 next time it resolves. IDs, heads, queues, and conversation history do not move.
-Global `setPlugins` reaches only roots in the default workspace that have not
-moved since this `Nyte` opened them, and their children. Hosts reload any other
-tree with `setPlugins(plugins, { sessionId })`.
-Scoped reload keeps the activation environment and supports hot reload during a
-run.
+A moved tree reloads from its destination's trust answer.
 
 Relocation returns `busy` while any session in the tree has an active drive, run,
 head lease, queued input the runner would land, running job, or job lease. A

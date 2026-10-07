@@ -8,7 +8,7 @@
  * on purpose: `runs.wait` and `runs.compact` take an `AbortSignal` and hold a
  * request open for the length of a model call; a remote client waits by
  * watching `run` events instead, and compaction stays off the wire until
- * dispatch can carry the request's signal. `attach`, `setPlugins`, and `close`
+ * dispatch can carry the request's signal. `attach` and `close`
  * are host lifecycle, not client operations; the remaining read operations
  * (`messages.list`, `heads.list`, ...) wait for a later revision. Step
  * execution is never remote in this revision.

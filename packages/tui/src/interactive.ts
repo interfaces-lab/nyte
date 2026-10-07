@@ -16,14 +16,13 @@ import {
   SyntaxStyle,
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
-import { createLocalExecutionEnv, formatSkillInvocation } from "@nyte-ai/core/plugins";
+import { formatSkillInvocation } from "@nyte-ai/core/plugins";
 import {
   createWorkspaceStore,
   discoverMentionFiles,
   environmentId,
   nyteHome,
   pluginWatchTargets,
-  resolveHostPlugins,
 } from "@nyte-ai/host";
 import type { TrustedWorkspace } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
@@ -36,11 +35,12 @@ import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import { collectAbandoned, projectTree, emptyUsageSummary } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import { MAIN, sessionId } from "@nyte-ai/core";
-import { watchPluginDirectories } from "@nyte-ai/host/plugins";
+import { notifyPluginSources, watchPluginDirectories } from "@nyte-ai/host/plugins";
 import type {
   CommandInfo,
   Delivery,
   Oid,
+  PluginInfo,
   RunInfo,
   SelectionReply,
   SessionId,
@@ -51,7 +51,6 @@ import type {
 import type { JsonValue, Skill } from "@nyte-ai/schema";
 import { authProviderChoices, loginProvider, logoutProvider } from "./auth.ts";
 import { readAuthPrompt } from "./auth-prompt.ts";
-import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import {
   cachedAuthenticatedModels,
   defaultModel,
@@ -126,7 +125,6 @@ import {
   resolveRuntime,
   signedOutRuntime,
   targetSession,
-  tuiPlugins,
 } from "./run.ts";
 import type { Runtime } from "./run.ts";
 import { TUI_RENDERER_CONFIG } from "./rendering.ts";
@@ -662,6 +660,8 @@ class Interactive {
   private readonly settingsStore: FileSettingsStore;
   private workspace: TrustedWorkspace;
   private stopPluginWatch: (() => void) | undefined;
+  /** Settled by the next inventory the session publishes; `/reload` reports through it. */
+  private reloaded: PromiseWithResolvers<readonly PluginInfo[]> | undefined;
   private changingDirectory = false;
   private readonly fallback: RunChoice;
   private readonly options: InteractiveOptions;
@@ -1213,6 +1213,8 @@ class Interactive {
 
         return;
       case "plugins_changed": {
+        this.reloaded?.resolve(event.plugins);
+        this.reloaded = undefined;
         void this.refreshContributions(session).catch(() => undefined);
         const failed = event.plugins.filter((plugin) => plugin.status === "failed");
 
@@ -3340,28 +3342,17 @@ class Interactive {
     await this.refreshMentionFiles();
   }
 
-  private async reloadPlugins(
-    options: { readonly retry?: boolean } = {},
-  ): Promise<Awaited<ReturnType<Host["nyte"]["setPlugins"]>> | undefined> {
-    if (this.changingDirectory || this.switchingSession) return undefined;
+  private async reloadPlugins(options: { readonly retry?: boolean } = {}): Promise<void> {
+    if (this.changingDirectory || this.switchingSession) return;
     const workspace = this.workspace;
     const session = this.session;
 
-    if (options.retry === true) this.host.pluginSources.invalidate();
+    if (options.retry === true) {
+      this.host.pluginSources.invalidate();
+      notifyPluginSources();
+    }
+
     await this.tuiPlugins.reconcile(options);
-
-    const resolved = await resolveHostPlugins(
-      { kind: "project", workspace: this.workspace },
-      {
-        model: this.config.model,
-        models: this.runtime.models,
-        extra: tuiPlugins(),
-        sources: this.host.pluginSources,
-        codemode: codemodeRuntimeOptions(),
-        env: createLocalExecutionEnv({ id: await environmentId(), cwd: workspace.cwd }),
-      },
-    );
-
     const settings = await this.settingsStore.read(workspace.cwd);
 
     if (
@@ -3371,16 +3362,8 @@ class Interactive {
       this.workspace !== workspace ||
       this.session !== session
     )
-      return undefined;
+      return;
 
-    const outcome =
-      workspace.cwd === this.host.cwd
-        ? await this.host.nyte.setPlugins(resolved.plugins)
-        : session === undefined
-          ? undefined
-          : await this.host.nyte.setPlugins(resolved.plugins, { sessionId: session.sessionId });
-
-    if (outcome?.kind === "rejected") throw new Error(outcome.error);
     this.settings = {
       ...settings,
       transport: this.settings.transport,
@@ -3396,11 +3379,7 @@ class Interactive {
       this.tuiPlugins.refresh();
     }
 
-    if (session !== undefined && outcome?.kind === "applied")
-      await this.refreshContributions(session);
     this.refreshHints();
-
-    return outcome;
   }
 
   private async checkUpdate(): Promise<void> {
@@ -4650,23 +4629,25 @@ class Interactive {
         notice(this.shell, "Reloading…");
         this.renderer.requestRender();
         await this.renderer.idle();
-        const outcome = await this.reloadPlugins({ retry: true });
+        this.reloaded ??= Promise.withResolvers();
+        const published = this.reloaded.promise;
+        await this.reloadPlugins({ retry: true });
+        const plugins = await Promise.race([
+          published,
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5_000)),
+        ]);
 
-        if (outcome === undefined) return;
-
-        if (outcome.kind === "queued") {
+        if (plugins === undefined) {
           notice(this.shell, "Reload queued until active calls finish.");
 
           return;
         }
 
-        const pluginCount = (await this.host.nyte.plugins.list({ sessionId: session.sessionId }))
-          .length;
-
+        const failed = plugins.filter((plugin) => plugin.status === "failed").length;
         notice(
           this.shell,
-          `Reloaded ${String(pluginCount)} ${pluginCount === 1 ? "plugin" : "plugins"} and ${String(session.skills.size)} ${session.skills.size === 1 ? "skill" : "skills"}`,
-          this.shell.theme.ok,
+          `Reloaded ${String(plugins.length)} ${plugins.length === 1 ? "plugin" : "plugins"} and ${String(session.skills.size)} ${session.skills.size === 1 ? "skill" : "skills"}${failed === 0 ? "" : `, ${String(failed)} failed`}`,
+          failed === 0 ? this.shell.theme.ok : this.shell.theme.warning,
         );
 
         return;

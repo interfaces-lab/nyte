@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   contentText,
   createAssistantMessageEventStream,
@@ -16,6 +16,7 @@ import { createLocalExecutionEnv } from "@nyte-ai/core/plugins";
 import type { ExecutionEnv } from "@nyte-ai/core/plugins";
 
 import { providerPlugin } from "@nyte-ai/plugin/provider";
+import { notifyPluginSources } from "../src/plugins/watch.ts";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
@@ -522,8 +523,6 @@ test("provider overrides toggle per session, share credentials, and restore the 
   assert.equal(await answer(reopened, first, "after restart"), "after restart");
   await reopened.plugins.commands.run({ sessionId: first, name: "echo-override", argument: "on" });
   assert.equal(await answer(reopened, first, "native"), "override");
-  await reopened.setPlugins([], { sessionId: first });
-  assert.equal(await answer(reopened, first, "removed"), "removed");
   assert.equal(await answer(reopened, second, "native"), "override");
   assert.equal(f.models.getProvider(model.provider), f.provider);
 });
@@ -562,11 +561,20 @@ test("the last enabled provider plugin wins and override failures do not fall th
   assert.equal(await answer(host, id, "native"), "last");
   await host.plugins.commands.run({ sessionId: id, name: "last", argument: "off" });
   assert.equal(await answer(host, id, "native"), "first");
-  await host.setPlugins([override("broken")]);
+
+  const broken = await createHost({
+    store: f.store("provider-broken.db"),
+    models: f.models,
+    model,
+    plugins: { kind: "custom", plugins: [override("broken")], cwd: f.cwd },
+  });
+  hosts.push(broken);
+  const failing = (await broken.sessions.create()).sessionId;
+  broken.attach();
   const count = f.prompts.length;
-  await host.messages.send({ sessionId: id, content: "fail" });
-  await host.runs.wait({ sessionId: id });
-  assert.equal((await host.runs.current({ sessionId: id }))?.phase.kind, "failed");
+  await broken.messages.send({ sessionId: failing, content: "fail" });
+  await broken.runs.wait({ sessionId: failing });
+  assert.equal((await broken.runs.current({ sessionId: failing }))?.phase.kind, "failed");
   assert.equal(f.prompts.length, count);
 });
 
@@ -616,7 +624,7 @@ test("workspace discovery installs a provider plugin into the shared host withou
   assert.equal(await answer(host, id, "native"), "native");
 });
 
-test("context activation uses its fingerprinted snapshot and reloads in the same session", async () => {
+test("context activation uses its fingerprinted snapshot", async () => {
   const f = await fixture();
   const context = join(f.cwd, "AGENTS.md");
   await writeFile(context, "original context snapshot");
@@ -641,16 +649,38 @@ test("context activation uses its fingerprinted snapshot and reloads in the same
   await answer(host, id, "first");
   assert.match(f.prompts.at(-1) ?? "", /original context snapshot/);
   assert.doesNotMatch(f.prompts.at(-1) ?? "", /updated context snapshot/);
-  const next = await resolveHostPlugins(target, resolving);
-  await host.setPlugins(next.plugins);
-  await answer(host, id, "second");
-  assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
   await mkdir(join(f.cwd, "home"), { recursive: true });
   await writeFile(join(f.cwd, "home", "nyte.json"), "{");
   const withBrokenManifest = await resolveHostPlugins(target, resolving);
   assert.equal(withBrokenManifest.failures[0]?.path, join(f.cwd, "home", "nyte.json"));
-  assert.equal(withBrokenManifest.plugins.length, next.plugins.length);
+  assert.equal(withBrokenManifest.plugins.length, prepared.plugins.length);
   await answer(host, id, "third");
+  assert.match(f.prompts.at(-1) ?? "", /original context snapshot/);
+});
+
+test("a source change reloads an open session before its next turn", async () => {
+  const f = await fixture();
+  const context = join(f.cwd, "AGENTS.md");
+  await writeFile(context, "original context snapshot");
+  const workspace = await createWorkspaceStore().trust(f.cwd);
+  const host = await createHost({
+    store: f.store("reload.db"),
+    models: f.models,
+    model,
+    plugins: { kind: "workspace", target: { kind: "project", workspace } },
+  });
+  hosts.push(host);
+  const id = (await host.sessions.create()).sessionId;
+  host.attach();
+  await answer(host, id, "first");
+  assert.match(f.prompts.at(-1) ?? "", /original context snapshot/);
+  const versions = async () =>
+    (await host.plugins.list({ sessionId: id })).map((plugin) => plugin.version).join("\n");
+  const before = await versions();
+  await writeFile(context, "updated context snapshot");
+  notifyPluginSources();
+  await expect.poll(versions, { timeout: 5_000 }).not.toBe(before);
+  await answer(host, id, "second");
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
 });
 

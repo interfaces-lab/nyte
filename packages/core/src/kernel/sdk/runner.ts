@@ -274,27 +274,11 @@ export function createRunners(input: {
       return `Selected model is unavailable: ${modelLabel(config.model)}. Choose an available model or connect its provider.`;
     };
 
-    const inputDelegation = input.delegation;
-
     // The workspace's plugins load again before the turn resolves what the branch
     // must declare, so the declaration and the request that follows share one catalog.
     const reloadPlugins = async (input: TurnInput): Promise<void> => {
-      const state = pooled.activationState;
-
-      if (
-        state?.kind !== "active" ||
-        state.reload === undefined ||
-        !actsIn(state.env, activation.env)
-      )
-        return;
-
       try {
-        const plugins = await state.reload();
-        input.signal.throwIfAborted();
-        await activation.setPlugins(inputDelegation.pluginsFor({ id, pooled, plugins }), () => {
-          if (pooled.activationState?.kind === "active")
-            pooled.activationState = { ...pooled.activationState, plugins };
-        });
+        if (!(await pool.reloadPlugins(id, pooled, activation, input.signal))) return;
       } catch (cause) {
         if (input.signal.aborted) throw cause;
         await pool.dispatchNotice(pooled, {

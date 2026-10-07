@@ -36,8 +36,9 @@ import type { Session, Store } from "../../src/kernel/store.ts";
 import type { Turn, TurnInput } from "../../src/kernel/turn.ts";
 import type { ToolContext, ToolRun } from "../../src/kernel/loop/types.ts";
 import type { ExecutionEnv } from "../../src/kernel/loop/env.ts";
-import type { NyteOptions, Workspace } from "../../src/kernel/sdk/types.ts";
-import type { Plugin } from "../../src/plugins/types.ts";
+import type { Nyte, NyteOptions, SessionId, Workspace } from "../../src/kernel/sdk/types.ts";
+import type { Plugin, PluginInfo } from "../../src/plugins/types.ts";
+import { pluginSource } from "../../src/plugins/source.ts";
 import { createLocalExecutionEnv, localEnvironmentPlugin } from "../../src/tools/env.ts";
 
 const LOCAL_ID = "test";
@@ -61,15 +62,112 @@ export function localOptions(
   };
 }
 
+const grantListeners = new WeakMap<
+  ReadonlyMap<string, readonly Plugin[]>,
+  Map<string, Set<() => void>>
+>();
+
+function grantListenersFor(
+  grants: ReadonlyMap<string, readonly Plugin[]>,
+  cwd: string,
+): Set<() => void> {
+  const byCwd = grantListeners.get(grants) ?? new Map<string, Set<() => void>>();
+  grantListeners.set(grants, byCwd);
+  const listeners = byCwd.get(cwd) ?? new Set<() => void>();
+  byCwd.set(cwd, listeners);
+  return listeners;
+}
+
 /** A host's trust: each granted directory opens with its project plugins, and any other asks for a grant. */
 export function trustGrants(
   grants: ReadonlyMap<string, readonly Plugin[]>,
 ): NonNullable<NyteOptions["trust"]> {
-  return (workspace) => {
-    const plugins = grants.get(workspace.cwd);
-    return plugins === undefined
-      ? { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } }
-      : { kind: "trusted", plugins: async () => plugins };
+  return (workspace) =>
+    grants.has(workspace.cwd)
+      ? {
+          kind: "trusted",
+          plugins: async () => grants.get(workspace.cwd) ?? [],
+          changes: (notify) => {
+            const listeners = grantListenersFor(grants, workspace.cwd);
+            listeners.add(notify);
+            return () => {
+              listeners.delete(notify);
+            };
+          },
+        }
+      : { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } };
+}
+
+/** Changes one directory's project plugins; every session open there reloads, no other does. */
+export function regrant(
+  grants: Map<string, readonly Plugin[]>,
+  cwd: string,
+  plugins: readonly Plugin[],
+): void {
+  grants.set(cwd, plugins);
+  for (const notify of grantListenersFor(grants, cwd)) notify();
+}
+
+/** Resolves once the session publishes an inventory `accept`s, counting from when `armed` resolves. */
+export function publication(
+  nyte: Nyte,
+  sessionId: SessionId,
+  accept: (plugins: readonly PluginInfo[]) => boolean,
+): { readonly armed: Promise<void>; readonly done: Promise<void> } {
+  const controller = new AbortController();
+  const armed = Promise.withResolvers<void>();
+  const done = (async () => {
+    try {
+      for await (const event of nyte.watch({ sessionId, live: true, signal: controller.signal })) {
+        if (event.kind === "synced") armed.resolve();
+        if (event.kind === "plugins_changed" && accept(event.plugins)) return;
+      }
+      throw new Error("watch ended before the inventory changed");
+    } finally {
+      controller.abort();
+    }
+  })();
+  return { armed: armed.promise, done };
+}
+
+/** A workspace whose plugins a test replaces, as a host does when a source changes. */
+export function reloadable(initial: readonly Plugin[]) {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  const trust: NonNullable<NyteOptions["trust"]> = () => ({
+    kind: "trusted",
+    plugins: async () => current,
+    changes: (notify) => {
+      listeners.add(notify);
+      return () => {
+        listeners.delete(notify);
+      };
+    },
+  });
+  return {
+    trust,
+    /** With a target, resolves once that session has published the new set. */
+    async set(plugins: readonly Plugin[], target?: { nyte: Nyte; sessionId: SessionId }) {
+      const expected = plugins
+        .map((plugin) => `${plugin.id}@${pluginSource(plugin)?.version ?? "inline"}`)
+        .join("\n");
+      const published =
+        target === undefined
+          ? undefined
+          : publication(
+              target.nyte,
+              target.sessionId,
+              (inventory) =>
+                inventory
+                  .filter((plugin) => plugins.some((item) => item.id === plugin.id))
+                  .map((plugin) => `${plugin.id}@${plugin.version}`)
+                  .join("\n") === expected,
+            );
+      if (published !== undefined) await within(published.armed);
+      current = plugins;
+      for (const notify of listeners) notify();
+      if (published !== undefined) await within(published.done, 5_000);
+    },
   };
 }
 

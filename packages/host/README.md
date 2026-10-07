@@ -120,14 +120,16 @@ position. Loose files and `plugins/tui/` are not plugin layouts.
 before activation. Versions hash content, including local helpers and unit data.
 Node and Bun use the shared source cache and watches with separate runtime loaders.
 Session and TUI entries activate separately. Workspace hosts rescan the session's
-frozen, trusted directory before each model response. After a tool writes a plugin,
-an otherwise-idle activation can use it on the next request without waiting for a
+frozen, trusted directory before each model response, and `createHost` watches the
+target's plugin directories so every session active there, and the prospective
+catalog, reloads when a source changes. After a tool writes a plugin, an
+otherwise-idle activation can use it on the next request without waiting for a
 filesystem event. Active callbacks or another head's parked calls keep publication
 queued; that activation continues using its previous catalog.
 
-A failed import, invalid manifest, or unreadable plugin directory aborts preparation
-without replacing the active snapshot. Automatic scans cache unchanged import
-failures. `PluginSources.invalidate()` retries them explicitly; the TUI's `/reload`
+A plugin whose import fails stays in the set as `failed` with its error, beside
+every plugin that loaded; an invalid manifest or unreadable plugin directory is
+reported the same way. Automatic scans cache unchanged import failures. `PluginSources.invalidate()` retries them explicitly; the TUI's `/reload`
 does this for both session and TUI entries. Context candidate names are watched in
 the global directory and every workspace ancestor. Context activation uses the same
 files whose contents were hashed.

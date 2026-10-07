@@ -11,7 +11,15 @@ import type { Nyte, NyteOptions } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { ToolWait, backgroundWait, type StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, localOptions, openStore, storePath, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  localOptions,
+  openStore,
+  reloadable,
+  storePath,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "advance-test",
@@ -381,6 +389,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
     }),
     { source: "inline", version: "new" },
   );
+  const source = reloadable([original]);
   const sdk = await open(
     scripted(async (_model, context) => {
       const tail = context.messages.findLast((item) => item.role !== "system");
@@ -390,7 +399,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
       await response.promise;
       return assistant("", { calls: [call("question", "ask")] });
     }),
-    { plugins: [original] },
+    { trust: source.trust },
   );
   const first = (await sdk.sessions.create()).sessionId;
   const second = (await sdk.sessions.create()).sessionId;
@@ -399,10 +408,13 @@ test("replacement preserves the offered tool and parked wake handler while anoth
     await sdk.advance({ sessionId: first });
     const answering = sdk.advance({ sessionId: first });
     await responding.promise;
-    assert.deepEqual(await within(sdk.setPlugins([replacement], { sessionId: first }), 1000), {
-      kind: "queued",
-    });
-    assert.equal((await sdk.plugins.list({ sessionId: first }))[0]?.version, "old");
+    // The change lands while the tool is offered, so the replacement waits for the call.
+    await source.set([replacement]);
+    assert.equal(
+      (await sdk.plugins.list({ sessionId: first })).find((plugin) => plugin.id === "catalog")
+        ?.version,
+      "old",
+    );
     await sdk.messages.send({ sessionId: second, content: "other" });
     await sdk.advance({ sessionId: second });
     assert.deepEqual(await within(sdk.advance({ sessionId: second }), 1000), { kind: "finished" });
@@ -411,7 +423,11 @@ test("replacement preserves the offered tool and parked wake handler while anoth
     assert.deepEqual(await sdk.advance({ sessionId: first }), { kind: "waiting" });
     assert.equal(executed, 1);
     assert.equal(oldSignal?.aborted, false);
-    assert.equal((await sdk.plugins.list({ sessionId: first }))[0]?.version, "old");
+    assert.equal(
+      (await sdk.plugins.list({ sessionId: first })).find((plugin) => plugin.id === "catalog")
+        ?.version,
+      "old",
+    );
     await sdk.plugins.settings.apply({ sessionId: first, id: "enabled", choiceId: "off" });
     await within(deferred.promise, 1000);
     assert.equal(resourceOpen, true);
@@ -428,7 +444,11 @@ test("replacement preserves the offered tool and parked wake handler while anoth
     await sdk.advance({ sessionId: first });
     assert.equal(woken, 1);
     await sdk.advance({ sessionId: first });
-    assert.equal((await sdk.plugins.list({ sessionId: first }))[0]?.version, "new");
+    assert.equal(
+      (await sdk.plugins.list({ sessionId: first })).find((plugin) => plugin.id === "catalog")
+        ?.version,
+      "new",
+    );
     assert.equal(resourceOpen, false);
     assert.equal(oldSignal?.aborted, true);
     const messages = await sdk.messages.list({ sessionId: first });
@@ -444,53 +464,8 @@ test("replacement preserves the offered tool and parked wake handler while anoth
   }
 });
 
-test("a global setup failure leaves every session's old plugins and the default catalog intact", async () => {
-  const original = withPluginSource(
-    definePlugin({
-      id: "catalog",
-      session(api) {
-        api.commands.add((draft) =>
-          draft.set("version", { description: "Version", run: () => "old" }),
-        );
-      },
-    }),
-    { source: "inline", version: "old" },
-  );
-  const sdk = await open(
-    scripted(() => assistant("unused")),
-    { plugins: [original] },
-  );
-  const first = (await sdk.sessions.create()).sessionId;
-  const second = (await sdk.sessions.create()).sessionId;
-  for (const sessionId of [first, second]) await sdk.plugins.list({ sessionId });
-  const replacement = withPluginSource(
-    definePlugin({
-      id: "catalog",
-      async session(api) {
-        const failing = (await api.session.info()).id === second;
-        api.commands.add((draft) => {
-          if (failing) throw new Error("cannot prepare second session");
-          draft.set("version", { description: "Version", run: () => "new" });
-        });
-      },
-    }),
-    { source: "inline", version: "new" },
-  );
-  const outcome = await sdk.setPlugins([replacement]);
-  assert.equal(outcome.kind, "rejected");
-  for (const sessionId of [first, second]) {
-    assert.deepEqual(await sdk.plugins.commands.run({ sessionId, name: "version" }), {
-      kind: "ran",
-      output: "old",
-    });
-    assert.equal((await sdk.plugins.list({ sessionId }))[0]?.version, "old");
-  }
-  assert.equal((await sdk.plugins.catalog()).plugins[0]?.version, "old");
-});
-
 test("replacement from a tool executing in the attached runner returns without waiting for itself and reaches the next response", async () => {
   const offered: string[][] = [];
-  let sdk: Nyte | undefined;
   const tool = (name: string, execute: () => Promise<void>): AgentTool => ({
     name,
     description: name,
@@ -513,20 +488,18 @@ test("replacement from a tool executing in the attached runner returns without w
       { source: "inline", version: tools.map((item) => item.name).join(",") },
     );
   const make = tool("make", async () => {
-    if (sdk === undefined) throw new Error("no host");
-    assert.deepEqual(
-      await sdk.setPlugins([toolsPlugin([make, tool("made", async () => undefined)])]),
-      { kind: "queued" },
-    );
+    // The sources change while this tool runs: the reload waits for the call, not the reverse.
+    await source.set([toolsPlugin([make, tool("made", async () => undefined)])]);
   });
-  sdk = await open(
+  const source = reloadable([toolsPlugin([make])]);
+  const sdk = await open(
     scripted((_model, context) => {
       offered.push(getCurrentTools(context.messages).map((item) => item.name));
       return offered.length === 1
         ? assistant("", { calls: [call("make-1", "make", {})] })
         : assistant("done");
     }),
-    { plugins: [toolsPlugin([make])] },
+    { trust: source.trust },
   );
   const { sessionId } = await sdk.sessions.create();
   sdk.attach();
@@ -637,44 +610,6 @@ test("a response source-preparation failure emits a diagnostic and uses the last
   assert.deepEqual(await sdk.advance({ sessionId }), { kind: "finished" });
   assert.equal(prompt, "last good");
   assert.equal((await within(diagnostic)).owner, "plugins");
-});
-
-test("global publication rejection keeps session boundaries independent and advances the prepared default", async () => {
-  const original = withPluginSource(
-    definePlugin({
-      id: "source",
-      session(api) {
-        api.prompt.add((draft) => draft.set("prompt", { text: "old" }));
-      },
-    }),
-    { source: "inline", version: "old" },
-  );
-  const sdk = await open(
-    scripted(() => assistant("unused")),
-    { plugins: [original] },
-  );
-  const first = (await sdk.sessions.create()).sessionId;
-  const second = (await sdk.sessions.create()).sessionId;
-  for (const sessionId of [first, second]) await sdk.plugins.list({ sessionId });
-  let invalid = false;
-  const replacement = withPluginSource(
-    definePlugin({
-      id: "source",
-      async session(api) {
-        const { id } = await api.session.info();
-        if (id === second) invalid = true;
-        api.prompt.add((draft) => {
-          if (id === first && invalid) throw new Error("first cannot publish");
-          draft.set("prompt", { text: "new" });
-        });
-      },
-    }),
-    { source: "inline", version: "new" },
-  );
-  assert.equal((await sdk.setPlugins([replacement])).kind, "rejected");
-  assert.equal((await sdk.plugins.list({ sessionId: first }))[0]?.version, "old");
-  assert.equal((await sdk.plugins.list({ sessionId: second }))[0]?.version, "new");
-  assert.equal((await sdk.plugins.catalog()).plugins[0]?.version, "new");
 });
 
 test("SDK close aborts plugin lifetime signals before draining a direct tool step", async () => {

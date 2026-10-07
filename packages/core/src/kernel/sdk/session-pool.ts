@@ -87,6 +87,10 @@ interface ActiveSessionActivation {
   readonly env: ExecutionEnv;
   /** The bootstrap plugins and the workspace's project plugins, loaded again. */
   readonly reload?: () => Promise<readonly Plugin[]>;
+  /** The same set as of the last change signal; loaded again only when one arrived since. */
+  readonly current?: () => Promise<readonly Plugin[]>;
+  /** Fires when the workspace's plugin sources may have changed. */
+  readonly changes?: (notify: () => void) => Disposer;
 }
 
 /** A plugin set the host could not bring up; the inventory names the plugin that stopped it. */
@@ -94,6 +98,8 @@ interface FailedSessionActivation {
   readonly kind: "failed";
   readonly error: string;
   readonly plugins: readonly PluginInfo[];
+  /** Fires when the sources that failed may have changed; the session tries again. */
+  readonly changes?: (notify: () => void) => Disposer;
 }
 
 type SessionActivation =
@@ -127,7 +133,10 @@ export interface Pooled {
   activation?: Activation;
   opening?: Promise<Activation | undefined>;
   relocating?: boolean;
-  scopedPlugins?: boolean;
+  /** Reloads of this session's plugins run one after another, so a slow load cannot land over a newer one. */
+  reloading?: Promise<void>;
+  /** Ends the wait for a source change that might recover a failed activation. */
+  recovery?: Disposer;
   jobs?: ReturnType<typeof createJobs>;
   /** Cancellation is terminal, so one completed interruption per pooled child covers every later request. */
   interrupting?: Promise<void>;
@@ -180,6 +189,10 @@ export function commandInfos(activation: Activation): CommandInfo[] {
   });
 }
 
+function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 function unavailable(
   workspace: Workspace,
   reason: "unsupported" | "unreachable",
@@ -221,9 +234,10 @@ export function createSessionPool(input: {
       `No plugin provides the "${options.defaultWorkspace.kind}" environment of the default workspace`,
     );
   const opened = new Map<string, Promise<SessionActivation>>();
-  let pluginsOverride: readonly Plugin[] | undefined;
 
   let catalogCache: Promise<PluginCatalog> | undefined;
+  let catalogWatch: Disposer | undefined;
+  const workspaceWatches = new Set<Disposer>();
   let closed = false;
   const alive = (): void => {
     if (closed) throw new NyteClosed();
@@ -313,6 +327,8 @@ export function createSessionPool(input: {
       await Promise.all([...pooled.runnerTasks].map((task) => task.catch(() => undefined)));
       await pooled.reconciliation;
       await pooled.opening?.catch(() => undefined);
+      pooled.recovery?.();
+      pooled.recovery = undefined;
       await pooled.activation?.close();
       await options.store.delete(id);
       await pooled.session.close();
@@ -644,13 +660,50 @@ export function createSessionPool(input: {
 
       if (load === undefined) return { kind: "active", plugins: options.plugins, env };
       const reload = async () => [...options.plugins, ...(await load(env))];
+      const changes = closed ? undefined : trust.changes;
+
+      if (changes === undefined) {
+        try {
+          return { kind: "active", plugins: await reload(), env, reload };
+        } catch (cause) {
+          return { kind: "failed", error: errorText(cause), plugins: [] };
+        }
+      }
+
+      // Every change advances the generation; a load is current while it matches the
+      // generation it started at, and a load in flight is shared by its readers.
+      let generation = 0;
+      let loadedAt = -1;
+      let plugins: readonly Plugin[] = [];
+      let loading: Promise<readonly Plugin[]> | undefined;
+      const unwatch = changes(() => {
+        generation += 1;
+      });
+      workspaceWatches.add(unwatch);
+      const current = (): Promise<readonly Plugin[]> => {
+        if (loadedAt === generation) return Promise.resolve(plugins);
+        loading ??= (async () => {
+          const at = generation;
+          const next = await reload();
+          plugins = next;
+          loadedAt = at;
+
+          return next;
+        })().finally(() => {
+          loading = undefined;
+        });
+
+        return loading;
+      };
 
       try {
-        return { kind: "active", plugins: await reload(), env, reload };
+        return { kind: "active", plugins: await current(), env, reload, current, changes };
       } catch (cause) {
-        const error = cause instanceof Error ? cause.message : String(cause);
+        // A failed open is forgotten; the session's own recovery watch opens it again.
+        unwatch();
+        workspaceWatches.delete(unwatch);
 
-        return { kind: "failed", error, plugins: [] };
+        return { kind: "failed", error: errorText(cause), plugins: [], changes };
       }
     })();
 
@@ -678,9 +731,13 @@ export function createSessionPool(input: {
           resolved.kind === "failed" ? { kind: "failed", error: resolved.error } : resolved,
         );
 
+      // The catalog follows the sources: the first read starts watching, a change drops the cache.
+      catalogWatch ??= resolved.changes?.(() => {
+        catalogCache = undefined;
+      });
       const outcome = await activate({
         target: { kind: "new-session" },
-        plugins: pluginsOverride ?? resolved.plugins,
+        plugins: await currentPlugins(resolved),
         env: resolved.env,
       });
 
@@ -723,10 +780,8 @@ export function createSessionPool(input: {
     if (
       pooled.activationState !== undefined &&
       !actsIn(pooled.activationState.resolvedFor, workspace)
-    ) {
+    )
       pooled.activationState = undefined;
-      pooled.scopedPlugins = true;
-    }
 
     if (pooled.activationState !== undefined) return pooled.activationState;
 
@@ -743,24 +798,11 @@ export function createSessionPool(input: {
 
       if (closed || pooled.retired) throw closed ? new NyteClosed() : new UnknownSession(id);
 
-      pooled.scopedPlugins =
-        pooled.scopedPlugins === true ||
-        (pooled.parent === undefined
-          ? !actsIn(workspace, options.defaultWorkspace)
-          : (await open(pooled.parent.sessionId)).scopedPlugins === true);
-
-      // A global plugin swap reaches the roots that act where new sessions start.
-      const state = {
-        ...(resolved.kind === "active" &&
-        pooled.parent === undefined &&
-        !pooled.scopedPlugins &&
-        pluginsOverride !== undefined
-          ? { ...resolved, plugins: pluginsOverride }
-          : resolved),
-        resolvedFor: workspace,
-      };
+      const state = { ...resolved, resolvedFor: workspace };
 
       pooled.activationState = state;
+
+      if (state.kind === "failed") recoverOnChange(id, pooled, state.changes);
       await dispatchNotice(pooled, {
         kind: "activation_changed",
         activation: clientActivation(state),
@@ -775,6 +817,137 @@ export function createSessionPool(input: {
 
     return resolving;
   }
+
+  /** The workspace's plugins as its sources are now, not as they were when it opened. */
+  const currentPlugins = (state: ActiveSessionActivation): Promise<readonly Plugin[]> =>
+    state.current === undefined ? Promise.resolve(state.plugins) : state.current();
+
+  /**
+   * Loads the workspace's plugins again and hands them to the session's live
+   * activation; `false` when the workspace has no loader for this activation.
+   */
+  const reloadPlugins = (
+    id: SessionId,
+    pooled: Pooled,
+    activation: Activation,
+    signal?: AbortSignal,
+  ): Promise<boolean> => {
+    const run = (pooled.reloading ?? Promise.resolve()).then(async () => {
+      const state = pooled.activationState;
+
+      if (
+        state?.kind !== "active" ||
+        state.reload === undefined ||
+        !actsIn(state.env, activation.env)
+      )
+        return false;
+      const plugins = await state.reload();
+      signal?.throwIfAborted();
+
+      if (closed || pooled.retired || pooled.activation !== activation) return false;
+      await activation.setPlugins(hooks.pluginsFor({ id, pooled, plugins }), () => {
+        if (pooled.activationState?.kind === "active")
+          pooled.activationState = { ...pooled.activationState, plugins };
+      });
+
+      return true;
+    });
+    pooled.reloading = run.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return run;
+  };
+
+  /** A failed answer waits for its sources to change, then the session resolves again. */
+  const recoverOnChange = (
+    id: SessionId,
+    pooled: Pooled,
+    changes: FailedSessionActivation["changes"],
+  ): void => {
+    pooled.recovery?.();
+    pooled.recovery = undefined;
+
+    if (changes === undefined || closed) return;
+    const stop = changes(() => {
+      if (pooled.recovery !== stop) return;
+      stop();
+      pooled.recovery = undefined;
+
+      if (closed || pooled.retired || pooled.activationState?.kind !== "failed") return;
+      pooled.activationState = undefined;
+      void activationFor(id, pooled).catch(() => undefined);
+    });
+    pooled.recovery = stop;
+  };
+
+  /**
+   * A source watch for an activation about to be built: it listens from now,
+   * so a change that lands while plugins instantiate reaches the activation
+   * once `attach` hands it over; closing the activation ends the watch.
+   */
+  const watching = (
+    id: SessionId,
+    pooled: Pooled,
+    changes: ActiveSessionActivation["changes"],
+  ):
+    | {
+        readonly stop: Disposer;
+        /** Wraps the built activation; `start` once it is the session's, so a replay reaches it. */
+        readonly attach: (activation: Activation) => Activation;
+        readonly start: () => void;
+      }
+    | undefined => {
+    if (changes === undefined) return undefined;
+    let watched: Activation | undefined;
+    let started = false;
+    let pending = false;
+    let stopped = false;
+    const reload = (): void => {
+      const target = watched;
+
+      if (target === undefined) return;
+      void reloadPlugins(id, pooled, target).catch((cause: unknown) =>
+        dispatchNotice(pooled, {
+          kind: "diagnostic",
+          owner: "plugins",
+          level: "error",
+          message: errorText(cause),
+        }).catch(() => undefined),
+      );
+    };
+    const unwatch = changes(() => {
+      if (started) reload();
+      else pending = true;
+    });
+    const stop = (): void => {
+      if (stopped) return;
+      stopped = true;
+      unwatch();
+    };
+
+    return {
+      stop,
+      attach: (activation) => {
+        watched = {
+          ...activation,
+          close: () => {
+            stop();
+
+            return activation.close();
+          },
+        };
+
+        return watched;
+      },
+      start: () => {
+        started = true;
+
+        if (pending) reload();
+      },
+    };
+  };
 
   const activationFor = async (id: SessionId, pooled: Pooled): Promise<Activation | undefined> => {
     if (closed) throw new NyteClosed();
@@ -803,19 +976,34 @@ export function createSessionPool(input: {
 
       if (resolved.kind !== "active") return undefined;
 
-      const outcome = await activate({
-        target: { kind: "session", session: pooled.session },
-        plugins: hooks.pluginsFor({ id, pooled, plugins: resolved.plugins }),
-        env: resolved.env,
-      });
+      // Listen first, then load: a change during the load is replayed once the activation exists.
+      const watch = watching(id, pooled, resolved.changes);
+      const outcome = await currentPlugins(resolved)
+        .then(
+          (plugins) =>
+            activate({
+              target: { kind: "session", session: pooled.session },
+              plugins: hooks.pluginsFor({ id, pooled, plugins }),
+              env: resolved.env,
+              onNotice: (notice) => dispatchNotice(pooled, notice),
+            }),
+          (cause: unknown) => ({ kind: "failed" as const, error: errorText(cause), plugins: [] }),
+        )
+        .catch((cause: unknown) => {
+          watch?.stop();
+          throw cause;
+        });
 
       if (closed || pooled.retired) {
+        watch?.stop();
         if (outcome.kind === "active") await outcome.activation.close();
         throw closed ? new NyteClosed() : new UnknownSession(id);
       }
 
       if (outcome.kind === "failed") {
+        watch?.stop();
         pooled.activationState = { ...outcome, resolvedFor: resolved.resolvedFor };
+        recoverOnChange(id, pooled, resolved.changes);
         await dispatchNotice(pooled, {
           kind: "activation_changed",
           activation: clientActivation(outcome),
@@ -826,17 +1014,10 @@ export function createSessionPool(input: {
       }
 
       const built = outcome.activation;
-      built.subscribe((notice) => dispatchNotice(pooled, notice));
-      pooled.activation = built;
-      // Activation's first inventory notice fires before activate() returns.
-      // Relay the resulting inventory to watches that were already open.
-      const plugins = built.plugins.list();
+      pooled.activation = watch === undefined ? built : watch.attach(built);
+      watch?.start();
 
-      if (plugins.length > 0) {
-        await dispatchNotice(pooled, { kind: "plugins_changed", plugins });
-      }
-
-      return built;
+      return pooled.activation;
     })().finally(() => {
       if (pooled.opening === opening) pooled.opening = undefined;
     });
@@ -846,11 +1027,35 @@ export function createSessionPool(input: {
     return opening;
   };
 
+  const lanes = new Map<SessionId, Promise<void>>();
+
+  /**
+   * Runs a session's input writes one at a time, in call order. The caller
+   * enters synchronously, before its first await, so a setting applied before
+   * a send is stored before that send lands. Never enter from inside a lane.
+   */
+  const inOrder = <T>(id: SessionId, operation: () => Promise<T>): Promise<T> => {
+    const result = (lanes.get(id) ?? Promise.resolve()).then(operation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    lanes.set(id, tail);
+
+    void tail.then(() => {
+      if (lanes.get(id) === tail) lanes.delete(id);
+    });
+
+    return result;
+  };
+
   return {
     get closed(): boolean {
       return closed;
     },
     alive,
+    inOrder,
     /** Refuse new work; the caller drains what is pooled and then calls `clear`. */
     markClosed(): void {
       closed = true;
@@ -859,6 +1064,14 @@ export function createSessionPool(input: {
     /** The pooled handle without opening the store; `undefined` for a session nobody opened. */
     peek: (id: SessionId): Pooled | undefined => pool.get(id),
     clear: (): void => {
+      catalogWatch?.();
+      catalogWatch = undefined;
+      for (const unwatch of workspaceWatches) unwatch();
+      workspaceWatches.clear();
+      for (const [, pooled] of pool) {
+        pooled.recovery?.();
+        pooled.recovery = undefined;
+      }
       pool.clear();
     },
     adopt,
@@ -884,6 +1097,7 @@ export function createSessionPool(input: {
     subscribeNotices,
     resolveSessionActivation,
     activationFor,
+    watching,
     catalogForNewSession,
     /** Where a new session would start, once its workspace opens; nothing is created or activated. */
     async cwdForNewSession(): Promise<string | undefined> {
@@ -891,11 +1105,8 @@ export function createSessionPool(input: {
 
       return resolved.kind === "active" ? resolved.env.cwd : undefined;
     },
-    /** A global plugin swap replaces the host's answer for every unscoped session and the catalog. */
-    setPluginsOverride(plugins: readonly Plugin[]): void {
-      pluginsOverride = plugins;
-      catalogCache = undefined;
-    },
+    reloadPlugins,
+    currentPlugins,
     resetCatalog(): void {
       catalogCache = undefined;
     },

@@ -15,8 +15,7 @@ import { join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte, dispatch } from "@nyte-ai/core";
-import { createLocalExecutionEnv, localEnvironmentPlugin } from "@nyte-ai/core/plugins";
-import { watchPluginDirectories } from "@nyte-ai/host/plugins";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import type { PluginFailure } from "@nyte-ai/host/plugins";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Environment, OperationInput } from "@nyte-ai/protocol";
@@ -33,6 +32,7 @@ import type {
   WorkspaceTrust,
 } from "@nyte-ai/core";
 import { createNyteClient, sessionMark } from "@nyte-ai/client";
+import { createCloudSession, serverRequest } from "./cloud-session.ts";
 import type { NyteClient } from "@nyte-ai/client";
 // Hosts name their storage backend through the store entry; the worker keeps
 // SQLite off Electron's main thread.
@@ -46,19 +46,12 @@ import {
   createWorkspaceStore,
   environmentId,
   nyteHome,
-  pluginWatchTargets,
-  resolveHostPlugins,
   userPluginDirectory,
   runGitHubCommand,
   workspaceStorePath,
   WorkspaceTrustRequired,
 } from "@nyte-ai/host";
-import type {
-  DeferredPluginTarget,
-  GitHubCommandResult,
-  GitHubCommandRunner,
-  PluginTarget,
-} from "@nyte-ai/host";
+import type { DeferredPluginTarget, GitHubCommandResult, GitHubCommandRunner } from "@nyte-ai/host";
 import { createModelPreferencesStore, readCatalog } from "@nyte-ai/host/catalog";
 import type { ResolvedCatalog } from "@nyte-ai/host/catalog";
 import { createProviderEnvironment } from "@nyte-ai/host/environment";
@@ -218,8 +211,6 @@ interface OpenTargetBase {
   readonly workspaceBackend: WorkspaceBackend;
   readonly store: Store;
   readonly sessionAttachments: Map<SessionId, SessionAttachment>;
-  /** Stops watching the plugin sources this target resolves from. */
-  readonly stopPluginWatch: Disposer;
 }
 
 interface OpenHomeTarget extends OpenTargetBase {
@@ -265,15 +256,7 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
     sdk: createNyteClient({
       baseUrl: settings.baseUrl,
       token: settings.token,
-      fetch: (input, init) => {
-        // Watches stay open; finite reads and writes must not leave the desktop waiting forever.
-        if (new Headers(init?.headers).get("accept") === "text/event-stream")
-          return fetch(input, init);
-        const timeout = AbortSignal.timeout(15_000);
-        const signal = init?.signal == null ? timeout : AbortSignal.any([init.signal, timeout]);
-
-        return fetch(input, { ...init, signal });
-      },
+      fetch: serverRequest,
     }),
   };
 }
@@ -626,7 +609,7 @@ export class DesktopHost {
 
         if (server === undefined)
           throw new ExpectedHostError({ code: "not_found", message: "No server is connected" });
-        const session = await server.sdk.sessions.create({});
+        const session = await createCloudSession(server.sdk.sessions);
         this.sessionOwners.set(session.sessionId, server);
         this.directory.upsert(CLOUD_SOURCE, session);
 
@@ -765,6 +748,10 @@ export class DesktopHost {
         return this.dependencies.browser.find(CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.browser.cancelDownload":
         this.dependencies.browser.cancelDownload(CALL_INPUT_SCHEMAS[path].Parse(input));
+
+        return undefined;
+      case "host.browser.login":
+        this.dependencies.browser.login(CALL_INPUT_SCHEMAS[path].Parse(input));
 
         return undefined;
       case "host.terminal.create": {
@@ -1692,7 +1679,6 @@ export class DesktopHost {
     };
 
     let sdk: Nyte | undefined;
-    let stopPluginWatch: Disposer | undefined;
 
     try {
       await store.ready();
@@ -1716,35 +1702,6 @@ export class DesktopHost {
               : `Plugin "${failure.id}" couldn't load: ${failure.error}`,
         });
 
-      // Plugin sources are only read once the workspace is trusted, so the watch starts with the
-      // first resolution that reads them and re-resolves on every later change to the same sources.
-      const watchPluginSources = (resolved: PluginTarget): void => {
-        const host = sdk;
-
-        if (host === undefined || stopPluginWatch !== undefined) return;
-        stopPluginWatch = watchPluginDirectories({
-          directories: pluginWatchTargets(resolved),
-          onChange: async () => {
-            const reloaded = await resolveHostPlugins(resolved, {
-              models,
-              model: fallback,
-              extra: extraPlugins,
-              codemode,
-              env: createLocalExecutionEnv({ id: await environmentId(), cwd }),
-            });
-
-            const replacement = await host.setPlugins(reloaded.plugins);
-
-            if (replacement.kind === "rejected") throw new Error(replacement.error);
-          },
-          onError: (error) =>
-            this.dependencies.emitHostEvent({
-              kind: "status",
-              message: `Plugins couldn't reload: ${error.message}`,
-            }),
-        });
-      };
-
       sdk = await (this.dependencies.createHost ?? createHost)({
         store,
         models,
@@ -1764,10 +1721,8 @@ export class DesktopHost {
             resolve: async () => {
               const resolved = await this.pluginTarget(target);
 
-              if (resolved.kind === "home" || resolved.kind === "project") {
+              if (resolved.kind === "home" || resolved.kind === "project")
                 await ensureShellEnvironment();
-                watchPluginSources(resolved);
-              }
 
               return resolved;
             },
@@ -1783,7 +1738,6 @@ export class DesktopHost {
         workspaceBackend: configuredWorkspaceBackend,
         store,
         sessionAttachments: new Map<SessionId, SessionAttachment>(),
-        stopPluginWatch: () => stopPluginWatch?.(),
       };
 
       if (target.kind === "home") {
@@ -1800,7 +1754,6 @@ export class DesktopHost {
 
       return open;
     } catch (error) {
-      stopPluginWatch?.();
       await sdk?.close().catch(() => undefined);
       await store.close().catch(() => undefined);
       throw error;
@@ -1863,7 +1816,6 @@ export class DesktopHost {
       this.tracked.delete(sessionId);
     }
 
-    open.stopPluginWatch();
     await open.sdk.close().catch(() => undefined);
     await open.store.close().catch(() => undefined);
   }
@@ -2854,7 +2806,6 @@ export class DesktopHost {
       sessionCwd: (input) => sdk(input.sessionId).sessionCwd(input),
       sessionWorkspace: (input) => sdk(input.sessionId).sessionWorkspace(input),
       relocate: (input) => sdk(input.sessionId).relocate(input),
-      setPlugins: (plugins, input) => sdk(input?.sessionId).setPlugins(plugins, input),
       close: () => cursor.open.sdk.close(),
     };
   }
@@ -3307,8 +3258,6 @@ export class DesktopHost {
     this.closedDirectories.clear();
 
     for (const open of this.openTargets.values()) {
-      open.stopPluginWatch();
-
       for (const attachment of open.sessionAttachments.values()) attachment.detach();
       open.sessionAttachments.clear();
       await open.sdk.close().catch(() => undefined);

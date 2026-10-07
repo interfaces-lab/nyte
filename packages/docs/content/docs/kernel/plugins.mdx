@@ -70,13 +70,13 @@ Plugins load per session. Each registers tools, hooks and commands into its own 
   ]}
 />
 
-Hooks run in plugin order. `before_tool` policies chain: `modify` hands new arguments to the next policy, `continue` objects to nothing, and the first `reject` or `error` ends the chain. A reload loads the new scope before it disposes the old one, so policy hooks never lapse. A set whose contributions cannot materialize together is rejected whole, and the old set stays. `setPlugins` answers `queued` while the session has an offered response, a run in `tools` or `waiting`, or a running command or listener, and the set publishes once they finish. File plugin ids are lowercase letters, digits and hyphens, and `subagents` and `jobs` are reserved.
+Hooks run in plugin order. `before_tool` policies chain: `modify` hands new arguments to the next policy, `continue` objects to nothing, and the first `reject` or `error` ends the chain. A reload loads the new scope before it disposes the old one, so policy hooks never lapse. A set whose contributions cannot materialize together is rejected whole, and the old set stays. A reload is queued while the session has an offered response, a run in `tools` or `waiting`, or a running command or listener, and the set publishes once they finish. File plugin ids are lowercase letters, digits and hyphens, and `subagents` and `jobs` are reserved.
 
 ## Where plugins come from
 
 A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Hosts built with `createHost` choose these through `plugins.kind`: `chat`, `workspace`, or `custom`.
 
 - **Trust.** The host's `trust` answer decides each workspace once, when it opens: `trusted`, `inactive`, or `requires`. Only a trusted workspace reaches its provider. Without a `trust` function, only `defaultWorkspace` is trusted.
-- **Project plugins.** Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins. It runs again before each response. Project plugins can wrap an environment but cannot provide one.
+- **Project plugins.** Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins. It runs again before each response, and for every session in the workspace when the answer's `changes` signal fires; a failed reload is a `plugins` diagnostic on that session. Project plugins can wrap an environment but cannot provide one.
 - **Failures.** A file plugin that does not load stays in the set as `failed`, with its error and path, beside the built-ins and every plugin that did load.
-- **Catalog.** `plugins.catalog` lists what a new session would get. While the default workspace is not active it rejects with `WorkspaceNotActive`, not an empty list.
+- **Catalog.** `plugins.catalog` lists what a new session would get, following the same `changes` signal. While the default workspace is not active it rejects with `WorkspaceNotActive`, not an empty list.

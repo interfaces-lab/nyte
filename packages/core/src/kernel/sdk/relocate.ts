@@ -145,14 +145,27 @@ export function createRelocation(input: {
 
         for (const [, entry] of related) await runners.stopRunner(entry);
 
-        const outcome = await activate({
-          target: { kind: "session", session: pooled.session },
-          plugins: pluginsFor({ id, pooled, plugins: destination.plugins }),
-          env: destination.env,
-        });
+        const watch = pool.watching(id, pooled, destination.changes);
+        const outcome = await pool
+          .currentPlugins(destination)
+          .then((plugins) =>
+            activate({
+              target: { kind: "session", session: pooled.session },
+              plugins: pluginsFor({ id, pooled, plugins }),
+              env: destination.env,
+            }),
+          )
+          .catch((cause: unknown) => {
+            watch?.stop();
+            throw cause;
+          });
 
-        if (outcome.kind === "failed") return { kind: "failed", error: outcome.error };
-        const next = outcome.activation;
+        if (outcome.kind === "failed") {
+          watch?.stop();
+
+          return { kind: "failed", error: outcome.error };
+        }
+        const next = watch === undefined ? outcome.activation : watch.attach(outcome.activation);
 
         try {
           signal.throwIfAborted();
@@ -181,8 +194,8 @@ export function createRelocation(input: {
 
         const previous = pooled.activation;
         pooled.activationState = { ...destination, resolvedFor: input.workspace };
-        pooled.scopedPlugins = true;
         pooled.activation = next;
+        watch?.start();
         next.subscribe((notice) => pool.dispatchNotice(pooled, notice));
         await previous
           ?.close()

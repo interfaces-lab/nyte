@@ -94,6 +94,25 @@ async function currentCoreOpen(
 }
 
 /**
+ * Public sdk/types.ts:589 WorkspaceTrust; the host's answer per workspace, asked once per open.
+ * Sessions own their plugin reload: the answer's loader runs before every response and, when
+ * `changes` fires, for every session active in the workspace and the prospective catalog.
+ * There is no host-driven reload call. Reloads of one session land in order; a change that
+ * arrives while a session activates is replayed once it is up.
+ */
+function currentCoreTrust(): NyteOptions["trust"] {
+  return (workspace) =>
+    workspace.cwd === grantedCwd
+      ? {
+          kind: "trusted",
+          plugins: async (env) => projectPlugins(env), // Optional; may wrap env, never provide one. Throw → session failed; fixed sources recover it on the next change.
+          changes: (notify) => watchSources(notify), // Optional; D. Sync notify is fine; one listener per active session plus the catalog.
+        }
+      : { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } }; // or { kind: "inactive" }.
+  // A failed reload is a `plugins` diagnostic on that session; a reload during an active call is queued until it ends.
+}
+
+/**
  * Public sdk/types.ts:195; protocol/sdk.ts:115; all methods A, nonfluent.
  */
 async function currentCoreSessions(sdk: Nyte, id: SessionId) {
@@ -318,8 +337,6 @@ async function currentCoreRoots(sdk: Nyte, id: SessionId) {
       const sessionCwdResult = await sdk.sessionCwd({ sessionId: id }); // Promise<string|undefined>.
       const sessionWorkspaceResult = await sdk.sessionWorkspace({ sessionId: id }); // Promise<Workspace>.
       const relocateResult = await sdk.relocate({ sessionId: id, workspace: otherWorkspace });
-      const setPluginsResult = await sdk.setPlugins(replacementPlugins);
-      const setPluginsResult2 = await sdk.setPlugins(replacementPlugins, { sessionId: id });
       await sdk.reactivate();
       const cacheWarmingValue = sdk.cacheWarming.status({ sessionId: id });
       sdk.cacheWarming.modeChanged();
@@ -675,16 +692,19 @@ async function currentHostOpeners() {
       target: workspacePluginTarget,
       extra: extraPlugins,
       sources,
-      onFailure,
+      onFailure, // Source read failures, reported once per change; a set that cannot activate is a session diagnostic.
     },
     workspace: createWorkspaceBackend(workspaces),
     environments: environmentPlugins,
   });
+  // The host watches the target's plugin directories itself (trust.changes); sessions reload
+  // on change and before each response. Hosts never push a plugin set. TUI /reload is
+  // sources.invalidate() + notifyPluginSources().
   try {
     const createResult2 = await workspaceHost.sessions.create();
   } finally {
     await workspaceHost.close();
-  } // store/models still caller-owned.
+  } // store/models still caller-owned; closing ends every source watch.
   const modelResult = await resolveModel(models, `${providerId}/${modelId}`);
   // Deferred target exact shape below; resolve must produce PluginTarget or blocked trust.
   const options = { kind: "deferred", cwd, resolve: resolveDeferredTarget };
@@ -841,8 +861,8 @@ async function currentHostPluginSources() {
       sources,
       extra: plugins,
     });
-    const stopDirectories = watchPluginDirectories(watchOptions); // S→D.
-    notifyPluginSources();
+    const stopDirectories = watchPluginDirectories(watchOptions); // S→D; createHost wires this behind trust.changes, a custom host does so itself.
+    notifyPluginSources(); // S; fires every directory watch, as the TUI's /reload does.
     stopDirectories();
     const samePluginSourcesResult = samePluginSources(previousPlugins, nextPlugins);
     const sourced = withPluginSource(plugin, { source: "builtin", version: "demo" }); // S same object.
@@ -1768,7 +1788,7 @@ function currentExportAndNegativeIndex() {
       "runs.wait/compact/context",
       "heads.list/create/delete/merge",
       "cacheWarming",
-      "attach/advance/reactivate/sessionCwd/sessionWorkspace/relocate/setPlugins/close",
+      "attach/advance/reactivate/sessionCwd/sessionWorkspace/relocate/close",
       "raw store/history/retained tree/GC",
       "core sessions.create.workspace",
       "full Models auth/streaming",

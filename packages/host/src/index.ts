@@ -18,10 +18,11 @@ import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
 import type { Api, Model } from "@nyte-ai/schema";
 import { createModelCatalog, createModelPreferencesStore } from "./catalog.ts";
 import { environmentId } from "./environment-id.ts";
-import { nyteHome } from "./paths.ts";
+import { nyteHome, pluginWatchTargets } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 import { resolveHostPlugins, samePluginSources } from "./plugins.ts";
 import type { PluginFailure, PluginSources } from "./plugins.ts";
+import { watchPluginDirectories } from "./plugins/watch.ts";
 import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
 import { decodeHostSettings, readSettingsFileSync } from "./settings/index.ts";
@@ -191,10 +192,6 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
       trust,
     });
 
-    const setPlugins = sdk.setPlugins.bind(sdk);
-    sdk.setPlugins = (next, target) =>
-      setPlugins([local, ...environments, ...providers.wrap(next)], target);
-
     return sdk;
   };
 
@@ -238,9 +235,29 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
       const trusted = (resolved: PluginTarget): WorkspaceTrust => {
         let snapshot: readonly Plugin[] | undefined;
         let reported: string[] = [];
+        const listeners = new Set<() => void>();
+        let stopWatch: (() => void) | undefined;
 
         return {
           kind: "trusted",
+          // One watch per target, alive while any session listens.
+          changes: (notify) => {
+            listeners.add(notify);
+            stopWatch ??= watchPluginDirectories({
+              directories: pluginWatchTargets(resolved),
+              onChange: () => {
+                for (const listener of listeners) listener();
+              },
+            });
+
+            return () => {
+              listeners.delete(notify);
+
+              if (listeners.size > 0) return;
+              stopWatch?.();
+              stopWatch = undefined;
+            };
+          },
           plugins: async (env) => {
             const next = await resolveHostPlugins(resolved, {
               models,
