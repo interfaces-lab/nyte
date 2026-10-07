@@ -46,7 +46,7 @@ import type { WorkerdBroker } from "../../../connect-worker/test/workerd.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 import type { ConnectConfig } from "./connect-config.ts";
-import { ConnectRuntime } from "./connect-runtime.ts";
+import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { DesktopHost } from "./host.ts";
 
 const OWNER = "user_interop";

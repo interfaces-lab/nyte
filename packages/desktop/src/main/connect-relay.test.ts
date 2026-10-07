@@ -19,8 +19,8 @@ import {
   encodeChunks,
 } from "@nyte-ai/connect/relay";
 import { randomId } from "@nyte-ai/connect/signing";
-import { RelayConnection } from "./connect-relay.ts";
-import type { RelayConnectionOptions, RelayTiming } from "./connect-relay.ts";
+import { RelayConnection } from "@nyte-ai/connect/host";
+import type { RelayConnectionOptions, RelayTiming } from "@nyte-ai/connect/host";
 import { RelayServer } from "./fixtures/relay-server.ts";
 
 const ORIGIN = "https://relay.nyte.test";

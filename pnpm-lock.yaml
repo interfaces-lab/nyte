@@ -444,6 +444,12 @@ importers:
       '@nyte-ai/client':
         specifier: workspace:*
         version: link:../client
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@nyte-ai/server':
+        specifier: workspace:*
+        version: link:../server
       jose:
         specifier: 6.2.12
         version: 6.2.12
@@ -1420,6 +1426,9 @@ importers:
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
+      '@nyte-ai/serve':
+        specifier: workspace:*
+        version: link:../serve
       '@nyte-ai/telemetry':
         specifier: workspace:*
         version: link:../telemetry

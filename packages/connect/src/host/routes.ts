@@ -11,8 +11,8 @@
  */
 import { createHash } from "node:crypto";
 import { Value } from "typebox/value";
-import { DESKTOP_ROUTES, EnrollEnvelope } from "@nyte-ai/connect";
-import type { ErrorCode } from "@nyte-ai/connect";
+import { DESKTOP_ROUTES, EnrollEnvelope } from "../index.ts";
+import type { ErrorCode } from "../index.ts";
 
 /** Larger than an envelope can be: a compact JWS is at most 8 KiB. */
 const BODY_LIMIT_BYTES = 16_384;

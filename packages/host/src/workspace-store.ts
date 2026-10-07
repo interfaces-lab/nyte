@@ -92,6 +92,15 @@ function trusted(cwd: string, projectInput: boolean): TrustedWorkspace {
   return Object.freeze({ cwd, projectInput, [TRUSTED_WORKSPACE]: true as const });
 }
 
+/**
+ * The decision of a store that keeps its own grant rows: the host profile
+ * registry. `cwd` is already canonical and the caller has applied the trust
+ * rule; this only brands the outcome.
+ */
+export function decidedWorkspace(cwd: string, projectInput: boolean): TrustedWorkspace {
+  return trusted(cwd, projectInput);
+}
+
 async function workspaceDirectory(cwd: string): Promise<string> {
   const path = resolve(cwd);
 

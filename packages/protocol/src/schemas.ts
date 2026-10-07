@@ -1277,6 +1277,7 @@ export const WorkspaceTarget = typed<WorkspaceTargetType>()(
   Type.Union([
     strict({ kind: Type.Literal("workspace") }),
     strict({ kind: Type.Literal("session"), sessionId: SessionId }),
+    strict({ kind: Type.Literal("registered"), id: NonEmptyString }),
   ]),
 );
 

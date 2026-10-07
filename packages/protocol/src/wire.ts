@@ -27,6 +27,14 @@ export const WIRE_VERSION = 1;
 
 export const INFO_ROUTE = "/v1/info";
 
+/** `GET /v1/identity?nonce=…`: the host signs the caller's nonce with its profile key. */
+export const IDENTITY_ROUTE = "/v1/identity";
+
+export const IDENTITY_QUERY = { nonce: "nonce" } as const;
+
+/** base64url, 16 to 64 bytes: long enough that a replayed answer never matches a fresh ask. */
+export const IDENTITY_NONCE_PATTERN = "^[A-Za-z0-9_-]{22,86}$";
+
 export const CALL_ROUTE_PREFIX = "/v1/call/";
 
 export const WATCH_ROUTE = "/v1/watch";
@@ -62,9 +70,76 @@ export interface ServerInfo {
    * level because released clients reject unknown keys under `host`.
    */
   readonly environment?: true;
+  /**
+   * A host with a stable profile identity names it here. Display and
+   * discovery only: the binding a client trusts is the signed answer on
+   * `IDENTITY_ROUTE`, verified against the key it pinned when it paired.
+   */
+  readonly identity?: HostIdentity;
+  /**
+   * How this host targets workspaces. `registry`: roots start through
+   * `environment.start` with a registered workspace id, and the shared
+   * `workspace.select` cursor is refused. Absent: the cursor host of today.
+   */
+  readonly workspaces?: { readonly kind: "registry" };
   readonly host:
     | { readonly kind: "unspecified" }
     | ({ readonly kind: "described" } & ServerDescription);
+}
+
+/** An Ed25519 public key as a JWK; `hostId` is its RFC 7638 thumbprint. */
+export interface HostIdentity {
+  readonly hostId: string;
+  readonly publicKey: { readonly kty: "OKP"; readonly crv: "Ed25519"; readonly x: string };
+}
+
+const hostIdentityProperties = {
+  hostId: Type.String({ minLength: 1 }),
+  publicKey: Type.Object(
+    {
+      kty: Type.Literal("OKP"),
+      crv: Type.Literal("Ed25519"),
+      x: Type.String({ pattern: "^[A-Za-z0-9_-]{43}$" }),
+    },
+    { additionalProperties: false },
+  ),
+};
+
+export const HostIdentitySchema = typed<HostIdentity>()(
+  Type.Object(hostIdentityProperties, { additionalProperties: false }),
+);
+
+/**
+ * The answer on `IDENTITY_ROUTE`: the identity, the caller's nonce, the
+ * process epoch, and an Ed25519 signature over `identityChallengeMessage`.
+ */
+export interface IdentityChallenge extends HostIdentity {
+  readonly nonce: string;
+  /** Epoch milliseconds the host process started; a restart is visible without a new key. */
+  readonly epoch: number;
+  /** base64url Ed25519 signature. */
+  readonly signature: string;
+}
+
+export const IdentityChallengeSchema = typed<IdentityChallenge>()(
+  Type.Object(
+    {
+      ...hostIdentityProperties,
+      nonce: Type.String({ pattern: IDENTITY_NONCE_PATTERN }),
+      epoch: Type.Integer({ minimum: 0 }),
+      signature: Type.String({ pattern: "^[A-Za-z0-9_-]{86}$" }),
+    },
+    { additionalProperties: false },
+  ),
+);
+
+/** The bytes a host signs and a client verifies; both sides derive it, so neither trusts the other's framing. */
+export function identityChallengeMessage(input: {
+  readonly hostId: string;
+  readonly nonce: string;
+  readonly epoch: number;
+}): string {
+  return `nyte-host-identity\n${input.hostId}\n${input.nonce}\n${String(input.epoch)}`;
 }
 
 export const ServerInfoSchema = typed<ServerInfo>()(
@@ -72,6 +147,10 @@ export const ServerInfoSchema = typed<ServerInfo>()(
     version: Type.String(),
     wireVersion: Type.Literal(WIRE_VERSION),
     environment: Type.Optional(Type.Literal(true)),
+    identity: Type.Optional(HostIdentitySchema),
+    workspaces: Type.Optional(
+      Type.Object({ kind: Type.Literal("registry") }, { additionalProperties: false }),
+    ),
     host: Type.Union([
       Type.Object({ kind: Type.Literal("unspecified") }),
       Type.Object(

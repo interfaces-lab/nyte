@@ -48,7 +48,7 @@ import { registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
-import { ConnectRuntime } from "./connect-runtime.ts";
+import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";

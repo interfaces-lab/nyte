@@ -20,6 +20,7 @@
     "./catalog": "./src/catalog.ts",
     "./environment": "./src/environment.ts",
     "./plugins": "./src/plugins.ts",
+    "./runtime": "./src/runtime/index.ts",
     "./settings": "./src/settings/index.ts",
     "./otel": "./src/otel.ts",
     "./store-usage": "./src/store-usage.ts",

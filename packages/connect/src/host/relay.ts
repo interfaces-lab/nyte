@@ -29,9 +29,9 @@ import {
   hasNullBody,
   parseRelayFrame,
   relayResponseHeaders,
-} from "@nyte-ai/connect/relay";
-import type { DesktopFrame, RelayFrame, RelayMethod } from "@nyte-ai/connect/relay";
-import type { ConnectRelay } from "@nyte-ai/app/bridge.ts";
+} from "../relay.ts";
+import type { DesktopFrame, RelayFrame, RelayMethod } from "../relay.ts";
+import type { ConnectRelay } from "../view.ts";
 
 export interface RelayTiming {
   /** Ping interval; a ping still unanswered at the next one closes the socket. */

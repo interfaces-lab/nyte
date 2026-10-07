@@ -57,9 +57,9 @@ import { AccountCancelled } from "./account-session.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
-import { connectRouteHandler } from "./connect-routes.ts";
-import { ConnectRuntime } from "./connect-runtime.ts";
-import type { ConnectTiming } from "./connect-runtime.ts";
+import { connectRouteHandler } from "@nyte-ai/connect/host";
+import { ConnectRuntime } from "@nyte-ai/connect/host";
+import type { ConnectTiming } from "@nyte-ai/connect/host";
 import { RelayServer } from "./fixtures/relay-server.ts";
 
 const ORIGIN = "https://connect.nyte.test";

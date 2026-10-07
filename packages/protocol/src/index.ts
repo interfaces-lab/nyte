@@ -28,6 +28,8 @@ export * from "./operations.ts";
 
 export * from "./environment.ts";
 
+export * from "./host-operations.ts";
+
 export * from "./wire.ts";
 
 export * from "./parse.ts";

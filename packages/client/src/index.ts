@@ -21,7 +21,10 @@ import {
   CallReplySchema,
   ENVIRONMENT_OPERATIONS,
   EVENT_STREAM_MEDIA_TYPE,
+  IDENTITY_QUERY,
+  IDENTITY_ROUTE,
   INFO_ROUTE,
+  IdentityChallengeSchema,
   JSON_MEDIA_TYPE,
   OPERATIONS,
   ServerInfoSchema,
@@ -40,6 +43,7 @@ import {
   type EnvironmentOperation,
   type EnvironmentOutput,
   type Issue,
+  type IdentityChallenge,
   type RemoteNyte,
   type RemoteWatchInput,
   type SessionEvent,
@@ -146,6 +150,13 @@ export interface NyteClientOptions {
 export type NyteClient = RemoteNyte & {
   /** What is answering: the host's release and the wire version this client already speaks. */
   info(): Promise<ServerInfo>;
+  /**
+   * The host's signed answer to `nonce`, checked against the challenge schema
+   * only. Verifying the signature against a pinned key, and refusing a host
+   * whose key changed, is the caller's decision; a host without an identity
+   * answers `not_found`.
+   */
+  identity(nonce: string): Promise<IdentityChallenge>;
   /**
    * One operation on the serving machine's environment, its reply checked
    * against the environment table. A server whose info lacks `environment`
@@ -299,6 +310,28 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     return checkedValue(response, ServerInfoSchema, "info");
   };
 
+  const identity = async (nonce: string): Promise<IdentityChallenge> => {
+    const params = new URLSearchParams();
+    params.set(IDENTITY_QUERY.nonce, nonce);
+
+    const response = await send(`${base}${IDENTITY_ROUTE}?${params.toString()}`, {
+      method: "GET",
+      headers: headersFor(JSON_MEDIA_TYPE),
+    });
+
+    const challenge = await checkedValue(response, IdentityChallengeSchema, "identity");
+
+    if (challenge.nonce !== nonce) {
+      throw new NyteTransportError({
+        kind: "bad_body",
+        detail: "Identity challenge answered a different nonce",
+        issues: [],
+      });
+    }
+
+    return challenge;
+  };
+
   const watch = (input: RemoteWatchInput): AsyncIterable<SessionEvent> => ({
     [Symbol.asyncIterator]: () =>
       createWatchIterator({
@@ -324,6 +357,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
 
   return {
     info,
+    identity,
     environment,
     sessions: {
       create: operation("sessions.create"),

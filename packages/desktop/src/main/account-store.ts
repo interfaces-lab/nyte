@@ -7,7 +7,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { writePrivateFile } from "./connect-store.ts";
+import { writePrivateFile } from "@nyte-ai/connect/host";
 
 /**
  * Encrypts secrets with a key the OS holds for this app. Each call may reach the OS keychain,

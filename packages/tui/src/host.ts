@@ -145,7 +145,7 @@ export class Host {
  * embeds entries under their common root (`packages/`) with a `.js` suffix.
  * From source the worker is the module beside `WorkerStore`.
  */
-function storeWorkerLocation(): URL {
+export function storeWorkerLocation(): URL {
   const compiled = import.meta.url.startsWith("file:///$bunfs/");
 
   return compiled

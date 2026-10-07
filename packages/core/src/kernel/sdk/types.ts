@@ -81,12 +81,7 @@ import type {
   WorkspaceSelection,
   WorkspaceTarget,
 } from "@nyte-ai/protocol";
-import type {
-  Disposer,
-  Plugin,
-  PluginInfo,
-  SettingInfo,
-} from "../../plugins/types.ts";
+import type { Disposer, Plugin, PluginInfo, SettingInfo } from "../../plugins/types.ts";
 import type { StreamFn, ThinkingLevel } from "../loop/types.ts";
 import type { ExecutionEnv } from "../loop/env.ts";
 import type { StreamOptions } from "../stream-options.ts";
@@ -628,6 +623,13 @@ export interface NyteOptions {
   /** default: records nothing */
   readonly telemetry?: TelemetryContext;
   readonly workspace?: WorkspaceBackend;
+  /**
+   * Host-only. The directory a `registered` workspace target names, when the
+   * host's registry knows the id and the folder may be served; `undefined`
+   * otherwise, and the target then names nothing. Absent on hosts without a
+   * registry.
+   */
+  readonly registeredWorkspace?: (id: string) => Promise<string | undefined>;
   /**
    * Installed when the SDK is created; every session runs these plugins, then
    * its workspace's project plugins. Their `environment` providers open

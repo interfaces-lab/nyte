@@ -9,7 +9,8 @@
     "./signing": "./src/signing.ts",
     "./relay": "./src/relay.ts",
     "./enrollment": "./src/enrollment.ts",
-    "./account-config": "./src/account-config.ts"
+    "./account-config": "./src/account-config.ts",
+    "./host": "./src/host/index.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -18,6 +19,8 @@
   },
   "dependencies": {
     "@nyte-ai/client": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
+    "@nyte-ai/server": "workspace:*",
     "jose": "6.2.12",
     "typebox": "1.3.34"
   },

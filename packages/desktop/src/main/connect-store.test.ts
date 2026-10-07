@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateMachineKey } from "@nyte-ai/connect/signing";
 import { afterEach, test } from "vitest";
-import { ConnectStore, ConnectStoreFailed, EMPTY_CONNECT_FILE } from "./connect-store.ts";
+import { ConnectStore, ConnectStoreFailed, EMPTY_CONNECT_FILE } from "@nyte-ai/connect/host";
 
 const cleanups: (() => Promise<void>)[] = [];
 

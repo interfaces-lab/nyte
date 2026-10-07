@@ -22,6 +22,9 @@ import {
   ENVIRONMENT_OPERATIONS,
   EVENT_STREAM_MEDIA_TYPE,
   INFO_ROUTE,
+  IDENTITY_NONCE_PATTERN,
+  IDENTITY_QUERY,
+  IDENTITY_ROUTE,
   JSON_MEDIA_TYPE,
   OPERATIONS,
   WATCH_QUERY,
@@ -38,13 +41,18 @@ import {
   validationIssues,
   type CallReply,
   type Environment,
+  type EnvironmentCallContext,
   type EnvironmentInput,
   type EnvironmentOperation,
+  type EnvironmentOutput,
   type Issue,
   type SessionId,
   type Operation,
   type OperationInput,
   type ServerInfo,
+  type HostIdentity,
+  type IdentityChallenge,
+  IdentityChallengeSchema,
   type ServerDescription,
   ServerDescriptionSchema,
   type WatchInput,
@@ -59,7 +67,11 @@ import { Value } from "typebox/value";
 // ---------------------------------------------------------------------------
 
 const AuthDecisionSchema = Type.Union([
-  Type.Object({ kind: Type.Literal("allow") }),
+  Type.Object({
+    kind: Type.Literal("allow"),
+    /** A host-chosen name for the caller, handed to policy hooks and environment handlers. Never a credential. */
+    principal: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  }),
   Type.Object({
     kind: Type.Literal("deny"),
     reason: Type.Enum(["unauthorized", "forbidden"]),
@@ -84,15 +96,21 @@ export interface ServerPermissions {
     readonly [O in Operation]?: (
       input: OperationInput<O>,
       request: Request,
+      context: EnvironmentCallContext,
     ) => boolean | Promise<boolean>;
   };
   readonly environment?: {
     readonly [O in EnvironmentOperation]?: (
       input: EnvironmentInput<O>,
       request: Request,
+      context: EnvironmentCallContext,
     ) => boolean | Promise<boolean>;
   };
-  readonly watch?: (sessionId: SessionId, request: Request) => boolean | Promise<boolean>;
+  readonly watch?: (
+    sessionId: SessionId,
+    request: Request,
+    context: EnvironmentCallContext,
+  ) => boolean | Promise<boolean>;
 }
 
 export type ServerFailure = {
@@ -113,6 +131,16 @@ export interface NyteServerOptions {
   readonly version: string;
   /** Public host metadata, refreshed for authenticated info reads. Omit when the embedding cannot describe it. */
   readonly describe?: () => ServerDescription | Promise<ServerDescription>;
+  /**
+   * The host's stable identity, named in info and proven on the identity
+   * route: `sign` answers a caller's nonce with the challenge the host signed.
+   * Omit when the embedding has no profile key.
+   */
+  readonly identity?: HostIdentity & {
+    readonly sign: (nonce: string) => IdentityChallenge | Promise<IdentityChallenge>;
+  };
+  /** Reported in info; a registry host starts roots through `environment.start`. */
+  readonly workspaces?: ServerInfo["workspaces"];
   readonly auth: ServerAuth;
   /**
    * Omit for full access. When supplied, unlisted calls, environment calls,
@@ -512,6 +540,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
   const answer = async <I extends TSchema>({
     request,
     cors,
+    context,
     operation,
     schema,
     permit,
@@ -519,10 +548,15 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
   }: {
     readonly request: Request;
     readonly cors: Headers;
+    readonly context: EnvironmentCallContext;
     readonly operation: Operation | EnvironmentOperation;
     readonly schema: I;
     readonly permit:
-      | ((input: Static<I>, request: Request) => boolean | Promise<boolean>)
+      | ((
+          input: Static<I>,
+          request: Request,
+          context: EnvironmentCallContext,
+        ) => boolean | Promise<boolean>)
       | undefined;
     readonly run: (input: Static<I>) => Promise<unknown>;
   }): Promise<Response> => {
@@ -576,7 +610,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     }
 
     try {
-      if (options.permissions !== undefined && (await permit?.(input, request)) !== true) {
+      if (options.permissions !== undefined && (await permit?.(input, request, context)) !== true) {
         return refuse({ code: "forbidden", message: "Operation is not allowed" }, cors);
       }
 
@@ -597,10 +631,16 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     }
   };
 
-  const call = <O extends Operation>(request: Request, operation: O, cors: Headers) =>
+  const call = <O extends Operation>(
+    request: Request,
+    operation: O,
+    cors: Headers,
+    context: EnvironmentCallContext,
+  ) =>
     answer<(typeof OPERATIONS)[O]["input"]>({
       request,
       cors,
+      context,
       operation,
       schema: OPERATIONS[operation].input,
       permit: options.permissions?.calls[operation],
@@ -612,24 +652,48 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     handlers: Environment,
     operation: V,
     cors: Headers,
-  ) =>
-    answer<(typeof ENVIRONMENT_OPERATIONS)[V]["input"]>({
+    context: EnvironmentCallContext,
+  ) => {
+    // One mapped type, so the handler's input stays correlated with `operation`.
+    const table: {
+      readonly [O in EnvironmentOperation]?: (
+        input: EnvironmentInput<O>,
+        context: EnvironmentCallContext,
+      ) => Promise<EnvironmentOutput<O>>;
+    } = handlers;
+    const handler = table[operation];
+
+    if (handler === undefined) {
+      return refuse(
+        { code: "unknown_operation", message: `Unknown operation: ${operation}` },
+        cors,
+      );
+    }
+
+    return answer<(typeof ENVIRONMENT_OPERATIONS)[V]["input"]>({
       request,
       cors,
+      context,
       operation,
       schema: ENVIRONMENT_OPERATIONS[operation].input,
       permit: options.permissions?.environment?.[operation],
-      run: (input) => handlers[operation](input),
+      run: (input) => handler(input, context),
     });
+  };
 
-  const watch = async (request: Request, url: URL, cors: Headers): Promise<Response> => {
+  const watch = async (
+    request: Request,
+    url: URL,
+    cors: Headers,
+    context: EnvironmentCallContext,
+  ): Promise<Response> => {
     const query = parseWatchQuery(url.searchParams);
 
     if (query.kind === "invalid") return refuse(invalid(query.message), cors);
 
     if (
       options.permissions !== undefined &&
-      (await options.permissions.watch?.(query.input.sessionId, request)) !== true
+      (await options.permissions.watch?.(query.input.sessionId, request, context)) !== true
     ) {
       return refuse({ code: "forbidden", message: "Watch is not allowed" }, cors);
     }
@@ -814,6 +878,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     }
 
     if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+    const context: EnvironmentCallContext = { principal: decision.principal };
 
     if (url.pathname === INFO_ROUTE) {
       if (request.method !== "GET") {
@@ -832,6 +897,11 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         version: options.version,
         wireVersion: WIRE_VERSION,
         environment: environment === undefined ? undefined : true,
+        identity:
+          options.identity === undefined
+            ? undefined
+            : { hostId: options.identity.hostId, publicKey: options.identity.publicKey },
+        workspaces: options.workspaces,
         host:
           description === undefined
             ? { kind: "unspecified" }
@@ -841,12 +911,36 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       return jsonResponse(200, { ok: true, defined: true, value: info }, cors);
     }
 
+    if (url.pathname === IDENTITY_ROUTE) {
+      if (request.method !== "GET") {
+        return refuse({ code: "method_not_allowed", message: "Identity is GET" }, cors);
+      }
+
+      if (options.identity === undefined) {
+        return refuse({ code: "not_found", message: "This host has no identity" }, cors);
+      }
+
+      const nonce = url.searchParams.get(IDENTITY_QUERY.nonce);
+
+      if (nonce === null || !new RegExp(IDENTITY_NONCE_PATTERN).test(nonce)) {
+        return refuse(invalid("nonce must be 16 to 64 base64url bytes"), cors);
+      }
+
+      const challenge = await options.identity.sign(nonce);
+
+      if (!Value.Check(IdentityChallengeSchema, challenge) || challenge.nonce !== nonce) {
+        throw new TypeError("Invalid identity challenge");
+      }
+
+      return jsonResponse(200, { ok: true, defined: true, value: challenge }, cors);
+    }
+
     if (url.pathname === WATCH_ROUTE) {
       if (request.method !== "GET") {
         return refuse({ code: "method_not_allowed", message: "Watch is GET" }, cors);
       }
 
-      return watch(request, url, cors);
+      return watch(request, url, cors, context);
     }
 
     if (url.pathname.startsWith(CALL_ROUTE_PREFIX)) {
@@ -857,10 +951,10 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       const name = url.pathname.slice(CALL_ROUTE_PREFIX.length);
       const operation = parseOperation(name);
 
-      if (operation !== undefined) return call(request, operation, cors);
+      if (operation !== undefined) return call(request, operation, cors, context);
 
       if (environment !== undefined && isEnvironmentOperation(name)) {
-        return callEnvironment(request, environment, name, cors);
+        return callEnvironment(request, environment, name, cors, context);
       }
 
       return refuse({ code: "unknown_operation", message: `Unknown operation: ${name}` }, cors);

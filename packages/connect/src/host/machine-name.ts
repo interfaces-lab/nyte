@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { NAME_LIMIT } from "@nyte-ai/connect";
+import { NAME_LIMIT } from "../index.ts";
 
 /** This computer's name as people say it: the host name without its network domain. */
 export function machineName(): string {

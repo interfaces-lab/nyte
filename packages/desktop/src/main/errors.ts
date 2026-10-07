@@ -9,6 +9,7 @@ import { NyteClosed, UnknownSession, WorkspaceNotActive } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type { NyteOptions } from "@nyte-ai/core";
 import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
+import { ConnectError } from "@nyte-ai/connect/host";
 import type { WireError } from "@nyte-ai/protocol";
 
 /** Local-only, bounded diagnostics. Never export original exceptions to telemetry or IPC. */
@@ -42,7 +43,7 @@ export class ExpectedHostError extends Error {
 }
 
 export function ipcFailure(cause: unknown): IpcFailure {
-  if (cause instanceof ExpectedHostError) return cause.error;
+  if (cause instanceof ExpectedHostError || cause instanceof ConnectError) return cause.error;
 
   if (cause instanceof InvalidRipgrepPattern)
     return { code: "invalid_input", message: cause.message, issues: [] };

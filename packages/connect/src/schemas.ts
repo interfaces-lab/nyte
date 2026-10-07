@@ -106,7 +106,43 @@ export const BROKER_ROUTES = {
     `/v1/environments/${environmentId}/devices/${deviceId}/release`,
   webhook: "/v1/clerk/webhook",
   keys: "/.well-known/jwks.json",
+  /**
+   * Linking a host that has no browser of its own. `POST` with a proof under
+   * the key's thumbprint opens a transaction and answers a human code; a
+   * signed-in browser looks the code up, sees the host's name and key
+   * fingerprint, and approves; the host polls and completes with fresh
+   * proofs. No Clerk credential ever reaches the host.
+   */
+  linkTransactions: "/v1/link-transactions",
+  /** `POST` with a Clerk session JWT: what a code names, before approving. Creates nothing. */
+  linkTransactionLookup: "/v1/link-transactions/lookup",
+  /** `POST` with a Clerk session JWT and the fingerprint seen; binds the owner. */
+  linkTransactionApprove: (transactionId: string) =>
+    `/v1/link-transactions/${transactionId}/approve`,
+  /** `POST` with a Clerk session JWT: the owner refuses the request. */
+  linkTransactionDeny: (transactionId: string) => `/v1/link-transactions/${transactionId}/deny`,
+  /** `POST` with a key proof: the transaction's state. */
+  linkTransactionPoll: (transactionId: string) => `/v1/link-transactions/${transactionId}/poll`,
+  /** `POST` with a key proof after approval: claim the environment, once. */
+  linkTransactionComplete: (transactionId: string) =>
+    `/v1/link-transactions/${transactionId}/complete`,
+  /** `DELETE` with a key proof: the host gives up. */
+  linkTransaction: (transactionId: string) => `/v1/link-transactions/${transactionId}`,
 } as const;
+
+/** An approval transaction waits this long for the owner. */
+export const LINK_TRANSACTION_LIFETIME_SECONDS = 300;
+
+/** After approval, the host has this long to complete before the authorization lapses. */
+export const LINK_AUTHORIZATION_LIFETIME_SECONDS = 60;
+
+/** Hosts poll no more often than this. */
+export const LINK_POLL_INTERVAL_SECONDS = 5;
+
+/** Crockford-style base32 without vowels, so a code is never a word. */
+export const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
+
+export const USER_CODE_LENGTH = 8;
 
 /**
  * Where phones reach a desktop: `<CONNECT_ORIGIN>/r/<environmentId>`, under
@@ -256,6 +292,73 @@ export const LinkedEnvironment = Type.Object({
 
 export type LinkedEnvironment = Static<typeof LinkedEnvironment>;
 
+/** `XXXX-XXXX`, as typed; the broker normalizes case and the dash. */
+export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$" });
+
+export type UserCode = Static<typeof UserCode>;
+
+/** What the host opens; the proof's `iss` is the key's thumbprint. `operationId` makes a retried open idempotent. */
+export const LinkTransactionRequest = strict({
+  publicKey: PublicJwk,
+  name: Name,
+  operationId: RandomId,
+});
+
+export type LinkTransactionRequest = Static<typeof LinkTransactionRequest>;
+
+export const LinkTransactionOpened = Type.Object({
+  transactionId: Uuid,
+  userCode: UserCode,
+  /** Where the owner signs in and enters the code: the web app's link page. */
+  verifyUrl: Type.String({ maxLength: 2048 }),
+  /** Epoch milliseconds. */
+  expiresAt: Type.Integer({ minimum: 0 }),
+  pollIntervalMs: Type.Integer({ minimum: 1000 }),
+});
+
+export type LinkTransactionOpened = Static<typeof LinkTransactionOpened>;
+
+export const LinkTransactionLookupRequest = strict({ userCode: UserCode });
+
+export type LinkTransactionLookupRequest = Static<typeof LinkTransactionLookupRequest>;
+
+/** What the browser shows before approving. The name is the host's own claim; the fingerprint is what to compare. */
+export const LinkTransactionLookup = Type.Object({
+  transactionId: Uuid,
+  hostName: Name,
+  fingerprint: Type.String({ minLength: 1, maxLength: 64 }),
+  expiresAt: Type.Integer({ minimum: 0 }),
+});
+
+export type LinkTransactionLookup = Static<typeof LinkTransactionLookup>;
+
+/** Approval echoes the fingerprint the owner compared, so it binds to that key. */
+export const LinkTransactionApproveRequest = strict({
+  fingerprint: Type.String({ minLength: 1, maxLength: 64 }),
+});
+
+export type LinkTransactionApproveRequest = Static<typeof LinkTransactionApproveRequest>;
+
+export const LINK_TRANSACTION_STATES = [
+  "pending",
+  "approved",
+  "denied",
+  "expired",
+  "cancelled",
+  "consumed",
+] as const;
+
+export type LinkTransactionState = (typeof LINK_TRANSACTION_STATES)[number];
+
+export const LinkTransactionStatus = Type.Object({ state: Type.Enum(LINK_TRANSACTION_STATES) });
+
+export type LinkTransactionStatus = Static<typeof LinkTransactionStatus>;
+
+/** The grant an enrolled device asks for. Absent means `controller`; a host decides whether `owner` is honored. */
+export const DeviceRole = Type.Union([Type.Literal("controller"), Type.Literal("owner")]);
+
+export type DeviceRole = Static<typeof DeviceRole>;
+
 export const LinkResponse = Type.Object({
   environment: LinkedEnvironment,
   /** The Clerk user the link belongs to: `sub` and a display label. */
@@ -359,7 +462,12 @@ export type EnvironmentList = Static<typeof EnvironmentList>;
  * later reads the bearer token on every request. An earlier device with the
  * same `clientId` is revoked.
  */
-export const EnrollRequest = strict({ clientId: ClientId, clientName: Name, digest: Base64Url32 });
+export const EnrollRequest = strict({
+  clientId: ClientId,
+  clientName: Name,
+  digest: Base64Url32,
+  role: Type.Optional(DeviceRole),
+});
 
 export type EnrollRequest = Static<typeof EnrollRequest>;
 
@@ -395,6 +503,8 @@ export const EnrollmentClaims = Type.Object({
   clientId: ClientId,
   clientName: Name,
   digest: Base64Url32,
+  /** The role the enrolling browser asked for; the host records it and its own policy decides. */
+  role: Type.Optional(DeviceRole),
 });
 
 export type EnrollmentClaims = Static<typeof EnrollmentClaims>;
@@ -419,3 +529,23 @@ export const ReceiptClaims = Type.Object({
 });
 
 export type ReceiptClaims = Static<typeof ReceiptClaims>;
+
+/**
+ * The human-comparable form of a key thumbprint: four groups of four of its
+ * leading characters. Shown by the host beside its code and by the browser
+ * before approving; the approval echoes it.
+ */
+export function keyFingerprint(thumbprint: string): string {
+  return thumbprint.slice(0, 16).replace(/(.{4})(?=.)/gu, "$1-");
+}
+
+/** A code as typed, normalized: uppercase, one dash. Undefined when it is not a code at all. */
+export function normalizeUserCode(input: string): string | undefined {
+  const raw = input.toUpperCase().replaceAll("-", "").replaceAll(" ", "");
+
+  if (raw.length !== USER_CODE_LENGTH || [...raw].some((c) => !USER_CODE_ALPHABET.includes(c))) {
+    return undefined;
+  }
+
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}

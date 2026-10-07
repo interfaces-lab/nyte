@@ -25,8 +25,8 @@ import {
   Name,
   RandomId,
   Uuid,
-} from "@nyte-ai/connect";
-import { PrivateJwk } from "@nyte-ai/connect/signing";
+} from "../index.ts";
+import { PrivateJwk } from "../signing.ts";
 
 /** Local revocations whose broker revoke has not been confirmed. */
 export const REVOCATION_LIMIT = 64;

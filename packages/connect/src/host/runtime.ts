@@ -38,8 +38,8 @@ import {
   LeaseClaims,
   PROOF_LIFETIME_SECONDS,
   TOKEN_TYPES,
-} from "@nyte-ai/connect";
-import type { BrokerKeys, PublicJwk, ReceiptClaims } from "@nyte-ai/connect";
+} from "../index.ts";
+import type { BrokerKeys, PublicJwk, ReceiptClaims } from "../index.ts";
 import { machineName } from "./machine-name.ts";
 import {
   brokerKey,
@@ -47,7 +47,7 @@ import {
   nowSeconds,
   signClaims,
   verifyClaims,
-} from "@nyte-ai/connect/signing";
+} from "../signing.ts";
 import type { AuthDecision, ServerAuth } from "@nyte-ai/server";
 import type {
   ConnectLease,
@@ -56,25 +56,24 @@ import type {
   ConnectNotice,
   ConnectUnavailable,
   ConnectView,
-} from "@nyte-ai/app/bridge.ts";
-import { AccountCancelled } from "./account-session.ts";
-import type { AccountSession } from "./account-session.ts";
-import { DesktopBroker } from "./connect-broker.ts";
-import type { BrokerFetch, LeaseAnswer } from "./connect-broker.ts";
-import type { ConnectConfig } from "./connect-config.ts";
-import { RelayConnection } from "./connect-relay.ts";
-import type { RelayDial, RelayTiming } from "./connect-relay.ts";
-import { bearerToken, connectRouteHandler, refused, tokenDigest } from "./connect-routes.ts";
-import type { RouteAnswer } from "./connect-routes.ts";
+} from "../view.ts";
+import { AccountCancelled } from "./account.ts";
+import type { AccountSession } from "./account.ts";
+import { DesktopBroker } from "./broker.ts";
+import type { BrokerFetch, LeaseAnswer } from "./broker.ts";
+import { RelayConnection } from "./relay.ts";
+import type { RelayDial, RelayTiming } from "./relay.ts";
+import { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
+import type { RouteAnswer } from "./routes.ts";
 import {
   CONSUMED_LIMIT,
   ConnectStore,
   ConnectStoreFailed,
   REVOCATION_LIMIT,
   UNLINK_LIMIT,
-} from "./connect-store.ts";
-import type { ConnectFile, StoredDevice, StoredLink } from "./connect-store.ts";
-import { ExpectedHostError } from "./errors.ts";
+} from "./store.ts";
+import type { ConnectFile, StoredDevice, StoredLink } from "./store.ts";
+import { ConnectError } from "./errors.ts";
 
 /** What the host binds for account remote access. */
 export interface ConnectListen {
@@ -130,11 +129,19 @@ const DEFAULT_TIMING: ConnectTiming = {
   dropDelayMs: 250,
 };
 
+/** The broker this runtime talks to. A desktop build adds its Clerk configuration beside it. */
+export interface HostConnectConfig {
+  /** A canonical `https://` origin: the broker and its relay. */
+  readonly origin: string;
+}
+
 export interface ConnectRuntimeOptions {
   /** Absent in a build without the public connect configuration. */
-  readonly config: ConnectConfig | undefined;
-  /** `~/.nyte`, where the store lives. */
+  readonly config: HostConnectConfig | undefined;
+  /** `~/.nyte`, where the store lives unless `storePath` says otherwise. */
   readonly home: string;
+  /** The Connect state file; default `<home>/connect.json`. A host profile passes its own. */
+  readonly storePath?: string;
   readonly account: AccountSession | undefined;
   /** Something Settings shows has changed. Carries nothing itself. */
   readonly onChange: () => void;
@@ -185,29 +192,29 @@ interface HighWater {
   readonly iat: number;
 }
 
-function storeFailed(): ExpectedHostError {
-  return new ExpectedHostError({
+function storeFailed(): ConnectError {
+  return new ConnectError({
     code: "internal",
     message: "Nyte can't use ~/.nyte/connect.json. Remote access is off.",
   });
 }
 
-function unavailable(): ExpectedHostError {
-  return new ExpectedHostError({
+function unavailable(): ConnectError {
+  return new ConnectError({
     code: "forbidden",
     message: "Account remote access isn't available in this build or on this Mac.",
   });
 }
 
-function notLinked(): ExpectedHostError {
-  return new ExpectedHostError({
+function notLinked(): ConnectError {
+  return new ConnectError({
     code: "not_found",
     message: "Link this Mac to your account first.",
   });
 }
 
-function closed(): ExpectedHostError {
-  return new ExpectedHostError({ code: "closed", message: "Nyte is quitting." });
+function closed(): ConnectError {
+  return new ConnectError({ code: "closed", message: "Nyte is quitting." });
 }
 
 function refusedCode(cause: unknown): string | undefined {
@@ -298,7 +305,7 @@ export class ConnectRuntime {
   constructor(options: ConnectRuntimeOptions) {
     this.options = options;
     this.timing = { ...DEFAULT_TIMING, ...options.timing };
-    this.store = new ConnectStore(join(options.home, "connect.json"));
+    this.store = new ConnectStore(options.storePath ?? join(options.home, "connect.json"));
     this.broker =
       options.config === undefined
         ? undefined

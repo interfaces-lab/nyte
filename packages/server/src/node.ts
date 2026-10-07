@@ -98,8 +98,9 @@ function toRequest(
       ? head
       : { ...head, body: requestBody(incoming), duplex: "half" as const };
 
+  // The string form: Node and Bun agree on it, and Bun's `Request` typing does not take a `URL`.
   return new Request(
-    new URL(incoming.url ?? "/", origin ?? `http://${incoming.headers.host ?? "localhost"}`),
+    new URL(incoming.url ?? "/", origin ?? `http://${incoming.headers.host ?? "localhost"}`).href,
     init,
   );
 }

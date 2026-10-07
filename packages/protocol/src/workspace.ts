@@ -54,9 +54,16 @@ export type VcsScope =
   | { readonly kind: "commit"; readonly oid: string }
   | { readonly kind: "branch"; readonly base: string };
 
+/**
+ * Where a workspace read or write happens. `workspace` is the host's default
+ * folder (cursor hosts); `session` is the folder a session tree acts in;
+ * `registered` is a workspace this host's registry knows by id, which only an
+ * owner's `environment.workspaces.register` can mint.
+ */
 export type WorkspaceTarget =
   | { readonly kind: "workspace" }
-  | { readonly kind: "session"; readonly sessionId: SessionId };
+  | { readonly kind: "session"; readonly sessionId: SessionId }
+  | { readonly kind: "registered"; readonly id: string };
 
 export type VcsFileKind = "added" | "modified" | "deleted" | "renamed" | "untracked" | "conflicted";
 

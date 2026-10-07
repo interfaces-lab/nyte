@@ -117,11 +117,11 @@ import {
 } from "@nyte-ai/serve";
 import type { ServeOptions, Serving } from "@nyte-ai/serve";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
-import type { ConnectRuntime, ConnectShare } from "./connect-runtime.ts";
+import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
 import { serverCatalog, serverConnectionProblem } from "@nyte-ai/app/server-connection.ts";
-import { machineName } from "./machine-name.ts";
+import { machineName } from "@nyte-ai/connect/host";
 import { SessionDirectory } from "./session-directory.ts";
 import { createBrowserAccessStore, readLastWorkspace, rememberWorkspace } from "./workspaces.ts";
 
@@ -801,7 +801,9 @@ export class DesktopHost {
     const cwd =
       target.kind === "workspace"
         ? project.workspace.path
-        : await project.sdk.sessionCwd({ sessionId: target.sessionId });
+        : target.kind === "session"
+          ? await project.sdk.sessionCwd({ sessionId: target.sessionId })
+          : undefined;
 
     if (cwd !== undefined) return cwd;
 
@@ -902,7 +904,9 @@ export class DesktopHost {
         const cwd =
           decoded.target.kind === "workspace"
             ? project.workspace.path
-            : await project.sdk.sessionCwd({ sessionId: decoded.target.sessionId });
+            : decoded.target.kind === "session"
+              ? await project.sdk.sessionCwd({ sessionId: decoded.target.sessionId })
+              : undefined;
 
         if (cwd === undefined) return [];
 

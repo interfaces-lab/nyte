@@ -25,6 +25,7 @@ import type { PluginFailure, PluginSources } from "./plugins.ts";
 import { watchPluginDirectories } from "./plugins/watch.ts";
 import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
+import type { WorkspaceTrustResolution } from "./workspace-store.ts";
 import { decodeHostSettings, readSettingsFileSync } from "./settings/index.ts";
 
 export { cacheWarmingMode } from "./settings/index.ts";
@@ -127,6 +128,13 @@ export type HostOptions = Omit<
   readonly plugins: HostPlugins;
   /** Environment providers installed after this machine's, in every mode. */
   readonly environments?: readonly EnvironmentPlugin[];
+  /**
+   * Decides this machine's folders other than the default one, in `workspace`
+   * mode: `trusted` or `unknown` as `WorkspaceStore.resolve` answers, or
+   * `undefined` for a folder this host does not serve at all. Default: the
+   * installation's trust store, which serves any folder it has decided.
+   */
+  readonly resolveWorkspace?: (cwd: string) => Promise<WorkspaceTrustResolution | undefined>;
 };
 
 /** Trust rows beside the user's settings; `workspaceTrust: "always"` there answers every folder. */
@@ -222,6 +230,9 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
       return create(plugins.cwd, plugins.plugins, trustCwd(plugins.cwd));
     case "workspace": {
       const workspaces = createWorkspaceStore();
+      const resolveWorkspace =
+        options.resolveWorkspace ??
+        ((folder: string) => workspaces.resolve(folder).catch(() => undefined));
       const { target } = plugins;
 
       const cwd =
@@ -300,7 +311,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
 
         if (workspace.cwd === cwd) return trustTarget();
         // A folder that is gone or unreadable waits, as an unavailable workspace does.
-        const resolution = await workspaces.resolve(workspace.cwd).catch(() => undefined);
+        const resolution = await resolveWorkspace(workspace.cwd);
 
         if (resolution === undefined) return { kind: "inactive" };
 

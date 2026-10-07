@@ -227,13 +227,27 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const delegation = createDelegation({ options, pool, runners });
   const relocation = createRelocation({ options, pool, runners, delegation });
 
-  /** Resolve a protocol target to the directory it names, when the host's backend reads it. */
+  /**
+   * Resolve a protocol target to the directory it names, when the host's
+   * backend reads it. A `registered` id is the host's to resolve before the
+   * call reaches the SDK; here it names nothing.
+   */
   const workspaceCwd = async (target: WorkspaceTarget): Promise<string | undefined> => {
     pool.alive();
 
-    return target.kind === "workspace"
-      ? pool.cwdForNewSession()
-      : relocation.sessionCwd({ sessionId: target.sessionId });
+    switch (target.kind) {
+      case "workspace":
+        return pool.cwdForNewSession();
+      case "session":
+        return relocation.sessionCwd({ sessionId: target.sessionId });
+      case "registered":
+        return options.registeredWorkspace?.(target.id);
+      default: {
+        const _exhaustive: never = target;
+
+        return _exhaustive;
+      }
+    }
   };
 
   const vcsAt = async (

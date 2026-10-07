@@ -27,6 +27,8 @@ import {
 } from "./schemas.ts";
 import type { SessionId as SessionIdType } from "./sdk.ts";
 import type { ModelInfo as ModelInfoType } from "./workspace.ts";
+import { HOST_OPERATIONS } from "./host-operations.ts";
+import type { HostOperation } from "./host-operations.ts";
 
 // ---------------------------------------------------------------------------
 // Providers and models
@@ -696,6 +698,7 @@ export const ENVIRONMENT_OPERATIONS = Object.freeze({
     input: GitHubPullRequestInputSchema,
     output: GitHubPullRequestOutcomeSchema,
   },
+  ...HOST_OPERATIONS,
 });
 
 export type EnvironmentOperation = keyof typeof ENVIRONMENT_OPERATIONS;
@@ -709,13 +712,40 @@ export type EnvironmentOutput<V extends EnvironmentOperation> = Static<
 >;
 
 /**
+ * What the server learned about the caller while authorizing the request: a
+ * host-chosen principal name, when its authorizer returned one. Hosts key
+ * per-caller state (a durable start record) by it; it is never a credential.
+ * An in-process caller passes none; a handler that needs one refuses without it.
+ */
+export interface EnvironmentCallContext {
+  readonly principal: string | undefined;
+}
+
+/** Operations an environment may lack; the server answers `unknown_operation` for them. */
+export type OptionalEnvironmentOperation =
+  | HostOperation
+  /** The GitHub login belongs to one served folder; a registry host has none to speak for. */
+  | "environment.github.state"
+  | "environment.github.signIn"
+  | "environment.github.signOut"
+  | "environment.github.createPullRequest";
+
+/**
  * What a host implements to answer environment operations: one handler per
  * operation, keyed by its wire name. The server dispatches by that name, so a
- * missing handler fails the build, not a request.
+ * missing handler fails the build, not a request. The operations in
+ * `OptionalEnvironmentOperation` may be absent, and the server then answers
+ * `unknown_operation` for them.
  */
 export type Environment = {
-  readonly [V in EnvironmentOperation]: (
+  readonly [V in Exclude<EnvironmentOperation, OptionalEnvironmentOperation>]: (
     input: EnvironmentInput<V>,
+    context?: EnvironmentCallContext,
+  ) => Promise<EnvironmentOutput<V>>;
+} & {
+  readonly [V in OptionalEnvironmentOperation]?: (
+    input: EnvironmentInput<V>,
+    context?: EnvironmentCallContext,
   ) => Promise<EnvironmentOutput<V>>;
 };
 

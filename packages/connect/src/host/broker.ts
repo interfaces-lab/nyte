@@ -22,10 +22,10 @@ import {
   UUID_PATTERN,
   isBrokerOrigin,
   relayAddress,
-} from "@nyte-ai/connect";
-import type { PublicJwk } from "@nyte-ai/connect";
-import { createProof, keyThumbprint, publicKeyOf } from "@nyte-ai/connect/signing";
-import type { PrivateJwk } from "@nyte-ai/connect/signing";
+} from "../index.ts";
+import type { PublicJwk } from "../index.ts";
+import { createProof, keyThumbprint, publicKeyOf } from "../signing.ts";
+import type { PrivateJwk } from "../signing.ts";
 
 export type BrokerFetch = (input: string, init: RequestInit) => Promise<Response>;
 

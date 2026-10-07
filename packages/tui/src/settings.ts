@@ -320,6 +320,13 @@ export class FileSettingsStore {
     return mergeSettings(global, project);
   }
 
+  /** The user's settings alone: for a host that serves many folders and trusts none of them yet. */
+  async readGlobal(): Promise<ResolvedSettings> {
+    await this.writes;
+
+    return mergeSettings(await readSettings(this.globalPath), {});
+  }
+
   updateGlobal(patch: SettingsPatch): Promise<void> {
     const next = this.writes.then(async () => {
       // Parse first so a broken file still fails loudly instead of being written around.
