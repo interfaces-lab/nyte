@@ -1552,6 +1552,7 @@ export const messageScrollerStyles = create({
     transitionTimingFunction: "ease-in",
   },
   buttonControl: {
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: {
