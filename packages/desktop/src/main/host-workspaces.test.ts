@@ -225,6 +225,9 @@ async function fixture() {
         navigate: () => undefined,
         close: () => undefined,
         captureFrame: () => Promise.resolve(undefined),
+        find: () => Promise.resolve({ active: 0, total: 0 }),
+        cancelDownload: () => undefined,
+        settingsChanged: () => undefined,
         setBounds: () => undefined,
         retain: () => undefined,
         release: () => undefined,
@@ -324,7 +327,7 @@ test("untrusted send queues once, reports the requirement, and runs after trust"
   const { root, events, createHost } = await fixture();
   const host = createHost();
   const path = join(root, "project");
-  await mkdir(path);
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
   const file = join(path, "README.md");
   await writeFile(file, "untrusted projects remain browsable\n");
   assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "opened");
@@ -406,7 +409,7 @@ test("IPC keeps the SDK queued and duplicate receipts verbatim and redacts host 
   const { root, createHost } = await fixture();
   const host = createHost();
   const path = join(root, "ipc-project");
-  await mkdir(path);
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
   await host.call(1, "host.openWorkspace", { path });
   const session = await host.call(1, "sessions.create", { name: "IPC fixture" });
   const input = { sessionId: session.sessionId, content: "private prompt", key: "ipc-message" };
@@ -457,7 +460,7 @@ test("watch pump forwards activation notices instead of interpreting them", asyn
   const { root, events, watchEvents, createHost } = await fixture();
   const host = createHost();
   const path = join(root, "watched-project");
-  await mkdir(path);
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
   await host.call(1, "host.openWorkspace", { path });
   const session = await host.call(1, "sessions.create", { name: "Watched" });
   host.watchStart(1, { watchId: "activation", sessionId: session.sessionId, live: true });
@@ -652,7 +655,7 @@ test("terminal and file mutations still require trust", async () => {
   const { root, events, createHost } = await fixture();
   const host = createHost();
   const path = join(root, "terminal-project");
-  await mkdir(path);
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
   const file = join(path, "note.txt");
   await writeFile(file, "before\n");
   await host.call(1, "host.openWorkspace", { path });
@@ -909,7 +912,7 @@ test("a closed project lists a root moved to an untrusted folder as needing trus
   const { root, createHost } = await fixture();
   const path = join(root, "project");
   const untrusted = join(root, "untrusted");
-  await Promise.all([mkdir(path), mkdir(untrusted)]);
+  await Promise.all([mkdir(path), mkdir(join(untrusted, ".nyte", "skills"), { recursive: true })]);
   const host = createHost();
   await host.call(1, "host.openWorkspace", { path });
   await host.call(1, "host.trustWorkspace", { path });
@@ -1346,7 +1349,7 @@ test.each(["store", "registry"])(
 test("the previous directory reopens without granting trust, and choosing Home is remembered", async () => {
   const { root, createHost } = await fixture();
   const path = join(root, "remembered-project");
-  await mkdir(path);
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
   const host = createHost();
   await host.call(1, "host.openWorkspace", { path });
   await host.close();

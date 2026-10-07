@@ -41,12 +41,15 @@
  *   Effect v4 8409eb45925e23c10a9fb5b9bd31baaafca25d81, design reference only.
  *   Cursor @cursor/sdk 1.0.36; public cookbook
  *     6733ef81a7dc3cb2a6c1f524ff586ebecc703204.
+ *   Rex docs superlogical.com/rex/docs, read 2026-10; config/actions/server-api
+ *     pages, design reference only.
  * Sources
  *   https://github.com/pierrecomputer/sdk
  *   https://github.com/anomalyco/opencode/tree/v2
  *   https://github.com/earendil-works/pi
  *   https://github.com/Effect-TS/effect
  *   https://cursor.com/docs/sdk/typescript
+ *   https://www.superlogical.com/rex/docs/customize/config
  * Implementation references are in Part III.
  */
 
@@ -658,7 +661,11 @@ async function currentHostOpeners() {
     await custom.close();
   }
   const workspaces = createWorkspaceStore(); // S→WorkspaceStore; no close.
-  const trusted = await workspaces.require(cwd); // branded value only from store.
+  // Asks only for folders with project input (.nyte/plugins, .nyte/nyte.json,
+  // .nyte|.agents|.claude/skills); a plain folder resolves trusted. Pi's
+  // defaultProjectTrust rule. settings.json workspaceTrust is the
+  // WorkspaceTrustMode; "always" bypasses, "never" runs without the input.
+  const trusted = await workspaces.require(cwd); // branded value only from store; .projectInput says whether the folder's own plugins/skills load.
   const workspaceHost = await createHost({
     store,
     models,
@@ -688,8 +695,8 @@ async function currentHostOpeners() {
  * PUBLIC host/workspace-store.ts:131; catalog.ts:125,162,175,209.
  */
 async function currentHostMachineStores() {
-  const workspaces = new WorkspaceStore(workspacesPath, { limit: 50 }); // S.
-  const resolveResult = await workspaces.resolve(cwd); // trusted/unknown; not null.
+  const workspaces = new WorkspaceStore(workspacesPath, { limit: 50, mode: () => trustMode }); // S; mode: WorkspaceTrustMode, read per decision.
+  const resolveResult = await workspaces.resolve(cwd); // trusted/unknown; not null. unknown = has project input, no grant.
   const trustResult = await workspaces.trust(cwd); // explicit durable trust grant.
   const requireResult = await workspaces.require(cwd);
   const workspacesList = await workspaces.list();
@@ -3404,6 +3411,16 @@ type Result<Success, Failure> =
 // All public failure records are schema-derived and safe to cross IPC/HTTP.
 // A failure names what failed and preserves the recovery identity when work may
 // have started. Host logs keep private causes under correlation, not wire stacks.
+type ValidationIssue = {
+  readonly severity: "error" | "warning";
+  readonly path: readonly (string | number)[]; // JSON pointer segments into the input or declaration.
+  readonly message: string;
+  readonly source?: { readonly plugin: string; readonly file?: string; readonly line?: number };
+};
+// One issue shape for request validation and plugin/declaration checks. source
+// names the plugin and, for loaded files, file:line, so a report reads
+// "error user/keys.ts:12 commands.add: duplicate name". A warning never
+// rejects; an error rejects exactly the declaration or request it points at.
 type SdkFailure =
   | { readonly kind: "invalid-input"; readonly issues: readonly ValidationIssue[] }
   | { readonly kind: "unauthenticated"; readonly reason: string }
@@ -3776,9 +3793,51 @@ interface Sdk {
   readonly deliveries: DeliveryJournal;
   readonly administration: AdministrationCapabilities;
   readonly operations: OperationsDirectory;
+  catalog(options?: RequestOptions): Promise<Result<CatalogView, RequestFailure>>; // O self-description of this host.
+  events(options?: RequestOptions): AsyncIterable<Result<HostEventFrame, RequestFailure>>; // W host-wide facts, not session history.
   session(id: SessionId): SessionHandle; // S main head + session management.
   workspace(id: WorkspaceId): WorkspaceHandle; // S stable workspace, not UI selection.
 }
+interface CatalogView {
+  readonly generation: CatalogGeneration;
+  readonly operations: readonly OperationInfoView[];
+  readonly commands: readonly CommandInfoView[];
+  readonly tools: readonly ToolInfoView[];
+}
+interface OperationInfoView {
+  readonly name: string;
+  readonly description: string;
+  readonly authority: OperationDeclaration<unknown, unknown, unknown>["authority"];
+  readonly execution: OperationDeclaration<unknown, unknown, unknown>["execution"];
+  readonly input: JsonSchema;
+  readonly output: JsonSchema;
+  readonly failure: JsonSchema;
+  readonly example?: { readonly request: Json; readonly response: Json };
+  readonly notes?: readonly string[]; // rules the schema cannot express.
+}
+interface ToolInfoView {
+  readonly name: string;
+  readonly owner: string;
+  readonly description: string;
+  readonly parameters: JsonSchema;
+}
+type CatalogGeneration = Id<"catalog-generation">;
+type JsonSchema = { readonly [name: string]: Json };
+type HostEventFrame =
+  | { readonly kind: "catalog-changed"; readonly generation: CatalogGeneration }
+  | {
+      readonly kind: "plugins-changed";
+      readonly generation: CatalogGeneration;
+      readonly plugins: readonly PluginInfoView[];
+    }
+  | { readonly kind: "settings-changed"; readonly keys: readonly string[] };
+// The catalog is the same OperationDeclaration data that generates the TS
+// client, served at runtime so a host on another version, a non-TS client or
+// an agent can bind without our docs. Plugin commands and tools appear under
+// their owner. A name absent from the catalog answers unavailable, never a
+// transport failure. catalog-changed replaces client-side plugin invalidation;
+// a client refetches lists it caches and compares generation. Unknown frame
+// kinds are skipped per the section 9 rule.
 interface SessionsDirectory {
   create(input?: {
     readonly id?: SessionId; // omit -> generated before first attempt.
@@ -4899,6 +4958,12 @@ interface HostOpenOptions {
 // duplicate providers; local cwd must be absolute and workspace identity match.
 // Project plugin loading stays behind trust. The source trust default remains
 // trusted for defaultWorkspace, requires/workspace_trust for other workspaces.
+// Core owns the vocabulary: WorkspaceTrust is the answer, WorkspaceTrustMode
+// ("ask" | "always" | "never") is how a host reaches it. The host store applies
+// the mode where no grant exists: "ask" trusts a folder without project input
+// and asks for one with it; "always" trusts with the input; "never" trusts and
+// marks TrustedWorkspace.projectInput false, so the folder runs on user plugins
+// and skills alone and nothing asks. A user setting a project cannot set.
 // Browser, PTY, files and Git are environment/plugin capabilities. Chat-only and
 // nonlocal hosts need no universal browser driver, PTY driver or native service.
 // These optional tuning fields retain source omission semantics; no new nulls.
@@ -4979,10 +5044,54 @@ interface HostAdminApi {
   replacePlugins(
     input: PluginReplacementInput,
   ): Promise<Result<PluginReplacementResult, MutationFailure>>;
+  checkPlugins(input: PluginReplacementInput): Promise<Result<PluginCheckReport, RequestFailure>>; // O same preflight, activates nothing.
   warming: CacheWarmingAdministration;
   retention: RetentionAdministration;
   readonly unsafe: HostUnsafe;
 }
+interface PluginReplacementInput {
+  readonly key: CommandKey;
+  readonly plugins: NyteOptions["plugins"];
+  readonly session?: SessionId; // omit = host-wide; one session otherwise.
+}
+type PluginLoadOutcome =
+  | {
+      readonly kind: "activated";
+      readonly plugin: PluginInfoView;
+      readonly issues: readonly ValidationIssue[];
+    }
+  | { readonly kind: "rejected"; readonly id: string; readonly issues: readonly ValidationIssue[] }
+  | {
+      readonly kind: "kept-previous";
+      readonly plugin: PluginInfoView;
+      readonly issues: readonly ValidationIssue[];
+    };
+interface PluginReplacementResult {
+  readonly key: CommandKey;
+  readonly generation: CatalogGeneration;
+  readonly plugins: readonly PluginLoadOutcome[];
+}
+interface PluginCheckReport {
+  readonly plugins: readonly PluginLoadOutcome[];
+  readonly counts: {
+    readonly commands: number;
+    readonly tools: number;
+    readonly settings: number;
+    readonly agents: number;
+  };
+  readonly collisions: readonly ValidationIssue[]; // warnings naming both owners.
+}
+// Load rules, per plugin: a declaration with an error issue is skipped and the
+// rest of that plugin still activates; a plugin whose definition cannot be
+// parsed at all is rejected, and on replacement its previous version stays
+// active as kept-previous. The host never ends up with no plugins because one
+// reload was bad. Issues that need the running host, such as a command name
+// already owned by another plugin or a model the catalog lacks, are warnings
+// in the check report and carry both sources. The check report is static: it
+// runs the same preflight Nyte.open runs, without opening a database, reaching
+// a provider or activating a session. Same-id replacement across sources
+// (builtin < user < project < inline) is reported as a warning naming the
+// shadowed plugin, never applied silently.
 interface SessionDiagnostics {
   refs(): Promise<Result<readonly RefView[], RequestFailure>>;
   objects(input?: {
@@ -5090,6 +5199,8 @@ interface OperationResults {
   readonly "file-save": FileWriteResult;
   readonly "git-write": GitMutation;
   readonly "plugin-setting": SettingResult;
+  readonly "plugin-command": PluginCommandResult;
+  readonly "plugin-replace": PluginReplacementResult;
   readonly "file-batch": FileBatchResult;
   readonly restore: RestoreResult;
 }
@@ -5242,22 +5353,61 @@ interface PluginReadApi {
     list(): Promise<Result<readonly CommandInfoView[], RequestFailure>>;
     run(input: {
       readonly name: string;
-      readonly argument?: string;
-    }): Promise<Result<PluginCommandResult, MutationFailure>>;
+      readonly arguments?: string | Json; // text commands take a string; schema commands take Json.
+      readonly key: CommandKey;
+    }): Promise<Result<PluginCommandResult, CommandFailure>>;
   };
   readonly settings: {
     list(): Promise<Result<readonly SettingInfoView[], RequestFailure>>;
     apply(input: {
       readonly id: string;
       readonly choice: string;
+      readonly key: CommandKey;
     }): Promise<Result<SettingResult, MutationFailure>>;
   };
   resources(): Promise<Result<readonly SkillView[], RequestFailure>>;
   status(): AsyncIterable<Result<readonly StatusItemView[], RequestFailure>>;
 }
-// Only hosts register plugins; remote listing/commands cannot upload JS. Schemas
-// define tool arguments/results. Declarations persist; executable closures remain
-// installed code. Each call supplies its tool environment.
+interface CommandInfoView {
+  readonly name: string; // owner-qualified; bare names are the owner's own.
+  readonly owner: string;
+  readonly title: string; // palette text.
+  readonly description: string;
+  readonly category?: string;
+  readonly keywords?: readonly string[];
+  readonly arguments:
+    | { readonly kind: "text" }
+    | { readonly kind: "schema"; readonly schema: JsonSchema };
+  readonly selection: "run" | "insert";
+}
+type PluginCommandResult =
+  | { readonly kind: "ran"; readonly output?: Json }
+  | { readonly kind: "prompt"; readonly prompt: UserContent }
+  | { readonly kind: "failed"; readonly message: string };
+interface SettingInfoView {
+  readonly id: string;
+  readonly owner: string;
+  readonly label: string;
+  readonly choices: readonly [SettingChoiceView, ...SettingChoiceView[]];
+  readonly current: {
+    readonly choice: string;
+    readonly from: "default" | "host" | "session"; // the layer that set it.
+  };
+}
+type SettingChoiceView = { readonly id: string; readonly label: string; readonly status?: string };
+// A command is a typed action, not a free-text slash entry. arguments:text keeps
+// today's `/name rest of line`; arguments:schema lets the palette, CLI and
+// remote callers reject a bad call as invalid-input with issues before run,
+// e.g. `no argument named "bogus"; the command takes file, ratio?`. Commands
+// are keyed mutations: a nested run from inside a command reuses the parent's
+// key space and nests at most 16 deep. Two plugins declaring one name is a
+// warning naming both; the later source wins, as with plugin ids. Missing name
+// is unavailable, not not_found. Only hosts register plugins; remote
+// listing/commands cannot upload JS. Schemas define tool arguments/results.
+// Declarations persist; executable closures remain installed code. Each call
+// supplies its tool environment. Settings that affect requests are captured
+// into the input choice at admission; from says which layer a client is
+// changing when it applies a choice.
 
 function proposedToolDefinition() {
   return Tool.define({
@@ -5396,6 +5546,19 @@ function proposedDelegatingTool(invocation: ToolInvocation, key: CommandKey, pro
 //   Connect HTTP fetch               standard fetch adapter.
 // Optional TS values do not serialize as undefined. Encoders omit optional members.
 //
+// Unknown members and variants
+//   Request schemas reject unknown members as invalid-input. A misspelled
+//   argument is an error, never ignored.
+//   Views and frames tolerate unknown members: a client ignores fields it does
+//   not know, so a newer host can add data without breaking older clients.
+//   An unknown discriminant is a whole-frame problem. A client skips that frame
+//   or view and refetches; it never coerces an unknown kind into one it knows,
+//   so a state added later cannot read as an older state. Event names are not
+//   checked against a list; subscribing to a name this host never emits is
+//   allowed and receives nothing.
+//   Settings files and plugin storage read per key: a bad value falls back for
+//   that key alone and unknown keys are kept on write.
+//
 // Known nullable facts
 //   page.next                        end of pagination.
 //   HistoryNode.parent               conversation root.
@@ -5500,6 +5663,56 @@ function proposedDelegatingTool(invocation: ToolInvocation, key: CommandKey, pro
  * - Removing all local store access. Drivers and repair tools need documented,
  *   authority-restricted access; remote clients do not get it.
  * - Capability booleans. Unsupported, denied and temporarily unavailable differ.
+ */
+
+/**
+ * Taken from Rex
+ *
+ * Rex's init.lua declares four things: key bindings, actions, hosts and log
+ * lines. Everything else is runtime API that actions call later. What carried
+ * over, and where it landed:
+ *
+ * - Actions declare argument types, and a wrong call is refused before it
+ *   runs. CommandInfoView.arguments and the keyed commands.run (Part II §8).
+ * - `rex config check` reports each mistake with severity and file:line, skips
+ *   a bad declaration while loading the rest, and keeps the last working load
+ *   when the whole file fails. ValidationIssue (§2), PluginCheckReport and
+ *   PluginLoadOutcome (§8).
+ * - `rex keymap` prints the merged result with a SOURCE column, and a collision
+ *   warns naming both bindings. SettingInfoView.current.from and collision
+ *   warnings on same-id or same-name plugins (§8).
+ * - Inputs are strict (`additionalProperties: false`), events and reports are
+ *   lenient, and an unknown state discards the whole report rather than
+ *   reading as an old state. The unknown-members rule (§9).
+ * - `rex api list/describe --json` serves the server's own schemas, examples
+ *   and validation notes, and the CLI and Lua bindings derive from it. The
+ *   runtime sdk.catalog() over the same OperationDeclaration data (§4).
+ * - `keymap_changed{generation}` after a reload. catalog-changed and
+ *   plugins-changed host frames replace client-side plugin invalidation (§4).
+ */
+
+/**
+ * Rejected from Rex
+ *
+ * - Key bindings, sequences and modes in core. They are client UI. A desktop
+ *   keymap lives in desktop settings and binds keys to command names; the only
+ *   thing it needs from core is that commands are nameable and typed.
+ * - Configuration as a script. settings.json stays lenient data; plugins stay
+ *   code loaded behind trust. Rex already refuses config reloads over a remote
+ *   connection, which matches "only hosts register plugins".
+ * - `rex.client.queue`, where an action asks the client to perform UI actions
+ *   after it returns. CommandOutcome.prompt is the only handback. The host does
+ *   not drive client UI.
+ * - Function bindings that fall through on false, label-based targeting with
+ *   ambiguity exits, and host declarations. CLI concerns, or already covered by
+ *   HostId and the connect store.
+ * - `ctx.origin` (key/palette/cli/api). A command does not behave differently by
+ *   who invoked it; authorization already runs per principal.
+ *
+ * Outside the schema: Rex's OSC 7501 program-status protocol (working, blocked
+ * with kind permission/question/auth, done, error) maps onto our execution
+ * view, the question tool and provider login. The TUI should emit it and
+ * desktop terminals should read it. That is a TUI/desktop change, not an SDK one.
  */
 
 /**
@@ -5964,8 +6177,9 @@ function proposedDeclaredChannels(
 /**
  * app/src/live.ts, screens/thread.tsx
  *   Replace stopRunAndSettle/applyMessageEdit multi-call workflow with core edit.
- *   Keep auxiliary jobs/VCS/plugin invalidation and frame scheduling only if still
- *   needed; do not delete the whole files while those UI responsibilities remain.
+ *   Delete plugin list invalidation once sdk.events catalog-changed lands; keep
+ *   auxiliary jobs/VCS and frame scheduling only if still needed. Do not delete
+ *   the whole files while those UI responsibilities remain.
  */
 
 /**
@@ -6121,6 +6335,14 @@ function proposedDeclaredChannels(
  * - Diagnostics stay local and authority-restricted; remote dispatch cannot read
  *   raw objects or decoded prompt/tool context through a diagnostic API.
  * - v1 exposes no cross-session conversation clone operation.
+ * - sdk.catalog() and the generated TS client derive from the same declarations;
+ *   a name missing from a host's catalog answers unavailable. A schema command
+ *   called with a misspelled argument fails invalid-input before run, with the
+ *   issue path naming the argument. checkPlugins on a plugin set with one bad
+ *   declaration reports that declaration's file:line and still counts the rest;
+ *   replacePlugins with an unparseable plugin returns kept-previous and the old
+ *   version keeps serving. An observer receiving an unknown frame kind skips it
+ *   and refetches rather than rendering a known variant.
  * - No old targeted method path remains in apps/demos/docs after migration.
  */
 

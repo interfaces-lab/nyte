@@ -51,7 +51,7 @@ function openOutcome(outcome: WorkspaceSelectOutcome): OpenWorkspaceOutcome {
   switch (outcome.kind) {
     case "opened":
       return outcome.selection.kind === "project"
-        ? { kind: "opened", workspace: outcome.selection.workspace }
+        ? { kind: "opened", workspace: outcome.selection.workspace, needsTrust: false }
         : { kind: "failed", message: "The server selected Home instead of this folder." };
     case "unavailable":
       return { kind: "failed", message: "This folder is not available on the server." };

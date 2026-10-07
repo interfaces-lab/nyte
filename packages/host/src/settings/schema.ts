@@ -5,7 +5,7 @@
  * they don't know and fall back per key on a bad value.
  */
 import { DEFAULT_COMPACTION_SETTINGS } from "@nyte-ai/core";
-import type { CacheWarmingMode, CompactionSettings } from "@nyte-ai/core";
+import type { CacheWarmingMode, CompactionSettings, WorkspaceTrustMode } from "@nyte-ai/core";
 import { typed } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
@@ -23,11 +23,14 @@ export const HostSettingsSchema = Type.Object({
   /** No row. Kept so the desktop honours what terminal UI users already set. */
   compactionReserveTokens: tokenCount,
   traceEndpoint: optionalText,
+  workspaceTrust: typed<WorkspaceTrustMode>()(Type.Enum(["ask", "always", "never"])),
   notifications: Type.Boolean(),
   unreadBadge: Type.Boolean(),
   keepAwake: Type.Boolean(),
   terminalShell: optionalText,
   blockAds: Type.Boolean(),
+  /** Hostnames where the shield is paused. A parent domain covers its subdomains. */
+  adblockAllowedHosts: Type.Array(Type.String({ minLength: 1, maxLength: 253 })),
   upgradeToHttps: Type.Boolean(),
   /** What a folder with no remembered answer gets. `ask` keeps the gate. */
   browserAccess: Type.Enum(["ask", "full", "read", "off"]),
@@ -67,11 +70,13 @@ const LAYOUT = {
     fallback: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
   },
   traceEndpoint: { slot: ["traceEndpoint"], fallback: null },
+  workspaceTrust: { slot: ["workspaceTrust"], fallback: "ask" },
   notifications: { slot: ["desktop", "notifications"], fallback: true },
   unreadBadge: { slot: ["desktop", "unreadBadge"], fallback: true },
   keepAwake: { slot: ["desktop", "keepAwake"], fallback: false },
   terminalShell: { slot: ["desktop", "terminalShell"], fallback: null },
   blockAds: { slot: ["desktop", "blockAds"], fallback: true },
+  adblockAllowedHosts: { slot: ["desktop", "adblockAllowedHosts"], fallback: [] },
   upgradeToHttps: { slot: ["desktop", "upgradeToHttps"], fallback: true },
   browserAccess: { slot: ["desktop", "browserAccess"], fallback: "ask" },
 } as const satisfies {

@@ -22,6 +22,12 @@ const LINK_TARGET = [
   { value: "external", label: "External browser" },
 ] as const;
 
+const WORKSPACE_TRUST = [
+  { value: "ask", label: "Ask first" },
+  { value: "always", label: "Always load" },
+  { value: "never", label: "Never load" },
+] as const;
+
 function TrustedSitesRow(): ReactElement {
   const hosts = useSetting(preferences.trustedLinkHosts);
 
@@ -79,6 +85,14 @@ export function GeneralSettings(): ReactElement {
           description="Confirm before a chat link opens in your default browser"
         />
         <TrustedSitesRow />
+      </SettingsSection>
+      <SettingsSection title="Folders">
+        <SelectRow
+          setting={hostSetting("workspaceTrust")}
+          title="A folder's own plugins and skills"
+          description="Found under .nyte, .agents, or .claude. Loading them runs their code. Never load still lets Nyte work in the folder"
+          options={WORKSPACE_TRUST}
+        />
       </SettingsSection>
       <SettingsSection title="System">
         <SwitchRow

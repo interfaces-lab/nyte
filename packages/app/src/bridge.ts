@@ -432,7 +432,9 @@ export interface LocalFontCatalog {
 }
 
 export type OpenWorkspaceOutcome =
-  | { kind: "opened"; workspace: WorkspaceInfo }
+  /** The folder is current. `needsTrust`: it carries project input and no decision yet, so ask now. */
+  | { kind: "opened"; workspace: WorkspaceInfo; needsTrust: boolean }
+  /** The host would not make the folder current until it is trusted there; a remote server's answer. */
   | { kind: "needs_trust"; path: string }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
@@ -466,13 +468,36 @@ export interface BrowserSurfaceState {
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
   readonly secure: "https" | "http" | "none";
-  /** False when no filter lists are bundled in this build. */
-  readonly blocking: boolean;
+  /**
+   * `off` when the setting is off or no filter lists are bundled in this build;
+   * `paused` when the page's host is on the allow list.
+   */
+  readonly blocking: "on" | "paused" | "off";
   /** Requests blocked since the current page started loading. */
   readonly blocked: number;
   readonly error: { readonly code: number; readonly description: string } | undefined;
   /** Number of agent (session) holders currently retaining this surface. */
   readonly agentHolders: number;
+  /** A `<video>` or the page asked for fullscreen; the page covers the whole window. */
+  readonly fullscreen: boolean;
+}
+
+/** A file a user-held page is saving to the Downloads folder. */
+export interface BrowserDownload {
+  readonly id: string;
+  readonly url: string;
+  readonly filename: string;
+  readonly path: string;
+  readonly received: number;
+  /** 0 when the server did not say. */
+  readonly total: number;
+  readonly state: "progressing" | "completed" | "cancelled" | "interrupted";
+}
+
+/** The position of the active match among all matches; both 0 when nothing matched. */
+export interface BrowserFindResult {
+  readonly active: number;
+  readonly total: number;
 }
 
 export type BrowserAction =
@@ -565,7 +590,11 @@ export type HostEvent =
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
-  | { kind: "browser_download_refused"; surface: string; url: string }
+  | { kind: "browser_download"; surface: string; download: BrowserDownload }
+  /** The page asked for a new tab: a Cmd+click, a `target="_blank"` link. */
+  | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
+  /** Cmd+F landed in the page while it had focus. */
+  | { kind: "browser_find_requested"; surface: string }
   | {
       kind: "browser_agent_opened";
       surface: string;
@@ -661,6 +690,13 @@ export interface BrowserBridge {
    * view. The panel paints it while an overlay forces the page to hide.
    */
   captureFrame(input: { surface: string }): Promise<string | undefined>;
+  /** Highlights matches and moves to the next or previous one. Empty text clears. */
+  find(input: {
+    surface: string;
+    text: string;
+    direction: "next" | "previous";
+  }): Promise<BrowserFindResult>;
+  cancelDownload(input: { surface: string; id: string }): Promise<void>;
   setBounds(message: BrowserBoundsMessage): void;
 }
 

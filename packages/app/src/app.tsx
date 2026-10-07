@@ -14,7 +14,7 @@ import { windowTabs } from "./tabs/window-tabs.ts";
 import { BLANK_SELECTION, activeSelection } from "./layout/pane-layout.ts";
 import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
-import { handleOpenOutcome } from "./chrome/open-workspace.tsx";
+import { requestTrust } from "./chrome/open-workspace.tsx";
 import { applyLoginEvent } from "./chrome/login-attempts.ts";
 import { acceptHostSettings } from "./preferences/host.ts";
 
@@ -47,7 +47,7 @@ function useHostEvents(router: AppRouter): void {
     return nyte.host.onEvent((event) => {
       switch (event.kind) {
         case "workspace_trust_required":
-          handleOpenOutcome({ kind: "needs_trust", path: event.path });
+          requestTrust(event.path);
 
           return;
         case "workspace_opened":
@@ -102,7 +102,9 @@ function useHostEvents(router: AppRouter): void {
 
           return;
         case "browser_changed":
-        case "browser_download_refused":
+        case "browser_download":
+        case "browser_open_tab":
+        case "browser_find_requested":
           applyBrowserEvent(event);
 
           return;

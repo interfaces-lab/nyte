@@ -459,10 +459,18 @@ export class DesktopHost {
       this.dependencies.emitHostEvent({ kind: "settings_changed", settings: next });
       this.holdAwake();
 
+      if (next.workspaceTrust !== previous.workspaceTrust)
+        void this.serialize(() => this.reactivateOpenTargets());
+
       if (next.cacheWarming === previous.cacheWarming) return;
 
       for (const open of this.openTargets.values()) open.sdk.cacheWarming.modeChanged();
     });
+  }
+
+  /** The trust answer changed, by a grant or the setting: every blocked session asks again. Call under `serialize`. */
+  private async reactivateOpenTargets(): Promise<void> {
+    await Promise.all([...this.openTargets.values()].map((open) => open.sdk.reactivate()));
   }
 
   /**
@@ -753,6 +761,12 @@ export class DesktopHost {
         return undefined;
       case "host.browser.captureFrame":
         return this.dependencies.browser.captureFrame(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.browser.find":
+        return this.dependencies.browser.find(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.browser.cancelDownload":
+        this.dependencies.browser.cancelDownload(CALL_INPUT_SCHEMAS[path].Parse(input));
+
+        return undefined;
       case "host.terminal.create": {
         const terminals = this.terminals(window);
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
@@ -1525,7 +1539,7 @@ export class DesktopHost {
   private trustWorkspace(path: string): Promise<OpenWorkspaceOutcome> {
     return this.serialize<OpenWorkspaceOutcome>(async () => {
       await this.workspaces.trust(path);
-      await Promise.all([...this.openTargets.values()].map((open) => open.sdk.reactivate()));
+      await this.reactivateOpenTargets();
 
       return { kind: "cancelled" };
     }).catch((cause): OpenWorkspaceOutcome => ({
@@ -1548,8 +1562,15 @@ export class DesktopHost {
     const cwd = await realpath(resolve(path)).catch(() => resolve(path));
     const selected = this.selections.get(window);
 
+    // Decided here so the renderer can ask at open rather than after the first session activates.
+    // A folder that cannot be resolved, because it is gone, has nothing to ask for.
+    const needsTrust = await this.workspaces.resolve(cwd).then(
+      (resolution) => resolution.kind === "unknown",
+      () => false,
+    );
+
     if (selected?.kind === "project" && selected.workspace.path === cwd) {
-      return { kind: "opened", workspace: selected.workspace };
+      return { kind: "opened", workspace: selected.workspace, needsTrust };
     }
 
     await this.workspaces.touch(cwd);
@@ -1566,7 +1587,7 @@ export class DesktopHost {
       window,
     );
 
-    return { kind: "opened", workspace: open.workspace };
+    return { kind: "opened", workspace: open.workspace, needsTrust };
   }
 
   /** Where this target's plugins load from, or why they cannot load yet. */

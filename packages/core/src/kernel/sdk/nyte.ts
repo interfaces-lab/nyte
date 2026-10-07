@@ -19,7 +19,6 @@ import { navigationTarget, transcriptFromCommits } from "@nyte-ai/client";
 import { toJsonValue } from "@nyte-ai/client";
 import { normalizeImageContent } from "../loop/image.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
-import type { PreparedPluginReplacement } from "../../plugins/host.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
 import { createCacheWarming } from "./cache-warming.ts";
@@ -1090,84 +1089,28 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       modeChanged: () => warming.modeChanged(),
     },
 
-    async setPlugins(next, input) {
-      pool.alive();
-
-      if (input !== undefined) {
-        const pooled = await pool.open(input.sessionId);
-
-        if (pooled.relocating) throw new Error("Session directory change is in progress");
-        const activation = await pool.activationFor(input.sessionId, pooled);
-
-        if (activation === undefined) throw new Error("Session is not active in this host");
-        const outcome = await activation.setPlugins(
-          delegation.pluginsFor({ id: input.sessionId, pooled, plugins: next }),
-          () => {
-            if (pooled.activationState?.kind === "active")
-              pooled.activationState = { ...pooled.activationState, plugins: next };
-          },
-        );
-        return outcome;
-      }
-
-      const prepared: Extract<PreparedPluginReplacement, { kind: "ready" }>[] = [];
-      const errors: string[] = [];
-      for (const [id, pooled] of pool.entries()) {
-        if (pooled.relocating) continue;
-        await pool.resolveSessionActivation(id, pooled);
-
-        if (pooled.scopedPlugins) continue;
-
-        const activation = await pool.activationFor(id, pooled);
-        if (activation === undefined) continue;
-        const outcome = await activation.preparePlugins(
-          delegation.pluginsFor({ id, pooled, plugins: next }),
-          () => {
-            if (pooled.activationState?.kind === "active")
-              pooled.activationState = { ...pooled.activationState, plugins: next };
-          },
-        );
-        if (outcome.kind === "rejected") errors.push(`${id}: ${outcome.error}`);
-        else prepared.push(outcome);
-      }
-      if (errors.length) {
-        for (const candidate of prepared) candidate.cancel();
-        return { kind: "rejected", error: errors.join("; ") };
-      }
-      let queued = false;
-      for (const candidate of prepared) {
-        const outcome = candidate.publish();
-        if (outcome.kind === "rejected") errors.push(outcome.error);
-        else if (outcome.kind === "queued") queued = true;
-      }
-      pool.setPluginsOverride(next);
-      // The new set is a new chance for a session its old set failed; it reaches
-      // the session through the override, so clear only once that is in place, and
-      // every one first, or a child resolved before its root copies the root's failed state.
-      const recovering = [...pool.entries()].filter(
-        ([, pooled]) =>
-          !pooled.relocating && !pooled.scopedPlugins && pooled.activationState?.kind === "failed",
-      );
-      for (const [, pooled] of recovering) pooled.activationState = undefined;
-      for (const [id, pooled] of recovering) await pool.activationFor(id, pooled);
-      if (errors.length) return { kind: "rejected", error: errors.join("; ") };
-      return { kind: queued ? "queued" : "applied" };
-    },
-
     /** The host's answer may have changed: ask again for every session it had blocked. */
     async reactivate() {
       pool.alive();
       pool.resetCatalog();
       await Promise.all(
         [...pool.entries()].map(async ([id, pooled]) => {
-          if (pooled.activationState?.kind !== "active") {
-            // An answer still in flight predates the change; let it land, then discard it.
-            await pooled.resolving?.catch(() => undefined);
-            pooled.activationState = undefined;
-            await pool.resolveSessionActivation(id, pooled);
-          }
+          // A session mid-retirement is still in the pool; it has nothing to reactivate.
+          if (pooled.retired) return;
 
-          await runners.reconcileRunner(id, pooled);
+          try {
+            if (pooled.activationState?.kind !== "active") {
+              // An answer still in flight predates the change; let it land, then discard it.
+              await pooled.resolving?.catch(() => undefined);
+              pooled.activationState = undefined;
+              await pool.resolveSessionActivation(id, pooled);
+            }
+
+            await runners.reconcileRunner(id, pooled);
+          } catch (error) {
+            if (error instanceof UnknownSession) return;
+            throw error;
+          }
         }),
       );
     },

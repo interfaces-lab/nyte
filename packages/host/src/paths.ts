@@ -25,6 +25,30 @@ export function userPluginDirectory(): string {
   return join(nyteHome(), "plugins");
 }
 
+const MANIFEST_NAME = "nyte.json";
+
+/**
+ * What a folder can hand Nyte to run or follow: plugin code, a manifest that
+ * installs it, and skills. These load only once the folder is trusted, and a
+ * folder holding none of them has nothing to ask trust for.
+ */
+const PROJECT_PLUGINS = join(".nyte", "plugins");
+
+const PROJECT_MANIFEST = join(".nyte", MANIFEST_NAME);
+
+const PROJECT_SKILLS = [
+  join(".nyte", "skills"),
+  join(".agents", "skills"),
+  join(".claude", "skills"),
+];
+
+/** Whether `cwd` supplies any project input, the pi rule: trust is asked only where there is something to load. */
+export function hasProjectInput(cwd: string): boolean {
+  return [PROJECT_PLUGINS, PROJECT_MANIFEST, ...PROJECT_SKILLS].some((relative) =>
+    existsSync(join(cwd, relative)),
+  );
+}
+
 export function pluginDirectories(target: PluginTarget): PluginRoot[] {
   const user: PluginRoot = { path: userPluginDirectory(), source: "user" };
 
@@ -32,7 +56,9 @@ export function pluginDirectories(target: PluginTarget): PluginRoot[] {
     case "home":
       return [user];
     case "project":
-      return [user, { path: join(target.workspace.cwd, ".nyte", "plugins"), source: "project" }];
+      return target.workspace.projectInput
+        ? [user, { path: join(target.workspace.cwd, PROJECT_PLUGINS), source: "project" }]
+        : [user];
     default: {
       const _exhaustive: never = target;
 
@@ -40,8 +66,6 @@ export function pluginDirectories(target: PluginTarget): PluginRoot[] {
     }
   }
 }
-
-const MANIFEST_NAME = "nyte.json";
 
 /** User first, project last: a later file's entries win where they overlap. */
 export function manifestPaths(target: PluginTarget): string[] {
@@ -51,7 +75,9 @@ export function manifestPaths(target: PluginTarget): string[] {
     case "home":
       return [user];
     case "project":
-      return [user, join(target.workspace.cwd, ".nyte", MANIFEST_NAME)];
+      return target.workspace.projectInput
+        ? [user, join(target.workspace.cwd, PROJECT_MANIFEST)]
+        : [user];
     default: {
       const _exhaustive: never = target;
 
@@ -110,12 +136,9 @@ export function skillDirectories(target: PluginTarget): string[] {
     case "home":
       return user;
     case "project":
-      return [
-        join(target.workspace.cwd, ".nyte", "skills"),
-        join(target.workspace.cwd, ".agents", "skills"),
-        join(target.workspace.cwd, ".claude", "skills"),
-        ...user,
-      ];
+      return target.workspace.projectInput
+        ? [...PROJECT_SKILLS.map((relative) => join(target.workspace.cwd, relative)), ...user]
+        : user;
     default: {
       const _exhaustive: never = target;
 

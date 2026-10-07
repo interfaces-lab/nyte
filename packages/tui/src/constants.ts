@@ -267,6 +267,7 @@ export function pendingHint(hidden: number): string {
 
 export const WORKSPACE_TRUST_TITLE = "Workspace Trust Required";
 
-export const WORKSPACE_TRUST_MESSAGE = "Nyte can execute code and access files in this directory.";
+export const WORKSPACE_TRUST_MESSAGE =
+  "This directory has plugins or skills of its own. Trusting it loads them and lets Nyte run code here.";
 
 export const WORKSPACE_TRUST_QUESTION = "Do you trust the contents of this directory?";

@@ -136,6 +136,9 @@ async function desktop(
       navigate: () => undefined,
       close: () => undefined,
       captureFrame: () => Promise.resolve(undefined),
+      find: () => Promise.resolve({ active: 0, total: 0 }),
+      cancelDownload: () => undefined,
+      settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,
       release: () => undefined,
@@ -410,7 +413,7 @@ async function listedRepo(
   trusted: boolean,
 ): Promise<{ readonly project: string; readonly workspace: { readonly path: string } }> {
   const project = join(root, "repo");
-  await mkdir(project);
+  await mkdir(join(project, ".nyte", "skills"), { recursive: true });
   await writeFile(join(project, "share-target-marker.txt"), "marker");
   const opened = await host.call(1, "host.openWorkspace", { path: project });
   assert.equal(opened.kind, "opened");

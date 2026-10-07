@@ -84,7 +84,6 @@ import type {
 import type {
   Disposer,
   Plugin,
-  PluginReplacement,
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
@@ -592,13 +591,24 @@ export type WorkspaceTrust =
       readonly kind: "trusted";
       /**
        * Plugins that live in the workspace, loaded once its environment is
-       * open and again before each response. They can wrap the environment,
-       * never provide one.
+       * open, again before each response, and again when `changes` fires. They
+       * can wrap the environment, never provide one.
        */
       readonly plugins?: (env: ExecutionEnv) => Promise<readonly Plugin[]>;
+      /** Tells every session active in the workspace that its plugin sources may have changed. */
+      readonly changes?: (notify: () => void) => Disposer;
     }
   | { readonly kind: "inactive" }
   | { readonly kind: "requires"; readonly requirement: ActivationRequirement };
+
+/**
+ * How a host answers `trust` for a folder with no recorded decision. `ask`
+ * reports `requires/workspace_trust` for a folder that carries project input
+ * and trusts one that carries none; `always` trusts every folder with its
+ * input; `never` trusts every folder and leaves its input unloaded, so nothing
+ * ever asks. A user setting, never a project's: a folder cannot trust itself.
+ */
+export type WorkspaceTrustMode = "ask" | "always" | "never";
 
 export interface NyteOptions {
   /** Receives converted summary failures once, before the public outcome is returned. */
@@ -686,10 +696,5 @@ export interface Nyte {
     readonly sessionId: SessionId;
     readonly workspace: Workspace;
   }): Promise<RelocateOutcome>;
-  /** Global preparation failure preserves all sessions and defaults; publication is per activation and advances the default even if a session rejects revalidation. */
-  setPlugins(
-    plugins: readonly Plugin[],
-    input?: { readonly sessionId: SessionId },
-  ): Promise<PluginReplacement>;
   close(): Promise<void>;
 }

@@ -62,8 +62,13 @@ const sdk = await createHost({
 ```
 
 `require()` throws until the user trusts the folder. Ask first, then call `workspaces.trust(cwd)`.
-Trust lets project plugins run and gives the agent unrestricted tools in that folder. It isn't a
-sandbox, and Nyte doesn't ask per tool call. To share history with the TUI and desktop app, open
+A folder is asked about only when it carries project input of its own: `.nyte/plugins`,
+`.nyte/nyte.json`, or a skills directory under `.nyte`, `.agents`, or `.claude`. Any other folder
+resolves as trusted. Trust lets project plugins run and gives the agent unrestricted tools in that
+folder. It isn't a sandbox, and Nyte doesn't ask per tool call. `workspaceTrust` in
+`~/.nyte/settings.json` sets the default for folders with no grant: `ask`, `always` (trust with the
+folder's input), or `never` (trust, but leave the folder's plugins and skills unloaded, so nothing
+asks). A grant to the folder outranks the mode. A project cannot set it for itself. To share history with the TUI and desktop app, open
 the store at `workspaceStorePath(workspace.cwd)`.
 
 ## Make a web app

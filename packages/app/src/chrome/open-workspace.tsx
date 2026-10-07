@@ -7,6 +7,7 @@ import { radius } from "@nyte-ai/ui/schema.stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/toast";
 import { create, props } from "@stylexjs/stylex";
+import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionActivationState } from "@nyte-ai/protocol";
@@ -36,7 +37,17 @@ const styles = create({
   },
 });
 
-let prompt: string | undefined;
+/**
+ * The folder asking for trust and what asked. A grant after opening a folder
+ * lands on a new chat there; a grant something in the current view asked for,
+ * a running chat or a gated action, keeps that view.
+ */
+interface TrustPrompt {
+  readonly path: string;
+  readonly origin: "open" | "action";
+}
+
+let prompt: TrustPrompt | undefined;
 
 /** Folders the user declined this session; a replayed activation must not nag. */
 const declined = new Set<string>();
@@ -51,14 +62,23 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function snapshot(): string | undefined {
+function snapshot(): TrustPrompt | undefined {
   return prompt;
 }
 
-function setPrompt(next: string | undefined): void {
+function setPrompt(next: TrustPrompt | undefined): void {
   prompt = next;
 
   for (const listener of listeners) listener();
+}
+
+/** Something in the current view needs trust: a session's activation or a gated host action. */
+export function requestTrust(path: string): void {
+  if (declined.has(path)) return;
+  toast.close("workspace-open");
+
+  // The open already asked for this folder; an echo must not retarget the grant.
+  if (prompt?.path !== path) setPrompt({ path, origin: "action" });
 }
 
 /** Route a folder-open outcome to the shared dialog host. */
@@ -66,7 +86,7 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "needs_trust":
       toast.close("workspace-open");
-      setPrompt(outcome.path);
+      setPrompt({ path: outcome.path, origin: "open" });
 
       return;
     case "failed":
@@ -81,6 +101,10 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
       return;
     case "opened":
+      toast.close("workspace-open");
+      setPrompt(outcome.needsTrust ? { path: outcome.workspace.path, origin: "open" } : undefined);
+
+      return;
     case "cancelled":
       toast.close("workspace-open");
       setPrompt(undefined);
@@ -126,11 +150,7 @@ export function observeActivation(activation: SessionActivationState): void {
         return;
       }
 
-      const path = requirement.cwd;
-
-      if (declined.has(path)) return;
-      toast.close("workspace-open");
-      setPrompt(path);
+      requestTrust(requirement.cwd);
 
       return;
     }
@@ -166,13 +186,19 @@ function declineTrust(path: string): void {
   setPrompt(undefined);
 }
 
-function grantTrust(trust: NonNullable<HostBridge["trustWorkspace"]>, path: string): void {
+function grantTrust(
+  trust: NonNullable<HostBridge["trustWorkspace"]>,
+  path: string,
+): Promise<boolean> {
   declined.delete(path);
   setPrompt(undefined);
-  void trust({ path }).then((outcome) => {
+
+  return trust({ path }).then((outcome) => {
     handleOpenOutcome(outcome);
     void queryClient.invalidateQueries({ queryKey: keys.workspaces });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
+
+    return outcome.kind !== "failed";
   });
 }
 
@@ -187,28 +213,37 @@ export function folderPicker(): (() => void) | undefined {
 export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
   const trust = nyte.host.trustWorkspace;
+  const router = useRouter();
 
   if (current === undefined) return null;
+  const { path, origin } = current;
+
+  const grant = (grantWith: NonNullable<typeof trust>): void => {
+    void grantTrust(grantWith, path).then((granted) => {
+      if (granted && origin === "open")
+        void router.navigate({ to: "/", search: {}, replace: true });
+    });
+  };
 
   return (
-    <Dialog.Root key={current} defaultOpen onOpenChange={(open) => !open && declineTrust(current)}>
+    <Dialog.Root key={path} defaultOpen onOpenChange={(open) => !open && declineTrust(path)}>
       <Dialog.Popup xstyle={styles.popup}>
         <Dialog.Title xstyle={styles.title}>
           {trust === undefined ? "This folder is not trusted" : "Trust Folder"}
         </Dialog.Title>
-        <div {...props(styles.path)}>{current}</div>
+        <div {...props(styles.path)}>{path}</div>
         <Dialog.Description>
           {trust === undefined
-            ? "Trust it on the machine running the server. Nyte runs code and reads files only in trusted folders."
-            : "Nyte can execute code and access files in this folder. Project plugins and skills load only after you trust it."}
+            ? "This folder has plugins or skills of its own. Trust it on the machine running the server to load them."
+            : "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files here."}
         </Dialog.Description>
         <Dialog.Footer>
           {trust === undefined ? (
-            <Button onClick={() => declineTrust(current)}>Close</Button>
+            <Button onClick={() => declineTrust(path)}>Close</Button>
           ) : (
             <>
-              <Button onClick={() => declineTrust(current)}>Cancel</Button>
-              <Button variant="solid" tone="primary" onClick={() => grantTrust(trust, current)}>
+              <Button onClick={() => declineTrust(path)}>Cancel</Button>
+              <Button variant="solid" tone="primary" onClick={() => grant(trust)}>
                 Trust Folder
               </Button>
             </>

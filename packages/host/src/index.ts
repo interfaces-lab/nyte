@@ -128,8 +128,11 @@ export type HostOptions = Omit<
   readonly environments?: readonly EnvironmentPlugin[];
 };
 
+/** Trust rows beside the user's settings; `workspaceTrust: "always"` there answers every folder. */
 export function createWorkspaceStore(): WorkspaceStore {
-  return new WorkspaceStore(join(nyteHome(), "workspaces.json"));
+  return new WorkspaceStore(join(nyteHome(), "workspaces.json"), {
+    mode: () => decodeHostSettings(readSettingsFileSync()).workspaceTrust,
+  });
 }
 
 /** `"provider/id"` to a catalog model, restoring persisted data before trying the network. */

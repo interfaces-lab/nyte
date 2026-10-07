@@ -3,7 +3,9 @@
  * `~/.nyte/workspaces.json` maps each realpath to whether it is trusted and
  * when it was last opened. Trust is the gate before a host loads project
  * input or gives the agent unrestricted workspace tools; it is not a sandbox.
- * Recency drives pickers and welcome screens.
+ * A folder with no project input to load is trusted without asking, so the
+ * question comes up only where there is something to approve. Recency drives
+ * pickers and welcome screens.
  *
  * Reads tolerate bad rows: dropping a row never grants trust, so a corrupt
  * file fails safe by asking again, and one bad row must not brick a welcome
@@ -14,10 +16,12 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import process from "node:process";
+import type { WorkspaceTrustMode } from "@nyte-ai/core";
 import type { WorkspaceInfo } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import { hasProjectInput } from "./paths.ts";
 import { withFileLeaseLock } from "./tree-snapshot.ts";
 
 const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
@@ -25,6 +29,8 @@ const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
 /** A realpath workspace that passed this store's trust decision. */
 export interface TrustedWorkspace {
   readonly cwd: string;
+  /** Whether the folder's own plugins and skills load. False under `never` without a grant: the folder runs, its input stays out. */
+  readonly projectInput: boolean;
   readonly [TRUSTED_WORKSPACE]: true;
 }
 
@@ -38,11 +44,8 @@ type WorkspaceRow = Static<typeof WorkspaceRowSchema>;
 type StoreFile = Record<string, WorkspaceRow>;
 
 export type WorkspaceTrustResolution =
-  | {
-      readonly kind: "trusted";
-      readonly workspace: TrustedWorkspace;
-      readonly inheritedFrom: string;
-    }
+  | { readonly kind: "trusted"; readonly workspace: TrustedWorkspace }
+  /** The folder has project input and no decision yet. */
   | { readonly kind: "unknown"; readonly cwd: string };
 
 export class WorkspaceTrustRequired extends Error {
@@ -85,8 +88,8 @@ function parseStoreFile(text: string) {
   return rows;
 }
 
-function trusted(cwd: string): TrustedWorkspace {
-  return Object.freeze({ cwd, [TRUSTED_WORKSPACE]: true as const });
+function trusted(cwd: string, projectInput: boolean): TrustedWorkspace {
+  return Object.freeze({ cwd, projectInput, [TRUSTED_WORKSPACE]: true as const });
 }
 
 async function workspaceDirectory(cwd: string): Promise<string> {
@@ -102,14 +105,14 @@ async function workspaceDirectory(cwd: string): Promise<string> {
   return realPath;
 }
 
-function trustedAncestor(cwd: string, rows: StoreFile): string | undefined {
+function trustedByAncestor(cwd: string, rows: StoreFile): boolean {
   let candidate = cwd;
 
   while (true) {
-    if (rows[candidate]?.trusted === true) return candidate;
+    if (rows[candidate]?.trusted === true) return true;
     const parent = dirname(candidate);
 
-    if (parent === candidate) return undefined;
+    if (parent === candidate) return false;
     candidate = parent;
   }
 }
@@ -117,6 +120,8 @@ function trustedAncestor(cwd: string, rows: StoreFile): string | undefined {
 export interface WorkspaceStoreOptions {
   /** Untrusted entries kept beyond this are trimmed, oldest first, on `touch`. */
   readonly limit?: number;
+  /** Read per decision, so a settings edit applies to the next folder. Default `ask`. */
+  readonly mode?: () => WorkspaceTrustMode;
 }
 
 /**
@@ -126,23 +131,38 @@ export interface WorkspaceStoreOptions {
 export class WorkspaceStore {
   readonly path: string;
   private readonly limit: number;
+  private readonly mode: () => WorkspaceTrustMode;
   private tail: Promise<void> = Promise.resolve();
 
   constructor(path: string, options: WorkspaceStoreOptions = {}) {
     if (!isAbsolute(path)) throw new Error("Workspace store path must be absolute");
     this.path = path;
     this.limit = options.limit ?? 50;
+    this.mode = options.mode ?? (() => "ask");
   }
 
-  /** The trust decision for `cwd`, inherited from the nearest trusted ancestor. */
+  /** The trust decision for `cwd`: a grant to it or an ancestor outranks the mode; the mode answers the rest. */
   resolve(cwd: string): Promise<WorkspaceTrustResolution> {
     return this.serialized(async () => {
       const realPath = await workspaceDirectory(cwd);
-      const inheritedFrom = trustedAncestor(realPath, await this.read());
+      const granted = trustedByAncestor(realPath, await this.read());
+      const mode = this.mode();
 
-      return inheritedFrom === undefined
-        ? { kind: "unknown", cwd: realPath }
-        : { kind: "trusted", workspace: trusted(realPath), inheritedFrom };
+      switch (mode) {
+        case "always":
+          return { kind: "trusted", workspace: trusted(realPath, true) };
+        case "never":
+          return { kind: "trusted", workspace: trusted(realPath, granted) };
+        case "ask":
+          return granted || !hasProjectInput(realPath)
+            ? { kind: "trusted", workspace: trusted(realPath, true) }
+            : { kind: "unknown", cwd: realPath };
+        default: {
+          const _exhaustive: never = mode;
+
+          return _exhaustive;
+        }
+      }
     });
   }
 
@@ -162,7 +182,7 @@ export class WorkspaceStore {
         rows[realPath] = { trusted: true, lastOpenedAt: rows[realPath]?.lastOpenedAt ?? 0 };
         await this.write(rows);
 
-        return trusted(realPath);
+        return trusted(realPath, true);
       }),
     );
   }
