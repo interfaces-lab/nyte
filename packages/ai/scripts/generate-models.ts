@@ -681,6 +681,8 @@ function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
     modelId.includes("sonnet-4.6") ||
     modelId.includes("sonnet-5") ||
     modelId.includes("sonnet.5") ||
+    modelId.includes("haiku-5") ||
+    modelId.includes("haiku.5") ||
     modelId.includes("fable-5")
   );
 }
@@ -1837,6 +1839,34 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
 
   // Process Anthropic models
   if (data.anthropic?.models) {
+    // Claude Haiku 5.5 shipped 2026-10-07; keep these official values until models.dev lists it.
+    // https://platform.claude.com/docs/en/models/haiku-5-5/overview
+    data.anthropic.models["claude-haiku-5-5"] ??= {
+      id: "claude-haiku-5-5",
+      name: "Claude Haiku 5.5",
+      tool_call: true,
+      structured_output: true,
+      reasoning: true,
+      reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      limit: { context: 1000000, output: 128000 },
+      cost: {
+        input: 0.1,
+        output: 0.5,
+        cache_read: 0.01,
+        cache_write: 0.2,
+        tiers: [
+          {
+            input: 0.5,
+            output: 2.5,
+            cache_read: 0.05,
+            cache_write: 1,
+            tier: { type: "context", size: 100000 },
+          },
+        ],
+      },
+    };
+
     for (const [modelId, m] of Object.entries(data.anthropic.models)) {
       if (m.tool_call !== true) continue;
 
@@ -1848,12 +1878,7 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
         baseUrl: "https://api.anthropic.com",
         reasoning: m.reasoning === true,
         input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
-        cost: {
-          input: m.cost?.input || 0,
-          output: m.cost?.output || 0,
-          cacheRead: m.cost?.cache_read || 0,
-          cacheWrite: m.cost?.cache_write || 0,
-        },
+        cost: getModelsDevCost(m.cost),
         contextWindow: m.limit?.context || 4096,
         maxTokens: m.limit?.output || 4096,
       });
