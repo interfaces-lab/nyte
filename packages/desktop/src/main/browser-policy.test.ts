@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  crashRetryDelay,
   httpsUpgrade,
   isLocalHost,
   permissionAllowed,
   plainRetry,
+  uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
 
@@ -54,5 +56,24 @@ describe("browser policy", () => {
     assert.equal(permissionAllowed("notifications"), false);
     assert.equal(permissionAllowed("geolocation"), false);
     assert.equal(permissionAllowed("openExternal"), false);
+  });
+
+  test("numbers a download whose name is taken, keeping the extension", () => {
+    const taken = new Set(["report.pdf", "report (1).pdf", "notes"]);
+    const exists = (name: string) => taken.has(name);
+    assert.equal(uniqueDownloadName("report.pdf", exists), "report (2).pdf");
+    assert.equal(uniqueDownloadName("notes", exists), "notes (1)");
+    assert.equal(uniqueDownloadName("fresh.zip", exists), "fresh.zip");
+    assert.equal(uniqueDownloadName("../etc/passwd", exists), ".._etc_passwd");
+    assert.equal(uniqueDownloadName("", exists), "download");
+  });
+
+  test("reloads a crashed page with backoff, then gives up for a while", () => {
+    const now = 100_000;
+    assert.equal(crashRetryDelay([now], now), 250);
+    assert.equal(crashRetryDelay([now - 1000, now], now), 500);
+    assert.equal(crashRetryDelay([now - 2000, now - 1000, now], now), 1000);
+    assert.equal(crashRetryDelay([now - 3000, now - 2000, now - 1000, now], now), undefined);
+    assert.equal(crashRetryDelay([now - 60_000, now - 50_000, now - 40_000, now], now), 250);
   });
 });

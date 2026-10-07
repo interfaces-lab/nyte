@@ -22,12 +22,16 @@ import {
   applyBrowserEvent,
   claimBrowserSurface,
   clearBrowserHistory,
-  dismissRefusedDownload,
   forgetBrowserSurface,
+  setBrowserFinding,
   useBrowserSurface,
 } from "./browser-surfaces.ts";
+import { DownloadsBar } from "./browser-downloads.tsx";
+import { FindBar } from "./browser-find.tsx";
+import { LoginDialog } from "./browser-login.tsx";
 
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
+import { ShieldMenu } from "./browser-shield.tsx";
 
 const styles = create({
   panel: {
@@ -82,18 +86,7 @@ const styles = create({
     outlineOffset: 0,
   },
   addressIcon: { display: "inline-flex", flexShrink: 0, color: role.contentSecondary },
-  blocked: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    flexShrink: 0,
-    paddingInline: 4,
-    color: role.contentSecondary,
-    fontSize: type.fontCode,
-    fontFamily: type.fontMono,
-    fontVariantNumeric: "tabular-nums",
-  },
-  blockedOff: { color: role.contentDisabled },
+  blockedIcon: { display: "inline-flex", flexShrink: 0, color: role.contentDisabled },
   address: { height: "100%" },
   slot: {
     position: "relative",
@@ -331,6 +324,25 @@ function usePageFrame(surface: string, url: string, covered: boolean): string | 
   return frame.data;
 }
 
+const PERMISSION_NAMES = new Map([
+  ["media", "Camera and microphone"],
+  ["notifications", "Notifications"],
+  ["geolocation", "Location"],
+  ["midi", "MIDI"],
+  ["midiSysex", "MIDI"],
+  ["pointerLock", "Pointer lock"],
+  ["openExternal", "Opening other apps"],
+  ["display-capture", "Screen capture"],
+  ["clipboard-read", "Clipboard reading"],
+  ["idle-detection", "Idle detection"],
+]);
+
+function blockedPermissionsLabel(permissions: readonly string[]): string {
+  const names = [...new Set(permissions.map((name) => PERMISSION_NAMES.get(name) ?? name))];
+
+  return `Blocked by Nyte: ${names.join(", ")}`;
+}
+
 interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
@@ -354,7 +366,7 @@ export function BrowserPanel({
   const bookmarks = useBookmarks();
   const slotRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { state, refusedDownload, history } = useBrowserSurface(surface);
+  const { state, downloads, finding, login, history } = useBrowserSurface(surface);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const stateUrl = state?.url;
@@ -473,7 +485,17 @@ export function BrowserPanel({
   const agentActive = (state?.agentHolders ?? 0) > 0;
 
   return (
-    <section aria-label="Browser" {...props(styles.panel)}>
+    <section
+      aria-label="Browser"
+      {...props(styles.panel)}
+      onKeyDown={(event) => {
+        const command = event.metaKey || event.ctrlKey;
+
+        if (!hasPage || !command || event.altKey || event.key.toLowerCase() !== "f") return;
+        event.preventDefault();
+        setBrowserFinding(surface, true);
+      }}
+    >
       <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
         <Button
           iconOnly
@@ -503,6 +525,16 @@ export function BrowserPanel({
                 <Icon name="lock" size={12} />
               </span>
             )}
+            {hasPage && draft === undefined && state.deniedPermissions.length > 0 && (
+              <span
+                {...props(styles.blockedIcon)}
+                role="img"
+                aria-label={blockedPermissionsLabel(state.deniedPermissions)}
+                title={blockedPermissionsLabel(state.deniedPermissions)}
+              >
+                <Icon name="circle-x" size={12} />
+              </span>
+            )}
             <Input
               ref={inputRef}
               type="text"
@@ -528,19 +560,7 @@ export function BrowserPanel({
             />
           </InputGroup>
         </form>
-        {hasPage && (
-          <span
-            {...props(styles.blocked, state.blocking || styles.blockedOff)}
-            title={
-              state.blocking
-                ? `${String(state.blocked)} requests blocked on this page`
-                : "Ad blocking is off in this build"
-            }
-          >
-            <Icon name="shield" size={12} />
-            {state.blocking ? String(state.blocked) : "off"}
-          </span>
-        )}
+        {hasPage && <ShieldMenu state={state} onChanged={() => navigate("reload")} />}
         {hasPage ? (
           <ButtonLink
             href={currentUrl}
@@ -623,29 +643,10 @@ export function BrowserPanel({
           ))}
         </div>
       )}
-      {refusedDownload !== undefined && (
-        <div role="status" {...props(styles.notice)}>
-          <span {...props(styles.noticeText)}>Downloads do not run here: {refusedDownload}</span>
-          <ButtonLink
-            href={refusedDownload}
-            target="_blank"
-            rel="noreferrer"
-            variant="outline"
-            onClick={(event) => {
-              event.preventDefault();
-              void nyte.host.openExternal({ url: refusedDownload }).catch(() => undefined);
-              dismissRefusedDownload(surface);
-            }}
-          >
-            Open in System Browser
-          </ButtonLink>
-          <Button
-            iconOnly
-            icon="x"
-            aria-label="Dismiss download notice"
-            onClick={() => dismissRefusedDownload(surface)}
-          />
-        </div>
+      {finding && hasPage && <FindBar surface={surface} />}
+      <DownloadsBar surface={surface} downloads={downloads} />
+      {login !== undefined && (
+        <LoginDialog key={login.host} surface={surface} host={login.host} realm={login.realm} />
       )}
       <div {...props(styles.body)}>
         <div ref={slotRef} {...props(styles.slot)}>
@@ -658,7 +659,7 @@ export function BrowserPanel({
               <span {...props(styles.messageTitle)}>Nothing open</span>
             </div>
           )}
-          {state?.error !== undefined && (
+          {state?.error !== undefined && state.error.untrustedHost === undefined && (
             <div role="alert" {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>This page did not load</span>
               <span {...props(styles.messageDetail)}>
@@ -666,6 +667,18 @@ export function BrowserPanel({
               </span>
               <Button variant="outline" onClick={() => navigate("reload")}>
                 Try Again
+              </Button>
+            </div>
+          )}
+          {state?.error?.untrustedHost !== undefined && (
+            <div role="alert" {...props(styles.message)}>
+              <span {...props(styles.messageTitle)}>This connection isn’t private</span>
+              <span {...props(styles.messageDetail)}>
+                {state.error.untrustedHost} uses a certificate this computer doesn’t trust, which is
+                usual for a dev server. Continue only if you run it.
+              </span>
+              <Button variant="outline" onClick={() => navigate("trust-certificate")}>
+                Continue to {state.error.untrustedHost}
               </Button>
             </div>
           )}

@@ -14,7 +14,7 @@ import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
 
-export { hostSetting } from "./host.ts";
+export { changeHostSettings, hostSetting } from "./host.ts";
 
 export { useSetting } from "./store.ts";
 

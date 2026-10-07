@@ -105,6 +105,7 @@ function useHostEvents(router: AppRouter): void {
         case "browser_download":
         case "browser_open_tab":
         case "browser_find_requested":
+        case "browser_login_requested":
           applyBrowserEvent(event);
 
           return;

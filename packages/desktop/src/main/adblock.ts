@@ -66,6 +66,19 @@ export function createBlocker(engine: FiltersEngine): Blocker {
   };
 }
 
+/** A paused host covers its subdomains: pausing `example.com` also pauses `www.example.com`. */
+export function shieldPaused(url: string, allowedHosts: readonly string[]): boolean {
+  let hostname: string;
+
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+
+  return allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
+
 export function parseFilterLists(text: string): FiltersEngine {
   return FiltersEngine.parse(text, {
     enableCompression: true,

@@ -184,6 +184,8 @@ const browserSurfaces = createBrowserSurfaces({
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
 });
 
+settings.subscribe(() => browserSurfaces.settingsChanged());
+
 let updates: ReturnType<typeof registerUpdates> | undefined;
 
 /** The power save blocker Keep awake holds while a chat works. */

@@ -302,6 +302,9 @@ const bridge = {
       perform: object("host.browser.perform"),
       close: object("host.browser.close"),
       captureFrame: object("host.browser.captureFrame"),
+      find: object("host.browser.find"),
+      cancelDownload: object("host.browser.cancelDownload"),
+      login: object("host.browser.login"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
     },

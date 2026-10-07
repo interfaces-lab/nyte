@@ -75,3 +75,33 @@ export function surfaceSecurity(url: string): BrowserSurfaceState["secure"] {
 
   return "none";
 }
+
+/** `report.pdf`, then `report (1).pdf`, as Chrome names a file that already exists. */
+export function uniqueDownloadName(filename: string, taken: (name: string) => boolean): string {
+  const safe = filename.replaceAll(/[/\\:\0]/g, "_").trim() || "download";
+
+  if (!taken(safe)) return safe;
+  const dot = safe.lastIndexOf(".");
+  const [stem, extension] = dot > 0 ? [safe.slice(0, dot), safe.slice(dot)] : [safe, ""];
+
+  for (let index = 1; ; index += 1) {
+    const candidate = `${stem} (${String(index)})${extension}`;
+
+    if (!taken(candidate)) return candidate;
+  }
+}
+
+const CRASH_WINDOW_MS = 30_000;
+
+const CRASH_RETRY_LIMIT = 3;
+
+/**
+ * How long to wait before reloading a page whose renderer just died, given the
+ * times of its earlier crashes. Undefined once a page has crashed too often
+ * recently: it stays on the error screen with a Try Again.
+ */
+export function crashRetryDelay(crashes: readonly number[], now: number): number | undefined {
+  const recent = crashes.filter((at) => now - at < CRASH_WINDOW_MS).length;
+
+  return recent > CRASH_RETRY_LIMIT ? undefined : 250 * 2 ** (recent - 1);
+}

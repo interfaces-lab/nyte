@@ -23,6 +23,7 @@ export interface DesktopStartupTiming {
 
 export interface DesktopLaunchOptions extends DesktopBenchmarkFixtureOptions {
   readonly startupDestination?: "new-chat" | "last-session";
+  readonly downloadsDirectory?: string;
 }
 
 export interface LaunchedDesktop {
@@ -109,9 +110,15 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
     const appData = resolve(fixture.paths.root, "app-data");
     const userData = resolve(appData, "user-data");
     await mkdir(appData);
+
+    const downloadsPath =
+      options.downloadsDirectory === undefined
+        ? ""
+        : `app.setPath("downloads", ${JSON.stringify(resolve(options.downloadsDirectory))});\n`;
+
     await writeFile(
       resolve(fixture.paths.root, "environment.mjs"),
-      `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(userData)});\n`,
+      `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(userData)});\n${downloadsPath}`,
     );
     const entry = resolve(fixture.paths.root, "entry.mjs");
     await writeFile(

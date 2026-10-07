@@ -1,10 +1,14 @@
 /** Browser panel pages: one `WebContentsView` per surface, plus the guest sessions, holders, and agent control over them. */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { basename, join } from "node:path";
 import { app, session, WebContentsView } from "electron";
-import type { BrowserWindow, Session, WebContents } from "electron";
+import type { BrowserWindow, DownloadItem, Session, WebContents } from "electron";
 import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
+  BrowserDownload,
+  BrowserFindResult,
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
@@ -12,12 +16,15 @@ import type {
 } from "@nyte-ai/app/bridge.ts";
 import type { SessionId } from "@nyte-ai/core";
 import type { HostSettings } from "@nyte-ai/host/settings";
-import { loadBlocker, type Blocker } from "./adblock.ts";
+import { loadBlocker, shieldPaused, type Blocker } from "./adblock.ts";
 import {
+  crashRetryDelay,
   httpsUpgrade,
+  isLocalHost,
   permissionAllowed,
   plainRetry,
   surfaceSecurity,
+  uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
 import { sessionSurfaceId } from "./browser-agent.ts";
@@ -48,6 +55,8 @@ interface GuestSession {
   readonly session: Session;
   readonly plainHosts: Set<string>;
   readonly upgrades: Map<number, string>;
+  /** Local hosts whose bad certificate the user chose to proceed past, for this run. */
+  readonly trustedCertificateHosts: Set<string>;
 }
 
 const DEFAULT_BOUNDS: BrowserRect = { x: 0, y: 0, width: 1280, height: 800 };
@@ -114,6 +123,9 @@ export interface BrowserSurfaces {
   close(input: { readonly surface: string }): void;
   /** The page's current pixels as a data URL, captured without showing the view. */
   captureFrame(input: { readonly surface: string }): Promise<string | undefined>;
+  find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]>;
+  cancelDownload(input: { readonly surface: string; readonly id: string }): void;
+  login(input: Parameters<BrowserBridge["login"]>[0]): void;
   /** A visible placement moves the page into the reporting window. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void;
   /** Retain a surface with a holder. Creates the surface if it does not exist. */
@@ -128,6 +140,8 @@ export interface BrowserSurfaces {
   warm(): Promise<void>;
   /** The window closed: its panels let go, and pages the agent still holds move elsewhere. */
   releaseWindow(window: HostWindow): void;
+  /** Settings changed: every page republishes, so a shield badge never shows a stale state. */
+  settingsChanged(): void;
   /** The BrowserAgent implementation for the tools plugin. */
   agent: BrowserAgent;
 }
@@ -140,7 +154,10 @@ export interface BrowserSurfacesDependencies {
   /** Whether the window has been shown at least once. Mouse input is dropped until then. */
   readonly windowShown: (window: BrowserWindow) => boolean;
   /** Read per request, so a changed setting applies to the next one. */
-  readonly settings: () => Pick<HostSettings, "blockAds" | "upgradeToHttps">;
+  readonly settings: () => Pick<
+    HostSettings,
+    "blockAds" | "adblockAllowedHosts" | "upgradeToHttps"
+  >;
 }
 
 interface Surface {
@@ -164,6 +181,28 @@ interface Surface {
   blocked: number;
   error: BrowserSurfaceState["error"];
   owner: BrowserOwner;
+  /** The page is in HTML fullscreen and covers the window; bounds reports are ignored. */
+  fullscreen: boolean;
+  /** Set when entering fullscreen also took the window fullscreen, so leaving restores it. */
+  windowWasWindowed: boolean;
+  /** Follows the window while fullscreen so the page always fills it. */
+  onWindowResize: (() => void) | undefined;
+  /** The request id of the find in flight; `found-in-page` answers it. */
+  find:
+    | { readonly request: number; readonly resolve: (result: BrowserFindResult) => void }
+    | undefined;
+  /** The text of the open find session; the same text again moves within it. */
+  findText: string;
+  /** Permissions refused since the page started loading, so the panel can say why. */
+  readonly deniedPermissions: Set<string>;
+  /** Answers the open HTTP auth challenge; no arguments cancels it. */
+  login: ((username?: string, password?: string) => void) | undefined;
+  /** A local host whose certificate failed on the current load. */
+  untrustedHost: string | undefined;
+  /** When the renderer died recently, so reloads back off and then stop. */
+  readonly crashes: number[];
+  /** The popup this page opened; one at a time, closed with the page. */
+  popup: BrowserWindow | undefined;
 }
 
 /**
@@ -185,6 +224,8 @@ function guestUserAgent(): string {
 export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies): BrowserSurfaces {
   const surfaces = new Map<string, Surface>();
   const byWebContents = new Map<number, Surface>();
+  /** Downloads still running, by id, so the panel can cancel one. */
+  const downloads = new Map<string, DownloadItem>();
   let blocker: Blocker | undefined;
   let blockerReady: Promise<void> | undefined;
   let useClock = 0;
@@ -206,6 +247,20 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     return blockerReady;
   };
 
+  const blockingFor = (url: string): BrowserSurfaceState["blocking"] => {
+    const settings = dependencies.settings();
+
+    if (blocker === undefined || !settings.blockAds) return "off";
+
+    return shieldPaused(url, settings.adblockAllowedHosts) ? "paused" : "on";
+  };
+
+  const blockingOf = (surface: Surface): BrowserSurfaceState["blocking"] => {
+    const contents = surface.view.webContents;
+
+    return blockingFor(contents.isDestroyed() ? "" : contents.getURL());
+  };
+
   const ensureGuestSession = (owner: BrowserOwner): GuestSession => {
     const partition = partitionName(owner);
     const existing = guestSessions.get(partition);
@@ -221,34 +276,90 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     guest.setUserAgent(guestUserAgent());
     guest.setSpellCheckerEnabled(false);
 
-    guest.setPermissionRequestHandler((_contents, permission, callback) => {
-      callback(permissionAllowed(permission));
+    guest.setPermissionRequestHandler((contents, permission, callback) => {
+      const allowed = permissionAllowed(permission);
+
+      if (!allowed) {
+        const surface = byWebContents.get(contents.id);
+
+        if (surface !== undefined && !surface.deniedPermissions.has(permission)) {
+          surface.deniedPermissions.add(permission);
+          publish(surface);
+        }
+      }
+
+      callback(allowed);
     });
     guest.setPermissionCheckHandler((_contents, permission) => permissionAllowed(permission));
 
     guest.on("will-download", (event, item, contents) => {
-      event.preventDefault();
-      const surfaceId = byWebContents.get(contents.id)?.id;
+      const surface = byWebContents.get(contents.id);
 
-      if (surfaceId !== undefined) {
-        dependencies.emit({
-          kind: "browser_download_refused",
-          surface: surfaceId,
-          url: item.getURL(),
-        });
+      // Only a page the user alone drives may write to disk. A page an agent holds is
+      // refused even while a panel shows it: revealing a tab is not consent to download.
+      if (
+        surface === undefined ||
+        !hasViewHolder(surface.holderState) ||
+        countSessionHolders(surface.holderState) > 0
+      ) {
+        event.preventDefault();
+
+        return;
       }
+
+      const folder = app.getPath("downloads");
+      const id = randomUUID();
+
+      const path = join(
+        folder,
+        uniqueDownloadName(item.getFilename(), (name) => existsSync(join(folder, name))),
+      );
+
+      item.setSavePath(path);
+      downloads.set(id, item);
+
+      const report = (state: BrowserDownload["state"]): void => {
+        dependencies.emit({
+          kind: "browser_download",
+          surface: surface.id,
+          download: {
+            id,
+            url: item.getURL(),
+            filename: basename(path),
+            path,
+            received: item.getReceivedBytes(),
+            total: item.getTotalBytes(),
+            state,
+          },
+        });
+      };
+
+      let reported = 0;
+      report("progressing");
+      item.on("updated", (_event, state) => {
+        const now = Date.now();
+
+        if (state === "progressing" && now - reported < 250) return;
+        reported = now;
+        report(state);
+      });
+      item.once("done", (_event, state) => {
+        downloads.delete(id);
+        report(state);
+      });
     });
 
     guest.webRequest.onBeforeRequest((details, callback) => {
-      if (blocker !== undefined && dependencies.settings().blockAds) {
+      const surface =
+        details.webContentsId === undefined ? undefined : byWebContents.get(details.webContentsId);
+
+      const blocking = surface === undefined ? blockingFor("") : blockingOf(surface);
+
+      if (blocker !== undefined && blocking === "on") {
         const decision = blocker.decide(details);
 
         if (decision.kind !== "allow") {
-          if (details.webContentsId !== undefined) {
-            const surface = byWebContents.get(details.webContentsId);
-
-            if (surface !== undefined) surface.blocked += 1;
-          }
+          if (surface !== undefined) surface.blocked += 1;
 
           callback(decision.kind === "block" ? { cancel: true } : { redirectURL: decision.url });
 
@@ -280,7 +391,13 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       callback({ requestHeaders: { ...details.requestHeaders, "Sec-GPC": "1" } });
     });
 
-    const guestSession: GuestSession = { session: guest, plainHosts, upgrades };
+    const guestSession: GuestSession = {
+      session: guest,
+      plainHosts,
+      upgrades,
+      trustedCertificateHosts: new Set(),
+    };
+
     guestSessions.set(partition, guestSession);
 
     return guestSession;
@@ -298,10 +415,12 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         canGoBack: false,
         canGoForward: false,
         secure: "none",
-        blocking: blocker !== undefined && dependencies.settings().blockAds,
+        blocking: "off",
         blocked: surface.blocked,
         error: surface.error,
         agentHolders,
+        fullscreen: false,
+        deniedPermissions: [],
       };
     }
 
@@ -314,10 +433,12 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       canGoBack: contents.navigationHistory.canGoBack(),
       canGoForward: contents.navigationHistory.canGoForward(),
       secure: surfaceSecurity(url),
-      blocking: blocker !== undefined && dependencies.settings().blockAds,
+      blocking: blockingFor(url),
       blocked: surface.blocked,
       error: surface.error,
       agentHolders,
+      fullscreen: surface.fullscreen,
+      deniedPermissions: [...surface.deniedPermissions],
     };
   };
 
@@ -359,6 +480,14 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     const placed =
       hasViewHolder(surface.holderState) && surface.bounds.width > 0 && surface.bounds.height > 0;
 
+    if (surface.fullscreen && placed) {
+      const { width, height } = window.getContentBounds();
+      surface.view.setBounds({ x: 0, y: 0, width, height });
+      surface.view.setVisible(true);
+
+      return;
+    }
+
     if (!placed) {
       hide(surface, window);
       surface.view.setBounds(offscreenBounds(surface.holderState));
@@ -386,18 +515,160 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   const wire = (surface: Surface, contents: WebContents): void => {
     const guestSession = surface.guestSession;
 
-    contents.setWindowOpenHandler(({ url }) => {
+    contents.setWindowOpenHandler(({ url, disposition }) => {
       const target = webUrl(url);
 
-      if (target !== undefined) load(surface, target);
+      if (target === undefined) return { action: "deny" };
+
+      const held = hasViewHolder(surface.holderState);
+      const wantsTab = disposition === "foreground-tab" || disposition === "background-tab";
+
+      // A tab-opening gesture on a page someone is looking at becomes a tab.
+      if (wantsTab && held) {
+        dependencies.emit({
+          kind: "browser_open_tab",
+          surface: surface.id,
+          url: target,
+          background: disposition === "background-tab",
+        });
+
+        return { action: "deny" };
+      }
+
+      // A sized `window.open` is a popup flow, typically sign-in: it needs a real
+      // window with `window.opener` so it can report back. One at a time, only for
+      // a page someone is looking at, and never nested.
+      if (disposition === "new-window" && held && surface.popup === undefined) {
+        const parent = surface.attachedTo;
+
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            parent: parent !== undefined && !parent.isDestroyed() ? parent : undefined,
+            width: 520,
+            height: 680,
+            autoHideMenuBar: true,
+            webPreferences: {
+              session: guestSession.session,
+              sandbox: true,
+              contextIsolation: true,
+              nodeIntegration: false,
+              devTools: false,
+            },
+          },
+        };
+      }
+
+      // Anything else follows the link in place, so an agent-only page still lands somewhere.
+      load(surface, target);
 
       return { action: "deny" };
+    });
+    contents.on("did-create-window", (popup) => {
+      surface.popup = popup;
+      const child = popup.webContents;
+
+      child.setWindowOpenHandler(() => ({ action: "deny" }));
+      child.on("will-navigate", (event, url) => {
+        if (webUrl(url) === undefined) event.preventDefault();
+      });
+      popup.once("closed", () => {
+        if (surface.popup === popup) surface.popup = undefined;
+      });
+    });
+    contents.on("login", (event, _details, authInfo, callback) => {
+      // Proxy challenges and pages nobody is looking at get Chromium's default: cancel.
+      if (authInfo.isProxy || !hasViewHolder(surface.holderState)) return;
+      event.preventDefault();
+      surface.login?.();
+      surface.login = callback;
+      dependencies.emit({
+        kind: "browser_login_requested",
+        surface: surface.id,
+        host: authInfo.host,
+        realm: authInfo.realm,
+      });
+    });
+    contents.on("certificate-error", (event, url, _error, _certificate, callback, isMainFrame) => {
+      let parsed: URL;
+
+      try {
+        parsed = new URL(url);
+      } catch {
+        callback(false);
+
+        return;
+      }
+
+      if (guestSession.trustedCertificateHosts.has(parsed.host)) {
+        event.preventDefault();
+        callback(true);
+
+        return;
+      }
+
+      // Only a dev server on this machine may be trusted past a bad certificate.
+      if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
+      callback(false);
+    });
+    contents.on("before-input-event", (event, input) => {
+      const command = process.platform === "darwin" ? input.meta : input.control;
+
+      if (input.type !== "keyDown" || !command || input.alt || input.key.toLowerCase() !== "f")
+        return;
+      event.preventDefault();
+      dependencies.emit({ kind: "browser_find_requested", surface: surface.id });
+    });
+    contents.on("found-in-page", (_event, result) => {
+      const pending = surface.find;
+
+      if (pending === undefined || pending.request !== result.requestId || !result.finalUpdate)
+        return;
+      surface.find = undefined;
+      pending.resolve({ active: result.activeMatchOrdinal, total: result.matches });
+    });
+    contents.on("enter-html-full-screen", () => {
+      const window = surface.attachedTo;
+
+      if (window === undefined || window.isDestroyed()) return;
+      surface.fullscreen = true;
+      surface.onWindowResize = () => apply(surface);
+      window.on("resize", surface.onWindowResize);
+
+      if (!window.isFullScreen()) {
+        surface.windowWasWindowed = true;
+        window.setFullScreen(true);
+      }
+
+      apply(surface);
+      publish(surface);
+    });
+    contents.on("leave-html-full-screen", () => {
+      const window = surface.attachedTo;
+      surface.fullscreen = false;
+
+      if (surface.onWindowResize !== undefined && window !== undefined && !window.isDestroyed())
+        window.off("resize", surface.onWindowResize);
+      surface.onWindowResize = undefined;
+
+      if (surface.windowWasWindowed && window !== undefined && !window.isDestroyed())
+        window.setFullScreen(false);
+      surface.windowWasWindowed = false;
+      apply(surface);
+      publish(surface);
     });
     contents.on("will-navigate", (event, url) => {
       if (webUrl(url) === undefined) event.preventDefault();
     });
     contents.on("did-start-navigation", (details) => {
-      if (details.isMainFrame && !details.isSameDocument) surface.blocked = 0;
+      if (!details.isMainFrame || details.isSameDocument) return;
+      surface.blocked = 0;
+      surface.findText = "";
+      surface.untrustedHost = undefined;
+      surface.login?.();
+      surface.login = undefined;
+
+      if (surface.deniedPermissions.size > 0) surface.deniedPermissions.clear();
     });
     contents.on("did-start-loading", () => {
       surface.error = undefined;
@@ -413,9 +684,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       publish(surface);
     });
     contents.on("dom-ready", () => {
-      const styles = dependencies.settings().blockAds
-        ? (blocker?.stylesFor(contents.getURL()) ?? "")
-        : "";
+      const url = contents.getURL();
+      const styles = blockingFor(url) === "on" ? (blocker?.stylesFor(url) ?? "") : "";
 
       if (styles !== "")
         void contents.insertCSS(styles, { cssOrigin: "user" }).catch(() => undefined);
@@ -440,16 +710,41 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         }
 
         if (errorCode === -3) return;
-        surface.error = { code: errorCode, description: errorDescription };
+        surface.error =
+          surface.untrustedHost === undefined
+            ? { code: errorCode, description: errorDescription }
+            : {
+                code: errorCode,
+                description: errorDescription,
+                untrustedHost: surface.untrustedHost,
+              };
         apply(surface);
         publish(surface);
       },
     );
     contents.on("render-process-gone", (_event, details) => {
-      surface.error = { code: 0, description: `The page stopped (${details.reason})` };
+      const now = Date.now();
+      surface.crashes.push(now);
+      const delay = crashRetryDelay(surface.crashes, now);
+
+      surface.error = {
+        code: 0,
+        description:
+          delay === undefined
+            ? `The page stopped (${details.reason})`
+            : `The page stopped (${details.reason}). Reloading…`,
+      };
       surface.runtime.error = surface.error;
       apply(surface);
       publish(surface);
+
+      if (delay === undefined) return;
+
+      setTimeout(() => {
+        if (surface.destroyed || contents.isDestroyed()) return;
+        surface.error = undefined;
+        contents.reload();
+      }, delay);
     });
 
     attachConsoleCapture(contents, surface.runtime);
@@ -486,6 +781,16 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       blocked: 0,
       error: undefined,
       owner,
+      fullscreen: false,
+      windowWasWindowed: false,
+      onWindowResize: undefined,
+      find: undefined,
+      findText: "",
+      deniedPermissions: new Set(),
+      login: undefined,
+      untrustedHost: undefined,
+      crashes: [],
+      popup: undefined,
     };
 
     surfaces.set(id, surface);
@@ -502,9 +807,19 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     const contents = surface.view.webContents;
     byWebContents.delete(contents.id);
     surface.guestSession.upgrades.delete(contents.id);
+    surface.find?.resolve({ active: 0, total: 0 });
+    surface.find = undefined;
+    surface.login?.();
+    surface.login = undefined;
+
+    if (surface.popup !== undefined && !surface.popup.isDestroyed()) surface.popup.close();
+    surface.popup = undefined;
     const window = surface.attachedTo;
 
     if (window !== undefined && !window.isDestroyed()) {
+      if (surface.onWindowResize !== undefined) window.off("resize", surface.onWindowResize);
+
+      if (surface.windowWasWindowed) window.setFullScreen(false);
       window.contentView.removeChildView(surface.view);
     }
 
@@ -806,6 +1121,18 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
           contents.stop();
 
           return;
+        case "trust-certificate": {
+          const host = surface.untrustedHost;
+
+          if (host === undefined) return;
+          surface.guestSession.trustedCertificateHosts.add(host);
+          surface.untrustedHost = undefined;
+          surface.error = undefined;
+          contents.reload();
+
+          return;
+        }
+
         default: {
           const _exhaustive: never = action;
 
@@ -893,6 +1220,47 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         return undefined;
       }
     },
+    find({ surface: id, text, direction }) {
+      const surface = surfaces.get(id);
+      const contents = surface?.view.webContents;
+      const none = { active: 0, total: 0 };
+
+      if (surface === undefined || contents === undefined || contents.isDestroyed())
+        return Promise.resolve(none);
+      surface.find?.resolve(none);
+      surface.find = undefined;
+
+      if (text === "") {
+        surface.findText = "";
+        contents.stopFindInPage("clearSelection");
+
+        return Promise.resolve(none);
+      }
+
+      return new Promise((resolve) => {
+        const request = contents.findInPage(text, {
+          forward: direction === "next",
+          findNext: text !== surface.findText,
+          matchCase: false,
+        });
+
+        surface.findText = text;
+        surface.find = { request, resolve };
+      });
+    },
+    cancelDownload({ id }) {
+      downloads.get(id)?.cancel();
+    },
+    login({ surface: id, credentials }) {
+      const surface = surfaces.get(id);
+      const answer = surface?.login;
+
+      if (surface === undefined || answer === undefined) return;
+      surface.login = undefined;
+
+      if (credentials === undefined) answer();
+      else answer(credentials.username, credentials.password);
+    },
     setBounds({ surface: id, bounds, visible }, window) {
       const surface = surfaces.get(id);
 
@@ -918,6 +1286,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     },
     warm() {
       return ensureBlocker();
+    },
+    settingsChanged() {
+      for (const surface of surfaces.values()) publish(surface);
     },
     releaseWindow(window) {
       for (const surface of surfaces.values()) {

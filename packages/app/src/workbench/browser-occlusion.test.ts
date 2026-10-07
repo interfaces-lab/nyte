@@ -12,9 +12,11 @@ const state = {
   canGoBack: false,
   canGoForward: false,
   secure: "https",
-  blocking: false,
+  blocking: "off",
   blocked: 0,
   agentHolders: 0,
+  fullscreen: false,
+  deniedPermissions: [],
 };
 const resolved = () => Promise.resolve(undefined);
 window.nyte = new Proxy(
@@ -28,6 +30,9 @@ window.nyte = new Proxy(
         perform: resolved,
         close: resolved,
         captureFrame: resolved,
+        find: () => Promise.resolve({ active: 0, total: 0 }),
+        cancelDownload: resolved,
+        login: resolved,
         setBounds: (message) => recorded.push(message),
       },
     },

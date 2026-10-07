@@ -40,7 +40,8 @@ export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }
 
-async function change(patch: HostSettingsPatch): Promise<void> {
+/** Resolves once main has written the file, so a dependent action sees the new value. */
+export async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
   const bridge = nyte.host.settings;
 
   if (bridge === undefined) return;
@@ -58,7 +59,7 @@ export function hostSetting<K extends HostSettingKey>(key: K): Setting<HostSetti
     set: (value) => {
       const patch: { -readonly [P in HostSettingKey]?: HostSettings[P] } = {};
       patch[key] = value;
-      void change(patch);
+      void changeHostSettings(patch);
     },
     subscribe: (listener) =>
       queryClient.getQueryCache().subscribe((event) => {

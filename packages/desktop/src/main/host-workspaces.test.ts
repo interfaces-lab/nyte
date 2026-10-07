@@ -227,6 +227,7 @@ async function fixture() {
         captureFrame: () => Promise.resolve(undefined),
         find: () => Promise.resolve({ active: 0, total: 0 }),
         cancelDownload: () => undefined,
+        login: () => undefined,
         settingsChanged: () => undefined,
         setBounds: () => undefined,
         retain: () => undefined,

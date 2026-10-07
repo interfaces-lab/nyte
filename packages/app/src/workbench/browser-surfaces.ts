@@ -1,24 +1,33 @@
 import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import type { BrowserSurfaceState, HostEvent } from "../bridge.ts";
+import type { BrowserDownload, BrowserSurfaceState, HostEvent } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 
 interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
-  readonly refusedDownload: string | undefined;
+  /** Newest first. A finished download stays until dismissed. */
+  readonly downloads: readonly BrowserDownload[];
   readonly history: readonly Pick<BrowserSurfaceState, "url" | "title">[];
+  /** The find bar is open; set by Cmd+F from the page or the panel. */
+  readonly finding: boolean;
+  /** An HTTP authentication challenge waiting for the user. */
+  readonly login: { readonly host: string; readonly realm: string } | undefined;
   /** The cookie jar the panel opened this surface in: a workspace path, or null for home. */
   readonly owner: string | null | undefined;
 }
 
 const EMPTY: BrowserSurfaceView = Object.freeze({
   state: undefined,
-  refusedDownload: undefined,
+  downloads: [],
   history: [],
+  finding: false,
+  login: undefined,
   owner: undefined,
 });
+
+const DOWNLOADS_SHOWN = 5;
 
 let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 
@@ -54,23 +63,60 @@ function browserTab(
  * closing in main, and a late event must not write it back.
  */
 export function applyBrowserEvent(
-  event: Extract<HostEvent, { kind: "browser_changed" | "browser_download_refused" }>,
+  event: Extract<
+    HostEvent,
+    {
+      kind:
+        | "browser_changed"
+        | "browser_download"
+        | "browser_open_tab"
+        | "browser_find_requested"
+        | "browser_login_requested";
+    }
+  >,
 ): void {
   const current = views.get(event.surface);
   const tab = browserTab(event.surface);
 
-  if (event.kind === "browser_download_refused") {
-    if (current === undefined && tab === undefined) return;
-    set(event.surface, { ...(current ?? EMPTY), refusedDownload: event.url });
+  if (event.kind === "browser_open_tab") {
+    if (tab === undefined) return;
+    workbenchController.actions.openTab({
+      view: tab.view,
+      tab: { kind: "browser", url: event.url },
+      activate: !event.background,
+    });
+
+    return;
+  }
+
+  const held = current ?? EMPTY;
+  const owned = current !== undefined || tab !== undefined;
+
+  if (event.kind === "browser_find_requested") {
+    if (owned) set(event.surface, { ...held, finding: true });
+
+    return;
+  }
+
+  if (event.kind === "browser_login_requested") {
+    if (owned) set(event.surface, { ...held, login: { host: event.host, realm: event.realm } });
+
+    return;
+  }
+
+  if (event.kind === "browser_download") {
+    if (!owned) return;
+    const rest = held.downloads.filter((download) => download.id !== event.download.id);
+    set(event.surface, { ...held, downloads: [event.download, ...rest].slice(0, DOWNLOADS_SHOWN) });
 
     return;
   }
 
   const { state } = event;
 
-  if (current === undefined && tab === undefined && state.agentHolders === 0) return;
-  const held = current ?? EMPTY;
-  const refusedDownload = state.loading ? undefined : held.refusedDownload;
+  if (!owned && state.agentHolders === 0) return;
+  // A new load ends any challenge the previous one left open.
+  const login = state.loading ? undefined : held.login;
   const latest = held.history[0];
 
   const history =
@@ -84,7 +130,7 @@ export function applyBrowserEvent(
         ]
       : held.history;
 
-  set(event.surface, { ...held, state, refusedDownload, history });
+  set(event.surface, { ...held, state, history, login });
 
   if (tab !== undefined && state.url !== "") {
     workbenchController.actions.updateTab({
@@ -96,11 +142,23 @@ export function applyBrowserEvent(
   }
 }
 
-export function dismissRefusedDownload(surface: string): void {
+export function dismissDownload(surface: string, id: string): void {
   const current = views.get(surface);
 
-  if (current?.refusedDownload !== undefined)
-    set(surface, { ...current, refusedDownload: undefined });
+  if (current === undefined) return;
+  set(surface, { ...current, downloads: current.downloads.filter((item) => item.id !== id) });
+}
+
+export function dismissLogin(surface: string): void {
+  const current = views.get(surface);
+
+  if (current?.login !== undefined) set(surface, { ...current, login: undefined });
+}
+
+export function setBrowserFinding(surface: string, finding: boolean): void {
+  const current = views.get(surface) ?? EMPTY;
+
+  if (current.finding !== finding) set(surface, { ...current, finding });
 }
 
 export function claimBrowserSurface(surface: string, owner: string | null): void {
@@ -126,7 +184,7 @@ export function applyBrowserAgentOpened(
 ): void {
   if (nyte.host.browser === undefined) return;
   const current = views.get(event.surface) ?? EMPTY;
-  const revealed = { ...current, state: event.state, refusedDownload: undefined };
+  const revealed = { ...current, state: event.state };
   set(event.surface, revealed);
 
   const id = workbenchController.actions.openTab({

@@ -217,7 +217,7 @@ export const CALL_INPUT_SCHEMAS = {
     strict({
       surface: nonEmpty,
       action: schemas.typed<BrowserNavigationAction>()(
-        Type.Enum(["back", "forward", "reload", "stop"]),
+        Type.Enum(["back", "forward", "reload", "stop", "trust-certificate"]),
       ),
     }),
   ),
@@ -246,6 +246,26 @@ export const CALL_INPUT_SCHEMAS = {
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
+  "host.browser.find": compile(
+    strict({
+      surface: nonEmpty,
+      text: Type.String({ maxLength: 1024 }),
+      direction: Type.Enum(["next", "previous"]),
+    }),
+  ),
+  "host.browser.cancelDownload": compile(strict({ surface: nonEmpty, id: nonEmpty })),
+  "host.browser.login": compile(
+    strict({
+      surface: nonEmpty,
+      credentials: Type.Union([
+        Type.Undefined(),
+        strict({
+          username: Type.String({ maxLength: 1024 }),
+          password: Type.String({ maxLength: 1024 }),
+        }),
+      ]),
+    }),
+  ),
   "host.terminal.create": compile(
     strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
   ),

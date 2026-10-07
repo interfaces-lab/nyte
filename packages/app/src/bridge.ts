@@ -475,11 +475,20 @@ export interface BrowserSurfaceState {
   readonly blocking: "on" | "paused" | "off";
   /** Requests blocked since the current page started loading. */
   readonly blocked: number;
-  readonly error: { readonly code: number; readonly description: string } | undefined;
+  readonly error: BrowserPageError | undefined;
   /** Number of agent (session) holders currently retaining this surface. */
   readonly agentHolders: number;
   /** A `<video>` or the page asked for fullscreen; the page covers the whole window. */
   readonly fullscreen: boolean;
+  /** Permissions the page asked for and Nyte refused since this page started loading. */
+  readonly deniedPermissions: readonly string[];
+}
+
+export interface BrowserPageError {
+  readonly code: number;
+  readonly description: string;
+  /** A local host whose certificate failed; the user may choose to proceed. */
+  readonly untrustedHost?: string;
 }
 
 /** A file a user-held page is saving to the Downloads folder. */
@@ -510,7 +519,7 @@ export type BrowserAction =
 
 export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
 
-export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
+export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop" | "trust-certificate";
 
 /**
  * Clipboard and selection roles run in the focused web contents, so a native
@@ -595,6 +604,8 @@ export type HostEvent =
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
   /** Cmd+F landed in the page while it had focus. */
   | { kind: "browser_find_requested"; surface: string }
+  /** The page answered 401 with a Basic or Digest challenge; the panel asks for credentials. */
+  | { kind: "browser_login_requested"; surface: string; host: string; realm: string }
   | {
       kind: "browser_agent_opened";
       surface: string;
@@ -697,6 +708,11 @@ export interface BrowserBridge {
     direction: "next" | "previous";
   }): Promise<BrowserFindResult>;
   cancelDownload(input: { surface: string; id: string }): Promise<void>;
+  /** Answers the page's HTTP authentication challenge; no credentials cancels it. */
+  login(input: {
+    surface: string;
+    credentials: { username: string; password: string } | undefined;
+  }): Promise<void>;
   setBounds(message: BrowserBoundsMessage): void;
 }
 
