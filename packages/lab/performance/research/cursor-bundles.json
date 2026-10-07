@@ -1,0 +1,22 @@
+{
+  "workbench.glass.main.js": {
+    "bytes": 46474294,
+    "sha256": "4c3f25eae5105ad35ec64e0248def5ed2f69607ce0bc5ca5974e59da5216aab4"
+  },
+  "workbench.desktop.main.js": {
+    "bytes": 39262113,
+    "sha256": "444498c2672d6172416654b60d267bff8457277441de0049b7a2147468528ad8"
+  },
+  "workbench.glass.main.css": {
+    "bytes": 1275668,
+    "sha256": "7726c5d622bdce2a4d04b3de87ef87a27365f11d0e25e36d1fac436badaea30f"
+  },
+  "workbench.desktop.main.css": {
+    "bytes": 1276105,
+    "sha256": "b876ee43380d187d4737d6c2a0d35e87dca53c9c9f5a5455c2447eb557598a4f"
+  },
+  "out/main.js": {
+    "bytes": 2734232,
+    "sha256": "8d7fa30447433ebe9061ca24eadcd769593f7b44013ae2fdd9f2035b259a602a"
+  }
+}

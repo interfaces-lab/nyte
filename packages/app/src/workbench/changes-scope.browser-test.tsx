@@ -96,6 +96,9 @@ interface Observation {
   readonly alert: string | null;
   readonly stackPaths: readonly string[];
   readonly snapshotReads: number;
+  readonly diffReads: number;
+  /** Each open scope-menu radio row's text; empty while the menu is closed. */
+  readonly menuRows: readonly string[];
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -154,6 +157,10 @@ export async function run(): Promise<string> {
         (item) => item.getAttribute("data-change-path") ?? "",
       ),
       snapshotReads: changesScopeScript.snapshotReads,
+      diffReads: changesScopeScript.diffReads,
+      menuRows: Array.from(document.querySelectorAll('[role="menuitemradio"]')).map(
+        (item) => item.textContent ?? "",
+      ),
     };
 
     observations.push(observation);
@@ -205,6 +212,46 @@ export async function run(): Promise<string> {
     await settle();
     observe("mounted on uncommitted");
 
+    trigger().click();
+    await until(
+      () => document.querySelectorAll('[role="menuitemradio"]').length > 0,
+      "the scope menu to open",
+    );
+    await settle();
+    observe("scope menu open");
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    await until(
+      () => document.querySelectorAll('[role="menuitemradio"]').length === 0,
+      "the scope menu to close",
+    );
+
+    const unstagedPatches = () =>
+      queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["vcs", "diffs"] })
+        .some(
+          (query) =>
+            query.queryKey[4] === "unstaged" &&
+            Array.isArray(query.state.data) &&
+            query.state.data.length === 1,
+        );
+
+    await selectScope("Unstaged");
+    await until(
+      () => unstagedPatches() && container.querySelector("diffs-container") !== null,
+      "the unstaged patch to load and render",
+    );
+    await settle();
+    observe("selected unstaged");
+
+    await selectScope("Uncommitted");
+    await until(
+      () => container.querySelector('[data-change-path="src/working.ts"]') !== null,
+      "the working-tree diff to render again",
+    );
+    await settle();
     changesScopeScript.vcsFiles = [
       { path: "src/first.ts", kind: "modified" },
       { path: "src/working.ts", kind: "modified" },

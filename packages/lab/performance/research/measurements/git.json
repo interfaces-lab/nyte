@@ -1,0 +1,1454 @@
+{
+  "root": "/tmp/nyte-git-bench-Zwd1gK",
+  "runtime": "v26.10.0",
+  "scenarios": [
+    {
+      "count": 100,
+      "lines": 40,
+      "cwd": "/tmp/nyte-git-bench-Zwd1gK/100x40",
+      "oid": "90860dcb2de365f38c9b11da8f558fdfce1141e7",
+      "samples": [
+        {
+          "trial": 0,
+          "metadataBytes": 4501,
+          "selectedBytes": 4191,
+          "allBytes": 419001,
+          "patchBytes": 385100,
+          "totalChangedLines": 8000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 67.07320800000002,
+              "cpuMs": 5.257,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 172.59687500000018,
+              "cpuMs": 14.545,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 2500.2787080000003,
+              "cpuMs": 338.402,
+              "commands": 102,
+              "peak": 100,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 100,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 3.897624999999607,
+              "cpuMs": 4.354,
+              "eventLoopDelayMs": 16.897041000000172
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 7.8446249999997235,
+              "cpuMs": 8.536,
+              "eventLoopDelayMs": 16.811624999999367
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 9.092915999999605,
+              "cpuMs": 14.6,
+              "eventLoopDelayMs": 9.459625000000415
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 0.47716700000000856,
+              "cpuMs": 0.485,
+              "eventLoopDelayMs": 0.5337079999999332
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 14.254917000000205,
+              "cpuMs": 20.708,
+              "eventLoopDelayMs": 14.338791000000128
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.10316700000021228,
+              "cpuMs": 0.124,
+              "eventLoopDelayMs": 0.22145799999998417
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 0.5423330000003261,
+              "cpuMs": 0.561,
+              "eventLoopDelayMs": 15.35320799999954
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 0.6177920000000086,
+              "cpuMs": 0.622,
+              "eventLoopDelayMs": 1.5466659999992771
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 0.14162500000020373,
+              "cpuMs": 0.148,
+              "eventLoopDelayMs": 2.9505419999995866
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "metadataBytes": 4501,
+          "selectedBytes": 4191,
+          "allBytes": 419001,
+          "patchBytes": 385100,
+          "totalChangedLines": 8000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 42.9130839999998,
+              "cpuMs": 7.604,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 232.0087080000003,
+              "cpuMs": 11.511,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 3288.5681250000007,
+              "cpuMs": 365.448,
+              "commands": 102,
+              "peak": 100,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 100,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 0.8875000000007276,
+              "cpuMs": 0.891,
+              "eventLoopDelayMs": 1.028874999999971
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 9.07745900000009,
+              "cpuMs": 6.766,
+              "eventLoopDelayMs": 9.880415999999968
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 8.761125000000902,
+              "cpuMs": 5.83,
+              "eventLoopDelayMs": 9.732292000000598
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 0.09608299999854353,
+              "cpuMs": 0.113,
+              "eventLoopDelayMs": 2.61462500000016
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 11.710624999999709,
+              "cpuMs": 6.8,
+              "eventLoopDelayMs": 12.629166999999143
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.1629590000011376,
+              "cpuMs": 0.154,
+              "eventLoopDelayMs": 1.227666999999201
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 1.0033750000002328,
+              "cpuMs": 0.618,
+              "eventLoopDelayMs": 1.4507500000017899
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 1.7862499999991996,
+              "cpuMs": 0.71,
+              "eventLoopDelayMs": 2.0999160000010306
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 0.899582999998529,
+              "cpuMs": 0.262,
+              "eventLoopDelayMs": 1.0826250000009168
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "metadataBytes": 4501,
+          "selectedBytes": 4191,
+          "allBytes": 419001,
+          "patchBytes": 385100,
+          "totalChangedLines": 8000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 93.46191699999872,
+              "cpuMs": 9.226,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 135.3633340000015,
+              "cpuMs": 10.146,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 3231.1689160000005,
+              "cpuMs": 356.809,
+              "commands": 102,
+              "peak": 100,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 100,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 0.9873330000009446,
+              "cpuMs": 0.962,
+              "eventLoopDelayMs": 1.1440829999992275
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 4.459375000000364,
+              "cpuMs": 4.012,
+              "eventLoopDelayMs": 5.70983299999898
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 9.543333999999959,
+              "cpuMs": 6.822,
+              "eventLoopDelayMs": 13.929790999998659
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 0.6039999999993597,
+              "cpuMs": 0.274,
+              "eventLoopDelayMs": 5.995624999999563
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 10.733374999999796,
+              "cpuMs": 16.431,
+              "eventLoopDelayMs": 16.868124999999054
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.1514580000002752,
+              "cpuMs": 0.16,
+              "eventLoopDelayMs": 0.19345799999973678
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 0.44191700000010314,
+              "cpuMs": 0.444,
+              "eventLoopDelayMs": 0.467583999999988
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 1.6655829999999696,
+              "cpuMs": 0.662,
+              "eventLoopDelayMs": 1.722749999998996
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 0.29533400000036636,
+              "cpuMs": 0.588,
+              "eventLoopDelayMs": 0.34233299999868905
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "count": 1000,
+      "lines": 40,
+      "cwd": "/tmp/nyte-git-bench-Zwd1gK/1000x40",
+      "oid": "5900d4e5d7a68887f45f9fd3cdfca304c780c7f2",
+      "samples": [
+        {
+          "trial": 0,
+          "metadataBytes": 45001,
+          "selectedBytes": 4191,
+          "allBytes": 4190001,
+          "patchBytes": 3851000,
+          "totalChangedLines": 80000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 53.72054200000093,
+              "cpuMs": 2.765,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 207.55604200000016,
+              "cpuMs": 16.886,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 27649.139792,
+              "cpuMs": 6319.488,
+              "commands": 1002,
+              "peak": 1000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 4.891292000000249,
+              "cpuMs": 4.981,
+              "eventLoopDelayMs": 10.988624999998137
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 17.94916699999885,
+              "cpuMs": 29.923,
+              "eventLoopDelayMs": 19.089249999997264
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 25.649291999994603,
+              "cpuMs": 54.321,
+              "eventLoopDelayMs": 25.691832999997132
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 1.0200410000034026,
+              "cpuMs": 1.022,
+              "eventLoopDelayMs": 1.0759160000015981
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 24.238834000003408,
+              "cpuMs": 28.341,
+              "eventLoopDelayMs": 24.5009579999969
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.05129200000374112,
+              "cpuMs": 0.131,
+              "eventLoopDelayMs": 0.07254099999408936
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 4.245167000000947,
+              "cpuMs": 20.405,
+              "eventLoopDelayMs": 4.2885000000023865
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 3.7110410000022966,
+              "cpuMs": 9.582,
+              "eventLoopDelayMs": 5.319792000002053
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 1.4664999999949941,
+              "cpuMs": 6.97,
+              "eventLoopDelayMs": 1.5052079999950365
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "metadataBytes": 45001,
+          "selectedBytes": 4191,
+          "allBytes": 4190001,
+          "patchBytes": 3851000,
+          "totalChangedLines": 80000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 16.913791999999376,
+              "cpuMs": 7.405,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 48.13416600000346,
+              "cpuMs": 7.821,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 26480.981041000006,
+              "cpuMs": 6715.741,
+              "commands": 1002,
+              "peak": 1000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 9.308959000001778,
+              "cpuMs": 6.353,
+              "eventLoopDelayMs": 12.668334000001778
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 32.837458999987575,
+              "cpuMs": 45.458,
+              "eventLoopDelayMs": 56.76720800000476
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 34.81091699999524,
+              "cpuMs": 32.745,
+              "eventLoopDelayMs": 37.20979200000875
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 3.504625000001397,
+              "cpuMs": 2.741,
+              "eventLoopDelayMs": 3.5932080000056885
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 65.42320799999288,
+              "cpuMs": 46.111,
+              "eventLoopDelayMs": 65.4960829999909
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.07770900000468828,
+              "cpuMs": 0.081,
+              "eventLoopDelayMs": 0.64266700000735
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 9.246166999990237,
+              "cpuMs": 7.838,
+              "eventLoopDelayMs": 9.81141700000444
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 9.715583999990486,
+              "cpuMs": 6.142,
+              "eventLoopDelayMs": 11.488790999996127
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 3.1187499999941792,
+              "cpuMs": 2.217,
+              "eventLoopDelayMs": 8.026624999998603
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "metadataBytes": 45001,
+          "selectedBytes": 4191,
+          "allBytes": 4190001,
+          "patchBytes": 3851000,
+          "totalChangedLines": 80000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 58.34199999998964,
+              "cpuMs": 13.119,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 179.54229199999827,
+              "cpuMs": 13.199,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 33672.92550000001,
+              "cpuMs": 7311.353,
+              "commands": 1002,
+              "peak": 1000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 7.582290999998804,
+              "cpuMs": 6.238,
+              "eventLoopDelayMs": 10.259624999991502
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 30.9382079999923,
+              "cpuMs": 43.302,
+              "eventLoopDelayMs": 50.97316700000374
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 27.806790999995428,
+              "cpuMs": 34.031,
+              "eventLoopDelayMs": 32.471292000001995
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 5.286500000001979,
+              "cpuMs": 2.072,
+              "eventLoopDelayMs": 5.805584000001545
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 62.06341699999757,
+              "cpuMs": 47.463,
+              "eventLoopDelayMs": 62.12145799999416
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.08000000000174623,
+              "cpuMs": 0.082,
+              "eventLoopDelayMs": 0.4677919999958249
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 7.354042000006302,
+              "cpuMs": 6.772,
+              "eventLoopDelayMs": 7.496291999996174
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 8.53925000000163,
+              "cpuMs": 5.308,
+              "eventLoopDelayMs": 9.31624999998894
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 7.553999999989173,
+              "cpuMs": 4.028,
+              "eventLoopDelayMs": 18.510792000000947
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "count": 2000,
+      "lines": 40,
+      "cwd": "/tmp/nyte-git-bench-Zwd1gK/2000x40",
+      "oid": "1c28ce3217bf4843b521ab44ee657af0c90d1355",
+      "samples": [
+        {
+          "trial": 0,
+          "metadataBytes": 90001,
+          "selectedBytes": 4191,
+          "allBytes": 8380001,
+          "patchBytes": 7702000,
+          "totalChangedLines": 160000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 40.36583399999654,
+              "cpuMs": 3.753,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 141.8545419999864,
+              "cpuMs": 12.811,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 59047.127792,
+              "cpuMs": 20629.284,
+              "commands": 2002,
+              "peak": 2000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 2000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 16.56166600002325,
+              "cpuMs": 15.236,
+              "eventLoopDelayMs": 17.4829590000154
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 111.15037499999744,
+              "cpuMs": 125.312,
+              "eventLoopDelayMs": 111.20845800000825
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 147.32358300001943,
+              "cpuMs": 103.221,
+              "eventLoopDelayMs": 147.38399999999092
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 20.586375000013504,
+              "cpuMs": 14.019,
+              "eventLoopDelayMs": 20.651874999981374
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 77.5472080000036,
+              "cpuMs": 77.56,
+              "eventLoopDelayMs": 77.59400000001187
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.04858299999614246,
+              "cpuMs": 0.049,
+              "eventLoopDelayMs": 0.5031660000095144
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 9.196291000000201,
+              "cpuMs": 12.292,
+              "eventLoopDelayMs": 9.260500000003958
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 8.174291000002995,
+              "cpuMs": 8.178,
+              "eventLoopDelayMs": 8.242124999989755
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 5.290624999994179,
+              "cpuMs": 5.142,
+              "eventLoopDelayMs": 7.3662919999915175
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "metadataBytes": 90001,
+          "selectedBytes": 4191,
+          "allBytes": 8380001,
+          "patchBytes": 7702000,
+          "totalChangedLines": 160000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 62.53445800000918,
+              "cpuMs": 19.202,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 216.6757079999952,
+              "cpuMs": 12.909,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 46076.53008300002,
+              "cpuMs": 18327.258,
+              "commands": 2002,
+              "peak": 2000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 2000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 9.157666000013705,
+              "cpuMs": 9.246,
+              "eventLoopDelayMs": 9.59004099998856
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 33.88054199999897,
+              "cpuMs": 37.792,
+              "eventLoopDelayMs": 36.05449999999837
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 51.87987499998417,
+              "cpuMs": 62.133,
+              "eventLoopDelayMs": 51.932124999992084
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 2.5343750000174623,
+              "cpuMs": 2.526,
+              "eventLoopDelayMs": 2.585416999994777
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 49.09366700000828,
+              "cpuMs": 57,
+              "eventLoopDelayMs": 49.14370799998869
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.047458000015467405,
+              "cpuMs": 0.049,
+              "eventLoopDelayMs": 0.10033300000941381
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 8.11600000000908,
+              "cpuMs": 8.051,
+              "eventLoopDelayMs": 8.175459000020055
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 7.097375000012107,
+              "cpuMs": 7.095,
+              "eventLoopDelayMs": 8.743291999999201
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 2.4351670000178274,
+              "cpuMs": 2.435,
+              "eventLoopDelayMs": 2.4935830000031274
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "metadataBytes": 90001,
+          "selectedBytes": 4191,
+          "allBytes": 8380001,
+          "patchBytes": 7702000,
+          "totalChangedLines": 160000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 18.58233299999847,
+              "cpuMs": 12.752,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 47.84512499999255,
+              "cpuMs": 7.812,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 20766.669332999998,
+              "cpuMs": 14704.086,
+              "commands": 2002,
+              "peak": 2000,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 2000,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 8.615082999982405,
+              "cpuMs": 8.601,
+              "eventLoopDelayMs": 10.301792000012938
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 32.694375000020955,
+              "cpuMs": 35.86,
+              "eventLoopDelayMs": 34.274124999996275
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 47.81758400000399,
+              "cpuMs": 55.134,
+              "eventLoopDelayMs": 47.85779100001673
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 1.864832999999635,
+              "cpuMs": 1.867,
+              "eventLoopDelayMs": 1.9192499999771826
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 46.132582999998704,
+              "cpuMs": 52.684,
+              "eventLoopDelayMs": 46.179917000001296
+            },
+            {
+              "label": "selected-converter",
+              "ms": 0.041624999983469024,
+              "cpuMs": 0.045,
+              "eventLoopDelayMs": 0.06620800000382587
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 6.786332999996375,
+              "cpuMs": 7.399,
+              "eventLoopDelayMs": 6.8535419999971054
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 6.7306249999965075,
+              "cpuMs": 6.724,
+              "eventLoopDelayMs": 8.14229200000409
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 2.3966250000230502,
+              "cpuMs": 2.402,
+              "eventLoopDelayMs": 2.461250000022119
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "lines": 100000,
+      "cwd": "/tmp/nyte-git-bench-Zwd1gK/1x100000",
+      "oid": "9ea860d993f00a8cf03b92a389b1eef7eec61585",
+      "samples": [
+        {
+          "trial": 0,
+          "metadataBytes": 46,
+          "selectedBytes": 11155807,
+          "allBytes": 11155807,
+          "patchBytes": 10555699,
+          "totalChangedLines": 200000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 17.681083000003127,
+              "cpuMs": 1.973,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 112.3974589999998,
+              "cpuMs": 68.13,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 115.60779199999524,
+              "cpuMs": 48.944,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 13.416792000003625,
+              "cpuMs": 13.344,
+              "eventLoopDelayMs": 13.506208000006154
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 39.49045899999328,
+              "cpuMs": 48.999,
+              "eventLoopDelayMs": 39.53895799999009
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 52.38262499999837,
+              "cpuMs": 60.214,
+              "eventLoopDelayMs": 52.423792000015965
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 1.8092910000123084,
+              "cpuMs": 1.777,
+              "eventLoopDelayMs": 1.8606250000011642
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 51.70691700000316,
+              "cpuMs": 60.151,
+              "eventLoopDelayMs": 51.75174999999581
+            },
+            {
+              "label": "selected-converter",
+              "ms": 50.212916999997105,
+              "cpuMs": 58.066,
+              "eventLoopDelayMs": 52.02133300001151
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 5.6756250000034925,
+              "cpuMs": 5.692,
+              "eventLoopDelayMs": 5.7426249999844
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 8.923207999992883,
+              "cpuMs": 9.137,
+              "eventLoopDelayMs": 8.985333999997238
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 1.1342920000024606,
+              "cpuMs": 1.125,
+              "eventLoopDelayMs": 1.180791999999201
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "metadataBytes": 46,
+          "selectedBytes": 11155807,
+          "allBytes": 11155807,
+          "patchBytes": 10555699,
+          "totalChangedLines": 200000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 15.271749999985332,
+              "cpuMs": 12.175,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 98.24554200001876,
+              "cpuMs": 31.543,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 96.19720900000539,
+              "cpuMs": 30.343,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 13.353541999997105,
+              "cpuMs": 18.519,
+              "eventLoopDelayMs": 13.433916000009049
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 38.2527500000142,
+              "cpuMs": 39.855,
+              "eventLoopDelayMs": 40.759791999997105
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 56.50104200001806,
+              "cpuMs": 62.121,
+              "eventLoopDelayMs": 56.54554199997801
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 1.695584000000963,
+              "cpuMs": 1.697,
+              "eventLoopDelayMs": 1.728583999996772
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 55.53083400000469,
+              "cpuMs": 61.04,
+              "eventLoopDelayMs": 55.56787499997881
+            },
+            {
+              "label": "selected-converter",
+              "ms": 56.656749999994645,
+              "cpuMs": 62.206,
+              "eventLoopDelayMs": 56.69470900000306
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 5.406749999994645,
+              "cpuMs": 5.41,
+              "eventLoopDelayMs": 5.477582999999868
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 9.106499999994412,
+              "cpuMs": 9.039,
+              "eventLoopDelayMs": 9.200333999993745
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 0.978000000002794,
+              "cpuMs": 0.983,
+              "eventLoopDelayMs": 1.0245839999988675
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "metadataBytes": 46,
+          "selectedBytes": 11155807,
+          "allBytes": 11155807,
+          "patchBytes": 10555699,
+          "totalChangedLines": 200000,
+          "phases": [
+            {
+              "label": "metadata",
+              "ms": 14.130667000019457,
+              "cpuMs": 8.27,
+              "commands": 0,
+              "peak": 0,
+              "commandKinds": {
+                "rev-parse": 0,
+                "diff-tree": 0,
+                "show": 0,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "selected-real-host",
+              "ms": 94.9275829999824,
+              "cpuMs": 33.876,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-real-host",
+              "ms": 91.65279200000805,
+              "cpuMs": 25.771,
+              "commands": 3,
+              "peak": 1,
+              "commandKinds": {
+                "rev-parse": 1,
+                "diff-tree": 1,
+                "show": 1,
+                "status": 0,
+                "ls-files": 0,
+                "reflog": 0,
+                "symbolic-ref": 0,
+                "merge-base": 0,
+                "diff": 0
+              }
+            },
+            {
+              "label": "all-digests",
+              "ms": 11.84450000000652,
+              "cpuMs": 16.725,
+              "eventLoopDelayMs": 14.203957999998238
+            },
+            {
+              "label": "dependency-parse-only",
+              "ms": 38.86874999999418,
+              "cpuMs": 47.441,
+              "eventLoopDelayMs": 38.91366600000765
+            },
+            {
+              "label": "real-converter-cold",
+              "ms": 55.5712910000002,
+              "cpuMs": 61.376,
+              "eventLoopDelayMs": 55.60733299999265
+            },
+            {
+              "label": "real-converter-warm",
+              "ms": 1.6875829999917187,
+              "cpuMs": 1.689,
+              "eventLoopDelayMs": 1.7388330000103451
+            },
+            {
+              "label": "real-converter-cold-all-collapsed",
+              "ms": 55.03599999999278,
+              "cpuMs": 61.017,
+              "eventLoopDelayMs": 55.07862500002375
+            },
+            {
+              "label": "selected-converter",
+              "ms": 56.16379199997755,
+              "cpuMs": 64.815,
+              "eventLoopDelayMs": 56.203375000011874
+            },
+            {
+              "label": "json-stringify-all",
+              "ms": 4.9748750000144355,
+              "cpuMs": 4.967,
+              "eventLoopDelayMs": 5.035875000001397
+            },
+            {
+              "label": "json-parse-all",
+              "ms": 9.17850000000908,
+              "cpuMs": 9.167,
+              "eventLoopDelayMs": 9.240041999990353
+            },
+            {
+              "label": "structured-clone-all",
+              "ms": 1.036500000016531,
+              "cpuMs": 1.042,
+              "eventLoopDelayMs": 1.0774159999855328
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

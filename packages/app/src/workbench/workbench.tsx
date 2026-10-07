@@ -11,10 +11,9 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useHostState, useVcsDiff, useVcsSnapshot } from "../queries.ts";
-import { changesRepository, diffRead, diffScopeStats, scopeFiles } from "./change-scopes.ts";
+import { useHostState, useVcsSnapshot } from "../queries.ts";
+import { changesRepository, scopeFiles } from "./change-scopes.ts";
 import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
-import { useChangesViewOptions } from "./changes-view-options.ts";
 import {
   activeWorkbenchTab,
   clampWorkbenchWidthToBounds,
@@ -169,13 +168,6 @@ function FloatingWorkbenchPanel({
   const vcs = useVcsSnapshot(project);
   const snapshot = project ? vcs.data : undefined;
   const repository = changesRepository(snapshot);
-  const { ignoreWhitespace } = useChangesViewOptions(repository?.root ?? "workspace");
-
-  const diffs = useVcsDiff(
-    diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
-    repository !== undefined,
-  );
-
   const tools = workbenchTabs(scope, capabilities);
   const head = snapshot?.kind === "repository" ? snapshot.head : undefined;
   const changesShown = repository !== undefined && tools.includes("changes");
@@ -210,7 +202,6 @@ function FloatingWorkbenchPanel({
           {changesShown && (
             <ChangesRow
               files={scopeFiles(snapshot, "uncommitted")?.length ?? 0}
-              stats={diffScopeStats(diffs.data ?? [])}
               onOpen={() =>
                 openWorkbenchTab({ view: viewKey, kind: "changes", workspacePath, capabilities })
               }

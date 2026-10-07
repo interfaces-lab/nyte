@@ -112,6 +112,7 @@ const commits: VcsLog = {
 /** Everything the panel's reads answer with, plus the counters a test reads back. */
 interface ChangesScopeScript {
   snapshotReads: number;
+  diffReads: number;
   transcript: readonly Turn[];
   /** Hold the next read open until `releaseSnapshot` runs. */
   hangSnapshot: boolean;
@@ -122,6 +123,7 @@ interface ChangesScopeScript {
 
 export const changesScopeScript: ChangesScopeScript = {
   snapshotReads: 0,
+  diffReads: 0,
   transcript: [firstTurn, secondTurn, thirdTurn],
   hangSnapshot: false,
   failSnapshot: false,
@@ -168,6 +170,8 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => {
 // The read answers from the same scripted status: staged is empty, and every
 // other scope shows the working files.
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
+  changesScopeScript.diffReads += 1;
+
   if (input.scope.kind === "staged") return [];
   const paths = input.paths ?? changesScopeScript.vcsFiles.map((file) => file.path);
 

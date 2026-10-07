@@ -12,6 +12,8 @@ const report = Type.Array(
     alert: Type.Union([Type.String(), Type.Null()]),
     stackPaths: Type.Array(Type.String()),
     snapshotReads: Type.Number(),
+    diffReads: Type.Number(),
+    menuRows: Type.Array(Type.String()),
   }),
 );
 
@@ -98,6 +100,24 @@ test(
     const recovered = at("recovered");
     assert.equal(recovered.alert, null);
     assert.deepEqual(recovered.stackPaths, ["src/third.ts"]);
+  },
+);
+
+test(
+  "the scope menu counts working files from Git status, and only a selected scope reads patches",
+  { timeout: 120_000 },
+  async () => {
+    const at = await observations();
+    const mounted = at("mounted on uncommitted");
+    const open = at("scope menu open");
+    assert.equal(open.diffReads, mounted.diffReads);
+    const working = (label: string) => open.menuRows.find((row) => row.startsWith(label)) ?? "";
+    assert.match(working("Uncommitted"), /1 file$/);
+    assert.match(working("Staged"), /0 files$/);
+    assert.match(working("Unstaged"), /1 file$/);
+    const unstaged = at("selected unstaged");
+    assert.equal(unstaged.diffReads, open.diffReads + 1);
+    assert.deepEqual(unstaged.stackPaths, ["src/working.ts"]);
   },
 );
 

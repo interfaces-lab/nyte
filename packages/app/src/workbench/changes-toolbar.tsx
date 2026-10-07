@@ -33,7 +33,7 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
-import { useVcsDiff, useVcsLog } from "../queries.ts";
+import { useVcsLog } from "../queries.ts";
 import { menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -42,7 +42,6 @@ import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
   commitScopeOptions,
-  diffRead,
   turnHasChanges,
   visibleTurnOptions,
   workingTreeScopeOptions,
@@ -255,6 +254,9 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
           {option.detail !== undefined && (
             <span {...props(styles.scopeDetail)}>{option.detail}</span>
           )}
+          {option.read.kind === "files" && (
+            <ScopeMeta stats={undefined} fileCount={option.read.fileCount} />
+          )}
           {option.read.kind === "ready" && (
             <ScopeMeta stats={option.read.stats} fileCount={option.read.fileCount} />
           )}
@@ -263,49 +265,6 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
     >
       {option.label}
     </MenuRadioItem>
-  );
-}
-
-/**
- * Uncommitted and the index split, each with its own counts. The reads run
- * only while the menu is open, and the one serving the selected scope is the
- * panel's own read, answered from the cache.
- */
-function WorkingTreeScopeItems({
-  snapshot,
-  repository,
-  ignoreWhitespace,
-}: {
-  readonly snapshot: VcsSnapshot | undefined;
-  readonly repository: ChangesRepository | undefined;
-  readonly ignoreWhitespace: boolean;
-}): ReactElement {
-  const enabled = repository !== undefined;
-
-  const uncommitted = useVcsDiff(
-    diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
-    enabled,
-  );
-
-  const staged = useVcsDiff(diffRead(repository, { kind: "staged" }, ignoreWhitespace), enabled);
-
-  const unstaged = useVcsDiff(
-    diffRead(repository, { kind: "unstaged" }, ignoreWhitespace),
-    enabled,
-  );
-
-  const options = workingTreeScopeOptions(snapshot, {
-    uncommitted: uncommitted.data,
-    staged: staged.data,
-    unstaged: unstaged.data,
-  });
-
-  return (
-    <>
-      {options.map((option) => (
-        <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
-      ))}
-    </>
   );
 }
 
@@ -420,7 +379,7 @@ export interface ChangesToolbarProps {
   /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;
-  /** Counts and file total for the scope on screen; the menu reads the rest itself. */
+  /** Counts and file total for the scope on screen; working-tree rows in the menu show Git status file counts only. */
   readonly scopeStats: ChangeScopeStats | undefined;
   readonly scopeFileCount: number | undefined;
   readonly snapshot: VcsSnapshot | undefined;
@@ -507,11 +466,9 @@ export function ChangesToolbar({
           />
           <MenuContent alignOffset={-4} xstyle={styles.scopeMenu}>
             <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
-              <WorkingTreeScopeItems
-                snapshot={snapshot}
-                repository={repository}
-                ignoreWhitespace={viewOptions.ignoreWhitespace}
-              />
+              {workingTreeScopeOptions(snapshot).map((option) => (
+                <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
+              ))}
               {repository !== undefined && (
                 <MenuSub>
                   <MenuSubTrigger

@@ -11,7 +11,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
 import { useSessionSnapshot } from "../queries.ts";
 import { isSettingsSection } from "../settings/index.ts";
-import type { ChangeScopeStats } from "./change-scopes.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
@@ -191,11 +190,9 @@ export function BranchRow({
 
 export function ChangesRow({
   files,
-  stats,
   onOpen,
 }: {
   readonly files: number;
-  readonly stats: ChangeScopeStats;
   readonly onOpen: () => void;
 }): ReactElement {
   return (
@@ -209,19 +206,6 @@ export function ChangesRow({
             ? "No changes"
             : `${String(files)} changed ${files === 1 ? "file" : "files"}`}
         </Row.Label>
-        {(stats.added > 0 || stats.removed > 0) && (
-          <span
-            aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-            {...props(workbenchStyles.railStats)}
-          >
-            {stats.added > 0 && (
-              <span {...props(intent.success, workbenchStyles.railAdded)}>+{stats.added}</span>
-            )}
-            {stats.removed > 0 && (
-              <span {...props(intent.danger, workbenchStyles.railRemoved)}>-{stats.removed}</span>
-            )}
-          </span>
-        )}
       </Row.Primary>
     </Row>
   );

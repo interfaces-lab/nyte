@@ -1,0 +1,190 @@
+{
+  "fixture": {
+    "sessions": 180,
+    "commitsPerSession": 256,
+    "children": 14,
+    "backend": "direct node:sqlite through SqlStore",
+    "realUserData": false
+  },
+  "contract": "Explicit name, archived, pinned, full parent fact only. Not SessionInfo.",
+  "omissions": [
+    "preview/fallback title",
+    "activity ordering",
+    "all-head status",
+    "workspace",
+    "activation",
+    "config",
+    "pagination",
+    "search"
+  ],
+  "validation": "Returned fact bodies use core parseStoredObject for shape/hash and require blob kind. SQL archive/parent filtering happens before validation; excluded corrupt facts are not validated. Parent filter assumes valid SessionParent facts.",
+  "counters": "sqlCalls includes prepare-execute/exec calls through the shared connection, including transaction statements; sqlRows counts returned rows, not rows visited. returnedBodyBytes counts returned body columns, not internal SQLite reads or wire bytes. outputBytes is JSON result size before compaction for baseline pages, null for void mutations. Timings are not desktop FPS.",
+  "measurements": [
+    {
+      "phase": "core-list-cold",
+      "elapsedMs": 508.38491699999986,
+      "sqlCalls": 4557,
+      "sqlRows": 47576,
+      "returnedBodyBytes": 33867356,
+      "opens": 180,
+      "chains": 720,
+      "commits": 46080,
+      "outputBytes": 117555
+    },
+    {
+      "phase": "core-list-warm",
+      "elapsedMs": 1.875666999999794,
+      "sqlCalls": 361,
+      "sqlRows": 360,
+      "returnedBodyBytes": 0,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 117555
+    },
+    {
+      "phase": "fact-list",
+      "elapsedMs": 3.6396249999997963,
+      "sqlCalls": 1,
+      "sqlRows": 180,
+      "returnedBodyBytes": 13520,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16565
+    },
+    {
+      "phase": "fact-roots",
+      "elapsedMs": 1.577291999999943,
+      "sqlCalls": 1,
+      "sqlRows": 166,
+      "returnedBodyBytes": 10996,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 13985
+    },
+    {
+      "phase": "fact-children",
+      "elapsedMs": 1.2752080000000205,
+      "sqlCalls": 1,
+      "sqlRows": 14,
+      "returnedBodyBytes": 2524,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 2581
+    },
+    {
+      "phase": "core-archive-write",
+      "elapsedMs": 0.7940410000001066,
+      "sqlCalls": 12,
+      "sqlRows": 1,
+      "returnedBodyBytes": 0,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 4
+    },
+    {
+      "phase": "fact-list-after-archive",
+      "elapsedMs": 2.634165999999823,
+      "sqlCalls": 1,
+      "sqlRows": 179,
+      "returnedBodyBytes": 13456,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16483
+    },
+    {
+      "phase": "fact-list-include-archived",
+      "elapsedMs": 2.6277500000001055,
+      "sqlCalls": 1,
+      "sqlRows": 180,
+      "returnedBodyBytes": 13548,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16564
+    },
+    {
+      "phase": "core-list-after-archive",
+      "elapsedMs": 4.15429099999983,
+      "sqlCalls": 386,
+      "sqlRows": 625,
+      "returnedBodyBytes": 188303,
+      "opens": 0,
+      "chains": 4,
+      "commits": 256,
+      "outputBytes": 116912
+    },
+    {
+      "phase": "core-repeat-archive",
+      "elapsedMs": 0.052000000000134605,
+      "sqlCalls": 2,
+      "sqlRows": 2,
+      "returnedBodyBytes": 28,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 4
+    },
+    {
+      "phase": "fact-list-repeat-archive",
+      "elapsedMs": 3.5210000000001855,
+      "sqlCalls": 1,
+      "sqlRows": 179,
+      "returnedBodyBytes": 13456,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16483
+    },
+    {
+      "phase": "fact-list-rejected-cas",
+      "elapsedMs": 2.059375000000273,
+      "sqlCalls": 1,
+      "sqlRows": 179,
+      "returnedBodyBytes": 13456,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16483
+    },
+    {
+      "phase": "fact-list-restored",
+      "elapsedMs": 4.755166999999801,
+      "sqlCalls": 1,
+      "sqlRows": 180,
+      "returnedBodyBytes": 13494,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16568
+    },
+    {
+      "phase": "core-new-sdk-persistent-listings",
+      "elapsedMs": 8.468332999999802,
+      "sqlCalls": 1663,
+      "sqlRows": 748,
+      "returnedBodyBytes": 122383,
+      "opens": 180,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 117558
+    },
+    {
+      "phase": "fact-list-new-sdk",
+      "elapsedMs": 2.3047080000001188,
+      "sqlCalls": 1,
+      "sqlRows": 180,
+      "returnedBodyBytes": 13494,
+      "opens": 0,
+      "chains": 0,
+      "commits": 0,
+      "outputBytes": 16568
+    }
+  ],
+  "verified": "names, pin, full parent link, root/child filters, archive exclusion/inclusion, repeated archive event convergence, rejected CAS unchanged, rename/unpin/unarchive, new SDK over persistent listings"
+}

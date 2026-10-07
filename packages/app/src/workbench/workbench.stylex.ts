@@ -112,14 +112,6 @@ export const workbenchStyles = create({
     whiteSpace: "nowrap",
   },
   railActions: { marginInlineStart: "auto" },
-  railStats: {
-    display: "inline-flex",
-    gap: workbench.rowGap,
-    flexShrink: 0,
-    fontVariantNumeric: "tabular-nums",
-  },
-  railAdded: { color: role.contentSecondary },
-  railRemoved: { color: role.contentSecondary },
   iconRail: {
     display: "flex",
     flexDirection: "column",

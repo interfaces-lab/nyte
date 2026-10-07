@@ -1,0 +1,168 @@
+{
+  "iterations": 20,
+  "fixtures": [
+    {
+      "count": 2000,
+      "lines": 40,
+      "bytes": 7702000
+    },
+    {
+      "count": 1,
+      "lines": 100000,
+      "bytes": 10555699
+    }
+  ],
+  "totalSamples": 21681,
+  "top": [
+    {
+      "function": "patchDigest",
+      "url": "file:///Users/workgyver/Developer/nyte/packages/app/src/workbench/changes-viewed.ts",
+      "line": 72,
+      "selfMs": 1096.153
+    },
+    {
+      "function": "encodeInto",
+      "url": "",
+      "line": 0,
+      "selfMs": 273.26
+    },
+    {
+      "function": "decodeUTF8",
+      "url": "",
+      "line": 0,
+      "selfMs": 268.74
+    },
+    {
+      "function": "detachString",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/detachString.js",
+      "line": 10,
+      "selfMs": 214.345
+    },
+    {
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0,
+      "selfMs": 201.145
+    },
+    {
+      "function": "decode",
+      "url": "node:internal/encoding",
+      "line": 481,
+      "selfMs": 116.29
+    },
+    {
+      "function": "findLinePrefixIndex",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 496,
+      "selfMs": 103.12
+    },
+    {
+      "function": "splitWithNewlines",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 325,
+      "selfMs": 97.329
+    },
+    {
+      "function": "_processFile",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 51,
+      "selfMs": 88.712
+    },
+    {
+      "function": "parseDiffs",
+      "url": "file:///Users/workgyver/Developer/nyte/packages/app/src/workbench/changes-stack-code-view.ts",
+      "line": 27,
+      "selfMs": 78.875
+    },
+    {
+      "function": "hasCommitMetadataBoundary",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 317,
+      "selfMs": 59.221
+    },
+    {
+      "function": "findLinePrefixIndex",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 496,
+      "selfMs": 58.751
+    },
+    {
+      "function": "_processPatch",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 15,
+      "selfMs": 35.491
+    },
+    {
+      "function": "#encodeInto",
+      "url": "node:internal/encoding",
+      "line": 348,
+      "selfMs": 25.81
+    },
+    {
+      "function": "post",
+      "url": "node:inspector",
+      "line": 115,
+      "selfMs": 23.173
+    },
+    {
+      "function": "RegExp: [\\uD800-\\uDFFF]",
+      "url": "",
+      "line": 0,
+      "selfMs": 18.177
+    },
+    {
+      "function": "part",
+      "url": "file:///Users/workgyver/Developer/nyte/packages/app/src/workbench/changes-viewed.ts",
+      "line": 82,
+      "selfMs": 14.885
+    },
+    {
+      "function": "getParsedLineContent",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/parsePatchFiles.js",
+      "line": 506,
+      "selfMs": 13.201
+    },
+    {
+      "function": "(program)",
+      "url": "",
+      "line": 0,
+      "selfMs": 12.894
+    },
+    {
+      "function": "detachString",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/detachString.js",
+      "line": 10,
+      "selfMs": 12.464
+    },
+    {
+      "function": "decodeUTF8",
+      "url": "",
+      "line": 0,
+      "selfMs": 11.725
+    },
+    {
+      "function": "composeCacheKey",
+      "url": "file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@pierre+diffs@1.4.1_@shikijs+themes@4.4.3_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/@pierre/diffs/dist/utils/composeCacheKey.js",
+      "line": 4,
+      "selfMs": 9.415
+    },
+    {
+      "function": "",
+      "url": "file:///Users/workgyver/Developer/nyte/packages/app/src/workbench/changes-stack-code-view.ts",
+      "line": 116,
+      "selfMs": 8.806
+    },
+    {
+      "function": "encodeInto",
+      "url": "node:internal/encoding",
+      "line": 364,
+      "selfMs": 5.88
+    },
+    {
+      "function": "diffItem",
+      "url": "file:///Users/workgyver/Developer/nyte/packages/app/src/workbench/changes-stack-code-view.ts",
+      "line": 47,
+      "selfMs": 5.606
+    }
+  ]
+}

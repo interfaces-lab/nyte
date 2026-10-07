@@ -1,0 +1,93 @@
+{
+  "fixture": {
+    "files": 1,
+    "linesPerSide": 100000,
+    "selectedCount": 1,
+    "trials": 1,
+    "oid": "6375ae00e6b998d85b08fae32c7b822fae6977af"
+  },
+  "runtime": {
+    "node": "v26.10.0",
+    "git": "git version 2.54.0 (Apple Git-157)"
+  },
+  "checks": "Nonempty exact manifest, full files and facts, selected patch byte equality, parsed files and lines",
+  "timingsMs": {
+    "manifestDiscovery": {
+      "median": 16.76487499999996,
+      "min": 16.76487499999996,
+      "max": 16.76487499999996
+    },
+    "baselineDiscoveryAndPatches": {
+      "median": 105.03837499999997,
+      "min": 105.03837499999997,
+      "max": 105.03837499999997
+    },
+    "selectedBackendDiscoveryAndPatches": {
+      "median": 91.32708300000002,
+      "min": 91.32708300000002,
+      "max": 91.32708300000002
+    },
+    "fullSynchronousParse": {
+      "median": 44.43779099999995,
+      "min": 44.43779099999995,
+      "max": 44.43779099999995
+    },
+    "selectedSynchronousParse": {
+      "median": 42.303042000000005,
+      "min": 42.303042000000005,
+      "max": 42.303042000000005
+    }
+  },
+  "limitations": [
+    "Single-parent modified ASCII text fixture only; no rename, binary, merge, root-commit or worktree parity",
+    "Selected backend still discovers the full commit; metadata read does not request patches",
+    "Cold parser calls without React, CodeView, highlight workers, or Nyte review hashing",
+    "No process-count instrumentation, cancellation, interactive byte limits, FPS or production integration",
+    "Sequential trials alternate read order; OS caches are not cleared; fixture setup is excluded",
+    "Temporary repository is deleted on exit"
+  ],
+  "samples": [
+    {
+      "trial": 0,
+      "order": "baseline-manifest-selected",
+      "manifest": {
+        "ms": 16.76487499999996,
+        "files": 1,
+        "discoveryBytes": 20,
+        "jsonBytes": 135,
+        "patchBytes": 0
+      },
+      "baseline": {
+        "ms": 105.03837499999997,
+        "files": 1,
+        "patchBytes": 10555715,
+        "jsonBytes": 11155827,
+        "parse": {
+          "ms": 44.43779099999995,
+          "inputPatches": 1,
+          "inputPatchBytes": 10555715,
+          "parsedFiles": 1,
+          "parsedSideLines": 200000
+        }
+      },
+      "selected": {
+        "ms": 91.32708300000002,
+        "files": [
+          {
+            "path": "src/file-00000.ts",
+            "patchBytes": 10555715
+          }
+        ],
+        "patchBytes": 10555715,
+        "jsonBytes": 11155827,
+        "parse": {
+          "ms": 42.303042000000005,
+          "inputPatches": 1,
+          "inputPatchBytes": 10555715,
+          "parsedFiles": 1,
+          "parsedSideLines": 200000
+        }
+      }
+    }
+  ]
+}

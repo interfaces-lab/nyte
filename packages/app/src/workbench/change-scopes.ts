@@ -4,11 +4,10 @@ import type {
   Turn,
   TurnRun,
   VcsCommitInfo,
-  VcsDiff,
   VcsFile,
   VcsSnapshot,
 } from "@nyte-ai/protocol";
-import type { VcsDiffRead, VcsDiffRequest } from "../queries.ts";
+import type { VcsDiffRequest } from "../queries.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
@@ -18,8 +17,10 @@ export interface ChangeScopeStats {
   readonly removed: number;
 }
 
+/** `files` knows the paths from Git status but has read no patch, so its line totals are unknown, not zero. */
 export type ChangeScopeRead =
   | { readonly kind: "pending" }
+  | { readonly kind: "files"; readonly fileCount: number }
   | {
       readonly kind: "ready";
       readonly stats: ChangeScopeStats;
@@ -174,28 +175,6 @@ export function changesRepository(
     : undefined;
 }
 
-export function diffRead(
-  repository: ChangesRepository | undefined,
-  scope: WorkbenchChangesScope,
-  ignoreWhitespace: boolean,
-): VcsDiffRead | undefined {
-  const request = diffRequestForScope(scope, { ignoreWhitespace });
-
-  if (repository === undefined || request === undefined) return undefined;
-
-  return { ...repository, request };
-}
-
-export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
-  return diffs.reduce<ChangeScopeStats>(
-    (total, diff) => ({
-      added: total.added + (diff.kind === "text" ? diff.added : 0),
-      removed: total.removed + (diff.kind === "text" ? diff.removed : 0),
-    }),
-    { added: 0, removed: 0 },
-  );
-}
-
 export function scopeFiles(
   snapshot: VcsSnapshot | undefined,
   scope: "uncommitted" | "staged" | "unstaged",
@@ -217,48 +196,26 @@ export function scopeFiles(
   }
 }
 
-/** Diffs already read for the working-tree scopes; each is absent until read. */
-export interface WorkingTreeDiffs {
-  readonly uncommitted?: readonly VcsDiff[];
-  readonly staged?: readonly VcsDiff[];
-  readonly unstaged?: readonly VcsDiff[];
-}
-
 function workingTreeOption(
   scope: WorkbenchChangesScope,
   label: string,
   files: readonly VcsFile[] | undefined,
-  diffs: readonly VcsDiff[] | undefined,
 ): ChangesScopeOption {
   return {
     scope,
     label,
     detail: undefined,
-    read:
-      files === undefined || diffs === undefined
-        ? { kind: "pending" }
-        : { kind: "ready", stats: diffScopeStats(diffs), fileCount: files.length },
+    read: files === undefined ? { kind: "pending" } : { kind: "files", fileCount: files.length },
   };
 }
 
 export function workingTreeScopeOptions(
   snapshot: VcsSnapshot | undefined,
-  diffs: WorkingTreeDiffs = {},
 ): readonly ChangesScopeOption[] {
   return [
-    workingTreeOption(
-      { kind: "uncommitted" },
-      "Uncommitted",
-      scopeFiles(snapshot, "uncommitted"),
-      diffs.uncommitted,
-    ),
-    workingTreeOption({ kind: "staged" }, "Staged", scopeFiles(snapshot, "staged"), diffs.staged),
-    workingTreeOption(
-      { kind: "unstaged" },
-      "Unstaged",
-      scopeFiles(snapshot, "unstaged"),
-      diffs.unstaged,
-    ),
+    workingTreeOption({ kind: "uncommitted" }, "Uncommitted", scopeFiles(snapshot, "uncommitted")),
+    workingTreeOption({ kind: "staged" }, "Staged", scopeFiles(snapshot, "staged")),
+    workingTreeOption({ kind: "unstaged" }, "Unstaged", scopeFiles(snapshot, "unstaged")),
   ];
 }
 
