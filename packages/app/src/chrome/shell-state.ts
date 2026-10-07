@@ -21,7 +21,7 @@ type ShellStage = WorkspaceStage | CustomizeStage | EnvironmentsStage;
 
 const SIDEBAR_WIDTH_DEFAULT = 220;
 
-export const SIDEBAR_WIDTH_MIN = 190;
+export const SIDEBAR_WIDTH_MIN = 214;
 
 export const SIDEBAR_WIDTH_MAX = 400;
 

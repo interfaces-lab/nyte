@@ -23,6 +23,7 @@ import {
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
   workbenchController,
+  workbenchDefaultWidth,
   workbenchScope,
   workbenchTabAvailable,
   workbenchKindLabel,
@@ -455,7 +456,7 @@ function WorkbenchViewHost({
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
   const panelWidth = maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
-  const defaultWidth = clampWorkbenchWidthToBounds(stageWidth / 2, bounds);
+  const defaultWidth = clampWorkbenchWidthToBounds(workbenchDefaultWidth(stageWidth), bounds);
 
   const resetWidth = useCallback(
     () => workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth }),
@@ -600,6 +601,7 @@ function WorkbenchViewHost({
       inert={panelHidden ? true : undefined}
       {...props(
         workbenchStyles.panel,
+        workbenchStyles.edge,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
         panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,
@@ -641,7 +643,7 @@ function WorkbenchViewHost({
             aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
             aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
             aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
-            title="Drag to resize. Double-click for equal panels."
+            title="Drag to resize. Double-click to reset."
             {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
             onKeyDown={resizeWithKeyboard}
             onPointerDown={beginResize}

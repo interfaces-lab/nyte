@@ -226,7 +226,7 @@ export const codeBlockStyles = create({
     marginBlockStart: { default: 8, ":first-child": 0 },
     marginBlockEnd: { default: 8, ":last-child": 0 },
     marginInline: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
@@ -234,7 +234,7 @@ export const codeBlockStyles = create({
     backgroundColor: role.bgBase,
     "--_code-copy-opacity": {
       default: 0,
-      ":hover": 1,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
       ":focus-within": 1,
       ":has([data-copied])": 1,
     },
@@ -332,6 +332,7 @@ export const composerStyles = create({
     marginInline: "auto",
     paddingInline: conversation.gutter,
     paddingBottom: conversation.composerInset,
+    containerType: "inline-size",
   },
   inputStack: { position: "relative", minWidth: 0, pointerEvents: "auto" },
   preComposerOverlay: {
@@ -377,7 +378,7 @@ export const composerStyles = create({
   queueRow: {
     "--_queue-actions-display": {
       default: "none",
-      ":hover": "flex",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "flex" },
       ":focus-within": "flex",
       "[data-editing='true']": "flex",
       "[data-error='true']": "flex",
@@ -531,7 +532,7 @@ export const composerStyles = create({
     flexShrink: 0,
     "--_attachment-remove-opacity": {
       default: 0,
-      ":hover": 1,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
       ":focus-within": 1,
       "@media (hover: none)": 1,
     },
@@ -651,7 +652,7 @@ export const composerStyles = create({
     gridColumn: 2,
     gridRow: 1,
     minWidth: 64,
-    overflow: "hidden",
+    overflow: "clip",
     flexWrap: "nowrap",
   },
   editorExpanded: { minHeight: 54, paddingBlock: 8, paddingInline: 12 },
@@ -695,19 +696,19 @@ export const composerStyles = create({
   mentionChipRemovable: {
     "--_chip-remove-opacity": {
       default: "0",
-      ":hover": "1",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_chip-remove-pointer-events": {
       default: "none",
-      ":hover": "auto",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_chip-label-mask": {
       default: "none",
-      ":hover": CHIP_LABEL_FADE,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": CHIP_LABEL_FADE },
       ":has(:focus-visible)": CHIP_LABEL_FADE,
       "@media (hover: none)": CHIP_LABEL_FADE,
     },
@@ -768,11 +769,14 @@ export const composerStyles = create({
     gap: 8,
     minWidth: 0,
   },
+  // The pill gives up the model's detail before the editor gives up room.
   modelSlotCompact: {
     gridColumn: 3,
     gridRow: 1,
     minWidth: 0,
     maxWidth: 220,
+    overflow: "clip",
+    "--_model-detail-display": { default: "inline", "@container (max-width: 480px)": "none" },
   },
   spacer: { flex: 1 },
   spacerCompact: { display: "none" },
@@ -790,7 +794,7 @@ export const composerStyles = create({
     // The frame clips and carries the inset hairline; the list inside scrolls.
     // An absolutely positioned hairline on a scroll container would travel
     // with the content.
-    overflow: "hidden",
+    overflow: "clip",
     opacity: 1,
     scale: 1,
   },
@@ -822,7 +826,7 @@ export const composerStyles = create({
     },
     color: {
       default: role.contentSecondary,
-      ":hover": role.contentPrimary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
       "[aria-selected='true']": role.contentPrimary,
     },
     fontSize: type.fontBase,
@@ -842,7 +846,7 @@ export const composerStyles = create({
     alignItems: "center",
     minWidth: 0,
     gap: 8,
-    overflow: "hidden",
+    overflow: "clip",
   },
   suggestionLabel: {
     minWidth: 0,
@@ -982,7 +986,7 @@ export const diffStyles = create({
   surface: {
     boxSizing: "border-box",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
   },
@@ -1020,12 +1024,12 @@ export const diffStyles = create({
   stackHeader: {
     "--_stack-icon-display": {
       default: "flex",
-      ":hover": "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
       "[aria-expanded='false']": "none",
     },
     "--_stack-chevron-display": {
       default: "none",
-      ":hover": "flex",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "flex" },
       "[aria-expanded='false']": "flex",
     },
     appearance: "none",
@@ -1178,7 +1182,7 @@ export const toolCallStyles = create({
     minWidth: 0,
     minHeight: button.heightSm,
     paddingInline: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderStyle: "none",
     backgroundColor: "transparent",
     fontSize: type.fontLg,
@@ -1261,7 +1265,7 @@ export const toolCallStyles = create({
     position: "relative",
     marginTop: 6,
     marginBottom: 4,
-    overflow: "hidden",
+    overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
@@ -1295,7 +1299,7 @@ export const toolCallStyles = create({
   },
   outputTail: {
     maxHeight: `calc(5 * ${type.leadingBase} + 12px)`,
-    overflow: "hidden",
+    overflow: "clip",
     cursor: appearance.cursorInteractive,
     maskImage: {
       default: null,
@@ -1376,7 +1380,11 @@ export const stepGroupStyles = create({
     flexDirection: "column",
     minWidth: 0,
     contain: "layout",
-    "--_group-chevron-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
+    "--_group-chevron-opacity": {
+      default: 0,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":focus-within": 1,
+    },
   },
   status: {
     display: "inline-flex",
@@ -1405,7 +1413,7 @@ export const stepGroupStyles = create({
     userSelect: "none",
     "--_group-chevron-color": {
       default: role.contentTertiary,
-      ":hover": role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentSecondary },
       "[data-panel-open]": role.contentSecondary,
     },
     "--_group-chevron-opacity": { default: null, "[data-panel-open]": 1 },
@@ -1494,6 +1502,7 @@ export const messageScrollerStyles = create({
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
+    overflowX: "hidden",
     overflowY: "auto",
     overflowAnchor: "none",
     outlineStyle: "none",
@@ -1557,12 +1566,12 @@ export const messageScrollerStyles = create({
     borderStyle: "solid",
     borderColor: {
       default: role.borderSecondaryTranslucent,
-      ":hover": role.borderPrimaryTranslucent,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
     },
     backgroundColor: role.bgElevated,
     backgroundImage: {
       default: "none",
-      ":hover": "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
       ":active": "none",
     },
     boxShadow: "none",
@@ -1713,7 +1722,7 @@ export const turnStyles = create({
   },
   userPreview: { display: "block", minWidth: 0 },
   userPreviewCollapsed: {
-    overflow: "hidden",
+    overflow: "clip",
     maxHeight: `calc(${type.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})`,
   },
   // The preview bleeds into the prompt's padding so the fade has somewhere to

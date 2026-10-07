@@ -7,9 +7,9 @@ import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 
-export const WORKBENCH_WIDTH_DEFAULT = 500;
+export const WORKBENCH_WIDTH_DEFAULT = 400;
 
-const WORKBENCH_WIDTH_MIN = 384;
+const WORKBENCH_WIDTH_MIN = 300;
 
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 
@@ -427,6 +427,11 @@ function clampWorkbenchWidth(width: number): number {
   return Number.isFinite(width)
     ? Math.max(WORKBENCH_WIDTH_MIN, Math.round(width))
     : WORKBENCH_WIDTH_DEFAULT;
+}
+
+/** Cursor's auxiliary bar default: 400px, or two fifths of the stage when that is less. */
+export function workbenchDefaultWidth(availableWidth: number): number {
+  return Math.min(WORKBENCH_WIDTH_DEFAULT, Math.round(availableWidth / 2.5));
 }
 
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {

@@ -54,11 +54,8 @@ export type ModelPickerChange =
       readonly thinkingLevel: ModelThinkingLevel;
     }
   | { readonly kind: "thinking"; readonly thinkingLevel: ModelThinkingLevel }
-  | {
-      readonly kind: "fast";
-      readonly settingId: string;
-      readonly enabled: boolean;
-    };
+  /** Switch between the current model and its fast sibling. */
+  | { readonly kind: "fast"; readonly enabled: boolean };
 
 const styles = create({
   trigger: { maxWidth: "100%", flexShrink: 1 },
@@ -68,7 +65,12 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  triggerDetail: { flexShrink: 0, color: role.contentSecondary, whiteSpace: "nowrap" },
+  triggerDetail: {
+    display: "var(--_model-detail-display, inline)",
+    flexShrink: 0,
+    color: role.contentSecondary,
+    whiteSpace: "nowrap",
+  },
   palette: {
     width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
@@ -80,7 +82,7 @@ const styles = create({
     minWidth: `min(${menu.parameterWidth}, var(--available-width))`,
     maxWidth: `min(${menu.parameterWidth}, var(--available-width))`,
   },
-  modelPopup: { overflowY: "hidden" },
+  modelPopup: { overflowY: "clip" },
   empty: {
     display: "flex",
     flexDirection: "column",
@@ -101,8 +103,8 @@ interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ModelThinkingLevel | undefined;
-  /** Setting ids whose current choice is on. */
-  fastEnabled: ReadonlySet<string>;
+  /** The selected model is the current row's fast sibling. */
+  fast: boolean;
   disabled?: boolean;
   loading?: boolean;
   onChange: (change: ModelPickerChange) => void;
@@ -112,7 +114,7 @@ function ModelPickerView({
   catalog,
   current,
   thinkingLevel,
-  fastEnabled,
+  fast,
   disabled = false,
   loading = false,
   onChange,
@@ -122,7 +124,6 @@ function ModelPickerView({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const currentOptionRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(
     () => (catalog === undefined ? [] : pickerGroups(catalog, current, search)),
@@ -149,10 +150,10 @@ function ModelPickerView({
 
   const levels = thinkingLevelsFor(current);
   const level = supportedThinkingLevel(current, thinkingLevel);
-  const fast = current?.fastMode;
-  const fastOn = fast?.kind === "available" && fastEnabled.has(fast.settingId);
+  const fastAvailable = current?.fastMode.kind === "available";
+  const fastOn = fastAvailable && fast;
   const label = modelTriggerLabel(current, thinkingLevel === undefined ? undefined : level, fastOn);
-  const hasParameters = fast?.kind === "available" || levels.length > 1;
+  const hasParameters = fastAvailable || levels.length > 1;
 
   return (
     <Menu
@@ -184,13 +185,11 @@ function ModelPickerView({
         }
       />
       <MenuContent xstyle={styles.palette}>
-        {fast?.kind === "available" && (
+        {fastAvailable && (
           <MenuSwitchItem
             layout="plain"
             checked={fastOn}
-            onCheckedChange={(enabled) =>
-              onChange({ kind: "fast", settingId: fast.settingId, enabled })
-            }
+            onCheckedChange={(enabled) => onChange({ kind: "fast", enabled })}
           >
             Fast
           </MenuSwitchItem>
@@ -231,7 +230,6 @@ function ModelPickerView({
             }
 
             window.requestAnimationFrame(() => {
-              currentOptionRef.current?.scrollIntoView({ block: "nearest" });
               searchRef.current?.focus({ preventScroll: true });
             });
           }}
@@ -243,12 +241,25 @@ function ModelPickerView({
             <Autocomplete
               inline
               open
-              mode="none"
               autoHighlight
               items={groups.flatMap((group) => group.options)}
-              value={search}
-              itemToStringValue={(option) => option.name}
-              onValueChange={setSearch}
+              filter={null}
+              value={current ?? null}
+              inputValue={search}
+              itemToStringLabel={(option) => option.name}
+              isItemEqualToValue={(option, value) => option.key === value.key}
+              onValueChange={(option) => {
+                if (option === null) return;
+                onChange({
+                  kind: "model",
+                  option,
+                  thinkingLevel: supportedThinkingLevel(option, level),
+                });
+                setOpen(false);
+              }}
+              onInputValueChange={(next, { reason }) => {
+                if (reason !== "item-press") setSearch(next);
+              }}
             >
               <AutocompleteInput
                 variant="inline"
@@ -291,21 +302,7 @@ function ModelPickerView({
                       ) : null}
                     </AutocompleteGroupLabel>
                     {group.options.map((option) => (
-                      <AutocompleteItem
-                        variant="inline"
-                        key={option.key}
-                        ref={option.key === current?.key ? currentOptionRef : undefined}
-                        value={option}
-                        selected={option.key === current?.key}
-                        onClick={() => {
-                          onChange({
-                            kind: "model",
-                            option,
-                            thinkingLevel: supportedThinkingLevel(option, level),
-                          });
-                          setOpen(false);
-                        }}
-                      >
+                      <AutocompleteItem variant="inline" key={option.key} value={option}>
                         {option.name}
                       </AutocompleteItem>
                     ))}
