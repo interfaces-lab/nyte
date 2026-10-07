@@ -1854,18 +1854,24 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
         input: 0.1,
         output: 0.5,
         cache_read: 0.01,
-        cache_write: 0.2,
+        cache_write: 0.125,
         tiers: [
           {
             input: 0.5,
             output: 2.5,
             cache_read: 0.05,
-            cache_write: 1,
+            cache_write: 0.625,
             tier: { type: "context", size: 100000 },
           },
         ],
       },
     };
+
+    // Sonnet 5.5 cache reads dropped to 0.05x base ($0.10) alongside the Haiku 5.5 launch.
+    // https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching
+    const sonnet55 = data.anthropic.models["claude-sonnet-5-5"];
+
+    if (sonnet55?.cost && sonnet55.cost.cache_read === 0.2) sonnet55.cost.cache_read = 0.1;
 
     for (const [modelId, m] of Object.entries(data.anthropic.models)) {
       if (m.tool_call !== true) continue;
