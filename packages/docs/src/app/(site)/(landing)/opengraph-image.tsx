@@ -51,8 +51,8 @@ export default async function Image() {
               letterSpacing: "-0.03em",
             }}
           >
-            <span>The core</span>
-            <span>I wanted.</span>
+            <span>Many agents ship code.</span>
+            <span>This one is mine.</span>
           </div>
           <div style={{ fontSize: 26, color: "rgb(255 255 255 / 0.72)" }}>
             Built like git. Runs on your laptop and at the edge.

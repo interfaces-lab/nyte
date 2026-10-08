@@ -23,7 +23,7 @@ export function Hero5() {
 
         <div className="relative mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pb-[clamp(3rem,8vh,5rem)]">
           <h1 className="animate-plate-rise font-pixel text-hero text-balance motion-reduce:animate-none">
-            The core <br />I wanted.
+            Many agents ship code. <br />This one is mine.
           </h1>
 
           <p className="mt-6 max-w-[27rem] animate-plate-rise text-[17px]/8 text-pretty text-white/72 [animation-delay:90ms] motion-reduce:animate-none">
