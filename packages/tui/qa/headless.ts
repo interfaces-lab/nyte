@@ -384,9 +384,8 @@ export const headless: Scenario = {
             const pending = cli.start(["serve", "--workspace", workspace.cwd, "--port", "0"]);
             await waitForOutput(pending.run, (stdout) => /Bearer token: .+\n/u.test(stdout));
             const address = /API at (http:\/\/127\.0\.0\.1:\d+)\n/u.exec(pending.run.stdout)?.[1];
-            const tokenPath = /Bearer token: (.+)\n/u.exec(pending.run.stdout)?.[1];
-            assert.ok(address !== undefined && tokenPath !== undefined, pending.run.stdout);
-            const token = (await readFile(tokenPath, "utf8")).trim();
+            const token = /Bearer token: (.+)\n/u.exec(pending.run.stdout)?.[1];
+            assert.ok(address !== undefined && token !== undefined, pending.run.stdout);
             const client = createNyteClient({ baseUrl: address, token });
             const stranger = createNyteClient({
               baseUrl: address,
@@ -450,12 +449,9 @@ export const headless: Scenario = {
                 pending.run.stdout.includes("No model provider is signed in on this host."),
               );
               const address = /API at (http:\/\/127\.0\.0\.1:\d+)\n/u.exec(pending.run.stdout)?.[1];
-              const tokenPath = /Bearer token: (.+)\n/u.exec(pending.run.stdout)?.[1];
-              assert.ok(address !== undefined && tokenPath !== undefined, pending.run.stdout);
-              const client = createNyteClient({
-                baseUrl: address,
-                token: (await readFile(tokenPath, "utf8")).trim(),
-              });
+              const token = /Bearer token: (.+)\n/u.exec(pending.run.stdout)?.[1];
+              assert.ok(address !== undefined && token !== undefined, pending.run.stdout);
+              const client = createNyteClient({ baseUrl: address, token });
               assert.equal(
                 (await client.environment("environment.workspaces.list", undefined)).length,
                 1,

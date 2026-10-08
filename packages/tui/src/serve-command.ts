@@ -36,7 +36,7 @@ export const SERVE_HELP = [
   "--host and --port choose the direct address to bind (default: 127.0.0.1, a free port).",
   "--account also serves the profile's Nyte account link through the Connect relay; link first with `nyte account login`.",
   "--device-admin lets devices that enrolled as admins add folders and manage providers; without it every device only runs sessions.",
-  "The bearer for direct access is in the profile's token file; roots start through environment.start.",
+  "The token printed at start is the bearer for direct access; roots start through environment.start.",
   "Example: nyte serve --workspace ~/code/app --trust --account",
 ].join("\n");
 
@@ -315,7 +315,7 @@ export async function serveCommand(args: readonly string[], output: Output): Pro
       );
     }
 
-    output.write(`Bearer token: ${profile.tokenPath}\n`);
+    output.write(`Bearer token: ${profile.token}\n`);
 
     if (parsed.account) await serveAccount(host, parsed, acquired, output);
   } catch (cause) {

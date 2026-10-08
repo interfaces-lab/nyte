@@ -260,7 +260,7 @@ export function ConnectScreen({
                 <html.p style={[textStyles.body, styles.lead]}>
                   {method === "tailscale"
                     ? "Turn on Tailscale on your iPhone and the computer, then enter its Tailscale address and Nyte device token."
-                    : `In the desktop app, copy these from ${SHARE_LOCATION}. For nyte serve, use the printed address and token file.`}
+                    : `In the desktop app, copy these from ${SHARE_LOCATION}. For nyte serve, use the address and token it prints.`}
                 </html.p>
                 {canScan && !busy ? (
                   <html.div style={styles.actions}>

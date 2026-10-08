@@ -27,7 +27,7 @@ const HELP = `nyte-serve · serve a host profile and, when built, the Nyte web a
   --open               open the pairing link in the default browser
   --help               show this help
 
-  The bearer for direct access is saved in the profile's token file.
+  The token printed at start is the bearer for direct access.
   Roots start through environment.start with a registered workspace id.
 `;
 
@@ -169,7 +169,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     process.stdout.write(`Workspace ${row.id}  ${row.path}  trust: ${row.trust.kind}\n`);
   }
 
-  process.stdout.write(`Bearer token: ${profile.tokenPath}\n`);
+  process.stdout.write(`Bearer token: ${profile.token}\n`);
 
   if (appRoot !== undefined && !built) {
     process.stdout.write(
