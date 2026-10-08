@@ -57,29 +57,29 @@ export function SiteSearch() {
   }, []);
 
   useEffect(() => {
+    const trimmed = query.trim();
+    if (!open || trimmed === "") return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const trimmed = query.trim();
-      const response =
-        trimmed === ""
-          ? null
-          : await fetch(`/api/search?query=${encodeURIComponent(trimmed)}`, {
-              signal: controller.signal,
-            }).catch(() => null);
-      if (trimmed !== "" && !response?.ok) return;
-      setResults(response ? parseResults(await response.json()) : []);
+      const body: unknown = await fetch(`/api/search?query=${encodeURIComponent(trimmed)}`, {
+        signal: controller.signal,
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null);
+      if (controller.signal.aborted) return;
+      setResults(parseResults(body));
       setActive(0);
     }, 89);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [open, query]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((value) => Math.min(value + 1, results.length - 1));
+      setActive((value) => Math.min(value + 1, Math.max(0, results.length - 1)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((value) => Math.max(value - 1, 0));
@@ -114,7 +114,11 @@ export function SiteSearch() {
             aria-controls={listId}
             value={query}
             onKeyDown={onKeyDown}
-            onValueChange={setQuery}
+            onValueChange={(value: string) => {
+              setQuery(value);
+              setResults([]);
+              setActive(0);
+            }}
           />
           {results.length > 0 ? (
             <ul id={listId} className="max-h-90 overflow-y-auto p-2" role="listbox">

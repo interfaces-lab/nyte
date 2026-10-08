@@ -25,6 +25,7 @@
 
 @layer base {
   :root {
+    --fluid-step: calc((100vw - 20rem) / 76);
     --site-inner: 1072px;
     --site-pad: 24px;
     /* 4 + 32 + 4: the same pad sits above the controls, below them, and before a dropdown. */
@@ -71,8 +72,24 @@
   --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-pixel: var(--font-geist-pixel-square), var(--font-geist-mono), ui-monospace, monospace;
 
+  /* Fluid steps on the shared slope: `text-hero`, `pt-section`, `p-panel`. */
+  --text-hero: clamp(2.75rem, 2.75rem + 2 * var(--fluid-step), 4.75rem);
+  --text-hero--line-height: 1.02;
+  --text-hero--letter-spacing: -0.01em;
+  --spacing-section: clamp(5rem, 5rem + 2 * var(--fluid-step), 7rem);
+  --spacing-section-lg: clamp(6rem, 6rem + 2 * var(--fluid-step), 8rem);
+  --spacing-panel-x: clamp(1.5rem, 1.5rem + 1.5 * var(--fluid-step), 3rem);
+  --spacing-panel-y: clamp(3rem, 3rem + 1 * var(--fluid-step), 4rem);
+
   --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
   --animate-plate-rise: plate-rise 900ms var(--ease-nav) both;
+  --animate-ascii-in: ascii-in 240ms var(--ease-nav) both;
+
+  @keyframes ascii-in {
+    from {
+      opacity: 0;
+    }
+  }
 
   @keyframes plate-rise {
     from {

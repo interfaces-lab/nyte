@@ -17,7 +17,8 @@ export function KeyLink({ href, shortcut, className, kbdClassName, children }: K
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat)
+        return;
       if (event.key.toLowerCase() !== shortcut.toLowerCase()) return;
       const target = event.target;
       if (
