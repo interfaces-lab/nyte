@@ -250,6 +250,8 @@ interface Surface {
   visited: string | undefined;
   /** DevTools paused the page's JavaScript, preload included, so main forwards its keys. */
   paused: boolean;
+  /** The panel handed the keyboard back while an overlay still hid the page. */
+  focusWhenShown: boolean;
   /** The user's keydowns the page has yet to forward; agent input never adds one. */
   readonly pressed: BrowserKey[];
 }
@@ -534,6 +536,14 @@ export function createBrowserSurfaces(
     if (held) window.webContents.focus();
   };
 
+  const show = (surface: Surface): void => {
+    surface.view.setVisible(true);
+
+    if (!surface.focusWhenShown) return;
+    surface.focusWhenShown = false;
+    surface.view.webContents.focus();
+  };
+
   const apply = (surface: Surface): void => {
     if (surface.destroyed) return;
     const window = dependencies.window(surface.home);
@@ -558,7 +568,7 @@ export function createBrowserSurfaces(
     if (surface.fullscreen && placed) {
       const { width, height } = window.getContentBounds();
       surface.view.setBounds({ x: 0, y: 0, width, height });
-      surface.view.setVisible(true);
+      show(surface);
 
       return;
     }
@@ -572,7 +582,7 @@ export function createBrowserSurfaces(
 
     surface.view.setBounds(surface.bounds);
 
-    if (surface.visible && surface.error === undefined) surface.view.setVisible(true);
+    if (surface.visible && surface.error === undefined) show(surface);
     else hide(surface, window);
   };
 
@@ -686,6 +696,7 @@ export function createBrowserSurfaces(
       if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
       callback(false);
     });
+
     const forwardFrom =
       (source: WebContents, user: (key: BrowserKey) => boolean) =>
       (event: IpcMainEvent, message: BrowserKey): void => {
@@ -946,6 +957,7 @@ export function createBrowserSurfaces(
       popup: undefined,
       visited: undefined,
       paused: false,
+      focusWhenShown: false,
       pressed: [],
     };
 
@@ -1452,6 +1464,7 @@ export function createBrowserSurfaces(
       if (surface === undefined || contents === undefined || contents.isDestroyed()) return;
 
       if (surface.view.getVisible()) contents.focus();
+      else surface.focusWhenShown = true;
     },
     login({ surface: id, credentials }) {
       const surface = surfaces.get(id);
@@ -1494,6 +1507,9 @@ export function createBrowserSurfaces(
       }
 
       chromeFocus.set(window, id);
+      const taken = surfaces.get(id);
+
+      if (taken !== undefined) taken.focusWhenShown = false;
       const host = dependencies.window(window);
 
       // A shortcut pressed in the page can move focus to the address bar; typing must follow it.
