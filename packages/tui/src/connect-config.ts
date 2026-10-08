@@ -1,7 +1,7 @@
 /**
  * The broker this binary links through. Public by design: a canonical
- * `https://` origin, from `NYTE_CONNECT_ORIGIN` at run time or the value the
- * binary was built with. A binary with neither offers no account linking.
+ * `https://` origin, from `NYTE_CONNECT_ORIGIN` at run time, else the value the
+ * binary was built with, else Nyte's own broker.
  */
 import process from "node:process";
 import { isBrokerOrigin } from "@nyte-ai/connect";
@@ -10,20 +10,19 @@ import type { HostConnectConfig } from "@nyte-ai/connect/host";
 /** Replaced by the bundler (`scripts/defines.ts`); unbundled it is undeclared, so only `typeof` may touch it. */
 declare const NYTE_BUILT_CONNECT_ORIGIN: string | undefined;
 
-/** The origin the binary was built with; none unbundled or when the build set none. */
-export function builtConnectOrigin(): string | undefined {
-  return typeof NYTE_BUILT_CONNECT_ORIGIN === "string" && NYTE_BUILT_CONNECT_ORIGIN !== ""
-    ? NYTE_BUILT_CONNECT_ORIGIN
-    : undefined;
-}
+export const DEFAULT_CONNECT_ORIGIN = "https://nyte-connect.daniel-fu90.workers.dev";
 
 export function readConnectConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): HostConnectConfig | undefined {
-  const origin = env["NYTE_CONNECT_ORIGIN"] ?? builtConnectOrigin();
+  const built =
+    typeof NYTE_BUILT_CONNECT_ORIGIN === "string" && NYTE_BUILT_CONNECT_ORIGIN !== ""
+      ? NYTE_BUILT_CONNECT_ORIGIN
+      : DEFAULT_CONNECT_ORIGIN;
+  const origin = env["NYTE_CONNECT_ORIGIN"] ?? built;
 
-  return origin !== undefined && isBrokerOrigin(origin) ? { origin } : undefined;
+  return isBrokerOrigin(origin) ? { origin } : undefined;
 }
 
 export const CONNECT_UNCONFIGURED =
-  "Account linking isn't configured for this build. Set NYTE_CONNECT_ORIGIN to the Nyte Connect origin.";
+  "NYTE_CONNECT_ORIGIN isn't a valid Nyte Connect origin. Use an https:// origin with no path, or unset it to use Nyte's.";

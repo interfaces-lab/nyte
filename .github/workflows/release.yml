@@ -103,13 +103,6 @@ jobs:
           key: turbo-tui-${{ matrix.target }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'tsconfig.base.json') }}
           restore-keys: turbo-tui-${{ matrix.target }}-
       - run: pnpm install --frozen-lockfile
-      - name: Check account configuration
-        shell: bash
-        run: |
-          if [[ -z "$NYTE_CONNECT_ORIGIN" ]]; then
-            echo "The NYTE_CONNECT_ORIGIN repository variable is unset; the build would ship without Nyte account linking." >&2
-            exit 1
-          fi
       - run: pnpm build:tui
       - run: sh scripts/assemble-release.sh bin/nyte dist ${{ matrix.target }}
       - uses: actions/upload-artifact@v7

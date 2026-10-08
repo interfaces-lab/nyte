@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { createNyteClient, NyteWireError } from "@nyte-ai/client";
 import { binaryDefines } from "../scripts/defines.ts";
+import { DEFAULT_CONNECT_ORIGIN } from "../src/connect-config.ts";
 import { deadline, session } from "./drive.ts";
 import { startConnect } from "./account.ts";
 import { bashRequest, TITLE_SCRIPT } from "./provider.ts";
@@ -483,7 +484,9 @@ export const headless: Scenario = {
             );
             assert.notEqual(unlinked.code, 0);
             assert.ok(unlinked.stderr.includes("isn't linked to a Nyte account"), unlinked.stderr);
-            const unconfigured = await cli.run(["account", "login"]);
+            const unconfigured = await cli.run(["account", "login"], undefined, {
+              NYTE_CONNECT_ORIGIN: "http://connect.invalid",
+            });
             assert.notEqual(unconfigured.code, 0);
             assert.ok(unconfigured.stderr.includes("NYTE_CONNECT_ORIGIN"), unconfigured.stderr);
           },
@@ -543,7 +546,9 @@ export const headless: Scenario = {
                 origin: "https://runtime.qa.example",
               },
             );
-            assert.equal(await compiled(undefined, undefined), null);
+            assert.deepEqual(await compiled(undefined, undefined), {
+              origin: DEFAULT_CONNECT_ORIGIN,
+            });
           },
         );
 
