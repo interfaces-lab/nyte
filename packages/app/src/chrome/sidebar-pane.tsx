@@ -33,7 +33,7 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     flexShrink: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   seatHidden: {
     width: 0,
@@ -70,7 +70,11 @@ const styles = create({
       transitionDuration: motion.durationFast,
       transitionTimingFunction: motion.easeOut,
     },
-    ":hover::after": { backgroundColor: role.borderPrimaryTranslucent },
+    ":hover::after": {
+      backgroundColor: {
+        "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent,
+      },
+    },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
   /** Without window tabs the content is flush with the rail; the handle draws their edge. */

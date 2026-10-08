@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { parseArgs } from "./cli.ts";
-import { historyFixture, projectionFixture } from "./fixtures.ts";
 
 test("CLI emits clean JSON and keeps argument errors on stderr", () => {
   const runner = fileURLToPath(new URL("./run.ts", import.meta.url));
@@ -49,15 +48,6 @@ test("CLI emits clean JSON and keeps argument errors on stderr", () => {
   assert.equal(help.error, undefined);
   assert.equal(help.status, 0);
   assert.match(help.stdout, /Usage: pnpm exec node/u);
-});
-
-test("fixtures are deterministic and checkpoints preserve the source messages", () => {
-  for (const workload of ["many-turns", "tool-heavy"] as const) {
-    const fixture = projectionFixture(100, workload);
-    assert.deepEqual(projectionFixture(100, workload), fixture);
-  }
-  assert.deepEqual(historyFixture(20, true), historyFixture(20, true));
-  assert.deepEqual(historyFixture(20, true).messages, historyFixture(20, false).messages);
 });
 
 test("CLI rejects unknown, duplicate, missing, fractional, oversized, and malformed inputs", () => {

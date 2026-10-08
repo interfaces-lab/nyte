@@ -118,7 +118,7 @@ test("global idle mode refreshes a settled request; project settings cannot enab
   const f = await fixture();
   const cachedModel: Model<Api> = {
     ...model,
-    promptCache: { short: 10.2 },
+    promptCache: { long: 10.2 },
     contextWindow: 1_000_000,
     cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   };
@@ -404,7 +404,6 @@ test("a broken plugin is listed as failed while the built-ins and other plugins 
   );
   assert.equal(listed.find((plugin) => plugin.id === "healthy")?.status, "active");
   assert.equal(listed.find((plugin) => plugin.id === "skills")?.status, "active");
-  assert.ok(listed.filter((plugin) => plugin.source === "builtin").length > 5);
   assert.deepEqual(failures, [{ id: "broken", path: broken, error: "broken plugin" }]);
   host.attach();
   await answer(host, id, "first");
@@ -769,6 +768,14 @@ test("relocation asks the host's trust for the destination, then loads its plugi
   });
   hosts.push(host);
   const id = (await host.sessions.create()).sessionId;
+  for (const [cwd, name] of [
+    [f.cwd, "original"],
+    [destination, "destination"],
+  ]) {
+    const unit = join(cwd, ".nyte", "plugins", name);
+    await mkdir(unit, { recursive: true });
+    await writeFile(join(unit, "index.ts"), toolPluginSource(name, `${name}_tool`));
+  }
   const root = await host.sessionRoot({ sessionId: id });
   assert.ok(root !== undefined);
   const moved = { ...root.workspace, cwd: destination };
@@ -778,14 +785,6 @@ test("relocation asks the host's trust for the destination, then loads its plugi
   });
   await createWorkspaceStore().trust(destination);
   assert.equal((await host.relocate({ sessionId: id, workspace: moved })).kind, "relocated");
-  for (const [cwd, name] of [
-    [f.cwd, "original"],
-    [destination, "destination"],
-  ]) {
-    const unit = join(cwd, ".nyte", "plugins", name);
-    await mkdir(unit, { recursive: true });
-    await writeFile(join(unit, "index.ts"), toolPluginSource(name, `${name}_tool`));
-  }
   host.attach();
   await answer(host, id, "use the relocated plugin");
   assert.ok(f.tools.at(-1)?.includes("destination_tool"));

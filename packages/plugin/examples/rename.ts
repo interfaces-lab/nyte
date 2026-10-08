@@ -11,7 +11,7 @@
  * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/session/runner/llm.ts (first-prompt trigger), and
  * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/tool/plugin/opencode.ts (session_rename)
  */
-import { contentText, uuidv7 } from "@nyte-ai/ai";
+import { baseModel, contentText, uuidv7 } from "@nyte-ai/ai";
 import type { Api, Model, Models, SimpleStreamOptions } from "@nyte-ai/ai";
 import { definePlugin } from "@nyte-ai/plugin";
 import type { Message } from "@nyte-ai/schema";
@@ -108,11 +108,11 @@ export function titleRequest(messages: readonly Message[]): string | undefined {
   return conversation.slice(0, MAX_CONVERSATION_CHARS);
 }
 
-/** Luna wherever a signed-in provider serves it, then the chat's own model. */
+/** Luna wherever a signed-in provider serves it, then the chat's own model; a title never pays for fast mode. */
 export function titleCandidates(models: TitleModels, primary: Model<Api>): Model<Api>[] {
   const luna = models.getModels().filter((model) => model.id === TITLE_MODEL_ID);
 
-  return [...luna, primary].filter(
+  return [...luna, baseModel(primary)].filter(
     (model, index, all) =>
       all.findIndex((other) => other.provider === model.provider && other.id === model.id) ===
       index,

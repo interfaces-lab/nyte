@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, test, vi } from "vitest";
@@ -57,6 +68,28 @@ async function repository(): Promise<string> {
   git("add", ".");
   git("commit", "-m", "initial");
   return root;
+}
+
+/**
+ * `repository()` plus a committed `sub/inside.txt`, for a workspace opened at
+ * `sub`. Mutation locks and the host's own trash land under an isolated
+ * `NYTE_HOME` outside the repository, never under the real one.
+ */
+async function nestedRepository(): Promise<{
+  readonly root: string;
+  readonly sub: string;
+  readonly home: string;
+}> {
+  const root = await repository();
+  const sub = join(root, "sub");
+  await mkdir(sub);
+  await writeFile(join(sub, "inside.txt"), "inside\n");
+  gitIn(root)("add", ".");
+  gitIn(root)("commit", "-m", "nested");
+  const home = await mkdtemp(join(tmpdir(), "nyte-home-"));
+  roots.push(home);
+  vi.stubEnv("NYTE_HOME", home);
+  return { root, sub, home };
 }
 
 /** A bare repository on disk. Nothing in these tests reaches a network remote. */
@@ -1012,7 +1045,7 @@ describe("discard", () => {
     const result = await vcsAt(root, trash).discard({ paths: ["scratch.txt"] });
 
     assert.deepEqual(result, { kind: "applied", paths: ["scratch.txt"], skipped: [] });
-    assert.deepEqual(trash.trashed, [join(root, "scratch.txt")]);
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "scratch.txt")]);
   });
 
   test("skips a path the status does not report, with a reason and no error", async () => {
@@ -1061,7 +1094,7 @@ describe("discard", () => {
     const result = await vcs.discard({ paths: ["added.txt"] });
 
     assert.deepEqual(result, { kind: "applied", paths: ["added.txt"], skipped: [] });
-    assert.deepEqual(trash.trashed, [join(root, "added.txt")]);
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "added.txt")]);
     assert.deepEqual((await vcs.repository()).staged, []);
   });
 
@@ -1074,7 +1107,7 @@ describe("discard", () => {
 
     assert.equal(result.kind, "applied");
     assert.equal(await readFile(join(root, "tracked.txt"), "utf8"), "one\ntwo\n");
-    assert.deepEqual(trash.trashed, [join(root, "moved.txt")]);
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "moved.txt")]);
   });
 
   test("answers stale when the worktree moved after the caller's snapshot", async () => {
@@ -1271,15 +1304,18 @@ describe("commit", () => {
     assert.equal((await vcsAt(root).log({ limit: 5 })).commits.length, 2);
   });
 
-  test("refuses a path outside the workspace", async () => {
+  test("refuses a path outside the repository and commits nothing", async () => {
     const root = await repository();
+    await writeFile(join(root, "tracked.txt"), "changed\n");
+    const vcs = vcsAt(root);
 
-    const result = await vcsAt(root).commit({
+    const result = await vcs.commit({
       message: "escape",
       files: { kind: "paths", paths: ["../escape.txt"] },
     });
 
     assert.equal(result.kind, "failed");
+    assert.equal((await vcs.log({ limit: 5 })).commits.length, 1);
   });
 });
 
@@ -1339,6 +1375,133 @@ describe("per-call workspace", () => {
       to: tree.id,
     });
     assert.deepEqual(files, []);
+  });
+});
+
+describe("workspace opened at a repository subfolder", () => {
+  test("reads repository paths and commits only the selected file", async () => {
+    const { root, sub } = await nestedRepository();
+    const git = gitIn(root);
+    await writeFile(join(root, "tracked.txt"), "sibling\n");
+    git("add", "tracked.txt");
+    await writeFile(join(sub, "inside.txt"), "changed\n");
+    await writeFile(join(sub, "scratch.txt"), "scratch\n");
+    const vcs = vcsAt(sub);
+
+    const snapshot = await vcs.repository();
+
+    assert.deepEqual(snapshot, await vcsAt(root).repository());
+    assert.equal(snapshot.root, await realpath(root));
+    assert.deepEqual(snapshot.staged, [{ path: "tracked.txt", kind: "modified" }]);
+    assert.deepEqual(snapshot.unstaged, [
+      { path: "sub/inside.txt", kind: "modified" },
+      { path: "sub/scratch.txt", kind: "untracked" },
+    ]);
+    await writeFile(join(sub, "inside.txt"), "changed again\n");
+    assert.notEqual((await vcs.repository()).revision, snapshot.revision);
+
+    const diffs = await vcs.diff({ scope: WORKTREE });
+
+    assert.deepEqual(
+      diffs.map((diff) => [diff.path, diff.status, diff.kind === "text" ? diff.added : -1]),
+      [
+        ["sub/inside.txt", "modified", 1],
+        ["sub/scratch.txt", "untracked", 1],
+        ["tracked.txt", "modified", 1],
+      ],
+    );
+    assert.match(patchText(diffs[0]), /^-inside\n\+changed again\n/m);
+    assert.match(patchText(diffs[1]), /^\+scratch\n/m);
+    assert.deepEqual(await vcs.contents({ scope: WORKTREE, path: "sub/inside.txt" }), {
+      path: "sub/inside.txt",
+      old: { kind: "text", text: "inside\n" },
+      new: { kind: "text", text: "changed again\n" },
+    });
+
+    assert.deepEqual(await vcs.stage({ paths: ["sub/inside.txt"], staged: true }), {
+      kind: "applied",
+      paths: ["sub/inside.txt"],
+      skipped: [],
+    });
+    assert.equal(git("diff", "--cached", "--name-only"), "sub/inside.txt\ntracked.txt\n");
+
+    const wrongPath = await vcs.commit({
+      message: "cwd-relative",
+      files: { kind: "paths", paths: ["inside.txt"] },
+    });
+
+    assert.deepEqual(wrongPath, { kind: "nothing_to_commit" });
+    assert.equal(git("log", "--format=%s"), "nested\ninitial\n");
+
+    const committed = await vcs.commit({
+      message: "inside only",
+      files: { kind: "paths", paths: ["sub/inside.txt"] },
+    });
+
+    assert.equal(committed.kind, "committed");
+
+    if (committed.kind !== "committed") throw new Error("unreachable");
+    assert.equal(git("show", "--name-status", "--format=", "HEAD"), "M\tsub/inside.txt\n");
+    assert.equal(git("ls-tree", "--name-only", "HEAD"), "sub\ntracked.txt\n");
+    assert.equal(git("diff", "--cached", "--name-only"), "tracked.txt\n");
+    await writeFile(join(sub, "inside.txt"), "after the commit\n");
+    const shown = await vcs.diff({ scope: { kind: "commit", oid: committed.oid } });
+    assert.deepEqual(
+      shown.map((diff) => [diff.path, diff.status]),
+      [["sub/inside.txt", "modified"]],
+    );
+    assert.match(patchText(shown[0]), /^-inside\n\+changed again\n/m);
+    // About 25 git spawns: 1.6s alone, past the 5s default under full-suite load.
+  }, 20_000);
+
+  test("discard restores a tracked file and trashes an untracked one at its real path", async () => {
+    const { root, sub } = await nestedRepository();
+    await writeFile(join(sub, "inside.txt"), "changed\n");
+    await writeFile(join(sub, "scratch.txt"), "scratch\n");
+    const trash = trashRecorder();
+
+    const result = await vcsAt(sub, trash).discard({
+      paths: ["sub/inside.txt", "sub/scratch.txt"],
+    });
+
+    assert.deepEqual(result, {
+      kind: "applied",
+      paths: ["sub/inside.txt", "sub/scratch.txt"],
+      skipped: [],
+    });
+    assert.equal(await readFile(join(sub, "inside.txt"), "utf8"), "inside\n");
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "sub", "scratch.txt")]);
+    await assert.rejects(access(join(sub, "scratch.txt")));
+    assert.deepEqual([...(await vcsAt(sub).repository()).unstaged], []);
+  });
+
+  test("the host's own trash keeps a discarded sibling under the repository bucket", async () => {
+    const { root, sub, home } = await nestedRepository();
+    await writeFile(join(root, "sibling-scratch.txt"), "recoverable\n");
+
+    const result = await vcsAt(sub).discard({ paths: ["sibling-scratch.txt"] });
+
+    assert.deepEqual(result, { kind: "applied", paths: ["sibling-scratch.txt"], skipped: [] });
+    await assert.rejects(access(join(root, "sibling-scratch.txt")));
+
+    const bucket = join(
+      home,
+      "snapshots",
+      createHash("sha256")
+        .update(await realpath(root))
+        .digest("hex"),
+      "trash",
+    );
+
+    const entries = await readdir(bucket);
+    const [entry] = entries;
+    assert.equal(entries.length, 1);
+    assert.ok(entry !== undefined);
+    assert.deepEqual(await readdir(join(bucket, entry)), ["sibling-scratch.txt"]);
+    assert.equal(
+      await readFile(join(bucket, entry, "sibling-scratch.txt"), "utf8"),
+      "recoverable\n",
+    );
   });
 });
 

@@ -11,7 +11,6 @@ import {
   usageCommit,
   type SessionCommits,
 } from "@nyte-ai/host/store-usage";
-import { ipcDiagnostics, ipcFailure } from "./errors.ts";
 import type { StoreRead } from "@nyte-ai/host/store-usage";
 import type { UsageWindow } from "@nyte-ai/app/bridge.ts";
 
@@ -243,13 +242,10 @@ describe("usage fold", () => {
   });
 
   test("a store that failed is a source row, not a lost report", () => {
-    const cause = new Error("synthetic-secret-store-body");
-    const failure = ipcFailure(cause);
-
     const report = projectUsageReport(
       [
         store([session([assistant(AT, "claude-opus-5", usage(10, 0, 1))])]),
-        store([], "/repos/broken", failure),
+        store([], "/repos/broken", { message: "Store unreadable" }),
       ],
       WINDOW,
       AT,
@@ -257,14 +253,12 @@ describe("usage fold", () => {
 
     assert.equal(report.entries.length, 1);
     assert.deepEqual(
-      report.sources.map((source) => source.status),
-      ["ok", "failed"],
+      report.sources.map((source) => [source.status, source.message]),
+      [
+        ["ok", null],
+        ["failed", "Store unreadable"],
+      ],
     );
-    assert.equal(report.sources[1]?.message, failure.message);
-    assert.ok(failure.correlationId);
-    assert.equal(ipcDiagnostics.get(failure.correlationId), cause);
-    assert.doesNotMatch(JSON.stringify(report), /synthetic-secret-store-body/);
-    ipcDiagnostics.delete(failure.correlationId);
   });
 
   test("prices compaction and tool results under their own subjects", () => {

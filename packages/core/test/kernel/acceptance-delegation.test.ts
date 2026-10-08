@@ -10,7 +10,7 @@ import {
 import { branch } from "../../src/kernel/graph.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import { delegationRef, headRef, runRef } from "../../src/kernel/names.ts";
-import { pending, submit } from "../../src/kernel/queue.ts";
+import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import type { Turn } from "../../src/kernel/turn.ts";
@@ -106,7 +106,7 @@ async function queueDelegate(
   });
 }
 
-test("an authorized continuation is consumed once and a failed owner revokes another", async () => {
+test("an authorized continuation is consumed once and inherits its owner's root", async () => {
   const consumedSession = await openStore().create({ id: "accept-consume" });
   const parent = await startAndFinish(consumedSession);
   const child = sessionId("consume-child");
@@ -134,47 +134,6 @@ test("an authorized continuation is consumed once and a failed owner revokes ano
   assert.ok(continuation);
   assert.deepEqual(continuation.run.origin, { kind: "continuation", session: child, request });
   assert.equal(continuation.run.root, parent.root);
-
-  const revokedSession = await openStore().create({ id: "accept-revoke" });
-  await submit(revokedSession, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "user",
-    body: message(user("fail")),
-  });
-  await step(revokedSession, turn, { head: "main", drain });
-  const live = await storedRun(revokedSession);
-  assert.ok(live);
-  const revokedChild = sessionId("revoke-child");
-  const revokedRequest = { kind: "commit", oid: "revoke-request" } satisfies DelegateRequest;
-  const revokedRef = await writeDelegation({
-    session: revokedSession,
-    child: revokedChild,
-    change: "revoke-change",
-    request: revokedRequest,
-    run: live.run,
-    continuation: { kind: "authorized", root: live.run.root },
-  });
-  const failing: Turn = {
-    respond: async () => ({
-      kind: "failed",
-      message: assistant("failed", { stop: "error", error: "failed" }),
-      failure: { class: "runner", message: "failed" },
-    }),
-    tools: async () => assert.fail("failed owner called tools"),
-  };
-  await step(revokedSession, failing, { head: "main", drain });
-  const revokedOid = await revokedSession.refs.read(revokedRef);
-  assert.ok(revokedOid);
-  const revoked = await readDelegation(
-    revokedSession,
-    { name: revokedRef, oid: revokedOid },
-    delegationRef(revokedChild, ""),
-  );
-  assert.equal(revoked.record.continuation.kind, "input");
-  await queueDelegate(revokedSession, revokedChild, revokedRequest);
-  assert.deepEqual(await step(revokedSession, turn, { head: "main", drain }), { kind: "idle" });
 });
 
 test("an abort winning the model-send CAS leaves no child request", async () => {
@@ -231,45 +190,6 @@ test("an abort winning the model-send CAS leaves no child request", async () => 
   assert.equal(await session.refs.read(requestRef), null);
 });
 
-test("non-authorizing completions leave an idle head quiet", async () => {
-  const commandSession = await openStore().create({ id: "command-idle" });
-  await submit(commandSession, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "report",
-    body: {
-      kind: "completion",
-      job: {
-        kind: "command",
-        id: "command",
-        command: "true",
-        end: { kind: "completed" },
-        output: "",
-      },
-    },
-  });
-  assert.deepEqual(await step(commandSession, turn, { head: "main", drain }), { kind: "idle" });
-
-  for (const kind of ["input", "consumed"] as const) {
-    const session = await openStore().create({ id: `delegate-${kind}-idle` });
-    const owner = await startAndFinish(session, `owner-${kind}`);
-    const child = sessionId(`child-${kind}`);
-    const request = { kind: "commit", oid: `request-${kind}` } satisfies DelegateRequest;
-    await writeDelegation({
-      session,
-      child,
-      change: `change-${kind}`,
-      request,
-      run: owner,
-      continuation: { kind },
-    });
-    await queueDelegate(session, child, request);
-    assert.deepEqual(await step(session, turn, { head: "main", drain }), { kind: "idle" });
-    assert.equal((await pending(session, "main")).length, 1);
-  }
-});
-
 test("two one-step hosts racing one authorization publish one continuation", async () => {
   const path = storePath();
   const firstStore = openStore(path);
@@ -311,7 +231,16 @@ test("two one-step hosts racing one authorization publish one continuation", asy
     ).length,
     1,
   );
+  const continuations = new Set<string>();
+  for (const event of await firstSession.events.read({ afterSeq: 0 })) {
+    if (event.kind !== "ref" || event.name !== runRef("main") || event.to === null) continue;
+    const object = await firstSession.objects.get(event.to);
+    if (object?.kind === "run" && object.origin.kind === "continuation")
+      continuations.add(object.id);
+  }
+  assert.equal(continuations.size, 1);
   const current = await storedRun(firstSession);
   assert.ok(current);
   assert.deepEqual(current.run.origin, { kind: "continuation", session: child, request });
+  assert.equal(current.run.root, parent.root);
 });

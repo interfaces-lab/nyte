@@ -30,7 +30,10 @@ const styles = create({
     borderStyle: "none",
     borderRadius: "50%",
     color: role.contentInteractiveSecondary,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     cursor: appearance.cursorInteractive,
   },
   icon: {

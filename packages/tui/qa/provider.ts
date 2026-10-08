@@ -5,13 +5,7 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Static } from "typebox";
 import type { JsonValue } from "@nyte-ai/schema";
-import {
-  FIXTURE_API_KEY,
-  FIXTURE_CHILD_MODEL,
-  FIXTURE_MODEL,
-  FIXTURE_PROVIDER,
-  FIXTURE_TITLE_MODEL,
-} from "./workspace.ts";
+import { FIXTURE_API_KEY, FIXTURE_MODEL, FIXTURE_TITLE_MODEL } from "./workspace.ts";
 
 const textPart = Type.Object({ type: Type.Literal("text"), text: Type.String() });
 
@@ -65,11 +59,13 @@ const requestSchema = Type.Object({
 
 const requestParser = Compile(requestSchema);
 
+/** Title requests are answered outside the script; they are not runs a person started. */
+export const TITLE_SCRIPT = "automatic conversation title";
+
 export type ProviderPayload = Static<typeof requestSchema>;
 
 export type ProviderAction =
   | { readonly kind: "reply"; readonly text: string }
-  | { readonly kind: "reasoning"; readonly thinking: string; readonly text: string }
   | { readonly kind: "hold"; readonly text: string; readonly tail?: string }
   | { readonly kind: "fail"; readonly status?: number; readonly message: string }
   | { readonly kind: "tool"; readonly name: string; readonly arguments: Record<string, JsonValue> };
@@ -88,7 +84,6 @@ export interface CapturedRequest {
   readonly id: number;
   readonly model: string;
   readonly prompt: string;
-  readonly inputImages: readonly string[];
   readonly payload: ProviderPayload;
   readonly script: string;
 }
@@ -127,7 +122,6 @@ type ProviderMessage = ProviderPayload["messages"][number];
 interface CompletionDelta {
   readonly role?: "assistant";
   readonly content?: string;
-  readonly reasoning_content?: string;
   readonly tool_calls?: readonly {
     readonly index: number;
     readonly id?: string;
@@ -209,12 +203,6 @@ export async function openProvider(
     const inputs = newestInputs(payload.messages);
     const prompt = inputs.at(-1) ?? "";
 
-    const inputImages = payload.messages.flatMap((message) =>
-      Array.isArray(message.content)
-        ? message.content.flatMap((part) => (part.type === "image_url" ? [part.image_url.url] : []))
-        : [],
-    );
-
     const index = queue.findIndex((step) => {
       if (step.model !== undefined && step.model !== payload.model) return false;
       const wanted = step.prompt;
@@ -233,7 +221,7 @@ export async function openProvider(
 
     const step: ProviderStep | undefined = title
       ? {
-          name: "automatic conversation title",
+          name: TITLE_SCRIPT,
           action: { kind: "reply", text: "QA conversation" },
         }
       : index >= 0
@@ -245,7 +233,6 @@ export async function openProvider(
       id,
       model: payload.model,
       prompt,
-      inputImages,
       payload,
       script: step?.name ?? "unexpected",
     });
@@ -342,11 +329,9 @@ export async function openProvider(
       return;
     }
 
-    if (action.kind === "reasoning") chunk({ reasoning_content: action.thinking });
-
     if (action.text) chunk({ content: action.text });
 
-    if (action.kind === "reply" || action.kind === "reasoning") {
+    if (action.kind === "reply") {
       finish();
 
       return;
@@ -446,80 +431,11 @@ export async function openProvider(
   };
 }
 
-export function plainReply(text = "QA reply"): ProviderStep {
-  return { name: "plain reply", model: FIXTURE_MODEL, action: { kind: "reply", text } };
-}
-
-export function thinkingReply(thinking: string, text = "QA thought reply"): ProviderStep {
+/** A bash call that Nyte's production bash tool runs in the workspace. */
+export function bashRequest(command: string): ProviderStep {
   return {
-    name: "thinking reply",
+    name: "bash",
     model: FIXTURE_MODEL,
-    action: { kind: "reasoning", thinking, text },
-  };
-}
-
-export function subagentRequest(options: {
-  readonly background: boolean;
-  readonly prompt: string;
-}): ProviderStep {
-  const taskArguments = {
-    model: `${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL}`,
-    prompt: options.prompt,
-  };
-
-  return {
-    name: options.background ? "background subagent" : "foreground subagent",
-    model: FIXTURE_MODEL,
-    action: {
-      kind: "tool",
-      name: "task",
-      arguments: options.background ? { ...taskArguments, waitMs: 0 } : taskArguments,
-    },
-  };
-}
-
-export function heldReply(text = "QA stream started", tail = " QA stream completed"): ProviderStep {
-  return { name: "held stream", model: FIXTURE_MODEL, action: { kind: "hold", text, tail } };
-}
-
-export function failedRequest(message = "QA provider failure", status = 400): ProviderStep {
-  return {
-    name: "provider failure",
-    model: FIXTURE_MODEL,
-    action: { kind: "fail", status, message },
-  };
-}
-
-export function retryReply(text = "QA retry completed"): ProviderStep[] {
-  return [failedRequest("QA transient failure", 503), plainReply(text)];
-}
-
-export function questionRequest(question = "QA question"): ProviderStep {
-  return {
-    name: "question",
-    model: FIXTURE_MODEL,
-    action: {
-      kind: "tool",
-      name: "question",
-      arguments: { question, options: [{ label: "First" }, { label: "Second" }] },
-    },
-  };
-}
-
-/** Background bash and task calls become jobs through Nyte's production job wrapper. */
-export function bashRequest(command: string, background = false): ProviderStep {
-  return {
-    name: background ? "background bash" : "foreground bash",
-    model: FIXTURE_MODEL,
-    action: { kind: "tool", name: "bash", arguments: { command, background } },
-  };
-}
-
-/** One exact replacement in a seeded workspace file; the card renders the tool's diff. */
-export function editRequest(path: string, oldText: string, newText: string): ProviderStep {
-  return {
-    name: "edit",
-    model: FIXTURE_MODEL,
-    action: { kind: "tool", name: "edit", arguments: { path, edits: [{ oldText, newText }] } },
+    action: { kind: "tool", name: "bash", arguments: { command } },
   };
 }

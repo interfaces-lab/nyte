@@ -8,15 +8,24 @@ import type {
 
 export type WorkspaceMenu =
   | { kind: "hidden" }
-  | { kind: "failed"; message: string }
-  | {
-      kind: "ready";
-      items: readonly WorkspaceInfo[];
-      selection: WorkspaceSelection;
-    };
+  | { kind: "loading" }
+  | { kind: "failed"; message: string; retry: () => void }
+  | { kind: "ready"; label: string | undefined; choices: readonly WorkspaceChoice[] };
 
-export function workspaceMenuAvailable(info: ServerInfo): boolean {
-  return info.host.kind === "described" && info.host.capabilities.workspace;
+export interface WorkspaceChoice {
+  readonly key: string;
+  readonly label: string;
+  readonly selected: boolean;
+  readonly choose: () => void;
+}
+
+/** New chats follow the host's shared folder cursor. A registry host refuses it. */
+export function usesWorkspaceCursor(info: ServerInfo): boolean {
+  return (
+    info.workspaces?.kind !== "registry" &&
+    info.host.kind === "described" &&
+    info.host.capabilities.workspace
+  );
 }
 
 export function listedWorkspaces(items: readonly WorkspaceInfo[]): readonly WorkspaceInfo[] {

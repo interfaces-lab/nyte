@@ -1,3 +1,0 @@
-[test]
-# Solid JSX for `bun test`; `src/binary.ts` installs the same transform when running from source.
-preload = ["@opentui/solid/preload"]

@@ -27,7 +27,6 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -137,7 +136,8 @@ function UserMessageImages({ content }: { content: UserTurnPart["content"] }): R
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
   readonly thinkingLevel: ModelThinkingLevel | undefined;
-  readonly fastEnabled: ReadonlySet<string>;
+  /** The choice is the model's fast sibling. */
+  readonly fast: boolean;
 }
 
 export interface BranchModelPicker extends BranchModelChoice {
@@ -198,10 +198,12 @@ export function UserMessageView({
         return;
       const target = event.target;
 
-      // Portalled menus and dialogs still belong to the active editing interaction.
+      // Portalled menus and dialogs, and the backdrop a modal menu lays over the page, still belong to the active editing interaction.
       if (
         target instanceof Element &&
-        target.closest('[data-composer-frame], [role="menu"], [role="listbox"], [role="dialog"]')
+        target.closest(
+          '[data-composer-frame], [role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]',
+        )
       )
         return;
       setEdit(undefined);
@@ -228,7 +230,7 @@ export function UserMessageView({
         error: undefined,
         model: branchModel?.model,
         thinkingLevel: branchModel?.thinkingLevel,
-        fastEnabled: new Set(branchModel?.fastEnabled),
+        fast: branchModel?.fast === true,
       }),
     );
     editorRef.current?.focus();
@@ -270,7 +272,7 @@ export function UserMessageView({
       await onEdit(next, {
         model: edit.model,
         thinkingLevel: edit.thinkingLevel,
-        fastEnabled: edit.fastEnabled,
+        fast: edit.fast,
       });
       setEdit(undefined);
 
@@ -288,27 +290,27 @@ export function UserMessageView({
         catalog={branchModel.catalog}
         current={edit.model}
         thinkingLevel={edit.thinkingLevel}
-        fastEnabled={edit.fastEnabled}
+        fast={edit.fast}
         disabled={edit.saving}
         onChange={(change: ModelPickerChange) => {
           switch (change.kind) {
             case "model":
-              setEdit({ ...edit, model: change.option, thinkingLevel: change.thinkingLevel });
+              setEdit({
+                ...edit,
+                model: change.option,
+                thinkingLevel: change.thinkingLevel,
+                fast: false,
+              });
 
               return;
             case "thinking":
               setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
 
               return;
-            case "fast": {
-              const fastEnabled = new Set(edit.fastEnabled);
-
-              if (change.enabled) fastEnabled.add(change.settingId);
-              else fastEnabled.delete(change.settingId);
-              setEdit({ ...edit, fastEnabled });
+            case "fast":
+              setEdit({ ...edit, fast: change.enabled });
 
               return;
-            }
 
             default: {
               const _exhaustive: never = change;
@@ -492,14 +494,14 @@ function TurnPartView({
   part,
   liveTools,
   cwd,
-  toolCalls,
+  density,
   onEditUser,
   branchModel,
 }: {
   part: TurnPart;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
-  toolCalls: ToolCallDensity;
+  density: ToolCallDensity;
   onEditUser?: (
     part: UserTurnPart,
     content: UserTurnPart["content"],
@@ -530,7 +532,7 @@ function TurnPartView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
-          density={toolCalls}
+          density={density}
         />
       );
     default: {
@@ -552,6 +554,7 @@ const ResponseView = memo(function ResponseView({
 });
 
 interface TurnBodyProps {
+  density: ToolCallDensity;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   live?: LiveSnapshot;
   cwd: string | undefined;
@@ -572,6 +575,7 @@ function drawsNothing(turn: ConversationTurn): boolean {
 /** One turn's parts, failure, and changes, as siblings in the row's column. */
 const TurnBody = memo(function TurnBody({
   turn,
+  density,
   liveTools,
   live,
   cwd,
@@ -580,7 +584,6 @@ const TurnBody = memo(function TurnBody({
   onOpenChanges,
   running,
 }: TurnBodyProps & { turn: ConversationTurn }): ReactElement | null {
-  const toolCalls = useSetting(preferences.toolCalls);
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
 
   const changeTotals = useMemo(
@@ -621,7 +624,7 @@ const TurnBody = memo(function TurnBody({
                 part={first}
                 liveTools={liveTools}
                 cwd={cwd}
-                toolCalls={toolCalls}
+                density={density}
               />
             );
           }
@@ -637,7 +640,7 @@ const TurnBody = memo(function TurnBody({
               added={trailing ? changeTotals.added : 0}
               removed={trailing ? changeTotals.removed : 0}
               running={active}
-              density={toolCalls}
+              density={density}
             />
           );
         }
@@ -659,7 +662,7 @@ const TurnBody = memo(function TurnBody({
             part={item.part}
             liveTools={liveTools}
             cwd={cwd}
-            toolCalls={toolCalls}
+            density={density}
             onEditUser={onEditUser}
             branchModel={branchModel}
           />

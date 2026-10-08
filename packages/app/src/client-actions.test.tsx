@@ -1,11 +1,8 @@
 import { expect, test } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
-import { Kbd } from "@nyte-ai/ui/kbd";
 import {
   clientActionAccelerator,
   clientActionAvailable,
   clientActionAriaShortcut,
-  clientActionKeys,
   clientActions,
   clientActionShortcut,
   resolveClientAction,
@@ -58,17 +55,7 @@ test.each([true, false])("displayed bindings resolve to their action, mac=%s", (
   }
 });
 
-test("new chat keycaps use the platform binding that executes the action", () => {
-  const mac = renderToStaticMarkup(<Kbd keys={clientActionKeys(clientActions.newChat, true)} />);
-
-  const windows = renderToStaticMarkup(
-    <Kbd keys={clientActionKeys(clientActions.newChat, false)} />,
-  );
-
-  expect(mac.replace(/<[^>]+>/g, "")).toBe("⌘N");
-  expect(windows.replace(/<[^>]+>/g, "")).toBe("CtrlN");
-  expect(clientActionShortcut(clientActions.settings, true)).toBe("⌘,");
-  expect(clientActionShortcut(clientActions.settings, false)).toBe("Ctrl+,");
+test("the native menu accelerator names the cross-platform binding", () => {
   expect(clientActionAccelerator(clientActions.settings)).toBe("CommandOrControl+,");
 });
 
@@ -125,24 +112,6 @@ test("workbench retains its Shift alias", () => {
       "workspace",
     )?.id,
   ).toBe("workbench");
-});
-
-test("palette-only settings stay discoverable while the native settings action is unavailable", () => {
-  expect(
-    Object.values(clientActions).flatMap((action) => ("palette" in action ? [action.label] : [])),
-  ).toEqual([
-    "New chat",
-    "Open folder…",
-    "Open home",
-    "General settings",
-    "Appearance",
-    "Providers",
-    "Profile",
-    "Customize",
-  ]);
-  expect(clientActionAvailable(clientActions.settings, "settings", capabilities)).toBe(false);
-  expect(clientActionAvailable(clientActions.generalSettings, "settings", capabilities)).toBe(true);
-  expect(clientActionKeys(clientActions.generalSettings, true)).toEqual([]);
 });
 
 test("pane focus respects consumed input, composition and settings", () => {

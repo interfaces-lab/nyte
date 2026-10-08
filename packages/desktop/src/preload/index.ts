@@ -15,6 +15,7 @@ import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-
 import type { AppMenuCommand } from "@nyte-ai/app/bridge.ts";
 import {
   BROWSER_BOUNDS_CHANNEL,
+  BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
@@ -33,7 +34,12 @@ import type {
   WatchEnvelope,
   WatchStartInput,
 } from "../shared/ipc.ts";
-import type { BrowserBoundsMessage, HostEvent, WatchInput } from "@nyte-ai/app/bridge.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserFocusMessage,
+  HostEvent,
+  WatchInput,
+} from "@nyte-ai/app/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/errors.ts";
 import type { IpcResult } from "@nyte-ai/app/errors.ts";
 
@@ -306,8 +312,11 @@ const bridge = {
       find: object("host.browser.find"),
       cancelDownload: object("host.browser.cancelDownload"),
       login: object("host.browser.login"),
+      history: object("host.browser.history"),
+      forgetHistory: object("host.browser.forgetHistory"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
+      setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
     },
     onEvent(listener: (event: HostEvent) => void) {
       // HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent.

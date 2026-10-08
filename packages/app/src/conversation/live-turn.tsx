@@ -9,7 +9,7 @@ import { livePartKey } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import { conversation } from "../theme/schema.stylex.ts";
 import { motion } from "@nyte-ai/ui/vars.stylex";
-import { preferences, useSetting } from "../preferences/index.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { Prose } from "./prose.tsx";
 import { StepGroupView } from "./step-group.tsx";
 
@@ -49,13 +49,14 @@ export function LiveTurn({
   working,
   settledWork,
   cwd,
+  density,
 }: {
   live: LiveSnapshot;
   working: boolean;
   settledWork: boolean;
   cwd: string | undefined;
+  density: ToolCallDensity;
 }): ReactElement | null {
-  const toolCalls = useSetting(preferences.toolCalls);
   const textParts = live.order.filter((ref) => ref.kind === "text");
   const hasText = textParts.length > 0;
 
@@ -78,7 +79,7 @@ export function LiveTurn({
           added={0}
           removed={0}
           running={working}
-          density={toolCalls}
+          density={density}
         />
       )}
       {textParts.map((ref) => {

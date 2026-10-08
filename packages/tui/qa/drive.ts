@@ -34,21 +34,12 @@ export const footer = (screen: Screen, model: string, level: string) =>
       new RegExp(`\\b${level}\\b`, "u").test(line),
   );
 
-/** A failing step names the beat a person was in, not just the assertion. */
-export async function beat(name: string, run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (cause) {
-    const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
-    throw new Error(`Beat "${name}": ${detail}`, { cause });
-  }
-}
-
 export async function press(
   terminal: Terminal,
   action: ChatCommand,
   predicate: (screen: Screen) => boolean,
 ): Promise<Screen> {
+  await terminal.pace();
   const input = terminal.key(action);
 
   return terminal.waitForScreen(predicate, deadline(), input);
@@ -66,6 +57,7 @@ export async function type(
     text,
   )) {
     expected += segment;
+    await terminal.pace();
 
     const input =
       options.label === undefined ? terminal.text(segment) : terminal.raw(segment, options.label);
@@ -221,11 +213,10 @@ export async function heartbeat(workspace: Workspace, name: string) {
 export type Heartbeat = Awaited<ReturnType<typeof heartbeat>>;
 
 export type Session = {
-  terminal: Terminal;
   provider: ProviderController;
   workspace: Workspace;
-  /** Launches another binary against the same workspace and provider. */
-  reopen: (args?: string[]) => Promise<Terminal>;
+  /** Launches the binary in a PTY against this workspace and provider. */
+  open: (args?: string[]) => Promise<Terminal>;
   tool: (name: string) => Promise<Heartbeat>;
 };
 
@@ -234,85 +225,42 @@ export async function session(
   context: ScenarioContext,
   options: {
     steps?: readonly ProviderStep[];
-    trusted?: boolean;
-    question?: boolean;
-    reasoning?: boolean;
-    height?: number;
+    plugin?: boolean;
+    /** Outbound requests the binary is known to make, which the loopback proxy refuses. */
+    refused?: readonly string[];
   },
   run: (session: Session) => Promise<void>,
 ): Promise<void> {
   const provider = await openProvider(options.steps);
-  const terminals: Terminal[] = [];
   const tools: Heartbeat[] = [];
+  const terminals: Terminal[] = [];
   let workspace: Workspace | undefined;
+  let teardown: Promise<void> | undefined;
 
-  try {
-    const isolated = await createWorkspace({
-      baseUrl: provider.baseUrl,
-      trusted: options.trusted,
-      question: options.question,
-      reasoning: options.reasoning,
-    });
-
-    workspace = isolated;
-
-    const reopen = async (args: string[] = []) => {
-      const terminalOptions = { cwd: isolated.cwd, env: isolated.env, args };
-
-      const terminal = await context.open(
-        options.height === undefined
-          ? terminalOptions
-          : { ...terminalOptions, height: options.height },
-      );
-
-      terminals.push(terminal);
-
-      return terminal;
-    };
-
-    const terminal = await reopen();
-    await run({
-      terminal,
-      provider,
-      workspace: isolated,
-      reopen,
-      async tool(name) {
-        const tool = await heartbeat(isolated, name);
-        tools.push(tool);
-
-        return tool;
-      },
-    });
-    // Bash rendering can request a syntax asset. The fixture denies this CONNECT
-    // without contacting GitHub; preserve that denial in evidence, not as a failure.
-    assert.deepEqual(
-      provider.errors.filter((error) => error !== "Blocked CONNECT github.com:443"),
-      [],
-      "Only scripted loopback provider requests are allowed",
-    );
-  } finally {
-    try {
-      // Capture before cleanup releases tools, so cleanup cannot make cancellation pass.
-      await writeFile(
-        join(context.cwd, "provider.json"),
-        JSON.stringify(
-          {
-            requests: provider.requests,
-            events: provider.events,
-            errors: provider.errors,
-            tools: await Promise.all(
-              tools.map(async (tool) => ({ name: tool.name, ...(await tool.snapshot()) })),
-            ),
-          },
-          null,
-          2,
-        ),
-      );
-    } finally {
+  // Also runs when the person watching stops the run, so the fixture never outlives it.
+  const finish = () =>
+    (teardown ??= (async () => {
       try {
-        await Promise.all(tools.map((tool) => tool.release()));
+        // Capture before cleanup releases tools, so cleanup cannot make cancellation pass.
+        await writeFile(
+          join(context.cwd, "provider.json"),
+          JSON.stringify(
+            {
+              requests: provider.requests,
+              events: provider.events,
+              errors: provider.errors,
+              tools: await Promise.all(
+                tools.map(async (tool) => ({ name: tool.name, ...(await tool.snapshot()) })),
+              ),
+            },
+            null,
+            2,
+          ),
+        );
       } finally {
         try {
+          await Promise.all(tools.map((tool) => tool.release()));
+
           for (const terminal of terminals) await terminal.close();
           await Promise.all(
             tools.map((tool) =>
@@ -331,6 +279,39 @@ export async function session(
           }
         }
       }
+    })());
+
+  const forget = context.defer(finish);
+
+  try {
+    const isolated = await createWorkspace({ baseUrl: provider.baseUrl, plugin: options.plugin });
+    workspace = isolated;
+    await run({
+      provider,
+      workspace: isolated,
+      async open(args = []) {
+        const terminal = await context.open({ cwd: isolated.cwd, env: isolated.env, args });
+        terminals.push(terminal);
+
+        return terminal;
+      },
+      async tool(name) {
+        const tool = await heartbeat(isolated, name);
+        tools.push(tool);
+
+        return tool;
+      },
+    });
+    assert.deepEqual(
+      provider.errors.filter((error) => !options.refused?.includes(error)),
+      [],
+      "Only scripted loopback provider requests are allowed",
+    );
+  } finally {
+    try {
+      await finish();
+    } finally {
+      forget();
     }
   }
 }

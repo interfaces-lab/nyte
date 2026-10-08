@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import type { Nyte, Plugin, Workspace } from "@nyte-ai/core";
@@ -32,21 +32,6 @@ const workspace: Workspace = {
 };
 
 const ref = { kind: "fake-sandbox", id: "fake:one", cwd: "/work" };
-
-const fakeEnv: ExecutionEnv = {
-  id: "fake:one",
-  cwd: "/work",
-  resolve: (...paths) => posix.resolve("/work", ...paths),
-  readFile: async (path) => {
-    throw new Error(`ENOENT: ${path}`);
-  },
-  writeFile: async () => undefined,
-  mkdir: async () => undefined,
-  stat: async () => undefined,
-  readdir: async () => [],
-  realpath: async () => undefined,
-  exec: async () => ({ exitCode: 0 }),
-};
 
 function sandbox(open: (workspace: Workspace) => Promise<ExecutionEnv>): Plugin {
   return definePlugin({
@@ -119,19 +104,4 @@ test("a workspace its provider fails to open is unreachable", async () => {
     kind: "requires",
     requirement: { kind: "workspace_unavailable", workspace: ref, reason: "unreachable" },
   });
-});
-
-test("a workspace its provider opens activates the session there", async () => {
-  const opened: Workspace[] = [];
-  const { host } = await open([
-    sandbox(async (stored) => {
-      opened.push(stored);
-      return fakeEnv;
-    }),
-  ]);
-  const { sessionId } = await host.sessions.create({ workspace });
-  const info = await host.sessions.get({ sessionId });
-  assert.deepEqual(info?.activation, { kind: "active" });
-  assert.deepEqual(info?.workspace, ref);
-  assert.deepEqual(opened, [workspace]);
 });

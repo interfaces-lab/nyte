@@ -24,7 +24,6 @@
     "./codemode-worker": "./src/codemode-worker.ts",
     "./provider": "./src/provider.ts",
     "./examples/bash-description": "./examples/bash-description.ts",
-    "./examples/fast-mode": "./examples/fast-mode.ts",
     "./examples/notifications": "./examples/notifications.ts",
     "./examples/question": "./examples/question.ts",
     "./examples/rename": "./examples/rename.ts",

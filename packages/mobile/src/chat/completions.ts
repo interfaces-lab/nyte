@@ -5,13 +5,15 @@
  * composer uses, so a token means the same thing on both clients. The choices
  * come from the host: files from `workspace.files`, commands and skills from
  * the session's plugins, or from the new-session catalog before a conversation
- * exists. Accepting writes the exact text the desktop writes, so a message sent
+ * exists. A registry host starts a chat with its first message, so a new chat
+ * there offers skills but no commands, and files from the folder chosen here.
+ * Accepting writes the exact text the desktop writes, so a message sent
  * from a phone reads back there as the same chip.
  */
 import { completionTrigger } from "@nyte-ai/client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CompletionTrigger } from "@nyte-ai/client";
-import type { CommandInfo, PluginCatalog, SessionId } from "@nyte-ai/protocol";
+import type { CommandInfo, PluginCatalog, SessionId, WorkspaceTarget } from "@nyte-ai/protocol";
 import type { NyteClient } from "@nyte-ai/client";
 import { describeHostError } from "../connection/connection.ts";
 
@@ -37,6 +39,32 @@ export interface Completions {
   readonly completion: Completion | undefined;
   /** Commands this conversation knows, once a `/` has asked the host for them. */
   readonly commands: readonly CommandInfo[];
+}
+
+/**
+ * Where a composer's `@` and `/` look. `cursor` is a new chat on a host whose
+ * shared cursor names the folder; `registered` is a new chat on a registry
+ * host, with the folder this phone chose, if any.
+ */
+export type CompletionSource =
+  | { readonly kind: "session"; readonly sessionId: SessionId }
+  | { readonly kind: "cursor" }
+  | { readonly kind: "registered"; readonly id: string | undefined };
+
+function filesTarget(source: CompletionSource): WorkspaceTarget | undefined {
+  switch (source.kind) {
+    case "session":
+      return { kind: "session", sessionId: source.sessionId };
+    case "cursor":
+      return { kind: "workspace" };
+    case "registered":
+      return source.id === undefined ? undefined : { kind: "registered", id: source.id };
+    default: {
+      const exhaustive: never = source;
+
+      return exhaustive;
+    }
+  }
 }
 
 /** Commands and skills come whole, so the phone caps what it lists from them. */
@@ -67,22 +95,6 @@ export function suggestionLabel(suggestion: Suggestion): string {
       return `/${suggestion.name}`;
     case "skill":
       return suggestion.name;
-    default: {
-      const exhaustive: never = suggestion;
-
-      return exhaustive;
-    }
-  }
-}
-
-export function suggestionIcon(suggestion: Suggestion): "doc" | "sparkles" | "book" {
-  switch (suggestion.kind) {
-    case "file":
-      return "doc";
-    case "command":
-      return "sparkles";
-    case "skill":
-      return "book";
     default: {
       const exhaustive: never = suggestion;
 
@@ -125,23 +137,34 @@ function slashChoices(catalog: Pick<PluginCatalog, "commands" | "skills">): read
  */
 export function useCompletions(
   client: NyteClient,
-  sessionId: SessionId | undefined,
+  source: CompletionSource,
   draft: string,
   caret: number,
   enabled: boolean,
   epoch: number,
 ): Completions {
-  const trigger = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
+  const scanned = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
+
+  const trigger =
+    scanned?.kind === "@" && scanned.query.startsWith("file://") ? undefined : scanned;
+
   const kind = trigger?.kind;
   const query = trigger?.query ?? "";
+  const sessionId = source.kind === "session" ? source.sessionId : undefined;
+  const target = filesTarget(source);
+  const commandsAvailable = source.kind !== "registered";
 
   // The keys carry the conversation and the workspace epoch, so an answer for
   // the previous chat or the previous folder can never appear as this one's.
   const slashQuery = useQuery({
-    queryKey: ["slash-completion", sessionId ?? null, epoch],
+    queryKey: ["slash-completion", sessionId ?? null, commandsAvailable, epoch],
     enabled: kind === "/",
     queryFn: async (): Promise<Pick<PluginCatalog, "commands" | "skills">> => {
-      if (sessionId === undefined) return client.plugins.catalog();
+      if (sessionId === undefined) {
+        const catalog = await client.plugins.catalog();
+
+        return commandsAvailable ? catalog : { commands: [], skills: catalog.skills };
+      }
 
       const [commands, skills] = await Promise.all([
         client.plugins.commands.list({ sessionId }),
@@ -153,8 +176,8 @@ export function useCompletions(
   });
 
   const filesQuery = useQuery({
-    queryKey: ["file-completion", sessionId ?? null, epoch, query],
-    enabled: kind === "@",
+    queryKey: ["file-completion", target ?? null, epoch, query],
+    enabled: kind === "@" && target !== undefined,
     // The previous key's rows stay up while the debounced read lands, so a
     // keystroke narrows the menu instead of flashing the loading notice.
     placeholderData: keepPreviousData,
@@ -164,10 +187,8 @@ export function useCompletions(
       // aborted delay ends before the request fires — debounce without a timer.
       await delay(FILE_DEBOUNCE_MS, signal);
 
-      const found = await client.workspace.files({
-        target: sessionId === undefined ? { kind: "workspace" } : { kind: "session", sessionId },
-        query,
-      });
+      if (target === undefined) return [];
+      const found = await client.workspace.files({ target, query });
 
       return found.map((file): Suggestion => ({
         kind: "file",
@@ -186,11 +207,13 @@ export function useCompletions(
         : { kind: "ready", value: slashQuery.data };
 
   const files: Loaded<readonly Suggestion[]> =
-    filesQuery.status === "pending"
-      ? { kind: "loading" }
-      : filesQuery.status === "error"
-        ? { kind: "failed", message: describeHostError(filesQuery.error) }
-        : { kind: "ready", value: filesQuery.data };
+    target === undefined
+      ? { kind: "failed", message: "Choose a folder to mention its files." }
+      : filesQuery.status === "pending"
+        ? { kind: "loading" }
+        : filesQuery.status === "error"
+          ? { kind: "failed", message: describeHostError(filesQuery.error) }
+          : { kind: "ready", value: filesQuery.data };
 
   const commands = slashQuery.data?.commands ?? [];
 

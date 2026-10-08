@@ -18,6 +18,8 @@ import type { CallInput, CallPath, CallRequest, WatchStartInput } from "../share
 import type {
   BrowserAction,
   BrowserBoundsMessage,
+  BrowserFocusMessage,
+  BrowserKey,
   BrowserNavigationAction,
   ContextMenuRole,
   RemoteAccessPluginId,
@@ -218,7 +220,18 @@ export const CALL_INPUT_SCHEMAS = {
     strict({
       surface: nonEmpty,
       action: schemas.typed<BrowserNavigationAction>()(
-        Type.Enum(["back", "forward", "reload", "stop", "trust-certificate"]),
+        Type.Enum([
+          "back",
+          "forward",
+          "reload",
+          "hard-reload",
+          "stop",
+          "trust-certificate",
+          "zoom-in",
+          "zoom-out",
+          "zoom-reset",
+          "toggle-devtools",
+        ]),
       ),
     }),
   ),
@@ -234,15 +247,9 @@ export const CALL_INPUT_SCHEMAS = {
     strict({
       surface: nonEmpty,
       action: schemas.typed<BrowserAction>()(
-        Type.Enum([
-          "screenshot",
-          "hard-reload",
-          "copy-url",
-          "clear-history",
-          "clear-cookies",
-          "clear-cache",
-        ]),
+        Type.Enum(["screenshot", "copy-url", "clear-history", "clear-cookies", "clear-cache"]),
       ),
+      owner: Type.Union([nonEmpty, Type.Null()]),
     }),
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
@@ -266,6 +273,10 @@ export const CALL_INPUT_SCHEMAS = {
         }),
       ]),
     }),
+  ),
+  "host.browser.history": compile(strict({ owner: Type.Union([nonEmpty, Type.Null()]) })),
+  "host.browser.forgetHistory": compile(
+    strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
   "host.terminal.create": compile(
     strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
@@ -318,6 +329,25 @@ function checked<T>(validator: Parser<unknown>, value: T): T {
   return value;
 }
 
+const browserFocus = compile(strict({ surface: nonEmpty, focused: Type.Boolean() }));
+
+const keyName = Type.String({ maxLength: 32 });
+
+/** Sent by the guest preload, so the page may have forged it. */
+const browserKey = compile(
+  schemas.typed<BrowserKey>()(
+    strict({
+      key: keyName,
+      code: keyName,
+      ctrlKey: Type.Boolean(),
+      shiftKey: Type.Boolean(),
+      altKey: Type.Boolean(),
+      metaKey: Type.Boolean(),
+      repeat: Type.Boolean(),
+    }),
+  ),
+);
+
 export function decodeCallRequest(input: CallRequest): CallRequest {
   // DesktopHost's selected operation parser validates `input` exactly once.
   return checked(callRequest, input);
@@ -333,6 +363,14 @@ export function decodeWatchStop(input: { readonly watchId: string }): string {
 
 export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
   return checked(browserBounds, input);
+}
+
+export function decodeBrowserFocus(input: BrowserFocusMessage): BrowserFocusMessage {
+  return checked(browserFocus, input);
+}
+
+export function decodeBrowserKey(input: BrowserKey): BrowserKey {
+  return checked(browserKey, input);
 }
 
 export const themePreference = Compile(

@@ -21,6 +21,7 @@ import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -61,6 +62,7 @@ export function SideChat({
   readonly writing: GuideWriting;
 }): ReactElement {
   const root = useRepo().data?.root;
+  const density = useSetting(preferences.toolCalls);
   const local = useReviewState(review.id, review.files);
   const { thread } = local;
   const [recipient, setRecipient] = useState<Recipient>("reviewer");
@@ -170,6 +172,7 @@ export function SideChat({
             <TurnView
               key={turn.id}
               turn={turn}
+              density={density}
               liveTools={NO_LIVE_TOOLS}
               cwd={root}
               onOpenChanges={() => {}}

@@ -1,7 +1,18 @@
 import { nativeImage } from "electron";
-import type { MenuItemConstructorOptions } from "electron";
-import type { AppInfo, AppMenuCommand } from "@nyte-ai/app/bridge.ts";
+import type { BaseWindow, MenuItemConstructorOptions } from "electron";
+import type {
+  AppInfo,
+  AppMenuCommand,
+  BrowserKey,
+  BrowserNavigationAction,
+} from "@nyte-ai/app/bridge.ts";
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/client-actions.ts";
+
+/** View commands act on the focused browser page, and on the Nyte window everywhere else. */
+export type ViewCommand = Extract<
+  BrowserNavigationAction,
+  "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
+>;
 
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
@@ -9,6 +20,7 @@ export function applicationMenuTemplate(options: {
   appInfo: () => AppInfo;
   dispatch: (command: AppMenuCommand) => void;
   newWindow: () => void;
+  view: (command: ViewCommand, window: BaseWindow | undefined) => void;
 }): MenuItemConstructorOptions[] {
   const about = {
     label: `About ${options.name}`,
@@ -59,6 +71,16 @@ export function applicationMenuTemplate(options: {
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
 
+  const view = (
+    label: string,
+    accelerator: string,
+    command: ViewCommand,
+  ): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    click: (_item, window) => options.view(command, window),
+  });
+
   return [
     ...(options.platform === "darwin"
       ? [
@@ -104,7 +126,24 @@ export function applicationMenuTemplate(options: {
             ],
     },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [
+        view("Reload", "CommandOrControl+R", "reload"),
+        view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
+        view(
+          "Toggle Developer Tools",
+          options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
+          "toggle-devtools",
+        ),
+        { type: "separator" },
+        view("Actual Size", "CommandOrControl+0", "zoom-reset"),
+        view("Zoom In", "CommandOrControl+Plus", "zoom-in"),
+        view("Zoom Out", "CommandOrControl+-", "zoom-out"),
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
     // ⌘W closes a tab, so closing the window takes Shift.
     options.platform === "darwin"
       ? { role: "windowMenu" }
@@ -143,4 +182,89 @@ export function createMenuCommandDelivery(options: {
       ready = false;
     },
   };
+}
+
+const ACCELERATOR_KEYS = new Map([
+  ["plus", "+"],
+  ["space", " "],
+  ["esc", "escape"],
+  ["return", "enter"],
+  ["up", "arrowup"],
+  ["down", "arrowdown"],
+  ["left", "arrowleft"],
+  ["right", "arrowright"],
+]);
+
+const CODE_KEYS = new Map([
+  ["Minus", "-"],
+  ["Equal", "="],
+  ["BracketLeft", "["],
+  ["BracketRight", "]"],
+  ["Backquote", "`"],
+  ["Comma", ","],
+  ["Period", "."],
+  ["Slash", "/"],
+  ["Backslash", "\\"],
+  ["Semicolon", ";"],
+  ["Quote", "'"],
+]);
+
+/** Option and Shift change the typed character, so the physical key names it too. */
+function codeKey(code: string): string | undefined {
+  const physical = /^(?:Key|Digit)(.)$/.exec(code)?.[1];
+
+  return physical === undefined ? CODE_KEYS.get(code) : physical.toLowerCase();
+}
+
+/** Whether a forwarded key is the one an Electron accelerator names, modifiers exactly. */
+export function acceleratorMatches(accelerator: string, key: BrowserKey, mac: boolean): boolean {
+  const parts = accelerator.toLowerCase().split("+");
+  const name = parts.pop() ?? "";
+  const has = (...names: string[]): boolean => parts.some((part) => names.includes(part));
+  const primary = has("commandorcontrol", "cmdorctrl");
+
+  if (
+    key.metaKey !== (has("command", "cmd", "super", "meta") || (mac && primary)) ||
+    key.ctrlKey !== (has("control", "ctrl") || (!mac && primary)) ||
+    key.altKey !== has("alt", "option") ||
+    key.shiftKey !== has("shift")
+  )
+    return false;
+  const wanted = ACCELERATOR_KEYS.get(name) ?? name;
+
+  return key.key.toLowerCase() === wanted || codeKey(key.code) === wanted;
+}
+
+/** Electron's runtime menu: a leaf item's `submenu` and an item's `accelerator` are null, not undefined. */
+interface KeyMenu<Item> {
+  readonly items: readonly Item[];
+}
+
+interface KeyMenuItem<Item> {
+  readonly enabled: boolean;
+  readonly visible: boolean;
+  readonly accelerator: string | null | undefined;
+  readonly submenu?: KeyMenu<Item> | null;
+}
+
+/**
+ * The enabled item a native key equivalent would run for this key. A page that
+ * forwards a key has already consumed it, so the menu never sees it otherwise.
+ */
+export function menuItemForKey<Item extends KeyMenuItem<Item>>(
+  menu: KeyMenu<Item>,
+  key: BrowserKey,
+  mac: boolean,
+): Item | undefined {
+  for (const item of menu.items) {
+    if (!item.enabled || !item.visible) continue;
+    const nested = item.submenu ? menuItemForKey(item.submenu, key, mac) : undefined;
+
+    if (nested !== undefined) return nested;
+    const accelerator = item.accelerator ?? "";
+
+    if (accelerator !== "" && acceleratorMatches(accelerator, key, mac)) return item;
+  }
+
+  return undefined;
 }

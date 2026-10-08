@@ -50,6 +50,34 @@ async function clickGuestControl(
   );
 }
 
+/** Input events from main reach the page as trusted keys, so its preload sees them as a user's. */
+async function pressInGuest(
+  application: ElectronApplication,
+  url: string,
+  keyCode: string,
+  modifiers: readonly ("meta" | "control" | "shift")[],
+): Promise<void> {
+  await application.evaluate(
+    ({ webContents }, input) => {
+      const guest = webContents.getAllWebContents().find((item) => item.getURL() === input.url);
+
+      if (guest === undefined) throw new Error(`Guest not found: ${input.url}`);
+      guest.focus();
+      guest.sendInputEvent({
+        type: "keyDown",
+        keyCode: input.keyCode,
+        modifiers: [...input.modifiers],
+      });
+      guest.sendInputEvent({
+        type: "keyUp",
+        keyCode: input.keyCode,
+        modifiers: [...input.modifiers],
+      });
+    },
+    { url, keyCode, modifiers },
+  );
+}
+
 test.beforeAll(() => {
   if (!existsSync(resolve(APP_ROOT, "../desktop/out/main/index.js"))) {
     throw new Error("Run pnpm --dir packages/desktop build first");
@@ -127,6 +155,13 @@ test("integrated browser desktop journey", async () => {
         );
 
         return;
+      case "/history":
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(
+          "<!doctype html><html><head><title>Remembered page</title></head><body>Remembered</body></html>",
+        );
+
+        return;
       case "/geo":
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(`<!doctype html><html><head><title>Location</title></head><body>
@@ -187,12 +222,17 @@ test("integrated browser desktop journey", async () => {
   const mainWindowId = await mainWindow.evaluate((window) => window.id);
 
   const navigate = async (path: string): Promise<void> => {
-    const addressField = panel.getByRole("textbox", { name: "Address", exact: true });
+    const addressField = panel.getByRole("combobox", { name: "Address", exact: true });
     await addressField.fill(new URL(path, url).href);
     await addressField.press("Enter");
   };
 
   const tabs = page.getByRole("tab", { name: "Browser", exact: true });
+
+  const openBrowserTab = async (): Promise<void> => {
+    await page.getByRole("button", { name: "New workbench tab" }).click();
+    await page.getByRole("menuitem", { name: "Browser", exact: true }).click();
+  };
 
   const shield = panel
     .getByRole("button")
@@ -200,8 +240,9 @@ test("integrated browser desktop journey", async () => {
 
   await test.step("navigate and block the fixture script", async () => {
     await page.getByRole("button", { name: "Open workbench panel", exact: true }).click();
-    await page.getByRole("button", { name: "New workbench tab" }).click();
-    await page.getByRole("menuitem", { name: "Browser", exact: true }).click();
+    await openBrowserTab();
+    await expect(panel.getByRole("combobox", { name: "Address", exact: true })).toBeFocused();
+    await expect(panel.getByRole("alert")).toHaveCount(0);
     await navigate("/");
     await expect
       .poll(() => guestPages(application))
@@ -269,7 +310,7 @@ test("integrated browser desktop journey", async () => {
   });
 
   await test.step("find and advance through page matches", async () => {
-    const addressField = panel.getByRole("textbox", { name: "Address", exact: true });
+    const addressField = panel.getByRole("combobox", { name: "Address", exact: true });
     await addressField.click();
     await addressField.press("Meta+f");
     const findBar = panel.getByRole("search", { name: "Find in page" });
@@ -280,6 +321,40 @@ test("integrated browser desktop journey", async () => {
     await expect(findBar.getByText("2 of 3", { exact: true })).toBeVisible();
     await query.press("Escape");
     await expect(findBar).toHaveCount(0);
+  });
+
+  await test.step("drive the focused page with browser shortcuts", async () => {
+    const primary = process.platform === "darwin" ? "meta" : "control";
+    const popup = `${url}popup`;
+    await navigate("/popup");
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url: popup, loading: false, title: "Popup flow" });
+    await page.evaluate(() => {
+      document.documentElement.dataset["e2eRenderer"] = "kept";
+    });
+
+    await pressInGuest(application, popup, "[", [primary]);
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url, loading: false, title: "First" });
+
+    const loaded = pageRequests;
+    await pressInGuest(application, url, "r", [primary]);
+    await expect.poll(() => pageRequests).toBe(loaded + 1);
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url, loading: false, title: "First" });
+    expect(await page.evaluate(() => document.documentElement.dataset["e2eRenderer"])).toBe("kept");
+
+    await pressInGuest(application, url, "]", [primary]);
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url: popup, loading: false, title: "Popup flow" });
+
+    await pressInGuest(application, popup, "l", [primary]);
+    await expect(panel.getByRole("combobox", { name: "Address", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
   });
 
   await test.step("open a child popup and receive its opener message", async () => {
@@ -373,6 +448,69 @@ test("integrated browser desktop journey", async () => {
       .poll(() => guestPages(application))
       .toContainEqual({ url, loading: false, title: "First" });
     await expect(panel.getByRole("button", { name: "Try Again", exact: true })).toHaveCount(0);
+  });
+
+  await test.step("complete a visited address from history in a new tab", async () => {
+    const remembered = `${url}history`;
+    const host = `127.0.0.1:${String(address.port)}`;
+    const typed = `${host}/hi`;
+    await navigate("/history");
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url: remembered, loading: false, title: "Remembered page" });
+    await navigate("/");
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url, loading: false, title: "First" });
+
+    await openBrowserTab();
+    await expect(tabs).toHaveCount(3);
+    const addressField = panel.getByRole("combobox", { name: "Address", exact: true });
+    const suggestions = panel.getByRole("listbox", { name: "Suggestions", exact: true });
+    await expect(addressField).toBeFocused();
+    await expect(suggestions.getByRole("option", { name: /^Remembered page/u })).toBeVisible();
+
+    await addressField.pressSequentially(typed);
+    await expect(addressField).toHaveValue(`${host}/history`);
+    await expect
+      .poll(() =>
+        addressField.evaluate((field) =>
+          field instanceof HTMLInputElement ? [field.selectionStart, field.selectionEnd] : [],
+        ),
+      )
+      .toEqual([typed.length, typed.length + "story".length]);
+    await expect(
+      suggestions.getByRole("option", { name: `Go to ${host}/history`, exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await addressField.press("Enter");
+    await expect(suggestions).toBeHidden();
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url: remembered, loading: false, title: "Remembered page" });
+  });
+
+  await test.step("reopen a recent page after its tab closed", async () => {
+    const remembered = `${url}history`;
+
+    const visits = async () =>
+      (await guestPages(application)).filter((guest) => guest.url === remembered).length;
+
+    await tabs.last().press("Delete");
+    await expect(tabs).toHaveCount(2);
+    await expect.poll(visits).toBe(0);
+
+    await openBrowserTab();
+    const addressField = panel.getByRole("combobox", { name: "Address", exact: true });
+    const suggestions = panel.getByRole("listbox", { name: "Suggestions", exact: true });
+    await expect(addressField).toBeFocused();
+    await expect(suggestions.getByRole("option").first()).toHaveAccessibleName(/^Remembered page/u);
+    await addressField.press("ArrowDown");
+    await expect(addressField).toHaveValue(remembered);
+    await addressField.press("Enter");
+    await expect
+      .poll(() => guestPages(application))
+      .toContainEqual({ url: remembered, loading: false, title: "Remembered page" });
+    await expect.poll(visits).toBe(1);
   });
 
   expect(errors.pageErrors).toEqual([]);

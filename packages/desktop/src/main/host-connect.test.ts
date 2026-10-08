@@ -623,6 +623,8 @@ async function desktop(
       find: () => Promise.resolve({ active: 0, total: 0 }),
       cancelDownload: () => undefined,
       login: () => undefined,
+      history: async () => [],
+      forgetHistory: async () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,

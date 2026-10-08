@@ -39,6 +39,7 @@ import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
+import { WorkbenchRail } from "./workbench-rail.tsx";
 
 const styles = create({
   panel: {
@@ -62,19 +63,7 @@ const styles = create({
   dirty: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontXs },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  explorer: {
-    display: "flex",
-    flexDirection: "column",
-    width: "min(220px, 40%)",
-    minWidth: 160,
-    minHeight: 0,
-    flexShrink: 0,
-    backgroundColor: role.bgBase,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-  },
-  search: { width: "min(320px, 50%)", minWidth: 230 },
+  explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
   empty: { padding: 20, color: role.contentSecondary, fontSize: type.fontSm },
@@ -517,49 +506,51 @@ export function FilesPanel({
             />
           ))}
         </div>
-        <aside
-          aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
-          {...props(
-            styles.explorer,
-            sidebar === "search" && styles.search,
-            !sidebarVisible && styles.hidden,
-          )}
-        >
-          <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
-            <div {...props(styles.explorerHeader)}>{host.data?.workspace?.name ?? "Workspace"}</div>
-            {files.isError && (
-              <div role="alert" {...props(styles.empty)}>
-                Could not load files. {files.error.message}
+        {sidebarVisible && (
+          <WorkbenchRail>
+            <aside
+              aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
+              {...props(styles.explorer)}
+            >
+              <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
+                <div {...props(styles.explorerHeader)}>
+                  {host.data?.workspace?.name ?? "Workspace"}
+                </div>
+                {files.isError && (
+                  <div role="alert" {...props(styles.empty)}>
+                    Could not load files. {files.error.message}
+                  </div>
+                )}
+                <WorkspaceFileTree
+                  model={model}
+                  onDragEnd={() => setTreeDrag([])}
+                  onClick={(event) => {
+                    if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
+                      openFromTree(event.nativeEvent, true);
+                    }
+                  }}
+                  onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") openFromTree(event.nativeEvent, true);
+                  }}
+                  {...props(workbenchStyles.treeTheme, styles.tree)}
+                />
               </div>
-            )}
-            <WorkspaceFileTree
-              model={model}
-              onDragEnd={() => setTreeDrag([])}
-              onClick={(event) => {
-                if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
-                  openFromTree(event.nativeEvent, true);
-                }
-              }}
-              onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") openFromTree(event.nativeEvent, true);
-              }}
-              {...props(workbenchStyles.treeTheme, styles.tree)}
-            />
-          </div>
-          <div
-            ref={searchRef}
-            {...props(styles.sidebarBody, sidebar !== "search" && styles.hidden)}
-          >
-            {searchOpened && (
-              <WorkspaceSearch
-                active={shown && sidebarVisible && sidebar === "search"}
-                drafts={drafts}
-                onOpen={(location) => fileActions.open(viewKey, location)}
-              />
-            )}
-          </div>
-        </aside>
+              <div
+                ref={searchRef}
+                {...props(styles.sidebarBody, sidebar !== "search" && styles.hidden)}
+              >
+                {searchOpened && (
+                  <WorkspaceSearch
+                    active={shown && sidebar === "search"}
+                    drafts={drafts}
+                    onOpen={(location) => fileActions.open(viewKey, location)}
+                  />
+                )}
+              </div>
+            </aside>
+          </WorkbenchRail>
+        )}
       </div>
       <ConfirmDialog
         open={discardPath !== undefined}
@@ -585,7 +576,7 @@ const breadcrumbStyles = create({
     alignItems: "center",
     flex: 1,
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     color: role.contentSecondary,
     fontSize: type.fontBase,
     whiteSpace: "nowrap",

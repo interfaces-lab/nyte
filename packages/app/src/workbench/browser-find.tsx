@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
-import { useState } from "react";
-import type { ReactElement } from "react";
+import { useImperativeHandle, useRef, useState } from "react";
+import type { ReactElement, Ref } from "react";
 import type { BrowserFindResult } from "../bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -33,7 +33,19 @@ const styles = create({
 
 const NONE: BrowserFindResult = { active: 0, total: 0 };
 
-export function FindBar({ surface }: { readonly surface: string }): ReactElement {
+export interface FindBarHandle {
+  focus(): void;
+  step(direction: "next" | "previous"): void;
+}
+
+export function FindBar({
+  surface,
+  ref,
+}: {
+  readonly surface: string;
+  readonly ref: Ref<FindBarHandle>;
+}): ReactElement {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [result, setResult] = useState<BrowserFindResult>(NONE);
 
@@ -52,10 +64,21 @@ export function FindBar({ surface }: { readonly surface: string }): ReactElement
     setBrowserFinding(surface, false);
   };
 
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    },
+    step: (direction) => {
+      if (text !== "") find(text, direction);
+    },
+  }));
+
   return (
     <div role="search" aria-label="Find in page" {...props(styles.bar)}>
       <InputGroup xstyle={styles.field}>
         <Input
+          ref={inputRef}
           autoFocus
           type="text"
           autoComplete="off"

@@ -69,6 +69,7 @@ import {
   type ResponsesStreamEvent,
   ResponsesUsageError,
   stripStreamingScratchState,
+  withPriorityTier,
 } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
@@ -348,8 +349,9 @@ function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
   model: Model<"openai-codex-responses">,
   context: TranscriptContext,
-  options?: OpenAICodexResponsesOptions,
+  requested?: OpenAICodexResponsesOptions,
 ): AssistantMessageEventStream => {
+  const options = withPriorityTier(requested);
   const stream = new AssistantMessageEventStream();
   const normalizedContext = resolveTranscript(
     context,
@@ -683,7 +685,6 @@ export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStream
   const base = {
     ...buildBaseOptions(model, context, options, apiKey),
     toolChoice: options?.toolChoice,
-    serviceTier: options?.fast === true ? "priority" : undefined,
   } satisfies OpenAICodexResponsesOptions;
 
   const clampedReasoning = options?.reasoning
@@ -888,8 +889,9 @@ const codexRetainedMessages = Type.Array(
 export async function compactOpenAICodexContext(
   model: Model<"openai-codex-responses">,
   context: Context,
-  options?: OpenAICodexResponsesOptions,
+  requested?: OpenAICodexResponsesOptions,
 ): Promise<OpenAICodexCompactResult> {
+  const options = withPriorityTier(requested);
   const apiKey = options?.apiKey;
 
   if (!apiKey) throw new Error(`No API key for provider: ${model.provider}`);

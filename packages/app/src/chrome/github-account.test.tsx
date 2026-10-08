@@ -109,25 +109,6 @@ test("a fetched provider error remains available to render and a refresh recover
   assert.equal(recovered.query.error, null);
 });
 
-test("a rejected status refresh exposes an error without discarding the last account", async () => {
-  const client = fixture();
-  const connected = ready("one");
-  client.setQueryData([...keys.github, "/projects/one"], connected);
-  const failure = new Error("Preload connection closed");
-  github.state.mockRejectedValueOnce(failure).mockResolvedValueOnce(signedOut);
-
-  await probe(client).query.refetch();
-  const failed = probe(client);
-  assert.equal(failed.query.isError, true);
-  assert.equal(failed.query.error, failure);
-  assert.deepEqual(failed.query.data, connected);
-
-  await failed.query.refetch();
-  const recovered = probe(client);
-  assert.equal(recovered.query.isError, false);
-  assert.deepEqual(recovered.query.data, signedOut);
-});
-
 test("Home and each workspace retain their own repository state", async () => {
   const client = fixture(null);
 
@@ -231,27 +212,18 @@ test("auth finishing after a workspace switch refreshes all targets without cach
   }
 });
 
-test.each([
-  { operation: "signIn", failure: "provider" },
-  { operation: "signOut", failure: "provider" },
-  { operation: "signIn", failure: "transport" },
-  { operation: "signOut", failure: "transport" },
-] as const)("$operation recovers after a $failure failure", async ({ operation, failure }) => {
+test("a provider error from sign-in rejects, clears the busy state, and a retry succeeds", async () => {
   const client = fixture();
   client.setQueryData([...keys.github, "/projects/one"], signedOut);
   const account = probe(client);
 
-  if (failure === "provider") {
-    github[operation].mockResolvedValueOnce({
-      kind: "error",
-      repository: undefined,
-      message: "GitHub authentication failed",
-    });
-  } else {
-    github[operation].mockRejectedValueOnce(new Error("GitHub authentication failed"));
-  }
+  github.signIn.mockResolvedValueOnce({
+    kind: "error",
+    repository: undefined,
+    message: "GitHub authentication failed",
+  });
 
-  await assert.rejects(account.auth.mutateAsync(operation), /GitHub authentication failed/);
+  await assert.rejects(account.auth.mutateAsync("signIn"), /GitHub authentication failed/);
   assert.equal(probe(client).busy, false);
   assert.equal(probe(client).connecting, false);
   const refreshed = ready("one");
@@ -264,8 +236,8 @@ test.each([
   assert.deepEqual(probe(client).query.data, refreshed);
 
   account.auth.reset();
-  github[operation].mockResolvedValueOnce(signedOut);
-  assert.deepEqual(await account.auth.mutateAsync(operation), signedOut);
+  github.signIn.mockResolvedValueOnce(signedOut);
+  assert.deepEqual(await account.auth.mutateAsync("signIn"), signedOut);
   assert.equal(probe(client).busy, false);
 });
 

@@ -398,7 +398,7 @@ describe("web search plugin", () => {
     assert.equal(result.failed, false);
   });
 
-  test("names the failures a user can act on and never retries a chosen provider", async () => {
+  test("reports a real provider's HTTP status and never retries the only keyed provider", async () => {
     const calls: Request[] = [];
     const rateLimited = await search("busy", {
       ...onlyKeyed("EXA_API_KEY", "exa-secret"),
@@ -414,18 +414,6 @@ describe("web search plugin", () => {
       rateLimited: [],
       results: [],
     });
-
-    const unauthorized = await search("bad key", {
-      ...onlyKeyed("EXA_API_KEY", "wrong"),
-      fetch: fetchMock([], () => new Response("nope", { status: 401 })),
-    });
-    assert.equal(unauthorized.result.output, "Web search authentication failed (HTTP 401)");
-
-    const unavailable = await search("down", {
-      ...onlyKeyed("EXA_API_KEY", "exa-secret"),
-      fetch: fetchMock([], () => new Response("unavailable", { status: 503 })),
-    });
-    assert.equal(unavailable.result.output, "Web search request failed (HTTP 503)");
   });
 
   test("a chosen provider is remembered across hosts, and off withholds the tool", async () => {

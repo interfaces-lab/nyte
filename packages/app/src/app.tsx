@@ -15,7 +15,12 @@ import { windowTabs } from "./tabs/window-tabs.ts";
 import { BLANK_SELECTION, activePane, activeSelection } from "./layout/pane-layout.ts";
 import { reviewRecordedStarts } from "./recorded-starts.ts";
 import type { StartNotice } from "./recorded-starts.ts";
-import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
+import {
+  applyBrowserEvent,
+  applyBrowserAgentOpened,
+  applyBrowserKey,
+} from "./workbench/browser-surfaces.ts";
+import { applyBrowserHistory } from "./workbench/browser-history.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { applyLoginEvent } from "./chrome/login-attempts.ts";
@@ -112,9 +117,16 @@ function useHostEvents(router: AppRouter): void {
         case "browser_changed":
         case "browser_download":
         case "browser_open_tab":
-        case "browser_find_requested":
         case "browser_login_requested":
           applyBrowserEvent(event);
+
+          return;
+        case "browser_key":
+          applyBrowserKey(event);
+
+          return;
+        case "browser_history_changed":
+          applyBrowserHistory(event);
 
           return;
         case "browser_agent_opened":

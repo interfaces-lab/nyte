@@ -122,6 +122,15 @@ function convertToolResultOutput<TApi extends Api>(
   return output;
 }
 
+/** `fast` is the API-neutral request; on the Responses APIs it is the priority tier, for streams and compaction alike. */
+export function withPriorityTier<
+  O extends { fast?: boolean; serviceTier?: ResponseCreateParamsStreaming["service_tier"] },
+>(options: O | undefined): O | undefined {
+  return options?.fast === true && options.serviceTier === undefined
+    ? { ...options, serviceTier: "priority" }
+    : options;
+}
+
 export interface OpenAIResponsesStreamOptions {
   serviceTier?: ResponseCreateParamsStreaming["service_tier"];
   grammarToolInputProperties?: ReadonlyMap<string, string>;

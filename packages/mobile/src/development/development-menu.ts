@@ -6,12 +6,12 @@ import { router, useGlobalSearchParams } from "expo-router";
 // oxlint-disable-next-line no-restricted-imports -- dev menu items re-register when the client or conversation changes
 import { useEffect } from "react";
 import { Alert } from "react-native";
-import { workLiveActivityVariants } from "../activity/live-activity.tsx";
+import { appLink, workLiveActivityVariants } from "../activity/live-activity.tsx";
 
 const PREVIEW_ACTIVITY = "nyte-dev-preview";
 
 const SCREENS = [
-  { name: "Open Agents", pathname: "/" },
+  { name: "Open Inbox", pathname: "/" },
   { name: "Open Settings", pathname: "/settings" },
   { name: "Open conversation", pathname: "/chat/[id]" },
   { name: "Open review", pathname: "/review/[id]" },
@@ -61,7 +61,7 @@ async function showActivityPreview(kind: "working" | "attention") {
     kind === "attention" ? [session] : [],
   );
 
-  await startLiveActivity(variants, { activityName: PREVIEW_ACTIVITY, deepLinkUrl: "nyte://" });
+  await startLiveActivity(variants, { activityName: PREVIEW_ACTIVITY, deepLinkUrl: appLink("") });
 }
 
 export function DevelopmentMenu({ client }: { client: NyteClient | undefined }) {

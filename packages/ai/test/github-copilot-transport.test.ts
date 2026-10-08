@@ -6,6 +6,10 @@
 import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import {
+  GITHUB_COPILOT_API_VERSION,
+  GITHUB_COPILOT_HEADERS,
+} from "../src/api/github-copilot-headers.ts";
 import { openAICompletionsApi } from "../src/api/openai-completions.lazy.ts";
 import { hasApi } from "../src/models.ts";
 import { githubCopilotProvider } from "../src/providers/github-copilot.ts";
@@ -143,14 +147,14 @@ describe("GitHub Copilot transport", () => {
     assert.equal(exchange?.headers.get("authorization"), "Bearer gh-token");
     assert.equal(initial.headers.get("authorization"), `Bearer ${SESSION_TOKEN}`);
     assert.equal(initial.headers.get("x-api-key"), null);
-    assert.equal(initial.headers.get("x-github-api-version"), "2026-06-01");
+    assert.equal(initial.headers.get("x-github-api-version"), GITHUB_COPILOT_API_VERSION);
     assert.equal(initial.headers.get("x-initiator"), "user");
     assert.equal(initial.headers.get("x-interaction-type"), "conversation-agent");
     assert.equal(initial.headers.get("x-interaction-id"), "s-1");
     assert.equal(initial.headers.get("x-client-request-id"), null);
     assert.equal(initial.headers.get("x-session-affinity"), null);
     assert.equal(initial.headers.get("openai-intent"), "conversation-edits");
-    assert.equal(initial.headers.get("user-agent"), "GitHubCopilotChat/0.35.0");
+    assert.equal(initial.headers.get("user-agent"), GITHUB_COPILOT_HEADERS["User-Agent"]);
     assert.equal(followUp.headers.get("x-initiator"), "agent");
     const body = requestBody(followUp.body);
     assert.equal(body.model, "gemini-3.8-flash");
@@ -327,7 +331,7 @@ describe("GitHub Copilot transport", () => {
     const followUp = responses[1];
     assert.ok(initial && followUp);
     assert.equal(initial.headers.get("authorization"), `Bearer ${SESSION_TOKEN}`);
-    assert.equal(initial.headers.get("x-github-api-version"), "2026-06-01");
+    assert.equal(initial.headers.get("x-github-api-version"), GITHUB_COPILOT_API_VERSION);
     assert.equal(initial.headers.get("x-interaction-id"), "s-2");
     assert.equal(initial.headers.get("x-client-request-id"), null);
     assert.equal(initial.headers.get("x-session-affinity"), null);
@@ -435,14 +439,17 @@ describe("GitHub Copilot transport", () => {
     assert.ok(initial && followUp);
     assert.equal(initial.headers.get("authorization"), `Bearer ${SESSION_TOKEN}`);
     assert.equal(initial.headers.get("x-api-key"), null);
-    assert.equal(initial.headers.get("x-github-api-version"), "2026-06-01");
+    assert.equal(initial.headers.get("x-github-api-version"), GITHUB_COPILOT_API_VERSION);
     assert.equal(initial.headers.get("x-initiator"), "user");
     assert.equal(initial.headers.get("x-interaction-id"), "s-3");
     assert.equal(initial.headers.get("x-client-request-id"), null);
     assert.equal(initial.headers.get("x-session-affinity"), null);
     assert.equal(initial.headers.get("openai-intent"), "conversation-edits");
-    assert.match(initial.headers.get("user-agent") ?? "", /GitHubCopilotChat/);
-    assert.equal(initial.headers.get("copilot-integration-id"), "vscode-chat");
+    assert.equal(initial.headers.get("user-agent"), GITHUB_COPILOT_HEADERS["User-Agent"]);
+    assert.equal(
+      initial.headers.get("copilot-integration-id"),
+      GITHUB_COPILOT_HEADERS["Copilot-Integration-Id"],
+    );
     const betas = (initial.headers.get("anthropic-beta") ?? "").split(",");
     assert.ok(!betas.includes("interleaved-thinking-2025-05-14"));
     assert.ok(!betas.includes("fine-grained-tool-streaming-2025-05-14"));

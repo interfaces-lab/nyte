@@ -25,8 +25,6 @@ export type EditToolClass = Extract<
   { readonly kind: "file_patch" | "file_edit" | "file_write" }
 >;
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 
 const CARD_PREVIEW_ROWS = 4;
@@ -52,15 +50,21 @@ const styles = create({
     whiteSpace: "nowrap",
     userSelect: "none",
     "--_action": role.contentSecondary,
-    "--_file": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
+    "--_file": {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
     "--_chevron": "0",
   },
   lineToggle: {
     cursor: appearance.cursorInteractive,
-    "--_action": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
+    "--_action": {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
     "--_chevron": {
       default: "0",
-      ":hover": { [HOVER]: "1" },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
       ":focus-within": "1",
       "[data-panel-open]": "1",
     },
@@ -78,7 +82,10 @@ const styles = create({
   },
   fileButton: {
     cursor: appearance.cursorInteractive,
-    textDecorationLine: { default: "none", ":hover": { [HOVER]: "underline" } },
+    textDecorationLine: {
+      default: "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "underline" },
+    },
   },
   stats: {
     display: "inline-flex",
@@ -112,7 +119,11 @@ const styles = create({
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    "--_expand-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
+    "--_expand-opacity": {
+      default: 0,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":focus-within": 1,
+    },
   },
   header: {
     display: "flex",
@@ -153,7 +164,7 @@ const styles = create({
   },
   cardBodyCollapsed: {
     maxHeight: `calc(${CARD_PREVIEW_ROWS} * ${diffView.lineHeight})`,
-    overflow: "hidden",
+    overflow: "clip",
   },
   expand: {
     position: "absolute",
@@ -165,7 +176,10 @@ const styles = create({
     height: button.heightXs,
     paddingBottom: 1,
     backgroundImage: `linear-gradient(to bottom, transparent 0%, ${role.bgBase} 100%)`,
-    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
+    color: {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
     opacity: { default: "var(--_expand-opacity)", ":focus-visible": 1 },
     transitionProperty: "color, opacity",
     ...TRANSITION,

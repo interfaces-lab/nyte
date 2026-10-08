@@ -80,6 +80,15 @@ export * from "./models.ts";
 
 export { getFastModeCostMultiplier } from "./model-pricing.ts";
 
+export {
+  baseModel,
+  FAST_MODEL_SUFFIX,
+  fastModelId,
+  providerIdentity,
+  supportsFastMode,
+  withFastVariants,
+} from "./model-variants.ts";
+
 export * from "./models-store.ts";
 
 export * from "./prompt-cache.ts";

@@ -56,9 +56,8 @@ A word in a sentence that, on hover or focus, throws two facts about itself.
 
 `components/landing/plate/host-stage.tsx`.
 
-- A square-cornered panel. `--panel` is the foreground mixed 4% into the background, so it is
-  opaque in both themes. It has a hairline border and a 14px dot grid masked to fade from the top.
-- The hosts sit in `Bezel` frames and run off the bottom of the panel into a fade.
+- No panel. The hosts sit in `Bezel` frames straight on the plate, so the plate's paper fade is
+  the only surface behind them. They run off the bottom into a fade to the page background.
 - The dock is the only switch: 48px squircle tiles, a tooltip on hover or focus, and a dot under
   the active host. The tile lifts 4px on hover and presses to 0.94.
 - Every host shows the same session, "Migrate stored runs on open". The fixtures must match the

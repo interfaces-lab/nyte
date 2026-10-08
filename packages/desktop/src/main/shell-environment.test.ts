@@ -146,7 +146,8 @@ printf 'goodbye\\n'
 });
 
 it("preserves the complete inherited environment on Windows", async () => {
-  const env = { Path: "C:\\tools", PATH: "unchanged", SHELL: "/invalid", GH_TOKEN: "secret" };
+  const local = await fixture('PATH=/recovered /bin/sh -c "$2"');
+  const env = { Path: "C:\\tools", PATH: "unchanged", SHELL: local.shell, GH_TOKEN: "secret" };
   const original = { ...env };
   await createShellEnvironmentRepair({ env, platform: "win32" })();
   expect(env).toEqual(original);

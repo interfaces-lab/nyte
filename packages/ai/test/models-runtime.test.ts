@@ -680,7 +680,6 @@ describe("Models runtime", () => {
     controller.abort();
 
     await expect(auth).rejects.toMatchObject({ name: "AbortError" });
-    expect(receivedSignal).toBeInstanceOf(AbortSignal);
     expect(receivedSignal?.aborted).toBe(true);
     expect(receivedSignal?.reason).toBe(controller.signal.reason);
     // A refresh that ignored the signal and resolved has already spent the

@@ -1,9 +1,9 @@
-import { mergeProps } from "@base-ui/react/merge-props";
-import { useRender } from "@base-ui/react/use-render";
+import { Button } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import type { ComponentProps } from "react";
 import { ChatButton, type ChatButtonProps } from "./chat-button.tsx";
+import { mergeStyleProps } from "./style.ts";
 
 const attachmentVariants = cva("cn-attachment", {
   variants: {
@@ -117,32 +117,20 @@ export function AttachmentAction({
       data-slot="attachment-action"
       variant={variant ?? "ghost"}
       size={size}
-      className={(state) =>
-        cn("cn-attachment-action", className instanceof Function ? className(state) : className)
-      }
+      {...mergeStyleProps({ className: "cn-attachment-action" }, className)}
       {...props}
     />
   );
 }
 
-export function AttachmentTrigger({
-  className,
-  render,
-  type,
-  ...props
-}: useRender.ComponentProps<"button">) {
-  return useRender({
-    defaultTagName: "button",
-    props: mergeProps<"button">(
-      {
-        type: render ? type : (type ?? "button"),
-        className: cn("cn-attachment-trigger", className),
-      },
-      props,
-    ),
-    render,
-    state: { slot: "attachment-trigger" },
-  });
+export function AttachmentTrigger({ className, ...props }: Button.Props) {
+  return (
+    <Button
+      data-slot="attachment-trigger"
+      {...mergeStyleProps({ className: "cn-attachment-trigger" }, className)}
+      {...props}
+    />
+  );
 }
 
 export function AttachmentGroup({ className, ...props }: ComponentProps<"div">) {

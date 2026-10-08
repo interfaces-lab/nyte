@@ -1,10 +1,10 @@
 /*
  * StyleX emits every rule inside `@layer priority1..6` (`useCSSLayers` in the
  * vite config), and unlayered author styles outrank every layer. So the resets
- * here live in a `base` layer pinned below StyleX's: this file is the first
- * stylesheet the entry imports, which makes this statement the first layer
- * declaration, and first declaration fixes the order. Component styles win
- * over the resets again; the resets still win over user-agent styles.
+ * here live in a `base` layer pinned below StyleX's. The first declaration
+ * fixes the order, and in development the StyleX sheet loads before this one,
+ * so `index.html` declares `base` before either. Component styles win over the
+ * resets again; the resets still win over user-agent styles.
  */
 @layer base, priority1, priority2, priority3, priority4, priority5, priority6;
 
@@ -28,8 +28,45 @@
     font-weight: 400;
     font-optical-sizing: auto;
     font-variant-numeric: tabular-nums;
+    font-synthesis: none;
     -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
     -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    interpolate-size: allow-keywords;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  /* Typed text keeps its line breaks still; `pretty` would reflow earlier lines. */
+  textarea,
+  [contenteditable] {
+    text-wrap: stable;
+  }
+
+  img,
+  video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  button,
+  [role="button"] {
+    user-select: none;
   }
 
   [data-nyte-session-drag-active],

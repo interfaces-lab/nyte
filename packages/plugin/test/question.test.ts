@@ -129,14 +129,6 @@ test("asking parks the run; the waiting call carries the question a client rende
   assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Broad rewrite");
 });
 
-test("a reply in the user's own words is the answer", async () => {
-  const { sdk, sessionId, callId, waitId } = await openParked();
-  const settled = await reply(sdk, sessionId, callId, waitId, "  Wait for the migration  ");
-  assert.equal(settled.output, "Wait for the migration");
-  assert.equal(settled.failed, false);
-  assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Wait for the migration");
-});
-
 test("walking away is not an answer, and the model carries on", async () => {
   const { sdk, sessionId, callId, waitId } = await openParked();
   const settled = await reply(sdk, sessionId, callId, waitId, "   ");

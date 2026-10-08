@@ -45,7 +45,7 @@ const styles = create({
     minHeight: 0,
     height: `min(70dvh, max(220px, ${String(height)}px))`,
   }),
-  detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "hidden" },
+  detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "clip" },
 });
 
 function agentTitle(agent: SubagentSession | undefined, sessionId: SessionId): string {

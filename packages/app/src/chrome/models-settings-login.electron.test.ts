@@ -53,7 +53,7 @@ const disconnected: DesktopCatalog = {
   source: "local",
   providers: [copilot],
   models: [gpt],
-  defaults: { model: { provider: "github-copilot", id: "gpt" }, thinkingLevel: "off", fast: false },
+  defaults: { model: { provider: "github-copilot", id: "gpt" }, thinkingLevel: "off" },
 };
 
 /** What the host's catalog looks like once the credential is saved and discovery ran. */
@@ -115,7 +115,7 @@ async function buildHarness(outDir: string): Promise<void> {
     root: fixtures,
     // Loaded from file://, so asset links must be relative.
     base: "./",
-    plugins: [stylex.vite({ devMode: "off", runtimeInjection: false, useCSSLayers: true })],
+    plugins: [stylex.vite({ devMode: "off", useCSSLayers: true })],
     resolve: {
       dedupe: ["react", "react-dom"],
     },

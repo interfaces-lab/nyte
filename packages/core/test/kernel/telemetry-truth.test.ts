@@ -9,7 +9,6 @@ import { submit } from "../../src/kernel/queue.ts";
 import { requestStream } from "../../src/kernel/sdk/requests.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
-import { startSpan } from "../../src/kernel/telemetry.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
 import { assistant, drain, localEnv, message, openSession, seedHead, user } from "./helpers.ts";
 
@@ -265,26 +264,4 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
     assert.equal(published.status.status, result === "throw" ? "error" : "ok");
     await session.close();
   }
-});
-
-test("a span hands back its callback's value and rethrows its failure", async () => {
-  const telemetry = new InMemoryTelemetryContext();
-  const value = { result: "value" };
-  const attributes = { "nyte.session.id": "s", "nyte.head": "main", "nyte.run.id": "r" };
-  let calls = 0;
-  assert.equal(
-    await startSpan(telemetry, "nyte.compaction.publish", attributes, () => {
-      calls += 1;
-      return value;
-    }),
-    value,
-  );
-  await assert.rejects(
-    startSpan(telemetry, "nyte.compaction.publish", attributes, () => {
-      calls += 1;
-      throw value;
-    }),
-    (cause) => cause === value,
-  );
-  assert.equal(calls, 2);
 });

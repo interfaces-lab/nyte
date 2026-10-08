@@ -486,7 +486,7 @@ for (const mode of ["manual", "threshold"] as const) {
       assert.equal(saved.length, 1);
       assert.equal(saved[0]?.material, undefined);
       assert.match(saved[0]?.summary ?? "", /Portable summary: preserve the migration plan\./);
-      assert.ok((saved[0]?.usage?.totalTokens ?? 0) > 0);
+      assert.equal(saved[0]?.usage?.totalTokens, summaries.length * 30);
       const replay = remote.requests.findLast((entry) => entry.kind === "assistant");
       assert.ok(replay);
       assert.match(JSON.stringify(replay.input), /Portable summary: preserve the migration plan\./);

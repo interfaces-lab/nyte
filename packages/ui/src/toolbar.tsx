@@ -85,9 +85,8 @@ function ToolbarButton(
 
   return (
     <ToolbarPrimitive.Button
-      disabled={buttonProps.disabled && !buttonProps.loading}
-      focusableWhenDisabled={buttonProps.disabledReason !== undefined}
-      render={<Button {...buttonProps} />}
+      disabled={buttonProps.disabled}
+      render={<Button focusableWhenDisabled {...buttonProps} />}
     />
   );
 }

@@ -98,7 +98,7 @@ test("Responses compaction uses API auth and preserves the complete opaque windo
   assert.equal(compacted.usage?.output, 20);
   assert.equal(compacted.usage?.reasoning, 10);
   assert.equal(compacted.usage?.totalTokens, 120);
-  assert.ok((compacted.usage?.cost.total ?? 0) > 0);
+  assert.equal(compacted.usage?.cost.total, 0.00033);
   assert.equal(requests.length, 1);
   const request = requests[0];
   assert.ok(request);

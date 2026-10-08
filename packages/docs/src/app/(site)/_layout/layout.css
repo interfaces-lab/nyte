@@ -246,7 +246,7 @@
     @apply border-border-subtle;
     border-radius: 8px;
     @apply bg-sidebar;
-    overflow: hidden;
+    overflow: clip;
   }
 
   .doc-code-body {

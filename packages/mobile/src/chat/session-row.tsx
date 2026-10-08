@@ -7,11 +7,6 @@ import { css, html } from "react-strict-dom";
 import { controls, list, useTheme, radii, textStyles, tokens, typography } from "../theme.ts";
 import { elapsed, formatActivity, latestRun, rowStatus } from "./sessions.ts";
 
-/**
- * One line under the title: the status word plus its clock. A conversation with
- * no run yet shows its preview instead, because "New" says less than the text
- * the user typed.
- */
 function Meta({
   session,
   now,
@@ -29,11 +24,13 @@ function Meta({
       ? run === undefined
         ? undefined
         : elapsed(run.startedAt, now)
-      : formatActivity(session.lastActivityAt, now);
+      : undefined;
 
   const lead =
-    mark === "idle" && run === undefined && session.preview !== undefined && session.preview !== ""
-      ? session.preview
+    mark === "idle"
+      ? session.preview?.trim() ||
+        session.workspace.cwd.split("/").filter(Boolean).at(-1) ||
+        "New chat"
       : rowStatus(session);
 
   return (
@@ -50,7 +47,6 @@ function Meta({
   );
 }
 
-/** The row's single status glyph, in the column every row shares. */
 function Status({ session }: { session: SessionInfo }) {
   const theme = useTheme();
   const mark = sessionMark(session);
@@ -69,17 +65,6 @@ function Status({ session }: { session: SessionInfo }) {
     return <SymbolView name="xmark" size={controls.iconXs} tintColor={theme.danger} />;
   }
 
-  if (mark === "idle" && latestRun(session) !== undefined) {
-    return (
-      <SymbolView
-        name="checkmark"
-        size={controls.iconXs}
-        tintColor={theme.success}
-        weight="semibold"
-      />
-    );
-  }
-
   return <html.div style={[styles.dot, mark === "waiting" ? styles.dotWaiting : styles.dotIdle]} />;
 }
 
@@ -92,23 +77,27 @@ export function SessionRow({
   session: SessionInfo;
   now: number;
   last?: boolean;
-  /** Lets the status-and-preview line wrap onto a second line. */
   twoLines?: boolean;
 }) {
   return (
     <Link href={`/chat/${session.sessionId}`} asChild>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`${session.name || "Untitled conversation"}, ${rowStatus(session)}`}
+        accessibilityLabel={`${session.name || "New chat"}, ${rowStatus(session)}`}
       >
         <html.div style={styles.row}>
           <html.div style={styles.leading}>
             <Status session={session} />
           </html.div>
           <html.div style={[styles.text, !last && styles.separator]}>
-            <html.span style={[textStyles.body, styles.title]}>
-              {session.name || "Untitled conversation"}
-            </html.span>
+            <html.div style={styles.titleRow}>
+              <html.span style={[textStyles.body, styles.title]}>
+                {session.name || "New chat"}
+              </html.span>
+              <html.span style={[textStyles.caption, styles.clock]}>
+                {formatActivity(session.lastActivityAt, now)}
+              </html.span>
+            </html.div>
             <Meta session={session} now={now} twoLines={twoLines} />
           </html.div>
         </html.div>
@@ -122,7 +111,6 @@ const styles = css.create({
     display: "flex",
     flexDirection: "row",
     alignItems: "flex-start",
-    // Content-box sizing: a width of 100% plus the gutter would overflow the list.
     paddingInlineStart: list.gutter,
     borderWidth: 0,
     textDecoration: "none",
@@ -161,7 +149,14 @@ const styles = css.create({
     borderBottomStyle: "solid",
     borderBottomColor: tokens.separator,
   },
-  title: { textAlign: "start", lineClamp: 1 },
+  titleRow: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: list.leadingGap,
+  },
+  title: { textAlign: "start", lineClamp: 1, flexGrow: 1, flexShrink: 1 },
+  clock: { flexShrink: 0, fontVariant: "tabular-nums" },
   meta: { textAlign: "start", lineClamp: 1, fontVariant: "tabular-nums" },
   metaTwoLines: { textAlign: "start", lineClamp: 2, fontVariant: "tabular-nums" },
   needsInput: { color: tokens.foreground },

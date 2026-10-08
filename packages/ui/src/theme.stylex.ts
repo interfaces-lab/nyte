@@ -9,7 +9,7 @@
  * hue export is a theme that swaps in its ramp, and `custom` builds one from
  * the template at the workspace tint's hue and chroma.
  */
-import { createTheme, defineVars } from "@stylexjs/stylex";
+import { createTheme, defineConsts, defineVars } from "@stylexjs/stylex";
 
 const steps = [
   0, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 135, 140, 145, 150,
@@ -626,6 +626,11 @@ export const purple = createTheme(theme, ramp("purple"));
 export const pink = createTheme(theme, ramp("pink"));
 
 export const red = createTheme(theme, ramp("red"));
+
+/** The danger border outside a scope, for `:user-invalid` on a plain field. */
+export const danger = defineConsts({
+  border: opaque.red[steps.indexOf(80)],
+});
 
 export const teal = createTheme(theme, ramp("teal"));
 

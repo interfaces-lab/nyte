@@ -1,7 +1,13 @@
+import type { Api, Model } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { MapDraft } from "./registry.ts";
 import type { ModelContextPolicy } from "./types.ts";
+
+/** Policies are keyed `provider/id`; a variant shares its base's. */
+export function policyKey(model: Model<Api>): string {
+  return `${model.provider}/${model.variant?.base ?? model.id}`;
+}
 
 const tokenCount = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 

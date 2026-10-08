@@ -97,7 +97,7 @@ const styles = create({
     minHeight: toastSchema.minHeight,
     padding: 12,
     paddingInlineEnd: toastSchema.closeGutter,
-    overflow: "hidden",
+    overflow: "clip",
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
@@ -150,7 +150,7 @@ const styles = create({
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
-      ":hover": { "@media (hover: hover)": role.layerHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.layerHover },
     },
     color: role.contentPrimary,
     fontFamily: type.fontSans,
@@ -185,9 +185,12 @@ const styles = create({
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover)": role.bgHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
     },
-    color: { default: role.contentInteractiveSecondary, ":hover": role.contentInteractivePrimary },
+    color: {
+      default: role.contentInteractiveSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
+    },
     cursor: appearance.cursorInteractive,
     scale: { default: 1, ":active": 0.96 },
     transitionProperty: "background-color, color, scale",

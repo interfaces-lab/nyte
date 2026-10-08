@@ -1,8 +1,7 @@
-import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/client";
+import { createNyteClient } from "@nyte-ai/client";
 import type { ServerInfo } from "@nyte-ai/protocol";
 import { describe, expect, it } from "vitest";
 import {
-  describeHostError,
   displayAddress,
   parseConnection,
   parseConnectionPayload,
@@ -131,25 +130,5 @@ describe("parseConnectionPayload", () => {
     expect(() =>
       parseConnectionPayload("nyte://connect?url=http://93.184.216.34&token=abcdefghijklmnop"),
     ).toThrow(/HTTPS/);
-  });
-});
-
-describe("describeHostError", () => {
-  it("names the fix for refused tokens and unreachable hosts", () => {
-    expect(
-      describeHostError(new NyteWireError({ code: "unauthorized", message: "no" }, 401)),
-    ).toMatch(/Environments › Remote Access/);
-    expect(describeHostError(new NyteTransportError({ kind: "network", cause: null }))).toMatch(
-      /sharing/,
-    );
-    expect(describeHostError(new NyteTransportError({ kind: "bad_status", status: 404 }))).toMatch(
-      /not as a Nyte server/,
-    );
-  });
-
-  it("names the version difference when the Mac does not serve an operation", () => {
-    expect(
-      describeHostError(new NyteWireError({ code: "unknown_operation", message: "no" }, 404)),
-    ).toMatch(/older Nyte/);
   });
 });

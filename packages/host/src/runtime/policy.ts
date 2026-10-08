@@ -156,10 +156,7 @@ export interface PolicyState {
 export type Context = { readonly principal: string | undefined };
 
 /** Whether `rule` admits a tree in `state`. */
-export function admits(
-  rule: "observe" | "stop" | "manage" | "execute",
-  state: TreeState,
-): boolean {
+export function admits(rule: "observe" | "stop" | "manage" | "execute", state: TreeState): boolean {
   switch (state.kind) {
     case "unknown":
     case "unsealed":

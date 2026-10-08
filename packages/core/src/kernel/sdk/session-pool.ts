@@ -1037,7 +1037,7 @@ export function createSessionPool(input: {
   /**
    * Runs a session's input writes one at a time, in call order. The caller
    * enters synchronously, before its first await, so a setting applied before
-   * a send is stored before that send lands. Never enter from inside a lane.
+   * a send is stored before that send is admitted. Never enter from inside a lane.
    */
   const inOrder = <T>(id: SessionId, operation: () => Promise<T>): Promise<T> => {
     const result = (lanes.get(id) ?? Promise.resolve()).then(operation);

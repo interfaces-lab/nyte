@@ -25,9 +25,15 @@
 
 @layer base {
   :root {
+    /*
+     * Fluid sizes, mobile first: each one starts at its phone value on a 20rem
+     * screen and reaches its wide value at --breakpoint-2xl, Tailwind's widest
+     * screen. One slope serves every token: size = min + (max - min) * --fluid-step.
+     */
     --fluid-step: calc((100vw - 20rem) / 76);
+
     --site-inner: 1072px;
-    --site-pad: 24px;
+    --site-pad: clamp(1.25rem, 1.25rem + 0.25 * var(--fluid-step), 1.5rem);
     /* 4 + 32 + 4: the same pad sits above the controls, below them, and before a dropdown. */
     --site-nav-height: 40px;
     --site-nav-pad: 4px;
@@ -37,11 +43,22 @@
 
     --hero-blue: #2222dd;
 
-    --plate-inset: 12px;
-    --plate-radius: 28px;
+    --plate-inset: clamp(0.5rem, 0.5rem + 0.25 * var(--fluid-step), 0.75rem);
+    --plate-radius: clamp(1.5rem, 1.5rem + 0.25 * var(--fluid-step), 1.75rem);
     /* Header top below the plate edge, so nav pills sit concentric in its corner. */
     --plate-nav-drop: calc(var(--plate-inset) - var(--site-nav-pad));
     --plate-ink: #0e0e5c;
+
+    /*
+     * Selection lightness is set here per surface. Hue and chroma come from
+     * selection-hue.tsx: the hue by where the selection sits on screen, the
+     * chroma as much as sRGB holds at that lightness. These are the defaults.
+     */
+    --selection-hue: 268;
+    --selection-l: 0.52;
+    --selection-c: 0.15;
+    --selection-plate-l: 0.94;
+    --selection-plate-c: 0.026;
 
     --site-panel: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   }
@@ -53,17 +70,29 @@
     }
   }
 
-  @media (max-width: 1023px) {
-    :root {
-      --site-pad: 20px;
-    }
+  :root {
+    font-synthesis: none;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    interpolate-size: allow-keywords;
   }
 
-  @media (max-width: 639px) {
-    :root {
-      --plate-inset: 8px;
-      --plate-radius: 24px;
-    }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  textarea,
+  [contenteditable] {
+    text-wrap: stable;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
   }
 }
 
@@ -83,7 +112,23 @@
 
   --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
   --animate-plate-rise: plate-rise 900ms var(--ease-nav) both;
+  --animate-ring-settle: ring-settle 2400ms var(--ease-nav) both;
+  --animate-caption-in: caption-in 320ms var(--ease-nav) both;
   --animate-ascii-in: ascii-in 240ms var(--ease-nav) both;
+
+  @keyframes plate-rise {
+    from {
+      opacity: 0;
+      transform: translateY(var(--rise, 12px));
+    }
+  }
+
+  /* The ring arrives mid-turn and settles on the front card. */
+  @keyframes ring-settle {
+    from {
+      transform: rotateY(150deg);
+    }
+  }
 
   @keyframes ascii-in {
     from {
@@ -91,10 +136,10 @@
     }
   }
 
-  @keyframes plate-rise {
+  @keyframes caption-in {
     from {
       opacity: 0;
-      transform: translateY(var(--rise, 12px));
+      filter: blur(6px);
     }
   }
 }
@@ -104,6 +149,16 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  .dark {
+    --selection-l: 0.46;
+  }
+
+  /* Lightness is fixed per scheme, so every hue keeps the same contrast with white text. */
+  ::selection {
+    background-color: oklch(var(--selection-l) var(--selection-c) var(--selection-hue));
+    color: #fff;
+  }
+
   html > body[data-scroll-locked] {
     margin-right: 0px !important;
     --removed-body-scroll-bar-size: 0px !important;
@@ -154,6 +209,12 @@
     --plate-haze: #1b2266;
   }
 
+  /* On the plate the same hue goes pale, so white text never sits on blue. */
+  .landing-plate ::selection {
+    background-color: oklch(var(--selection-plate-l) var(--selection-plate-c) var(--selection-hue));
+    color: var(--plate-ink);
+  }
+
   .landing-plate-grain {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     mix-blend-mode: overlay;
@@ -161,6 +222,14 @@
   }
 
   /* Anchored to the product window, so the plate turns to paper behind it at every width. */
+  .landing-plate-fade {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklab, var(--plate-haze) 70%, transparent) 22%,
+      var(--color-background) 56%
+    );
+  }
 
   /* Facts pop out of a word: scale and tilt overshoot, then drift after the pointer. */
   .fact-pill {

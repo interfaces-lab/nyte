@@ -231,14 +231,9 @@ describe("local bash lifecycle", () => {
     },
   );
 
-  test("coding defaults expose four tools and structured shell results", async () => {
-    assert.deepEqual(
-      builtinTools(process.cwd()).map((tool) => tool.name),
-      ["read", "bash", "edit", "write"],
-    );
+  test("bash returns structured shell results and presents them as shell facts", async () => {
     const tool = bindEnv({ ...createBashToolDefinition(), name: "bash" }, localEnv(process.cwd()));
     const present = { runId: "run_1", head: "main", callId: "bash" };
-    assert.deepEqual(Object.keys(tool.parameters.properties), ["command", "timeout"]);
     const result = await tool.execute({ command: "printf done" }, toolCall("bash"));
     expect(result.content).toEqual([{ type: "text", text: "done" }]);
     expect(result.structuredContent).toMatchObject({ output: "done", exit_code: 0 });

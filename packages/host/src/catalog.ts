@@ -9,11 +9,11 @@ import { dirname, join } from "node:path";
 import {
   clampThinkingLevel,
   defaultModelPerProvider,
+  fastModelId,
   getSupportedThinkingLevels,
 } from "@nyte-ai/ai";
 import type { Api, Model, Models } from "@nyte-ai/ai";
 import type { ModelCatalog } from "@nyte-ai/core";
-import { fastModeSettingId, supportsFastMode } from "@nyte-ai/plugin/examples/fast-mode";
 import { schemas } from "@nyte-ai/protocol";
 import type {
   CatalogModel,
@@ -43,7 +43,6 @@ const preferencesType = Type.Object({
     Type.Object({
       model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })),
       thinkingLevel: Type.Optional(schemas.ThinkingLevel),
-      fast: Type.Optional(Type.Boolean()),
     }),
   ),
 });
@@ -97,18 +96,14 @@ export function applyPreferenceChange(
       };
     }
 
-    case "defaults": {
-      const fast = change.fast ?? preferences.defaults.fast;
-
+    case "defaults":
       return {
         ...preferences,
         defaults: {
           model: change.model ?? preferences.defaults.model,
           thinkingLevel: change.thinkingLevel ?? preferences.defaults.thinkingLevel,
-          ...(fast !== undefined && { fast }),
         },
       };
-    }
     default: {
       const _exhaustive: never = change;
 
@@ -184,7 +179,10 @@ export function createModelCatalog(
       const available = await models.getAvailable(provider, options);
       const current = await preferences.read();
 
-      return available.filter((model) => isModelEnabled(model, current));
+      // A fast sibling follows its base's switch.
+      return available.filter((model) =>
+        isModelEnabled({ provider: model.provider, id: model.variant?.base ?? model.id }, current),
+      );
     },
   };
 }
@@ -246,63 +244,83 @@ export async function readCatalog(
     (await models.getAvailable()).map((model) => `${model.provider}/${model.id}`),
   );
 
-  const entries = models.getModels().map((model): Entry => {
-    const key = `${model.provider}/${model.id}`;
-    const available = availableKeys.has(key);
-    const hidden = preferences.providers[model.provider]?.hiddenModels?.includes(model.id) ?? false;
+  // A fast sibling is not a row: its base row carries it, and selecting fast selects it.
+  const entries = models
+    .getModels()
+    .filter((model) => model.variant === undefined)
+    .map((model): Entry => {
+      const key = `${model.provider}/${model.id}`;
+      const available = availableKeys.has(key);
+      const hidden =
+        preferences.providers[model.provider]?.hiddenModels?.includes(model.id) ?? false;
+      const fast = models.getModel(model.provider, fastModelId(model.id));
 
-    return {
-      model,
-      option: {
-        key,
-        provider: model.provider,
-        id: model.id,
-        name: model.name,
-        contextWindow: model.contextWindow,
-        cost: {
-          input: model.cost.input,
-          output: model.cost.output,
-          cacheRead: model.cost.cacheRead,
-          cacheWrite: model.cost.cacheWrite,
+      return {
+        model,
+        option: {
+          key,
+          provider: model.provider,
+          id: model.id,
+          name: model.name,
+          contextWindow: model.contextWindow,
+          cost: {
+            input: model.cost.input,
+            output: model.cost.output,
+            cacheRead: model.cost.cacheRead,
+            cacheWrite: model.cost.cacheWrite,
+          },
+          fastMode:
+            fast?.variant?.base === model.id
+              ? { kind: "available", id: fast.id }
+              : { kind: "unavailable" },
+          thinkingLevels: getSupportedThinkingLevels(model),
+          hidden,
+          listed: available && isModelEnabled(model, preferences),
         },
-        fastMode: supportsFastMode(model)
-          ? { kind: "available", settingId: fastModeSettingId(model.provider) }
-          : { kind: "unavailable" },
-        thinkingLevels: getSupportedThinkingLevels(model),
-        hidden,
-        listed: available && isModelEnabled(model, preferences),
-      },
-    };
-  });
+      };
+    });
 
   const providerIds = providers.map((provider) => provider.id);
   const listed = entries.filter((entry) => entry.option.listed);
   const enabled = entries.filter((entry) => isModelEnabled(entry.model, preferences));
   const chosen = preferences.defaults.model;
+  const chosenModel =
+    chosen === undefined ? undefined : models.getModel(chosen.provider, chosen.id);
+
+  // A chosen fast sibling stands while its base row is listed.
+  const chosenBase =
+    chosenModel?.variant === undefined
+      ? chosenModel
+      : models.getModel(chosenModel.provider, chosenModel.variant.base);
+
+  const sameModel = (left: Model<Api>, right: Model<Api> | undefined) =>
+    right !== undefined && left.provider === right.provider && left.id === right.id;
 
   const fallback =
-    listed.find(
-      (entry) => entry.model.provider === chosen?.provider && entry.model.id === chosen.id,
-    ) ??
+    listed.find((entry) => sameModel(entry.model, chosenBase)) ??
     firstPreferred(listed, providerIds) ??
     firstPreferred(enabled, providerIds);
 
+  const defaultModel =
+    fallback !== undefined && chosenModel !== undefined && sameModel(fallback.model, chosenBase)
+      ? chosenModel
+      : fallback?.model;
+
   return {
-    defaultModel: fallback?.model,
+    defaultModel,
     catalog: {
       source: "local",
       providers,
       models: entries.map((entry) => entry.option),
       defaults:
-        fallback === undefined
+        defaultModel === undefined
           ? undefined
           : {
-              model: { provider: fallback.model.provider, id: fallback.model.id },
+              model: { provider: defaultModel.provider, id: defaultModel.id },
               thinkingLevel: clampThinkingLevel(
-                fallback.model,
+                defaultModel,
                 preferences.defaults.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
               ),
-              fast: preferences.defaults.fast ?? false,
             },
     },
   };

@@ -1020,27 +1020,24 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         },
         async run(input): Promise<CommandOutcome> {
           pool.alive();
+          const pooled = await pool.open(input.sessionId);
+          const activation = await pool.activationFor(input.sessionId, pooled);
 
-          return pool.inOrder(input.sessionId, async () => {
-            const pooled = await pool.open(input.sessionId);
-            const activation = await pool.activationFor(input.sessionId, pooled);
+          if (activation === undefined) return { kind: "not_found" };
 
-            if (activation === undefined) return { kind: "not_found" };
+          if (!activation.commands().has(input.name)) return { kind: "not_found" };
 
-            if (!activation.commands().has(input.name)) return { kind: "not_found" };
+          try {
+            const output = await activation.runCommand(input.name, input.argument ?? "");
 
-            try {
-              const output = await activation.runCommand(input.name, input.argument ?? "");
+            if (output === undefined) return { kind: "ran" };
 
-              if (output === undefined) return { kind: "ran" };
+            if (isCommandPrompt(output)) return { kind: "prompt", prompt: output.prompt };
 
-              if (isCommandPrompt(output)) return { kind: "prompt", prompt: output.prompt };
-
-              return { kind: "ran", output };
-            } catch (error) {
-              return { kind: "failed", message: errorMessage(error) };
-            }
-          });
+            return { kind: "ran", output };
+          } catch (error) {
+            return { kind: "failed", message: errorMessage(error) };
+          }
         },
       },
       settings: {

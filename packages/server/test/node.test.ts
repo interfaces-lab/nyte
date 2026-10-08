@@ -98,15 +98,30 @@ test("binds loopback on a system port and answers calls over the wire", async ()
   assert.equal(snapshot?.pending.length, 1);
 });
 
-test("refuses without a credential and from an unlisted browser origin", async () => {
+test("a rebound Host header cannot make a foreign browser origin same-origin", async () => {
   const { serving } = await listen();
-  const anonymous = await fetch(`${serving.address}/v1/info`);
-  assert.equal(anonymous.status, 401);
+  const { port } = new URL(serving.address);
+  const authorization = `Bearer ${TOKEN}`;
 
-  const crossOrigin = await fetch(`${serving.address}/v1/info`, {
-    headers: { authorization: `Bearer ${TOKEN}`, origin: "https://evil.example" },
-  });
-  assert.equal(crossOrigin.status, 403);
+  const status = (headers: Record<string, string>) => {
+    const answered = Promise.withResolvers<number | undefined>();
+
+    const sent = request(`${serving.address}/v1/info`, { headers }, (incoming) => {
+      incoming.resume();
+      answered.resolve(incoming.statusCode);
+    });
+
+    sent.on("error", answered.reject);
+    sent.end();
+
+    return answered.promise;
+  };
+
+  assert.equal(await status({ authorization, origin: serving.address }), 200);
+  assert.equal(
+    await status({ authorization, host: `evil.test:${port}`, origin: `http://evil.test:${port}` }),
+    403,
+  );
 });
 
 test("an upload the server stops reading is answered without waiting for the rest", async () => {

@@ -83,7 +83,7 @@ export const settingsPatterns = create({
     },
     minWidth: 0,
     maxWidth: "100%",
-    overflow: "hidden",
+    overflow: "clip",
     flex: {
       default: "1 1 0",
       "@media (max-width: 500px)": "0 0 auto",

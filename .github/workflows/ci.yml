@@ -39,4 +39,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm --dir packages/tui verify:targets
+      # TUI QA runs the binary offline; without ripgrep on PATH Nyte would try to download it.
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: pnpm exec turbo test
+
+  e2e-web:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir packages/app exec playwright install --with-deps chromium
+      - run: pnpm --dir packages/app build
+      - run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts --project=web e2e/web/workspace.spec.ts

@@ -45,8 +45,8 @@ export const PreviewCardTrigger = PreviewCardPrimitive.Trigger;
 
 export function PreviewCardContent({
   anchor,
-  side = "bottom",
-  align = "center",
+  side,
+  align,
   sideOffset = 4,
   alignOffset,
   collisionAvoidance,

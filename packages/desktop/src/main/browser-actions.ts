@@ -123,10 +123,6 @@ export async function performBrowserAction({
     throw new Error("This browser tab is closed");
 
   switch (action) {
-    case "hard-reload":
-      contents.reloadIgnoringCache();
-
-      return;
     case "copy-url":
       await clipboard.writeText(contents.getURL());
 

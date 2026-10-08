@@ -181,7 +181,7 @@ function SheetBody({
               style={{ flex: 1 }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              renderItem={({ item, index }) => {
+              renderItem={({ item }) => {
                 const chosen = item === selected;
 
                 return (
@@ -190,7 +190,7 @@ function SheetBody({
                     aria-pressed={chosen}
                     disabled={selectingModel}
                     onClick={() => void choose(item)}
-                    style={[styles.row, index === matches.length - 1 && styles.rowLast]}
+                    style={[styles.row, chosen && styles.selectedRow]}
                   >
                     <html.div style={styles.rowText}>
                       <html.span style={textStyles.body}>{item.name}</html.span>
@@ -198,14 +198,6 @@ function SheetBody({
                         {item.provider} / {item.id}
                       </html.span>
                     </html.div>
-                    {chosen && (
-                      <SymbolView
-                        name="checkmark"
-                        size={controls.iconSm}
-                        weight="semibold"
-                        tintColor={theme.foreground}
-                      />
-                    )}
                   </html.button>
                 );
               }}
@@ -273,20 +265,22 @@ const styles = css.create({
     padding: spacing.gutter,
   },
   row: {
-    borderWidth: 0,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: "transparent",
+    borderRadius: radii.control,
     minHeight: controls.touchTarget,
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.gutter,
+    marginInline: spacing.gutter,
+    marginBlock: spacing.xs,
+    paddingInline: spacing.md,
     paddingBlock: spacing.sm,
-    borderBottomWidth: controls.hairline,
-    borderBottomStyle: "solid",
-    borderBottomColor: tokens.separator,
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
-  rowLast: { borderBottomWidth: 0 },
+  selectedRow: { borderColor: tokens.accent, backgroundColor: tokens.selection },
   rowText: {
     display: "flex",
     flexDirection: "column",

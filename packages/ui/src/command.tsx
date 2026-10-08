@@ -47,7 +47,7 @@ const styles = create({
     paddingBlockStart: "clamp(72px, 12vh, 144px)",
     paddingBlockEnd: 16,
     paddingInline: 16,
-    overflow: "hidden",
+    overflow: "clip",
   },
   popup: {
     display: "flex",
@@ -57,7 +57,7 @@ const styles = create({
     borderStyle: "none",
     borderRadius: `calc(${radius.card} + 8px)`,
     outline: "none",
-    overflow: "hidden",
+    overflow: "clip",
     color: role.contentPrimary,
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transform: {
@@ -187,10 +187,10 @@ const styles = create({
     backgroundColor: role.borderSecondaryTranslucent,
   },
   empty: {
-    display: { default: "none", ":not(:empty)": "grid" },
+    display: "grid",
     placeItems: "center",
-    minHeight: 152,
-    padding: 24,
+    minHeight: { default: 0, ":not(:empty)": 152 },
+    padding: { default: 0, ":not(:empty)": 24 },
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
@@ -218,12 +218,15 @@ function CommandClose({
 
 type PaletteProps<ItemValue> = Pick<
   Autocomplete.Root.Props<ItemValue>,
-  "value" | "defaultValue" | "onValueChange" | "onItemHighlighted" | "itemToStringValue"
+  | "value"
+  | "defaultValue"
+  | "onValueChange"
+  | "onItemHighlighted"
+  | "itemToStringValue"
+  | "loopFocus"
 > & {
   /** Every row's `value`, in render order. The highlight follows this list as rows change. */
   readonly items: readonly ItemValue[];
-  /** Whether arrow keys wrap from the last row to the first. */
-  readonly loop?: boolean;
 };
 
 function CommandPopup<ItemValue>({
@@ -231,7 +234,7 @@ function CommandPopup<ItemValue>({
   description,
   tint,
   items,
-  loop = false,
+  loopFocus,
   value,
   defaultValue,
   onValueChange,
@@ -280,7 +283,7 @@ function CommandPopup<ItemValue>({
             mode="none"
             autoHighlight="always"
             keepHighlight
-            loopFocus={loop}
+            loopFocus={loopFocus}
             items={items}
             value={value}
             defaultValue={defaultValue}
@@ -380,8 +383,6 @@ function CommandSeparator({
 
 function CommandItem<ItemValue>({
   value,
-  onSelect,
-  onClick,
   leading,
   meta,
   children,
@@ -392,8 +393,6 @@ function CommandItem<ItemValue>({
 }: StyledProps<Omit<Autocomplete.Item.Props, "value">> & {
   /** Identifies the row; it must appear in the popup's `items`. */
   readonly value: ItemValue;
-  /** Runs when the row is clicked or chosen with Enter. */
-  readonly onSelect?: (value: ItemValue) => void;
   readonly leading?: ReactNode;
   /** Right column: a shortcut, a timestamp. Display only. */
   readonly meta?: ReactNode;
@@ -403,10 +402,6 @@ function CommandItem<ItemValue>({
       data-slot="command-item"
       value={value}
       {...rest}
-      onClick={(event) => {
-        onClick?.(event);
-        onSelect?.(value);
-      }}
       {...mergeStyleProps(props(styles.item, xstyle), className, style)}
     >
       <span aria-hidden="true" {...props(styles.itemLeading)}>

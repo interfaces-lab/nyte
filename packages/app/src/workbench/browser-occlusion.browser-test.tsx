@@ -54,6 +54,7 @@ function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
         surface="occlusion-test"
         visible
         historyVisible={false}
+        onToggleHistory={() => undefined}
         url={URL_UNDER_TEST}
         onUrlChange={() => undefined}
         workspacePath={null}

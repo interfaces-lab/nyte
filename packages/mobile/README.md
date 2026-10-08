@@ -1,262 +1,254 @@
 # @nyte-ai/ios
 
-Nyte's native iOS companion. The Mac host owns conversations, model credentials,
-and tool execution. This package uses `@nyte-ai/client` for HTTP/SSE and its
-Node-free `SessionObserver` for transcript state and recovery.
+Nyte's iOS app. It controls a running Nyte host: the desktop app, or `nyte serve`
+on another computer. The host owns sessions, folders, model credentials, and tool
+execution, and keeps working after the app closes. The app reads the host through
+`@nyte-ai/client` and `@nyte-ai/protocol`, including the Node-free
+`SessionObserver` that holds transcript state and recovers a dropped watch.
 
-The app is organized as a single stack behind a saved host connection: a
-root Agents list with sections for needs-input, failed, working, pinned, and
-earlier sessions plus a persistent capsule composer, a pushed Settings page, a
-conversation with streamed replies and follow-ups, a review page, a
-changed-files page with agent-edit and on-Mac diff views, an inline composer
-with model choice and real on-device dictation, and a markup editor that
-bakes numbered comments and drawn marks into attached photos. Working and
-waiting sessions mirror to a lock-screen Live Activity automatically. Expo
-Router provides stack navigation, header search and menus, and sheets; the
-connect flow gates all of them.
+User steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
+This README covers how the app works, how to build it, and how it is published.
 
-Typing `@` offers the shared workspace's files and `/` offers the session's
-commands and skills, both read from the host: `workspace.files` narrows the tree
-on the Mac, and `plugins.commands.list`/`plugins.resources.list` — or
-`plugins.catalog` before a conversation exists — supply the rest. Accepting one
-writes the same text the desktop composer writes, so a message sent from a phone
-reads back there as the same chip: `@file:///…` for a file, `/name ` for a
-command, and the skill's instruction sentence at the head of the draft. A draft
-that is only a command line runs the command through `plugins.commands.run`
-instead of being sent as text. The Agents list composer can pick Home or a
-recent folder through `workspace.select` before the first message. Settings
-lists those folders as read-only. The phone has no Open folder control.
+## What it does
 
-The app supports a saved host connection, chat status, streamed replies,
-follow-up messages while a run works, a separate Stop action, answers to waiting
-selections, and host-backed model selection. Stop keeps its own control beside
-the field, so it never replaces Send or the microphone. Changed-file review
-shows run evidence and lets you inspect the current workspace diff; long patches
-render their first 400 lines with the rest one tap away. Opening review
-preserves the composer and selection drafts. Returning from background reloads
-the list in place and rechecks the host. Failed sends retain the draft and retry
-key while that conversation remains open. Long-pressing a completed message or
-an expanded disclosure offers Copy, which copies its Markdown source. Photo
-library selection and VisionCamera capture stage up to three JPEGs locally; only
-Send transmits them. Markup keeps an undo for the last point or stroke and
-confirms before discarding. The review page's merge action sends a merge
-instruction to the host agent. There is no dedicated merge, pull-request, or
-deployment API, so its result arrives in the transcript like any other run, and
-both entry points call it "Ask to merge". A durable offline outbox and relay
-discovery are not implemented.
+- **Inbox.** One sectioned list: Needs input, Failed, Working, Pinned, then Today
+  and Earlier, with search and filters. The composer pinned at the bottom starts a
+  new chat.
+- **Conversation.** Replies stream in order. Tool and reasoning activity stays in
+  compact rows that open native detail sheets, and messages keep their original
+  order around it. Stop has its own control, so it never replaces Send or the
+  microphone. Long-press a message to copy its Markdown.
+- **Sending during a run.** The composer offers **Steer current response** or
+  **Queue after response**, matching the host's `steer` and `next` modes. A queued
+  message shows as **Queued** until it lands.
+- **Drafts and retries.** Text drafts are stored per host, account owner, and
+  session in MMKV. A failed send keeps its draft and its saved message key, so
+  retrying the same content with the same delivery choice reuses that key and the
+  host accepts it once. Changing the delivery choice drops the saved key (see
+  [Known gaps](#known-gaps)). A new chat keeps its session id across retries, and
+  a new chat on a `nyte serve` host keeps a durable start record (see
+  [Folders](#folders)).
+- **Composer.** Return inserts a newline. Focus reveals a 44pt model button and a
+  thinking gauge that opens a native sheet with a snapping level control. The mic
+  dictates on device. `@` offers the folder's files and `/` offers commands and
+  skills. Accepting one writes the same text the desktop composer writes:
+  `@file:///…` for a file, `/name ` for a command, and the skill's instruction at
+  the head of the draft. A draft that is only a command line runs through
+  `plugins.commands.run`.
+  The completion menus use native glass, the desktop command/skill/file/folder
+  glyphs, and a virtualized list bounded by the native header and keyboard.
+  Shared menu tokens provide 4pt wrapping and at least 44pt touch targets.
+  Completed file references do not reopen search when their caret moves.
+- **Photos.** Up to three JPEGs from the camera or a library grid. Markup bakes
+  numbered points and drawn marks into a staged photo, and its comments travel as
+  text beside it. Only Send uploads them.
+- **Review and changed files.** The review page shows status, change totals, and
+  the agent summary. **Ask to Merge** sends a merge instruction to the host agent;
+  there is no merge, pull request, or deploy API. Changed Files switches between
+  **Agent edits**, **On Mac**, and **Uncommitted**, and long patches show their
+  first 400 lines until you ask for the rest.
+- **Live Activity.** Working and waiting sessions mirror to a Lock Screen activity
+  and the Dynamic Island.
+- **Settings.** Appearance, message font, inbox display, the connection, read-only
+  workspaces, and Disconnect.
 
-## Connecting
+There is no offline outbox and no relay discovery. The app never reports a send as
+done before the host accepts it.
 
-Nyte desktop exposes the connection under Environments › Remote Access. Two of its
-reaches use one token per start. **Simulator on this Mac** binds `127.0.0.1`; **Over
-Tailscale** binds this machine's tailnet address, read from `tailscale status --json`,
-and is offered only while that daemon reports `Running`. Either way the listener takes
-an ephemeral port and a random token, and offers Copy address and Copy token. The
-third, **Over Cloudflare Tunnel**, publishes the Mac at an HTTPS hostname on the
-user's own Cloudflare domain and gives each phone its own token through **Add Device**;
-that token keeps working across desktop restarts until the device is removed there. The app's connect
-screen takes a name, that address, and that token, then verifies `/v1/info`
-before saving. Verification gives up after ten seconds and can be cancelled, so
-a wrong address does not hold the form.
+## Connecting a host
 
-Saved details can stop working: a local or Tailscale share issues a new address
-and token each time it starts, and the Mac refuses a Cloudflare device's token
-once that device is removed there. Settings › Edit address and token reopens the
-same form on the saved details, with Cancel returning to the list. Disconnect stays separate and still deletes the saved token. When the list
-cannot reach the host it offers Try again and a way into those settings.
+| Path | How it connects |
+| --- | --- |
+| Nyte account | Sign in with the account the host is linked to and pick the computer. The phone enrolls itself while the host has sharing on. The host has no approval step, and the app shows none. |
+| Tailscale | **Connect with Tailscale**, then the host's tailnet address and token, or **Scan QR code**. |
+| Local address or QR code | The same form for any other reachable address. A `127.0.0.1` share reaches only the iOS Simulator on the same Mac. |
 
-The connect screen can also read a pairing code: `nyte://connect?name=…&url=…&token=…`,
-scanned with the back camera through VisionCamera's `useObjectOutput`, which
-reads QR codes through AVFoundation without an ML dependency. A scanned address
-goes through the same `parseConnection` policy as a typed one, so a public HTTP
-host is refused either way. Desktop Environments › Remote Access shows that
-pairing QR. A simulator has no camera, so the scan button only appears on a
-device with one.
+The welcome screen offers all three. A build without account configuration shows
+**Sign in to Nyte** disabled with "Account sign-in is unavailable in this build."
+and never loads Clerk.
 
-A loopback share reaches only the iOS Simulator on the same Mac. A Tailscale share
-reaches a physical iPhone signed in to the same tailnet, on any network, and
-nothing on the local wifi: the listener binds the tailnet address alone. A
-Cloudflare Tunnel share reaches any network through the user's own named tunnel;
-its address is ordinary HTTPS, so the app needs nothing special for it. A Nyte
-account reaches any network too, through the Nyte Connect relay below.
+The connect form verifies `/v1/info` before saving. Each attempt can be cancelled,
+and a saved host that hangs on resume is reported after ten seconds. Failure
+wording lives in [`src/connection/connect-copy.ts`](src/connection/connect-copy.ts):
+each stage names what happened and what to do next, and `classifyConnectFailure`
+keeps a refused token, a silent host, and a server that isn't Nyte apart. Retry
+appears only where the same details could still work.
 
-Plain HTTP is accepted for loopback, private IPv4 addresses, the Tailscale
-`100.64.0.0/10` range, and `.ts.net` names, checked numerically; anything else
-must be HTTPS. The Tailscale range is shared address space rather than a private
-network, so it is allowed for a narrower reason than the others: reaching one
-means the device is already inside an authenticated tailnet.
+A pairing code is `nyte://connect?name=…&url=…&token=…`, scanned with VisionCamera's
+`useObjectOutput`. A scanned address goes through the same `parseConnection` policy
+as a typed one. The scan button appears only on a device with a camera.
 
-That `parseConnection` check is the real gate, because App Transport Security
-cannot express it: ATS exception domains are domain names, so nothing can permit
-cleartext to `100.64.0.0/10`, and `NSAllowsLocalNetworking` does not cover a
-tailnet address. `NSAllowsArbitraryLoads` is therefore on in `app.json`, and the
-address policy above decides what may be reached. The token is stored
-in the iOS Keychain and masked in the form by default. Autofill is disabled in
-the input configuration, but iOS may still offer to save it in Passwords. No
-provider credentials or deployment secrets belong in the bundle.
+### Address policy
 
-Connect-screen wording lives in [`src/connection/connect-copy.ts`](src/connection/connect-copy.ts)
-rather than in the screen. Each stage of an attempt owns a title naming what
-happened and a body naming what to do next, and `classifyConnectFailure` decides
-which stage a failure is: a server that refuses the token, one that never
-answers, and one that answers as something other than Nyte need different
-instructions. Retry is offered only where the same details could still work.
+Plain HTTP is allowed for loopback, private IPv4, the Tailscale `100.64.0.0/10`
+range, and `.ts.net` names, checked numerically. Everything else must be HTTPS. The
+Tailscale range is shared address space, not a private network; it is allowed
+because reaching it means the phone is already inside an authenticated tailnet.
 
-## Nyte Connect
+App Transport Security cannot express this policy. Its exception domains are names,
+and `NSAllowsLocalNetworking` does not cover a tailnet address. So
+`NSAllowsArbitraryLoads` is on in `app.json`, and `parseConnection` is the real
+gate. The token is stored in the Keychain and masked in the form. Autofill is off,
+but iOS may still offer to save it in Passwords. No provider credentials or
+deployment secrets belong in the bundle.
 
-A build with account configuration adds Nyte Connect: sign in with the Nyte
-account the Mac uses, pick one of its Macs, and the phone enrolls itself. A
-build without it, or with a malformed value, shows the address-and-token screen
-exactly as before and never loads Clerk.
+### Host identity
+
+A host that advertises an identity in `/v1/info` must sign a fresh nonce on
+`/v1/identity`, which the app checks with `@noble/curves` Ed25519, because Hermes
+has no WebCrypto Ed25519. The first proven key is pinned per route: a typed or
+scanned address, or an account's broker, owner, and environment. Once a route has a
+pin, its host must prove that key; a different key or none is refused as
+**Different host** until the user taps **Pair as New Host**. A pin outlives
+disconnects and sign-outs. A `nyte serve` host that names no identity is refused as
+**Host not verified**.
+
+The check runs before a connection is saved or adopted, when a saved connection is
+loaded at launch, and on **Try Again**. It does not repeat on every request.
+
+Desktop shares name no identity. They still connect, but the app can't tell them
+apart from another host at the same address.
+
+### Folders
+
+A desktop host has a current folder. The folder menu offers Home and recent
+folders through `workspace.select`.
+
+A `nyte serve` host has a registry. The folder menu lists only folders that host
+already trusts, and the choice belongs to this phone and host. The app connects as
+a controller and has no screen for adding folders. The first message starts the
+chat through `environment.start`. Before sending, the app writes the whole start
+(request id, folder, model, thinking level, and message) to MMKV. A retry or a
+relaunch sends that record unchanged. Changing the folder afterwards doesn't send
+anything, and the waiting start keeps its original folder. A second start is
+refused until the waiting one is opened or edited, so one message cannot create
+two chats.
+
+## Nyte account
+
+Account sign-in needs two public values, inlined at build time:
 
 | Variable | Value |
 | --- | --- |
 | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key; must encode a bare Frontend API host |
 | `EXPO_PUBLIC_NYTE_CONNECT_ORIGIN` | Broker and relay origin, a canonical `https://host[:port]` |
 
-Both are public and inlined at build time. `src/account/account-config.ts`
-turns the account off unless both pass.
+[`src/account/account-config.ts`](src/account/account-config.ts) turns the account
+off unless both parse. Local Expo commands read them from `packages/mobile/.env.local`.
+EAS builds read the project's environment variables on expo.dev, because the local
+file is ignored by Git. Set both as plain-text project variables for `development`,
+`preview`, and `production`; `eas.json` selects the matching environment per build
+profile, and EAS Update takes `--environment development|preview|production`. Use
+the same Clerk instance as the Worker and desktop. The current Worker uses the
+production Clerk instance at `clerk.nyte.sh` and serves
+`https://nyte-connect.daniel-fu90.workers.dev`.
 
-Local Expo commands read these from `packages/mobile/.env.local`. EAS builds
-read them from the project's environment variables on expo.dev, since the
-local file is gitignored. Set both as plain text project variables for
-`development`, `preview`, and `production`; `eas.json` selects the matching
-environment for each build profile. Use the same Clerk instance as the Worker
-and desktop. The current Worker uses the production Clerk instance at
-`clerk.nyte.sh` and serves `https://nyte-connect.daniel-fu90.workers.dev`.
+Every host is reached through the broker's relay at `<origin>/r/<environment id>`.
+The host holds an outbound connection to it, so it needs no inbound port, DNS name,
+or tunnel. The phone builds that address from the origin and the picked
+environment's id; no broker answer names an address. Broker and relay share one
+origin, so the phone sends no cookies on any account request.
 
-For EAS Update, select the same environment with `--environment development`,
-`--environment preview`, or `--environment production`.
+The account flow is one panel, [`src/account/connect-panel.tsx`](src/account/connect-panel.tsx).
+The welcome screen shows it inline. Once connected, the account button in the Inbox
+header opens it in a native page sheet with the connected computer, the account,
+and Your computers.
 
-Every Mac is reached through the broker's relay at
-`<origin>/r/<environment id>`. The Mac holds an outbound connection to it, so
-it needs no inbound port, DNS name, or tunnel of its own. The phone builds that
-address itself from the origin and the picked Mac's id; no broker answer names
-an address. Broker and relay share one origin, so the phone sends no cookies on
-any account request.
+Sign-in is Clerk's hosted page in an ephemeral `ASWebAuthenticationSession`, started
+with `useHostedAuth().startHostedAuth({ mode: "sign-in" })`, so Safari keeps no
+portal session that could sign the previous account back in. Clerk's client token
+lives in the Keychain through `@clerk/expo/token-cache`. Each broker call gets a
+fresh standard session JWT, `getToken({ skipCache: true })`, with no template. The
+Clerk instance must add an `aud` claim equal to the broker origin, which the broker
+checks. If Clerk refuses the app's bundle (`resource_missmatch`), the panel shows
+**Sign-in unavailable** and points to Tailscale or a local address.
 
-The flow is one panel, `src/account/connect-panel.tsx`, in two places. The
-connect screen shows it inline above the address-and-token form, which folds
-under Advanced › Connect with Address and Token. While connected, the first row
-of Settings › Connection is the entry: the Mac, its account or address, and its
-status. Tapping it opens the same panel in a native page sheet with the
-connected Mac, the account (Switch Account, Sign Out), Your Macs, and Advanced.
-It is a sheet rather than a route, so the stack stays where it was.
+### Enrollment
 
-Sign-in is Clerk's hosted page in an ephemeral `ASWebAuthenticationSession`,
-started with `useHostedAuth().startHostedAuth({ mode: "sign-in" })`. Ephemeral
-means Safari keeps no portal session that could sign the previous account back
-in. That page is the only part of the flow outside the app; Your Macs, progress,
-and errors are native. Clerk's client token lives in the Keychain through
-`@clerk/expo/token-cache`. The broker gets a fresh standard session JWT for each
-call, `getToken({ skipCache: true })` with no template. The Clerk instance must
-add an `aud` claim equal to the broker origin to its session token, which the
-broker checks.
+1. The phone draws 32 bytes from `getRandomBytesAsync`, never the synchronous call
+   that can fall back to `Math.random`, encodes them as the device bearer, and
+   hashes that text with SHA-256.
+2. `POST /v1/environments/:id/devices` carries only `clientId`, `clientName`, the
+   digest, and `role: "controller"`. The broker has the host record the device
+   before it answers.
+3. The answer must name the picked environment; anything else is refused before the
+   bearer goes anywhere.
+4. The phone calls `/v1/info` through the relay with the new bearer. A just-enrolled
+   device can be refused while the host's lease catches up, so a refusal is retried
+   with the same bearer for `ENROLLMENT_READINESS_SECONDS`. Nothing enrolls again.
+5. The host must prove the identity pinned for that environment, as above.
+6. The connection, with broker origin, environment, device, and owner, is written to
+   the Keychain under a signal that any account change aborts.
 
-Picking a Mac:
+`clientId` is per install and per account, so reconnecting replaces this phone's
+earlier device, and two accounts on one phone get different ids.
 
-1. The phone draws 32 bytes from `getRandomBytesAsync` (never the synchronous
-   call, which can fall back to `Math.random`), encodes them as the device
-   bearer, and hashes that text with SHA-256.
-2. `POST /v1/environments/:id/devices` carries only `clientId`, `clientName`,
-   and the digest. The broker has the Mac record the device before it answers.
-3. The answer must name the picked Mac's id; anything else is refused before
-   the bearer goes anywhere. The Mac's address is the relay for that id.
-4. The phone calls `/v1/info` through the relay with the new bearer. A
-   just-enrolled device can be refused while the Mac's lease catches up, so a
-   refusal is retried with the same bearer for `ENROLLMENT_READINESS_SECONDS`.
-   Nothing enrolls again.
-5. The connection, with the broker origin, environment, device, and owner, is
-   written to the Keychain under a signal that any account change aborts.
+Only the saved connection holds the bearer: no query cache, URL, or log.
+[`src/connection/connection-store.ts`](src/connection/connection-store.ts) runs saves
+and removals in one queue, so a save that started before a sign-out cannot land
+after it. An abort during the write restores the previous connection. If that undo
+fails too, the store serves nothing and reports the failure.
 
-`clientId` is per install and per account, so reconnecting replaces this
-phone's earlier device instead of adding one, and two accounts on one phone get
-different ids.
+Restoring an account connection holds it to the enrollment policy: the broker must
+be this build's broker and the address exactly its relay for the saved environment,
+with no other path, query, or fragment. A build pointed at another broker refuses
+the saved connection and asks for the computer again. There is no migration between
+brokers.
 
-The saved connection holds the bearer and nothing else does: no query or
-mutation cache, no URL, no log. `src/connection/connection-store.ts` keeps it in
-one queue, so a save that started before a sign-out cannot land after it. An
-abort during the write puts the previous connection back. If that undo fails
-too, the store serves nothing and the save reports failure rather than a
-rollback; the connect screen then asks for the Mac again.
-
-Restoring an account connection holds it to the same policy as enrolling: the
-broker must be this build's broker and the address exactly its relay for the
-saved Mac's id, with no other path, query, or fragment. HTTPS alone does not
-say which host it is. A build without account configuration, or one pointed at
-another broker, refuses the saved connection and asks for the Mac again. That
-is deliberate: there is no migration between brokers, so changing it means
-picking each Mac again.
-
-The device bearer outlives the Clerk session. A Mac keeps working after the
-session expires or the phone goes offline; only Your Macs needs a sign-in. A Mac
-that refuses the bearer shows Not accepted in Settings with Reconnect…, which
-opens the panel to pick that Mac again. The app never enrolls again by itself,
+The device bearer outlives the Clerk session. A saved host keeps working after the
+session expires or the phone goes offline; only Your computers needs a sign-in. A
+host that refuses the bearer shows **Not accepted** in Settings with **Reconnect**,
+which opens the panel to pick it again. The app never re-enrolls on its own,
 because a revoked device must stay revoked.
 
-Each signed-in owner change, whether from a sign-in, Switch Account, or a
-session Clerk restores at launch, aborts the previous owner's work (enrollment,
-Keychain write, Mac list) and drops its cached Macs. The connection gate never
-serves another owner's Mac once Clerk names a different owner, even before the
-Keychain removal finishes, and that Mac is then removed and released. Signing
-out, or a session expiring, keeps the saved Mac. Enrolling checks the owner the
-Mac list was drawn for against the one signed in, so a stale list cannot enroll
-under another account.
+Each owner change, from sign-in, Switch Account, or a session Clerk restores at
+launch, aborts the previous owner's enrollment, Keychain write, and computer list.
+The connection gate never serves another owner's host once Clerk names a different
+owner. Signing out, or a session expiring, keeps the saved host.
 
-Ending a device comes in the two strengths the contract defines. A release
-is `DELETE <relay address>/_nyte/connect/device` with the device's own bearer.
-The Mac refuses the bearer at once and queues the broker's weak release itself,
-which frees the device's place under the limit and leaves every Clerk session
-alone. 204 means released; 401 or 403 means the relay or the Mac already
-refuses the bearer, which counts the same. No other answer counts, including
-the relay's 503 for a Mac that is not connected. The phone releases:
+### Release and revoke
 
-- a bearer it does not keep: a cancelled connect, an account change during one,
-  an expired readiness window, or a failed save;
-- the Mac a save replaced, when switching to another Mac or to an address;
-- the saved Mac on Disconnect Mac, which keeps the Nyte sign-in;
-- another account's Mac when a different owner signs in.
+A release is `DELETE <relay address>/_nyte/connect/device` with the device's own
+bearer. The host refuses the bearer at once and queues the broker's release, which
+frees the device's slot and leaves Clerk sessions alone. 204 means released; 401 or
+403 means the relay or host already refuses the bearer, which counts the same. No
+other answer counts, including the relay's 503 for a host that isn't connected. The
+phone releases:
 
-Sign Out revokes instead: the broker's `revokeDevice` first, under the owner's
-session, which also ends the Clerk session that enrolled the device, then the
-release on the Mac as a best effort, each within five seconds. It then deletes
-the connection and the client id and signs Clerk out.
+- a bearer it does not keep: a cancelled connect, an account change during one, an
+  expired readiness window, a failed identity check, or a failed save;
+- the host a save replaced;
+- the saved host on Disconnect, which keeps the Nyte sign-in;
+- another account's host when a different owner signs in.
 
-The toast afterwards says only what answered. If the Mac answered, it removed
-the iPhone. If only the broker did, the Mac stops accepting the iPhone within a
-minute, when its lease runs out. If neither did, the toast asks the user to
-remove the iPhone on the Mac.
+Sign Out revokes instead: the broker's `revokeDevice` first, which also ends the
+Clerk session that enrolled the device, then the release on the host as a best
+effort, each within five seconds. It then deletes the connection and client id and
+signs Clerk out. The toast says only what answered: the host removed this iPhone,
+the host stops accepting it within a minute when its lease runs out, or neither
+answered and the user should remove it on the host.
 
-The Mac has to be awake with Nyte open for enrollment and for the Mac to confirm
-a release, and the panel says so. With no Macs on the account, it points to
-Environments › Remote Access › Link This Mac… on the Mac.
+### Clerk native setup
 
-### Native setup
-
-The `@clerk/expo` config plugin runs with `appleSignIn: false`, so no Sign in
-with Apple entitlement is added. It raises the iOS deployment target to 17.0
-and links Clerk's native module, so a phone needs a new binary: run `prebuild`
-and `pod install` again, or build a new EAS binary. An over-the-air update
-cannot add it, and the fingerprint runtime policy keeps one from reaching an
-older binary.
+The `@clerk/expo` config plugin runs with `appleSignIn: false`, so no Sign in with
+Apple entitlement is added. It raises the iOS deployment target to 17.0 and links
+Clerk's native module, so it needs a new binary; an over-the-air update cannot add
+it.
 
 Hosted auth returns to `<bundle identifier>://callback`, which
-`ASWebAuthenticationSession` catches without an Info.plist URL type. Each
-variant needs its callback allowed under Native applications in the Clerk
-dashboard: `dev.nyte.ios://callback`, `dev.nyte.ios.preview://callback`, and
+`ASWebAuthenticationSession` catches without an Info.plist URL type. Each variant's
+callback must be allowed under Native applications in the Clerk dashboard:
+`dev.nyte.ios://callback`, `dev.nyte.ios.preview://callback`, and
 `dev.nyte.ios.dev://callback`.
 
 ## Development
 
-Local builds use Expo SDK 57 and Xcode 27's iOS 27 SDK. Select Xcode for
-the current terminal without changing the system Xcode setting:
+Local builds use Expo SDK 57 and Xcode 27's iOS 27 SDK. Select Xcode for the current
+terminal without changing the system setting:
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ```
-
-The home-screen icon is `../desktop/build/icon-ios.png`: the same artwork on a
-square plate. The Dock-padded desktop PNG shows a white strip under iOS's mask.
 
 From the repository root:
 
@@ -267,98 +259,102 @@ cd packages/mobile/ios
 pod install
 ```
 
-From the repository root, start Metro yourself, then build and launch in
-another terminal with the same `DEVELOPER_DIR`:
+Start Metro yourself, then build and launch from another terminal with the same
+`DEVELOPER_DIR`:
 
 ```sh
 pnpm --dir packages/mobile dev
 pnpm --dir packages/mobile ios
 ```
 
-`dev`, `ios`, and `prebuild:dev` select the development variant: Nyte Dev,
-`dev.nyte.ios.dev`, and `nyte-dev`. The Debug native build includes
-`expo-dev-client`, so local testing needs Xcode and Metro without an EAS build.
-`ios` leaves Metro running in the first terminal. To install on a connected
-iPhone, use `pnpm --dir packages/mobile ios --device`; enable Developer Mode
-on the phone and select your Apple team when Xcode requests signing.
+`dev`, `ios`, and `prebuild:dev` select the development variant (Nyte Dev,
+`dev.nyte.ios.dev`, `nyte-dev`). The Debug build includes `expo-dev-client`, so
+local testing needs Xcode and Metro but no EAS build. For a connected iPhone, run
+`pnpm --dir packages/mobile ios --device`, enable Developer Mode on the phone, and
+pick your Apple team when Xcode asks. Only the development variant registers
+Expo's generated `exp+nyte-ios` scheme, so a Metro QR code opens Nyte Dev when other
+variants are installed.
 
-Only the development variant registers Expo's generated `exp+nyte-ios` scheme,
-so a Metro QR code opens Nyte Dev when other variants are also installed.
+For a local production build, run
+`APP_VARIANT=production pnpm --dir packages/mobile prebuild --clean`, install Pods
+again, then use `ios:release` or `ios:build`. `ios:release` builds and launches a
+Release app without Metro. `ios:build` skips Pods and copies the `.app` into
+`build/app`. `bundle` writes the Hermes bundle to `build/export`. `build/`, `ios/`,
+and `dist/` are ignored by Git.
 
-Run `prebuild:dev --clean` and install Pods again after changing native
-dependencies or config plugins. To switch to a local production build, run
-`APP_VARIANT=production pnpm --dir packages/mobile prebuild --clean` and
-install Pods again before using `ios:release` or `ios:build`.
+Expo Go cannot run this app. Native Markdown, SF Symbols, MMKV, VisionCamera,
+speech recognition, Live Activities, and the photo access module all need a
+development or Release build. Run `prebuild --clean` and `pod install` again after
+changing native dependencies, config plugins, or anything under `modules/`.
 
-The local scene lifecycle config plugin supplies the single-window scene delegate required by the iOS 27 SDK. Expo 57 still generates the older app lifecycle, as tracked in [Expo issue 46664](https://github.com/expo/expo/issues/46664). Remove the plugin and its Swift adapter once a stable Expo prebuild template includes `ExpoAppSceneDelegate`. The adapter keeps window creation in the scene and forwards lifecycle and link events through Expo.
+The native Xcode project is generated from `app.json` and `app.config.ts`. Change
+app config, not generated files. Real-device signing needs your own Apple team.
+Simulator pairing needs ad hoc signing: a build with `CODE_SIGNING_ALLOWED=NO`
+compiles but cannot save the token in the Keychain. Use Expo's iOS command, or
+`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`.
 
-MMKV is a Nitro module, so adding it needs a fresh `prebuild` and `pod install`
-before the app will launch. It ships its own Nitrogen output built against
-`react-native-nitro-modules` 0.35, two minors behind the version VisionCamera
-and Nitro Image pin here; check the Pods build after upgrading either side.
-
-Native Markdown and SF Symbols require a development build; Expo Go cannot
-load them. Voltra's `NyteLiveActivity` extension and on-device speech
-recognition also require the development build — Live Activities are not
-available in Expo Go. The Voltra plugin generates the extension target, its
-`group.dev.nyte.ios` app group, and `NSSupportsLiveActivities` at prebuild
-time; the speech plugin supplies the microphone and speech-recognition usage
-descriptions. The native Xcode project is generated from `app.json` and `app.config.ts`
-and ignored by
-Git. Change app config rather than editing generated native files. Real-device
-signing requires your own Apple team.
-
-The pnpm patch for `@use-voltra/ios-client@2.3.2` backports
-[Voltra's distinct pod module fix](https://github.com/callstackincubator/voltra/pull/330).
-The app uses `VoltraRuntime` and the extension uses `VoltraWidgetRuntime`, with
-matching generated Swift imports. This prevents both pods from producing the
-same `Metadata.appintents` path during an archive. Remove the patch when the
-installed Voltra release includes the fix.
-
-`ios:release` builds and launches a Release app without Metro. `ios:build`
-does the same without installing Pods and copies the built `.app` into
-`packages/mobile/build/app`; `bundle` writes the Hermes bundle to
-`packages/mobile/build/export`. The `build/` directory is ignored by Git, as are
-`ios/` and `dist/`. Xcode's own DerivedData stays in its default location.
-
-If CocoaPods selects an SDK from mismatched Command Line Tools, explicitly
-use the SDK from the selected Xcode:
+If CocoaPods picks an SDK from mismatched Command Line Tools, use the selected
+Xcode's SDK:
 
 ```sh
 SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 ```
 
-## Development shortcuts
+### Native notes
 
-In a development build, open Expo's developer menu with the floating gear or a
-device shake. Nyte adds shortcuts for Agents, Settings, conversation, review,
-and changed files. Conversation shortcuts use the current session when one is
-open, or the host's most recent session. Connect a host first.
+| Piece | Why it is there |
+| --- | --- |
+| `plugins/with-scene-lifecycle.cjs` and `NyteSceneDelegate.swift` | The iOS 27 SDK requires a single-window scene delegate, and Expo 57 still generates the older app lifecycle ([Expo issue 46664](https://github.com/expo/expo/issues/46664)). The adapter forwards lifecycle and link events through Expo. Remove both once a stable Expo template includes `ExpoAppSceneDelegate`. |
+| `modules/nyte-photo-access` | A local Expo module that presents the limited-library picker and resolves when it closes, a callback the installed Expo API lacks. Autolinking picks it up from `modules/`; no shared dependency is patched. |
+| `expo-media-library` with `preventAutomaticLimitedAccessAlert` | The photo panel has its own access control, so iOS's automatic limited-access reminder is off. Photo permission is requested only after an explicit Photos action. |
+| `@use-voltra/ios-client@2.3.2` pnpm patch | Backports [Voltra's distinct pod module fix](https://github.com/callstackincubator/voltra/pull/330): the app uses `VoltraRuntime` and the extension `VoltraWidgetRuntime`, so an archive doesn't produce two `Metadata.appintents`. Remove it when a Voltra release includes the fix. |
+| MMKV | A Nitro module. It ships Nitrogen output built against `react-native-nitro-modules` 0.35, two minors behind the version VisionCamera and Nitro Image pin here. Check the Pods build after upgrading either side. |
+| Home-screen icon | `../desktop/build/icon-ios.png`: the desktop artwork on a square plate. The Dock-padded desktop PNG shows a white strip under iOS's mask. |
 
-The Live Activity preview controls show the working or needs-input appearance
-using sample data and the same renderer as real work. Go to the Home Screen or
-Lock Screen to see the activity; long-press the Dynamic Island to expand it.
-The preview has its own activity identity and a stop control, so it does not
-replace an activity for real sessions. These controls are available only in
-development builds and do not start a host task.
+### Completion icons
 
-The menu uses Expo's [custom developer menu items](https://docs.expo.dev/versions/latest/sdk/dev-menu/#extending-the-dev-menu).
+The `@` and `/` menus draw the desktop's file, folder, command, and skill glyphs.
+`pnpm icons:sync` renders them from the installed `central-icons` package in
+`packages/ui` to `build/completion-icons.json`. `typecheck` and `metro.config.cjs`
+run it first, so the generated file exists before TypeScript or Metro reads it. The
+output stays under the ignored `build/` directory, and no web rendering code enters
+the app bundle.
+
+### Development shortcuts
+
+In a development build, open Expo's developer menu with the floating gear or a shake.
+Nyte adds shortcuts for the Inbox, Settings, a conversation, review, and changed
+files; conversation shortcuts use the open session or the host's most recent one.
+Connect a host first. The menu also has Live Activity previews (working and needs
+input) with their own activity identity and a stop control; they use sample data
+and start no host task. See Expo's
+[custom developer menu items](https://docs.expo.dev/versions/latest/sdk/dev-menu/#extending-the-dev-menu).
+
+On the welcome screen, **Preview the redesign** opens a sample transcript built from
+the real message and activity components. It needs no host and makes no network
+requests.
 
 ## Builds and variants
 
-`app.json` holds everything the builds share. [`app.config.ts`](app.config.ts)
-layers three variants on top of it, chosen by `APP_VARIANT`:
+`app.json` holds what every build shares. [`app.config.ts`](app.config.ts) layers
+three variants on top, chosen by `APP_VARIANT`:
 
-| `APP_VARIANT` | Name | Bundle identifier | Scheme | APNs |
-| --- | --- | --- | --- | --- |
-| `development` | Nyte Dev | `dev.nyte.ios.dev` | `nyte-dev` | `development` |
-| `preview` | Nyte Preview | `dev.nyte.ios.preview` | `nyte-preview` | `production` |
-| unset or `production` | Nyte | `dev.nyte.ios` | `nyte` | `production` |
+| `APP_VARIANT` | Name | Bundle identifier | Scheme | APNs | Runtime version |
+| --- | --- | --- | --- | --- | --- |
+| `development` | Nyte Dev | `dev.nyte.ios.dev` | `nyte-dev` | `development` | `appVersion` |
+| `preview` | Nyte Preview | `dev.nyte.ios.preview` | `nyte-preview` | `production` | `fingerprint` |
+| unset or `production` | Nyte | `dev.nyte.ios` | `nyte` | `production` | `fingerprint` |
 
-The identifiers differ so the three install side by side. An unset variant
-resolves to production, because that is the one a release must not get wrong by
-omission. Each variant's Live Activity app group follows its bundle identifier,
-so one variant cannot read another's activity state.
+The identifiers differ so the three install side by side. An unset variant resolves
+to production, because a release must not get it wrong by omission. Each variant's
+Live Activity app group is `group.<bundle identifier>`, so one variant cannot read
+another's activity state, and the Live Activity opens the variant's own scheme.
+
+The fingerprint policy hashes native dependencies, config plugins, and patches, so
+an update reaches only a binary that can run it. A JavaScript-only diff doesn't
+prove native compatibility, and a new native module, such as Clerk's or the photo
+access module, needs a new binary. Development keeps `appVersion`, because a dev
+client loads local bundles anyway.
 
 Inspect a resolved config before building:
 
@@ -366,95 +362,227 @@ Inspect a resolved config before building:
 APP_VARIANT=preview pnpm --dir packages/mobile exec expo config --json
 ```
 
-EAS profiles live in [`eas.json`](eas.json) and set `APP_VARIANT` per profile:
+EAS profiles live in [`eas.json`](eas.json). Each sets `APP_VARIANT`, its EAS
+environment, and the update channel of the same name:
 
 ```sh
-pnpm --dir packages/mobile build:dev         # simulator dev client
+pnpm --dir packages/mobile build:dev         # simulator dev client, internal
 pnpm --dir packages/mobile build:preview     # internal distribution
-pnpm --dir packages/mobile build:production  # App Store and TestFlight
+pnpm --dir packages/mobile build:production  # App Store and TestFlight, build number auto-increments
 pnpm --dir packages/mobile submit            # upload the production build
 ```
 
-The EAS project is `@nameisdaniel/nyte-ios`; its id lives in `app.json` under
-`extra.eas.projectId`. `eas init` writes the whole resolved config back to that
-file, including the Live Activity extension the Voltra plugin generates for
-whichever variant resolved at the time. That plugin appends rather than
-replaces, so `app.config.ts` drops the generated `extra.eas.build` block before
-the plugin runs again; keeping it would give a non-production build two
-extensions, one of them holding the production bundle identifier.
+The EAS project is `@nameisdaniel/nyte-ios`, id
+`5f78a9e7-057f-490e-ae2a-1dcdb12827d9`, stored in `app.json` under
+`extra.eas.projectId`, with updates at `https://u.expo.dev/<project id>`. The build
+number is remote (`appVersionSource: "remote"`). `submit` targets App Store Connect
+app `6813219821`. Submission uploads a build; TestFlight, App Review, and release
+are separate steps in App Store Connect.
+
+`eas init` writes the whole resolved config back to `app.json`, including the Live
+Activity extension Voltra generated for whichever variant resolved at the time.
+Voltra appends rather than replaces, so `app.config.ts` drops the generated
+`extra.eas.build` block before the plugin runs again. Keeping it would give a
+non-production build a second extension holding the production bundle identifier.
+
+The repository's release workflow has no iOS job, so a release tag doesn't build or
+submit the app. iOS builds and submissions run through the commands above.
 
 ### APNs environment
 
-`@use-voltra/ios-client` writes `aps-environment: development` into the
-entitlements whenever its push support is on, whatever is being built. Device
-tokens are scoped to the environment named there, and a token minted under one
-is rejected by the other without an error the app can see, so a TestFlight build
-carrying the sandbox entitlement would fail to receive pushes.
-[`plugins/with-aps-environment.cjs`](plugins/with-aps-environment.cjs) runs after
-it and writes the value the variant needs. It must stay last in the plugin list.
+`@use-voltra/ios-client` writes `aps-environment: development` whenever its push
+support is on. Device tokens are scoped to that environment, and a token from one is
+rejected by the other with no error the app can see, so a TestFlight build carrying
+the sandbox entitlement would never receive pushes.
+[`plugins/with-aps-environment.cjs`](plugins/with-aps-environment.cjs) runs after it
+and writes the value the variant needs. It must stay last in the plugin list.
 
-Push is enabled at the entitlement level only. Nothing sends Live Activity
-pushes yet: `useWorkLiveActivitySync` drives `start`, `update`, and `end` from
-the app, so the Lock Screen activity stops updating once iOS suspends the app.
-Moving those updates to APNs needs a sender holding an Apple push key, which
-belongs to the host rather than this package.
+Push is enabled only at the entitlement level. Nothing sends Live Activity pushes
+yet: `useWorkLiveActivitySync` drives `start`, `update`, and `end` from the app, so
+the Lock Screen activity stops updating once iOS suspends the app. Moving updates
+to APNs needs a sender with an Apple push key, which belongs on the host.
 
 ## Source layout
 
-Start in `src/app/_layout.tsx` for startup, providers, the connection gate,
-and the root stack. The route tree is flat: `index` is the Agents list,
-`settings`, `chat/[id]`, `changes/[id]`, and `review/[id]` are pushed screens,
-and `annotate` is a native sheet. There is no tab bar; the composer
-capsule sits above the root list's safe area. Route files only parse params
-and render the owning feature's screen body.
+Start in `src/app/_layout.tsx` for startup, providers, the connection gate, and the
+root stack. `index` is the Inbox; `settings`, `chat/[id]`, `changes/[id]`, and
+`review/[id]` are pushed screens; `annotate` is a native sheet. There is no tab bar.
+Route files only parse params and render the owning feature's screen.
 
 | Location | Owns |
 | --- | --- |
-| `src/app/` | Expo Router route tree: root layout and thin route files |
-| `src/account/` | Nyte Connect: account configuration, the Clerk provider, the connect panel and sheet, enrollment, release, and their wording |
-| `src/connection/` | Connection form, pairing-code scanner, address validation, the saved-connection store and Keychain, host client creation, and the host context behind the gate |
-| `src/chat/` | Conversation screens, list rows and grouping, composer, dictation, new-chat workspace menu, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
-| `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
-| `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
-| `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
-| `src/settings/` | Settings page: host row, read-only workspaces, connection status, disconnect, and the stored display preferences |
-| `src/annotate/` | Photo markup editor: numbered points, drawn marks, and comments |
-| `src/media/` | Photo picking, local image preparation, annotation notes, and the shared attachment thumbnail |
-| `src/ui/` | Shared native glass buttons and empty states |
-| `src/theme.ts` | Shared colors, typography, spacing, and control dimensions |
+| `src/app/` | Expo Router routes: root layout and thin route files |
+| `src/account/` | Nyte account: configuration, Clerk provider, connect panel and sheet, enrollment, release, revocation, and their wording |
+| `src/connection/` | Welcome screen, connect form, pairing scanner, address policy, host identity and pins, saved-connection store, host client, and the gate's host context |
+| `src/chat/` | Conversation, transcript projection, composer, drafts, send receipts, dictation, completions, model and thinking controls, attachment menu, folder menu and registry starts, sessions, and changed files |
+| `src/inbox/` | The Inbox: sections, filters, and the account button |
+| `src/activity/` | The Voltra Live Activity, synced from working and waiting sessions |
+| `src/review/` | Review page: status, change totals, and Ask to Merge |
+| `src/settings/` | Settings page and the device's display preferences |
+| `src/annotate/` | Photo markup: numbered points, drawn marks, and comments |
+| `src/media/` | Photo picking, recent photos, local JPEG preparation, annotation notes, and the attachment thumbnail |
+| `src/development/` | Developer menu shortcuts and the design preview |
+| `src/ui/` | Shared glass buttons, groups, chips, toasts, skeletons, and empty states |
+| `src/theme.ts` | Light and dark tokens for native and React Strict DOM |
+| `modules/nyte-photo-access/` | Local Expo module for the limited-library picker |
 | `plugins/` | Source-controlled Expo native configuration |
+| `scripts/` | Completion icon sync |
 | `test/` | Behavior checks without native modules |
 
-`chat/composer.tsx` owns drafts, attachment staging, Send/Stop, model and
-thinking choice, the new-chat workspace menu, and the glass pill the transcript
-scrolls under. Resting it is one row; focus grows a model menu and a thinking
-gauge that morphs into the host's effort slider. A new chat shows a workspace
-chip above the glass, Home then recents, calling `workspace.select`. Plus morphs
-into Camera and Photos over the keyboard, then a library grid or live camera; a
-session head chip appears only when there is more than one head to send on. It also owns the bottom inset: the composer sits on the
-keyboard's top edge while it is open and clears the home indicator while it is
-closed, so the screens around it pass no keyboard offsets of their own. `chat/completions.ts` and `chat/suggestion-menu.tsx` own the `@`
-and `/` menus.
-`settings/preferences.ts` owns the device's own settings — appearance,
-transcript font, and what the Agents list shows — in one MMKV instance. They
-describe this phone rather than the host, so they never travel over the wire,
-and the Keychain still holds the token. MMKV reads synchronously, so the first
-paint already has the stored value instead of flashing a default. A setting is
-one list of value-and-label choices whose first entry is the default, so the
-options cannot drift from the words on screen and no setting can lack a
-fallback; a hook hands a row that list together with the current choice, so a
-row cannot show one setting's value over another's menu. Appearance stores the
-argument `Appearance.setColorScheme` takes, including its `unspecified` for
-following the system, rather than a second spelling to translate.
-`chat/messages.tsx` owns message and Markdown rendering. Keep a feature's state
-and components together; add a shared UI component only when several features
-use it. Protocol types and execution rules stay in their existing workspace
-packages. Imports point directly to the owning file; there are no barrels.
+The main transcript and composer files:
 
-[Bluesky's source organization](https://github.com/bluesky-social/social-app/tree/main/src)
-was reviewed as a reference for separating app startup, screens, and feature
-components. Nyte uses smaller feature folders suited to this companion app;
-no Bluesky implementation or styling was copied.
+| File | Owns |
+| --- | --- |
+| `src/chat/transcript-rows.ts` | Ordered transcript and live activity projection. An activity row is copied only when one of its tools changes. |
+| `src/chat/messages.tsx` | Message bubbles and activity summaries |
+| `src/chat/tool-activity-sheet.tsx` | Tool and reasoning detail sheets |
+| `src/chat/markdown.tsx` | Native Markdown sized to its container |
+| `src/chat/composer.tsx` | Draft, delivery, input, attachments, model, and thinking |
+| `src/chat/drafts.ts` | Text draft storage |
+| `src/chat/send-receipts.ts` | Persisted retry identity and delivery choice |
+| `src/chat/message-scroller.tsx` | Keyboard coordination and anchoring on the exact sent message |
+| `src/chat/workspace-start.ts` | Registry folder choice and the durable `environment.start` record |
+
+`settings/preferences.ts` keeps this phone's display settings in one MMKV instance.
+They describe the phone, not the host, so they never travel over the wire. MMKV
+reads synchronously, so the first paint has the stored value. Each setting is one
+list of value-and-label choices whose first entry is the default. Appearance stores
+the argument `Appearance.setColorScheme` takes, including `unspecified` for the
+system setting.
+
+Keep a feature's state and components together, and add a shared UI component only
+when several features use it. Imports point at the owning file; there are no
+barrels. [Bluesky's source organization](https://github.com/bluesky-social/social-app/tree/main/src)
+was reviewed for separating startup, screens, and feature components; none of its
+code or styling was copied.
+
+## Runtime ownership
+
+Provider execution and storage stay on the host. Follow-ups call `messages.send`
+while Stop stays available. Selections use core's `waitingCall(state)` projection,
+protocol validation, and `runs.reply` with the exact wait identity; the app never
+invents a reply outcome. Desktop and iOS share the `sessionMark` projection for
+execution status.
+
+`SessionObserver` owns bootstrap, watch recovery, and metadata refreshes. One
+observer per host client and session is shared by the conversation, review, and
+changed-files screens, and closes with its last consumer or when the app goes to
+the background. Transcript rows and change summaries depend on the committed
+transcript, so text deltas don't rebuild them.
+
+The model menu reads `provider.models.list()`; the host filters credentials,
+account restrictions, and hidden models. Choosing a model queues
+`sessions.configure` and doesn't change the active run's frozen config. Both apps
+must run the same protocol revision.
+
+Photos are decoded one at a time, resized, and re-encoded as JPEGs, each capped at
+230 KiB of base64 to fit the host's default request budget. Valid photos stay staged
+if another fails. Camera access is requested when the camera opens; no microphone
+or frame processor is used, and the session is released on dismissal. The
+Simulator has no camera, so test attachments with its photo library. Dictation uses
+`expo-speech-recognition`; each recording belongs to one composer and stops when
+that route loses focus.
+
+`workspace.vcs.diff` returns the current working-tree diff and is labeled that way,
+since it can contain other edits. Missing diffs are shown as missing.
+
+### Known gaps
+
+- Two controls configure the session's model and thinking level separately, so they
+  can disagree after a queued change.
+- Changing the delivery choice discards an unresolved message receipt. If the host
+  accepted a send but the answer was lost, a retry then sends a new key and can run
+  the message twice.
+- Each send prepares and stores its receipt twice, serializing photo bytes each
+  time.
+- The Inbox mounts every loaded session in one `ScrollView`, and its relative-time
+  clock updates every row.
+- Photo drafts live only in the mounted composer.
+- Nothing sends Live Activity pushes (see [APNs environment](#apns-environment)).
+
+## Design
+
+The interface reads like a messaging app: a light gray inbox with white status
+cards and inset separators, blue outgoing and gray incoming bubbles with larger
+message text, and compact activity summaries that open native sheets. Reference
+screenshots for that direction are kept outside the repository.
+
+- Header actions use one native glass button, with no second ring around an icon
+  or profile photo. Settings-row icons stay bare, with 44pt touch targets. Selected
+  cards use a border, not a checkmark.
+- The composer is one elevated glass capsule over a transparent dock, built on
+  `expo-glass-effect` (Apple's `UIGlassEffect`). The input is a native text view
+  inside that material. Both follow the app's light or dark appearance.
+- The attachment menu ports [expo-morphing-menu](https://github.com/rit3zh/expo-morphing-menu)
+  as one interaction: the plus hands off to a glass menu, rows appear in sequence,
+  the menu expands into a photo grid, and an added photo flies into the measured
+  composer thumbnail. It keeps Nyte's controlled draft, camera, staging, and
+  annotation. The license and source revision are in [NOTICE.md](NOTICE.md).
+- The `@` and `/` menus use native glass and a virtualized list that fits above the
+  composer and keyboard, with 4pt gaps and 44pt minimum touch targets.
+- The welcome screen uses Nyte's dithered moon. The account button shows the
+  signed-in user's image.
+
+React Strict DOM supplies the StyleX-compatible `css` API for native layout, with no
+WebView. Colors come from the shared roles in `packages/ui` through
+`@nyte-ai/ui/platform-colors`, and `pnpm --dir packages/ui check:tokens` rejects
+stale native output. The app follows the system appearance by default; a Settings
+override goes through `Appearance.setColorScheme`, so React Native, React Strict
+DOM, navigation, and native controls switch together.
+
+Legend List virtualizes messages. Keyboard Controller coordinates the composer and
+list insets. Enriched Markdown renders replies natively, respects Reduce Motion,
+and highlights code with the shared content roles. While a reply streams, `remend`
+closes dangling inline markers and code highlighting waits for the closing fence.
+Host failures for rename, pin, delete, or opening a link appear as toasts, and
+loading lists draw skeleton rows.
+
+### References
+
+| Source | Used for |
+| --- | --- |
+| [rit3zh/expo-morphing-menu](https://github.com/rit3zh/expo-morphing-menu) at `0aca4280254850ad065987bb8641ba69ae8ac891`, MIT | Ported attachment menu, morph geometry, photo selection, Add-button text animation, thumbnail entry and removal, and photo flight. See [NOTICE.md](NOTICE.md). |
+| [Margelo's AI chat demo](https://github.com/margelo/ai-chat-demo) at `6280b1f0f6d53d557b160481185e7bdfa7385cb6` | Chat and keyboard behavior. It has no license file, so none of its source is copied; the app reimplements the patterns with published libraries. Its provider connections, embedded keys, and fake history are not used. |
+| Mehdi Davoodi's MIT ChatGPT model-selector demo (`@mehdi_made`) | Thinking gauge geometry and springs |
+| [Reacticx](https://github.com/rit3zh/reacticx) at `58479704f1f831913970aa5e78e3691bcb9fa3f7` | Toast and shimmer patterns, reimplemented on Reanimated and Gesture Handler |
+| [T3's composer layout](https://github.com/pingdotgg/t3code/blob/68c2277f500bbbb299396bcdcd0aec60dcb5db9d/apps/web/src/components/chat/ChatComposer.tsx#L5925) and [mobile thread feed](https://github.com/pingdotgg/t3code/blob/0c5771d60a8ef2db34dfbbc142f7524badc829e0/apps/mobile/src/features/threads/ThreadFeed.tsx) | The 768pt chat width, compact gutters, and `chat/conversation-layout.ts` measuring one content column and handing rows explicit widths |
+| [Margelo React Native skills](https://github.com/margelo/react-native-skills), [Vercel React Native skills](https://github.com/vercel-labs/agent-skills/tree/main/skills/react-native-skills), [Expo skills](https://github.com/expo/skills) | MMKV, VisionCamera v5, list item types, native UI, routing, and animation guidance |
+
+Other design credits are in the repository's
+[third-party notices](../../THIRD-PARTY-NOTICES.md#design-references).
+
+## Package choices
+
+| Package | Responsibility |
+| --- | --- |
+| `expo` 57, React 19.2, React Native 0.86 | Native build and runtime |
+| `expo-router`, `react-native-screens` | File routes, native stack, sheets, header search, deep links |
+| `expo-updates` | Over-the-air updates on fingerprint runtimes |
+| `@nyte-ai/client`, `@nyte-ai/protocol` | Typed HTTP/SSE, boundary parsing, session observer, transcript projection, execution status |
+| `@nyte-ai/connect` | Broker client, account config, enrollment, and the managed-address policy. The app never imports its signing entry. |
+| `@noble/curves` | Ed25519 check of the host's identity signature |
+| `@clerk/expo`, `expo-auth-session`, `expo-web-browser` | Nyte account sign-in through Clerk's hosted page |
+| `@expo/ui` 57 | SwiftUI glass buttons, menus, and bottom sheets |
+| `expo-glass-effect`, `expo-blur` | Glass composer and menu surfaces |
+| `react-strict-dom`, `@nyte-ai/ui/platform-colors` | StyleX-compatible native layout and shared Nyte colors |
+| `@legendapp/list` | Virtualized transcript and sent-message anchoring |
+| `react-native-keyboard-controller` | Native keyboard coordination |
+| `react-native-enriched-markdown`, `remend` | Native Markdown and repair of incomplete streamed Markdown |
+| `@use-voltra/ios`, `@use-voltra/ios-client` | Live Activity and Dynamic Island |
+| `expo-speech-recognition` | On-device dictation and mic level |
+| `react-native-vision-camera` 5.2, `react-native-nitro-modules`, `react-native-nitro-image` | Photo capture and QR scanning |
+| `expo-media-library`, `expo-image-manipulator` | Library photos and local JPEG resizing |
+| `react-native-svg`, `react-native-view-shot` | Markup strokes and baking annotated photos |
+| `react-native-mmkv` 4 | Drafts, send receipts, registry starts, and display preferences |
+| `expo-secure-store`, `expo-crypto` | Saved token, Clerk token cache, host pins, device bearer and digest, and message keys |
+| `react-native-reanimated`, `react-native-worklets`, `react-native-gesture-handler` | Morphs, the thinking control, and the keyboard |
+| `expo-symbols`, `expo-clipboard` | SF Symbols and message copy |
+| `@tanstack/react-query` | Host reads per connection |
+| `typebox` | Parsing stored records at their boundary |
+
+React DOM stays a peer of React Strict DOM. Metro uses `expo/metro-config` with
+Reanimated's wrapper for clearer error stacks. Expo's dependency check excludes only
+TypeScript, which follows the repository version.
 
 ## Checks
 
@@ -464,221 +592,32 @@ pnpm --dir packages/mobile test
 pnpm --dir packages/mobile bundle
 ```
 
-`test` covers address validation, host error wording, account configuration,
-enrollment, release, and revocation against a local broker and Mac, the
-saved-connection store's ordering and rollback, and the restore policy, all
-without native modules. `bundle` builds a production Hermes bundle for iOS without starting a
-dev server. TypeScript follows the repository version; Expo's dependency check
-excludes only that compiler while enforcing its React and native library
-versions.
+`test` covers address and pairing-code policy, host error wording, account
+configuration, enrollment (including a failed identity check), release and
+revocation against a local broker and host, and the saved-connection store's
+ordering, rollback, and restore policy, all without native modules. `bundle` builds
+a production Hermes bundle for iOS without a dev server.
 
-## UI and reference
+### Verification status
 
-The interface follows the chat and keyboard behavior demonstrated by
-[Margelo's AI chat demo](https://github.com/margelo/ai-chat-demo), reviewed at
-`6280b1f0f6d53d557b160481185e7bdfa7385cb6`. That repository has no license file;
-this app independently implements its patterns using published libraries.
+| Build | What ran | Result |
+| --- | --- | --- |
+| Earlier prototype under a separate bundle identifier | A reused signed Release simulator binary with a new Hermes bundle and no Clerk key, against a source-built headless host and a desktop-style host | Registry folder choice and first-message start, a changed host key refused until Pair as New Host, and a host without identity all passed |
+| This package under the `dev.nyte.ios` identities | Resolved config for all three variants against the pre-migration configuration, typecheck, 35 tests, and a production Expo export | Passed |
+| This package under the `dev.nyte.ios` identities | Signed native build and GUI journeys | Not run |
 
-The Agents list is one sectioned session list under a large-title header with
-an integrated search field, a debounced query, and a filter menu; a new
-conversation starts from the capsule composer pinned above the safe area, which
-expands in place when the task needs a model or attachments first. Sections name what they hold, so failed runs sit under Failed
-rather than Needs input, the filter menu picks sections instead of re-deriving
-its own rules, and each row's label reads the same status its text shows. Review and changed-files screens derive edit evidence from the transcript
-rather than a second host read. Disconnect lives in Settings as a grouped
-destructive row with a confirmation before removing the saved token. Version
-sits in a centered footer, not a settings row. Empty screens share one
-title/body scale and short, specific copy, and name the filter or search that
-hid the rest.
+Not yet verified: a native build of this package, account sign-in with Clerk on
+these identities, a packaged
+`nyte serve` binary, real camera capture, microphone recognition, and performance on
+a device.
 
-Expo UI's SwiftUI `Button` supplies native `glass` and `glassProminent` controls
-on supported iOS versions, including iOS 27. `GlassButton` is the one button
-component that is not a list row: its `Host` handles SwiftUI sizing, while
-React Native owns the safe area and keyboard insets. SwiftUI sizes a
-string-label button to its own text and has no `.infinity` across the bridge, so
-`fill` — the single action a screen asks for, such as Connect or Ask to merge —
-draws an accent capsule from the shared tokens and lets the row own the width.
-`prominent` means the accent tint rather than the desktop's near-black primary,
-because a black capsule is not what iOS calls a prominent action.
-Settings actions stay grouped list rows, and a row that opens a screen carries
-the disclosure chevron. A preference resolves on the row instead: a pull-down
-menu shows its value beside `chevron.up.chevron.down`, and a switch toggles in
-place, so choosing one never leaves the page. Grouped cards separate from the
-page by their surface alone; the hairlines between rows start under the leading
-tile, or under the label in groups that have none. The home and chat composer is
-a Liquid Glass pill: plus, prompt, and mic or send on one row until the field is
-focused, then the prompt lifts and a model menu plus thinking gauge join the
-icon row. On the Agents list, a workspace chip for Home or a recent folder sits
-above that pill. Tapping the gauge stretches it into the reasoning-effort slider above
-the keyboard, using the selected model's `thinkingLevels` rather than a fixed
-Instant/Medium/High set. Geometry and springs follow Mehdi Davoodi's MIT
-ChatGPT model-selector demo (`@mehdi_made`); the app wires those stops to
-`sessions.configure`. Tapping plus morphs it into Camera and Photos, then a
-library grid or live camera, from the same author's MIT attachments-menu demo;
-photos come from the on-device library and VisionCamera. A session head is
-shown only when there is more than one to send on. Plus, mic, send, and stop are symbols on that card rather
-than nested glass buttons, so the material stays one surface. The empty field
-keeps one dictate control. Message content stays on solid surfaces.
+Before relying on a build, check on a device:
 
-React Strict DOM supplies the StyleX-compatible `css` API for native layout,
-with no WebView bridge. All screens consume colors, typography, spacing, radii,
-and control metrics from `src/theme.ts`. Colors are generated from the shared
-roles and hue scopes in `packages/ui/src/roles.stylex.ts` and
-`packages/ui/src/theme.stylex.ts` through `@nyte-ai/ui/platform-colors`;
-`pnpm --dir packages/ui check:tokens` rejects stale native color output.
-The app follows the system appearance by default: `userInterfaceStyle` is
-`automatic`, RSD `css` tokens resolve light and dark values through
-`prefers-color-scheme`, and native controls read the active palette through
-`useTheme()`. Settings can override it, and that override goes through
-`Appearance.setColorScheme`, so `useColorScheme`, `prefers-color-scheme`, the
-navigation theme, and native controls all move together instead of splitting
-into a second source of truth. Native type sizes
-and touch targets stay in the iOS theme rather than inheriting desktop density.
-
-Legend List owns message virtualization and sent-message anchoring. Keyboard
-Controller coordinates the composer and list insets. Enriched Markdown renders
-replies natively and respects iOS Reduce Motion. Expo supplies the native build,
-streaming fetch, and Keychain integration. A fenced code block reads as mono on
-the theme fill with no border, matching the desktop client's treatment, and
-tree-sitter highlighting uses the shared scoped content roles: purple keywords,
-green strings, blue identifiers, teal constants, and orange variables.
-While a reply streams, `remend` closes its
-dangling inline markers and the renderer's `codeBlockMode` defers highlighting
-until the closing fence arrives. Transient host failures (rename, pin, delete,
-opening a link) surface as toasts above the composer rather than alert dialogs,
-and loading lists draw skeleton rows instead of a lone spinner. Both patterns
-were reviewed against [Reacticx](https://github.com/rit3zh/reacticx)'s Toast and
-Shimmer at `58479704f1f831913970aa5e78e3691bcb9fa3f7` and reimplemented on the
-app's existing Reanimated/Gesture Handler stack.
-
-## Package choices
-
-| Package | Responsibility |
-| --- | --- |
-| `expo` 57, React 19.2, React Native 0.86 | Native build and app runtime |
-| `expo-router` | File routes, native tabs and stacks, sheets, header search, deep links |
-| `react-native-screens` | Native stack and tab presentation for the router |
-| `@use-voltra/ios`, `@use-voltra/ios-client` | Lock-screen Live Activity and Dynamic Island content |
-| `expo-speech-recognition` | On-device dictation and mic level for the composer |
-| `react-native-svg`, `react-native-view-shot` | Markup strokes and baking annotated photos |
-| `@expo/ui` 57 / `swift-ui` | Native glass controls and menus |
-| `react-strict-dom` | StyleX-compatible native content layout |
-| `@nyte-ai/ui/platform-colors` | Generated shared Nyte colors |
-| `@nyte-ai/client`, `@nyte-ai/protocol` | Typed HTTP/SSE transport, boundary parsing, selection validation, session observer, transcript projection, shared execution status |
-| `@nyte-ai/connect` | Nyte Connect contract: broker client, schemas, and the managed-address policy. The mobile app never imports its signing entry |
-| `@clerk/expo`, `expo-auth-session`, `expo-web-browser` | Nyte account sign-in through Clerk's hosted page |
-| `@legendapp/list` | Virtualized chat and sent-message anchoring |
-| `react-native-keyboard-controller` | Native keyboard coordination |
-| `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |
-| `remend` | Repairs incomplete streamed Markdown (same library react-native-streamdown uses) |
-| `expo-symbols`, `expo-clipboard` | SF Symbols and local message copying |
-| `expo-glass-effect`, `expo-blur` | Liquid Glass composer card and the thinking-slider track |
-| `react-native-gesture-handler` | Pan on the thinking slider |
-| `react-native-mmkv` 4 | Synchronous storage for display preferences |
-| `react-native-vision-camera` 5.2 | Native still-photo capture |
-| `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
-| `expo-media-library`, `expo-image-manipulator` | System photo selection and local JPEG resizing |
-| `expo-secure-store`, `expo-crypto` | Saved host token, Clerk token cache, device bearer and digest, and message retry IDs |
-| `expo-constants`, `expo-linking`, `expo-status-bar` | Router runtime peers, deep links, and status bar |
-| `react-native-safe-area-context` | Device and modal insets |
-| `react-native-reanimated`, `react-native-worklets` | Keyboard peers and the composer/thinking morph |
-| `typebox` | Parse the saved connection at its boundary |
-
-React DOM remains a peer of React Strict DOM. `expo-dev-client` supports local
-native development. Metro uses `expo/metro-config` with Reanimated's supported
-wrapper for clearer error stacks; it is not a runtime speed optimization. Expo's
-preset already installs the Worklets transform, and Reanimated 4.5 enables its
-React-commit-only hook optimization by default. The unused direct
-`@react-native/metro-config` dependency was removed. Review and selection use
-existing native lists and protocol APIs, without another navigation, state, or
-diff-rendering package.
-
-The demo's provider connections, RAG tools, embedded keys, patches, and fake
-history are not part of this app. Model work stays on the Nyte host.
-
-T3's [composer layout](https://github.com/pingdotgg/t3code/blob/68c2277f500bbbb299396bcdcd0aec60dcb5db9d/apps/web/src/components/chat/ChatComposer.tsx#L5925)
-informs the shared 768pt maximum chat/composer width, compact mobile gutters,
-and model control below the text input. The resting chrome — plus, model pill,
-mic, and a filled disc under the prompt — follows the input in
-[Reacticx's BorderBeam showcase](https://github.com/rit3zh/reacticx/blob/4e11fcfe04e0bd7054574acc1557320911d70e4c/app/components/border-beam/index.tsx),
-not the beam shader, and is implemented with Nyte tokens rather than that
-demo's source. T3's mobile
-[thread feed](https://github.com/pingdotgg/t3code/blob/0c5771d60a8ef2db34dfbbc142f7524badc829e0/apps/mobile/src/features/threads/ThreadFeed.tsx)
-informs `chat/conversation-layout.ts`: the screen measures the list viewport
-once, centers one content column inside the horizontal safe area, and hands
-rows explicit widths. Native Markdown and the 85% user bubble wrap against
-those numbers instead of inherited percentages. React Strict DOM sizes boxes as
-`content-box`, so rows never combine `width: 100%` with padding. Message rows
-are plain views with a small copy button in their meta line; wrapping them in
-a SwiftUI host measured text without a width bound. Software Mansion's
-[native Markdown](https://github.com/software-mansion/enriched-markdown) and
-[Reanimated guidance](https://docs.swmansion.com/react-native-reanimated/docs/guides/performance/)
-inform native text rendering and keyboard coordination. The camera follows
-[Margelo's current skills](https://github.com/margelo/react-native-skills/tree/main/skills)
-and VisionCamera v5 API; it does not use deprecated v4 camera methods.
-The `@`/`/` lists still grow out of the composer rather than arriving as a
-sheet. Model choice stays a SwiftUI menu on the focused card. Thinking level is
-the gauge-to-slider morph above, not a second menu.
-
-## Runtime ownership and remaining work
-
-Provider execution and storage stay on the host. Follow-ups call `messages.send`
-while Stop remains available. Selections use core's `waitingCall(state)` projection,
-protocol validation, and `runs.reply` with the exact wait identity. Core returns
-the reply outcome; the app never fabricates one from its local clock. Desktop
-and iOS use the same `sessionMark` projection for execution status.
-
-`SessionObserver` owns bootstrap, watch recovery, and metadata refreshes. iOS
-shares one observer per host client and session across the conversation, review,
-and changed-files screens. Opening another screen reuses the current state;
-closing the last consumer or backgrounding the app closes observation. Model
-choices share a selection version and refresh metadata; answering a selection
-refreshes the snapshot so parked calls remain ordered by core.
-
-Transcript rows and change summaries depend on the committed transcript, so
-text deltas do not rebuild them. Change totals use the shared client's projection
-of core's file classifications. The diff screen creates display rows only for
-expanded files, capped at 400 until the user asks for the remaining lines.
-Vercel's [list guidance](https://github.com/vercel-labs/agent-skills/blob/main/skills/react-native-skills/rules/list-performance-item-types.md)
-informs message types for per-kind size estimates. Recycling stays off because
-disclosure rows hold local state.
-
-The model picker calls `provider.models.list()`; the Mac
-filters credentials, account restrictions, and its hidden/disabled model
-preferences. An empty host catalog clears the displayed list. Choosing a model
-queues `sessions.configure`; it does not replace the active run's frozen config.
-Both apps must run the same protocol revision.
-
-Photos are decoded sequentially, resized and re-encoded locally as JPEGs. The
-app retains normalized bytes across failed sends and preserves the message's
-retry key while the content is unchanged. Valid photos remain staged if another selection fails. Send errors stay beside
-the composer, and question errors stay in their question card. Each image is capped at 230KiB of
-base64 data to leave room in the host's default request budget. The host still
-owns its configurable request limit. Camera access is requested when opening
-the camera; no microphone or frame processor is used. The camera session is
-released on dismissal and pauses when backgrounded. Simulator has no camera;
-use its photo library to test attachment staging and sending.
-
-`runs.diff` returns the run's file diff. `workspace.vcs.diff` returns the current
-working-tree diff and is labeled that way, since it can contain other edits.
-Missing diffs are shown explicitly; this is not run-isolated patch storage.
-The review page composes those same real reads; because the protocol exposes
-no pull-request, deployment, or merge operation, its merge button posts a
-merge instruction as a follow-up message and the host agent performs it with
-its own tools.
-
-Photo markup taps place numbered points with comments and drags draw strokes;
-saving captures the image plus marks into a fresh staged JPEG and the comments
-travel as text beside it. Dictation uses `expo-speech-recognition` with live
-volume events for the waveform; transcripts land in the same draft and nothing
-records without the permission prompt.
-
-The Agents list mirrors the host's working sessions into a Voltra Live
-Activity — lock-screen card plus Dynamic Island variants — that starts when
-work appears, updates while the session set changes, and ends when nothing is
-working; the system Settings toggle is the off switch. Live Activities render
-Voltra JSX, not React Native views.
-
-Durable drafts across navigation to the conversation list, offline history,
-and real-phone pairing remain future work. Design attribution is recorded in
-[Third-party notices](../../THIRD-PARTY-NOTICES.md#design-references).
+- Send several lines, keep typing while a send is pending, and retry a failed send.
+- Queue a follow-up while tools run, then watch the queued bubble land.
+- Scroll up during streaming, open tool details, close them, and return to the
+  latest message.
+- Read long Markdown and shell output with larger text in both appearances.
+- Leave a draft, return to it, then switch host and confirm drafts stay separate.
+- Dictate, attach and mark up a photo, answer a waiting question, Stop, and review
+  files.

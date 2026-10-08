@@ -11,10 +11,13 @@
 }
 
 html,
-body {
+body,
+#root {
   margin: 0;
   padding: 0;
-  block-size: 100%;
+  block-size: auto;
+  min-block-size: 100%;
+  overflow: visible;
 }
 
 body {
@@ -26,16 +29,4 @@ body {
 button {
   font: inherit;
   color: inherit;
-}
-
-:root[data-lab-page="/core"] {
-  overflow: auto;
-  user-select: text;
-  line-height: normal;
-}
-
-:root[data-lab-page="/core"] :is(body, #root) {
-  block-size: auto;
-  min-block-size: 100%;
-  overflow: visible;
 }

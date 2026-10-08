@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import process from "node:process";
+import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { open } from "./terminal.ts";
-import { scenarios } from "./journeys.ts";
+import { headless } from "./headless.ts";
+import { tui } from "./tui.ts";
 import type { BinaryIdentity, InputRecord, Scenario, Terminal } from "./types.ts";
 
 const packageInfoParser = Compile(Type.Object({ version: Type.String() }));
@@ -30,11 +32,19 @@ const inputBudget = { p95Ms: 1000 / 60, maxMs: 50 };
 
 const active = new Set<Terminal>();
 
+/** Scenario teardowns, newest last; a stopped run still removes its fixtures. */
+const deferred = new Set<() => Promise<void>>();
+
+/** Visible playback only: how long a finished step stays on screen before the next one. */
+const SHOW_STEP_PAUSE_MS = 900;
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    void Promise.allSettled([...active].map((terminal) => terminal.close())).then(() =>
-      process.exit(signal === "SIGINT" ? 130 : 143),
-    );
+    void (async () => {
+      for (const teardown of [...deferred].toReversed()) await teardown().catch(() => {});
+      await Promise.allSettled([...active].map((terminal) => terminal.close()));
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    })();
   });
 }
 
@@ -43,8 +53,9 @@ async function main() {
     args: process.argv.slice(2),
     options: {
       binary: { type: "string" },
-      filter: { type: "string" },
+      scenario: { type: "string" },
       show: { type: "boolean", default: false },
+      step: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -113,61 +124,96 @@ async function main() {
 
   process.stdout.write(`${JSON.stringify({ binary })}\n`);
 
-  const selected: Scenario[] = scenarios.filter(
-    (scenario) =>
-      !values.filter ||
-      `${scenario.name} ${scenario.covers.join(" ")}`
-        .toLowerCase()
-        .includes(values.filter.toLowerCase()),
-  );
+  const show = values.show || values.step;
+  const scenarios: Scenario[] = [headless, tui];
+  const named = scenarios.find((scenario) => scenario.name === values.scenario);
 
-  if (selected.length === 0)
-    throw new Error(`No scenarios match ${JSON.stringify(values.filter ?? "")}.`);
+  if (values.scenario !== undefined && named === undefined)
+    throw new Error(`--scenario must be headless or tui, not ${JSON.stringify(values.scenario)}.`);
+
+  if (show && named?.name === "headless")
+    throw new Error("--show plays the tui scenario; headless has no screen to show.");
+  const selected = named ? [named] : show ? [tui] : scenarios;
   const results = [];
 
   for (const [index, scenario] of selected.entries()) {
-    const directory = join(root, `case-${index + 1}`);
-    const home = join(directory, "home");
-    const cwd = join(directory, "workspace");
-    await mkdir(home, { recursive: true });
+    const cwd = join(root, `${index + 1}-${scenario.name}`);
     await mkdir(cwd);
 
-    const env = {
-      ...environment,
-      HOME: home,
-      USERPROFILE: home,
-      XDG_CONFIG_HOME: join(home, ".config"),
-      XDG_DATA_HOME: join(home, ".local/share"),
-      XDG_CACHE_HOME: join(home, ".cache"),
-      XDG_STATE_HOME: join(home, ".local/state"),
-    };
-
     const terminals: Terminal[] = [];
+    const steps: { name: string; status: "pass" | "fail"; durationMs: number }[] = [];
+    let caption = "";
     let failure: string | undefined;
     const startedAt = performance.now();
+    // Visible playback owns the terminal; its caption reports progress instead.
+
+    const progress = (line: string) => {
+      if (!show) process.stderr.write(`${line}\n`);
+    };
+
+    progress(scenario.name);
+
+    const current = () => terminals.at(-1);
+
+    const showCaption = (text: string) => {
+      caption = text;
+      current()?.caption(text);
+    };
 
     try {
       await scenario.run({
         binary,
-        home,
         cwd,
-        env,
-        show: values.show,
-        async open(options = {}) {
+        defer(teardown) {
+          deferred.add(teardown);
+
+          return () => deferred.delete(teardown);
+        },
+        async open(options) {
           const terminal = await open({
             binary: binary.path,
             cwd,
-            env,
+            env: environment,
             width: 100,
             height: 32,
             ...options,
-            show: values.show,
+            show,
           });
 
           terminals.push(terminal);
           active.add(terminal);
+          terminal.caption(caption);
 
           return terminal;
+        },
+        async beat(name, run) {
+          const label = `${scenario.name} ${steps.length + 1}. ${name}`;
+          const began = performance.now();
+
+          if (values.step) {
+            showCaption(`enter run · ctrl+c stop   next: ${label}`);
+            await current()?.waitForWatcher();
+          }
+
+          showCaption(`▸ ${label}`);
+
+          try {
+            await run();
+          } catch (cause) {
+            steps.push({ name, status: "fail", durationMs: performance.now() - began });
+            progress(`  ✗ ${name}`);
+            showCaption(`✗ ${label}`);
+
+            if (show) await setTimeout(3 * SHOW_STEP_PAUSE_MS);
+            const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+            throw new Error(`Step "${name}": ${detail}`, { cause });
+          }
+
+          steps.push({ name, status: "pass", durationMs: performance.now() - began });
+          progress(`  ✓ ${name}`);
+          showCaption(`✓ ${label}`);
+
+          if (show && !values.step) await setTimeout(SHOW_STEP_PAUSE_MS);
         },
       });
     } catch (error) {
@@ -220,7 +266,7 @@ async function main() {
 
     const result = {
       name: scenario.name,
-      covers: scenario.covers,
+      steps,
       status: failure ? "fail" : "pass",
       failure,
       durationMs: performance.now() - startedAt,
@@ -232,7 +278,7 @@ async function main() {
     };
 
     await writeFile(
-      join(directory, "evidence.json"),
+      join(cwd, "evidence.json"),
       JSON.stringify(
         {
           ...result,
@@ -242,7 +288,7 @@ async function main() {
               screen: screens[terminalIndex],
               inputs: terminal.inputs,
               chunks: terminal.chunks,
-              exitCode: await terminal.exited,
+              exitCode: await terminal.exited.catch(() => null),
             })),
           ),
         },
@@ -257,7 +303,7 @@ async function main() {
   await writeFile(join(root, "report.json"), JSON.stringify({ binary, results }, null, 2));
   const failed = results.filter((result) => result.status === "fail").length;
   process.stdout.write(
-    `${results.length - failed}/${results.length} cases passed. ${failed} failed. Report: ${join(root, "report.json")}\n`,
+    `${results.length - failed}/${results.length} scenarios passed. ${failed} failed. Report: ${join(root, "report.json")}\n`,
   );
   process.exitCode = failed ? 1 : 0;
 }

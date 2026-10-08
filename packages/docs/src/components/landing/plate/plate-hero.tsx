@@ -1,5 +1,3 @@
-import { role } from "@nyte-ai/ui/vars.stylex";
-import { create, props } from "@stylexjs/stylex";
 import { FactWord } from "./fact-word";
 import { HostStage } from "./host-stage";
 import { DesktopHost } from "./hosts/desktop-host";
@@ -16,7 +14,7 @@ const kbdClass =
 
 export function PlateHero() {
   return (
-    <div className="landing-plate relative isolate mx-(--plate-inset) mt-[calc(var(--plate-inset)-var(--site-nav-top)-var(--site-nav-height))] overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
+    <div className="landing-plate relative isolate mx-(--plate-inset) mt-[calc(var(--plate-inset)-var(--site-nav-top)-var(--site-nav-height))] overflow-clip rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
       <div
         aria-hidden="true"
         className="landing-plate-grain pointer-events-none absolute inset-0"
@@ -24,9 +22,7 @@ export function PlateHero() {
 
       <section className="relative mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-[calc(var(--plate-nav-drop)+var(--site-nav-height)+64px)] pb-(--site-pad) max-sm:pt-[calc(var(--plate-nav-drop)+var(--site-nav-height)+52px)]">
         <div className="flex flex-col items-center text-center">
-          <h1
-            className="font-pixel animate-plate-rise text-[clamp(2.75rem,1.1rem+4.6vw,4.75rem)] leading-[1.02] tracking-[-0.01em] text-balance motion-reduce:animate-none"
-          >
+          <h1 className="animate-plate-rise font-pixel text-hero text-balance motion-reduce:animate-none">
             Agent, deploy <br />
             anywhere.
           </h1>
@@ -85,7 +81,6 @@ export function PlateHero() {
             <NavSentinel />
             <div
               aria-hidden="true"
-              {...props(styles.fade)}
               className="landing-plate-fade pointer-events-none absolute inset-x-[-50vw] top-[18%] -bottom-(--site-pad)"
             />
             <div className="relative animate-plate-rise [--rise:40px] [animation-delay:260ms] motion-reduce:animate-none">
@@ -103,9 +98,3 @@ export function PlateHero() {
     </div>
   );
 }
-
-const styles = create({
-  fade: {
-    backgroundImage: `linear-gradient(to bottom, transparent, color-mix(in oklab, var(--plate-haze) 70%, transparent) 22%, ${role.bgBase} 56%)`,
-  },
-});

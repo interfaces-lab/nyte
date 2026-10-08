@@ -3,8 +3,18 @@ import { SiteMobileNav } from "~/components/site-nav/mobile-menu";
 import { SiteSearch } from "~/components/site-nav/search";
 import { SiteNavSections } from "~/components/site-nav/sections";
 import { ThemeToggle } from "~/components/site-nav/theme-toggle";
-import { docsNav } from "~/lib/docs";
+import { docsNav, type NavSection } from "~/lib/docs";
+import { products } from "~/lib/products";
 import { githubUrl } from "~/lib/shared";
+
+const [firstProduct, ...moreProducts] = products;
+const productSection: NavSection = {
+  label: "Product",
+  items: [
+    { title: firstProduct.title, href: firstProduct.href },
+    ...moreProducts.map(({ title, href }) => ({ title, href })),
+  ],
+};
 
 /*
  * One bar, one position: sticky, dropped from the top so its pills sit
@@ -31,7 +41,7 @@ export function SiteNav() {
           <div className="flex items-center gap-2 justify-self-end">
             <ThemeToggle />
             <SiteSearch />
-            <SiteMobileNav sections={docsNav} githubHref={githubUrl} />
+            <SiteMobileNav sections={[productSection, ...docsNav]} githubHref={githubUrl} />
           </div>
         </div>
       </div>

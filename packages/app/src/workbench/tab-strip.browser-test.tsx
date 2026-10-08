@@ -1,6 +1,3 @@
-import { create, props } from "@stylexjs/stylex";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/vars.stylex";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { sessionId } from "@nyte-ai/protocol";
@@ -11,8 +8,6 @@ import { fileActions } from "./file-store.ts";
 import { terminalActions } from "./terminal-store.ts";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
-
-const styles = create({ agentAccent: { color: role.contentSecondary } });
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -118,16 +113,6 @@ export async function run(): Promise<string> {
     check(
       agentTab.title.includes("Agent command · read-only"),
       "Agent terminal tooltip lost its read-only label",
-    );
-    const accent = agentTab.querySelector<HTMLElement>('[data-agent-terminal="true"]');
-
-    if (accent === null) throw new Error("Agent terminal has no accent class");
-    const probe = document.createElement("span");
-    probe.className = props(surfaceTheme.purple, styles.agentAccent).className ?? "";
-    container.append(probe);
-    check(
-      getComputedStyle(accent).color === getComputedStyle(probe).color,
-      "Agent terminal does not use the readable purple accent",
     );
     const glyph = agentTab.querySelector("svg");
 

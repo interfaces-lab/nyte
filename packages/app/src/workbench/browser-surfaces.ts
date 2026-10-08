@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import type { BrowserDownload, BrowserSurfaceState, HostEvent } from "../bridge.ts";
+import type { BrowserDownload, BrowserKey, BrowserSurfaceState, HostEvent } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
@@ -9,22 +9,17 @@ interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
   /** Newest first. A finished download stays until dismissed. */
   readonly downloads: readonly BrowserDownload[];
-  readonly history: readonly Pick<BrowserSurfaceState, "url" | "title">[];
-  /** The find bar is open; set by Cmd+F from the page or the panel. */
+  /** The find bar is open; set by the find shortcut from the page or the panel. */
   readonly finding: boolean;
   /** An HTTP authentication challenge waiting for the user. */
   readonly login: { readonly host: string; readonly realm: string } | undefined;
-  /** The cookie jar the panel opened this surface in: a workspace path, or null for home. */
-  readonly owner: string | null | undefined;
 }
 
 const EMPTY: BrowserSurfaceView = Object.freeze({
   state: undefined,
   downloads: [],
-  history: [],
   finding: false,
   login: undefined,
-  owner: undefined,
 });
 
 const DOWNLOADS_SHOWN = 5;
@@ -32,6 +27,9 @@ const DOWNLOADS_SHOWN = 5;
 let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 
 const listeners = new Set<() => void>();
+
+/** The panel showing each surface; it takes the keys that surface's page forwards. */
+const keyListeners = new Map<string, (key: BrowserKey) => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
   const next = new Map(views);
@@ -66,12 +64,7 @@ export function applyBrowserEvent(
   event: Extract<
     HostEvent,
     {
-      kind:
-        | "browser_changed"
-        | "browser_download"
-        | "browser_open_tab"
-        | "browser_find_requested"
-        | "browser_login_requested";
+      kind: "browser_changed" | "browser_download" | "browser_open_tab" | "browser_login_requested";
     }
   >,
 ): void {
@@ -92,12 +85,6 @@ export function applyBrowserEvent(
   const held = current ?? EMPTY;
   const owned = current !== undefined || tab !== undefined;
 
-  if (event.kind === "browser_find_requested") {
-    if (owned) set(event.surface, { ...held, finding: true });
-
-    return;
-  }
-
   if (event.kind === "browser_login_requested") {
     if (owned) set(event.surface, { ...held, login: { host: event.host, realm: event.realm } });
 
@@ -117,20 +104,7 @@ export function applyBrowserEvent(
   if (!owned && state.agentHolders === 0) return;
   // A new load ends any challenge the previous one left open.
   const login = state.loading ? undefined : held.login;
-  const latest = held.history[0];
-
-  const history =
-    !state.loading &&
-    state.error === undefined &&
-    state.url !== "" &&
-    (latest?.url !== state.url || latest.title !== state.title)
-      ? [
-          { url: state.url, title: state.title },
-          ...held.history.filter((entry) => entry.url !== state.url),
-        ]
-      : held.history;
-
-  set(event.surface, { ...held, state, history, login });
+  set(event.surface, { ...held, state, login });
 
   if (tab !== undefined && state.url !== "") {
     workbenchController.actions.updateTab({
@@ -161,15 +135,21 @@ export function setBrowserFinding(surface: string, finding: boolean): void {
   if (current.finding !== finding) set(surface, { ...current, finding });
 }
 
-export function claimBrowserSurface(surface: string, owner: string | null): void {
-  set(surface, { ...(views.get(surface) ?? EMPTY), owner });
+export function onBrowserKey(surface: string, listener: (key: BrowserKey) => void): () => void {
+  keyListeners.set(surface, listener);
+
+  return () => {
+    if (keyListeners.get(surface) === listener) keyListeners.delete(surface);
+  };
 }
 
-/** Main clears history per cookie jar, so the displayed history follows the same owner. */
-export function clearBrowserHistory(owner: string | null): void {
-  for (const [surface, view] of views) {
-    if (view.owner === owner) set(surface, { ...view, history: [] });
-  }
+export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" }>): void {
+  keyListeners.get(event.surface)?.(event.key);
+}
+
+/** The panel is opening this surface, so its events land before the open answers. */
+export function claimBrowserSurface(surface: string): void {
+  if (!views.has(surface)) set(surface, EMPTY);
 }
 
 /**

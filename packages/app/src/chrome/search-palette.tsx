@@ -232,7 +232,7 @@ export function SearchPalette({
             />
           }
           meta={formatTimeAgo(session.lastActivityAt)}
-          onSelect={() => run(() => onOpenSession(session.sessionId))}
+          onClick={() => run(() => onOpenSession(session.sessionId))}
         >
           {sessionTitle(session)}
         </Command.Item>
@@ -248,7 +248,7 @@ export function SearchPalette({
           value={action.key}
           leading={<Icon name={action.icon} size={16} />}
           meta={action.meta}
-          onSelect={() => run(action.run)}
+          onClick={() => run(action.run)}
         >
           {action.label}
         </Command.Item>

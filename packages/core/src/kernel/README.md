@@ -155,6 +155,15 @@ Each chain has a `tip` and `base`. Pending is the half-open interval
 whole selected delivery. When a live run still owes an answer, a boundary drain
 takes only leading answer and report changes.
 
+On one `Nyte`, `messages.send`, `sessions.configure`, and
+`plugins.settings.apply` for a session are admitted in call order, each after
+the one before it. A setting applied before a send is stored before that send
+is admitted. Nothing pins a setting to a message: a request reads settings
+when it is built, so an apply after the send still changes what its run sees.
+A command's writes are done when `plugins.commands.run` returns; it runs
+outside this order because a command may call the model. Between hosts, CAS
+still decides.
+
 ## Prompt and tool state
 
 The model reads its instructions and tool declarations from the branch, never

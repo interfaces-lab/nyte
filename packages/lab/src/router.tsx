@@ -6,10 +6,12 @@ import { RequestsPage } from "./requests/page";
 import { ProjectsPage } from "./projects/page";
 import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
+import { TabsPage } from "./tabs/page";
 import { CanvasPage } from "./canvas/page";
 import { ChangesPage } from "./changes/page";
-import { ChatRailPage } from "./chat-rail/page";
 import { SdkSpecPage } from "./sdk/page";
+import { MessagesPage } from "./messages/page";
+import { ProfilePage } from "./profile/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -50,6 +52,12 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/tabs",
+    component: TabsPage,
+    head: () => ({ meta: [{ title: "Lab · Tabs" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/canvas",
     component: CanvasPage,
     head: () => ({ meta: [{ title: "Lab · Canvas" }] }),
@@ -62,9 +70,15 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({
     getParentRoute: () => rootRoute,
-    path: "/chat-rail",
-    component: ChatRailPage,
-    head: () => ({ meta: [{ title: "Lab · Chat rail" }] }),
+    path: "/messages",
+    component: MessagesPage,
+    head: () => ({ meta: [{ title: "Lab · Messages" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/profile",
+    component: ProfilePage,
+    head: () => ({ meta: [{ title: "Lab · Profile" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

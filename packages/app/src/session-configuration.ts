@@ -1,37 +1,59 @@
 import { mutationOptions } from "@tanstack/react-query";
 import type { MutationState, QueryClient } from "@tanstack/react-query";
-import { isTerminalPhase } from "@nyte-ai/client";
-import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import type { SessionsBridge } from "./bridge.ts";
 import { keys } from "./query-keys.ts";
-import type { SessionPage } from "./session-directory.ts";
 
 export type ConfigureSessionPatch = Pick<
   Parameters<SessionsBridge["configure"]>[0],
   "model" | "thinkingLevel"
 >;
 
-export type PendingConfiguration = MutationState<void, Error, ConfigureSessionPatch>;
+/** One sequence for every configure request in the app, so order survives any observer. */
+let nextConfigureStamp = 0;
 
-/** The observer's view of a local choice: reads begun before either step no longer answer it. */
+/** A request's own record: its place in that sequence. */
+interface ConfigureRequest {
+  readonly stamp: number;
+}
+
+export type PendingConfiguration = MutationState<
+  void,
+  Error,
+  ConfigureSessionPatch,
+  ConfigureRequest
+>;
+
 export interface SessionSelection {
-  request(): void;
-  /** Resolves once a read made after core's acknowledgement has landed, or at once when nothing observes the session. */
+  /** Resolves once a read that started after core's reply has landed in the cache; rejects when that read fails. */
   acknowledge(): Promise<void>;
 }
 
-/** Host refreshes must not erase a choice while its write is in flight. */
+/** The newest stamp whose acknowledged read the cache holds; nothing yet when the entry is gone. */
+export function acknowledgedThrough(client: QueryClient, sessionId: SessionId): number {
+  return client.getQueryData<number>(keys.sessionAcknowledged(sessionId)) ?? 0;
+}
+
+/**
+ * A choice paints from the moment it is made until its acknowledged read lands,
+ * newest last. Core admits requests in call order and answers after admitting,
+ * so a request stamped before one that has since been acknowledged is already
+ * in that acknowledgement's read and stops painting.
+ */
 export function projectSessionConfiguration(
   session: SessionInfo,
   pending: readonly PendingConfiguration[],
+  acknowledged: number,
 ): SessionInfo {
-  return pending.reduce(
-    (current, mutation) => ({
-      ...current,
-      config: { ...current.config, ...mutation.variables },
-    }),
-    session,
-  );
+  return pending
+    .filter((mutation) => (mutation.context?.stamp ?? Infinity) > acknowledged)
+    .reduce(
+      (current, mutation) => ({
+        ...current,
+        config: { ...current.config, ...mutation.variables },
+      }),
+      session,
+    );
 }
 
 export function sessionConfigurationOptions({
@@ -47,53 +69,23 @@ export function sessionConfigurationOptions({
 }) {
   return mutationOptions({
     mutationKey: ["session", sessionId, "configure"],
-    scope: { id: `session-config:${sessionId}` },
+    // Desktop IPC never waits for the network; a paused mutation would leave a
+    // choice painted but unsent while the outbox still sends.
+    networkMode: "always",
+    onMutate: (): ConfigureRequest => ({ stamp: ++nextConfigureStamp }),
     mutationFn: async (patch: ConfigureSessionPatch) => {
-      selection.request();
       const outcome = await sessions.configure({ sessionId, ...patch });
 
       if (outcome.kind !== "queued") throw new Error("That model setting is no longer available");
     },
-    onSuccess: async (_outcome, patch) => {
-      // Cancel reads begun before acknowledgement; the observer's own read at
-      // this version lands before the pending choice is released.
+    // The request stays pending, so its choice keeps painting, until a read made
+    // after core's reply is in the cache. Nothing replays the patch.
+    onSuccess: async (_outcome, _patch, request) => {
       await client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true });
       await selection.acknowledge();
-
-      const update = (session: SessionInfo): SessionInfo => ({
-        ...session,
-        config: { ...session.config, ...patch },
-      });
-
-      client.setQueryData<SessionInfo | null>(keys.session(sessionId), (current) =>
-        current == null ? current : update(current),
+      client.setQueryData<number>(keys.sessionAcknowledged(sessionId), (through) =>
+        Math.max(through ?? 0, request.stamp),
       );
-      // Selected inputs are the session's; the head's effective inputs follow only when no run holds them.
-      client.setQueryData<SessionSnapshot>(keys.snapshot(sessionId), (current) =>
-        current === undefined
-          ? current
-          : {
-              ...current,
-              session: update(current.session),
-              config:
-                current.run !== undefined && !isTerminalPhase(current.run.phase)
-                  ? current.config
-                  : { ...current.config, ...patch },
-            },
-      );
-      client.setQueryData<SessionPage>(keys.sessionPreview, (current) =>
-        current === undefined
-          ? current
-          : {
-              ...current,
-              items: current.items.map((session) =>
-                session.sessionId === sessionId ? update(session) : session,
-              ),
-            },
-      );
-    },
-    onSettled: () => {
-      void client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
     },
   });
 }

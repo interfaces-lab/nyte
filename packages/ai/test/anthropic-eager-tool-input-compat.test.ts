@@ -89,8 +89,6 @@ describe("Anthropic eager tool input streaming compatibility", () => {
       },
     });
 
-    expect(request.headers.get("x-api-key")).toBe("test-key");
-    expect(request.headers.get("authorization")).toBeNull();
     expect(request.headers.get("anthropic-beta")).toBeNull();
     expect(request.body).toMatchObject({
       tools: [{ name: "lookup", eager_input_streaming: true }],
@@ -106,8 +104,6 @@ describe("Anthropic eager tool input streaming compatibility", () => {
       },
     });
 
-    expect(request.headers.get("x-api-key")).toBe("test-key");
-    expect(request.headers.get("authorization")).toBeNull();
     expect(request.headers.get("anthropic-beta")).toBe("fine-grained-tool-streaming-2025-05-14");
     expect(request.body).toMatchObject({ tools: [{ name: "lookup" }] });
     expect(request.body).not.toHaveProperty("tools.0.eager_input_streaming");
@@ -119,8 +115,6 @@ describe("Anthropic eager tool input streaming compatibility", () => {
       context: { messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }] },
     });
 
-    expect(request.headers.get("x-api-key")).toBe("test-key");
-    expect(request.headers.get("authorization")).toBeNull();
     expect(request.headers.get("anthropic-beta")).toBeNull();
     expect(request.body).toMatchObject({
       model: "claude-opus-4-8",

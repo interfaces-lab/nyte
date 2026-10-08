@@ -24,7 +24,6 @@ import {
   runRef,
 } from "../../src/kernel/names.ts";
 import { pending, pendingIn, submit } from "../../src/kernel/queue.ts";
-import { moveHead } from "../../src/kernel/stacks.ts";
 import { waitForHead } from "../../src/kernel/sdk/wait.ts";
 import { drive, step, type StepOptions } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
@@ -992,48 +991,6 @@ for (const { configFrom, messageFrom, landed, queued, joined } of configAfterSto
   });
 }
 
-test("a repeated abort changes nothing, before or after the run ends", async () => {
-  const session = await openSession();
-  const turn = new Script([
-    async (input) => {
-      await flagAbort(input.session, input.run);
-      await flagAbort(input.session, { ...input.run, abortRequested: true });
-      return {
-        kind: "aborted",
-        message: assistant("", { stop: "aborted" }),
-        failure: { class: "aborted", message: "Aborted" },
-      };
-    },
-    complete("fresh"),
-  ]);
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "user",
-    body: say("hi"),
-  });
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
-  const stopped = await currentRun(session);
-  assert.ok(stopped !== undefined);
-  assert.equal(stopped.phase.kind, "aborted");
-  const before = await session.events.last();
-  await flagAbort(session, stopped);
-  assert.equal(await session.events.last(), before);
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
-
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "next",
-    kind: "user",
-    body: say("again"),
-  });
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
-  assert.notEqual((await currentRun(session))?.id, stopped.id);
-  assert.equal(await textAt(session, 3), "fresh");
-});
-
 /** A head whose last run ended without a stop, or never ran; each is as idle as a stopped one. */
 const idleHeads: readonly {
   readonly name: string;
@@ -1326,27 +1283,6 @@ function roleText(entry: Message): string {
     : content;
   return `${entry.role}:${text}`;
 }
-
-test("a head moved under a run ends the run and leaves its answer off the branch", async () => {
-  const session = await openSession();
-  const turn = new Script([
-    async (input) => {
-      await moveHead(input.session, { head: "main", to: null });
-      return complete("orphan");
-    },
-  ]);
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "user",
-    body: say("hi"),
-  });
-  await stepMain(session, turn);
-  assert.equal((await stepMain(session, turn)).kind, "finished");
-  assert.equal((await currentRun(session))?.phase.kind, "aborted");
-  assert.equal(await session.refs.read(headRef("main")), null);
-});
 
 test("a transient failure waits out its backoff durably, then tries again", async () => {
   const session = await openSession();

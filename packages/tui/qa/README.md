@@ -1,154 +1,98 @@
-# Binary terminal QA
+# Binary QA
 
 ```sh
-pnpm --dir packages/tui run test
-pnpm --dir packages/tui run test --filter models
-pnpm --dir packages/tui run test:show --filter models
+pnpm --dir packages/tui run test                        # both scenarios, automated
+pnpm --dir packages/tui run test --scenario headless    # piped CLI only
+pnpm --dir packages/tui run test --scenario tui         # real OpenTUI in a PTY only
+pnpm --dir packages/tui run test:show                   # tui scenario, visible in your terminal
+pnpm --dir packages/tui run test:show --step            # same, Enter runs each step
 ```
 
-These commands build Nyte, then run that executable in a real Bun PTY. OpenTUI's
-`EmbeddedTerminalRenderable` parses its output, sends terminal replies, encodes keys and paste,
-and exposes the emulated screen and cursor. The automated outer renderer uses memory output;
-Nyte itself is always a separate process with terminal stdin/stdout.
+Each command builds `bin/nyte` and runs that executable. `node qa/run.mjs --binary <path>` tests
+an existing executable without rebuilding. There are no other tests in this package.
 
-`node qa/run.mjs --binary /absolute/path/to/nyte` tests a specific existing executable without
-rebuilding. `--show` requires terminal stdin and stdout.
+## The two scenarios
 
-## Steer handoff regression
+`headless` runs the compiled CLI with pipes on stdin, stdout and stderr, so no terminal exists.
+Its steps are in `qa/headless.ts`:
 
-```sh
-pnpm --dir packages/tui run test:show --filter rendering.steer-handoff
-```
+1. `--help` prints plain usage on stdout and exits 0.
+2. `-p --json` streams `text` records while the provider still holds its stream, then a
+   `completed` result naming the session and its `nyte --session=` command.
+3. Piped stdin with `-p` runs a real `seq 1 3` through the bash tool. The answer goes to stdout,
+   and the tool name and outcome go to stderr. The tool output reaches the provider.
+4. `-p --session <id>` sends the earlier conversation and replays nothing.
+5. `--provider`, `--model` and `--effort` set the request's model and `reasoning_effort`. A
+   completed run saves them, so the next run without flags uses them.
+6. A provider error exits 1 with a `failed` result.
+7. SIGTERM while a bash tool runs exits 143 with a `cancelled` result, and the tool's process is
+   gone before QA cleanup starts.
 
-This fake settings-panel review uses the real binary and a loopback provider. While the
-reply is unfinished, it submits `Only change the spacing, not the colors.` with Enter. A steer
-message is drawn once, at the transcript's tail, in the shape of the turn it becomes: the same user
-block, with the lane row (`… sending`, then `↑ steer`) where the run's status row will go. Admission
-replaces that lane row in place, keeps the message on the same screen row, and preserves the next
-composer draft. A frame that shows the message twice, not at all, or on another row is a bug, not
-an accepted transition. The case observes frames from Enter to admission through
-`terminal.observe`, including the receipt-before-watch moment, and asserts each one. An observed
-frame is a complete child update as the emulator shows it at its next frame; updates that complete
-between two emulator frames are observed as one, so the evidence lists observed frames, not every
-update the binary painted.
+`tui` runs the same binary in a real PTY. Nyte draws with OpenTUI as it would for a person, and
+OpenTUI's `EmbeddedTerminalRenderable` parses that output, answers terminal queries, and encodes
+keys, mouse and resize. The steps are in `qa/tui.ts`:
 
-`queue.follow-ups` covers the other lane: Ctrl+Enter follow-ups in their compact rows below the
-transcript, the height cap and its `+N more` count across a resize, and queue edit, reorder,
-removal, and delivery order. It runs on its own: `--filter queue.follow-ups`.
+1. A project plugin makes Nyte ask for workspace trust. The default answer quits with no plugin
+   code run and no provider request, and the next launch asks again.
+2. Trusting the workspace loads the plugin, and its slash command answers.
+3. Each typed key shows in the composer. This is the one timed input: `text.idle` fails above a
+   p95 of 16.67 ms or a maximum of 50 ms. The reply shows while the provider still holds its
+   stream, then completes.
+4. Esc stops a run while its bash tool streams output. The tool process ends, no further provider
+   request is made, the typed draft stays, and Ctrl+C clears it.
+5. A 150-row reply pages up to its first row, one wheel step moves three rows, and Ctrl+End
+   returns to the newest row.
+6. Resizing to 64x20 and back keeps the draft, the cursor at its end, and one composer footer.
+7. The model picker and Shift+Tab change the footer without a request. The next request carries
+   the chosen model and `reasoning_effort`.
+8. A run started at `/effort low` keeps `low` for its tool continuation while Shift+Tab sets
+   `medium`. A Ctrl+Enter follow-up shows in the queue row, waits for the run to finish, and is
+   sent at `medium`.
+9. A question tool waits for a picked answer. The answer reaches the provider as the tool result,
+   with no extra user message.
+10. A `!` command runs locally without a model request, and Esc stops it and its process. `!echo
+    kept` puts its output in the composer, and the next prompt carries one exact `<shell>` block.
+11. Settings lists the thinking level. Esc closes it.
+12. `/quit` prints the two-line resume command. `--session=` reopens the transcript, model and
+    level without asking for trust again, and the next request carries the history.
+13. SIGTERM prints the same resume command and exits 143.
+14. A new session shows the saved model and level, and `/effort low` before its first message
+    reaches that request.
 
-The provider waits one second before finishing the current reply. That pause is deliberate,
-not a measurement of Nyte latency or an allowed transition duration. The next reply stays empty
-until the transcript is captured, so new answer text cannot hide or cause movement.
+A failure names its step. `--show` plays the same `tui` scenario on a real CLI renderer, with the
+step and latest input captioned above Nyte's screen and a short pause after each step. Pauses
+come before inputs, never between an input and its measured screen. Your keys never reach Nyte:
+Enter or Space continues a `--step` run, and Ctrl+C stops the run and cleans up. The terminal must
+be at least 100x33.
 
-Use `test` instead of `test:show` for an automated run. The case's `workspace` evidence directory
-contains `steer-before.txt`, `steer-pending.txt`, `steer-transcript.txt`, and `steer-handoff.json`.
-The JSON separates input feedback from provider-release-to-transcript time and records the
-message's rows in the pending and admitted screens, and in every frame between them.
+## Isolation
 
-## Contracts
+`run.mjs` sets HOME and an environment allowlist before Bun loads anything. Each scenario gets its
+own workspace (with a probe plugin and the public question plugin example), NYTE_HOME, settings, credentials, model catalog and database. Nyte talks to a
+loopback provider that speaks chat-completions SSE, and HTTP(S) proxy variables point at the same
+server, so a request for anything else is refused there and fails the scenario.
 
-- Input actions use `src/constants.ts`. The driver uses its parsed key strokes, not another key map.
-- Scenarios assert screens, provider HTTP requests, retained session behavior and exit output.
-  They never construct Interactive or read its private state.
-- Expected output must not already exist before the measured input. Draft assertions include
-  the composer row and cursor movement so padding and completion labels cannot fake a key echo.
-- Timing runs use demand-driven outer rendering and completed child synchronized-update frames, not
-  a polling interval or a continuous refresh loop. Elapsed time ends when the matching complete
-  emulated screen is observed.
-- A loopback provider speaks the actual chat-completions SSE protocol. A scripted step is chosen by
-  the newest run of adjacent user messages, so a finished background job's notice can travel beside
-  the message it lands with without taking that message's step. History before that run is excluded.
-- A pending message, durable admission, a provider reply and actual cancellation are different
-  outcomes. Their timings must not be combined into one input-latency claim.
-- Failing production behavior remains a failing case. Fix fixture or observation bugs based on
-  captured evidence; do not copy production implementation into the expected result.
+- The catalog is seeded under `rawCatalogs` in `models-store.json` with a fresh `checkedAt`, so Nyte
+  never refreshes it. The older top-level shape drops `checkedAt`, and Nyte then fetches the
+  public catalog.
+- A bash card asks GitHub for the bash grammar. The proxy refuses it, nothing is downloaded, and
+  the card stays plain. `tui` names these two refused requests; any other request fails.
+- Nyte finds ripgrep on PATH and otherwise downloads it, so QA needs ripgrep 12 or later on PATH
+  and stops with an install hint if it is missing. CI installs it with apt.
+- Clipboard and browser commands are replaced with failing stubs. No personal credentials or
+  sessions are used.
 
-## Isolation and evidence
+Cleanup stops every process, PTY, renderer, server and fixture directory, after a failure and
+when Ctrl+C or a signal stops the run. Provider evidence is written first and kept. A supervisor owns each PTY's process group. Headless runs get their own group, which is
+killed at the step deadline and at cleanup. Heartbeat tools record their PID, so cancellation is
+checked against the operating system before cleanup runs.
 
-The launcher sets HOME and an environment allowlist before importing Bun modules. Each fixture
-uses its own settings, credentials, catalog, workspace and database. A loopback provider speaks
-the actual chat-completions SSE protocol. The binary loads configured providers and plugins
-through its normal public boundaries. The question fixture bundles the exported plugin example
-with its dependencies, leaving `@nyte-ai/plugin` external so the binary supplies the host API.
-Title requests are handled separately from scripted chat requests. Unexpected requests fail
-instead of reaching a live provider.
+## Evidence
 
-Browser and clipboard commands are blocked in automated fixtures. No personal credentials or
-sessions are used. Terminal cleanup signals target the QA-owned process group. The fixture's
-heartbeat tool can record execution and termination for process-lifetime assertions.
+The run prints its evidence directory. It holds the binary path, hash, version, revision and
+OpenTUI version, per-step results, input timings, raw PTY output, final screens, headless
+stdin/stdout/stderr (`cli.json`), and provider requests (`provider.json`).
 
-Each run prints an evidence directory with:
-
-- Binary path, hash, version, checkout revision and installed OpenTUI version.
-- Per-case results and per-action p50, p95, maximum and unmatched input counts.
-- Input timestamps, pre-input screens, captured terminal screens, raw PTY output and exit status.
-- Provider request/event records beside the scenario workspace when that scenario uses a provider.
-
-An unmatched input has no recorded matching-screen timing. It must not be counted as zero latency.
-Per-action p50/p95/max timings are recorded for every case as evidence. Only one input is gated:
-`journey.long` marks its idle greeting as `text.idle`, which fails on missing measurements, p95
-above 16.67 ms, or any sample above 50 ms, so a gross input stall still fails. Everything else is
-judged on outcome. Provider replies and completed shutdown are never local-feedback measurements.
-
-## Journeys
-
-The suite is built against the approved full contract and
-does not yet cover the whole inventory. It is two continuous sessions plus two boundary cases. Each journey is a sequence of named
-beats in `qa/journeys.ts`; a failure names the beat a person was in. Beats assert what the person
-sees, what the loopback provider received, what survives a restart, and the exit output.
-
-`journey.short` — a quick session in an untrusted workspace: trust prompt → default declines and
-exits → reopen, accept trust → short question and reply → while a second reply streams, queue a
-steer and stop (the run continues with the steer; no handback) → stop over a typed draft keeps
-the draft; Ctrl+C clears it → stop an unanswered run with nothing queued hands the message back →
-`/quit` prints the two-line resume → `--session=` reopens the intact transcript → Ctrl+C exits.
-
-`journey.long` — a working session in a trusted workspace: idle greeting (the one gated latency
-check) → a bash tool with long output, backgrounded with Ctrl+Z, then cancelled from `/tasks`
-while the parent keeps running (process termination is verified by PID; the parent's reply lands
-on an idle screen, and the cancelled job's notice starts no run of its own: it waits and travels
-with the next message, on either side of it) → a second backgrounded
-bash dies when the parent is stopped → parent stop cancels a foreground child and its bash, then a
-background child and its bash → a question dialog is dismissed, revisited and answered, then a
-second one is answered by typing (each answer arrives as a tool result, no extra user message) → a
-queued follow-up is edited, the edit cancelled (draft restored), edited and saved, a second entry
-reordered and removed (never delivered) → page up to the first exchange and back down → model
-picker filters, moves and confirms the next request's model → Shift+Tab cycles thinking, a burst
-keeps the last intent, the picker drafts a level that Esc discards and Enter applies → settings
-shows ordinary model controls; usage opens and closes → decomposed `e`+U+0301 and a ZWJ
-emoji render and reach the provider intact → one of two background children is cancelled from
-`/tasks` while the parent and sibling finish → `/quit`, `--session=` resume keeps transcript,
-model and thinking level, and the waiting completions reach the model with the first message
-after the restart → local shell prefix rules, foreground cancellation,
-private versus retained output, thought expansion and inline edit diffs → quitting
-kills the local command tree, then resume restores submitted shell context without
-replaying local commands.
-
-`launch.help` covers the CLI boundary. `exit.signals.two-lines` covers SIGINT and SIGTERM.
-
-Still to add: all editor gestures, completion aliases, large-history/resize/mouse coverage, tree
-and branch summaries, rich paste/skill recovery, controlled Usage skeleton loading, update
-failures, and local latency coverage for every gesture. Do not infer these passed from nearby
-beats.
-
-Image pixels, OS clipboard, IME composition, browser login and physical terminal painting need
-separate real-terminal checks. Ghostty VT does not compose child Kitty graphics or Sixel images.
-A PTY timing is not a measurement of physical display scanout.
-
-## Upstream references
-
-These pinned documents were checked for the actual-binary boundary this suite keeps. They
-describe their own projects; they do not prescribe the rest of this QA design.
-
-- OpenCode's TUI package spec,
-  [verification gates](https://github.com/anomalyco/opencode/blob/95daf90670b7c039c436c85537da5fbfe2205b41/specs/tui-package.md#verification-gates):
-  interactive smoke tests run the real program under tmux, compiled-binary checks, and terminal
-  and process restoration afterwards. Here `qa/terminal.ts` runs the compiled binary in a Bun
-  PTY, scenarios assert the binary's exit output, and `qa/supervisor.ts` ends the QA-owned
-  process group so no descendant outlives a run.
-- OpenTUI 0.5.11 (installed; tag commit `6b9863ea7c5fae22bfebb23c242ddcc4c2b0aa0e`),
-  [embedded terminal](https://github.com/anomalyco/opentui/blob/6b9863ea7c5fae22bfebb23c242ddcc4c2b0aa0e/packages/web/src/content/docs/components/embedded-terminal.mdx)
-  and [testing](https://github.com/anomalyco/opentui/blob/6b9863ea7c5fae22bfebb23c242ddcc4c2b0aa0e/packages/web/src/content/docs/core-concepts/testing.mdx):
-  the emulator is not a process or PTY. The host feeds it the child's actual output, forwards
-  input and terminal responses back, resizes the child, reads `screen()` after a paint, and
-  cleans up both. `qa/terminal.ts` does exactly that with the binary's PTY.
+A matching emulated screen doesn't prove physical terminal scanout, OS clipboard behavior, IME
+composition, or image display. A PTY run of `--show` checks that playback runs. A person still
+has to watch it to judge legibility.

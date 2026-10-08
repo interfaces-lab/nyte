@@ -26,6 +26,8 @@ export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
 
 export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
 
+export const BROWSER_FOCUS_CHANNEL = "nyte:browser-focus";
+
 export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
@@ -141,6 +143,8 @@ export const HOST_OPERATION_PATHS = [
   "host.browser.find",
   "host.browser.cancelDownload",
   "host.browser.login",
+  "host.browser.history",
+  "host.browser.forgetHistory",
   "host.terminal.create",
   "host.terminal.write",
   "host.terminal.resize",

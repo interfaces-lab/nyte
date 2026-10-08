@@ -29,9 +29,10 @@ A search field for a long list, such as fonts or models. For a short list, use
 - Pass the data to `items` on `Autocomplete` and render each entry from a function child of
   `AutocompleteList`. Inside an `AutocompleteGroup`, render its entries with
   `AutocompleteCollection`.
-- Give each `AutocompleteItem` a `value`. Act on a pick in its `onClick`, and mark the current one
-  with `selected`.
-- `value` is the search text. Clear it in `onOpenChange` so the next open starts empty.
+- Give each `AutocompleteItem` a `value`. The selected item shows a checkmark.
+- `value` and `onValueChange` on `Autocomplete` hold the selection. `onValueChange` passes `null`
+  when the selection clears.
+- `inputValue` and `onInputValueChange` hold the search text.
 - To nest the list in another surface, such as a submenu, set `inline` and `open` on
   `Autocomplete`, drop `AutocompleteContent`, and set [`variant="inline"`](#variant).
 - Keep `AutocompleteStatus` and `AutocompleteEmpty` mounted and change their children, so screen
@@ -84,12 +85,13 @@ const [search, setSearch] = useState("");
 
 <Autocomplete
   items={groups}
-  value={search}
-  autoHighlight
-  onValueChange={setSearch}
-  onOpenChange={(open) => {
-    if (!open) setSearch("");
+  value={model}
+  onValueChange={(next) => {
+    if (next !== null) setModel(next);
   }}
+  inputValue={search}
+  onInputValueChange={setSearch}
+  autoHighlight
 >
   <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
   <AutocompleteContent>
@@ -101,12 +103,7 @@ const [search, setSearch] = useState("");
           <AutocompleteGroupLabel>{group.label}</AutocompleteGroupLabel>
           <AutocompleteCollection>
             {(item: string) => (
-              <AutocompleteItem
-                key={item}
-                value={item}
-                selected={item === model}
-                onClick={() => setModel(item)}
-              >
+              <AutocompleteItem key={item} value={item}>
                 {item}
               </AutocompleteItem>
             )}
@@ -121,7 +118,7 @@ const [search, setSearch] = useState("");
 
 ### Inside a submenu
 
-The [Menu](/docs/components/components/menu) submenu supplies the popup. `mode="none"` leaves filtering to
+The [Menu](/docs/components/components/menu) submenu supplies the popup. `filter={null}` leaves filtering to
 you.
 
 ```tsx
@@ -129,23 +126,21 @@ you.
   <Autocomplete
     inline
     open
-    mode="none"
+    filter={null}
     autoHighlight
     items={options}
-    value={search}
-    onValueChange={setSearch}
+    value={current}
+    onValueChange={(next) => {
+      if (next !== null) choose(next);
+    }}
+    inputValue={search}
+    onInputValueChange={setSearch}
   >
     <AutocompleteInput variant="inline" aria-label="Search models" placeholder="Search models" />
     <MenuSeparator />
     <AutocompleteList variant="inline">
       {(option: ModelOption) => (
-        <AutocompleteItem
-          variant="inline"
-          key={option.key}
-          value={option}
-          selected={option.key === current}
-          onClick={() => choose(option)}
-        >
+        <AutocompleteItem variant="inline" key={option.key} value={option}>
           {option.name}
         </AutocompleteItem>
       )}
@@ -165,19 +160,19 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Autocomplete
 
-<include>../../../base-ui-reference/autocomplete/Root.md</include>
+<include>../../../base-ui-reference/combobox/Root.md</include>
 
 ### AutocompleteTrigger
 
-<include>../../../base-ui-reference/autocomplete/Trigger.md</include>
+<include>../../../base-ui-reference/combobox/Trigger.md</include>
 
 ### AutocompleteValue
 
-<include>../../../base-ui-reference/autocomplete/Value.md</include>
+<include>../../../base-ui-reference/combobox/Value.md</include>
 
 ### AutocompleteClear
 
-<include>../../../base-ui-reference/autocomplete/Clear.md</include>
+<include>../../../base-ui-reference/combobox/Clear.md</include>
 
 ### AutocompleteContent
 
@@ -196,58 +191,57 @@ Everything else goes to the popup.
 
 #### Positioner
 
-<include>../../../base-ui-reference/autocomplete/Positioner.md</include>
+<include>../../../base-ui-reference/combobox/Positioner.md</include>
 
 #### Popup
 
-<include>../../../base-ui-reference/autocomplete/Popup.md</include>
+<include>../../../base-ui-reference/combobox/Popup.md</include>
 
 ### AutocompleteInput
 
-<include>../../../base-ui-reference/autocomplete/Input.md</include>
+<include>../../../base-ui-reference/combobox/Input.md</include>
 
 ### AutocompleteInputGroup
 
-<include>../../../base-ui-reference/autocomplete/InputGroup.md</include>
+<include>../../../base-ui-reference/combobox/InputGroup.md</include>
 
 ### AutocompleteList
 
-<include>../../../base-ui-reference/autocomplete/List.md</include>
+<include>../../../base-ui-reference/combobox/List.md</include>
 
 ### AutocompleteItem
 
-| Prop       | Type                  | Default   | Description                                                              |
-| ---------- | --------------------- | --------- | ------------------------------------------------------------------------ |
-| `variant`  | `"popup" \| "inline"` | `"popup"` | See [Variant](#variant).                                                 |
-| `selected` | `boolean`             | `false`   | Shows a trailing checkmark. With `variant="inline"`, also fills the row. |
+| Prop      | Type                  | Default   | Description              |
+| --------- | --------------------- | --------- | ------------------------ |
+| `variant` | `"popup" \| "inline"` | `"popup"` | See [Variant](#variant). |
 
-<include>../../../base-ui-reference/autocomplete/Item.md</include>
+<include>../../../base-ui-reference/combobox/Item.md</include>
 
 ### AutocompleteCollection
 
-<include>../../../base-ui-reference/autocomplete/Collection.md</include>
+<include>../../../base-ui-reference/combobox/Collection.md</include>
 
 ### AutocompleteGroup
 
-<include>../../../base-ui-reference/autocomplete/Group.md</include>
+<include>../../../base-ui-reference/combobox/Group.md</include>
 
 ### AutocompleteGroupLabel
 
-<include>../../../base-ui-reference/autocomplete/GroupLabel.md</include>
+<include>../../../base-ui-reference/combobox/GroupLabel.md</include>
 
 ### AutocompleteSeparator
 
-<include>../../../base-ui-reference/autocomplete/Separator.md</include>
+<include>../../../base-ui-reference/combobox/Separator.md</include>
 
 ### AutocompleteEmpty
 
-<include>../../../base-ui-reference/autocomplete/Empty.md</include>
+<include>../../../base-ui-reference/combobox/Empty.md</include>
 
 ### AutocompleteStatus
 
 Takes up no space while empty.
 
-<include>../../../base-ui-reference/autocomplete/Status.md</include>
+<include>../../../base-ui-reference/combobox/Status.md</include>
 
 ### Variant
 

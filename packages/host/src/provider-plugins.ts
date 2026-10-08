@@ -1,4 +1,4 @@
-import { lazyStream } from "@nyte-ai/ai";
+import { baseModel, lazyStream } from "@nyte-ai/ai";
 import type { Models, MutableModels, Provider } from "@nyte-ai/ai";
 import type { Plugin, StreamFn } from "@nyte-ai/core";
 import type { SessionApi } from "@nyte-ai/core/plugins";
@@ -64,7 +64,8 @@ export function providerOverrides(defaults: MutableModels) {
 
     if (entries.length === 0) return defaults.streamSimple(model, context, options);
 
-    return lazyStream(model, async () => {
+    // A setup failure is recorded under the provider identity; lookup and dispatch keep the selected model.
+    return lazyStream(baseModel(model), async () => {
       entries.sort((left, right) => right.order - left.order);
 
       for (const entry of entries) {

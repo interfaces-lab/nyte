@@ -1,6 +1,7 @@
-import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Model } from "@nyte-ai/schema";
 
@@ -15,27 +16,43 @@ export const FIXTURE_TITLE_MODEL = "gpt-5.6-luna";
 
 export const FIXTURE_API_KEY = "nyte-qa-loopback-only";
 
+/** The project plugin appends one line here each time a session runs its setup. */
+export const PLUGIN_EVIDENCE = join("evidence", "plugin-setups");
+
 export interface Workspace {
-  readonly root: string;
   readonly cwd: string;
   readonly home: string;
-  readonly nyteHome: string;
   /** Pass this directly to spawn. Never merge the user's environment into it. */
   readonly env: Record<string, string>;
-  readonly model: string;
-  readonly childModel: string;
-  readonly image: string;
-  readonly heartbeatCommand: string;
-  releaseTool(): Promise<void>;
   close(): Promise<void>;
+}
+
+/**
+ * Nyte resolves ripgrep from PATH and otherwise downloads it from GitHub. QA blocks that
+ * download, so a compatible host ripgrep is a stated prerequisite, not a silent one.
+ */
+function hostRipgrep(): string {
+  for (const directory of (process.env.PATH ?? "").split(delimiter)) {
+    if (!isAbsolute(directory)) continue;
+    const candidate = join(directory, "rg");
+
+    if (!existsSync(candidate)) continue;
+    const probe = Bun.spawnSync([candidate, "--version"], { stdout: "pipe", stderr: "ignore" });
+    const major = /^ripgrep (\d+)\./u.exec(probe.success ? probe.stdout.toString() : "")?.[1];
+
+    if (major !== undefined && Number(major) >= 12) return candidate;
+  }
+
+  throw new Error(
+    "Terminal QA needs ripgrep 12 or later on PATH (brew install ripgrep, apt-get install ripgrep). Without it Nyte tries to download ripgrep, which QA blocks.",
+  );
 }
 
 /** Only public on-disk configuration is seeded. The binary owns its database. */
 export async function createWorkspace(options: {
   readonly baseUrl: string;
-  readonly trusted?: boolean;
-  readonly question?: boolean;
-  readonly reasoning?: Model<"openai-completions">["reasoning"];
+  /** Adds project plugins (a probe command and the question tool), so Nyte asks for trust. */
+  readonly plugin?: boolean;
 }): Promise<Workspace> {
   const endpoint = new URL(options.baseUrl);
 
@@ -43,13 +60,15 @@ export async function createWorkspace(options: {
     throw new Error("The QA provider must use HTTP on 127.0.0.1");
   }
 
+  const ripgrep = hostRipgrep();
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-terminal-qa-")));
   const cwd = join(root, "workspace");
   const home = join(root, "home");
   const nyteHome = join(home, ".nyte");
+  const tools = join(root, "bin");
 
   try {
-    for (const directory of [cwd, nyteHome, join(root, "tmp"), join(cwd, "evidence")]) {
+    for (const directory of [cwd, nyteHome, tools, join(root, "tmp"), join(cwd, "evidence")]) {
       await mkdir(directory, { recursive: true, mode: 0o700 });
     }
 
@@ -66,7 +85,7 @@ export async function createWorkspace(options: {
           provider: FIXTURE_PROVIDER,
           api: "openai-completions",
           baseUrl: endpoint.href.replace(/\/$/u, ""),
-          reasoning: options.reasoning ?? false,
+          reasoning: true,
           input: ["text", "image"],
           cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 128_000,
@@ -77,8 +96,10 @@ export async function createWorkspace(options: {
 
     const files = {
       "auth.json": { [FIXTURE_PROVIDER]: { type: "api_key", key: FIXTURE_API_KEY } },
-      // Freshness prevents background catalog discovery. NYTE_OFFLINE only disables updates.
-      "models-store.json": { [FIXTURE_PROVIDER]: { models, checkedAt: Date.now() } },
+      // A fresh checkedAt is what stops a catalog fetch; only the rawCatalogs shape keeps it.
+      "models-store.json": {
+        rawCatalogs: { [FIXTURE_PROVIDER]: { models, checkedAt: Date.now() } },
+      },
       "settings.json": {
         defaultProvider: FIXTURE_PROVIDER,
         defaultModel: FIXTURE_MODEL,
@@ -88,21 +109,17 @@ export async function createWorkspace(options: {
         theme: "dark",
         compaction: { enabled: false },
       },
-      "workspaces.json":
-        options.trusted === false ? {} : { [cwd]: { trusted: true, lastOpenedAt: Date.now() } },
     };
 
     for (const [name, value] of Object.entries(files)) {
       await writeFile(join(nyteHome, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
     }
 
-    if (options.question === true) {
-      const plugins = join(cwd, ".nyte", "plugins", "question");
-
-      // Bundle the public example's dependencies, but use the binary's plugin API.
+    if (options.plugin === true) {
+      // Bundle the public question example's dependencies, but use the binary's plugin API.
       const built = await Bun.build({
         entrypoints: [fileURLToPath(import.meta.resolve("@nyte-ai/plugin/examples/question"))],
-        outdir: plugins,
+        outdir: join(cwd, ".nyte", "plugins", "question"),
         naming: "index.js",
         target: "bun",
         format: "esm",
@@ -110,27 +127,32 @@ export async function createWorkspace(options: {
       });
 
       if (!built.success)
-        throw new AggregateError(built.logs, "Could not build QA question plugin");
+        throw new AggregateError(built.logs, "Could not build the QA question plugin");
+
+      const plugin = join(cwd, ".nyte", "plugins", "qa-probe");
+      await mkdir(plugin, { recursive: true });
+      await writeFile(
+        join(plugin, "index.js"),
+        `import { appendFileSync } from "node:fs";
+export default {
+  id: "qa-probe",
+  session(api) {
+    appendFileSync(${JSON.stringify(join(cwd, PLUGIN_EVIDENCE))}, "setup\\n");
+    api.commands.add("qa-probe", {
+      description: "Show that the project plugin loaded",
+      run: () => "QA plugin answered",
+    });
+  },
+};
+`,
+      );
     }
 
     await copyFile(new URL("./fixtures/heartbeat.sh", import.meta.url), join(cwd, "heartbeat.sh"));
-    const image = join(cwd, "pixel.png");
-    await writeFile(
-      image,
-      Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=",
-        "base64",
-      ),
-    );
     await writeFile(join(cwd, "README.md"), "# Isolated terminal QA workspace\n");
-    // A one-line edit target for the diff card; `qty` → `quantity` is the intra-line change.
-    await writeFile(
-      join(cwd, "total.ts"),
-      "export function total(price: number, qty: number) {\n  return price * qty;\n}\n",
-    );
-    const tools = join(root, "bin");
-    await mkdir(tools, { mode: 0o700 });
+    await symlink(ripgrep, join(tools, "rg"));
 
+    // Never let automated clipboard or browser actions reach the user's desktop.
     for (const command of [
       "pbcopy",
       "pbpaste",
@@ -177,19 +199,7 @@ export async function createWorkspace(options: {
       no_proxy: "127.0.0.1,localhost,::1",
     };
 
-    return {
-      root,
-      cwd,
-      home,
-      nyteHome,
-      env,
-      model: FIXTURE_MODEL,
-      childModel: FIXTURE_CHILD_MODEL,
-      image,
-      heartbeatCommand: "/bin/bash ./heartbeat.sh",
-      releaseTool: () => writeFile(join(cwd, "evidence", "release"), "release\n"),
-      close: () => rm(root, { recursive: true, force: true }),
-    };
+    return { cwd, home, env, close: () => rm(root, { recursive: true, force: true }) };
   } catch (cause) {
     await rm(root, { recursive: true, force: true });
     throw cause;

@@ -67,19 +67,19 @@ const styles = create({
   item: {
     "--_tab-close-opacity": {
       default: "0",
-      ":hover": "1",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_tab-close-pointer-events": {
       default: "none",
-      ":hover": "auto",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_tab-content-mask": {
       default: "none",
-      ":hover": TAB_CONTENT_FADE,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": TAB_CONTENT_FADE },
       ":has(:focus-visible)": TAB_CONTENT_FADE,
       "@media (hover: none)": TAB_CONTENT_FADE,
     },
@@ -92,7 +92,10 @@ const styles = create({
     minHeight: target.min,
     WebkitAppRegion: "no-drag",
     borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     color: role.contentInteractiveSecondary,
   },
   active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
@@ -125,7 +128,7 @@ const styles = create({
   agentTerminal: {
     color: {
       default: role.contentSecondary,
-      ":hover": role.contentPrimary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
       ":focus-within": role.contentPrimary,
     },
   },

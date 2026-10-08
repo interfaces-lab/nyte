@@ -9,6 +9,7 @@ import {
   contentText,
   isContextOverflow,
   isRecoverableLength,
+  providerIdentity,
   retryAssistantCall,
   uuidv7,
 } from "@nyte-ai/ai";
@@ -1113,7 +1114,7 @@ export async function summarizeCheckpoint(
   }
 
   const commits = input.commits.map((entry) => entry.commit);
-  const target = { provider: input.model.provider, api: input.model.api, model: input.model.id };
+  const target = providerIdentity(input.model);
   const tokensBefore = estimateModelContextTokens(commits, target).tokens;
 
   // The prompt and tools the model had when the cut was made; the checkpoint
@@ -1503,7 +1504,8 @@ export function summaryCommit(input: {
 
 /** Classify an overflow only when the provider response matches the requested model. */
 export function isOverflow(message: AssistantMessage, model: Model<Api>): boolean {
-  const sameModel = message.provider === model.provider && message.model === model.id;
+  const requested = providerIdentity(model);
+  const sameModel = message.provider === requested.provider && message.model === requested.model;
 
   return (
     sameModel &&

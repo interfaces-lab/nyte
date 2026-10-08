@@ -25,7 +25,6 @@ beforeAll(async () => {
     plugins: [
       stylex.rollup({
         devMode: "css-only",
-        runtimeInjection: false,
         lightningcssOptions: { targets: { chrome: 152 << 16 } },
       }),
     ],

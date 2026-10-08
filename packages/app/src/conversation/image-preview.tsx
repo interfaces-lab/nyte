@@ -20,7 +20,7 @@ const styles = create({
     backgroundColor: role.bgBase,
     boxShadow: "none",
     cursor: "zoom-in",
-    overflow: "hidden",
+    overflow: "clip",
   },
   thumbnail: {
     display: "block",
@@ -76,10 +76,13 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     color: {
       default: role.contentSecondary,
-      ":hover": role.contentPrimary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
       ":active": role.contentPrimary,
     },
     cursor: appearance.cursorInteractive,
@@ -112,7 +115,6 @@ export function ImagePreview({
         <TooltipTrigger
           render={
             <AttachmentTrigger
-              type="button"
               aria-label={`Preview ${name}`}
               render={<Dialog.Trigger xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]} />}
             >
@@ -125,11 +127,7 @@ export function ImagePreview({
       <Dialog.Popup xstyle={styles.popup}>
         <div {...props(styles.toolbar)}>
           <Dialog.Title xstyle={styles.title}>{name}</Dialog.Title>
-          <Dialog.Close
-            type="button"
-            aria-label="Close image preview"
-            xstyle={[styles.close, focus.ring]}
-          >
+          <Dialog.Close aria-label="Close image preview" xstyle={[styles.close, focus.ring]}>
             <Icon name="x" size={16} />
           </Dialog.Close>
         </div>

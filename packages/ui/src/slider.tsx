@@ -1,7 +1,7 @@
 import { radius, slider, target } from "./schema.stylex.ts";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, type ReactElement } from "react";
+import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
@@ -32,7 +32,6 @@ const styles = create({
     userSelect: "none",
   },
   track: {
-    position: "relative",
     width: { default: "100%", '[data-orientation="vertical"]': 6 },
     height: { default: 6, '[data-orientation="vertical"]': "100%" },
     borderRadius: radius.indicator,
@@ -64,18 +63,14 @@ const styles = create({
       height: target.min,
       borderRadius: radius.pill,
     },
-    outlineStyle: { default: "none", ":focus-within": "solid" },
+    outlineStyle: { default: "none", ":has(:focus-visible)": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: 0,
     userSelect: "none",
   },
+  rangeThumb: { pointerEvents: "none" },
 });
-
-// Range thumbs use the control's nearest-thumb hit test instead of overlapping hit boxes.
-const range = create({ thumb: { pointerEvents: "none" } });
-
-const SliderRangeContext = createContext(false);
 
 export type SliderRootProps<Value extends number | readonly number[]> = StyledProps<
   SliderPrimitive.Root.Props<Value>
@@ -87,17 +82,12 @@ function SliderRoot<Value extends number | readonly number[]>({
   style,
   ...rest
 }: SliderRootProps<Value>): ReactElement {
-  const value = rest.value ?? rest.defaultValue;
-  const isRange = Array.isArray(value) && value.length > 1;
-
   return (
-    <SliderRangeContext value={isRange}>
-      <SliderPrimitive.Root<Value>
-        thumbAlignment="edge"
-        {...rest}
-        {...mergeStyleProps(props(xstyle), className, style)}
-      />
-    </SliderRangeContext>
+    <SliderPrimitive.Root<Value>
+      thumbAlignment="edge"
+      {...rest}
+      {...mergeStyleProps(props(xstyle), className, style)}
+    />
   );
 }
 
@@ -177,12 +167,15 @@ function SliderThumb({
   style,
   ...rest
 }: StyledProps<SliderPrimitive.Thumb.Props>): ReactElement {
-  const isRange = use(SliderRangeContext);
-
   return (
     <SliderPrimitive.Thumb
       {...rest}
-      {...mergeStyleProps(props(styles.thumb, isRange && range.thumb, xstyle), className, style)}
+      {...mergeStyleProps(
+        (state: SliderPrimitive.Thumb.State) =>
+          props(styles.thumb, state.values.length > 1 && styles.rangeThumb, xstyle),
+        className,
+        style,
+      )}
     />
   );
 }

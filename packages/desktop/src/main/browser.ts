@@ -2,13 +2,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import { app, session, WebContentsView } from "electron";
+import { app, session, WebContentsView, webContents } from "electron";
 import type { BrowserWindow, DownloadItem, Session, WebContents } from "electron";
 import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
   BrowserDownload,
   BrowserFindResult,
+  BrowserFocusMessage,
+  BrowserHistoryEntry,
+  BrowserKey,
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
@@ -21,12 +24,17 @@ import {
   crashRetryDelay,
   httpsUpgrade,
   isLocalHost,
+  nextZoomFactor,
   permissionAllowed,
   plainRetry,
   surfaceSecurity,
   uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
+import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
+import { ExpectedHostError } from "./errors.ts";
+import { decodeBrowserKey } from "./ipc-inputs.ts";
+import type { BrowserHistoryStore } from "./browser-history.ts";
 import { sessionSurfaceId } from "./browser-agent.ts";
 import type { BrowserAgent, BrowserHolder, BrowserOwner, BrowserRect } from "./browser-agent.ts";
 import type { HostWindow } from "./host.ts";
@@ -94,6 +102,15 @@ function release(state: HolderState, holder: BrowserHolder): boolean {
   return state.holders.size === 0;
 }
 
+/** How the renderer names a cookie jar: the workspace path, or null for home. */
+function ownerPath(owner: BrowserOwner): string | null {
+  return owner.kind === "home" ? null : owner.path;
+}
+
+function ownerOf(path: string | null): BrowserOwner {
+  return path === null ? { kind: "home" } : { kind: "project", path };
+}
+
 function partitionName(owner: BrowserOwner): string {
   if (owner.kind === "home") return "persist:nyte-browser";
   const hash = createHash("sha256").update(owner.path).digest("hex").slice(0, 16);
@@ -126,6 +143,10 @@ export interface BrowserSurfaces {
   find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]>;
   cancelDownload(input: { readonly surface: string; readonly id: string }): void;
   login(input: Parameters<BrowserBridge["login"]>[0]): void;
+  history(input: Parameters<BrowserBridge["history"]>[0]): ReturnType<BrowserBridge["history"]>;
+  forgetHistory(
+    input: Parameters<BrowserBridge["forgetHistory"]>[0],
+  ): ReturnType<BrowserBridge["forgetHistory"]>;
   /** A visible placement moves the page into the reporting window. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void;
   /** Retain a surface with a holder. Creates the surface if it does not exist. */
@@ -146,6 +167,14 @@ export interface BrowserSurfaces {
   agent: BrowserAgent;
 }
 
+/** Keyboard focus across pages and their panels; the window shell routes menu commands by it. */
+export interface BrowserFocus {
+  /** A panel's controls took or gave up keyboard focus in this window. */
+  setFocus(message: BrowserFocusMessage, window: HostWindow): void;
+  /** The surface holding keyboard focus: its page, the page's DevTools, or its panel's controls in this window. */
+  focused(window: HostWindow | undefined): string | undefined;
+}
+
 export interface BrowserSurfacesDependencies {
   /** The open window with this id, or the last focused one when it is gone or unset. */
   readonly window: (id: HostWindow | undefined) => BrowserWindow | undefined;
@@ -158,6 +187,16 @@ export interface BrowserSurfacesDependencies {
     HostSettings,
     "blockAds" | "adblockAllowedHosts" | "upgradeToHttps"
   >;
+  /** Visits of pages a panel holds, per cookie jar. */
+  readonly history: BrowserHistoryStore;
+  /** The guest preload that forwards keys a page leaves unhandled. */
+  readonly pagePreload: string;
+  /** A key the focused page left unhandled, for the window whose panel shows it. */
+  readonly forwardKey: (input: {
+    readonly surface: string;
+    readonly window: HostWindow;
+    readonly key: BrowserKey;
+  }) => void;
 }
 
 interface Surface {
@@ -203,6 +242,8 @@ interface Surface {
   readonly crashes: number[];
   /** The popup this page opened; one at a time, closed with the page. */
   popup: BrowserWindow | undefined;
+  /** The URL this page last added to history, so an in-page jump to an anchor adds nothing. */
+  visited: string | undefined;
 }
 
 /**
@@ -221,7 +262,9 @@ function guestUserAgent(): string {
     .join(" ");
 }
 
-export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies): BrowserSurfaces {
+export function createBrowserSurfaces(
+  dependencies: BrowserSurfacesDependencies,
+): BrowserSurfaces & BrowserFocus {
   const surfaces = new Map<string, Surface>();
   const byWebContents = new Map<number, Surface>();
   /** Downloads still running, by id, so the panel can cancel one. */
@@ -232,6 +275,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
 
   /** Per-owner guest sessions, keyed by partition name. */
   const guestSessions = new Map<string, GuestSession>();
+
+  /** The panel whose controls hold each window's keyboard focus. */
+  const chromeFocus = new Map<HostWindow, string>();
 
   const isWindowShown = (surface: Surface): boolean => {
     const window = surface.attachedTo;
@@ -447,6 +493,28 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     dependencies.emit({ kind: "browser_changed", surface: surface.id, state: stateOf(surface) });
   };
 
+  const publishHistory = (
+    owner: BrowserOwner,
+    entries: readonly BrowserHistoryEntry[] | undefined,
+  ): void => {
+    if (entries === undefined) return;
+    dependencies.emit({ kind: "browser_history_changed", owner: ownerPath(owner), entries });
+  };
+
+  /**
+   * History holds what a person saw: a page a panel holds, never one an agent
+   * drives on its own, so a crawl cannot bury the user's own visits.
+   */
+  const remember = (surface: Surface, url: string): void => {
+    const page = webUrl(url);
+
+    if (surface.destroyed || page === undefined || !hasViewHolder(surface.holderState)) return;
+    surface.visited = page;
+    void dependencies.history
+      .record(surface.owner, { url: page, at: Date.now() })
+      .then((entries) => publishHistory(surface.owner, entries));
+  };
+
   /**
    * A hidden page keeps keyboard focus unless it is handed back, which leaves a
    * menu that just opened over the page unable to receive arrow keys.
@@ -611,13 +679,35 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
       callback(false);
     });
-    contents.on("before-input-event", (event, input) => {
-      const command = process.platform === "darwin" ? input.meta : input.control;
+    contents.ipc.on(BROWSER_PAGE_KEY_CHANNEL, (event, message) => {
+      if (event.senderFrame !== contents.mainFrame) return;
+      let key: BrowserKey;
 
-      if (input.type !== "keyDown" || !command || input.alt || input.key.toLowerCase() !== "f")
+      try {
+        key = decodeBrowserKey(message);
+      } catch {
         return;
+      }
+
+      forwardKey(surface, key);
+    });
+    // A hidden or crashed page runs no preload, so its command keys are forwarded from here.
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || (surface.view.getVisible() && !contents.isCrashed())) return;
+
+      if (!(input.control || input.alt || input.meta) && !/^F\d+$/.test(input.key)) return;
+
+      if (["Control", "Shift", "Alt", "Meta"].includes(input.key)) return;
       event.preventDefault();
-      dependencies.emit({ kind: "browser_find_requested", surface: surface.id });
+      forwardKey(surface, {
+        key: input.key,
+        code: input.code,
+        ctrlKey: input.control,
+        shiftKey: input.shift,
+        altKey: input.alt,
+        metaKey: input.meta,
+        repeat: input.isAutoRepeat,
+      });
     });
     contents.on("found-in-page", (_event, result) => {
       const pending = surface.find;
@@ -679,8 +769,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       publish(surface);
       reclaimIdle();
     });
-    contents.on("did-navigate", () => {
+    contents.on("did-navigate", (_event, url) => {
       guestSession.upgrades.delete(contents.id);
+      remember(surface, url);
       publish(surface);
     });
     contents.on("dom-ready", () => {
@@ -691,10 +782,24 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         void contents.insertCSS(styles, { cssOrigin: "user" }).catch(() => undefined);
       publish(surface);
     });
-    contents.on("did-navigate-in-page", (_event, _url, isMainFrame) => {
-      if (isMainFrame) publish(surface);
+    contents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
+      if (!isMainFrame) return;
+      const previous = surface.visited?.split("#", 1)[0];
+
+      if (previous !== url.split("#", 1)[0]) remember(surface, url);
+      publish(surface);
     });
-    contents.on("page-title-updated", () => publish(surface));
+    contents.on("page-title-updated", (_event, title, explicitSet) => {
+      const page = webUrl(contents.getURL());
+
+      if (explicitSet && page !== undefined) {
+        void dependencies.history
+          .retitle(surface.owner, { url: page, title })
+          .then((entries) => publishHistory(surface.owner, entries));
+      }
+
+      publish(surface);
+    });
     contents.on(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -750,18 +855,23 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     attachConsoleCapture(contents, surface.runtime);
   };
 
+  const forwardKey = (surface: Surface, key: BrowserKey): void => {
+    if (surface.destroyed || surface.home === undefined) return;
+    dependencies.forwardKey({ surface: surface.id, window: surface.home, key });
+  };
+
   const create = (id: string, owner: BrowserOwner): Surface => {
     const guestSession = ensureGuestSession(owner);
 
     const view = new WebContentsView({
       webPreferences: {
         session: guestSession.session,
+        preload: dependencies.pagePreload,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
-        devTools: false,
       },
     });
 
@@ -791,6 +901,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       untrustedHost: undefined,
       crashes: [],
       popup: undefined,
+      visited: undefined,
     };
 
     surfaces.set(id, surface);
@@ -804,6 +915,11 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     if (surface.destroyed) return;
     surface.destroyed = true;
     surfaces.delete(surface.id);
+
+    for (const [window, id] of chromeFocus) {
+      if (id === surface.id) chromeFocus.delete(window);
+    }
+
     const contents = surface.view.webContents;
     byWebContents.delete(contents.id);
     surface.guestSession.upgrades.delete(contents.id);
@@ -1078,7 +1194,12 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     open({ surface: id, url, owner }, window) {
       const target = webUrl(url);
 
-      if (target === undefined) throw new Error("Only web addresses can open in the browser panel");
+      if (target === undefined)
+        throw new ExpectedHostError({
+          code: "invalid_input",
+          message: "Only web addresses open in the browser panel.",
+          issues: [{ path: "/url", message: "Enter an http or https address" }],
+        });
       const surfaceOwner = owner ?? { kind: "home" };
       const surface = surfaces.get(id) ?? create(id, surfaceOwner);
 
@@ -1117,6 +1238,11 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
           contents.reload();
 
           return;
+        case "hard-reload":
+          surface.error = undefined;
+          contents.reloadIgnoringCache();
+
+          return;
         case "stop":
           contents.stop();
 
@@ -1133,6 +1259,23 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
           return;
         }
 
+        case "zoom-in":
+        case "zoom-out":
+          contents.setZoomFactor(
+            nextZoomFactor(contents.getZoomFactor(), action === "zoom-in" ? "in" : "out"),
+          );
+
+          return;
+        case "zoom-reset":
+          contents.setZoomFactor(1);
+
+          return;
+        case "toggle-devtools":
+          if (contents.isDevToolsOpened()) contents.closeDevTools();
+          else contents.openDevTools({ mode: "detach" });
+
+          return;
+
         default: {
           const _exhaustive: never = action;
 
@@ -1146,40 +1289,31 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
 
       return showBrowserMenu({ window: dependencies.window(window), hasPage, input });
     },
-    async perform({ surface: id, action }, window) {
+    async perform({ surface: id, action, owner: path }, window) {
+      const surface = surfaces.get(id);
+      // A new tab has no page in main yet, so the panel names its cookie jar.
+      const owner = surface?.owner ?? ownerOf(path);
+
       if (action === "clear-history") {
-        const requestingSurface = surfaces.get(id);
-        const requestingOwner = requestingSurface?.owner;
+        for (const other of surfaces.values()) {
+          const contents = other.view.webContents;
 
-        for (const surface of surfaces.values()) {
-          // History is per cookie jar, so only the requesting surface's owner is cleared.
-          if (requestingOwner !== undefined) {
-            if (surface.owner.kind !== requestingOwner.kind) continue;
-
-            if (
-              surface.owner.kind === "project" &&
-              requestingOwner.kind === "project" &&
-              surface.owner.path !== requestingOwner.path
-            )
-              continue;
-          }
-
-          const contents = surface.view.webContents;
-
-          if (contents.isDestroyed()) continue;
+          // History is per cookie jar, so only the requesting panel's jar is cleared.
+          if (ownerPath(other.owner) !== ownerPath(owner) || contents.isDestroyed()) continue;
           contents.navigationHistory.clear();
-          publish(surface);
+          other.visited = undefined;
+          publish(other);
         }
+
+        publishHistory(owner, await dependencies.history.clear(owner));
 
         return;
       }
 
-      const surface = surfaces.get(id);
-
       return performBrowserAction({
         action,
         contents: surface?.view.webContents,
-        guest: ensureGuestSession(surface?.owner ?? { kind: "home" }).session,
+        guest: ensureGuestSession(owner).session,
         window: dependencies.window(window),
       });
     },
@@ -1251,6 +1385,13 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     cancelDownload({ id }) {
       downloads.get(id)?.cancel();
     },
+    history({ owner }) {
+      return dependencies.history.entries(ownerOf(owner));
+    },
+    async forgetHistory({ owner: path, url }) {
+      const owner = ownerOf(path);
+      publishHistory(owner, await dependencies.history.remove(owner, url));
+    },
     login({ surface: id, credentials }) {
       const surface = surfaces.get(id);
       const answer = surface?.login;
@@ -1284,6 +1425,36 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
 
       apply(surface);
     },
+    setFocus({ surface: id, focused }, window) {
+      if (!focused) {
+        if (chromeFocus.get(window) === id) chromeFocus.delete(window);
+
+        return;
+      }
+
+      chromeFocus.set(window, id);
+      const host = dependencies.window(window);
+
+      // A shortcut pressed in the page can move focus to the address bar; typing must follow it.
+      if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused())
+        host.webContents.focus();
+    },
+    focused(window) {
+      const focusedContents = webContents.getFocusedWebContents();
+
+      if (focusedContents) {
+        for (const surface of surfaces.values()) {
+          const contents = surface.view.webContents;
+
+          if (contents.isDestroyed()) continue;
+
+          if (contents === focusedContents || contents.devToolsWebContents === focusedContents)
+            return surface.id;
+        }
+      }
+
+      return window === undefined ? undefined : chromeFocus.get(window);
+    },
     warm() {
       return ensureBlocker();
     },
@@ -1291,6 +1462,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       for (const surface of surfaces.values()) publish(surface);
     },
     releaseWindow(window) {
+      chromeFocus.delete(window);
+
       for (const surface of surfaces.values()) {
         if (surface.home !== window) continue;
         surface.home = undefined;

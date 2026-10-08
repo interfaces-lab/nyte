@@ -112,9 +112,9 @@ export async function run(): Promise<string> {
   };
 
   const menuItem = (menu: HTMLElement, name: string): HTMLElement => {
-    const found = Array.from(menu.querySelectorAll('[role="menuitem"]')).find((item) =>
-      (item.textContent ?? "").startsWith(name),
-    );
+    const found = Array.from(
+      menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]'),
+    ).find((item) => (item.textContent ?? "").startsWith(name));
 
     if (!(found instanceof HTMLElement)) throw new Error(`Missing menu item: ${name}`);
 

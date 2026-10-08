@@ -1,5 +1,5 @@
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
-import { create, props } from "@stylexjs/stylex";
+import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
@@ -10,8 +10,6 @@ import { Icon } from "./icon.tsx";
 
 const styles = create({
   trigger: {
-    // The chevron cannot read the trigger's state, so the trigger publishes it.
-    "--_collapsible-chevron-rotate": { default: "0deg", "[data-panel-open]": "90deg" },
     appearance: "none",
     margin: 0,
     padding: 0,
@@ -61,7 +59,10 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    transform: "rotate(var(--_collapsible-chevron-rotate, 0deg))",
+    transform: {
+      default: "rotate(0deg)",
+      [when.ancestor("[data-panel-open]")]: "rotate(90deg)",
+    },
     transitionProperty: "transform",
     transitionDuration: {
       default: motion.durationNormal,
@@ -98,7 +99,6 @@ function CollapsibleRoot({
         // A press inside a closed preview only reveals, so a disclosure there stays open.
         if (!open && target instanceof Element && target.closest(PREVIEWING) !== null) {
           details.cancel();
-          onOpenChange?.(true, details);
 
           return;
         }
@@ -135,7 +135,6 @@ function CollapsibleTrigger({
             childControl !== event.currentTarget &&
             event.currentTarget.contains(childControl))
         ) {
-          event.preventDefault();
           event.preventBaseUIHandler();
 
           return;
@@ -144,7 +143,12 @@ function CollapsibleTrigger({
         onClick?.(event);
       }}
       {...mergeStyleProps(
-        props(styles.trigger, variant === "disclosure" && [styles.disclosure, focus.ring], xstyle),
+        props(
+          styles.trigger,
+          defaultMarker(),
+          variant === "disclosure" && [styles.disclosure, focus.ring],
+          xstyle,
+        ),
         className,
         style,
       )}

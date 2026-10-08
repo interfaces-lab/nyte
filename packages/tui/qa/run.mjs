@@ -13,11 +13,11 @@ try {
   for (let index = 0; index < args.length; index++) {
     const flag = args[index];
 
-    if (!["--filter", "--show", "--binary"].includes(flag) || seen.has(flag))
+    if (!["--scenario", "--show", "--step", "--binary"].includes(flag) || seen.has(flag))
       throw new Error(`Unknown or repeated argument: ${flag}`);
     seen.add(flag);
 
-    if (flag === "--show") continue;
+    if (flag === "--show" || flag === "--step") continue;
     const value = args[++index];
 
     if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value.`);
@@ -25,8 +25,10 @@ try {
     if (flag === "--binary") args[index] = resolve(value);
   }
 
-  if (seen.has("--show") && (!process.stdin.isTTY || !process.stdout.isTTY))
-    throw new Error("--show requires terminal stdin and stdout. Run it directly in a terminal.");
+  if ((seen.has("--show") || seen.has("--step")) && (!process.stdin.isTTY || !process.stdout.isTTY))
+    throw new Error(
+      "--show and --step need terminal stdin and stdout. Run them directly in a terminal.",
+    );
   let bun;
 
   for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
@@ -119,7 +121,7 @@ try {
   });
 } catch (error) {
   process.stderr.write(
-    `${error instanceof Error ? error.message : String(error)}\nUsage: pnpm --dir packages/tui run test [--filter text] [--show] [--binary path]\n`,
+    `${error instanceof Error ? error.message : String(error)}\nUsage: pnpm --dir packages/tui run test [--scenario headless|tui] [--show | --step] [--binary path]\n`,
   );
   process.exitCode = 1;
 }

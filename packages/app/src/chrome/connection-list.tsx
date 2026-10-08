@@ -41,7 +41,7 @@ const styles = create({
     height: avatar.md,
     borderRadius: radius.control,
     color: role.contentSecondary,
-    overflow: "hidden",
+    overflow: "clip",
   },
   body: { display: "flex", flexDirection: "column", minWidth: 0, gap: 2 },
   title: {

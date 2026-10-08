@@ -134,7 +134,10 @@ export const modelsSettingsStyles = create({
   },
   deviceCodeLink: {
     color: role.contentPrimary,
-    textDecorationLine: { default: "none", ":hover": "underline" },
+    textDecorationLine: {
+      default: "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "underline" },
+    },
     textUnderlineOffset: 3,
   },
   deviceCodeNote: {

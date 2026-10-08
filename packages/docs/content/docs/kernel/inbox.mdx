@@ -16,6 +16,8 @@ Submitting never touches the head. The submitter stamps `kind` and `delivery` on
   ]}
 />
 
+On one `Nyte`, `messages.send`, `sessions.configure` and `plugins.settings.apply` for a session are admitted in call order. A setting applied just before a send is stored before that send is admitted. Nothing pins a setting to a message: a request reads settings when it is built, so an apply after the send still changes what its run sees. A command's writes are done when `plugins.commands.run` returns; it runs outside this order because a command may call the model.
+
 ## Two chains
 
 Each head has a `steer` chain and a `next` chain, each with a `tip` and a `base`. A change names the tip it followed in `previous`, so pending is `(base, tip]` read back from the tip and no ref holds a list. `steer` lands at every response boundary and when the head is idle. `next` lands only when the head is idle and `steer` waits. `pending` merges the two chains by submission time without reordering either, so a redelivered copy, which keeps its time, stays where `before` put it.

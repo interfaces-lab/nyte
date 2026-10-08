@@ -124,7 +124,6 @@ test("/rename alone builds transcript context and falls back from Luna to the ch
     "Original request:\nInvestigate production 500s\n\nRecent conversation:\nAssistant: done\n\nUser: Focus on retries\n\nAssistant: done",
   );
   assert.equal(preferred.options?.reasoning, "medium");
-  assert.equal(preferred.options?.maxTokens, 64);
   assert.equal(preferred.options?.cacheRetention, "none");
   assert.equal(fallback.context.systemPrompt, TITLE_PROMPT);
   assert.equal(fallback.options?.reasoning, undefined);

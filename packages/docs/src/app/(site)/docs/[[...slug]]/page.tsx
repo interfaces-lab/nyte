@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { mdxComponents } from "~/components/mdx";
 import { REVISION, sourceUrl } from "~/components/mdx/kernel/source";
 import { allDocs, getDoc } from "~/lib/docs";
+import { appName } from "~/lib/shared";
 import { DocArticle } from "../../_layout/article";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
@@ -56,6 +57,16 @@ export async function generateMetadata(props: PageProps<"/docs/[[...slug]]">): P
     title: page.title,
     description: page.description,
     openGraph: {
+      type: "article",
+      siteName: appName,
+      title: page.title,
+      description: page.description,
+      images: page.imageUrl,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: page.title,
+      description: page.description,
       images: page.imageUrl,
     },
   };

@@ -18,6 +18,7 @@ import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
 import {
   BROWSER_BOUNDS_CHANNEL,
+  BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
@@ -30,9 +31,11 @@ import {
 import type { WatchEnvelope } from "../shared/ipc.ts";
 import type { HostEvent, UpdateState } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
+import { applicationMenuTemplate, createMenuCommandDelivery, menuItemForKey } from "./app-menu.ts";
+import type { ViewCommand } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
+import { BrowserHistoryStore } from "./browser-history.ts";
 import { showContextMenu } from "./context-menu.ts";
 import { ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
@@ -55,6 +58,7 @@ import { ensureShellEnvironment } from "./shell-environment.ts";
 
 import {
   decodeBrowserBounds,
+  decodeBrowserFocus,
   decodeWatchStart,
   decodeWatchStop,
   themePreference,
@@ -173,8 +177,12 @@ function reveal(window: BrowserWindow): void {
 /** One view of ~/.nyte/settings.json per process, shared by the host and the browser surfaces. */
 const settings = new HostSettingsStore();
 
+/** The page whose forwarded key is running a menu item: it held keyboard focus when the key was pressed. */
+let forwardingSurface: string | undefined;
+
 const browserSurfaces = createBrowserSurfaces({
   settings: settings.current,
+  history: new BrowserHistoryStore(join(app.getPath("userData"), "browser-history.json")),
   window: (id) =>
     (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
   emit: broadcast,
@@ -182,7 +190,67 @@ const browserSurfaces = createBrowserSurfaces({
     ? join(process.resourcesPath, "adblock.bin")
     : join(app.getAppPath(), "resources", "adblock.bin"),
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
+  pagePreload: join(import.meta.dirname, "../preload/browser-page.js"),
+  // A key the page forwarded runs the menu item it names, as it would have without the page.
+  forwardKey: ({ surface, window, key }) => {
+    const entry = windows.get(window);
+
+    if (entry === undefined || entry.window.isDestroyed()) return;
+    const menu = Menu.getApplicationMenu();
+
+    const item =
+      menu === null ? undefined : menuItemForKey(menu, key, process.platform === "darwin");
+
+    if (item === undefined) {
+      send(window, HOST_EVENT_CHANNEL, { kind: "browser_key", surface, key });
+
+      return;
+    }
+
+    forwardingSurface = surface;
+
+    try {
+      item.click(undefined, entry.window, entry.window.webContents);
+    } finally {
+      forwardingSurface = undefined;
+    }
+  },
 });
+
+/** What the View menu does to the Nyte window itself, as Electron's own roles would. */
+function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
+  switch (command) {
+    case "reload":
+      contents.reload();
+
+      return;
+    case "hard-reload":
+      contents.reloadIgnoringCache();
+
+      return;
+    case "toggle-devtools":
+      contents.toggleDevTools();
+
+      return;
+    case "zoom-reset":
+      contents.setZoomLevel(0);
+
+      return;
+    case "zoom-in":
+      contents.setZoomLevel(contents.getZoomLevel() + 0.5);
+
+      return;
+    case "zoom-out":
+      contents.setZoomLevel(contents.getZoomLevel() - 0.5);
+
+      return;
+    default: {
+      const _exhaustive: never = command;
+
+      return _exhaustive;
+    }
+  }
+}
 
 settings.subscribe(() => browserSurfaces.settingsChanged());
 
@@ -389,6 +457,16 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
+    senderWindow(event);
+
+    try {
+      browserSurfaces.setFocus(decodeBrowserFocus(message), event.sender.id);
+    } catch {
+      return;
+    }
+  });
+
   ipcMain.handle(CALL_CHANNEL, async (event, request) => {
     senderWindow(event);
 
@@ -563,6 +641,18 @@ if (!hasSingleInstanceLock) {
         // A command with no window open reopens one, as the single window did.
         dispatch: (command) => (currentWindow() ?? createWindow()).menuCommands.dispatch(command),
         newWindow: createWindow,
+        view: (command, window) => {
+          const host = [...windows].find(([, entry]) => entry.window === window)?.[0];
+          const surface = forwardingSurface ?? browserSurfaces.focused(host);
+
+          if (surface !== undefined) {
+            browserSurfaces.navigate({ surface, action: command });
+
+            return;
+          }
+
+          if (window instanceof BrowserWindow) applyViewCommand(window.webContents, command);
+        },
         appInfo: () => ({
           name: app.getName(),
           version: app.getVersion(),

@@ -11,7 +11,7 @@ export const trayStyles = create({
     flexDirection: "column",
     width: "100%",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: tray.radius,
     backgroundColor: role.bgElevated,
     // The shadow alone disappears on a dark page; the outline's hairline is

@@ -1,5 +1,6 @@
 import { Voltra } from "@use-voltra/ios";
 import { useLiveActivity } from "@use-voltra/ios-client";
+import { resolveScheme } from "expo-linking";
 // oxlint-disable-next-line no-restricted-imports -- the Live Activity follows session state
 import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/protocol";
@@ -17,6 +18,11 @@ const MUTED = "secondary";
 const ACCENT = "blue";
 
 const WARNING = "orange";
+
+/** Opens the build that started the activity: each variant registers its own scheme. */
+export function appLink(path: string): string {
+  return `${resolveScheme({})}://${path}`;
+}
 
 function titleOf(session: SessionInfo): string {
   return session.name || "Untitled conversation";
@@ -121,7 +127,7 @@ export function useWorkLiveActivitySync(
 
   const activity = useLiveActivity(variants, {
     activityName: "nyte-work",
-    deepLinkUrl: lead === undefined ? "nyte://" : `nyte://chat/${lead.sessionId}`,
+    deepLinkUrl: appLink(lead === undefined ? "" : `chat/${lead.sessionId}`),
   });
 
   const { start, update, end, isActive: liveActive } = activity;

@@ -116,8 +116,7 @@ describe("normalizeProviderError", () => {
 
     const norm = normalizeProviderError(error);
 
-    assert.ok(norm.body?.includes("... [truncated 50 chars]"));
-    assert.ok((norm.body?.length ?? Number.POSITIVE_INFINITY) < longBody.length);
+    assert.equal(norm.body, `${"x".repeat(MAX_PROVIDER_ERROR_BODY_CHARS)}... [truncated 50 chars]`);
   });
 
   test("sets messageCarriesBody when the message already contains the extracted body", () => {

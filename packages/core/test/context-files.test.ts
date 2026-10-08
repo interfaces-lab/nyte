@@ -139,15 +139,12 @@ describe("context files", () => {
     ]);
   });
 
-  test("formats files as a project_context block and returns empty for none", () => {
+  test("formats nothing for no files and keeps each file's path and content in order", () => {
     assert.equal(formatContextFilesForPrompt([]), "");
-    const text = formatContextFilesForPrompt([{ path: "/p/AGENTS.md", content: "rules" }]);
-    assert.equal(
-      text,
-      "<project_context>\n\n" +
-        "Project-specific instructions and guidelines:\n\n" +
-        '<project_instructions path="/p/AGENTS.md">\nrules\n</project_instructions>\n\n' +
-        "</project_context>",
-    );
+    const text = formatContextFilesForPrompt([
+      { path: "/a/AGENTS.md", content: "first" },
+      { path: "/b/AGENTS.md", content: "second" },
+    ]);
+    assert.match(text, /path="\/a\/AGENTS\.md">\nfirst\n[\s\S]*path="\/b\/AGENTS\.md">\nsecond\n/u);
   });
 });

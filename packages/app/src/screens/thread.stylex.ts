@@ -10,7 +10,7 @@ export const threadStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   floatingMount: {
     position: "absolute",
@@ -27,7 +27,7 @@ export const threadStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   splitRight: { flexDirection: "row" },
   splitDown: { flexDirection: "column" },
@@ -37,7 +37,7 @@ export const threadStyles = create({
     flexDirection: "column",
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
     backgroundColor: role.bgBase,
   },
   paneSingle: { flex: 1 },
@@ -51,7 +51,7 @@ export const threadStyles = create({
   embeddedScreen: {
     width: "100%",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     backgroundColor: "transparent",
   },
   header: {
@@ -120,7 +120,7 @@ export const threadStyles = create({
     position: "absolute",
     inset: 2,
     zIndex: layer.dragPreview,
-    overflow: "hidden",
+    overflow: "clip",
     pointerEvents: "none",
   },
   dropPreview: {

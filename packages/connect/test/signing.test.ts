@@ -10,7 +10,6 @@ import {
   brokerKey,
   createProof,
   generateMachineKey,
-  keyThumbprint,
   nowSeconds,
   publicKeyOf,
   publicKeySet,
@@ -136,41 +135,40 @@ describe("broker tokens", () => {
     expect((await verify(TOKEN_TYPES.lease)).generation).toBe(1);
     await expect(verify(TOKEN_TYPES.enrollment)).rejects.toThrow();
 
-    const long = await signClaims({
-      key: signing,
-      typ: TOKEN_TYPES.enrollment,
-      claims: {
-        iss: origin,
-        aud: environmentId,
-        sub: "user_1",
-        iat,
-        exp: iat + ENROLLMENT_LIFETIME_SECONDS + 60,
-        jti: randomId(),
-        nonce: randomId(),
-        generation: 1,
-        deviceId: environmentId,
-        clientId: "client-0123456789ab",
-        clientName: "Phone",
-        digest: await sha256("t"),
-      },
-    });
+    const enrollment = async (lifetime: number) =>
+      signClaims({
+        key: signing,
+        typ: TOKEN_TYPES.enrollment,
+        claims: {
+          iss: origin,
+          aud: environmentId,
+          sub: "user_1",
+          iat,
+          exp: iat + lifetime,
+          jti: randomId(),
+          nonce: randomId(),
+          generation: 1,
+          deviceId: environmentId,
+          clientId: "client-0123456789ab",
+          clientName: "Phone",
+          digest: await sha256("t"),
+        },
+      });
 
-    await expect(
+    const verifyEnrollment = async (lifetime: number) =>
       verifyClaims({
-        token: long,
+        token: await enrollment(lifetime),
         key,
         typ: TOKEN_TYPES.enrollment,
         issuer: origin,
         audience: environmentId,
         schema: EnrollmentClaims,
         lifetime: ENROLLMENT_LIFETIME_SECONDS,
-      }),
-    ).rejects.toThrow();
-  });
+      });
 
-  it("thumbprints a key the same way every time", async () => {
-    const key = publicKeyOf(await generateMachineKey());
-
-    expect(await keyThumbprint(key)).toBe(await keyThumbprint({ ...key }));
+    expect((await verifyEnrollment(ENROLLMENT_LIFETIME_SECONDS)).clientName).toBe("Phone");
+    await expect(verifyEnrollment(ENROLLMENT_LIFETIME_SECONDS + 60)).rejects.toThrow(
+      "Token lifetime exceeds the contract",
+    );
   });
 });

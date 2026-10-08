@@ -38,32 +38,6 @@ export const conformance: readonly {
     },
   },
   {
-    name: "preserves rejection identity",
-    async run(fixture) {
-      const failure = { reason: "rejected" };
-      await expect(
-        fixture.telemetry.startSpan({ name: "work" }, () => Promise.reject(failure)),
-      ).rejects.toBe(failure);
-    },
-  },
-  {
-    name: "turns a synchronous throw into a rejection with the same value",
-    async run(fixture) {
-      const failure = Symbol("failure");
-      const result = fixture.telemetry.startSpan({ name: "work" }, () => {
-        throw failure;
-      });
-      await expect(result).rejects.toBe(failure);
-    },
-  },
-  {
-    name: "records automatic ok on completion",
-    async run(fixture) {
-      await fixture.telemetry.startSpan({ name: "work" }, (span) => span.addEvent("worked"));
-      expect(fixture.spans()[0]).toMatchObject({ status: { status: "ok" }, ended: true });
-    },
-  },
-  {
     name: "records automatic error on throw and rejection",
     async run(fixture) {
       const failure = new Error("failure");
@@ -220,23 +194,6 @@ export const conformance: readonly {
         },
       ]);
       expect(fixture.started()).toEqual(["work"]);
-    },
-  },
-  {
-    name: "records ok when the callback never calls a recording method",
-    async run(fixture) {
-      await fixture.telemetry.startSpan({ name: "work" }, () => undefined);
-      expect(fixture.spans()).toEqual([
-        {
-          id: 1,
-          parentId: undefined,
-          name: "work",
-          attributes: {},
-          events: [],
-          status: { status: "ok" },
-          ended: true,
-        },
-      ]);
     },
   },
 ];

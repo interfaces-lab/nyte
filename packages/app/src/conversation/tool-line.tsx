@@ -29,8 +29,6 @@ const COLOR_TRANSITION = {
   transitionTimingFunction: "ease-in-out",
 } as const;
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 
 export const toolLineStyles = create({
@@ -64,11 +62,17 @@ export const toolLineStyles = create({
   },
   clickable: {
     cursor: appearance.cursorInteractive,
-    "--_action": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
-    "--_details": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
+    "--_action": {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
+    "--_details": {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
     "--_chevron": {
       default: "0",
-      ":hover": { [HOVER]: "1" },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
       ":focus-visible": "1",
       "[data-panel-open]": "1",
     },

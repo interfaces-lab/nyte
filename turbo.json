@@ -9,6 +9,7 @@
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", ".output/**", "dist/**", "out/**"]
     },
     "@nyte-ai/tui#build": {
+      "env": ["NYTE_CONNECT_ORIGIN"],
       "outputs": ["../../bin/nyte", "../../bin/nyte.exe"]
     },
     "package": {

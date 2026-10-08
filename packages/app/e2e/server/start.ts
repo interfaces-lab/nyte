@@ -18,7 +18,7 @@ import type { SessionId } from "@nyte-ai/core";
 import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
 // Relative: a package dependency on serve, which depends on this app, is a turbo task cycle.
 import { appDistRoot, startServe } from "../../../serve/src/index.ts";
-import { E2E_PORT, E2E_TOKEN } from "./address.ts";
+import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN } from "./address.ts";
 
 const ENVIRONMENT_ID = "e2e";
 
@@ -97,6 +97,9 @@ execFileSync("git", ["commit", "-qm", "Seed workspace"], { cwd });
 
 const workspaces = new WorkspaceStore(join(cwd, ".workspaces.json"));
 
+// Listed as an opened folder, so the sidebar shows the chats seeded below before any test runs.
+await workspaces.touch(cwd);
+
 const workspaceBackend = createWorkspaceBackend(workspaces);
 
 const store = new SqliteStore(":memory:");
@@ -117,6 +120,12 @@ const sdk = await createNyte({
 });
 
 const attached = new Set<SessionId>();
+
+// The sidebar folds archived chats in pages. No test archives, so this shelf holds exactly these.
+for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
+  const session = await sdk.sessions.create({ name: `Archived chat ${String(index)}` });
+  await sdk.sessions.setArchived({ sessionId: session.sessionId, archived: true });
+}
 
 const serving = await startServe({
   sdk,

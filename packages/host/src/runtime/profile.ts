@@ -49,7 +49,9 @@ export class ProfileExposed extends Error {
   readonly path: string;
 
   constructor(path: string, expected: string) {
-    super(`${path} is readable by other users; make it ${expected} (chmod ${expected} ${path}) and start again.`);
+    super(
+      `${path} is readable by other users; make it ${expected} (chmod ${expected} ${path}) and start again.`,
+    );
     this.name = "ProfileExposed";
     this.path = path;
   }

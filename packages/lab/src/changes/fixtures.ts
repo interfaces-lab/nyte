@@ -60,7 +60,10 @@ export function splitPath(path: string): { readonly dir: string; readonly base: 
 }
 
 /** A tree of folders, one level deep: enough to mock grouping without a real trie. */
-export function byFolder(): readonly { readonly dir: string; readonly files: readonly ChangedFile[] }[] {
+export function byFolder(): readonly {
+  readonly dir: string;
+  readonly files: readonly ChangedFile[];
+}[] {
   const groups = new Map<string, ChangedFile[]>();
 
   for (const file of FILES) {

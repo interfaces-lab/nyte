@@ -3,6 +3,7 @@
  * page, the snapshot a watch starts from, context status, and a run's diff.
  * Nothing here instantiates plugins; `runs.revert` moves files, never a ref.
  */
+import { providerIdentity } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
 import { CursorExpired, isTerminalPhase, schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
@@ -22,6 +23,7 @@ import { WORKSPACE_REF, factRef, headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import type { Session } from "../store.ts";
 import { projectContextStatus, projectUsage, transcriptFromCommits } from "@nyte-ai/client";
+import { policyKey } from "../../plugins/model-context.ts";
 import {
   CWD_FACT,
   clientActivation,
@@ -209,7 +211,7 @@ export function createReads(input: {
     const policy =
       model === undefined
         ? undefined
-        : pooled.activation?.registries.modelContext.get(`${model.provider}/${model.id}`);
+        : pooled.activation?.registries.modelContext.get(policyKey(model));
 
     const checkpoint = commits.findLastIndex((commit) => commit.body.kind === "checkpoint");
 
@@ -218,9 +220,7 @@ export function createReads(input: {
       status: projectContextStatus(
         checkpoint < 0 ? commits : commits.slice(checkpoint),
         policy?.contextWindow ?? model?.contextWindow ?? 0,
-        model === undefined
-          ? undefined
-          : { provider: model.provider, api: model.api, model: model.id },
+        model === undefined ? undefined : providerIdentity(model),
       ),
       usage: projectUsage(commits).total,
     };

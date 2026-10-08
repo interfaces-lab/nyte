@@ -42,6 +42,7 @@ export function buildBaseOptions(
     samplingParams,
     maxTokens: clampMaxTokensToContext(model, context, options?.maxTokens ?? model.maxTokens),
     signal: options?.signal,
+    fast: options?.fast,
     telemetryContext: options?.telemetryContext,
     apiKey: apiKey || options?.apiKey,
     fetch: options?.fetch,

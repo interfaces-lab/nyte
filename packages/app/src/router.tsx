@@ -78,7 +78,7 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     backgroundColor: role.bgBase,
-    overflow: "hidden",
+    overflow: "clip",
   },
   /** With window tabs the main area is a card set into the chrome, which the titlebar shares. */
   card: {

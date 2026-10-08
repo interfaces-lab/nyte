@@ -2,6 +2,7 @@ import {
   compactOpenAICodexContext,
   compactOpenAIResponsesContext,
   OpenAICodexCompactionError,
+  providerIdentity,
   type Models,
 } from "@nyte-ai/ai";
 import { definePlugin } from "@nyte-ai/core/plugins";
@@ -84,9 +85,7 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
           return {
             material: {
               type: "provider",
-              provider: model.provider,
-              api: model.api,
-              model: model.id,
+              ...providerIdentity(model),
               data: compacted.data,
             },
             usage: compacted.usage,

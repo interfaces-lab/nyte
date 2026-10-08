@@ -26,7 +26,11 @@ export const stripStyles = create({
   /** Tabs share the row up to 240px each and shrink to 72px before the list scrolls. */
   slot: { display: "flex", flex: "0 1 240px", minWidth: 72, WebkitAppRegion: "no-drag" },
   tab: {
-    "--_close-opacity": { default: "0", ":hover": "1", ":focus-within": "1" },
+    "--_close-opacity": {
+      default: "0",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":focus-within": "1",
+    },
     position: "relative",
     display: "flex",
     alignItems: "center",
@@ -34,13 +38,22 @@ export const stripStyles = create({
     minWidth: 0,
     height: button.heightMd,
     borderRadius: button.radiusMd,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
-    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
+    color: {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+    },
   },
   tabClosable: { paddingInlineEnd: 4 },
   /** The main area is a card set into the chrome; the active tab wears the card. */
   tabActive: {
-    backgroundColor: { default: role.bgBase, ":hover": role.bgBase },
+    backgroundColor: {
+      default: role.bgBase,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgBase },
+    },
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,
   },

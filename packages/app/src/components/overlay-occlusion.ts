@@ -20,6 +20,7 @@ const OVERLAY_SELECTOR = [
   "context-menu-sub-content",
   "select-content",
   "autocomplete-content",
+  "browser-suggestions",
   "tooltip-content",
   "preview-card-content",
   "popover-popup",

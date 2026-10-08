@@ -481,17 +481,46 @@ export interface BrowserFindResult {
   readonly total: number;
 }
 
+/** A page a user-held tab visited. History is per cookie jar and newest first. */
+export interface BrowserHistoryEntry {
+  readonly url: string;
+  readonly title: string;
+  /** Milliseconds since the epoch. */
+  readonly visitedAt: number;
+  readonly visits: number;
+}
+
 export type BrowserAction =
   | "screenshot"
-  | "hard-reload"
   | "copy-url"
   | "clear-history"
   | "clear-cookies"
   | "clear-cache";
 
-export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
+export type BrowserMenuAction = BrowserAction | "hard-reload" | "toggle-bookmarks";
 
-export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop" | "trust-certificate";
+export type BrowserNavigationAction =
+  | "back"
+  | "forward"
+  | "reload"
+  | "hard-reload"
+  | "stop"
+  | "trust-certificate"
+  | "zoom-in"
+  | "zoom-out"
+  | "zoom-reset"
+  | "toggle-devtools";
+
+/** A keydown the focused page left unhandled, as its guest preload saw it. */
+export interface BrowserKey {
+  readonly key: string;
+  readonly code: string;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
+  readonly metaKey: boolean;
+  readonly repeat: boolean;
+}
 
 /**
  * Clipboard and selection roles run in the focused web contents, so a native
@@ -523,6 +552,12 @@ export interface BrowserBoundsMessage {
   readonly surface: string;
   readonly bounds: BrowserBounds;
   readonly visible: boolean;
+}
+
+/** Keyboard focus entered or left a panel's own controls: the address bar, the toolbar, find. */
+export interface BrowserFocusMessage {
+  readonly surface: string;
+  readonly focused: boolean;
 }
 
 export interface TerminalInfo {
@@ -576,10 +611,16 @@ export type HostEvent =
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   /** The page asked for a new tab: a Cmd+click, a `target="_blank"` link. */
   | { kind: "browser_open_tab"; surface: string; url: string; background: boolean }
-  /** Cmd+F landed in the page while it had focus. */
-  | { kind: "browser_find_requested"; surface: string }
+  /** The focused page left a key unhandled; the panel showing it treats it as its own keydown. */
+  | { kind: "browser_key"; surface: string; key: BrowserKey }
   /** The page answered 401 with a Basic or Digest challenge; the panel asks for credentials. */
   | { kind: "browser_login_requested"; surface: string; host: string; realm: string }
+  /** A cookie jar's history changed: the workspace path, or null for home, and all its entries. */
+  | {
+      kind: "browser_history_changed";
+      owner: string | null;
+      entries: readonly BrowserHistoryEntry[];
+    }
   | {
       kind: "browser_agent_opened";
       surface: string;
@@ -668,7 +709,12 @@ export interface BrowserBridge {
     x: number;
     y: number;
   }): Promise<BrowserMenuAction | undefined>;
-  perform(input: { surface: string; action: BrowserAction }): Promise<void>;
+  perform(input: {
+    surface: string;
+    action: BrowserAction;
+    /** The panel's cookie jar, for a new tab main holds no page for. */
+    owner: string | null;
+  }): Promise<void>;
   close(input: { surface: string }): Promise<void>;
   /**
    * The page's current pixels as a data URL, captured without showing the
@@ -687,7 +733,12 @@ export interface BrowserBridge {
     surface: string;
     credentials: { username: string; password: string } | undefined;
   }): Promise<void>;
+  /** A cookie jar's history, newest first; `browser_history_changed` carries every change after. */
+  history(input: { owner: string | null }): Promise<readonly BrowserHistoryEntry[]>;
+  forgetHistory(input: { owner: string | null; url: string }): Promise<void>;
   setBounds(message: BrowserBoundsMessage): void;
+  /** Main moves native focus off the page when the panel's controls take it, and menu commands follow it. */
+  setFocus(message: BrowserFocusMessage): void;
 }
 
 /** ~/.nyte/settings.json on the machine this host runs on. */

@@ -15,11 +15,6 @@ const COLLISION: NonNullable<SelectPrimitive.Positioner.Props["collisionAvoidanc
   fallbackAxisSide: "none",
 };
 
-const OVER_TRIGGER: NonNullable<SelectPrimitive.Positioner.Props["sideOffset"]> = ({
-  side,
-  anchor,
-}) => -(side === "top" || side === "bottom" ? anchor.height : anchor.width);
-
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
@@ -68,11 +63,6 @@ const styles = create({
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column",
-    outline: "none",
   },
   item: {
     display: "grid",
@@ -137,12 +127,11 @@ export const SelectValue = SelectPrimitive.Value;
 export function SelectContent({
   side = "bottom",
   align = "end",
-  sideOffset = OVER_TRIGGER,
+  sideOffset = 4,
   alignOffset,
-  alignItemWithTrigger = false,
+  alignItemWithTrigger = true,
   collisionAvoidance = COLLISION,
   tint,
-  children,
   xstyle,
   className,
   style,
@@ -176,9 +165,7 @@ export function SelectContent({
             style,
           )}
           {...rest}
-        >
-          <SelectPrimitive.List {...props(styles.list)}>{children}</SelectPrimitive.List>
-        </SelectPrimitive.Popup>
+        />
       </SelectPrimitive.Positioner>
     </SelectPrimitive.Portal>
   );

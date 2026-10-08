@@ -13,7 +13,7 @@ const styles = create({
     boxSizing: "border-box",
     width: "max-content",
     minHeight: `calc(${target.min} + 2px)`,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
@@ -37,12 +37,16 @@ const styles = create({
     backgroundColor: "transparent",
     backgroundImage: {
       default: "none",
-      ":hover:not([data-disabled])": role.layerHover,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.layerHover,
+      },
       ":active:not([data-disabled])": role.layerPressed,
     },
     color: {
       default: role.contentSecondary,
-      ":hover:not([data-disabled])": role.contentPrimary,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.contentPrimary,
+      },
       "[data-disabled]": role.contentDisabled,
     },
     fontSize: type.fontLg,

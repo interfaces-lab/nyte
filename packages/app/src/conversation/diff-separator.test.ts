@@ -35,7 +35,9 @@ test("rejects binary contents before Pierre can hydrate text", async () => {
       Promise.resolve({ path: "logo.png", old: { kind: "binary" }, new: { kind: "binary" } }),
   });
 
-  await expect(loader(fileDiff("logo.png"))).rejects.toThrow();
+  await expect(loader(fileDiff("logo.png"))).rejects.toThrow(
+    "Cannot expand logo.png: the file is binary",
+  );
 });
 
 test("rejects truncated contents before Pierre can invent deletions", async () => {
@@ -45,7 +47,9 @@ test("rejects truncated contents before Pierre can invent deletions", async () =
       Promise.resolve({ ...BOTH_SIDES, new: { kind: "truncated", head: "one\nTWO\n" } }),
   });
 
-  await expect(loader(fileDiff())).rejects.toThrow();
+  await expect(loader(fileDiff())).rejects.toThrow(
+    "Cannot expand app.ts: the file was read only in part",
+  );
 });
 
 test("rejects absent previous contents instead of treating them as empty", async () => {
@@ -54,7 +58,9 @@ test("rejects absent previous contents instead of treating them as empty", async
     readContents: () => Promise.resolve({ ...BOTH_SIDES, old: { kind: "absent" } }),
   });
 
-  await expect(loader(fileDiff())).rejects.toThrow();
+  await expect(loader(fileDiff())).rejects.toThrow(
+    "Cannot expand app.ts: it has no previous contents",
+  );
 });
 
 test("a renamed edit reads its original path without losing either side", async () => {

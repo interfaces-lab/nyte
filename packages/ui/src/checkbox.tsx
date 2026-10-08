@@ -1,4 +1,5 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
@@ -62,8 +63,12 @@ const styles = create({
     backgroundColor: {
       default: role.bgControlSelected,
       "[data-unchecked]": "transparent",
-      ":hover:not([data-disabled])": role.bgControlSelectedHover,
-      ":hover:is([data-unchecked]):not([data-disabled])": role.bgHover,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.bgControlSelectedHover,
+      },
+      ":hover:is([data-unchecked]):not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.bgHover,
+      },
       ":active:not([data-disabled])": role.bgControlSelectedPressed,
       ":active:is([data-unchecked]):not([data-disabled])": role.bgPressed,
     },
@@ -131,45 +136,53 @@ export function CheckboxField({
   className,
   style,
   ...rest
-}: Omit<ComponentProps<typeof Checkbox>, "aria-label" | "aria-labelledby" | "nativeButton"> & {
-  readonly label: string;
-  readonly description?: string;
-}): ReactElement {
+}: Omit<
+  ComponentProps<typeof Checkbox>,
+  "aria-label" | "aria-labelledby" | "nativeButton" | "className" | "style" | "xstyle"
+> &
+  Pick<StyledProps<Field.Root.Props>, "className" | "style" | "xstyle"> & {
+    readonly label: string;
+    readonly description?: string;
+  }): ReactElement {
   const generatedId = useId();
   const controlId = id ?? generatedId;
   const labelId = `${controlId}-label`;
-  const descriptionId = description === undefined ? undefined : `${controlId}-description`;
 
   return (
-    <label
-      htmlFor={controlId}
-      onClickCapture={(event) => {
-        if (
-          event.shiftKey ||
-          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+    <Field.Root
       {...mergeStyleProps(props(styles.field, xstyle), className, style)}
+      render={
+        <label
+          htmlFor={controlId}
+          onClickCapture={(event) => {
+            const { target, currentTarget } = event;
+
+            if (
+              target instanceof Element &&
+              (target === currentTarget.control || target.closest('[role="checkbox"]'))
+            )
+              return;
+
+            if (
+              event.shiftKey ||
+              currentTarget.ownerDocument.getSelection()?.isCollapsed === false
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+        />
+      }
     >
-      <Checkbox
-        {...rest}
-        id={controlId}
-        aria-labelledby={labelId}
-        aria-describedby={
-          [rest["aria-describedby"], descriptionId].filter(Boolean).join(" ") || undefined
-        }
-      />
+      <Checkbox {...rest} id={controlId} aria-labelledby={labelId} />
       <span {...props(styles.copy)}>
         <span id={labelId}>{label}</span>
         {description !== undefined && (
-          <span id={descriptionId} {...props(styles.description)}>
+          <Field.Description render={<span />} {...props(styles.description)}>
             {description}
-          </span>
+          </Field.Description>
         )}
       </span>
-    </label>
+    </Field.Root>
   );
 }

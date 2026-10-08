@@ -51,13 +51,13 @@ const lineStyles = create({
     textDecorationLine: "underline",
     textDecorationColor: {
       default: "transparent",
-      ":hover": "currentColor",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "currentColor" },
       ":focus-visible": "currentColor",
     },
     transitionProperty: "text-decoration-color",
     transitionDuration: {
       default: motion.durationFast,
-      ":hover": "0s",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "0s" },
       ":focus-visible": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },

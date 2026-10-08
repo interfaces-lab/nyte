@@ -1,13 +1,15 @@
 /**
  * Git as the SDK's version-control backend. Every operation runs `git` at the
- * directory the SDK resolved; a directory outside any repository answers
- * `none` and empty reads. Nothing here runs through a shell, nothing is ever
- * forced, and a discard never unlinks a file: untracked paths go to `discard`,
- * which the desktop points at the OS trash.
+ * root of the repository holding the directory the SDK resolved, so the paths
+ * git reports and the paths it is handed agree even when the workspace is a
+ * subfolder; a directory outside any repository answers `none` and empty
+ * reads. Nothing here runs through a shell, nothing is ever forced, and a
+ * discard never unlinks a file: untracked paths go to `discard`, which the
+ * desktop points at the OS trash.
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { worktreeFiles } from "@nyte-ai/client";
@@ -426,22 +428,19 @@ async function reviewBase(
   return { name: remoteHead, source: "default" };
 }
 
-async function snapshot(cwd: string): Promise<VcsSnapshot> {
-  const read = await readStatus(cwd);
+async function snapshot(root: string): Promise<VcsSnapshot> {
+  const read = await readStatus(root);
 
   if (read === undefined) return { kind: "none" };
-  const files = worktreeFiles(read).map((file) => fileRevisionPart(cwd, file.path));
+  const files = worktreeFiles(read).map((file) => fileRevisionPart(root, file.path));
 
-  const [root, index, base] = await Promise.all([
-    runGit(cwd, ["rev-parse", "--show-toplevel"]),
-    runGit(cwd, ["ls-files", "--stage", "-z"]),
-    read.head.kind === "attached" ? reviewBase(cwd, read.head) : Promise.resolve(null),
+  const [index, base] = await Promise.all([
+    runGit(root, ["ls-files", "--stage", "-z"]),
+    read.head.kind === "attached" ? reviewBase(root, read.head) : Promise.resolve(null),
   ]);
 
   const revision = createHash("sha256")
-    .update(root.stdout)
-    .update("\0")
-    .update(cwd)
+    .update(root)
     .update("\0")
     .update(read.head.kind === "unborn" ? "unborn" : read.head.oid)
     .update("\0")
@@ -454,7 +453,7 @@ async function snapshot(cwd: string): Promise<VcsSnapshot> {
 
   return {
     kind: "repository",
-    root: root.stdout.trim() || cwd,
+    root,
     revision,
     head: read.head.kind === "attached" ? { ...read.head, base } : read.head,
     staged: read.staged,
@@ -1206,17 +1205,15 @@ async function stale(cwd: string, revision: string): Promise<boolean> {
 }
 
 async function withMutationLock<Result>(
-  cwd: string,
+  root: string,
   revision: string,
   operation: () => Promise<Result>,
 ): Promise<Result | { readonly kind: "stale" }> {
-  const topLevel = await gitValue(cwd, ["rev-parse", "--show-toplevel"]);
-  const root = await realpath(topLevel ?? cwd);
   const shadow = join(nyteHome(), "snapshots", createHash("sha256").update(root).digest("hex"));
   await mkdir(shadow, { recursive: true, mode: 0o700 });
 
   return withFileLeaseLock(join(shadow, "mutate.lock"), async () => {
-    if (await stale(cwd, revision)) return { kind: "stale" };
+    if (await stale(root, revision)) return { kind: "stale" };
 
     return operation();
   });
@@ -1618,7 +1615,13 @@ export interface GitVcsOptions {
   readonly discard?: Discard;
 }
 
-/** Git for the SDK's `workspace.vcs`; every operation runs at the directory it receives. */
+/**
+ * Git for the SDK's `workspace.vcs`. Git reports every path from the
+ * repository root, so repository operations run at the root of the repository
+ * holding the directory they receive; outside a repository the directory
+ * itself stands in and answers `none` or empty. Tree snapshots and restores
+ * stay on the directory itself.
+ */
 export function createGitVcs(options: GitVcsOptions = {}): VcsBackend {
   const snapshots = createTreeSnapshot(options);
 
@@ -1628,14 +1631,17 @@ export function createGitVcs(options: GitVcsOptions = {}): VcsBackend {
     return operation();
   };
 
+  const atRoot = <Output>(cwd: string, operation: (root: string) => Promise<Output>) =>
+    run(async () => operation((await gitValue(cwd, ["rev-parse", "--show-toplevel"])) ?? cwd));
+
   const patchSlot = slots(PATCH_CONCURRENCY);
 
   return {
     tree: (input) => run(() => snapshots.tree(input)),
     diffTrees: (input) => run(() => snapshots.diffTrees(input)),
     restoreTree: (input) => run(() => snapshots.restoreTree(input)),
-    snapshot: (input) => run(() => snapshot(input.cwd)),
-    changes: (input) => run(() => changes(input.cwd, input)),
+    snapshot: (input) => atRoot(input.cwd, snapshot),
+    changes: (input) => atRoot(input.cwd, (root) => changes(root, input)),
     // Nothing named, nothing to discover: an empty demand costs no git process.
     diff: (input) => {
       if (input.paths.length > VCS_DIFF_PATHS_MAX) {
@@ -1646,20 +1652,18 @@ export function createGitVcs(options: GitVcsOptions = {}): VcsBackend {
 
       return input.paths.length === 0
         ? Promise.resolve([])
-        : run(() => diff(input.cwd, input, patchSlot));
+        : atRoot(input.cwd, (root) => diff(root, input, patchSlot));
     },
-    contents: (input) => run(() => contents(input.cwd, input)),
-    log: (input) => run(() => log(input.cwd, input)),
-    refs: (input) => run(() => refs(input.cwd)),
-    stage: (input) => run(() => stage(input.cwd, input)),
+    contents: (input) => atRoot(input.cwd, (root) => contents(root, input)),
+    log: (input) => atRoot(input.cwd, (root) => log(root, input)),
+    refs: (input) => atRoot(input.cwd, refs),
+    stage: (input) => atRoot(input.cwd, (root) => stage(root, input)),
     discard: (input) =>
-      run(() =>
-        discard(input.cwd, input, (absolutePath) =>
-          snapshots.discard({ cwd: input.cwd, absolutePath }),
-        ),
+      atRoot(input.cwd, (root) =>
+        discard(root, input, (absolutePath) => snapshots.discard({ cwd: root, absolutePath })),
       ),
-    commit: (input) => run(() => commit(input.cwd, input)),
-    createBranch: (input) => run(() => createBranch(input.cwd, input)),
-    push: (input) => run(() => push(input.cwd, input)),
+    commit: (input) => atRoot(input.cwd, (root) => commit(root, input)),
+    createBranch: (input) => atRoot(input.cwd, (root) => createBranch(root, input)),
+    push: (input) => atRoot(input.cwd, (root) => push(root, input)),
   };
 }

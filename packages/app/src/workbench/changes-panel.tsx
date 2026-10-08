@@ -752,7 +752,7 @@ function ChangesPanelView({
   );
 
   const filterFiles = (): void => {
-    // The rail is display:none while hidden; focus lands the frame after it shows.
+    // The rail mounts on toggle; focus lands the frame after it shows.
     if (!fileTreeVisible) onToggleFileTree();
     requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };
@@ -907,15 +907,16 @@ function ChangesPanelView({
         </div>
       ) : (
         <div key={`${optionsScopeId}\u0000${activeScopeValue}`} {...props(styles.body)}>
-          <ChangesSidebar
-            key={uiFontSize}
-            files={sidebarFiles}
-            visible={fileTreeVisible}
-            activePath={activePath}
-            filterInputRef={filterInput}
-            onRevealPath={onRevealPath}
-            onAllViewedChange={setViewed}
-          />
+          {fileTreeVisible && (
+            <ChangesSidebar
+              key={uiFontSize}
+              files={sidebarFiles}
+              activePath={activePath}
+              filterInputRef={filterInput}
+              onRevealPath={onRevealPath}
+              onAllViewedChange={setViewed}
+            />
+          )}
           {visible && (
             <ChangesStack
               items={sections}

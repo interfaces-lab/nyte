@@ -8,6 +8,9 @@
     <meta name="description" content="The Nyte web app. Connect to your Nyte server." />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <style>
+      /* The resets' layer sits below StyleX's, whichever stylesheet loads first. */
+      @layer base;
+
       :root {
         color-scheme: light dark;
       }

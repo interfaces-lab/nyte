@@ -754,6 +754,10 @@ export class DesktopHost {
         this.dependencies.browser.login(CALL_INPUT_SCHEMAS[path].Parse(input));
 
         return undefined;
+      case "host.browser.history":
+        return this.dependencies.browser.history(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.browser.forgetHistory":
+        return this.dependencies.browser.forgetHistory(CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.terminal.create": {
         const terminals = this.terminals(window);
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);

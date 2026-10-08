@@ -43,6 +43,7 @@ describe("broker client", () => {
     "https://connect.example.com/v1",
     "https://user:pass@connect.example.com",
     "https://connect.example.com?x=1",
+    "https://connect.example.com#x",
   ])("refuses origin %s before asking for a token", (bad) => {
     let asked = false;
 

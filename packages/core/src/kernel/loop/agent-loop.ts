@@ -7,6 +7,7 @@
  * Synced with pi d4edf066f.
  */
 
+import { providerIdentity } from "@nyte-ai/ai";
 import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/ai/types";
 import { validateToolArguments } from "@nyte-ai/ai/utils/validation";
 import type { ToolReason } from "@nyte-ai/protocol";
@@ -64,9 +65,7 @@ export async function generateAssistant(
     const message: AssistantMessage = {
       role: "assistant",
       content: [],
-      api: config.model.api,
-      provider: config.model.provider,
-      model: config.model.id,
+      ...providerIdentity(config.model),
       usage: {
         input: 0,
         output: 0,

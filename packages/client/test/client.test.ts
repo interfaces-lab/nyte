@@ -199,40 +199,12 @@ test("a GitHub reply whose links leave github.com is refused before the client c
   }
 });
 
-test("job calls reject malformed lists and action outcomes", async () => {
-  const client = createNyteClient({
-    baseUrl: "http://h.test",
-    fetch: scripted(() => json(200, { ok: true, defined: true, value: { kind: "cancelled" } }))
-      .fetchFn,
-  });
-  for (const call of [
-    () => client.jobs.list({ sessionId: sid }),
-    () => client.jobs.background({ sessionId: sid, jobId: "j" }),
-    () => client.jobs.cancel({ sessionId: sid, jobId: "j" }),
-  ]) {
-    const error = await caught(call());
-    assert.ok(error instanceof NyteTransportError);
-    assert.equal(error.failure.kind, "bad_body");
-  }
-});
-
 test("an undefined reply to an operation whose output is required is refused", async () => {
   const { fetchFn } = scripted(() => json(200, { ok: true, defined: false }));
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
   const error = await caught(client.plugins.catalog());
   assert.ok(error instanceof NyteTransportError);
   assert.equal(error.failure.kind, "bad_body");
-});
-
-test("an error envelope becomes a wire error carrying its code and status", async () => {
-  const { fetchFn } = scripted(() =>
-    json(404, { ok: false, error: { code: "unknown_session", message: "Unknown session: s1" } }),
-  );
-  const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
-  const error = await caught(client.messages.send({ sessionId: sid, content: "hi" }));
-  assert.ok(error instanceof NyteWireError);
-  assert.equal(error.code, "unknown_session");
-  assert.equal(error.status, 404);
 });
 
 test("a non-JSON gateway page and a rejected fetch are transport failures with their reason", async () => {
@@ -296,40 +268,6 @@ test("a watch that hits end of stream without an ended frame throws disconnected
   assert.equal(url.searchParams.get("after"), "3");
   assert.equal(url.searchParams.size, 2);
   assert.equal(seen[0]?.method, "GET");
-});
-
-test("a watch ended by the server completes normally; an error frame throws its code", async () => {
-  const ended = createNyteClient({
-    baseUrl: "http://h.test",
-    fetch: scripted(() => sse(`${synced(2)}event: ended\ndata: {}\n\n`)).fetchFn,
-  });
-  assert.deepEqual(await drained(ended.watch({ sessionId: sid, live: true })), ["synced"]);
-
-  const failing = createNyteClient({
-    baseUrl: "http://h.test",
-    fetch: scripted(() => sse('event: error\ndata: {"code":"closed","message":"bye"}\n\n')).fetchFn,
-  });
-  const error = await caught(
-    failing.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]().next(),
-  );
-  assert.ok(error instanceof NyteWireError);
-  assert.equal(error.code, "closed");
-  assert.equal(error.status, undefined);
-});
-
-test("a refused watch reports the JSON error the server answered with", async () => {
-  const client = createNyteClient({
-    baseUrl: "http://h.test",
-    fetch: scripted(() =>
-      json(409, { ok: false, error: { code: "cursor_expired", message: "old", floor: 12 } }),
-    ).fetchFn,
-  });
-  const error = await caught(
-    client.watch({ sessionId: sid, afterSeq: 1 })[Symbol.asyncIterator]().next(),
-  );
-  assert.ok(error instanceof NyteWireError);
-  assert.equal(error.status, 409);
-  assert.ok(error.error.code === "cursor_expired" && error.error.floor === 12);
 });
 
 test("returning the iterator while a read is pending resolves that read as done and aborts the request", async () => {
@@ -458,26 +396,12 @@ test("a frame larger than the client's bound ends the watch as bad_body and rele
   assert.ok(stream.cancelled);
 });
 
-test("an oversized complete id line fails the watch and cancels its body", async () => {
-  const stream = openStream(`id: ${"x".repeat(1_000)}\n${synced(1)}`);
-  const client = createNyteClient({
-    baseUrl: "http://h.test",
-    fetch: stream.fetchFn,
-    maxFrameChars: 128,
-  });
-  const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
-  const error = await caught(iterator.next());
-  assert.ok(error instanceof NyteTransportError);
-  assert.equal(error.failure.kind, "bad_body");
-  assert.ok(stream.cancelled);
-  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
-});
-
-test("calls and refused watches distinguish malformed JSON, bad envelopes, and unexpected statuses", async () => {
+test("calls and refused watches distinguish malformed JSON, bad envelopes, unexpected statuses, and error envelopes", async () => {
   for (const [body, kind] of [
     ["{", "bad_body"],
     ['{"ok":true}', "bad_body"],
     ['{"ok":true,"defined":false}', "bad_status"],
+    ['{"ok":false,"error":{"code":"closed","message":"closing"}}', "wire"],
   ]) {
     const client = createNyteClient({
       baseUrl: "http://h.test",
@@ -494,8 +418,14 @@ test("calls and refused watches distinguish malformed JSON, bad envelopes, and u
       () => client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]().next(),
     ]) {
       const error = await caught(operation());
-      assert.ok(error instanceof NyteTransportError);
-      assert.equal(error.failure.kind, kind);
+
+      if (kind === "wire") {
+        assert.ok(error instanceof NyteWireError);
+        assert.deepEqual([error.code, error.status], ["closed", 503]);
+      } else {
+        assert.ok(error instanceof NyteTransportError);
+        assert.equal(error.failure.kind, kind);
+      }
     }
   }
 });
@@ -518,10 +448,14 @@ test("an invalid watch frame throws once after preceding events and releases the
   }
 });
 
-test("returning a watch discards a failure buffered after its last yielded event", async () => {
-  const stream = openStream(
-    `${synced(1)}event: error\ndata: {"code":"closed","message":"bye"}\n\n`,
-  );
+test("a watch error frame throws its code, unless the watch was returned before reading it", async () => {
+  const frames = `${synced(1)}event: error\ndata: {"code":"closed","message":"bye"}\n\n`;
+  const read = createNyteClient({ baseUrl: "http://h.test", fetch: openStream(frames).fetchFn });
+  const thrown = await caught(drained(read.watch({ sessionId: sid, live: true })));
+  assert.ok(thrown instanceof NyteWireError);
+  assert.deepEqual([thrown.code, thrown.status], ["closed", undefined]);
+
+  const stream = openStream(frames);
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: stream.fetchFn });
   const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
   assert.equal((await iterator.next()).done, false);

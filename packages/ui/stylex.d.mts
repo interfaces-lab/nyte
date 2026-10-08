@@ -1,4 +1,9 @@
 import type unplugin from "@stylexjs/unplugin";
 
-/** `@stylexjs/unplugin` with component rules ordered below the app's. */
-export declare const stylex: Pick<typeof unplugin, "vite" | "rollup">;
+type VitePlugin = ReturnType<typeof unplugin.vite>;
+
+/** `@stylexjs/unplugin` with component rules ordered below the app's and no runtime injection. */
+export declare const stylex: {
+  readonly vite: (options?: Parameters<typeof unplugin.vite>[0]) => VitePlugin[];
+  readonly rollup: typeof unplugin.rollup;
+};

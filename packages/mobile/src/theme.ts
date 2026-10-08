@@ -7,22 +7,28 @@ import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 // through prefers-color-scheme conditionals on the tokens below.
 const schemes = {
   light: {
-    background: platformColors.light.bgChrome,
-    canvas: platformColors.light.bgBase,
-    surface: platformColors.light.bgBase,
-    raised: platformColors.light.bgPressed,
-    fill: platformColors.light.bgInteractiveSecondaryTranslucent,
-    foreground: platformColors.light.contentPrimary,
-    muted: platformColors.light.contentSecondary,
-    tertiary: platformColors.light.contentTertiary,
+    background: "#F7F7F8",
+    canvas: "#FFFFFF",
+    surface: "#FFFFFF",
+    raised: "#E9E9EB",
+    fill: "#00000008",
+    foreground: "#161618",
+    muted: "#6D6D72",
+    tertiary: "#AEAEB2",
     interactiveTertiary: platformColors.light.contentInteractiveTertiary,
-    border: platformColors.light.borderSecondaryTranslucent,
-    separator: platformColors.light.borderSecondaryTranslucent,
-    accent: platformScopes.light.blue.contentSecondary,
-    accentFill: platformScopes.light.blue.buttonFill,
-    onAccentFill: platformScopes.light.blue.contentOnInteractiveStrong,
-    primary: platformColors.light.bgInteractiveStrong,
-    onPrimary: platformColors.light.contentOnInteractiveStrong,
+    border: "#0000000C",
+    separator: "#0000000C",
+    accent: "#0066D6",
+    accentFill: "#006DEB",
+    onAccentFill: "#FFFFFF",
+    outgoingBubble: "#006DEB",
+    outgoingText: "#FFFFFF",
+    incomingBubble: "#F1F1F3",
+    selection: "#EDF4FF",
+    agentAccent: "#D95C00",
+    pinnedAccent: "#A744AD",
+    primary: "#161618",
+    onPrimary: "#FFFFFF",
     success: platformScopes.light.green.contentSecondary,
     danger: platformScopes.light.red.contentSecondary,
     warning: platformScopes.light.yellow.contentSecondary,
@@ -32,22 +38,28 @@ const schemes = {
     shadow: "0 2px 12px rgba(0,0,0,0.08)",
   },
   dark: {
-    background: platformColors.dark.bgChrome,
-    canvas: platformColors.dark.bgChrome,
-    surface: platformColors.dark.bgElevated,
-    raised: platformColors.dark.bgPressed,
-    fill: platformColors.dark.bgInteractiveSecondaryTranslucent,
-    foreground: platformColors.dark.contentPrimary,
-    muted: platformColors.dark.contentSecondary,
-    tertiary: platformColors.dark.contentTertiary,
+    background: "#111113",
+    canvas: "#171719",
+    surface: "#242426",
+    raised: "#333336",
+    fill: "#FFFFFF0D",
+    foreground: "#F5F5F7",
+    muted: "#A4A4AA",
+    tertiary: "#68686E",
     interactiveTertiary: platformColors.dark.contentInteractiveTertiary,
-    border: platformColors.dark.borderSecondaryTranslucent,
-    separator: platformColors.dark.borderSecondaryTranslucent,
-    accent: platformScopes.dark.blue.contentSecondary,
-    accentFill: platformScopes.dark.blue.buttonFill,
-    onAccentFill: platformScopes.dark.blue.contentOnInteractiveStrong,
-    primary: platformColors.dark.bgInteractiveStrong,
-    onPrimary: platformColors.dark.contentOnInteractiveStrong,
+    border: "#FFFFFF12",
+    separator: "#FFFFFF12",
+    accent: "#70B1FF",
+    accentFill: "#0A66D5",
+    onAccentFill: "#FFFFFF",
+    outgoingBubble: "#0A66D5",
+    outgoingText: "#FFFFFF",
+    incomingBubble: "#242426",
+    selection: "#173251",
+    agentAccent: "#FF9A5C",
+    pinnedAccent: "#D891DE",
+    primary: "#F5F5F7",
+    onPrimary: "#161618",
     success: platformScopes.dark.green.contentSecondary,
     danger: platformScopes.dark.red.contentSecondary,
     warning: platformScopes.dark.yellow.contentSecondary,
@@ -89,6 +101,10 @@ export const tokens = css.defineVars({
   accent: conditional("accent"),
   accentFill: conditional("accentFill"),
   onAccentFill: conditional("onAccentFill"),
+  outgoingBubble: conditional("outgoingBubble"),
+  outgoingText: conditional("outgoingText"),
+  incomingBubble: conditional("incomingBubble"),
+  selection: conditional("selection"),
   primary: conditional("primary"),
   onPrimary: conditional("onPrimary"),
   success: conditional("success"),
@@ -104,8 +120,8 @@ export const radii = {
   sm: 8,
   tile: 8,
   control: 12,
-  card: 16,
-  bubble: 20,
+  card: 20,
+  bubble: 22,
   composer: 23,
   sheet: 28,
   pill: 999,
@@ -118,10 +134,10 @@ export const list = {
   // The system spinner draws at 20pt; this brings it down to the glyph column.
   spinnerScale: 0.7,
   leadingGap: 12,
-  rowPaddingBlock: 12,
-  titleMetaGap: 2,
+  rowPaddingBlock: 16,
+  titleMetaGap: 4,
   sectionGap: 28,
-  headerGap: 6,
+  headerGap: 8,
   tile: 28,
   // Flat rows lead with a hairline ring instead of the filled tile.
   ring: 24,
@@ -157,6 +173,15 @@ export const conversation = {
   textInset: spacing.sm,
 };
 
+export const menu = {
+  width: 200,
+  maxHeight: 280,
+  padding: spacing.xs,
+  gap: spacing.xs,
+  rowHeight: controls.touchTarget,
+  radius: controls.touchTarget / 2 + spacing.xs,
+} as const;
+
 export const media = {
   attachmentSize: 56,
   recentThumb: 72,
@@ -177,11 +202,11 @@ export const overCamera = {
 } as const;
 
 export const typography = {
-  body: { fontSize: 16, lineHeight: 22, fontWeight: 400 },
+  body: { fontSize: 17, lineHeight: 23, fontWeight: 400 },
   secondary: { fontSize: 15, lineHeight: 20, fontWeight: 400 },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: 400 },
   label: { fontSize: 13, lineHeight: 18, fontWeight: 500 },
-  headline: { fontSize: 16, lineHeight: 22, fontWeight: 600 },
+  headline: { fontSize: 17, lineHeight: 23, fontWeight: 600 },
   title: { fontSize: 17, lineHeight: 22, fontWeight: 600 },
   heading: { fontSize: 22, lineHeight: 28, fontWeight: 600 },
   button: { fontSize: 16, lineHeight: 22, fontWeight: 500 },
@@ -190,23 +215,6 @@ export const typography = {
   diff: { fontSize: 12, lineHeight: 18, fontWeight: 400, fontFamily: "Menlo" },
   section: { fontSize: 18, lineHeight: 24, fontWeight: 600 },
 } as const;
-
-/**
- * A panel that grows out of the composer: the capsule's own surface and radius,
- * raised above the transcript it covers. The attachment choices and the `@`/`/`
- * menu are the same object to the eye, so they are the same rule here.
- */
-export const surfaces = css.create({
-  panel: {
-    borderRadius: radii.composer,
-    borderWidth: controls.hairline,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.shadow,
-    overflow: "hidden",
-  },
-});
 
 // RSD interprets numeric line heights as ratios; native props require pixels.
 export const textStyles = css.create({
@@ -269,6 +277,7 @@ export function markdownStyle(
   // reply reads as one font rather than two.
   const prose =
     transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
+
   const scopes = platformScopes[scheme];
 
   return {

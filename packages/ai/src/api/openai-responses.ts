@@ -49,6 +49,7 @@ import {
   convertResponsesTools,
   processResponsesStream,
   stripStreamingScratchState,
+  withPriorityTier,
 } from "./openai-responses-shared.ts";
 import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -117,8 +118,9 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 export async function compactOpenAIResponsesContext(
   model: Model<"openai-responses">,
   context: Context,
-  options?: OpenAIResponsesOptions,
+  requested?: OpenAIResponsesOptions,
 ): Promise<OpenAICompactResult> {
+  const options = withPriorityTier(requested);
   const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
   const compat = getCompat(model);
   const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
@@ -156,6 +158,9 @@ export async function compactOpenAIResponsesContext(
     maxRetries: 0,
   };
 
+  // The compact endpoint offers the priority tier and nothing else of ours.
+  const serviceTier = options?.serviceTier === "priority" ? "priority" : undefined;
+
   if (options?.signal !== undefined) requestOptions.signal = options.signal;
 
   if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
@@ -163,7 +168,10 @@ export async function compactOpenAIResponsesContext(
   const response = await retryProviderRequest(
     () =>
       client.responses
-        .compact({ model: model.id, input, instructions }, requestOptions)
+        .compact(
+          { model: model.id, input, instructions, service_tier: serviceTier },
+          requestOptions,
+        )
         .asResponse(),
     {
       maxRetries: options?.maxRetries,
@@ -177,7 +185,7 @@ export async function compactOpenAIResponsesContext(
     model,
   );
 
-  return readOpenAICompactResponse(response, model);
+  return readOpenAICompactResponse(response, model, serviceTier);
 }
 
 /**
@@ -186,8 +194,9 @@ export async function compactOpenAIResponsesContext(
 export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> = (
   model: Model<"openai-responses">,
   context: TranscriptContext,
-  options?: OpenAIResponsesOptions,
+  requested?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
+  const options = withPriorityTier(requested);
   const stream = new AssistantMessageEventStream();
 
   const normalizedContext = resolveTranscript(
@@ -319,7 +328,6 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
   const base = {
     ...buildBaseOptions(model, context, options, options?.apiKey),
     toolChoice: options?.toolChoice,
-    serviceTier: options?.fast === true ? "priority" : undefined,
   } satisfies OpenAIResponsesOptions;
 
   const clampedReasoning = options?.reasoning

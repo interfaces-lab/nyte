@@ -772,21 +772,6 @@ test("browser origins: same-origin passes, listed origins get CORS headers, othe
 // Watch
 // ---------------------------------------------------------------------------
 
-test("a live watch syncs first and then carries a queued message", async () => {
-  const { client } = await fixture();
-  const { sessionId } = await client.sessions.create();
-  const iterator = client.watch({ sessionId, live: true })[Symbol.asyncIterator]();
-  const synced = await iterator.next();
-  assert.equal(synced.done === false && synced.value.kind, "synced");
-  const activation = await iterator.next();
-  assert.equal(activation.done === false && activation.value.kind, "activation_changed");
-  const receipt = await client.messages.send({ sessionId, content: "queued while watching" });
-  const queued = await iterator.next();
-  assert.ok(queued.done === false && queued.value.kind === "queued");
-  assert.equal(queued.value.item.change, receipt.change);
-  await iterator.return?.();
-});
-
 test("activation state and activation_changed round-trip over HTTP and SSE", async () => {
   let active = false;
   const { client, nyte } = await fixture({
@@ -1029,7 +1014,7 @@ test("an SDK watch that fails after it started ends the stream with an error fra
 });
 
 test("a heartbeat comment keeps a quiet stream open without producing an event", async () => {
-  const { client } = await fixture({ server: { heartbeatMs: 10 } });
+  const { client, raw } = await fixture({ server: { heartbeatMs: 10 } });
   const { sessionId } = await client.sessions.create();
   const iterator = client.watch({ sessionId, live: true })[Symbol.asyncIterator]();
   await iterator.next();
@@ -1041,6 +1026,33 @@ test("a heartbeat comment keeps a quiet stream open without producing an event",
   assert.ok(next.done === false && next.value.kind === "queued");
   assert.equal(next.value.item.change, receipt.change);
   await iterator.return?.();
+
+  const quiet = await raw(`/v1/watch?sessionId=${encodeURIComponent(sessionId)}&live=1`);
+  const reader = quiet.body?.getReader();
+
+  assert.ok(reader);
+
+  const decoder = new TextDecoder();
+  let text = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const deadline = new Promise<{ done: true; value: undefined }>((resolve) => {
+    timer = setTimeout(() => resolve({ done: true, value: undefined }), 1_000);
+  });
+
+  try {
+    while (!text.includes(": keepalive\n\n")) {
+      const chunk = await Promise.race([reader.read(), deadline]);
+
+      if (chunk.done) break;
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } finally {
+    clearTimeout(timer);
+    await reader.cancel();
+  }
+
+  assert.match(text, /^: keepalive$/m);
 });
 
 test("a transport-level disconnect is not a normal end", async () => {

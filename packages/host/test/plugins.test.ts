@@ -31,6 +31,7 @@ async function fixture() {
   directories.push(cwd);
   const home = join(cwd, "home");
   vi.stubEnv("NYTE_HOME", home);
+  vi.stubEnv("HOME", join(cwd, "user"));
   return { cwd, home, workspace: await createWorkspaceStore().trust(cwd) };
 }
 

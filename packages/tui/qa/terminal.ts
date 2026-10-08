@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import process from "node:process";
 import { realpath } from "node:fs/promises";
 import { relative, isAbsolute } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   CliRenderEvents,
@@ -9,16 +10,19 @@ import {
   EmbeddedTerminalRenderable,
   KeyEvent,
   MouseEvent,
-  PasteEvent,
+  TextRenderable,
 } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
-import { keyStrokes } from "../src/constants.ts";
+import { keycap, keyStrokes } from "../src/constants.ts";
 import { supervisorReport } from "./supervisor-protocol.ts";
 import type { InputRecord, Terminal, TerminalOptions } from "./types.ts";
 
 /** Frames arrive as DEC 2026 synchronized updates; a chunk without one is a complete update too. */
 // eslint-disable-next-line no-control-regex
 const SYNCHRONIZED_UPDATE = /\x1b\[\?2026([hl])/gu;
+
+/** Visible playback only: the gap before each scripted input, so a person can follow typing. */
+const SHOW_INPUT_GAP_MS = 40;
 
 function dimensions(width: number, height: number) {
   if (![width, height].every((value) => Number.isInteger(value) && value > 0 && value <= 65535)) {
@@ -45,13 +49,23 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     throw new Error("--show requires terminal stdin and stdout. Run it directly in a terminal.");
   }
 
+  if (
+    options.show &&
+    (process.stdout.columns < options.width || process.stdout.rows < options.height + 1)
+  ) {
+    throw new Error(
+      `--show needs a terminal of at least ${options.width}x${options.height + 1}; this one is ${process.stdout.columns}x${process.stdout.rows}.`,
+    );
+  }
+
   const config = {
     width: options.width,
     height: options.height,
     exitOnCtrlC: false,
     exitSignals: [],
-    useMouse: true,
-    enableMouseMovement: true,
+    // Scripted mouse input goes straight to the embedded terminal; the person watching
+    // a --show run must not move Nyte's mouse state.
+    useMouse: false,
     targetFps: 60,
     maxFps: Infinity,
   };
@@ -59,6 +73,34 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   const renderer = options.show
     ? await createCliRenderer(config)
     : (await createTestRenderer(config)).renderer;
+
+  // Visible playback names the step and the latest input above the child's screen.
+  // Explicit colors: OpenTUI's default white text vanishes on a light terminal background.
+  const caption = options.show
+    ? new TextRenderable(renderer, {
+        id: "qa-caption",
+        height: 1,
+        content: "",
+        fg: "#000000",
+        bg: "#ffd75f",
+      })
+    : undefined;
+
+  let step = "";
+  let continueStep: (() => void) | undefined;
+
+  if (caption) renderer.root.add(caption);
+
+  // Keys from the person watching never reach Nyte: Enter advances --step, Ctrl+C stops the run.
+  const watcherKey = (key: KeyEvent) => {
+    key.preventDefault();
+    key.stopPropagation();
+
+    if (key.ctrl && key.name === "c") process.kill(process.pid, "SIGINT");
+    else if (key.name === "return" || key.name === "space") continueStep?.();
+  };
+
+  if (options.show) renderer.keyInput.on("keypress", watcherKey);
 
   const inputs: InputRecord[] = [];
   const chunks: Terminal["chunks"] = [];
@@ -86,8 +128,8 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
 
   const terminal = new EmbeddedTerminalRenderable(renderer, {
     id: "nyte-binary",
-    width: "100%",
-    height: "100%",
+    width: options.width,
+    height: options.height,
     cols: options.width,
     rows: options.height,
     // Host selection would compete with the same mouse gesture inside Nyte.
@@ -232,9 +274,11 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   process.prependListener("SIGINT", interrupt);
   process.prependListener("SIGTERM", terminate);
 
-  function record(action: string, send: () => void) {
+  function record(action: string, send: () => void, detail = action) {
     if (closed || closing || exitCode !== undefined)
       throw new Error("Cannot send input to an exited terminal.");
+
+    if (caption) caption.content = `${step}   · input: ${detail}`;
     const before = terminal.screen();
     const input: InputRecord = { action, before, at: performance.now() };
     inputs.push(input);
@@ -271,48 +315,48 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     waitForExit,
     signal: (name) => record(name, () => signal(name)),
     screen: () => finalScreen ?? terminal.screen(),
-    cursor: () => (finalScreen ?? terminal.screen()).cursor,
     key(action) {
       const stroke = keyStrokes(action)[0];
 
       if (!stroke) throw new Error(`No binding for ${action}.`);
 
-      return record(action, () => {
-        if (
-          !terminal.handleKeyPress(
-            new KeyEvent({
-              name: stroke.name,
-              ctrl: stroke.ctrl ?? false,
-              shift: stroke.shift ?? false,
-              meta: false,
-              super: stroke.super ?? false,
-              option: stroke.meta ?? false,
-              sequence: "",
-              raw: "",
-              number: false,
-              eventType: "press",
-              source: "raw",
-            }),
+      return record(
+        action,
+        () => {
+          if (
+            !terminal.handleKeyPress(
+              new KeyEvent({
+                name: stroke.name,
+                ctrl: stroke.ctrl ?? false,
+                shift: stroke.shift ?? false,
+                meta: false,
+                super: stroke.super ?? false,
+                option: stroke.meta ?? false,
+                sequence: "",
+                raw: "",
+                number: false,
+                eventType: "press",
+                source: "raw",
+              }),
+            )
           )
-        )
-          throw new Error(`Terminal could not encode ${action}.`);
-      });
-    },
-    gesture(key) {
-      return record(`gesture:${key.name}`, () => {
-        if (!terminal.handleKeyPress(new KeyEvent(key)))
-          throw new Error(`Terminal could not encode ${key.name}.`);
-      });
+            throw new Error(`Terminal could not encode ${action}.`);
+        },
+        `${action} · ${keycap(action)}`,
+      );
     },
     raw(bytes, label) {
-      return record(label, () => forward(new TextEncoder().encode(bytes)));
+      return record(
+        label,
+        () => forward(new TextEncoder().encode(bytes)),
+        `${label} ${JSON.stringify(bytes)}`,
+      );
     },
     text(text) {
-      return record("text", () => forward(new TextEncoder().encode(text)));
-    },
-    paste(text) {
-      return record("paste", () =>
-        terminal.handlePaste(new PasteEvent(new TextEncoder().encode(text))),
+      return record(
+        "text",
+        () => forward(new TextEncoder().encode(text)),
+        `text ${JSON.stringify(text)}`,
       );
     },
     mouse(event) {
@@ -323,7 +367,28 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     resize(width, height) {
       dimensions(width, height);
 
-      return record(`resize:${width}x${height}`, () => renderer.resize(width, height));
+      return record(`resize:${width}x${height}`, () => {
+        terminal.width = width;
+        terminal.height = height;
+
+        if (!options.show) renderer.resize(width, height);
+      });
+    },
+    caption(text) {
+      step = text;
+
+      if (caption && !closed) caption.content = text;
+    },
+    pace: () => (options.show ? setTimeout(SHOW_INPUT_GAP_MS) : Promise.resolve()),
+    waitForWatcher() {
+      if (!options.show || closed || closing) return Promise.resolve();
+      const advanced = Promise.withResolvers<void>();
+      continueStep = () => {
+        continueStep = undefined;
+        advanced.resolve();
+      };
+
+      return advanced.promise;
     },
     async waitForScreen(predicate, deadline, input = inputs.at(-1)) {
       if (!Number.isFinite(deadline))
@@ -378,22 +443,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
         check();
       });
     },
-    observe(listener) {
-      // Checked once per emulator frame: complete updates that finished between two
-      // frames are seen as the later one, so the listener sees observed frames, not
-      // every complete update the child painted.
-      let seen = completedUpdates;
-
-      const check = () => {
-        if (synchronizedUpdateOpen || completedUpdates <= seen) return;
-        seen = completedUpdates;
-        listener(finalScreen ?? terminal.screen());
-      };
-
-      renderer.on(CliRenderEvents.FRAME, check);
-
-      return () => renderer.off(CliRenderEvents.FRAME, check);
-    },
     close() {
       closing ??= (async () => {
         try {
@@ -416,6 +465,8 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
           closed = true;
           process.off("SIGINT", interrupt);
           process.off("SIGTERM", terminate);
+          renderer.keyInput.off("keypress", watcherKey);
+          continueStep?.();
           terminal.onData = undefined;
 
           try {

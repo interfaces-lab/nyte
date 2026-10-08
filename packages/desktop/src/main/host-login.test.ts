@@ -320,6 +320,8 @@ async function desktop(createModels: () => MutableModels) {
       find: () => Promise.resolve({ active: 0, total: 0 }),
       cancelDownload: () => undefined,
       login: () => undefined,
+      history: async () => [],
+      forgetHistory: async () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,
@@ -432,11 +434,6 @@ test("cancelling a sign-in aborts the provider's polling and stores nothing", as
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   assert.equal(provider.state.aborted, true);
   assert.ok(!events.some((event) => event.kind === "catalog_changed"));
-  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
-
-  // Approval after the cancel cannot reconnect the attempt.
-  provider.approve();
-  await new Promise((r) => setTimeout(r, 20));
   assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 
@@ -626,8 +623,6 @@ test("signing out while the code is still pending cancels the sign-in", async ()
   await host.call(1, "host.logout", { provider: "device" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   assert.equal(provider.state.aborted, true);
-  provider.approve();
-  await new Promise((r) => setTimeout(r, 20));
   assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 

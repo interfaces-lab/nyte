@@ -10,8 +10,10 @@ import { useAccount } from "../account/account-provider.tsx";
 import { ConnectSheet } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
+import { usesWorkspaceCursor } from "../chat/workspace-menu.ts";
+import { useRegistryFolders } from "../chat/workspace-start.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
-import { IconRing } from "../ui/icon-tile.tsx";
+import { IconTile } from "../ui/icon-tile.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { ChoiceRow, SwitchRow } from "./setting-rows.tsx";
 import {
@@ -27,7 +29,7 @@ type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, connection, saved, edit, disconnect } = useHost();
+  const { client, info, connection, saved, edit, disconnect } = useHost();
   const account = useAccount();
   const [connectOpen, setConnectOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -52,12 +54,15 @@ export function SettingsScreen() {
   const workspacesQuery = useQuery({
     queryKey: ["workspace-list"],
     retry: false,
+    enabled: usesWorkspaceCursor(info),
     queryFn: () => client.workspace.list(),
   });
 
+  const registry = useRegistryFolders();
+
   const version = Constants.expoConfig?.version ?? "0.0.0";
 
-  // An account Mac that refuses this iPhone is not retried or re-enrolled on
+  // An account host that refuses this iPhone is not retried or re-enrolled on
   // its own: a revocation must stay revoked until the user reconnects.
   const refused =
     saved.kind === "managed" &&
@@ -72,18 +77,18 @@ export function SettingsScreen() {
         ? "unreachable"
         : "connected";
 
-  // Disconnecting deletes the saved token, so reconnecting means copying it from the Mac again.
+  // Disconnecting deletes the saved token, so reconnecting means copying it from the host again.
   function confirmDisconnect() {
     if (busy) return;
     Alert.alert(
-      "Disconnect Mac",
+      `Disconnect from ${connection.name}?`,
       saved.kind === "managed"
-        ? "To connect again, pick this Mac from your Nyte account."
-        : "To connect again, you'll need the address and token from your Mac.",
+        ? "To connect again, pick it from your Nyte account."
+        : "To connect again, you'll need its address and token.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Disconnect Mac",
+          text: "Disconnect",
           style: "destructive",
           onPress: () => {
             setBusy(true);
@@ -109,7 +114,13 @@ export function SettingsScreen() {
   const statusColor =
     status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
 
-  const workspaceList = workspacesQuery.data;
+  // A registry host shares only the folders its owner made ready; a cursor host lists its recents.
+  const workspaceList =
+    registry === undefined
+      ? workspacesQuery.data
+      : registry.kind === "ready"
+        ? registry.ready
+        : undefined;
 
   return (
     <ScrollView
@@ -135,71 +146,13 @@ export function SettingsScreen() {
           }}
         />
       )}
-      <SectionHeader label="Connection" first />
-      <Group variant="flat">
-        {/* The Nyte Connect entry: the Mac, how it is reached, and the account behind it. */}
-        <GroupRow onClick={account === undefined ? undefined : () => setConnectOpen(true)}>
-          <IconRing name="laptopcomputer" color={theme.foreground} />
-          <html.div style={styles.rowText}>
-            <html.span style={textStyles.body}>{connection.name}</html.span>
-            <html.span style={textStyles.caption}>
-              {saved.kind === "managed"
-                ? account?.status.kind === "signedIn" &&
-                  account.status.ownerId === saved.binding.ownerId
-                  ? account.status.label
-                  : "Nyte account"
-                : displayAddress(connection)}
-            </html.span>
-          </html.div>
-          <html.div style={styles.status} aria-live="polite">
-            <html.div style={styles.statusDot(statusColor)} />
-            <html.span style={textStyles.caption}>{statusLabel}</html.span>
-          </html.div>
-          {account === undefined ? null : (
-            <SymbolView
-              name="chevron.right"
-              size={controls.iconXs}
-              weight="semibold"
-              tintColor={theme.interactiveTertiary}
-            />
-          )}
-        </GroupRow>
-        {status === "refused" ? (
-          <GroupRow onClick={account === undefined ? edit : () => setConnectOpen(true)}>
-            <IconRing name="arrow.triangle.2.circlepath" />
-            <html.span style={textStyles.body}>Reconnect…</html.span>
-          </GroupRow>
-        ) : (
-          <GroupRow
-            busy={status === "checking"}
-            onClick={() => {
-              void check.refetch();
-              void workspacesQuery.refetch();
-            }}
-          >
-            <IconRing name="arrow.clockwise" />
-            <html.span style={textStyles.body}>
-              {status === "unreachable" ? "Retry Connection" : "Check Connection"}
-            </html.span>
-          </GroupRow>
-        )}
-        <GroupRow onClick={edit}>
-          <IconRing name="pencil" />
-          <html.span style={textStyles.body}>Edit Connection…</html.span>
-        </GroupRow>
-      </Group>
-      {error !== undefined && (
-        <html.p role="alert" style={[textStyles.error, styles.error]}>
-          {error}
-        </html.p>
-      )}
-      <SectionHeader label="Style" />
-      <Group variant="flat">
+      <SectionHeader label="Display" first />
+      <Group>
         <ChoiceRow label="Appearance" icon="circle.lefthalf.filled" setting={appearance} />
-        <ChoiceRow label="Transcript Font" icon="textformat" setting={transcriptFont} />
+        <ChoiceRow label="Message font" icon="textformat" setting={transcriptFont} />
       </Group>
-      <SectionHeader label="List" />
-      <Group variant="flat">
+      <SectionHeader label="Inbox" />
+      <Group>
         <SwitchRow
           label="Show filters"
           icon="line.3.horizontal.decrease"
@@ -219,13 +172,74 @@ export function SettingsScreen() {
           onChange={setTwoLinePreview}
         />
       </Group>
+      <SectionHeader label="Connection" />
+      <Group>
+        <GroupRow onClick={account === undefined ? undefined : () => setConnectOpen(true)}>
+          <IconTile name="laptopcomputer" color={theme.foreground} />
+          <html.div style={styles.rowText}>
+            <html.span style={textStyles.headline}>{connection.name}</html.span>
+            <html.div style={styles.metadata}>
+              <html.span style={textStyles.caption}>
+                {saved.kind === "managed"
+                  ? account?.status.kind === "signedIn" &&
+                    account.status.ownerId === saved.binding.ownerId
+                    ? account.status.label
+                    : "Nyte account"
+                  : displayAddress(connection)}
+              </html.span>
+              <html.div style={styles.status} aria-live="polite">
+                <html.div style={styles.statusDot(statusColor)} />
+                <html.span style={textStyles.caption}>{statusLabel}</html.span>
+              </html.div>
+            </html.div>
+          </html.div>
+          {account === undefined ? null : (
+            <SymbolView
+              name="chevron.right"
+              size={controls.iconXs}
+              weight="semibold"
+              tintColor={theme.interactiveTertiary}
+            />
+          )}
+        </GroupRow>
+        {status === "refused" ? (
+          <GroupRow onClick={account === undefined ? edit : () => setConnectOpen(true)}>
+            <IconTile name="arrow.triangle.2.circlepath" />
+            <html.span style={textStyles.body}>Reconnect</html.span>
+          </GroupRow>
+        ) : (
+          <GroupRow
+            busy={status === "checking"}
+            onClick={() => {
+              void check.refetch();
+
+              if (registry === undefined) void workspacesQuery.refetch();
+              else if (registry.kind !== "loading") registry.refresh();
+            }}
+          >
+            <IconTile name="arrow.clockwise" />
+            <html.span style={textStyles.body}>
+              {status === "unreachable" ? "Retry connection" : "Check connection"}
+            </html.span>
+          </GroupRow>
+        )}
+        <GroupRow onClick={edit}>
+          <IconTile name="pencil" />
+          <html.span style={textStyles.body}>Edit connection</html.span>
+        </GroupRow>
+      </Group>
+      {error !== undefined && (
+        <html.p role="alert" style={[textStyles.error, styles.error]}>
+          {error}
+        </html.p>
+      )}
       {workspaceList !== undefined && workspaceList.length > 0 ? (
         <>
           <SectionHeader label="Workspaces" />
-          <Group variant="flat">
+          <Group>
             {workspaceList.map((workspace) => (
               <GroupRow key={workspace.path}>
-                <IconRing name="folder" />
+                <IconTile name="folder" />
                 <html.div style={styles.rowText}>
                   <html.span style={textStyles.body}>{workspace.name}</html.span>
                   <html.span style={[textStyles.caption, styles.path]}>{workspace.path}</html.span>
@@ -235,20 +249,18 @@ export function SettingsScreen() {
           </Group>
         </>
       ) : null}
-      <SectionHeader label="Danger Zone" tone="danger" />
-      <Group variant="flat">
-        <GroupRow busy={busy} onClick={confirmDisconnect}>
-          <IconRing name="rectangle.portrait.and.arrow.right" color={theme.danger} />
-          <html.span style={[textStyles.body, styles.danger]}>
-            {busy ? "Disconnecting…" : "Disconnect Mac"}
-          </html.span>
-        </GroupRow>
-      </Group>
+      <html.div style={styles.disconnect}>
+        <Group>
+          <GroupRow busy={busy} onClick={confirmDisconnect}>
+            <IconTile name="rectangle.portrait.and.arrow.right" color={theme.danger} />
+            <html.span style={[textStyles.body, styles.danger]}>
+              {busy ? "Disconnecting…" : "Disconnect"}
+            </html.span>
+          </GroupRow>
+        </Group>
+      </html.div>
       <html.div style={styles.colophon}>
-        <html.span style={styles.mark}>Nyte</html.span>
-        <html.div style={styles.versionPill}>
-          <html.span style={styles.version}>{version}</html.span>
-        </html.div>
+        <html.span style={textStyles.caption}>Nyte {version}</html.span>
       </html.div>
     </ScrollView>
   );
@@ -264,7 +276,14 @@ const styles = css.create({
     alignItems: "flex-start",
     gap: 2,
   },
-  path: { lineClamp: 1, textAlign: "start" },
+  path: { textAlign: "start" },
+  metadata: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   status: {
     display: "flex",
     flexDirection: "row",
@@ -280,40 +299,10 @@ const styles = css.create({
   }),
   danger: { color: tokens.danger },
   error: { paddingInline: list.gutter },
+  disconnect: { marginBlockStart: list.sectionGap },
   colophon: {
     display: "flex",
-    flexDirection: "column",
-    // The scroll view's content is the flex parent here, so the footer is
-    // pushed down by its own margin rather than by growing inside it.
-    marginBlockStart: "auto",
-    justifyContent: "center",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingBlock: spacing.xxl,
-    minHeight: 160,
-  },
-  mark: {
-    color: tokens.muted,
-    fontSize: 11,
-    lineHeight: "14px",
-    fontWeight: 500,
-    letterSpacing: 3,
-    textTransform: "uppercase",
-  },
-  versionPill: {
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    borderRadius: 999,
-    paddingInline: 8,
-    paddingBlock: 2,
-  },
-  version: {
-    color: tokens.muted,
-    fontSize: 11,
-    lineHeight: "14px",
-    fontWeight: 500,
-    letterSpacing: 0.6,
-    fontVariant: "tabular-nums",
+    paddingBlock: spacing.xl,
   },
 });

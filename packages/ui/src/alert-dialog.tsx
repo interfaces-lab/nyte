@@ -69,7 +69,15 @@ export function ConfirmDialog({
     <alertDialogParts.Root
       open={open}
       onOpenChange={(nextOpen, eventDetails) => {
-        if (!nextOpen && !pending) onOpenChange(false, eventDetails);
+        if (nextOpen) return;
+
+        if (pending) {
+          eventDetails.cancel();
+
+          return;
+        }
+
+        onOpenChange(false, eventDetails);
       }}
     >
       <alertDialogParts.Popup

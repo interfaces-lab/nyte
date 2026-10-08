@@ -12,14 +12,14 @@ export async function InstallCard() {
   return (
     <section
       id="install"
-      className="group relative isolate scroll-mt-6 overflow-hidden rounded-[20px] bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle"
+      className="group relative isolate scroll-mt-6 overflow-clip rounded-[20px] bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle"
     >
       <ScanMoon
         rows={64}
         className="pointer-events-none absolute right-[4%] -bottom-[42%] -z-10 w-[min(460px,72%)] text-foreground/30 transition-transform duration-700 ease-nav group-focus-within:-translate-y-3 group-hover:-translate-y-3 motion-reduce:transition-none max-sm:-right-[22%] max-sm:-bottom-[30%] max-sm:opacity-60"
       />
 
-      <div className="flex flex-col items-start px-6 py-12 sm:px-12 sm:py-16">
+      <div className="flex flex-col items-start px-panel-x py-panel-y">
         <h2 className="font-display text-[32px]/[1.1] font-medium tracking-[-0.03em]">
           Download Nyte
         </h2>

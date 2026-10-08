@@ -32,6 +32,8 @@ import { cloudSessions } from "@nyte-ai/app/bridge.ts";
 import type { WatchEnvelope } from "../shared/ipc.ts";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { DesktopHost } from "./host.ts";
+import { createCloudSession, serverRequest } from "./cloud-session.ts";
+import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 
 const TOKEN = "desktop-server-test-token";
@@ -269,6 +271,8 @@ async function desktop(): Promise<{
       find: () => Promise.resolve({ active: 0, total: 0 }),
       cancelDownload: () => undefined,
       login: () => undefined,
+      history: async () => [],
+      forgetHistory: async () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,
@@ -286,6 +290,77 @@ async function desktop(): Promise<{
 
   return { host, events, watchEvents };
 }
+
+test("cloud creation reconciles a lost reply without creating another session", async () => {
+  const { sdk } = await remoteHost();
+  let creates = 0;
+
+  const session = await createCloudSession({
+    create: async (input) => {
+      creates++;
+      await sdk.sessions.create(input);
+      throw new NyteTransportError({ kind: "network", cause: new Error("Lost reply") });
+    },
+    get: (input) => sdk.sessions.get(input),
+  });
+
+  assert.equal(creates, 1);
+  assert.equal((await sdk.sessions.list()).items.length, 1);
+  assert.equal(
+    (await sdk.sessions.get({ sessionId: session.sessionId }))?.sessionId,
+    session.sessionId,
+  );
+});
+
+test("cloud creation reuses its session identity while preparation has not finished", async () => {
+  const { sdk } = await remoteHost();
+  const ids: string[] = [];
+
+  const session = await createCloudSession({
+    create: async (input) => {
+      assert.ok(input?.sessionId);
+      ids.push(input.sessionId);
+
+      if (ids.length === 1)
+        throw new NyteTransportError({ kind: "network", cause: new Error("Disconnected") });
+
+      return sdk.sessions.create(input);
+    },
+    get: async () => {
+      throw new NyteWireError({ code: "forbidden", message: "Session is preparing" }, 403);
+    },
+  });
+
+  assert.deepEqual(ids, [session.sessionId, session.sessionId]);
+  assert.equal((await sdk.sessions.list()).items.length, 1);
+});
+
+test("cloud preparation can outlast the ordinary request deadline", async () => {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+
+  const listener = createServer((_request, response) => {
+    timers.push(setTimeout(() => response.end("ready"), 16_000));
+  });
+
+  await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+  const address = listener.address();
+
+  if (!Value.Check(Type.Object({ port: Type.Number() }), address))
+    throw new Error("The fixture listener has no TCP address");
+
+  try {
+    const response = await serverRequest(
+      `http://127.0.0.1:${address.port}/r/test/v1/call/sessions.create`,
+      { method: "POST" },
+    );
+
+    assert.equal(await response.text(), "ready");
+  } finally {
+    for (const timer of timers) clearTimeout(timer);
+    listener.closeAllConnections();
+    await new Promise<void>((resolve) => listener.close(() => resolve()));
+  }
+}, 20_000);
 
 test("connecting proves the token before saving it", async () => {
   const { baseUrl } = await remoteHost();

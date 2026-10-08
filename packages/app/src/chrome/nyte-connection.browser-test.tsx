@@ -122,6 +122,9 @@ export async function run() {
     },
     revokeDevice: async ({ deviceId }) => {
       calls.push(`revoke:${deviceId}`);
+
+      if (view.kind === "linked")
+        view = { ...view, devices: view.devices.filter((device) => device.id !== deviceId) };
     },
     openAccount: async () => {
       calls.push("openAccount");
@@ -271,8 +274,19 @@ export async function run() {
     await until(() => statusMenu()?.textContent?.includes("Reachable") === true, "a current lease");
     check(!container.textContent.includes("someone-else@example.test"), "The session leaked");
 
-    await press("Revoke iPhone", () => container);
-    await until(() => calls.includes("revoke:phone-1"), "revokeDevice() for the phone");
+    // Revoking asks first; only confirming removes the device.
+    const listed = () =>
+      document.querySelector('[aria-label="Devices"]')?.textContent?.includes("iPhone") === true;
+
+    await press("Revoke… iPhone", () => container);
+    await until(() => confirmation() !== undefined, "the revoke confirmation");
+    await press("Cancel", confirmation);
+    await until(() => confirmation() === undefined, "the revoke confirmation to close");
+    check(listed(), "Cancel removed the device");
+
+    await press("Revoke… iPhone", () => container);
+    await press("Revoke Device", confirmation);
+    await until(() => confirmation() === undefined && !listed(), "the device to be revoked");
 
     await menuItem("Turn Off Remote Access");
     await until(() => calls.includes("setEnabled:false"), "setEnabled({ enabled: false })");

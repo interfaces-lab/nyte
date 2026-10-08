@@ -4,22 +4,30 @@
  */
 import { DEVICE_LIMIT } from "@nyte-ai/connect";
 import type { BrokerFailure } from "@nyte-ai/connect";
+import { connectCopy } from "../connection/connect-copy.ts";
 import type { ConnectEnding } from "./enrollment.ts";
 import type { ReleaseReport } from "./revocation.ts";
 
 export interface AccountCopy {
   readonly title: string;
   readonly body: string;
-  /** `retry` repeats the same request; `signIn` needs a new Nyte sign-in first. */
-  readonly action: "retry" | "signIn" | undefined;
+  /**
+   * `retry` repeats the same request; `signIn` needs a new Nyte sign-in first;
+   * `repair` enrolls again and replaces the environment's pinned host identity.
+   */
+  readonly action: "retry" | "signIn" | "repair" | undefined;
 }
 
-const AWAKE = "Make sure your Mac is awake with Nyte open, then try again.";
+const AWAKE = "Make sure the computer is awake and running Nyte, then try again.";
 
 export function brokerCopy(failure: BrokerFailure): AccountCopy {
   switch (failure.kind) {
     case "signed_out":
-      return { title: "Signed out", body: "Sign in again to see your Macs.", action: "signIn" };
+      return {
+        title: "Signed out",
+        body: "Sign in again to see your computers.",
+        action: "signIn",
+      };
     case "network":
       return {
         title: "Couldn't reach Nyte",
@@ -64,24 +72,24 @@ export function brokerCopy(failure: BrokerFailure): AccountCopy {
     case "not_found":
     case "revoked":
       return {
-        title: "Mac not on your account",
-        body: "This Mac left your Nyte account. Refresh the list and pick another.",
+        title: "Not on your account",
+        body: "This computer left your Nyte account. Refresh the list and pick another.",
         action: "retry",
       };
     case "limit":
       return {
         title: "Too many devices",
-        body: `This Mac already has ${String(DEVICE_LIMIT)} devices. Remove one in Nyte on your Mac, then try again.`,
+        body: `This computer already has ${String(DEVICE_LIMIT)} devices. Remove one there, then try again.`,
         action: "retry",
       };
     case "rate_limited":
       return { title: "Too many tries", body: "Wait a minute, then try again.", action: "retry" };
     case "unreachable":
-      return { title: "Your Mac didn't answer", body: AWAKE, action: "retry" };
+      return { title: "The computer didn't answer", body: AWAKE, action: "retry" };
     case "conflict":
       return {
         title: "Something changed",
-        body: "Another change to this Mac happened at the same time. Try again.",
+        body: "Another change to this computer happened at the same time. Try again.",
         action: "retry",
       };
     case "invalid":
@@ -104,7 +112,7 @@ export function brokerCopy(failure: BrokerFailure): AccountCopy {
   }
 }
 
-/** What to tell the user after a Mac pick that did not connect. Cancelling says nothing. */
+/** What to tell the user after a pick that did not connect. Cancelling says nothing. */
 export function connectEndingCopy(
   ending: Exclude<ConnectEnding, { kind: "connected" | "cancelled" }>,
 ): AccountCopy {
@@ -113,18 +121,28 @@ export function connectEndingCopy(
       return brokerCopy(ending.failure);
     case "notAccepted":
       return {
-        title: "Your Mac didn't accept this iPhone",
-        body: "It didn't take the new connection in time. Make sure Nyte is open on your Mac, then try again.",
+        title: "Not accepted",
+        body: "The computer didn't take this iPhone in time. Make sure it's running Nyte with remote access on, then try again.",
         action: "retry",
       };
     case "silent":
-      return { title: "Your Mac stopped answering", body: AWAKE, action: "retry" };
+      return { title: "The computer stopped answering", body: AWAKE, action: "retry" };
     case "notSaved":
       return {
         title: "Connection not saved",
-        body: "Your Mac accepted this iPhone, but the Keychain didn't keep it. Unlock your phone and try again.",
+        body: "The computer accepted this iPhone, but the Keychain didn't keep it. Unlock your phone and try again.",
         action: "retry",
       };
+    case "unproven": {
+      const copy = connectCopy(ending.failure);
+
+      return {
+        title: copy.title,
+        body: copy.body,
+        action: ending.failure.kind === "identityChanged" ? "repair" : "retry",
+      };
+    }
+
     case "unexpected":
       return {
         title: "Connecting stopped",
@@ -140,7 +158,7 @@ export function connectEndingCopy(
 }
 
 /**
- * What the Mac and the broker confirmed after this phone let go of a Mac.
+ * What the host and the broker confirmed after this phone let go of it.
  * Silence is not removal: the copy claims only what one of them answered.
  */
 export function releaseCopy(name: string, report: ReleaseReport): string {
@@ -150,5 +168,5 @@ export function releaseCopy(name: string, report: ReleaseReport): string {
 
   return report.broker === "skipped"
     ? `${name} didn't answer. Remove this iPhone there if it's still listed.`
-    : `${name} and Nyte didn't answer. Remove this iPhone on your Mac if it's still listed.`;
+    : `${name} and Nyte didn't answer. Remove this iPhone there if it's still listed.`;
 }

@@ -42,7 +42,6 @@ export async function run(): Promise<string> {
       root.render(
         <ChangesSidebar
           files={files()}
-          visible
           activePath={activePath}
           onRevealPath={(path) => {
             revealed.push(path);

@@ -23,7 +23,14 @@ import type {
 } from "@nyte-ai/protocol";
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
@@ -617,26 +624,28 @@ export function ChangesCommitBar({
             }
           />
           <MenuContent align="end">
-            {actions.map((candidate, index) => {
-              const previous = actions[index - 1];
+            <MenuRadioGroup value={action}>
+              {actions.map((candidate, index) => {
+                const previous = actions[index - 1];
 
-              return (
-                <Fragment key={candidate}>
-                  {previous !== undefined &&
-                    commitActionGroup(previous) !== commitActionGroup(candidate) && (
-                      <MenuSeparator />
-                    )}
-                  <MenuItem
-                    layout="plain"
-                    disabled={commitActionDisabled(candidate, state)}
-                    selected={candidate === action}
-                    onClick={() => start(candidate)}
-                  >
-                    {commitActionLabel(candidate)}
-                  </MenuItem>
-                </Fragment>
-              );
-            })}
+                return (
+                  <Fragment key={candidate}>
+                    {previous !== undefined &&
+                      commitActionGroup(previous) !== commitActionGroup(candidate) && (
+                        <MenuSeparator />
+                      )}
+                    <MenuRadioItem
+                      value={candidate}
+                      layout="plain"
+                      disabled={commitActionDisabled(candidate, state)}
+                      onClick={() => start(candidate)}
+                    >
+                      {commitActionLabel(candidate)}
+                    </MenuRadioItem>
+                  </Fragment>
+                );
+              })}
+            </MenuRadioGroup>
           </MenuContent>
         </Menu>
       </SplitButton.Root>

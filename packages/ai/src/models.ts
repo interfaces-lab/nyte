@@ -22,6 +22,7 @@ import type {
   ProviderAuth,
 } from "./auth/types.ts";
 import { InMemoryModelsStore, type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
+import { baseModel, providerRequest, withFastVariants } from "./model-variants.ts";
 import type {
   AccountLimits,
   Api,
@@ -379,7 +380,7 @@ class ModelsImpl implements MutableModels {
       if (!entry) return [];
 
       try {
-        return entry.getModels();
+        return withFastVariants(entry.getModels());
       } catch {
         return [];
       }
@@ -389,7 +390,7 @@ class ModelsImpl implements MutableModels {
 
     for (const entry of this.providers.values()) {
       try {
-        models.push(...entry.getModels());
+        models.push(...withFastVariants(entry.getModels()));
       } catch {
         // Best-effort: ill-behaved providers yield no models.
       }
@@ -776,7 +777,7 @@ class ModelsImpl implements MutableModels {
         if (!auth) return [];
         const models = provider.getModels();
 
-        return provider.filterModels?.(models, credential) ?? models;
+        return withFastVariants(provider.filterModels?.(models, credential) ?? models);
       });
     })();
 
@@ -908,7 +909,10 @@ class ModelsImpl implements MutableModels {
   private async applyAuth<
     TModel extends Model<Api>,
     TOptions extends ProviderRequestOptions & ModelsRequestTransforms,
-  >(model: TModel, options: TOptions | undefined) {
+  >(selected: TModel, selectedOptions: TOptions | undefined) {
+    // The one place a request leaves this package: a fast sibling goes as its base.
+    const { model, options } = providerRequest(selected, selectedOptions);
+
     const resolution = await this.getAuth(model, {
       apiKey: options?.apiKey,
       env: options?.env,
@@ -958,7 +962,7 @@ class ModelsImpl implements MutableModels {
   ): AssistantMessageEventStream {
     const transcript = normalizeContext(context);
 
-    return lazyStream(model, async () => {
+    return lazyStream(baseModel(model), async () => {
       const provider = this.requireProvider(model);
 
       const { requestModel, requestOptions } = await this.applyAuth(model, options);
@@ -982,7 +986,7 @@ class ModelsImpl implements MutableModels {
   ): AssistantMessageEventStream {
     const transcript = normalizeContext(context);
 
-    return lazyStream(model, async () => {
+    return lazyStream(baseModel(model), async () => {
       const provider = this.requireProvider(model);
       const { requestModel, requestOptions } = await this.applyAuth(model, options);
 
@@ -1003,7 +1007,7 @@ class ModelsImpl implements MutableModels {
     handle: DeferredHandle,
     options?: ModelsDeferredFetchOptions,
   ): Promise<AssistantMessage> {
-    return lazyStream(model, async () => {
+    return lazyStream(baseModel(model), async () => {
       const provider = this.requireProvider(model);
 
       if (!provider.fetchDeferred) {

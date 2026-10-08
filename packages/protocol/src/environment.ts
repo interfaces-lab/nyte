@@ -55,9 +55,10 @@ export interface ProviderStatus {
 export interface CatalogModel extends ModelInfoType {
   /** `provider/id`. */
   readonly key: string;
+  /** The catalog's fast sibling of this model, when it has one; selecting it is selecting that model. */
   readonly fastMode:
     | { readonly kind: "unavailable" }
-    | { readonly kind: "available"; readonly settingId: string };
+    | { readonly kind: "available"; readonly id: string };
   readonly hidden: boolean;
   /** In the picker: the provider is on and connected, and the model is not hidden. */
   readonly listed: boolean;
@@ -76,8 +77,6 @@ export interface ProviderCatalog {
   readonly defaults?: {
     readonly model: { readonly provider: string; readonly id: string };
     readonly thinkingLevel: ModelThinkingLevel;
-    /** Applies when the chosen model offers fast mode. */
-    readonly fast: boolean;
   };
 }
 
@@ -93,7 +92,6 @@ export type PreferenceChange =
       readonly kind: "defaults";
       readonly model?: { readonly provider: string; readonly id: string };
       readonly thinkingLevel?: ModelThinkingLevel;
-      readonly fast?: boolean;
     };
 
 // ---------------------------------------------------------------------------
@@ -379,7 +377,7 @@ const CatalogModelSchema = typed<CatalogModel>()(
       key: Type.String(),
       fastMode: Type.Union([
         Type.Object({ kind: Type.Literal("unavailable") }),
-        Type.Object({ kind: Type.Literal("available"), settingId: Type.String() }),
+        Type.Object({ kind: Type.Literal("available"), id: Type.String() }),
       ]),
       hidden: Type.Boolean(),
       listed: Type.Boolean(),
@@ -396,7 +394,6 @@ const ProviderCatalogSchema = typed<ProviderCatalog>()(
       Type.Object({
         model: Type.Object({ provider: Type.String(), id: Type.String() }),
         thinkingLevel: ThinkingLevel,
-        fast: Type.Boolean(),
       }),
     ),
   }),
@@ -415,7 +412,6 @@ const PreferenceChangeSchema = typed<PreferenceChange>()(
       kind: Type.Literal("defaults"),
       model: Type.Optional(strict({ provider: NonEmptyString, id: NonEmptyString })),
       thinkingLevel: Type.Optional(ThinkingLevel),
-      fast: Type.Optional(Type.Boolean()),
     }),
   ]),
 );

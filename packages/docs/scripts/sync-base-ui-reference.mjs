@@ -32,6 +32,7 @@ const slugs = [
   "button",
   "checkbox",
   "collapsible",
+  "combobox",
   "context-menu",
   "dialog",
   "input",

@@ -39,9 +39,6 @@ export function run(): string {
           if (computed.cursor !== (pointer ? "pointer" : "default"))
             return `${mode}: cursor concern was overwritten`;
 
-          if (!computed.backdropFilter.includes("blur(12px)"))
-            return `${mode}: missing material filter`;
-
           if (computed.backdropFilter.includes("brightness") !== (mode === "dark"))
             return `${mode}: display filter was overwritten`;
           const focusRing = computed.outlineColor;

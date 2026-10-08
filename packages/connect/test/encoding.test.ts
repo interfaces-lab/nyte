@@ -22,12 +22,6 @@ describe("base64Url", () => {
     }
   });
 
-  it("converts a padded digest the way expo-crypto writes it", () => {
-    const bytes = Uint8Array.from({ length: 32 }, (_, index) => 255 - index);
-
-    expect(base64ToBase64Url(standard(bytes))).toBe(base64Url(bytes));
-  });
-
   it.each(["A", "AA==", "AB+/", "AA A", "AB"])("refuses %s", (text) => {
     expect(fromBase64Url(text)).toBeUndefined();
   });

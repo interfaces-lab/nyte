@@ -285,6 +285,7 @@ test.each(["targeted", "head"] as const)(
       const input = target === "targeted" ? { sessionId, runId: held.runId } : { sessionId };
       assert.deepEqual(await nyte.runs.abort(input), { kind: "requested", runId: held.runId });
       assert.equal((await nyte.runs.current({ sessionId }))?.abortRequested, true);
+      assert.deepEqual(await nyte.runs.abort(input), { kind: "requested", runId: held.runId });
       release.resolve();
       await within(nyte.runs.wait({ sessionId }));
       const aborted = await nyte.runs.current({ sessionId });

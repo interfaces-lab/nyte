@@ -29,7 +29,7 @@ export const sidebarStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   contentLayer: {
     position: "absolute",
@@ -129,6 +129,7 @@ export const sidebarStyles = create({
   },
   sectionChevron: {
     opacity: "var(--_section-chevron-opacity)",
+    transitionProperty: "transform, opacity",
     transitionTimingFunction: motion.easeOut,
   },
   sectionLabel: {
@@ -161,12 +162,12 @@ export const sidebarStyles = create({
   workspaceRow: {
     "--_workspace-folder-display": {
       default: "inline-flex",
-      ":hover": "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
       ":focus-within": "none",
     },
     "--_workspace-chevron-display": {
       default: "none",
-      ":hover": "inline-flex",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
       ":focus-within": "inline-flex",
     },
     cursor: appearance.cursorInteractive,
@@ -180,7 +181,7 @@ export const sidebarStyles = create({
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": role.bgHover,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
       ":focus-within": role.bgHover,
     },
     cursor: appearance.cursorInteractive,
@@ -372,7 +373,10 @@ export const sidebarStyles = create({
     minHeight: sidebar.rowHeight,
     paddingInline: sidebar.rowPaddingInline,
     borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
@@ -390,7 +394,11 @@ export const sidebarStyles = create({
     lineHeight: type.leadingXs,
     fontVariantNumeric: "tabular-nums",
   },
-  shelfChevron: { marginInlineStart: "auto", opacity: "var(--_shelf-chevron-opacity)" },
+  shelfChevron: {
+    marginInlineStart: "auto",
+    opacity: "var(--_shelf-chevron-opacity)",
+    transitionProperty: "transform, opacity",
+  },
   shelfPanel: {
     display: { default: "flex", "[hidden]": "none" },
     flexDirection: "column",
@@ -411,7 +419,10 @@ export const sidebarStyles = create({
     paddingInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
   },
   showMore: {
-    "--_row-fill": { default: "transparent", ":hover": role.bgHover },
+    "--_row-fill": {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     paddingInline: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,
     color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
@@ -438,7 +449,7 @@ export const sidebarStyles = create({
     width: sidebar.iconSlot,
     height: sidebar.iconSlot,
     borderRadius: radius.indicator,
-    overflow: "hidden",
+    overflow: "clip",
   },
   avatar: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
   /**
@@ -450,7 +461,7 @@ export const sidebarStyles = create({
   accountMenuItem: {
     color: {
       default: role.contentSecondary,
-      ":hover": role.contentPrimary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
       ":is([data-highlighted])": role.contentPrimary,
       ":is([data-disabled])": role.contentDisabled,
     },

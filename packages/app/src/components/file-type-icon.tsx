@@ -45,7 +45,7 @@ const styles = create({
     position: "absolute",
     width: 0,
     height: 0,
-    overflow: "hidden",
+    overflow: "clip",
     pointerEvents: "none",
   },
 });

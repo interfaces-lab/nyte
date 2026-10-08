@@ -9,6 +9,7 @@
  * does not model: jobs, changed files, plugin settings, trust.
  */
 // oxlint-disable-next-line no-restricted-imports -- session watches follow the ids in view
+import { isCancelledError, type FetchQueryOptions } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type {
   RunId,
@@ -29,6 +30,7 @@ import {
   keys,
   mentionFilesOptions,
   queryClient,
+  readSession,
   refreshVcs,
   SNAPSHOT_WARM_MS,
 } from "./queries.ts";
@@ -154,13 +156,13 @@ interface SharedObserver {
   readonly failures: Set<(error: Error) => void>;
   /** Runs when the observation stops, for a read or acknowledgement that can no longer land. */
   readonly closing: Set<() => void>;
+  /** Bumped by each acknowledged selection; the observer applies selected inputs only from reads at the current one. */
+  selectionVersion: number;
 }
 
 const observers = new Map<SessionId, SharedObserver>();
 
 const stores = new Map<SessionId, LiveStore>();
-
-const selectionVersions = new Map<SessionId, number>();
 
 function scheduleStoreRelease(store: LiveStore): void {
   queueMicrotask(() => {
@@ -246,7 +248,7 @@ function observe(sessionId: SessionId): SharedObserver {
   const observer = new SessionObserver(sessionClient, {
     sessionId,
     retryMs: RETRY_MS,
-    selectionVersion: () => selectionVersions.get(sessionId) ?? 0,
+    selectionVersion: () => shared.selectionVersion,
     onError: (error) => {
       // A waiter removes itself when told; iterate a copy so the set can change underneath.
       for (const fail of Array.from(failures)) fail(error);
@@ -279,7 +281,16 @@ function observe(sessionId: SessionId): SharedObserver {
       react(sessionId, update.state, undefined);
     }
   });
-  const shared: SharedObserver = { observer, store, consumers: 0, failures, closing: new Set() };
+
+  const shared: SharedObserver = {
+    observer,
+    store,
+    consumers: 0,
+    failures,
+    closing: new Set(),
+    selectionVersion: 0,
+  };
+
   observers.set(sessionId, shared);
   // The observer reports and retries a failed read itself; rejection only means the observation stopped.
   void observer.start().catch(() => undefined);
@@ -366,7 +377,6 @@ export function watchSessionLive(sessionId: SessionId) {
       for (const settle of Array.from(shared.closing)) settle();
       shared.store.reset();
       scheduleStoreRelease(shared.store);
-      selectionVersions.delete(sessionId);
     },
   };
 }
@@ -505,15 +515,6 @@ export async function warmThread(sessionId: SessionId): Promise<void> {
         queryFn: () => nyte.host.catalog({ sessionId }),
         staleTime: 15_000,
       })
-      .then((catalog) => {
-        if (!catalog.models.some((model) => model.fastMode.kind === "available")) return;
-
-        return queryClient.prefetchQuery({
-          queryKey: keys.pluginSettings(sessionId),
-          queryFn: () => nyte.plugins.settings.list({ sessionId }),
-          staleTime: SNAPSHOT_WARM_MS,
-        });
-      })
       .catch(() => undefined),
     queryClient.prefetchQuery(mentionFilesOptions(true)),
   ]).then(() => undefined);
@@ -553,44 +554,91 @@ export async function warmThread(sessionId: SessionId): Promise<void> {
 }
 
 /**
- * The local selection of a session's inputs. Each request and acknowledgement
- * is a new version, so the observer applies selected inputs only from reads
- * that answer the current choice; an acknowledgement waits for that read.
+ * A read that started after this acknowledgement began, landed. Every read in
+ * flight was cancelled first, so any fetch that completes afterwards started
+ * after the reply. TanStack answers a cancelled fetch with the data it kept and
+ * a removed entry with a fresh one, so "landed" is a data write: the same entry
+ * advancing its data, or a new entry having written any. Anything else is read
+ * again. Any other failure is the acknowledgement's.
+ */
+async function readAfter<T>(options: FetchQueryOptions<T>): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: options.queryKey, exact: true });
+  const cache = queryClient.getQueryCache();
+  const before = cache.find({ queryKey: options.queryKey, exact: true });
+  const count = before?.state.dataUpdateCount ?? 0;
+
+  for (;;) {
+    try {
+      await queryClient.fetchQuery(options);
+    } catch (cause) {
+      if (!isCancelledError(cause)) throw cause;
+    }
+
+    const after = cache.find({ queryKey: options.queryKey, exact: true });
+
+    if (after === undefined || after.state.data === undefined) continue;
+
+    if (after.state.dataUpdateCount > (after === before ? count : 0)) return;
+  }
+}
+
+/**
+ * How a configure acknowledgement reaches the cache. Observed: the observer
+ * reads again at a new selection version and applies selected inputs only
+ * from a read at that version, so a read begun before the reply cannot answer
+ * it; a failed read fails the acknowledgement. Unobserved: the session and
+ * snapshot are read afresh after cancelling older reads in flight.
  */
 export function sessionSelection(sessionId: SessionId): SessionSelection {
-  const bump = (): number => {
-    const version = (selectionVersions.get(sessionId) ?? 0) + 1;
-    selectionVersions.set(sessionId, version);
-
-    return version;
-  };
-
   return {
-    request: () => {
-      bump();
-    },
-    acknowledge: () => {
-      const version = bump();
+    acknowledge: async () => {
       const shared = observers.get(sessionId);
 
       if (shared === undefined) {
-        selectionVersions.delete(sessionId);
+        await Promise.all([
+          readAfter({
+            queryKey: keys.snapshot(sessionId),
+            queryFn: ({ signal }) => readSessionSnapshot(sessionId, signal),
+            staleTime: 0,
+          }),
+          readAfter({
+            queryKey: keys.session(sessionId),
+            queryFn: () => readSession(sessionId),
+            staleTime: 0,
+          }),
+        ]);
 
-        return Promise.resolve();
+        return;
       }
 
-      return new Promise((resolve) => {
-        const settle = (): void => {
+      shared.selectionVersion += 1;
+      const version = shared.selectionVersion;
+
+      await new Promise<void>((resolve, reject) => {
+        const done = (): void => {
           stop();
-          shared.closing.delete(settle);
-          resolve();
+          shared.failures.delete(fail);
+          shared.closing.delete(close);
         };
 
         const stop = shared.observer.subscribe((update) => {
-          if (update.selectedVersion !== undefined && update.selectedVersion >= version) settle();
+          if (update.selectedVersion === undefined || update.selectedVersion < version) return;
+          done();
+          resolve();
         });
 
-        shared.closing.add(settle);
+        const fail = (error: Error): void => {
+          done();
+          reject(error);
+        };
+
+        const close = (): void => {
+          done();
+          resolve();
+        };
+
+        shared.failures.add(fail);
+        shared.closing.add(close);
         shared.observer.refresh();
       });
     },

@@ -35,13 +35,11 @@ import type { SessionFrame } from "../live.ts";
 import {
   keys,
   queryClient,
-  useApplyPluginSetting,
   useCatalog,
   useConfigureSession,
   useHostState,
   useMentionFiles,
   usePluginCatalog,
-  usePluginSettings,
   useSessionActions,
   useSessionCommands,
   useSessionSnapshot,
@@ -55,6 +53,7 @@ import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
+import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { ImagePreview } from "./image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
@@ -116,39 +115,20 @@ const SessionModelChip = memo(function SessionModelChip({
   const configure = useConfigureSession(sessionId);
   const options = catalog.data?.models ?? [];
   const configured = snapshot.data?.session.config.model ?? snapshot.data?.config.model;
-
-  const current = options.find(
-    (option) =>
-      option.id === configured?.id &&
-      (configured.provider === undefined || option.provider === configured.provider),
-  );
-
-  const pluginSettings = usePluginSettings(
-    sessionId,
-    options.some((option) => option.fastMode.kind === "available"),
-  );
-
-  const applyPluginSetting = useApplyPluginSetting(sessionId);
+  const selected = selectedModelOption(options, configured);
+  const current = selected?.option;
   const setPreference = useSetPreference();
 
   const thinkingLevel =
     snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel;
 
-  const fastEnabled = useMemo(
-    () =>
-      new Set(
-        (pluginSettings.data ?? [])
-          .filter((setting) => setting.current === "on")
-          .map((setting) => setting.id),
-      ),
-    [pluginSettings.data],
-  );
-
   const handleChange = useCallback(
     (change: ModelPickerChange) => {
       // A cloud session's catalog lists that server's models, not this Mac's.
       if (catalog.data?.source === "local") {
-        setPreference.mutate(pickerDefaults({ model: current, thinkingLevel }, change));
+        setPreference.mutate(
+          pickerDefaults({ model: current, thinkingLevel, fast: selected?.fast === true }, change),
+        );
       }
 
       switch (change.kind) {
@@ -164,10 +144,8 @@ const SessionModelChip = memo(function SessionModelChip({
 
           return;
         case "fast":
-          applyPluginSetting.mutate({
-            id: change.settingId,
-            choiceId: change.enabled ? "on" : "off",
-          });
+          if (current !== undefined)
+            configure.mutate({ model: modelRefFor(current, change.enabled) });
 
           return;
         default: {
@@ -177,7 +155,7 @@ const SessionModelChip = memo(function SessionModelChip({
         }
       }
     },
-    [applyPluginSetting, catalog.data?.source, configure, current, setPreference, thinkingLevel],
+    [catalog.data?.source, configure, current, selected?.fast, setPreference, thinkingLevel],
   );
 
   return (
@@ -186,7 +164,7 @@ const SessionModelChip = memo(function SessionModelChip({
         catalog={catalog.data}
         current={current}
         thinkingLevel={thinkingLevel}
-        fastEnabled={fastEnabled}
+        fast={selected?.fast === true}
         loading={catalog.isPending}
         disabled={catalog.isError}
         onChange={handleChange}

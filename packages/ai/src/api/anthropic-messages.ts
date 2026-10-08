@@ -835,8 +835,14 @@ async function* iterateAnthropicEvents(
 export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
-  options?: AnthropicOptions,
+  requested?: AnthropicOptions,
 ): AssistantMessageEventStream => {
+  // `fast` is the API-neutral request; here it is the speed.
+  const options =
+    requested?.fast === true && requested.speed === undefined
+      ? { ...requested, speed: "fast" as const }
+      : requested;
+
   const stream = new AssistantMessageEventStream();
 
   const normalizedContext = resolveTranscript(
@@ -1212,8 +1218,6 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
     ...buildBaseOptions(model, context, options, options?.apiKey),
     toolChoice: options?.toolChoice,
   };
-
-  if (options?.fast === true) base.speed = "fast";
 
   if (!options?.reasoning) {
     return stream(model, context, {

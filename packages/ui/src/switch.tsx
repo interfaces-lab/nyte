@@ -1,4 +1,5 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
+import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
@@ -57,10 +58,14 @@ const styles = create({
     borderRadius: radius.pill,
     backgroundColor: {
       default: role.bgControl,
-      ":hover:not([data-disabled])": role.bgControlHover,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.bgControlHover,
+      },
       ":active:not([data-disabled])": role.bgControlPressed,
       "[data-checked]": role.bgControlSelected,
-      ":hover:is([data-checked]):not([data-disabled])": role.bgControlSelectedHover,
+      ":hover:is([data-checked]):not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.bgControlSelectedHover,
+      },
       ":active:is([data-checked]):not([data-disabled])": role.bgControlSelectedPressed,
     },
     opacity: { default: 1, "[data-disabled]": 0.5 },
@@ -123,11 +128,12 @@ export function Switch({
 
 export type SwitchFieldProps = Omit<
   ComponentProps<typeof SwitchControl>,
-  "aria-label" | "aria-labelledby" | "nativeButton"
-> & {
-  readonly label: string;
-  readonly description?: string;
-};
+  "aria-label" | "aria-labelledby" | "nativeButton" | "className" | "style" | "xstyle"
+> &
+  Pick<StyledProps<Field.Root.Props>, "className" | "style" | "xstyle"> & {
+    readonly label: string;
+    readonly description?: string;
+  };
 
 export function SwitchField({
   label,
@@ -141,38 +147,42 @@ export function SwitchField({
   const generatedId = useId();
   const controlId = id ?? generatedId;
   const labelId = `${controlId}-label`;
-  const descriptionId = description === undefined ? undefined : `${controlId}-description`;
 
   return (
-    <label
-      htmlFor={controlId}
-      onClickCapture={(event) => {
-        if (
-          event.shiftKey ||
-          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+    <Field.Root
       {...mergeStyleProps(props(styles.field, xstyle), className, style)}
+      render={
+        <label
+          htmlFor={controlId}
+          onClickCapture={(event) => {
+            const { target, currentTarget } = event;
+
+            if (
+              target instanceof Element &&
+              (target === currentTarget.control || target.closest('[role="switch"]'))
+            )
+              return;
+
+            if (
+              event.shiftKey ||
+              currentTarget.ownerDocument.getSelection()?.isCollapsed === false
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+        />
+      }
     >
       <span {...props(styles.copy)}>
         <span id={labelId}>{label}</span>
         {description !== undefined && (
-          <span id={descriptionId} {...props(styles.description)}>
+          <Field.Description render={<span />} {...props(styles.description)}>
             {description}
-          </span>
+          </Field.Description>
         )}
       </span>
-      <SwitchControl
-        {...rest}
-        id={controlId}
-        aria-labelledby={labelId}
-        aria-describedby={
-          [rest["aria-describedby"], descriptionId].filter(Boolean).join(" ") || undefined
-        }
-      />
-    </label>
+      <SwitchControl {...rest} id={controlId} aria-labelledby={labelId} />
+    </Field.Root>
   );
 }

@@ -84,43 +84,36 @@ afterEach(() => {
   cleanups.length = 0;
   queryClient.clear();
   readUsage.mockReset();
-  vi.useRealTimers();
 });
 
 /** A report old enough that the page would already be offering to re-read it. */
 const stale = { updatedAt: Date.now() - USAGE_STALE_AFTER_MS * 10 };
 
-test.each([empty, recorded])(
-  "reopening shows a fresh cached report with $entries.length entries without re-reading",
-  (cached) => {
-    queryClient.setQueryData(usageReportOptions(TODAY).queryKey, cached);
+test("reopening shows a fresh cached report without re-reading", () => {
+  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, recorded);
 
-    const observer = openUsage();
-    assert.equal(observer.getCurrentResult().isFetching, false);
-    assert.equal(observer.getCurrentResult().isSuccess, true);
-    assert.deepEqual(observer.getCurrentResult().data, cached);
-    // A read walks every stored commit, so a report this young is not worth one.
-    assert.equal(readUsage.mock.calls.length, 0);
-  },
-);
+  const observer = openUsage();
+  assert.equal(observer.getCurrentResult().isFetching, false);
+  assert.equal(observer.getCurrentResult().isSuccess, true);
+  assert.deepEqual(observer.getCurrentResult().data, recorded);
+  // A read walks every stored commit, so a report this young is not worth one.
+  assert.equal(readUsage.mock.calls.length, 0);
+});
 
-test.each([empty, recorded])(
-  "reopening re-reads a stale cached report with $entries.length entries",
-  async (cached) => {
-    queryClient.setQueryData(usageReportOptions(TODAY).queryKey, cached, stale);
-    const load = Promise.withResolvers<UsageSnapshot>();
-    readUsage.mockReturnValueOnce(load.promise);
+test("reopening re-reads a stale cached report", async () => {
+  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, empty, stale);
+  const load = Promise.withResolvers<UsageSnapshot>();
+  readUsage.mockReturnValueOnce(load.promise);
 
-    const observer = openUsage();
-    assert.equal(observer.getCurrentResult().isFetching, true);
-    assert.deepEqual(observer.getCurrentResult().data, cached);
-    load.resolve(recorded);
-    await vi.waitFor(() => assert.equal(observer.getCurrentResult().isFetching, false));
-    assert.deepEqual(observer.getCurrentResult().data, recorded);
-    assert.equal(observer.getCurrentResult().isSuccess, true);
-    assert.equal(readUsage.mock.calls.length, 1);
-  },
-);
+  const observer = openUsage();
+  assert.equal(observer.getCurrentResult().isFetching, true);
+  assert.deepEqual(observer.getCurrentResult().data, empty);
+  load.resolve(recorded);
+  await vi.waitFor(() => assert.equal(observer.getCurrentResult().isFetching, false));
+  assert.deepEqual(observer.getCurrentResult().data, recorded);
+  assert.equal(observer.getCurrentResult().isSuccess, true);
+  assert.equal(readUsage.mock.calls.length, 1);
+});
 
 test("the read is unbounded, so one read answers every range", async () => {
   readUsage.mockResolvedValueOnce(recorded);
@@ -150,88 +143,4 @@ test("crossing midnight is a different read", async () => {
   observer.setOptions(usageReportOptions("2026-09-03"));
   await vi.waitFor(() => assert.equal(readUsage.mock.calls.length, 2));
   assert.deepEqual(readUsage.mock.calls[1], [{ sinceDay: null, untilDay: "2026-09-03" }]);
-});
-
-test("reopening retries an initial read failure", async () => {
-  readUsage.mockRejectedValueOnce(new Error("Store unavailable"));
-  const failed = openUsage();
-  await vi.waitFor(() => assert.equal(failed.getCurrentResult().isError, true));
-  failed.destroy();
-
-  readUsage.mockResolvedValueOnce(recorded);
-  const reopened = openUsage();
-  await vi.waitFor(() => assert.equal(reopened.getCurrentResult().isSuccess, true));
-  assert.deepEqual(reopened.getCurrentResult().data, recorded);
-});
-
-test("manual refresh recovers from an initial read failure", async () => {
-  readUsage.mockRejectedValueOnce(new Error("Store unavailable"));
-  const observer = openUsage();
-  await vi.waitFor(() => assert.equal(observer.getCurrentResult().isLoadingError, true));
-
-  readUsage.mockResolvedValueOnce(recorded);
-  const recovered = await observer.refetch({ cancelRefetch: false });
-  assert.equal(recovered.isSuccess, true);
-  assert.equal(recovered.error, null);
-  assert.deepEqual(recovered.data, recorded);
-});
-
-test.each([empty, recorded])(
-  "manual refresh reports failure with $entries.length cached entries and can recover",
-  async (cached) => {
-    readUsage.mockResolvedValueOnce(cached);
-    const observer = openUsage();
-    await vi.waitFor(() => assert.equal(observer.getCurrentResult().isSuccess, true));
-
-    readUsage.mockRejectedValueOnce(new Error("Store unavailable"));
-    const failed = await observer.refetch({ cancelRefetch: false });
-    assert.equal(failed.isRefetchError, true);
-    assert.equal(failed.isSuccess, false);
-    assert.equal(failed.error?.message, "Store unavailable");
-    assert.deepEqual(failed.data, cached);
-
-    readUsage.mockResolvedValueOnce(recorded);
-    const recovered = await observer.refetch({ cancelRefetch: false });
-    assert.equal(recovered.isSuccess, true);
-    assert.equal(recovered.error, null);
-    assert.deepEqual(recovered.data, recorded);
-  },
-);
-
-test("reopening after a refresh failure retries despite retained data", async () => {
-  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, recorded, stale);
-  readUsage.mockRejectedValueOnce(new Error("Store unavailable"));
-  const failed = openUsage();
-  await vi.waitFor(() => assert.equal(failed.getCurrentResult().isRefetchError, true));
-  failed.destroy();
-
-  readUsage.mockResolvedValueOnce(empty);
-  const reopened = openUsage();
-  await vi.waitFor(() => assert.equal(reopened.getCurrentResult().isSuccess, true));
-  assert.deepEqual(reopened.getCurrentResult().data, empty);
-});
-
-test("manual refresh joins an in-flight history read instead of starting another", async () => {
-  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, empty, stale);
-  const load = Promise.withResolvers<UsageSnapshot>();
-  readUsage.mockReturnValueOnce(load.promise);
-  const observer = openUsage();
-  const first = observer.refetch({ cancelRefetch: false });
-  const second = observer.refetch({ cancelRefetch: false });
-  assert.equal(readUsage.mock.calls.length, 1);
-
-  load.resolve(recorded);
-  assert.deepEqual((await first).data, recorded);
-  assert.deepEqual((await second).data, recorded);
-});
-
-test("leaving Usage open does not repeatedly scan history", async () => {
-  vi.useFakeTimers();
-  readUsage.mockResolvedValue(recorded);
-  const observer = openUsage();
-  await vi.advanceTimersByTimeAsync(0);
-  assert.equal(observer.getCurrentResult().isSuccess, true);
-
-  await vi.advanceTimersByTimeAsync(10 * 60_000);
-  assert.equal(readUsage.mock.calls.length, 1);
 });

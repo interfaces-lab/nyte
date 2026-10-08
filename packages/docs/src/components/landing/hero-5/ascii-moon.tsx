@@ -3,7 +3,7 @@ import { AsciiArt } from "./ascii-art";
 const COLS = 32;
 const ROWS = 20;
 const RAMP = ".:-=+*#%@";
-const MOON = Array.from({ length: ROWS }, (_, row) =>
+export const MOON = Array.from({ length: ROWS }, (_, row) =>
   Array.from({ length: COLS }, (_, col) => {
     const x = (col + 0.5 - COLS / 2) / (COLS / 2);
     const y = (row + 0.5 - ROWS / 2) / (ROWS / 2);

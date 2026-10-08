@@ -17,7 +17,16 @@ import {
   StreamableHttpTransport,
   toLlmContent,
 } from "@earendil-works/pi-mcp";
-import type { ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
+import type { AuthProvider, ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
+import {
+  McpOAuthProvider,
+  OAuthCallbackServer,
+  adaptOAuthProvider,
+  authorizeMcp,
+} from "@earendil-works/pi-mcp/oauth";
+import type { McpOAuthStateStore } from "@earendil-works/pi-mcp/oauth";
+
+export type { McpOAuthState } from "@earendil-works/pi-mcp/oauth";
 import { ToolError, definePlugin, formatSize } from "@nyte-ai/core/plugins";
 import type { AgentTool, Disposer, ExecutionEnv } from "@nyte-ai/core/plugins";
 import { contentText } from "@nyte-ai/schema";
@@ -132,16 +141,24 @@ class Slot {
   readonly config: McpServerConfig;
   readonly cwd: string;
   readonly toolOwners: Map<string, string>;
+  readonly oauth: McpOAuth | undefined;
   refs = 0;
   linger: ReturnType<typeof setTimeout> | undefined;
   readonly listeners = new Set<() => void>();
   connection: Connection;
 
-  constructor(name: string, config: McpServerConfig, cwd: string, toolOwners: Map<string, string>) {
+  constructor(
+    name: string,
+    config: McpServerConfig,
+    cwd: string,
+    toolOwners: Map<string, string>,
+    oauth: McpOAuth | undefined,
+  ) {
     this.name = name;
     this.config = config;
     this.cwd = cwd;
     this.toolOwners = toolOwners;
+    this.oauth = oauth;
     this.connection = openConnection(this);
   }
 }
@@ -156,10 +173,16 @@ export function connectionKey(name: string, config: McpServerConfig, cwd: string
 export class McpServers {
   private readonly slots = new Map<string, Slot>();
   private readonly toolOwners = new Map<string, string>();
+  private readonly oauth: McpOAuth | undefined;
+
+  /** Without `oauth`, a server that asks for sign-in fails with its 401. */
+  constructor(options: { readonly oauth?: McpOAuth } = {}) {
+    this.oauth = options.oauth;
+  }
 
   acquire(name: string, config: McpServerConfig, cwd: string): McpServerHandle {
     const key = connectionKey(name, config, cwd);
-    const held = this.slots.get(key) ?? new Slot(name, config, cwd, this.toolOwners);
+    const held = this.slots.get(key) ?? new Slot(name, config, cwd, this.toolOwners, this.oauth);
     this.slots.set(key, held);
 
     // A config change re-acquires; give a failed server another try then.
@@ -265,7 +288,7 @@ function fail(slot: Slot, connection: Connection, error: string): void {
   if (slot.connection === connection) notify(slot);
 }
 
-async function connectServer(slot: Slot, connection: Connection): Promise<void> {
+async function connectServer(slot: Slot, connection: Connection, signedIn = false): Promise<void> {
   const { config, cwd } = slot;
   await Promise.resolve();
   if (connection.client === "ended") return;
@@ -275,6 +298,8 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
     version: "0",
     requestTimeoutMs: STARTUP_TIMEOUT_MS,
   });
+  const signIn =
+    "url" in config && slot.oauth !== undefined ? new McpSignIn(config.url, slot.oauth) : undefined;
   const transport =
     "command" in config
       ? new StdioTransport({
@@ -286,7 +311,11 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
           stderr: "pipe",
           maxStderrBytes: STDERR_TAIL_BYTES,
         })
-      : new StreamableHttpTransport({ url: config.url, headers: config.headers });
+      : new StreamableHttpTransport({
+          url: config.url,
+          headers: config.headers,
+          authProvider: signIn?.authProvider,
+        });
 
   const describe = (message: string): string => {
     const stderr = transport instanceof StdioTransport ? transport.stderr.trim() : "";
@@ -306,6 +335,13 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
       throw new Error("Invalid MCP server capabilities");
     }
   } catch (cause) {
+    if (signIn?.required() && !signedIn) {
+      await client.close().catch(() => undefined);
+      if (connection.client !== client) return;
+      connection.client = undefined;
+      await signIn.complete();
+      return connectServer(slot, connection, true);
+    }
     throw new Error(describe(errorMessage(cause)), { cause });
   }
   initializing = false;
@@ -332,6 +368,64 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
     });
   });
   await refreshing;
+}
+
+/** Where a host keeps OAuth state for remote servers and how it shows the sign-in page. */
+export interface McpOAuth {
+  store(serverUrl: string): McpOAuthStateStore;
+  open(url: URL): void;
+}
+
+/** Fixed so a client registered with the server keeps a valid redirect across restarts. */
+const OAUTH_CALLBACK_PORT = 19876;
+
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1_000;
+
+/** One connection's OAuth: stored tokens first, a browser sign-in when the server wants one. */
+class McpSignIn {
+  readonly authProvider: AuthProvider;
+  private readonly serverUrl: string;
+  private readonly oauth: McpOAuth;
+  private readonly provider: McpOAuthProvider;
+  private authorizationUrl: URL | undefined;
+
+  constructor(serverUrl: string, oauth: McpOAuth) {
+    this.serverUrl = serverUrl;
+    this.oauth = oauth;
+    this.provider = new McpOAuthProvider({
+      serverUrl,
+      redirectUrl: `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/mcp/oauth/callback`,
+      clientMetadata: { client_name: "Nyte" },
+      store: oauth.store(serverUrl),
+      onRedirect: (url) => {
+        this.authorizationUrl = url;
+      },
+    });
+    this.authProvider = adaptOAuthProvider(this.provider);
+  }
+
+  required(): boolean {
+    return this.authorizationUrl !== undefined;
+  }
+
+  async complete(): Promise<void> {
+    const { authorizationUrl } = this;
+    if (authorizationUrl === undefined) return;
+
+    const callback = await OAuthCallbackServer.listen({
+      port: OAUTH_CALLBACK_PORT,
+      path: "/mcp/oauth/callback",
+      timeoutMs: OAUTH_TIMEOUT_MS,
+    });
+    try {
+      const result = callback.waitForCallback(await this.provider.state());
+      this.oauth.open(authorizationUrl);
+      const { code } = await result;
+      await authorizeMcp(this.provider, { serverUrl: this.serverUrl, authorizationCode: code });
+    } finally {
+      await callback.close();
+    }
+  }
 }
 
 function stdioEnvironment(): Record<string, string> {

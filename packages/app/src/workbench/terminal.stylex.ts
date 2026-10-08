@@ -28,7 +28,7 @@ export const terminalStyles = create({
     minWidth: 0,
     paddingBlock: 8,
     paddingInline: 6,
-    overflow: "hidden",
+    overflow: "clip",
   },
   state: {
     display: "flex",

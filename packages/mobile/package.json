@@ -2,7 +2,7 @@
   "name": "@nyte-ai/ios",
   "version": "0.0.16-dev.4",
   "private": true,
-  "description": "Nyte's native iOS companion for a remote Mac host.",
+  "description": "Nyte's native iOS companion for a remote Nyte host.",
   "type": "module",
   "main": "expo-router/entry",
   "scripts": {
@@ -18,12 +18,14 @@
     "build:production": "eas build --platform ios --profile production",
     "submit": "eas submit --platform ios --profile production",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "pnpm icons:sync && tsc --noEmit",
+    "icons:sync": "node scripts/sync-completion-icons.mjs"
   },
   "dependencies": {
     "@clerk/expo": "4.8.0",
     "@expo/ui": "57.0.21",
     "@legendapp/list": "3.3.11",
+    "@noble/curves": "1.9.7",
     "@nyte-ai/client": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",

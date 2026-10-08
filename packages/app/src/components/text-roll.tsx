@@ -22,7 +22,7 @@ const styles = create({
     gridTemplateColumns: "minmax(0, 1fr)",
     minWidth: 0,
     maxWidth: "100%",
-    overflow: "hidden",
+    overflow: "clip",
   },
   rolling: {
     maskImage:

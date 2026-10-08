@@ -1,10 +1,23 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
-import { createContext, use, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import { focus } from "./a11y.stylex.ts";
 import { button, radius, target } from "./schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import {
+  mergeStyleProps,
+  type StateStyledProps,
+  type StaticStyleProps,
+  type StyledProps,
+  type XStyle,
+} from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
@@ -28,29 +41,35 @@ const control = create({
     backgroundColor: "transparent",
     backgroundImage: {
       default: "none",
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.layerHover,
-      ":active:not([aria-disabled='true']):not(:disabled)": role.layerPressed,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.layerHover,
+      },
+      ":active:not([data-disabled])": role.layerPressed,
     },
     fontWeight: 500,
     cursor: {
       default: appearance.cursorInteractive,
-      ":disabled": "default",
-      '[aria-disabled="true"]': "default",
+      "[data-disabled]": "default",
     },
     whiteSpace: "nowrap",
     userSelect: "none",
     textDecoration: "none",
     color: {
       default: role.contentSecondary,
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.contentPrimary,
-      ":active:not([aria-disabled='true']):not(:disabled)": role.contentPrimary,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.contentPrimary,
+      },
+      ":active:not([data-disabled])": role.contentPrimary,
       "[data-pressed]:not([data-disabled])": role.contentPrimary,
-      '[aria-pressed="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
-      '[aria-expanded="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
+      '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
     },
+    scale: { default: "1", ":active:not([data-disabled])": "0.97" },
     touchAction: "manipulation",
-    transitionProperty: "background-color, color, opacity",
-    transitionDuration: motion.durationFast,
+    transitionProperty: "background-color, color, opacity, scale",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
     transitionTimingFunction: motion.easeOut,
     "::before": {
       content: '""',
@@ -187,8 +206,10 @@ const buttonVariants = create({
     color: role.contentOnInteractiveStrong,
     backgroundColor: {
       default: role.buttonFill,
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.buttonFillHover,
-      ":active:not([aria-disabled='true']):not(:disabled)": role.buttonFillPressed,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.buttonFillHover,
+      },
+      ":active:not([data-disabled])": role.buttonFillPressed,
     },
     backgroundImage: "none",
   },
@@ -208,14 +229,16 @@ const buttonVariants = create({
     lineHeight: "inherit",
     textDecoration: {
       default: "none",
-      ":hover:not([aria-disabled='true']):not(:disabled)": "underline",
+      ":hover:not([data-disabled])": { "@media (hover: hover) and (pointer: fine)": "underline" },
     },
   },
   inline: {
     "--_btn-hit-inset": "0px",
     "--_btn-inline-hover": {
       default: "transparent",
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.bgInteractiveSecondaryTranslucent,
+      ":hover:not([data-disabled])": {
+        "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
+      },
     },
     zIndex: 0,
     alignItems: "baseline",
@@ -330,7 +353,25 @@ export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): number {
   return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
 
+type ButtonStyleOptions = ButtonAppearance & {
+  readonly iconOnly?: boolean;
+  readonly joined?: boolean;
+  readonly xstyle?: XStyle;
+};
+
 export function buttonStyle(
+  variant: ButtonVariant,
+  size: ButtonSize,
+  options: ButtonStyleOptions & { readonly className?: string; readonly style?: CSSProperties },
+  glyphPressed?: boolean,
+): StaticStyleProps;
+export function buttonStyle<State>(
+  variant: ButtonVariant,
+  size: ButtonSize,
+  options: ButtonStyleOptions & StateStyledProps<State>,
+  glyphPressed?: boolean,
+): StateStyledProps<State>;
+export function buttonStyle<State>(
   variant: ButtonVariant,
   size: ButtonSize,
   {
@@ -340,13 +381,9 @@ export function buttonStyle(
     xstyle,
     className,
     style,
-  }: ButtonAppearance &
-    Pick<StyledProps<ButtonPrimitive.Props>, "className" | "style"> & {
-      readonly iconOnly?: boolean;
-      readonly joined?: boolean;
-    },
+  }: ButtonStyleOptions & StateStyledProps<State>,
   glyphPressed = false,
-) {
+): StateStyledProps<State> {
   return mergeStyleProps(
     props(
       tone !== "neutral" && intent[tone],
@@ -451,7 +488,7 @@ const pickerWidths = create({
   wide: { maxWidth: "100%" },
 });
 
-export type PickerTriggerProps = Omit<StyledProps<ComponentProps<"button">>, "xstyle"> & {
+export type PickerTriggerProps = Omit<StyledProps<ButtonPrimitive.Props>, "xstyle"> & {
   /** `wide` lets the trigger fill its container instead of stopping at 180px. */
   readonly width?: keyof typeof pickerWidths;
   readonly xstyle?: ButtonLayout;
@@ -472,8 +509,7 @@ export function PickerTrigger({
   ...rest
 }: PickerTriggerProps): ReactElement {
   return (
-    <button
-      type="button"
+    <ButtonPrimitive
       {...rest}
       {...buttonStyle("outline", "md", {
         xstyle: [picker.trigger, pickerWidths[width], xstyle],
@@ -485,7 +521,7 @@ export function PickerTrigger({
         <span {...props(picker.value)}>{children}</span>
         <Icon name="chevron-down" size={12} />
       </ControlGlyphs>
-    </button>
+    </ButtonPrimitive>
   );
 }
 

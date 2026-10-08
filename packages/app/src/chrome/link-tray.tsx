@@ -27,7 +27,7 @@ import {
 
 const styles = create({
   popup: { width: 300, padding: 0 },
-  morph: { overflow: "hidden" },
+  morph: { overflow: "clip" },
   step: { display: "flex", flexDirection: "column", gap: 12, padding: 16 },
   copy: { display: "flex", flexDirection: "column", gap: 4 },
   title: {
@@ -141,7 +141,7 @@ function LinkSteps({
     return (
       <Step
         title={`${view.environment.name} is linked`}
-        body={`Open Nyte on your iPhone and sign in as ${view.owner.label}.`}
+        body={`While Remote Access is on, devices signed in as ${view.owner.label} can connect.`}
         actions={
           <Button variant="solid" tone="primary" onClick={onClose}>
             Done

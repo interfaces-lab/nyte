@@ -89,8 +89,9 @@ export class ComposerReferenceNode extends DecoratorNode<MessageReference> {
   isInline(): true {
     return true;
   }
-  isKeyboardSelectable(): true {
-    return true;
+  /** Arrows step over a chip like one character; the composer only models range carets. */
+  isKeyboardSelectable(): false {
+    return false;
   }
   getReference(): MessageReference {
     return this.getLatest().__reference;

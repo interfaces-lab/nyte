@@ -10,17 +10,24 @@ import {
   type SelectionReply,
   type SessionId,
 } from "@nyte-ai/protocol";
-import { randomUUID } from "expo-crypto";
 // oxlint-disable-next-line no-restricted-imports -- the session observer lifecycle follows its target
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { describeHostError } from "../connection/connection.ts";
 import { observeSession } from "./session-observers.ts";
+import { clearChatDraft, useChatScope } from "./drafts.ts";
+import { finishMessageReceipt, prepareMessageReceipt, type SendReceipt } from "./send-receipts.ts";
 
 export type UserContent = OperationInput<"messages.send">["content"];
 
 export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | undefined) {
-  const target = useMemo(() => ({ client, sessionId: activeSessionId }), [client, activeSessionId]);
+  const scope = useChatScope();
+
+  const target = useMemo(
+    () => ({ client, sessionId: activeSessionId, scope }),
+    [client, activeSessionId, scope],
+  );
+
   const activeTarget = useRef<typeof target | undefined>(undefined);
 
   const [view, setView] = useState<
@@ -31,9 +38,7 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
     { target: typeof target; message: string } | undefined
   >(undefined);
 
-  const submission = useRef<{ target: typeof target; serialized: string; key: string } | undefined>(
-    undefined,
-  );
+  const submission = useRef<(SendReceipt & { target: typeof target }) | undefined>(undefined);
 
   const inFlight = useRef<typeof submission.current>(undefined);
   const [sendingTarget, setSendingTarget] = useState<typeof target | undefined>(undefined);
@@ -138,16 +143,6 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
 
   const state = view?.target === target ? view.state : undefined;
 
-  const streamingText = useMemo(() => {
-    let text = "";
-
-    for (const part of state?.overlay ?? []) {
-      if (part.kind === "text") text += part.text;
-    }
-
-    return text;
-  }, [state?.overlay]);
-
   const send = useCallback(
     async (content: UserContent, delivery?: Delivery): Promise<boolean> => {
       const sessionId = target.sessionId;
@@ -168,16 +163,10 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
         return false;
       }
 
-      // A lost response may hide an accepted send. Retrying that draft must reuse its receipt key.
-      // Snapshot only when Send is pressed, including photo bytes without retaining mutable parts.
-      // Queueing the same draft after a lost steer is a different send, so delivery is part of it.
-      const serialized = JSON.stringify({ content, delivery });
-      const previous = submission.current;
-
-      const attempt =
-        previous?.target === target && previous.serialized === serialized
-          ? previous
-          : { target, serialized, key: randomUUID() };
+      const attempt = {
+        target,
+        ...prepareMessageReceipt({ scope: target.scope, sessionId, content, delivery }),
+      };
 
       submission.current = attempt;
       inFlight.current = attempt;
@@ -185,11 +174,21 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
       setSendError(undefined);
 
       try {
-        await client.messages.send({ sessionId, content, delivery, key: attempt.key });
+        await client.messages.send({
+          sessionId,
+          content,
+          delivery: attempt.delivery,
+          key: attempt.key,
+        });
+
+        if (attempt.draft !== undefined)
+          clearChatDraft({ scope: target.scope, sessionId, submitted: attempt.draft });
+
+        finishMessageReceipt({ scope: target.scope, sessionId, key: attempt.key });
 
         if (submission.current === attempt) submission.current = undefined;
 
-        return activeTarget.current === target;
+        return true;
       } catch (cause) {
         if (activeTarget.current === target) {
           setSendError({
@@ -358,7 +357,6 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
 
   return {
     state,
-    streamingText,
     sending: sendingTarget === target,
     error:
       sendError?.target === target
@@ -367,6 +365,7 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
           ? view.error
           : undefined,
     send,
+    getSubmissionKey: () => submission.current?.key,
     reply,
     selectedModel,
     selectingModel: selection?.kind === "saving",

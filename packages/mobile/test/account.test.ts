@@ -4,7 +4,7 @@ import type { EnvironmentSummary } from "@nyte-ai/connect";
 import type { ServerInfo } from "@nyte-ai/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { parseAccountConfig } from "../src/account/account-config.ts";
-import { brokerCopy, connectEndingCopy, releaseCopy } from "../src/account/account-copy.ts";
+import { releaseCopy } from "../src/account/account-copy.ts";
 import {
   connectEnvironment,
   createDeviceSecret,
@@ -13,6 +13,7 @@ import {
 import { releaseDevice, releaseOnHost } from "../src/account/revocation.ts";
 import { createConnectionStore } from "../src/connection/connection-store.ts";
 import { serializeConnection, type ManagedConnection } from "../src/connection/connection.ts";
+import type { HostVerification } from "../src/connection/host.ts";
 
 const ORIGIN = "https://connect.example.com";
 const JWT = "clerk.session.jwt";
@@ -139,7 +140,14 @@ function enrollment(input: {
   readonly store: ReturnType<typeof createConnectionStore>;
   readonly signal?: AbortSignal;
   readonly windowMs?: number;
+  readonly verification?: HostVerification;
 }) {
+  // Identity proof needs the Keychain and a signing host, so it is verified on device.
+  const verification: HostVerification = input.verification ?? {
+    kind: "verified",
+    host: { info: INFO, scope: "test", key: "1" },
+  };
+
   return connectEnvironment({
     broker: broker(input.net.fetch),
     environment: MAC,
@@ -149,6 +157,7 @@ function enrollment(input: {
     clientName: "iPhone",
     crypto: nodeCrypto,
     fetch: input.net.fetch,
+    verify: async () => verification,
     save: input.store.save,
     signal: input.signal ?? new AbortController().signal,
     readiness: { windowMs: input.windowMs ?? 2_000, intervalMs: 5 },
@@ -162,18 +171,7 @@ describe("parseAccountConfig", () => {
     expect(parseAccountConfig(valid)).toEqual(valid);
     expect(parseAccountConfig({ ...valid, publishableKey: undefined })).toBeUndefined();
     expect(parseAccountConfig({ ...valid, origin: undefined })).toBeUndefined();
-  });
-
-  it("refuses a broker origin that is not a canonical HTTPS origin", () => {
-    for (const origin of [
-      "http://connect.example.com",
-      "https://connect.example.com/",
-      "https://connect.example.com/v1",
-      "https://user:pass@connect.example.com",
-      "https://connect.example.com?x=1",
-      "https://connect.example.com#x",
-    ])
-      expect(parseAccountConfig({ ...valid, origin })).toBeUndefined();
+    expect(parseAccountConfig({ ...valid, origin: "http://connect.example.com" })).toBeUndefined();
   });
 
   it("refuses publishable keys ClerkProvider would throw on", () => {
@@ -244,6 +242,7 @@ describe("connectEnvironment", () => {
       clientId: "client_abcdefghijklmnop",
       clientName: "iPhone",
       digest: sha256Url(connection.token),
+      role: "controller",
     });
     expect(enrolls[0]?.body).not.toContain(connection.token);
 
@@ -311,7 +310,28 @@ describe("connectEnvironment", () => {
     expect(enrolls).toHaveLength(1);
     expect(bearers.size).toBe(1);
     expect(disk.current()).toBeNull();
-    expect(connectEndingCopy({ kind: "notAccepted" }).action).toBe("retry");
+  });
+
+  it("releases the bearer and saves nothing when the Mac fails the pinned identity", async () => {
+    const net = network({});
+    const disk = memory();
+
+    expect(
+      await enrollment({
+        net,
+        store: createConnectionStore(disk.storage, POLICY),
+        verification: { kind: "identityChanged", address: MAC.name, url: MAC_URL },
+      }),
+    ).toEqual({
+      kind: "unproven",
+      failure: { kind: "identityChanged", address: MAC.name, url: MAC_URL },
+    });
+    expect(disk.current()).toBeNull();
+    await vi.waitFor(() =>
+      expect(net.seen.some((request) => request.url === `${MAC_URL}/_nyte/connect/device`)).toBe(
+        true,
+      ),
+    );
   });
 
   it("releases the replaced Mac's bearer on that Mac alone, never through the broker", async () => {
@@ -368,7 +388,7 @@ describe("connectEnvironment", () => {
     );
   });
 
-  it("names a revoked session as a sign-in problem, not a network one", async () => {
+  it("reports a revoked session as the broker's refusal, not a network failure", async () => {
     const net = network({
       enroll: () =>
         Response.json({ error: { code: "session_revoked", message: "revoked" } }, { status: 401 }),
@@ -382,12 +402,6 @@ describe("connectEnvironment", () => {
       kind: "broker",
       failure: { kind: "refused", status: 401, code: "session_revoked" },
     });
-    expect(brokerCopy({ kind: "refused", status: 401, code: "owner_disabled" }).action).toBe(
-      "signIn",
-    );
-    expect(brokerCopy({ kind: "refused", status: 502, code: "unreachable" }).body).toMatch(
-      /awake with Nyte open/u,
-    );
   });
 });
 

@@ -45,13 +45,14 @@ export function FontFamilySelect<T extends string>({
   return (
     <Autocomplete
       items={groups}
-      value={search}
+      value={selected ?? null}
+      inputValue={search}
       disabled={disabled}
       autoHighlight
-      onValueChange={setSearch}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) setSearch("");
+      onValueChange={(option) => {
+        if (option !== null) onValueChange(option.value);
       }}
+      onInputValueChange={setSearch}
     >
       <AutocompleteTrigger
         aria-label={label}
@@ -76,15 +77,11 @@ export function FontFamilySelect<T extends string>({
                   <AutocompleteItem
                     key={option.value}
                     value={option}
-                    selected={option.value === value}
                     style={
                       option.fontFamily === undefined
                         ? undefined
                         : { fontFamily: option.fontFamily }
                     }
-                    onClick={() => {
-                      onValueChange(option.value);
-                    }}
                   >
                     {option.label}
                   </AutocompleteItem>

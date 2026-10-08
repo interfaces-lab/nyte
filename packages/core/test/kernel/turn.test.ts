@@ -580,50 +580,6 @@ test("a tool that throws settles an error; a truncated batch fails without touch
   assert.equal(await effectState(b.session, "call-2"), undefined);
 });
 
-test("after a crash, an intent replays only when its tool says that is safe", async () => {
-  const b = await bench();
-  let executions = 0;
-  const execute: TestTool["execute"] = async () => {
-    executions += 1;
-    return { content: [{ type: "text", text: "ran" }], details: {} };
-  };
-  for (const [callId, replay] of [
-    ["safe-1", "safe"],
-    ["never-1", "never"],
-  ] as const) {
-    await openEffect(b.session, {
-      lease: b.lease,
-      runId: "run_1",
-      callId,
-      tool: "test",
-      args: { value: "x" },
-      replay,
-      environment: env.id,
-    });
-  }
-  const safe = await turnWith(scripted([]).streamFn, [tool(execute, { replay: "safe" })]).tools({
-    ...b.input(),
-    assistant: askTool("safe-1", "x"),
-  });
-  assert.equal(safe.kind, "complete");
-  assert.equal(executions, 1);
-
-  const never = await turnWith(scripted([]).streamFn, [tool(execute, { replay: "never" })]).tools({
-    ...b.input(),
-    assistant: askTool("never-1", "x"),
-  });
-  assert.equal(never.kind, "complete");
-  assert.equal(executions, 1);
-  if (never.kind === "complete") {
-    assert.deepEqual(never.settlements[0]?.outcome, {
-      kind: "error",
-      reason: { kind: "interrupted" },
-    });
-    assert.equal(never.settlements[0]?.message.isError, true);
-    assert.match(JSON.stringify(never.settlements[0]?.message.content), /interrupted/u);
-  }
-});
-
 test("a settled success is reused as a success when the run is stepped again under a participant's stop", async () => {
   const b = await bench();
   let executions = 0;

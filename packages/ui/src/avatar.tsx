@@ -12,7 +12,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    overflow: "hidden",
+    overflow: "clip",
     boxSizing: "border-box",
     borderWidth: 0.5,
     borderStyle: "solid",

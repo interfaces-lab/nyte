@@ -10,6 +10,7 @@ import { createContext, use, type ComponentProps, type ReactElement } from "reac
 import { input, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
+import { danger } from "./theme.stylex.ts";
 import { appearance, role, type } from "./vars.stylex.ts";
 
 const field = create({
@@ -50,6 +51,7 @@ const variants = create({
     borderColor: {
       default: role.borderPrimaryTranslucent,
       ":focus": appearance.focusColor,
+      ":user-invalid": danger.border,
       "[aria-invalid=true]": role.borderInteractivePrimary,
     },
     backgroundColor: role.bgElevated,
@@ -58,6 +60,7 @@ const variants = create({
     borderColor: {
       default: role.borderSecondaryTranslucent,
       ":focus": appearance.focusColor,
+      ":user-invalid": danger.border,
       "[aria-invalid=true]": role.borderInteractivePrimary,
     },
     backgroundColor: role.bgMutedTranslucent,
@@ -139,8 +142,10 @@ const framedPadding = create({
 const textarea = create({
   base: {
     display: "block",
+    fieldSizing: "content",
     height: "auto",
     minHeight: "var(--_input-textarea-min-height)",
+    maxHeight: "12lh",
     paddingBlock: "var(--_input-textarea-padding-block)",
     paddingInline: "calc(var(--_input-inset) + 4px) var(--_input-inset)",
     resize: "vertical",
@@ -171,15 +176,17 @@ export function Input({
       data-slot="input"
       {...rest}
       {...mergeStyleProps(
-        props(
-          field.base,
-          rest["aria-invalid"] && rest["aria-invalid"] !== "false" && intent.danger,
-          resolvedVariant === "bare"
-            ? field.bare
-            : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
-          groupSize !== undefined && field.grouped,
-          xstyle,
-        ),
+        (state: InputPrimitive.State) =>
+          props(
+            field.base,
+            (state.valid === false || (rest["aria-invalid"] && rest["aria-invalid"] !== "false")) &&
+              intent.danger,
+            resolvedVariant === "bare"
+              ? field.bare
+              : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
+            groupSize !== undefined && field.grouped,
+            xstyle,
+          ),
         className,
         style,
       )}

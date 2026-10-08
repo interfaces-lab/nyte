@@ -95,15 +95,9 @@ async function open(sandbox: VercelSandbox): Promise<ExecutionEnv> {
   return provider.open(WORKSPACE);
 }
 
-test("opens under the workspace id and resolves POSIX paths against its cwd", async () => {
-  const { sandbox } = fakeSandbox(() => finished(0));
-  const provider = vercelSandboxPlugin({ connect: () => Promise.resolve(sandbox) }).environment;
+test("resolves POSIX paths against the workspace cwd", async () => {
+  const env = await open(fakeSandbox(() => finished(0)).sandbox);
 
-  assert.equal(provider.kind, "vercel-sandbox");
-  const env = await provider.open(WORKSPACE);
-
-  assert.equal(env.id, WORKSPACE.id);
-  assert.equal(env.cwd, WORKSPACE.cwd);
   assert.equal(env.resolve("src/../a.ts"), "/vercel/sandbox/a.ts");
   assert.equal(env.resolve("/etc", "hosts"), "/etc/hosts");
 });

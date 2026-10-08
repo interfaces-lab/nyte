@@ -22,8 +22,8 @@ the input when the palette opens, and Enter runs the highlighted row's `onClick`
   palette after what it searches.
 - Rows keep the menu's three columns, `leading`, label, and `meta`, so labels align in every group.
 - Coming from shadcn's `Command`: `CommandDialog` is `Command.Root` plus `Command.Popup`,
-  `heading` and `onSelect` keep their names, `CommandShortcut` is `meta`, and `value` on the
-  popup is the query, as in Base UI, not the highlighted row; use `onItemHighlighted` for that.
+  `heading` keeps its name, `onSelect` is `onClick`, and `CommandShortcut` is `meta`. `value` on
+  the popup is the query, as in Base UI, not the highlighted row. Use `onItemHighlighted` for that.
 
 ## Anatomy
 
@@ -70,7 +70,7 @@ const matches = commands.filter((command) =>
             value={command.id}
             leading={<Icon name={command.icon} size={16} />}
             meta={<Kbd keys={command.keys} plain />}
-            onSelect={() => {
+            onClick={() => {
               setOpen(false);
               command.run();
             }}
@@ -124,7 +124,7 @@ dialog popup props, including `ref`, and these.
 | `description`       | `string`                        |                     | The dialog's accessible description.                    |
 | `tint`              | `Tint`                          |                     | Scopes the panel to a hue. The scrim stays neutral.     |
 | `items`             | `readonly ItemValue[]`          |                     | Every row's `value`, in render order.                   |
-| `loop`              | `boolean`                       | `false`             | Whether arrow keys wrap from the last row to the first. |
+| `loopFocus`         | `boolean`                       | `true`              | Whether arrow keys wrap from the last row to the first. |
 | `value`             | `string`                        |                     | The controlled query.                                   |
 | `defaultValue`      | `string`                        |                     | The initial query when uncontrolled.                    |
 | `onValueChange`     | `(value, eventDetails) => void` |                     | Fires as the query changes.                             |
@@ -159,13 +159,12 @@ dialog popup props, including `ref`, and these.
 
 ### Item
 
-| Prop       | Type                         | Default | Description                                        |
-| ---------- | ---------------------------- | ------- | -------------------------------------------------- |
-| `value`    | `ItemValue`                  |         | Identifies the row; it must appear in `items`.     |
-| `onSelect` | `(value: ItemValue) => void` |         | Runs when the row is clicked or chosen with Enter. |
-| `leading`  | `ReactNode`                  |         | The glyph column.                                  |
-| `meta`     | `ReactNode`                  |         | Display only. It binds no key.                     |
-| `children` | `ReactNode`                  |         | The label.                                         |
+| Prop       | Type        | Default | Description                                    |
+| ---------- | ----------- | ------- | ---------------------------------------------- |
+| `value`    | `ItemValue` |         | Identifies the row; it must appear in `items`. |
+| `leading`  | `ReactNode` |         | The glyph column.                              |
+| `meta`     | `ReactNode` |         | Display only. It binds no key.                 |
+| `children` | `ReactNode` |         | The label.                                     |
 
 <include>../../../base-ui-reference/autocomplete/Item.md</include>
 

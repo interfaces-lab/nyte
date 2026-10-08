@@ -1,17 +1,19 @@
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { DesktopCatalog, DesktopModelOption, PreferenceChange } from "./bridge.ts";
 import type { ModelPickerChange } from "./conversation/model-picker.tsx";
+import { modelRefFor } from "./conversation/model-picker-state.ts";
 
 /** The whole setup a picker change leaves behind becomes what the next new chat starts with. */
 export function pickerDefaults(
   setup: {
     readonly model: DesktopModelOption | undefined;
     readonly thinkingLevel: ModelThinkingLevel | undefined;
+    /** The setup selects the model's fast sibling. */
+    readonly fast: boolean;
   },
   change: ModelPickerChange,
 ): PreferenceChange {
-  const model =
-    setup.model === undefined ? undefined : { provider: setup.model.provider, id: setup.model.id };
+  const model = setup.model === undefined ? undefined : modelRefFor(setup.model, setup.fast);
 
   switch (change.kind) {
     case "model":
@@ -23,7 +25,11 @@ export function pickerDefaults(
     case "thinking":
       return { kind: "defaults", model, thinkingLevel: change.thinkingLevel };
     case "fast":
-      return { kind: "defaults", model, thinkingLevel: setup.thinkingLevel, fast: change.enabled };
+      return {
+        kind: "defaults",
+        model: setup.model === undefined ? undefined : modelRefFor(setup.model, change.enabled),
+        thinkingLevel: setup.thinkingLevel,
+      };
     default: {
       const _exhaustive: never = change;
 
@@ -45,7 +51,6 @@ export function projectPreference(
       defaults: {
         model: change.model ?? catalog.defaults.model,
         thinkingLevel: change.thinkingLevel ?? catalog.defaults.thinkingLevel,
-        fast: change.fast ?? catalog.defaults.fast,
       },
     };
   }

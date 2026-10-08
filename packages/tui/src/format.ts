@@ -300,9 +300,14 @@ const TERMINAL_TITLE_MAX_CHARS = 72;
 /** C0 and C1, which is where the OSC terminator and the bell live. */
 const CONTROL_CHARACTERS = /\p{Cc}/gu;
 
+/** One line of display text: control characters become spaces, whitespace collapses. */
+export function singleLine(text: string): string {
+  return text.replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
+}
+
 /** `nyte` until the chat has a name, then `nyte - <name>`, with control characters stripped. */
 export function terminalTitle(name: string | undefined): string {
-  const clean = (name ?? "").replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
+  const clean = singleLine(name ?? "");
 
   if (clean === "") return TERMINAL_TITLE_BASE;
   const room = TERMINAL_TITLE_MAX_CHARS - TERMINAL_TITLE_BASE.length - " - ".length;

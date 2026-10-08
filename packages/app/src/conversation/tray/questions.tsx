@@ -79,7 +79,10 @@ const styles = create({
   },
   choices: { display: "flex", flexDirection: "column", gap: 1 },
   choice: {
-    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": role.bgHover },
+    "--_row-fill": {
+      default: "transparent",
+      ":hover:not(:disabled)": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     alignItems: "flex-start",
     gap: 8,
     minHeight: tray.rowHeight,

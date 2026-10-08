@@ -47,10 +47,6 @@ const BUILTINS = new Map<string, Presentation>([
     },
   ],
   [
-    "fast-mode",
-    { name: "Fast mode", description: "Priority processing at a premium", icon: "speed-low" },
-  ],
-  [
     "question",
     {
       name: "Questions",

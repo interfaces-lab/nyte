@@ -1,34 +1,39 @@
-import { button, input, row, radius } from "@nyte-ai/ui/schema.stylex";
+import { button, row } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent, FormEvent, ReactElement, ReactNode, RefObject } from "react";
-import { flushSync } from "react-dom";
+import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type { BrowserBoundsMessage, BrowserBridge, BrowserNavigationAction } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
-import { workbench } from "../theme/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { WorkbenchRail } from "./workbench-rail.tsx";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { nyte } from "../nyte";
+import { macPlatform } from "../platform.ts";
 import { keys } from "../queries.ts";
-import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
+import { displayAddress, parseWebUrl } from "./browser-address.ts";
+import { AddressField } from "./browser-address-field.tsx";
+import type { AddressFieldHandle } from "./browser-address-field.tsx";
+import { useBrowserHistory } from "./browser-history.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
-  clearBrowserHistory,
   forgetBrowserSurface,
+  onBrowserKey,
   setBrowserFinding,
   useBrowserSurface,
 } from "./browser-surfaces.ts";
 import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
+import type { FindBarHandle } from "./browser-find.tsx";
 import { LoginDialog } from "./browser-login.tsx";
+import { resolveBrowserShortcut } from "./browser-shortcuts.ts";
+import type { BrowserShortcut } from "./browser-shortcuts.ts";
 
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 import { ShieldMenu } from "./browser-shield.tsx";
@@ -64,30 +69,8 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  addressForm: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    alignItems: "center",
-    marginInline: 4,
-  },
-  addressWrap: {
-    flex: 1,
-    gap: 6,
-    height: input.heightMd,
-    paddingInline: 8,
-    borderColor: role.borderSecondaryTranslucent,
-    borderRadius: radius.control,
-    // The ring belongs on the rounded field, not on the square input nested
-    // inside it, so its corners stay concentric with the border it wraps.
-    outlineStyle: { default: "none", ":focus-within": "solid" },
-    outlineWidth: 1,
-    outlineColor: appearance.focusRing,
-    outlineOffset: 0,
-  },
   addressIcon: { display: "inline-flex", flexShrink: 0, color: role.contentSecondary },
   blockedIcon: { display: "inline-flex", flexShrink: 0, color: role.contentDisabled },
-  address: { height: "100%" },
   slot: {
     position: "relative",
     display: "flex",
@@ -99,18 +82,7 @@ const styles = create({
     padding: 24,
   },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  history: {
-    width: workbench.fileListWidth,
-    maxWidth: "45%",
-    flexShrink: 0,
-    minHeight: 0,
-    overflowY: "auto",
-    padding: 4,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-    backgroundColor: role.bgBase,
-  },
+  history: { flex: 1, minHeight: 0, overflowY: "auto", padding: 4 },
   historyHeading: {
     margin: 0,
     paddingBlock: 6,
@@ -347,6 +319,7 @@ interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
   readonly historyVisible: boolean;
+  readonly onToggleHistory: () => void;
   readonly url: string;
   readonly onUrlChange: (url: string) => void;
   readonly toolbarActions?: ReactNode;
@@ -358,19 +331,25 @@ export function BrowserPanel({
   surface,
   visible,
   historyVisible,
+  onToggleHistory,
   url,
   onUrlChange,
   toolbarActions,
   workspacePath,
 }: BrowserPanelProps): ReactElement {
   const bookmarks = useBookmarks();
+  const sectionRef = useRef<HTMLElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { state, downloads, finding, login, history } = useBrowserSurface(surface);
+  const addressRef = useRef<AddressFieldHandle>(null);
+  const findRef = useRef<FindBarHandle>(null);
+  const { state, downloads, finding, login } = useBrowserSurface(surface);
+  const history = useBrowserHistory(workspacePath);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const stateUrl = state?.url;
-  const currentUrl = stateUrl ?? url;
+  // A new tab has no web address yet, so it opens nothing until the user enters one.
+  const blank = parseWebUrl(url) === undefined;
+  const currentUrl = stateUrl ?? (blank ? "" : url);
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
@@ -399,7 +378,7 @@ export function BrowserPanel({
   useEffect(() => {
     const hold = holdRef.current;
 
-    if (hold === undefined) return;
+    if (hold === undefined || parseWebUrl(url) === undefined) return;
 
     if (hold.opened && (url === stateUrl || url === hold.url)) {
       hold.url = url;
@@ -416,7 +395,7 @@ export function BrowserPanel({
         ? ({ kind: "home" } as const)
         : ({ kind: "project", path: workspacePath } as const);
 
-    claimBrowserSurface(surface, workspacePath);
+    claimBrowserSurface(surface);
     void browserBridge()
       .open({ surface, url, owner })
       .then(
@@ -435,23 +414,101 @@ export function BrowserPanel({
     };
   }, [surface, url, stateUrl, workspacePath]);
 
+  // Focus inside the panel decides where menu commands go, so a panel that hides gives it up.
+  useEffect(() => {
+    if (!visible) return;
+
+    return () => browserBridge().setFocus({ surface, focused: false });
+  }, [surface, visible]);
+
+  // A key the focused page did not use is this panel's keydown: a browser shortcut, or an app one.
+  useEffect(
+    () =>
+      onBrowserKey(surface, (key) => {
+        sectionRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", { ...key, bubbles: true, cancelable: true }),
+        );
+      }),
+    [surface],
+  );
+
+  // Deferred a frame: the address bar's focus handler flushes a render, which an effect may not.
+  useEffect(() => {
+    if (!visible || !blank) return;
+    const frame = requestAnimationFrame(() => addressRef.current?.focus());
+
+    return () => cancelAnimationFrame(frame);
+  }, [visible, blank]);
+
   const navigate = (action: BrowserNavigationAction): void => {
     void browserBridge()
       .navigate({ surface, action })
       .catch(() => undefined);
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const target = resolveBrowserAddress(draft ?? "");
+  /** Typing follows: main moves native focus off the page when it holds it. */
+  const focusControls = (): void => browserBridge().setFocus({ surface, focused: true });
 
-    if (target === undefined) return;
-    setDraft(undefined);
+  const runShortcut = (shortcut: BrowserShortcut): boolean => {
+    switch (shortcut) {
+      case "back":
+      case "forward":
+      case "reload":
+      case "hard-reload":
+      case "zoom-in":
+      case "zoom-out":
+      case "zoom-reset":
+      case "toggle-devtools":
+        navigate(shortcut);
+
+        return true;
+      case "focus-address":
+        focusControls();
+        addressRef.current?.focus();
+
+        return true;
+      case "find":
+        if (!hasPage) return false;
+        focusControls();
+
+        if (finding) findRef.current?.focus();
+        else setBrowserFinding(surface, true);
+
+        return true;
+      case "find-next":
+      case "find-previous":
+        if (!finding || !hasPage) return false;
+        findRef.current?.step(shortcut === "find-next" ? "next" : "previous");
+
+        return true;
+      case "bookmark":
+        if (!hasPage) return false;
+        toggleBookmark({ url: currentUrl, title: state.title || currentUrl });
+
+        return true;
+      case "history":
+        onToggleHistory();
+
+        return true;
+      default: {
+        const _exhaustive: never = shortcut;
+
+        return _exhaustive;
+      }
+    }
+  };
+
+  const go = (target: string): void => {
     setFailure(undefined);
-    inputRef.current?.blur();
 
     if (target === url) navigate("reload");
     else onUrlChange(target);
+  };
+
+  const forget = (entry: string): void => {
+    void browserBridge()
+      .forgetHistory({ owner: workspacePath, url: entry })
+      .catch((cause) => setFailure(errorMessage(cause)));
   };
 
   const openMenu = (event: MouseEvent<HTMLButtonElement>): void => {
@@ -473,9 +530,13 @@ export function BrowserPanel({
           return;
         }
 
-        await browserBridge().perform({ surface, action });
+        if (action === "hard-reload") {
+          navigate(action);
 
-        if (action === "clear-history") clearBrowserHistory(workspacePath);
+          return;
+        }
+
+        await browserBridge().perform({ surface, action, owner: workspacePath });
       })
       .catch((cause) => setFailure(errorMessage(cause)));
   };
@@ -486,14 +547,22 @@ export function BrowserPanel({
 
   return (
     <section
+      ref={sectionRef}
       aria-label="Browser"
       {...props(styles.panel)}
-      onKeyDown={(event) => {
-        const command = event.metaKey || event.ctrlKey;
+      onFocus={focusControls}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
 
-        if (!hasPage || !command || event.altKey || event.key.toLowerCase() !== "f") return;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        browserBridge().setFocus({ surface, focused: false });
+      }}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || event.nativeEvent.isComposing) return;
+        const shortcut = resolveBrowserShortcut(event, macPlatform(undefined));
+
+        if (shortcut === undefined || !runShortcut(shortcut)) return;
         event.preventDefault();
-        setBrowserFinding(surface, true);
       }}
     >
       <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
@@ -518,48 +587,32 @@ export function BrowserPanel({
           disabled={!hasPage}
           onClick={() => navigate(loading ? "stop" : "reload")}
         />
-        <form {...props(styles.addressForm)} onSubmit={submit}>
-          <InputGroup xstyle={styles.addressWrap}>
-            {secure === "https" && draft === undefined && (
-              <span {...props(styles.addressIcon)} title="Secure connection">
-                <Icon name="lock" size={12} />
-              </span>
-            )}
-            {hasPage && draft === undefined && state.deniedPermissions.length > 0 && (
-              <span
-                {...props(styles.blockedIcon)}
-                role="img"
-                aria-label={blockedPermissionsLabel(state.deniedPermissions)}
-                title={blockedPermissionsLabel(state.deniedPermissions)}
-              >
-                <Icon name="circle-x" size={12} />
-              </span>
-            )}
-            <Input
-              ref={inputRef}
-              type="text"
-              inputMode="url"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="Address"
-              placeholder="Search or enter address"
-              value={draft ?? displayAddress(currentUrl)}
-              xstyle={styles.address}
-              onFocus={(event) => {
-                flushSync(() => setDraft(currentUrl));
-                event.currentTarget.select();
-              }}
-              onBlur={() => setDraft(undefined)}
-              onValueChange={setDraft}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setDraft(undefined);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-          </InputGroup>
-        </form>
+        <AddressField
+          ref={addressRef}
+          currentUrl={currentUrl}
+          draft={draft}
+          onDraftChange={setDraft}
+          history={history}
+          bookmarks={bookmarks.items}
+          onOpen={go}
+          onForget={forget}
+        >
+          {secure === "https" && draft === undefined && (
+            <span {...props(styles.addressIcon)} title="Secure connection">
+              <Icon name="lock" size={12} />
+            </span>
+          )}
+          {hasPage && draft === undefined && state.deniedPermissions.length > 0 && (
+            <span
+              {...props(styles.blockedIcon)}
+              role="img"
+              aria-label={blockedPermissionsLabel(state.deniedPermissions)}
+              title={blockedPermissionsLabel(state.deniedPermissions)}
+            >
+              <Icon name="circle-x" size={12} />
+            </span>
+          )}
+        </AddressField>
         {hasPage && <ShieldMenu state={state} onChanged={() => navigate("reload")} />}
         {hasPage ? (
           <ButtonLink
@@ -643,7 +696,7 @@ export function BrowserPanel({
           ))}
         </div>
       )}
-      {finding && hasPage && <FindBar surface={surface} />}
+      {finding && hasPage && <FindBar ref={findRef} surface={surface} />}
       <DownloadsBar surface={surface} downloads={downloads} />
       {login !== undefined && (
         <LoginDialog key={login.host} surface={surface} host={login.host} realm={login.realm} />
@@ -684,43 +737,54 @@ export function BrowserPanel({
           )}
         </div>
         {historyVisible && (
-          <nav aria-label="Visit history" data-nyte-scrollport {...props(styles.history)}>
-            <h2 {...props(styles.historyHeading)}>Visit History</h2>
-            {history.length === 0 ? (
-              <p {...props(styles.historyHeading)}>No pages visited yet</p>
-            ) : (
-              history.map((entry) => (
-                <Row
-                  key={entry.url}
-                  interactive
-                  selected={entry.url === currentUrl}
-                  xstyle={styles.historyEntry}
-                >
-                  <Row.Primary
-                    render={<a href={entry.url} />}
-                    title={entry.url}
-                    aria-current={entry.url === currentUrl ? "page" : undefined}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setDraft(undefined);
-                      setFailure(undefined);
-                      onUrlChange(entry.url);
-                    }}
+          <WorkbenchRail>
+            <nav aria-label="Visit history" data-nyte-scrollport {...props(styles.history)}>
+              <h2 {...props(styles.historyHeading)}>Visit History</h2>
+              {history.length === 0 ? (
+                <p {...props(styles.historyHeading)}>No pages visited yet</p>
+              ) : (
+                history.map((entry) => (
+                  <Row
+                    key={entry.url}
+                    interactive
+                    selected={entry.url === currentUrl}
+                    xstyle={styles.historyEntry}
                   >
-                    <Row.Leading>
-                      <Icon name="globe" size={13} />
-                    </Row.Leading>
-                    <Row.Body>
-                      <Row.Label>{entry.title || displayAddress(entry.url)}</Row.Label>
-                      <Row.Description xstyle={styles.historyAddress}>
-                        {displayAddress(entry.url)}
-                      </Row.Description>
-                    </Row.Body>
-                  </Row.Primary>
-                </Row>
-              ))
-            )}
-          </nav>
+                    <Row.Primary
+                      render={<a href={entry.url} />}
+                      title={entry.url}
+                      aria-current={entry.url === currentUrl ? "page" : undefined}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setDraft(undefined);
+                        setFailure(undefined);
+                        onUrlChange(entry.url);
+                      }}
+                    >
+                      <Row.Leading>
+                        <Icon name="globe" size={13} />
+                      </Row.Leading>
+                      <Row.Body>
+                        <Row.Label>{entry.title || displayAddress(entry.url)}</Row.Label>
+                        <Row.Description xstyle={styles.historyAddress}>
+                          {displayAddress(entry.url)}
+                        </Row.Description>
+                      </Row.Body>
+                    </Row.Primary>
+                    <Row.Actions placement="overlay">
+                      <Button
+                        size="sm"
+                        iconOnly
+                        icon="x"
+                        aria-label={`Remove from history: ${entry.title || displayAddress(entry.url)}`}
+                        onClick={() => forget(entry.url)}
+                      />
+                    </Row.Actions>
+                  </Row>
+                ))
+              )}
+            </nav>
+          </WorkbenchRail>
         )}
       </div>
     </section>

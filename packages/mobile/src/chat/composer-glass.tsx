@@ -1,26 +1,24 @@
 import { forwardRef } from "react";
-import { View, type ViewProps, type ViewStyle } from "react-native";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+import { View, useColorScheme, type ViewStyle } from "react-native";
+import { GlassView, isLiquidGlassAvailable, type GlassViewProps } from "expo-glass-effect";
 import Animated from "react-native-reanimated";
 import { controls, useTheme } from "../theme.ts";
 
 /** False on iOS before 26, where GlassView is a stub with no fill of its own. */
 export const HAS_GLASS = isLiquidGlassAvailable();
 
-type GlassSurfaceProps = ViewProps & {
-  isInteractive?: boolean;
-  glassEffectStyle?: "regular" | "clear";
-};
+type GlassSurfaceProps = GlassViewProps;
 
 /**
  * Liquid Glass with a flat fallback. Do not animate opacity on this view or on
  * an ancestor: that suppresses the material (expo/expo#41024). Size is fine.
  */
 export const GlassSurface = forwardRef<View, GlassSurfaceProps>(function GlassSurface(
-  { style, isInteractive, glassEffectStyle, ...rest },
+  { style, isInteractive, glassEffectStyle, tintColor, colorScheme, ...rest },
   ref,
 ) {
   const theme = useTheme();
+  const appearance = useColorScheme() === "dark" ? "dark" : "light";
 
   if (HAS_GLASS) {
     return (
@@ -28,7 +26,9 @@ export const GlassSurface = forwardRef<View, GlassSurfaceProps>(function GlassSu
         ref={ref}
         style={style}
         isInteractive={isInteractive}
-        glassEffectStyle={glassEffectStyle}
+        glassEffectStyle={glassEffectStyle ?? "regular"}
+        tintColor={tintColor}
+        colorScheme={colorScheme ?? appearance}
         {...rest}
       />
     );

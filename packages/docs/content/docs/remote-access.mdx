@@ -1,0 +1,76 @@
+---
+title: Remote access
+description: Use Nyte on your computer from your phone or a browser.
+---
+
+Your computer does the work. A phone or browser sends messages and shows the answers. Sessions, folders, and model credentials stay on the computer, so closing the app on your phone doesn't stop work the computer already accepted. The computer has to stay awake, with Nyte running.
+
+A Nyte account connects from any network. A direct address needs no account, but your phone has to reach the computer, for example over Tailscale.
+
+## Desktop
+
+1. Open **Settings > Environments**. Under **Remote access**, find **Nyte account** and click **Link This Mac…**.
+2. Click **Sign In and Link…** and sign in. If you're already signed in, the button says **Link This Mac**.
+3. Turn on **Remote Access**, then click **Done**.
+
+While Remote Access is on, any device signed in to that Nyte account can connect. Remote access starts in the folder open in Nyte. If you haven't trusted that folder yet, Nyte asks you to first.
+
+## Terminal or server
+
+`nyte serve` runs a host with no terminal interface. Link it to your account once:
+
+```sh
+nyte account login
+```
+
+The command prints a page, a code, and a key fingerprint. Open the page in a browser on any device, sign in, and enter the code. Approve only if the fingerprint matches the terminal. This links the host. It doesn't add a phone.
+
+Then start the host with the folders it can work in:
+
+```sh
+nyte serve --workspace ~/code/app --trust --account
+```
+
+Repeat `--workspace` for more folders. `--trust` trusts each one as it is now. The host serves only while this command runs, and Ctrl-C stops it.
+
+The host also needs a model provider, for example from `nyte login` on that machine. That sign-in is separate from your Nyte account.
+
+Both commands use the host profile `default`, and `--profile <name>` picks another. Stop `nyte serve` before you run `nyte account login` or `nyte account unlink` on the same profile.
+
+## Connect a device
+
+Open the Nyte iOS app or the Nyte web app. Sign in with the same Nyte account and pick the computer. The device adds itself, and there's nothing to approve on the computer.
+
+On a host started with `nyte serve`, choose a folder before your first message. The list shows folders the host already trusts. To add a folder, stop `nyte serve` and start it again with another `--workspace`.
+
+To add folders or manage model sign-in from a browser, start the host with `--device-admin` too, then choose **Connect as Admin** in the web app. Without that flag, every device can only run sessions.
+
+## Connect without an account
+
+On the desktop, open **Settings > Environments**, go to **Manual setup**, and click **Start** next to **Over Tailscale**. In the iOS app, tap **Connect with Tailscale**, then **Scan QR code**, or enter the address and token. The QR code contains the token, so treat it like a password. Each Start makes a new token, and **Stop Remote Access** ends it.
+
+**This Mac only** listens on an address only that Mac can reach, so a physical phone can't connect to it. **Over Cloudflare Tunnel** needs your own named tunnel and domain.
+
+For `nyte serve`, pass `--host` with an address your phone can reach, such as the computer's Tailscale address. The token is in the file printed after `Bearer token:`.
+
+## Stop or remove access
+
+| Action                                                     | Result                                                                                                   |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Turn Off Remote Access**, or stop `nyte serve --account` | Devices are refused until you turn it back on. The link and the device list stay.                        |
+| Sign out of Nyte on the desktop                            | Remote access doesn't change. The link, its devices, and the Remote Access setting stay as they were.    |
+| **Unlink This Mac…**, or `nyte account unlink`             | The computer leaves the account and every device loses access. Link again to come back.                  |
+| **Revoke…** next to a device on the desktop                | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return. |
+| Sign out of Nyte on the device                             | Disconnects the device and asks Nyte to remove its access.                                               |
+| **Stop Remote Access** in manual setup                     | The address and token stop working.                                                                      |
+
+## Troubleshooting
+
+| What you see                                                 | What to do                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| The desktop shows **Off**, or devices can't see a linked Mac | Turn on **Remote Access**. It starts off.                                                                                      |
+| The computer isn't listed, or doesn't answer                 | Wake it. Check that Nyte is open with Remote Access on, or that `nyte serve --account` is running.                             |
+| The desktop shows **Offline**                                | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                          |
+| The token is refused                                         | A manual token ends when you stop sharing. Start again and scan the new code. A revoked device has to sign in again.           |
+| **Different host**, with **Pair as New Host**                | The address answered with a different host key. Pair again only if you reinstalled Nyte or reset its profile on that computer. |
+| `nyte serve` says the host isn't linked                      | Run `nyte account login` first.                                                                                                |

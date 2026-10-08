@@ -5,6 +5,9 @@
     <title>Nyte</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
+      /* The resets' layer sits below StyleX's, whichever stylesheet loads first. */
+      @layer base;
+
       /*
        * Startup shell. Paints before any module runs, so it carries its own
        * palette. App tokens take over once loaded. Before boot.ts applies the

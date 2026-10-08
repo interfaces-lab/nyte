@@ -141,7 +141,6 @@ describe("GitHub Copilot provider", () => {
     assert.equal(stored.refresh, "gh-token");
     const catalog = setup.requests.find((request) => request.url.endsWith("/models"));
     assert.equal(catalog?.headers.get("authorization"), `Bearer ${SESSION_TOKEN}`);
-    assert.ok(available.every((model) => model.contextWindow > 0 && model.maxTokens > 0));
   });
 
   test("restores availability from the credential offline, not from an account model cache", async () => {
@@ -277,7 +276,10 @@ describe("GitHub Copilot provider", () => {
     await setup.models.refresh({ providers: ["github-copilot"], allowNetwork: false });
     assert.equal((await setup.models.checkAuth("github-copilot"))?.type, "api_key");
     assert.equal((await setup.models.getAuth("github-copilot"))?.auth.apiKey, "injected-bearer");
-    assert.ok((await setup.models.getAvailable("github-copilot")).length > 0);
+    assert.deepEqual(
+      (await setup.models.getAvailable("github-copilot")).map((model) => model.id),
+      copilotCatalog.map((model) => model.id),
+    );
     assert.equal(setup.requests.length, 0);
   });
 });

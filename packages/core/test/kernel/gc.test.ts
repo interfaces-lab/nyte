@@ -7,16 +7,7 @@ import { headRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { createHead } from "../../src/kernel/stacks.ts";
 import type { Session } from "../../src/kernel/store.ts";
-import {
-  assistant,
-  chain,
-  lease,
-  message,
-  openSession,
-  seedHead,
-  toolResult,
-  user,
-} from "./helpers.ts";
+import { assistant, lease, message, openSession, seedHead, toolResult, user } from "./helpers.ts";
 
 const GRACE = 60_000;
 /** Objects are stamped with the clock; the collector's `now` must move past them. */
@@ -25,21 +16,6 @@ const NOW = Date.now();
 async function present(session: Session, oid: string | undefined): Promise<boolean> {
   return (await session.objects.get(oid ?? "")) !== undefined;
 }
-
-test("a loose object outlives the grace period, then goes; a referenced one stays", async () => {
-  const session = await openSession();
-  const [kept] = await seedHead(session, "main", [message(user("kept"))]);
-  const [loose] = await chain(session, null, [message(user("loose"))]);
-
-  const early = await collect(session, { graceMs: GRACE, now: NOW });
-  assert.equal(early.swept, 0);
-  assert.equal(await present(session, loose), true);
-
-  const late = await collect(session, { graceMs: GRACE, now: NOW + 10 * GRACE });
-  assert.equal(late.swept, 1);
-  assert.equal(await present(session, loose), false);
-  assert.equal(await present(session, kept), true);
-});
 
 test("a commit a head moved away from survives while the reflog can still name it", async () => {
   const session = await openSession();

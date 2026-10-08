@@ -103,11 +103,10 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest,
 including `ref`, to the popup. The popup opens at the pointer unless `anchor` is set.
 
-| Prop                 | Type                 | Default                                                      |
-| -------------------- | -------------------- | ------------------------------------------------------------ |
-| `collisionAvoidance` | `CollisionAvoidance` | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |
-| `collisionPadding`   | `number \| Padding`  | `8`                                                          |
-| `tint`               | `Tint`               |                                                              |
+| Prop               | Type                | Default |
+| ------------------ | ------------------- | ------- |
+| `collisionPadding` | `number \| Padding` | `8`     |
+| `tint`             | `Tint`              |         |
 
 #### Positioner
 
@@ -119,19 +118,18 @@ including `ref`, to the popup. The popup opens at the pointer unless `anchor` is
 
 ### ContextMenuSubContent
 
-Takes the same props as `ContextMenuContent`.
+Takes the same props as `ContextMenuContent`. Base UI opens a submenu at `inline-end`, aligned to
+`start`.
 
 | Prop          | Default                           |
 | ------------- | --------------------------------- |
-| `side`        | `"right"`                         |
-| `align`       | `"start"`                         |
 | `sideOffset`  | `6`                               |
 | `alignOffset` | `0` when centered, otherwise `-4` |
 
 ### Rows
 
 Each row takes the props of its [Menu](/docs/components/components/menu#menuitem) counterpart.
-`ContextMenuItem` has no `selected`. There is no switch item.
+There is no switch item.
 
 | Part                      | As                 |
 | ------------------------- | ------------------ |

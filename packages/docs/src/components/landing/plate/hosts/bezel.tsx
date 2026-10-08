@@ -16,9 +16,9 @@ export function Bezel({ className, children }: { className?: string; children: R
   );
 }
 
-/* Fades a host toward the panel while its window sits behind the front one. */
+/* Fades a host toward the page while its window sits behind the front one. */
 export function Veil() {
   return (
-    <span className="pointer-events-none absolute inset-0 z-50 rounded-[inherit] bg-(--site-panel)/60 opacity-0 transition-opacity duration-500 ease-nav group-data-behind/window:opacity-100 motion-reduce:transition-none" />
+    <span className="pointer-events-none absolute inset-0 z-50 rounded-[inherit] bg-background/60 opacity-0 transition-opacity duration-500 ease-nav group-data-behind/window:opacity-100 motion-reduce:transition-none" />
   );
 }

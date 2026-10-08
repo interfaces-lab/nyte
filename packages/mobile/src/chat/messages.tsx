@@ -1,92 +1,28 @@
 import { memo, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  ActionSheetIOS,
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  useColorScheme,
-  View,
-} from "react-native";
+import { ActionSheetIOS, ActivityIndicator, Pressable, View } from "react-native";
 import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
-import remend from "remend";
-import { EnrichedMarkdownText } from "react-native-enriched-markdown";
-import type { Failure, SessionId, TurnPart, TurnToolClass } from "@nyte-ai/protocol";
-import { formatToolDuration, toolStatus } from "@nyte-ai/client";
-import type { SessionState, ToolTense } from "@nyte-ai/client";
-import {
-  controls,
-  conversation,
-  list,
-  markdownStyle,
-  media,
-  useTheme,
-  radii,
-  spacing,
-  textStyles,
-  tokens,
-} from "../theme.ts";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { Failure, RunInfo, SessionId } from "@nyte-ai/protocol";
+import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
-import { useTranscriptFont } from "../settings/preferences.ts";
-import { toast } from "../ui/toast.tsx";
-import { elapsed } from "./sessions.ts";
-import { formatDuration, type ConversationTurn } from "./turn-changes.ts";
-import { delegateTitle } from "./delegate-names.ts";
+import type { ChatRow } from "./transcript-rows.ts";
+import { ActivityIcon, activitySummary } from "./tool-activity-sheet.tsx";
+import { Markdown } from "./markdown.tsx";
 import { Bubble } from "./bubble.tsx";
 import { Marker } from "./marker.tsx";
 import { Message, MessageFooter } from "./message.tsx";
 
-export type ChatRow =
-  | TurnPart
-  | Exclude<SessionState["transcript"]["items"][number], { kind: "turn" }>
-  | SessionState["pending"][number]
-  | { kind: "work"; turn: ConversationTurn; parts: TurnPart[]; live: boolean }
-  | { kind: "stream"; text: string };
-
-export function Markdown({
-  text,
-  width,
-  streaming = false,
-}: {
-  text: string;
-  width: number;
-  streaming?: boolean;
-}) {
-  const theme = useTheme();
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
-  const transcriptFont = useTranscriptFont();
-  const style = markdownStyle(theme, transcriptFont.value, scheme);
-
-  return (
-    <EnrichedMarkdownText
-      // remend closes the stream's dangling fences and markers so the tail
-      // never renders as literal `**` or an unstyled code dump.
-      markdown={streaming ? remend(text) : text}
-      markdownStyle={style}
-      flavor="github"
-      streamingAnimation={streaming}
-      enableTaskListItemToggle={false}
-      // Native Markdown wraps only against an explicit width.
-      containerStyle={{ width }}
-      onLinkPress={({ url }) => {
-        if (!/^https?:\/\//i.test(url)) return;
-        void Linking.openURL(url).catch(() => toast.error("Couldn't open link", url));
-      }}
-    />
-  );
-}
-
 function Row({ layout, children }: { layout: ConversationLayout; children: ReactNode }) {
   return (
-    <html.div style={[styles.row, styles.gutters(layout.paddingLeft, layout.paddingRight)]}>
-      {children}
-    </html.div>
+    <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>{children}</html.div>
   );
 }
 
 function copySheet(text: string) {
+  if (text === "") return;
   ActionSheetIOS.showActionSheetWithOptions(
     { options: ["Cancel", "Copy Message"], cancelButtonIndex: 0 },
     (index) => {
@@ -96,43 +32,46 @@ function copySheet(text: string) {
 }
 
 function UserMessage({
-  content,
+  item,
   layout,
-  note,
-}: Pick<SessionState["pending"][number], "content"> & {
+}: {
+  item: Extract<ChatRow, { kind: "user" }>;
   layout: ConversationLayout;
-  note?: string;
 }) {
+  const content = item.content;
+
   const text = Array.isArray(content)
     ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
     : content;
 
+  const hasPhotos = Array.isArray(content) && content.some((part) => part.type !== "text");
+  const maxWidth = Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio);
+
   return (
     <Row layout={layout}>
-      <Pressable
-        accessible
-        accessibilityRole="text"
-        accessibilityLabel={[
-          text,
-          Array.isArray(content) && content.some((part) => part.type !== "text")
-            ? "Attached photos"
-            : undefined,
-          note,
-        ]
-          .filter(Boolean)
-          .join(". ")}
-        accessibilityActions={text === "" ? [] : [{ name: "copy", label: "Copy Message" }]}
-        onAccessibilityAction={({ nativeEvent }) => {
-          if (nativeEvent.actionName === "copy") void setStringAsync(text);
-        }}
-        onLongPress={() => copySheet(text)}
-      >
-        <Message align="end">
-          <Bubble maxWidth={Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio)}>
+      <Message align="end">
+        <Pressable
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={[
+            text,
+            hasPhotos ? "Attached photos" : "",
+            item.delivery === "queued" ? "Queued" : "",
+          ]
+            .filter(Boolean)
+            .join(". ")}
+          accessibilityActions={text === "" ? [] : [{ name: "copy", label: "Copy Message" }]}
+          onAccessibilityAction={({ nativeEvent }) => {
+            if (nativeEvent.actionName === "copy") void setStringAsync(text);
+          }}
+          onLongPress={() => copySheet(text)}
+          style={{ maxWidth }}
+        >
+          <Bubble variant="outgoing">
             {Array.isArray(content) ? (
               content.map((part, index) =>
                 part.type === "text" ? (
-                  <html.p key={index} style={textStyles.body}>
+                  <html.p key={index} style={[textStyles.body, styles.outgoingText]}>
                     {part.text}
                   </html.p>
                 ) : (
@@ -140,173 +79,42 @@ function UserMessage({
                     key={index}
                     alt="Message attachment"
                     src={`data:${part.mimeType};base64,${part.data}`}
-                    style={styles.image}
+                    style={[
+                      styles.image,
+                      styles.imageWidth(Math.min(media.thumbnailWidth, maxWidth - 28)),
+                    ]}
                   />
                 ),
               )
             ) : (
-              <html.p style={textStyles.body}>{content}</html.p>
+              <html.p style={[textStyles.body, styles.outgoingText]}>{content}</html.p>
             )}
           </Bubble>
-          {note ? <MessageFooter>{note}</MessageFooter> : null}
-        </Message>
-      </Pressable>
-    </Row>
-  );
-}
-
-function AssistantMessage({
-  text,
-  layout,
-  streaming = false,
-}: {
-  text: string;
-  layout: ConversationLayout;
-  streaming?: boolean;
-}) {
-  return (
-    <Row layout={layout}>
-      <Message>
-        <Bubble variant="ghost">
-          <Markdown
-            text={text}
-            width={layout.contentWidth - conversation.textInset * 2}
-            streaming={streaming}
-          />
-        </Bubble>
-        {!streaming ? (
-          <View style={{ alignItems: "flex-start" }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityActions={[{ name: "copy", label: "Copy Message" }]}
-              onAccessibilityAction={({ nativeEvent }) => {
-                if (nativeEvent.actionName === "copy") void setStringAsync(text);
-              }}
-              onPress={() => void setStringAsync(text)}
-              style={{
-                minWidth: controls.touchTarget,
-                minHeight: controls.touchTarget,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <html.span style={textStyles.caption}>Copy Message</html.span>
-            </Pressable>
-          </View>
-        ) : null}
+        </Pressable>
+        {item.delivery === "queued" ? <MessageFooter>Queued</MessageFooter> : null}
       </Message>
     </Row>
   );
 }
 
-function Disclosure({
-  title,
-  note,
-  text,
+function AssistantMessage({
+  item,
   layout,
 }: {
-  title: string;
-  note?: string;
-  text: string;
+  item: Extract<ChatRow, { kind: "assistant" }>;
   layout: ConversationLayout;
 }) {
-  const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <html.div style={styles.disclosure}>
-      <html.button
-        aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
-        style={styles.disclosureButton}
-      >
-        <html.span style={[textStyles.secondary, styles.disclosureTitle]}>{title}</html.span>
-        {note !== undefined ? <html.span style={textStyles.caption}>{note}</html.span> : null}
-        <html.div style={styles.chevron(expanded)}>
-          <SymbolView name="chevron.right" size={11} weight="semibold" tintColor={theme.muted} />
-        </html.div>
-      </html.button>
-      {expanded ? (
-        <html.div style={styles.disclosureBody}>
-          <Markdown text={text} width={layout.contentWidth - conversation.textInset * 2} />
-        </html.div>
-      ) : null}
-    </html.div>
+    <Row layout={layout}>
+      <Message>
+        <View style={{ width: Math.floor(layout.contentWidth * 0.94) }}>
+          <Bubble variant="incoming">
+            <Markdown text={item.text} streaming={item.streaming} copyMessage />
+          </Bubble>
+        </View>
+      </Message>
+    </Row>
   );
-}
-
-/** A settled file edit: status badge, basename, totals, opens the diff. */
-function EditRow({
-  patch,
-  onOpenFile,
-}: {
-  patch: Extract<TurnToolClass, { kind: "file_patch" }>;
-  onOpenFile?: (path: string) => void;
-}) {
-  const theme = useTheme();
-  const basename = patch.path.split("/").pop() ?? patch.path;
-
-  return (
-    <html.button onClick={() => onOpenFile?.(patch.path)} style={styles.editRow}>
-      <html.div style={styles.editBadge}>
-        <html.span style={styles.editBadgeText}>M</html.span>
-      </html.div>
-      <html.span style={[textStyles.secondary, styles.editTitle]}>{basename}</html.span>
-      <html.span style={[textStyles.caption, styles.editTotals]}>
-        {`+${String(patch.added)} \u2212${String(patch.removed)}`}
-      </html.span>
-      <SymbolView name="chevron.right" size={13} tintColor={theme.muted} />
-    </html.button>
-  );
-}
-
-type Verbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
-
-const READ: Verbs = { running: "Reading", past: "Read" };
-
-const LIST: Verbs = { running: "Listing", past: "Listed" };
-
-const RUN: Verbs = { running: "Running", past: "Ran" };
-
-const EDIT: Verbs = { running: "Editing", past: "Edited" };
-
-const WRITE: Verbs = { running: "Writing", past: "Wrote" };
-
-/** Verb then subject while a verb is true; else the subject, then the tool's noun when a path needs one. */
-function titled(verbs: Verbs, tense: ToolTense, subject: string, noun?: string): string {
-  if (tense !== "none") return `${verbs[tense]} ${subject}`;
-
-  return noun === undefined ? subject : `${subject} ${noun}`;
-}
-
-function toolTitle(
-  toolClass: TurnToolClass,
-  tense: ToolTense,
-  delegateNames: ReadonlyMap<SessionId, string>,
-): string {
-  switch (toolClass.kind) {
-    case "file_read":
-      return titled(READ, tense, toolClass.path, "read");
-    case "list":
-      return titled(LIST, tense, toolClass.path, "list");
-    case "shell":
-      return titled(RUN, tense, toolClass.description ?? toolClass.command);
-    case "file_edit":
-      return titled(EDIT, tense, toolClass.path, "edit");
-    case "file_write":
-      return titled(WRITE, tense, toolClass.path, "write");
-    case "file_patch":
-      return titled(toolClass.op === "edit" ? EDIT : WRITE, tense, toolClass.path, toolClass.op);
-    case "delegate":
-      return delegateTitle(toolClass, tense, delegateNames);
-    case "custom":
-      return titled(RUN, tense, toolClass.label);
-    default: {
-      const _exhaustive: never = toolClass;
-
-      return _exhaustive;
-    }
-  }
 }
 
 function failureLabel(failure: Failure): string {
@@ -327,121 +135,114 @@ function failureLabel(failure: Failure): string {
       return "Connection lost";
     case "provider":
     case "runner":
-      return failure.message.replaceAll(/\s+/gu, " ").trim() || "Failed";
+      return failure.message.replaceAll(/\s+/gu, " ").trim() || "Response failed";
     default: {
-      const _exhaustive: never = failure.class;
+      const exhaustive: never = failure.class;
 
-      return _exhaustive;
+      return exhaustive;
     }
   }
 }
 
-function WorkRow({
-  turn,
-  parts,
-  live,
-  layout,
-  delegateNames,
-  onOpenFile,
-}: {
-  turn: ConversationTurn;
-  parts: TurnPart[];
-  live: boolean;
-  layout: ConversationLayout;
-  delegateNames: ReadonlyMap<SessionId, string>;
-  onOpenFile?: (path: string) => void;
-}) {
+function RunStatus({ run }: { run: RunInfo }) {
   const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [now] = useState(() => Date.now());
-  const failed = turn.failure !== undefined && turn.failure.class !== "aborted";
+  const phase = run.phase;
+  const active = !isTerminalPhase(phase);
+  let label: string;
 
-  const label = live
-    ? `Responding · ${elapsed(turn.startedAt, now)}`
-    : turn.failure === undefined
-      ? "Finished"
-      : failureLabel(turn.failure);
+  if (run.abortRequested && active) label = "Stopping…";
+  else {
+    switch (phase.kind) {
+      case "respond":
+        label = "Replying…";
+        break;
+      case "tools":
+        label = "Using tools…";
+        break;
+      case "waiting":
+        label = run.awaitingReply ? "Waiting for your answer" : "Waiting for background work";
+        break;
+      case "retry":
+        label = `${failureLabel(phase.failure)}. Retrying…`;
+        break;
+      case "aborted":
+        label = "Stopped";
+        break;
+      case "failed":
+        label = failureLabel(phase.failure);
+        break;
+      case "done":
+        return null;
+      default: {
+        const exhaustive: never = phase;
+
+        return exhaustive;
+      }
+    }
+  }
 
   return (
-    <Row layout={layout}>
-      <html.div style={styles.work}>
-        <html.button
-          aria-expanded={expanded}
-          disabled={parts.length === 0 && !live}
-          onClick={() => setExpanded(!expanded)}
-          style={styles.workButton}
-        >
-          {live ? <ActivityIndicator size="small" color={theme.muted} /> : null}
-          <html.span
-            style={[
-              textStyles.secondary,
-              styles.workLabel,
-              failed && styles.workFailed,
-              live && styles.workLabelMuted,
-            ]}
-          >
-            {label}
-          </html.span>
-          {!live && turn.durationMs > 0 ? (
-            <html.span style={[textStyles.secondary, styles.workDuration]}>
-              {formatDuration(turn.durationMs)}
-            </html.span>
-          ) : null}
-          {parts.length > 0 || live ? (
-            <html.div style={styles.chevron(expanded)}>
-              <SymbolView
-                name="chevron.right"
-                size={13}
-                weight="semibold"
-                tintColor={failed ? theme.danger : theme.muted}
-              />
-            </html.div>
-          ) : null}
-        </html.button>
-        {expanded || live ? (
-          <html.div style={styles.workBody}>
-            {parts.map((part, index) => {
-              if (part.kind === "thinking")
-                return (
-                  <Disclosure
-                    key={`${part.commit}-${index}`}
-                    title="Reasoning"
-                    text={part.text}
-                    layout={layout}
-                  />
-                );
+    <html.div style={styles.status} aria-live="polite">
+      {active && phase.kind !== "waiting" ? (
+        <ActivityIndicator size="small" color={theme.muted} />
+      ) : null}
+      <html.span style={[textStyles.caption, phase.kind === "failed" && styles.failed]}>
+        {label}
+      </html.span>
+    </html.div>
+  );
+}
 
-              if (part.kind !== "tool") return null;
+function WorkRow({
+  item,
+  delegateNames,
+  onOpenActivity,
+}: {
+  item: Extract<ChatRow, { kind: "activity" }>;
+  delegateNames: ReadonlyMap<SessionId, string>;
+  onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
+}) {
+  const theme = useTheme();
+  const summary = activitySummary(item.parts, delegateNames);
 
-              if (part.class.kind === "file_patch" && part.state.kind === "success")
-                return <EditRow key={part.callId} patch={part.class} onOpenFile={onOpenFile} />;
-              const status = toolStatus(part.state);
-              const subject = toolTitle(part.class, status.tense, delegateNames);
+  return (
+    <html.button
+      aria-label={`${summary.title}. Show activity`}
+      aria-haspopup="dialog"
+      onClick={() => onOpenActivity(item)}
+      style={styles.activity}
+    >
+      <ActivityIcon tone={summary.tone} />
+      <html.span
+        style={[
+          textStyles.secondary,
+          styles.activityTitle,
+          summary.tone === "failure" && styles.failed,
+        ]}
+      >
+        {summary.title}
+      </html.span>
+      <SymbolView name="chevron.right" size={11} weight="semibold" tintColor={theme.muted} />
+    </html.button>
+  );
+}
 
-              const title =
-                status.word === undefined ? subject : `${subject} \u00b7 ${status.word}`;
+function Summary({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
 
-              const text = part.output ?? "";
-
-              const note =
-                part.class.kind === "shell" && part.class.facts !== undefined
-                  ? formatToolDuration(part.class.facts.durationMs)
-                  : undefined;
-
-              return (
-                <Disclosure
-                  key={part.callId}
-                  title={title}
-                  note={note}
-                  text={text}
-                  layout={layout}
-                />
-              );
-            })}
-          </html.div>
-        ) : null}
-      </html.div>
-    </Row>
+  return (
+    <html.div style={styles.summary}>
+      <html.button
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+        style={styles.activity}
+      >
+        <html.span style={textStyles.secondary}>
+          {expanded ? "Hide conversation summary" : "Conversation summary"}
+        </html.span>
+      </html.button>
+      {expanded ? <Markdown text={text} /> : null}
+    </html.div>
   );
 }
 
@@ -449,138 +250,63 @@ export const MessageRow = memo(function MessageRow({
   item,
   layout,
   delegateNames,
-  onOpenFile,
+  onOpenActivity,
 }: {
   item: ChatRow;
   layout: ConversationLayout;
   delegateNames: ReadonlyMap<SessionId, string>;
-  onOpenFile?: (path: string) => void;
+  onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
 }) {
-  if ("change" in item)
-    return <UserMessage content={item.content} layout={layout} note="Queued on Mac" />;
+  if (item.kind === "user") return <UserMessage item={item} layout={layout} />;
 
-  switch (item.kind) {
-    case "user":
-      return <UserMessage content={item.content} layout={layout} />;
-    case "assistant":
-      return <AssistantMessage text={item.text} layout={layout} />;
-    case "stream":
-      return <AssistantMessage text={item.text} layout={layout} streaming />;
-    case "work":
-      return (
-        <WorkRow
-          turn={item.turn}
-          parts={item.parts}
-          live={item.live}
-          layout={layout}
-          delegateNames={delegateNames}
-          onOpenFile={onOpenFile}
-        />
-      );
-    case "summary":
-      return <Disclosure title="Conversation summary" text={item.body.text} layout={layout} />;
-    case "checkpoint":
-      return (
-        <Row layout={layout}>
-          <Marker>Earlier context summarized</Marker>
-        </Row>
-      );
-    case "config":
-      return item.body.model ? (
-        <Row layout={layout}>
-          <Marker>{`Model changed to ${item.body.model.id}`}</Marker>
-        </Row>
-      ) : null;
-    case "tool":
-    case "thinking":
-      return null;
-    default: {
-      const _exhaustive: never = item;
+  if (item.kind === "assistant") return <AssistantMessage item={item} layout={layout} />;
 
-      return _exhaustive;
-    }
-  }
+  return (
+    <Row layout={layout}>
+      {item.kind === "activity" ? (
+        <WorkRow item={item} delegateNames={delegateNames} onOpenActivity={onOpenActivity} />
+      ) : item.kind === "status" ? (
+        <RunStatus run={item.run} />
+      ) : item.kind === "summary" ? (
+        <Summary text={item.text} />
+      ) : item.kind === "marker" ? (
+        <Marker>{item.text}</Marker>
+      ) : (
+        <html.div role="status" style={styles.status}>
+          <html.span
+            style={[textStyles.secondary, item.failure.class !== "aborted" && styles.failed]}
+          >
+            {failureLabel(item.failure)}
+          </html.span>
+        </html.div>
+      )}
+    </Row>
+  );
 });
 
 const styles = css.create({
-  // Block divs stretch to the list width; an explicit 100% plus padding overflows under content-box sizing.
-  row: {},
   gutters: (left: number, right: number) => ({ paddingLeft: left, paddingRight: right }),
-  image: {
-    width: media.thumbnailWidth,
-    height: media.thumbnailHeight,
-    borderRadius: radii.control,
-    objectFit: "cover",
-  },
-  disclosure: { paddingInline: conversation.textInset, paddingBlock: 6 },
-  disclosureButton: {
-    opacity: { default: 1, ":active": controls.disabledOpacity },
-    borderWidth: 0,
-    minHeight: controls.touchTarget,
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  disclosureTitle: { flexShrink: 1 },
-  chevron: (expanded: boolean) => ({
-    transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-  }),
-  disclosureBody: { display: "flex", flexDirection: "column" },
-  work: {
-    paddingInline: conversation.textInset,
-    paddingBlock: 6,
-  },
-  workButton: {
-    borderWidth: 0,
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: controls.touchTarget,
-    opacity: { default: 1, ":active": controls.disabledOpacity },
-  },
-  workLabel: {},
-  workLabelMuted: {},
-  workFailed: { color: tokens.danger },
-  workDuration: { opacity: 0.7, fontVariant: "tabular-nums" },
-  workBody: {
-    display: "flex",
-    flexDirection: "column",
-    paddingLeft: list.leading + spacing.sm,
-  },
-  editRow: {
+  outgoingText: { color: tokens.outgoingText },
+  image: { height: media.thumbnailHeight, borderRadius: radii.control, objectFit: "cover" },
+  imageWidth: (width: number) => ({ width }),
+  activity: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     minHeight: controls.touchTarget,
     borderWidth: 0,
-    backgroundColor: { default: "transparent", ":active": tokens.fill },
+    paddingInline: spacing.sm,
+    opacity: { default: 1, ":active": controls.disabledOpacity },
   },
-  editBadge: {
+  activityTitle: { flexShrink: 1, lineClamp: 1, textAlign: "start" },
+  failed: { color: tokens.danger },
+  status: {
     display: "flex",
-    flexDirection: "column",
-    width: controls.badge,
-    height: controls.badge,
-    borderRadius: 6,
-    backgroundColor: tokens.fill,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    gap: spacing.sm,
+    padding: spacing.sm,
   },
-  editBadgeText: {
-    color: tokens.muted,
-    fontSize: 11,
-    lineHeight: "14px",
-    fontWeight: 600,
-  },
-  editTitle: {
-    flexGrow: 1,
-    flexShrink: 1,
-    textAlign: "start",
-    lineClamp: 1,
-    color: tokens.foreground,
-  },
-  editTotals: { flexShrink: 0, fontVariant: "tabular-nums" },
+  summary: { paddingBlock: spacing.xs },
 });

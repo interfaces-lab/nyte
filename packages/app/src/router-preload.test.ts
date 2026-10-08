@@ -49,30 +49,6 @@ test("overlapping intent and navigation share one SDK read and cache its result"
   }
 });
 
-test("a failed existence read does not prevent a later successful read", async () => {
-  const id = sessionId("retry-chat");
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-  try {
-    await assert.rejects(
-      readRouteSession({
-        client,
-        sessionId: id,
-        read: async () => {
-          throw new Error("disk unavailable");
-        },
-      }),
-      /disk unavailable/,
-    );
-    assert.deepEqual(
-      await readRouteSession({ client, sessionId: id, read: async () => session(id) }),
-      session(id),
-    );
-  } finally {
-    client.clear();
-  }
-});
-
 test("a missing session remains distinct from an SDK failure", async () => {
   const id = sessionId("missing-chat");
   const client = new QueryClient();

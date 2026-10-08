@@ -43,10 +43,6 @@ const fallbackModel = testModel("fallback-model");
 const declaredModel = testModel("declared-model");
 const reasoningModel = testModel("reasoning-model", true);
 const heavyUsage: Usage = { ...usage, input: 5_000, totalTokens: 5_005 };
-const branchSummaryText = `The user explored a different conversation branch before returning here.
-Summary of that exploration:
-
-BRANCH WORK`;
 
 function catalog(models: readonly Model<Api>[]): ModelCatalog {
   const getModels = (provider?: string) =>
@@ -61,7 +57,6 @@ function catalog(models: readonly Model<Api>[]): ModelCatalog {
 
 interface ScriptOptions {
   readonly summary: string;
-  readonly summaryFailure?: string;
   readonly gate?: Promise<void>;
 }
 
@@ -83,19 +78,14 @@ function script(options: ScriptOptions) {
       reasoning: streamOptions?.reasoning,
     });
     const stream = createAssistantMessageEventStream();
-    const answer: AssistantMessage =
-      summarizing && options.summaryFailure !== undefined
-        ? assistant("", { stop: "error", error: options.summaryFailure })
-        : assistant(summarizing ? options.summary : "regular answer", { usage: heavyUsage });
+    const answer: AssistantMessage = assistant(summarizing ? options.summary : "regular answer", {
+      usage: heavyUsage,
+    });
     void (async () => {
       stream.push({ type: "start", partial: { ...answer, content: [] } });
       stream.push({ type: "text_delta", contentIndex: 0, delta: "regular", partial: answer });
       if (!summarizing) await options.gate;
-      if (answer.stopReason === "error") {
-        stream.push({ type: "error", reason: "error", error: answer });
-      } else {
-        stream.push({ type: "done", reason: "stop", message: answer });
-      }
+      stream.push({ type: "done", reason: "stop", message: answer });
     })();
     return stream;
   };
@@ -358,7 +348,7 @@ test("summary navigation carries abandoned work onto the destination; plain navi
     assert.deepEqual(summaryObject.imports, summarizedOids.slice(1));
     assert.equal(summaryObject.body.kind, "summary");
     if (summaryObject.body.kind === "summary") {
-      assert.equal(summaryObject.body.text, branchSummaryText);
+      assert.ok(summaryObject.body.text.endsWith("BRANCH WORK"));
     }
     assert.deepEqual(
       (await nyte.messages.list({ sessionId: summarizedId })).map((turn) => turn.kind),
@@ -380,35 +370,6 @@ test("summary navigation carries abandoned work onto the destination; plain navi
       (await nyte.messages.list({ sessionId: plainId })).some((turn) => turn.kind === "summary"),
       false,
     );
-  } finally {
-    await nyte.close();
-  }
-});
-
-test("a failed branch summary leaves the head at its source tip", async () => {
-  const store = openStore();
-  const session = await store.create({ id: "failed-summary" });
-  const oids = await seedHead(session, "main", [
-    message(user("first")),
-    message(assistant("first answer")),
-    message(user("second")),
-    message(assistant("second answer")),
-  ]);
-  const selected = oids[0];
-  const sourceTip = oids[3];
-  assert.ok(selected !== undefined && sourceTip !== undefined);
-  const modelScript = script({ summary: "unused", summaryFailure: "provider down" });
-  const nyte = await openNyte({ store, streamFn: modelScript.streamFn });
-  try {
-    const id = sessionId("failed-summary");
-    const outcome = await nyte.heads.move({ sessionId: id, to: selected, summary: {} });
-    assert.equal(outcome.kind, "failed");
-    if (outcome.kind === "failed") {
-      assert.ok(outcome.code === "internal");
-      assert.equal(outcome.message, "Internal error");
-      assert.ok(outcome.correlationId);
-    }
-    assert.equal((await nyte.heads.list({ sessionId: id }))[0]?.tip, sourceTip);
   } finally {
     await nyte.close();
   }

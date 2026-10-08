@@ -19,7 +19,9 @@ export function SignedIn() {
   params.delete("app");
   const query = params.toString();
   const deepLink =
-    app !== null && APPS.has(app) ? `${app}://account/${query === "" ? "" : `?${query}`}` : undefined;
+    app !== null && APPS.has(app)
+      ? `${app}://account/${query === "" ? "" : `?${query}`}`
+      : undefined;
 
   // One-time external sync: hand the callback to the app. The query never changes.
   useEffect(() => {

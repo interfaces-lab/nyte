@@ -28,6 +28,8 @@ export const keys = {
   children: (sessionId: SessionId) => ["children", sessionId] as const,
   childSessions: (sessionId: SessionId | undefined) => ["sessions", "children", sessionId] as const,
   snapshot: (sessionId: SessionId) => ["snapshot", sessionId] as const,
+  /** The newest configure stamp whose acknowledged read is in the cache. */
+  sessionAcknowledged: (sessionId: SessionId) => ["session", "acknowledged", sessionId] as const,
   pluginSettings: (sessionId: SessionId) => ["plugins", "settings", sessionId] as const,
   sessionCommands: (sessionId: SessionId) => ["plugins", "commands", sessionId] as const,
   vcsSnapshot: ["vcs", "snapshot"] as const,
@@ -36,6 +38,7 @@ export const keys = {
   workspaceSearch: (workspacePath: string, input: WorkspaceSearchInput | undefined) =>
     ["files", "search", workspacePath, input] as const,
   browserFrame: (surface: string, url: string) => ["browser", "frame", surface, url] as const,
+  browserHistory: (owner: string | null) => ["browser", "history", owner] as const,
   mermaid: (source: string) => ["mermaid", source] as const,
   highlight: (language: string, code: string) => ["highlight", language, code] as const,
 };

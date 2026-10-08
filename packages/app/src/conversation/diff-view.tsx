@@ -69,12 +69,14 @@ export const DIFF_SEPARATOR_CSS = `
   grid-template-rows: 1fr 1fr;
 }
 
-[data-expand-index] [data-separator-wrapper]:hover {
-  color: ${role.contentPrimary};
-}
+@media (hover: hover) and (pointer: fine) {
+  [data-expand-index] [data-separator-wrapper]:hover {
+    color: ${role.contentPrimary};
+  }
 
-[data-expand-index] [data-separator-wrapper]:hover > * {
-  --diffs-bg-separator: ${role.bgHover};
+  [data-expand-index] [data-separator-wrapper]:hover > * {
+    --diffs-bg-separator: ${role.bgHover};
+  }
 }
 
 [data-expand-button],
@@ -166,8 +168,10 @@ ${PIERRE_TOKEN_CSS}
   scrollbar-color: transparent transparent;
 }
 
-*:hover {
-  scrollbar-color: ${role.scrollbarThumb} transparent;
+@media (hover: hover) and (pointer: fine) {
+  *:hover {
+    scrollbar-color: ${role.scrollbarThumb} transparent;
+  }
 }
 ${DIFF_SEPARATOR_CSS}`;
 

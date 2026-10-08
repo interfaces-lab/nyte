@@ -181,6 +181,7 @@ import type { UsageHistory } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
 import { requestWorkspaceTrust } from "./trust-dialog.ts";
+import { reportProgramStatus } from "./program-status.ts";
 
 type TuiExit =
   | { readonly kind: "quit" }
@@ -744,6 +745,11 @@ class Interactive {
     this.document = new ComposerDocument(options.shell.input);
     this.renderer.setFrameCallback(this.flushVisual);
     this.disposers.push(() => this.renderer.removeFrameCallback(this.flushVisual));
+    reportProgramStatus(this.renderer, () => ({
+      busy: this.busy,
+      run: this.state?.run,
+      question: this.waiting?.selection.title,
+    }));
     this.clipboard =
       options.clipboard === undefined
         ? createTuiClipboard(options.renderer)
@@ -3960,9 +3966,6 @@ class Interactive {
         models: cachedAuthenticatedModels(this.runtime.models) ?? [],
         current: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
-        fastModes: new Map(
-          session.settings.map((setting) => [setting.id, setting.current === "on"]),
-        ),
         load: () => loadAuthenticatedModels(this.runtime.models),
         onRows: (rows) => setSlotRows(this.shell, rows),
         onHints: (hints) => setHints(this.shell, hints),
@@ -3999,18 +4002,8 @@ class Interactive {
         selected.model.provider === choice.model.provider &&
         selected.model.id === choice.model.id &&
         selected.thinkingLevel === choice.thinkingLevel;
-      const patch = unchanged ? undefined : choice;
 
-      if (selection.fast !== undefined) {
-        const { settingId, enabled } = selection.fast;
-        const row = this.settingRows(session).find((setting) => setting.id === settingId);
-
-        if (row !== undefined && row.current() !== (enabled ? "on" : "off")) {
-          return row.apply(enabled ? "on" : "off").then(() => patch);
-        }
-      }
-
-      return patch;
+      return unchanged ? undefined : choice;
     });
 
     if (this.disposed || this.session !== session) return;
@@ -4019,12 +4012,9 @@ class Interactive {
 
     if (result.kind !== "acknowledged" && !unchanged) return;
 
-    const fast =
-      selection.fast === undefined ? "" : ` · Fast mode ${selection.fast.enabled ? "on" : "off"}`;
-
     notice(
       this.shell,
-      `Model: ${modelChoiceId(selection.model)} · ${selection.thinkingLevel}${fast}`,
+      `Model: ${modelChoiceId(selection.model)} · ${selection.thinkingLevel}`,
       this.shell.theme.ok,
     );
   }

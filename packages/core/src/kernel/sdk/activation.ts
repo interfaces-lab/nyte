@@ -11,6 +11,7 @@ import {
   type PluginHostTarget,
   type PluginNotice,
 } from "../../plugins/host.ts";
+import { policyKey } from "../../plugins/model-context.ts";
 import { withBudget } from "../../plugins/scope.ts";
 import { pluginFactKey, storedChoice } from "../../plugins/storage.ts";
 import type {
@@ -729,7 +730,7 @@ export function resolveTurnConfig(
         ? (defaults.resolveModel?.(agent.model) ?? defaults.model)
         : defaults.model;
 
-  const policy = activation.registries.modelContext.get(`${model.provider}/${model.id}`);
+  const policy = activation.registries.modelContext.get(policyKey(model));
 
   const thinkingLevel =
     config.thinkingLevel !== undefined && isThinkingLevel(config.thinkingLevel)

@@ -69,6 +69,8 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       find: () => Promise.resolve({ active: 0, total: 0 }),
       cancelDownload: () => undefined,
       login: () => undefined,
+      history: async () => [],
+      forgetHistory: async () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => {},
       retain: () => {},

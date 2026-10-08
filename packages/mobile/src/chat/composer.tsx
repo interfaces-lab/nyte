@@ -1,13 +1,9 @@
-// oxlint-disable-next-line no-restricted-imports -- gesture-owned shared values are pushed, not derived
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { router } from "expo-router";
-import { randomUUID } from "expo-crypto";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -16,78 +12,109 @@ import {
 } from "react-native";
 import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from "react-native";
 import Animated, {
-  Extrapolation,
-  interpolate,
-  useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   withSpring,
+  withTiming,
+  Easing,
+  interpolate,
+  Extrapolation,
 } from "react-native-reanimated";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { scheduleOnRN } from "react-native-worklets";
-import { Button, Host, Menu, Text } from "@expo/ui/swift-ui";
+import { Host } from "@expo/ui";
+import { Button, HStack, Image, Menu, Text } from "@expo/ui/swift-ui";
 import {
-  buttonBorderShape,
+  accessibilityLabel,
   buttonStyle,
-  controlSize,
+  contentShape,
   font,
   foregroundStyle,
   frame,
-  menuIndicator,
+  disabled,
+  lineLimit,
+  shapes,
 } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
+import { randomUUID } from "expo-crypto";
 import { css, html } from "react-strict-dom";
-import { platformColors } from "@nyte-ai/ui/platform-colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { controls, media, useTheme, radii, spacing, textStyles, typography } from "../theme.ts";
+import { controls, media, useTheme, radii, spacing, textStyles, tokens } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
-import type { Delivery, ModelInfo, ModelRef, RunConfig, SessionId } from "@nyte-ai/protocol";
+import {
+  type Delivery,
+  type ModelInfo,
+  type ModelRef,
+  type RunConfig,
+  type SessionId,
+} from "@nyte-ai/protocol";
 import { describeHostError } from "../connection/connection.ts";
 import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
 import {
   chooseSharedPhotos,
   readRecentPhotos,
+  requestPhotoAccess,
   stageRecentPhoto,
   type PhotoAccess,
   type RecentPhoto,
 } from "../media/recent-photos.ts";
 import { clearAnnotation, resolveAttachment } from "../media/annotations.ts";
-import { AttachmentThumb } from "../media/attachment-thumb.tsx";
+import { ComposerAttachment } from "./composer-attachment.tsx";
+import { useAttachmentFlight } from "./attachment-flight.ts";
 import { AttachmentsMenu } from "./attachments-menu.tsx";
 import { SuggestionMenu } from "./suggestion-menu.tsx";
 import { acceptSuggestion, parseCommandLine, useCompletions } from "./completions.ts";
 import type { CommandLine, Suggestion } from "./completions.ts";
 import { useModelCatalog } from "./remote-models.ts";
+import { ModelPickerSheet } from "./model-selector.tsx";
 import { ContextRow } from "./context-row.tsx";
-import { WorkspacePicker } from "./workspace-menu.tsx";
+import { usesWorkspaceCursor } from "./workspace-menu.ts";
+import {
+  readPendingStart,
+  recordStart,
+  removeStart,
+  startParts,
+  startText,
+  type PendingStart,
+} from "./workspace-start.ts";
+import {
+  PendingStartStrip,
+  usePendingStart,
+  useRegistryFolders,
+  useStartSender,
+  workspaceStorage,
+} from "./workspace-start.tsx";
 import type { UserContent } from "./remote-chat.ts";
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
-import { AnimatedGlass, HAS_GLASS } from "./composer-glass.tsx";
-import {
-  COMPOSER,
-  GAUGE_RIGHT,
-  GAUGE_RIGHT_RUNNING,
-  ICON_ROW_INSET,
-  SELECTOR,
-  SPRING,
-} from "./composer-geometry.ts";
+import { AnimatedGlass } from "./composer-glass.tsx";
+import { COMPOSER, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { GaugeIcon } from "./gauge-icon.tsx";
+import { ThinkingSelector } from "./thinking-selector.tsx";
+import { clearChatDraft, useChatDraft, useChatScope } from "./drafts.ts";
+import {
+  discardMessageReceipt,
+  finishMessageReceipt,
+  finishNewConversation,
+  prepareMessageReceipt,
+  prepareNewConversation,
+  readMessageDelivery,
+} from "./send-receipts.ts";
 import {
   supportedThinkingLevel,
+  THINKING_LABELS,
   thinkingIndex,
   thinkingLevelsFor,
   type ThinkingLevel,
 } from "./thinking.ts";
-import { ThinkingSelector } from "./thinking-selector.tsx";
 
 const PHOTO_PAGE = 24;
 
-const MODEL_FONT = { size: typography.caption.fontSize, weight: "medium" } as const;
+const MODEL_FONT = { textStyle: "subheadline", weight: "semibold" } as const;
 
-const modelHost = { height: COMPOSER.hit } as const;
+const INPUT_LINE_HEIGHT = 24;
 
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 6;
 
 type NewTarget = { kind: "new" };
 
@@ -101,51 +128,37 @@ type SessionTarget = {
   running: boolean;
   stopping: boolean;
   error: string | undefined;
-  /** Without a delivery the host steers a live run; Queue passes `next`. */
   onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
   onStop: () => void;
 };
 
-/** A plain tap steers the run; holding Send offers to queue behind it instead. */
-function queueSheet(onQueue: () => void): void {
-  ActionSheetIOS.showActionSheetWithOptions(
-    { options: ["Cancel", "Queue Message"], cancelButtonIndex: 0 },
-    (index) => {
-      if (index === 1) onQueue();
-    },
-  );
-}
-
-/**
- * The one composer, on the list and in a conversation. Resting it is a single
- * glass pill. Focus grows it into a two-row card: the prompt lifts, and the
- * model menu plus thinking gauge appear in the icon row. The gauge morphs into
- * the host's thinking-level slider without dismissing the keyboard. Plus morphs
- * into Camera / Photos, then a library grid or live camera, over the keyboard.
- * A new chat shows a workspace chip above the glass; a follow-up does not.
- */
 export const Composer = memo(function Composer({
   target,
   placeholder,
   prefill,
-  backdrop,
   gutters,
-  onWorkspaceChange,
+  workspacePending,
+  workspaceEpoch = 0,
+  onBusyChange,
 }: {
   target: NewTarget | SessionTarget;
   placeholder: string;
   prefill?: { text: string; nonce: number };
-  /** What the screen behind the bar paints, so a non-glass bar matches it. */
-  backdrop: "background" | "canvas";
   gutters: { left: number; right: number };
-  onWorkspaceChange?: () => void;
+  workspacePending?: { current: Promise<void> | undefined };
+  workspaceEpoch?: number;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
-  const colors = platformColors[dark ? "dark" : "light"];
-  const { client } = useHost();
-  const [draft, setDraft] = useState(prefill?.text ?? "");
-  const [caret, setCaret] = useState(prefill?.text.length ?? 0);
+  const { client, info } = useHost();
+  const folders = useRegistryFolders();
+  const startSender = useStartSender();
+  const pendingStart = usePendingStart();
+  const scope = useChatScope();
+  const activeSessionId = target.kind === "session" ? target.sessionId : undefined;
+  const [draft, setDraft] = useChatDraft(activeSessionId);
+  const [caret, setCaret] = useState(prefill?.text.length ?? draft.length);
   const [focused, setFocused] = useState(false);
   const [images, setImages] = useState<StagedImage[]>([]);
   const [attachVisible, setAttachVisible] = useState(false);
@@ -155,28 +168,48 @@ export const Composer = memo(function Composer({
   const [localError, setLocalError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [model, setModel] = useState<ModelInfo>();
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [selectingModel, setSelectingModel] = useState(false);
   const [thinking, setThinking] = useState<ThinkingLevel>();
   const [selectorOpen, setSelectorOpen] = useState(false);
+
+  const [delivery, setDelivery] = useState<Delivery>(() =>
+    activeSessionId === undefined
+      ? "steer"
+      : (readMessageDelivery({ scope, sessionId: activeSessionId }) ?? "steer"),
+  );
+
   const { catalog } = useModelCatalog(client);
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const fieldRef = useRef<TextInput>(null);
+  const selectionOnCommit = useRef<{ draft: string; caret: number } | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const selection = selectionOnCommit.current;
+    selectionOnCommit.current = undefined;
+
+    if (selection !== undefined && draft === selection.draft)
+      fieldRef.current?.setSelection(selection.caret, selection.caret);
+  }, [draft]);
   const keyboard = useReanimatedKeyboardAnimation();
-  const focusDrive = useSharedValue(0);
-  const selector = useSharedValue(0);
-  const opening = useSharedValue(false);
   const thinkingAt = useSharedValue(0);
   const attachProgress = useSharedValue(0);
   const attachExtend = useSharedValue(0);
-  const sessionId = target.kind === "session" ? target.sessionId : undefined;
-  // Bumped when the share's workspace moves: new-chat completion reads are
-  // cursor-scoped on the host, so answers must not outlive the switch.
-  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
-  const workspacePending = useRef<Promise<void> | undefined>(undefined);
+  const attachmentsHeight = useSharedValue(0);
+  const cardHeight = useSharedValue(0);
+
+  const submissionActive = useRef(false);
+
+  const localWorkspacePending = useRef<Promise<void> | undefined>(undefined);
 
   const { completion, commands } = useCompletions(
     client,
-    sessionId,
+    activeSessionId !== undefined
+      ? { kind: "session", sessionId: activeSessionId }
+      : folders === undefined
+        ? { kind: "cursor" }
+        : { kind: "registered", id: folders.kind === "ready" ? folders.selected?.id : undefined },
     draft,
     caret,
     focused,
@@ -190,15 +223,14 @@ export const Composer = memo(function Composer({
     setDraft(base === "" || transcript === "" ? base + transcript : `${base} ${transcript}`);
   });
 
-  // A prefill lands once per nonce; adjusting during render keeps the draft and
-  // the seen-mark atomic instead of two passes through the field.
-  const [seenPrefill, setSeenPrefill] = useState(prefill?.nonce);
+  const seenPrefill = useRef<number | undefined>(undefined);
 
-  if (prefill !== undefined && prefill.nonce !== seenPrefill) {
-    setSeenPrefill(prefill.nonce);
+  useEffect(() => {
+    if (prefill === undefined || prefill.nonce === seenPrefill.current) return;
+    seenPrefill.current = prefill.nonce;
     setDraft(prefill.text);
     setCaret(prefill.text.length);
-  }
+  }, [prefill, setDraft]);
 
   const sending = target.kind === "session" ? target.sending : starting;
   const running = target.kind === "session" ? target.running : false;
@@ -222,40 +254,31 @@ export const Composer = memo(function Composer({
   const thinkingStops = thinkingLevelsFor(chosenModel);
   const chosenThinking = supportedThinkingLevel(chosenModel, thinking ?? sessionThinking);
   const canThink = thinkingStops.length > 1;
-  const busy = sending || staging;
+
+  if (selectorOpen && !canThink) setSelectorOpen(false);
+
+  const busy = sending || staging || selectingModel;
   const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
-  const gaugeFromRight = running && !dictation.recording ? GAUGE_RIGHT_RUNNING : GAUGE_RIGHT;
 
-  const focus = useDerivedValue(() =>
-    Math.max(keyboard.progress.get(), focusDrive.get(), dictation.recording ? 1 : 0),
-  );
+  const expanded = focused || modelPickerOpen || selectorOpen || dictation.recording;
 
-  // Distance from the window bottom to the card's bottom edge. OverKeyboardView
-  // is a full-screen window, so both overlays park against this instead of
-  // measuring — KeyboardStickyView's translate does not show up in layout Y.
   const cardDock = useDerivedValue(() => {
     const lifted = -keyboard.height.get();
     const pad = insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get();
-    const gap = interpolate(focus.get(), [0, 1], [COMPOSER.collapsed.gap, COMPOSER.expanded.gap]);
 
-    return lifted + pad + gap;
+    return lifted + pad + spacing.xs + COMPOSER.height / 2 - ICON_ROW_INSET;
   });
 
-  const plusLeft = useDerivedValue(() => {
-    const inset = interpolate(
-      focus.get(),
-      [0, 1],
-      [COMPOSER.collapsed.inset, COMPOSER.expanded.inset],
-    );
-
-    return gutters.left + inset + ICON_ROW_INSET - COMPOSER.hit / 2;
+  const flight = useAttachmentFlight({
+    close: () => setAttachVisible(false),
+    cardDock,
+    cardHeight,
+    windowHeight,
+    cardLeft: gutters.left,
   });
 
-  const gaugeCenterX = windowWidth - gutters.right - gaugeFromRight;
+  const plusLeft = useDerivedValue(() => gutters.left + 2);
 
-  // A toolbar pick or host-side change lands on target.config; the chips track
-  // it. The comparison keys on provider+id because a catalog refetch returns
-  // fresh objects for the same model and must not clobber an in-flight pick.
   const catalogModelKey =
     catalogModel === undefined ? undefined : `${catalogModel.provider}:${catalogModel.id}`;
 
@@ -275,22 +298,11 @@ export const Composer = memo(function Composer({
     if (sessionThinking !== undefined) setThinking(sessionThinking);
   }
 
-  // The pan gesture writes this shared value, so the chosen level is pushed
-  // into it rather than derived.
   useEffect(() => {
     if (selectorOpen) return;
     thinkingAt.set(thinkingIndex(thinkingLevelsFor(chosenModel), chosenThinking));
   }, [chosenThinking, chosenModel, selectorOpen, thinkingAt]);
 
-  useAnimatedReaction(
-    () => !opening.get() && selector.get() < SELECTOR.handoff,
-    (landed, wasLanded) => {
-      if (landed && !wasLanded) scheduleOnRN(setSelectorOpen, false);
-    },
-  );
-
-  // A completion appearing while the sheet is open springs it shut. The dep is
-  // the boolean, not the object: `completion` is a fresh literal each render.
   const completionOpen = completion !== undefined;
   useEffect(() => {
     if (!completionOpen) return;
@@ -408,89 +420,187 @@ export const Composer = memo(function Composer({
     }
   };
 
-  const submit = async (delivery?: Delivery) => {
-    if (busy || !hasContent || dictation.recording) return;
+  const submit = async () => {
+    if (submissionActive.current || busy || !hasContent || dictation.recording) return;
+    submissionActive.current = true;
     const submitted = draft;
     const submittedImages = images;
     const content = buildContent();
     const line = images.length === 0 ? parseCommandLine(draft, commands) : undefined;
     setNotice(undefined);
+    setLocalError(undefined);
 
-    if (target.kind === "new") {
+    try {
+      if (target.kind === "session") {
+        const send = (message: UserContent) => {
+          const receipt = prepareMessageReceipt({
+            scope,
+            sessionId: target.sessionId,
+            content: message,
+            delivery: running ? delivery : undefined,
+            draft: submitted,
+          });
+
+          return target.onSend(message, receipt.delivery);
+        };
+
+        if (await deliver({ sessionId: target.sessionId, content, line, send }))
+          clearSubmitted(submitted, submittedImages);
+
+        return;
+      }
+
       setStarting(true);
-      setLocalError(undefined);
+      onBusyChange?.(true);
 
-      try {
-        // A workspace pick still composing on the host must land first, or the
-        // session opens under the share's previous folder.
-        await workspacePending.current;
-        const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
-        const name = line?.name ?? (typed === "" ? "New conversation" : typed);
-        const session = await client.sessions.create({ name });
+      if (folders !== undefined) {
+        const folder = folders.kind === "ready" ? folders.selected : undefined;
 
-        // Only what the user picked is sent; untouched fields keep the host's
-        // configured defaults rather than pinning the catalog fallback.
-        if (
-          (model !== undefined || thinking !== undefined) &&
-          !(await configureSession(session.sessionId, { model, thinkingLevel: thinking }))
-        )
+        if (folder === undefined) {
+          setLocalError(
+            folders.kind === "ready" ? "Choose a folder first." : "Folders are still loading.",
+          );
+
           return;
+        }
 
-        const accepted = await deliver({
-          sessionId: session.sessionId,
-          content,
-          line,
-          send: async (message) => {
-            await client.messages.send({
-              sessionId: session.sessionId,
-              content: message,
-              key: randomUUID(),
-            });
+        if (readPendingStart(workspaceStorage, scope) !== undefined) {
+          setLocalError("Finish the waiting message first.");
 
-            return true;
-          },
+          return;
+        }
+
+        const typed = submitted.trim().split("\n")[0]?.slice(0, 48) ?? "";
+
+        const request = {
+          requestId: randomUUID(),
+          workspace: { id: folder.id },
+          message: { content },
+          name: typed === "" ? "New conversation" : typed,
+        };
+
+        const withModel =
+          model === undefined
+            ? request
+            : { ...request, model: { provider: model.provider, id: model.id } };
+
+        // The whole request is on record before it is sent; every retry sends the record.
+        const recorded = recordStart(
+          workspaceStorage,
+          scope,
+          thinking === undefined ? withModel : { ...withModel, thinkingLevel: thinking },
+        );
+
+        if (recorded.kind === "waiting") {
+          setLocalError("Finish the waiting message first.");
+
+          return;
+        }
+
+        clearSubmitted(submitted, submittedImages);
+        void startSender.send(recorded.pending.input, true).then((failure) => {
+          if (failure !== undefined) setLocalError(failure);
         });
 
-        if (!accepted) return;
-        clearSubmitted(submitted, submittedImages);
-        Keyboard.dismiss();
-        router.push(`/chat/${session.sessionId}`);
-      } catch (cause) {
-        setLocalError(describeHostError(cause));
-      } finally {
-        setStarting(false);
+        return;
       }
+
+      await (workspacePending ?? localWorkspacePending).current;
+
+      const selection = usesWorkspaceCursor(info) ? await client.workspace.current() : undefined;
+
+      const workspace = selection?.kind === "project" ? selection.workspace.path : "home";
+      const id = prepareNewConversation({ scope, workspace });
+      const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
+      const name = line?.name ?? (typed === "" ? "New conversation" : typed);
+      const existing = await client.sessions.get({ sessionId: id });
+      const session = existing ?? (await client.sessions.create({ sessionId: id, name }));
+
+      if (
+        (model !== undefined || thinking !== undefined) &&
+        !(await configureSession(session.sessionId, { model, thinkingLevel: thinking }))
+      )
+        return;
+
+      const accepted = await deliver({
+        sessionId: session.sessionId,
+        content,
+        line,
+        send: async (message) => {
+          const receipt = prepareMessageReceipt({
+            scope,
+            sessionId: session.sessionId,
+            content: message,
+            draft: submitted,
+          });
+
+          await client.messages.send({
+            sessionId: session.sessionId,
+            content: message,
+            delivery: receipt.delivery,
+            key: receipt.key,
+          });
+          clearChatDraft({ scope, submitted });
+          finishMessageReceipt({ scope, sessionId: session.sessionId, key: receipt.key });
+
+          return true;
+        },
+      });
+
+      if (!accepted) return;
+      clearSubmitted(submitted, submittedImages);
+      finishNewConversation({ scope, id });
+      Keyboard.dismiss();
+      router.push(`/chat/${session.sessionId}`);
+    } catch (cause: unknown) {
+      setLocalError(describeHostError(cause));
+    } finally {
+      submissionActive.current = false;
+      setStarting(false);
+
+      if (target.kind === "new") onBusyChange?.(false);
+    }
+  };
+
+  /** A waiting start goes back into the composer, ahead of anything typed since. */
+  const editStart = (pending: PendingStart) => {
+    const restored = startParts(pending.input).flatMap((part): StagedImage[] =>
+      part.type === "image"
+        ? [
+            {
+              id: randomUUID(),
+              uri: `data:${part.mimeType};base64,${part.data}`,
+              image: part,
+            },
+          ]
+        : [],
+    );
+
+    if (images.length + restored.length > MAX_ATTACHMENTS) {
+      setLocalError("Remove a photo first.");
 
       return;
     }
 
-    try {
-      const send = (message: UserContent) => target.onSend(message, delivery);
-
-      if (await deliver({ sessionId: target.sessionId, content, line, send }))
-        clearSubmitted(submitted, submittedImages);
-    } catch (cause) {
-      setLocalError(describeHostError(cause));
-    }
+    const text = startText(pending.input);
+    setDraft((current) => (current.trim() === "" ? text : `${text}\n\n${current}`));
+    setImages((current) => [...restored, ...current]);
+    removeStart(workspaceStorage, scope, pending.input.requestId);
+    setLocalError(undefined);
   };
 
   const accept = (suggestion: Suggestion) => {
     if (completion === undefined) return;
     const next = acceptSuggestion(draft, completion.trigger, suggestion);
+    selectionOnCommit.current = next;
     setDraft(next.draft);
     setCaret(next.caret);
-    fieldRef.current?.setSelection(next.caret, next.caret);
   };
 
   const loadPhotos = () => {
-    void readRecentPhotos(PHOTO_PAGE)
+    return readRecentPhotos(PHOTO_PAGE)
       .then(setAccess)
       .catch(() => setAccess({ kind: "denied" }));
-  };
-
-  const closeSelector = () => {
-    opening.set(false);
-    selector.set(withSpring(0, SPRING.close));
   };
 
   const closeAttach = () => {
@@ -507,39 +617,47 @@ export const Composer = memo(function Composer({
     );
   };
 
+  const closeSelector = () => {
+    setSelectorOpen(false);
+  };
+
   const openAttach = () => {
     if (attachDisabled) return;
 
     if (selectorOpen) closeSelector();
+    flight.reset();
+    attachExtend.set(0);
+    attachProgress.set(0);
     setAttachVisible(true);
-    attachProgress.set(withSpring(1, SPRING.open));
     setLocalError(undefined);
-    loadPhotos();
   };
 
   const openSelector = () => {
-    if (!canThink) return;
+    if (!canThink || busy) return;
 
     if (attachVisible) closeAttach();
-    opening.set(true);
-
-    if (selectorOpen) selector.set(withSpring(1, SPRING.open));
-    else setSelectorOpen(true);
+    Keyboard.dismiss();
+    setSelectorOpen(true);
   };
 
-  const attachPhoto = async (photo: RecentPhoto) => {
-    if (busy || images.length >= MAX_ATTACHMENTS) return;
-    closeAttach();
+  const preparePhotos = async (photos: readonly RecentPhoto[]): Promise<readonly StagedImage[]> => {
+    if (busy || images.length >= MAX_ATTACHMENTS) return [];
     setStaging(true);
+
+    if (target.kind === "new") onBusyChange?.(true);
     setLocalError(undefined);
 
     try {
-      const staged = await stageRecentPhoto(photo);
-      setImages((current) => [...current, staged].slice(0, MAX_ATTACHMENTS));
+      return await Promise.all(
+        photos.slice(0, MAX_ATTACHMENTS - images.length).map(stageRecentPhoto),
+      );
     } catch (cause) {
-      setLocalError(cause instanceof Error ? cause.message : "Couldn't attach that photo.");
+      setLocalError(cause instanceof Error ? cause.message : "Couldn't attach photo.");
+      throw cause;
     } finally {
       setStaging(false);
+
+      if (target.kind === "new") onBusyChange?.(false);
     }
   };
 
@@ -550,20 +668,30 @@ export const Composer = memo(function Composer({
       .catch((cause: unknown) => setLocalError(describeHostError(cause)));
   };
 
-  const chooseModel = (choice: ModelInfo) => {
+  const chooseModel = async (choice: ModelInfo): Promise<boolean> => {
+    if (busy) return false;
+
     setModel(choice);
 
-    if (thinkingLevelsFor(choice).length < 2) closeSelector();
+    if (selectorOpen) closeSelector();
 
-    if (target.kind !== "session") return;
-    void configureSession(target.sessionId, {
+    if (target.kind !== "session") return true;
+
+    setSelectingModel(true);
+
+    const applied = await configureSession(target.sessionId, {
       model: choice,
       thinkingLevel: supportedThinkingLevel(choice, chosenThinking),
-    }).then((applied) => {
-      if (applied) return;
+    });
+
+    setSelectingModel(false);
+
+    if (!applied) {
       setModel(catalogModel);
       setThinking(sessionThinking);
-    });
+    }
+
+    return applied;
   };
 
   const chooseThinking = (choice: ThinkingLevel) => {
@@ -580,112 +708,30 @@ export const Composer = memo(function Composer({
     await dictation.start();
   };
 
-  const { collapsed, expanded } = COMPOSER;
-
   const keyboardInset = useAnimatedStyle(() => ({
     paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get(),
   }));
 
-  const cardStyle = useAnimatedStyle(() => {
-    const amount = focus.get();
+  const attachmentStripStyle = useAnimatedStyle(() => ({ height: attachmentsHeight.get() }));
 
-    return {
-      marginHorizontal: interpolate(amount, [0, 1], [collapsed.inset, expanded.inset]),
-      marginBottom: interpolate(amount, [0, 1], [collapsed.gap, expanded.gap]),
-      height: interpolate(amount, [0, 1], [collapsed.height, expanded.height]),
-      borderRadius: interpolate(amount, [0, 1], [collapsed.radius, expanded.radius]),
-    };
-  });
-
-  const inputStyle = useAnimatedStyle(() => {
-    const amount = focus.get();
-
-    return {
-      left: interpolate(amount, [0, 1], [ICON_ROW_INSET + COMPOSER.hit / 2 + 8, 16]),
-      right: interpolate(
-        amount,
-        [0, 1],
-        [(running ? GAUGE_RIGHT : ICON_ROW_INSET) + COMPOSER.hit / 2 + 8, 16],
-      ),
-      bottom: interpolate(amount, [0, 1], [24, 66]) - 11,
-    };
-  });
-
-  const revealStyle = useAnimatedStyle(() => ({
-    opacity:
-      interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP) *
-      interpolate(
-        selector.get(),
-        [SELECTOR.handoff, SELECTOR.handoff * 4],
-        [1, 0],
-        Extrapolation.CLAMP,
-      ),
-    transform: [{ scale: interpolate(focus.get(), [0.35, 1], [0.6, 1], Extrapolation.CLAMP) }],
+  const composerCornerStyle = useAnimatedStyle(() => ({
+    borderRadius: expanded
+      ? 28
+      : interpolate(attachmentsHeight.get(), [0, 24], [999, 28], Extrapolation.CLAMP),
   }));
 
-  const modelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP),
+  const triggerStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(attachVisible ? 0 : 1),
+    transform: [
+      { scale: withTiming(attachVisible ? 1.6 : 1) },
+      { translateX: withTiming(attachVisible ? 12 : 0) },
+      { translateY: withTiming(attachVisible ? -12 : 0) },
+    ],
   }));
-
-  const models = catalog.kind === "ready" ? catalog.models : [];
 
   return (
-    <Animated.View
-      style={[
-        {
-          backgroundColor: HAS_GLASS
-            ? "transparent"
-            : backdrop === "canvas"
-              ? theme.canvas
-              : theme.background,
-        },
-        keyboardInset,
-      ]}
-    >
+    <Animated.View style={keyboardInset}>
       <html.div style={[styles.composer, styles.insets(gutters.left, gutters.right)]}>
-        {images.length > 0 ? (
-          <ScrollView
-            horizontal
-            contentContainerStyle={{ gap: spacing.sm, paddingBlock: spacing.xs }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {images.map((image, index) => (
-              <html.div key={image.id} style={styles.attachment}>
-                <html.button
-                  aria-label={`Annotate photo ${index + 1}`}
-                  onClick={() =>
-                    router.push(
-                      `/annotate?imageId=${encodeURIComponent(image.id)}&uri=${encodeURIComponent(image.uri)}`,
-                    )
-                  }
-                  style={styles.attachmentButton}
-                >
-                  <AttachmentThumb
-                    image={image}
-                    alt={`Attached photo ${index + 1}`}
-                    style={styles.attachmentImage}
-                  />
-                </html.button>
-                <html.button
-                  aria-label={`Remove photo ${index + 1}`}
-                  disabled={sending}
-                  onClick={() => {
-                    clearAnnotation(image.id);
-                    setImages((current) => current.filter((item) => item !== image));
-                  }}
-                  style={styles.removePhoto}
-                >
-                  <SymbolView
-                    name="xmark.circle.fill"
-                    size={controls.badge}
-                    type="palette"
-                    colors={[theme.foreground, theme.surface]}
-                  />
-                </html.button>
-              </html.div>
-            ))}
-          </ScrollView>
-        ) : null}
         {staging ? (
           <html.div style={styles.attachmentStatus} aria-live="polite">
             <ActivityIndicator color={theme.muted} />
@@ -695,6 +741,13 @@ export const Composer = memo(function Composer({
           <html.p style={textStyles.caption}>
             {`Up to ${String(MAX_ATTACHMENTS)} photos per message.`}
           </html.p>
+        ) : null}
+        {target.kind === "new" && folders !== undefined && pendingStart !== undefined ? (
+          <PendingStartStrip
+            key={pendingStart.input.requestId}
+            pending={pendingStart}
+            onEdit={editStart}
+          />
         ) : null}
         {error ? (
           <html.p role="alert" style={textStyles.error}>
@@ -706,277 +759,376 @@ export const Composer = memo(function Composer({
           </html.p>
         )}
         {completion === undefined ? null : (
-          <SuggestionMenu completion={completion} onAccept={accept} />
+          <SuggestionMenu
+            completion={completion}
+            onAccept={accept}
+            cardHeight={cardHeight}
+            cardDock={cardDock}
+          />
         )}
-        {target.kind === "new" ? (
-          <WorkspacePicker
-            client={client}
-            onSelecting={(pending) => {
-              workspacePending.current = pending;
-            }}
-            onWorkspaceChange={() => {
-              setWorkspaceEpoch((epoch) => epoch + 1);
-              onWorkspaceChange?.();
-            }}
-          />
-        ) : null}
-        <ContextRow
-          head={target.kind === "session" ? target.head : undefined}
-          heads={target.kind === "session" ? target.heads : []}
-          onChooseHead={chooseHead}
-        />
-        <AnimatedGlass isInteractive style={[field.card, cardStyle]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Focus message field"
-            style={StyleSheet.absoluteFill}
-            onPress={() => fieldRef.current?.focus()}
-          />
-          <AnimatedTextInput
-            ref={fieldRef}
-            style={[
-              field.input,
-              inputStyle,
-              { color: dictation.recording ? theme.accent : theme.foreground },
-            ]}
-            value={draft}
-            onChangeText={(text) => {
-              setCaret((current) =>
-                current >= draft.length ? text.length : Math.min(current, text.length),
-              );
-              setDraft(text);
-            }}
-            onSelectionChange={(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-              setCaret(event.nativeEvent.selection.end);
-            }}
-            onFocus={() => {
-              setFocused(true);
-              focusDrive.set(withSpring(1, SPRING.focus));
-            }}
-            onBlur={() => {
-              setFocused(false);
-              focusDrive.set(withSpring(0, SPRING.focus));
-            }}
-            placeholder={placeholder}
-            placeholderTextColor={theme.muted}
-            selectionColor={theme.accent}
-            editable={!sending && !dictation.recording}
-            multiline
-            submitBehavior="blurAndSubmit"
-            returnKeyType="send"
-            onSubmitEditing={() => void submit()}
-            keyboardAppearance={dark ? "dark" : "light"}
-            accessibilityLabel={placeholder}
-          />
-          <View style={[field.hit, field.plus]} pointerEvents="box-none">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add attachment"
-              disabled={attachDisabled}
-              onPress={openAttach}
-              style={[StyleSheet.absoluteFill, field.center, attachDisabled && field.disabled]}
-            >
-              {attachVisible ? null : (
-                <SymbolView name="plus" size={20} tintColor={theme.foreground} weight="regular" />
-              )}
-            </Pressable>
-          </View>
-          {catalog.kind === "ready" && !dictation.recording ? (
-            <Animated.View
-              style={[
-                field.model,
-                modelStyle,
-                {
-                  right:
-                    (canThink ? gaugeFromRight : running ? GAUGE_RIGHT : ICON_ROW_INSET) +
-                    COMPOSER.hit / 2 +
-                    8,
-                },
-              ]}
-              pointerEvents={focused ? "box-none" : "none"}
-              accessibilityElementsHidden={!focused}
-              importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
-            >
-              <Host matchContents={{ horizontal: true }} style={modelHost} ignoreSafeArea="all">
-                <Menu
-                  label={
-                    <Text modifiers={[font(MODEL_FONT), foregroundStyle(theme.muted)]}>
-                      {chosenModel?.name ?? "Model"}
-                    </Text>
-                  }
-                  modifiers={[
-                    buttonStyle("plain"),
-                    frame({ minHeight: controls.touchTarget }),
-                    buttonBorderShape("capsule"),
-                    controlSize("mini"),
-                    menuIndicator("hidden"),
-                  ]}
-                >
-                  {models.map((item) => (
-                    <Button
-                      key={`${item.provider}/${item.id}`}
-                      label={item.name}
-                      systemImage={
-                        chosenModel !== undefined &&
-                        item.provider === chosenModel.provider &&
-                        item.id === chosenModel.id
-                          ? "checkmark"
-                          : undefined
+        <View onLayout={(event) => cardHeight.set(event.nativeEvent.layout.height)}>
+          <AnimatedGlass
+            isInteractive
+            style={[field.card, composerCornerStyle, expanded && field.expandedCard]}
+          >
+            <Animated.View style={[{ overflow: "hidden" }, attachmentStripStyle]}>
+              <View
+                onLayout={(event) => {
+                  const next = event.nativeEvent.layout.height;
+                  attachmentsHeight.set(
+                    flight.pendingId === undefined
+                      ? withTiming(next, { duration: 340, easing: Easing.out(Easing.cubic) })
+                      : next,
+                  );
+                }}
+                style={
+                  images.length === 0
+                    ? undefined
+                    : {
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 10,
+                        paddingHorizontal: 14,
+                        paddingTop: 14,
+                        paddingBottom: 12,
                       }
-                      onPress={() => chooseModel(item)}
-                    />
-                  ))}
-                </Menu>
-              </Host>
-            </Animated.View>
-          ) : null}
-          {canThink && !dictation.recording ? (
-            <Animated.View
-              style={[field.hit, { right: gaugeFromRight - COMPOSER.hit / 2 }, revealStyle]}
-              pointerEvents={focused ? "box-none" : "none"}
-              accessibilityElementsHidden={!focused}
-              importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Thinking level"
-                onPress={openSelector}
-                style={field.center}
+                }
               >
-                <GaugeIcon
-                  level={thinkingAt}
-                  stopCount={thinkingStops.length}
-                  accent={theme.accent}
-                  track={theme.muted}
-                  needle={theme.foreground}
-                />
-              </Pressable>
-            </Animated.View>
-          ) : null}
-          {running && !dictation.recording ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Stop response"
-              accessibilityState={{ busy: stopping }}
-              onPress={() => {
-                if (!stopping && target.kind === "session") target.onStop();
-              }}
-              style={[field.hit, field.stop, stopping && field.disabled]}
-            >
-              <SymbolView name="stop.fill" size={18} tintColor={theme.foreground} />
-            </Pressable>
-          ) : null}
-          {dictation.recording ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Stop dictation, ${formatElapsed(dictation.elapsed)}`}
-              onPress={dictation.stop}
-              style={field.recorder}
-            >
-              <SymbolView
-                name="stop.circle.fill"
-                size={controls.badge}
-                tintColor={theme.foreground}
-              />
-              <Animated.Text style={[field.recorderTime, { color: theme.foreground }]}>
-                {formatElapsed(dictation.elapsed)}
-              </Animated.Text>
-              <View style={field.waveform} pointerEvents="none">
-                {dictation.levels.map((sample, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      field.waveBar,
-                      { height: waveHeight(sample), backgroundColor: theme.muted },
-                    ]}
+                {images.map((image, index) => (
+                  <ComposerAttachment
+                    key={image.id}
+                    image={image}
+                    index={index}
+                    flight={flight}
+                    disabled={sending}
+                    onAnnotate={() =>
+                      router.push(
+                        `/annotate?imageId=${encodeURIComponent(image.id)}&uri=${encodeURIComponent(image.uri)}`,
+                      )
+                    }
+                    onRemove={() => {
+                      clearAnnotation(image.id);
+                      setImages((current) => current.filter((item) => item.id !== image.id));
+                    }}
                   />
                 ))}
               </View>
-            </Pressable>
-          ) : hasContent ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-              accessibilityState={{ busy: sending }}
-              accessibilityActions={
-                running ? [{ name: "queue", label: "Queue message" }] : undefined
-              }
-              disabled={staging && !sending}
-              onPress={() => {
-                void submit();
-              }}
-              onLongPress={running ? () => queueSheet(() => void submit("next")) : undefined}
-              onAccessibilityAction={(event) => {
-                if (event.nativeEvent.actionName === "queue") void submit("next");
-              }}
-              style={[field.hit, field.primary, busy && field.disabled]}
-            >
-              <View style={[field.send, { backgroundColor: theme.accentFill }]}>
-                <SymbolView
-                  name="arrow.up"
-                  size={16}
-                  tintColor={theme.onAccentFill}
-                  weight="semibold"
-                />
-              </View>
-            </Pressable>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dictate"
-              disabled={busy}
-              onPress={() => {
-                void startDictation();
-              }}
-              style={[field.hit, field.primary, busy && field.disabled]}
-            >
-              <SymbolView name="mic.fill" size={22} tintColor={theme.foreground} />
-            </Pressable>
-          )}
-        </AnimatedGlass>
-      </html.div>
-      {selectorOpen ? (
-        <ThinkingSelector
-          progress={selector}
-          opening={opening}
-          level={thinkingAt}
-          cardDock={cardDock}
-          gaugeCenterX={gaugeCenterX}
-          levels={thinkingStops}
-          modelName={chosenModel?.name ?? "Model"}
-          colors={{
-            text: theme.foreground,
-            accent: theme.accent,
-            accentFill: theme.accentFill,
-            track: colors.popupMaterial,
-            tickOnTrack: colors.contentInteractiveTertiary,
-            tickOnFill: colors.contentOnInteractiveStrong,
-            knob: colors.contentOnControl,
-            gaugeTrack: theme.muted,
-            needle: theme.foreground,
-            scrim: colors.bgScrim,
-          }}
-          onClose={closeSelector}
-          onCommit={(index) => {
-            const next = thinkingStops[index];
+            </Animated.View>
 
-            if (next !== undefined) chooseThinking(next);
-          }}
-        />
-      ) : null}
+            {expanded && target.kind === "session" && target.heads.length > 1 ? (
+              <html.div style={styles.context}>
+                <ContextRow head={target.head} heads={target.heads} onChooseHead={chooseHead} />
+              </html.div>
+            ) : null}
+            {running ? (
+              <html.div style={[styles.deliveryRow, delivery === "next" && styles.queuedDelivery]}>
+                <Host
+                  style={field.deliveryHost}
+                  matchContents={{ vertical: true }}
+                  ignoreSafeArea="all"
+                >
+                  <Menu
+                    label={
+                      <HStack spacing={spacing.xs}>
+                        <Image
+                          systemName={delivery === "next" ? "clock" : "arrow.turn.up.right"}
+                          size={14}
+                          modifiers={[foregroundStyle(theme.accent)]}
+                        />
+                        <Text
+                          modifiers={[
+                            font(MODEL_FONT),
+                            foregroundStyle(theme.accent),
+                            lineLimit(1),
+                          ]}
+                        >
+                          {delivery === "next" ? "After this response" : "Steer response"}
+                        </Text>
+                        <Image
+                          systemName="chevron.down"
+                          size={10}
+                          modifiers={[foregroundStyle(theme.accent)]}
+                        />
+                      </HStack>
+                    }
+                    modifiers={[
+                      buttonStyle("plain"),
+                      frame({ minHeight: controls.touchTarget }),
+                      disabled(busy),
+                    ]}
+                  >
+                    <Button
+                      label="Steer current response"
+                      systemImage={delivery === "steer" ? "checkmark" : undefined}
+                      onPress={() => {
+                        setDelivery("steer");
+
+                        if (target.kind === "session")
+                          discardMessageReceipt({ scope, sessionId: target.sessionId });
+                      }}
+                    />
+                    <Button
+                      label="Queue after response"
+                      systemImage={delivery === "next" ? "checkmark" : undefined}
+                      onPress={() => {
+                        setDelivery("next");
+
+                        if (target.kind === "session")
+                          discardMessageReceipt({ scope, sessionId: target.sessionId });
+                      }}
+                    />
+                  </Menu>
+                </Host>
+                <html.button
+                  aria-label="Stop response"
+                  aria-busy={stopping}
+                  disabled={stopping}
+                  onClick={() => {
+                    if (target.kind === "session") target.onStop();
+                  }}
+                  style={styles.stop}
+                >
+                  {stopping ? (
+                    <ActivityIndicator color={theme.muted} size="small" />
+                  ) : (
+                    <SymbolView name="stop.fill" size={16} tintColor={theme.foreground} />
+                  )}
+                </html.button>
+              </html.div>
+            ) : null}
+            <View
+              style={[
+                field.inputArea,
+                expanded ? field.expandedInputArea : field.collapsedInputArea,
+              ]}
+            >
+              <TextInput
+                ref={fieldRef}
+                style={[
+                  field.input,
+                  {
+                    maxHeight: expanded ? INPUT_MAX_HEIGHT : INPUT_LINE_HEIGHT * 2,
+                    color: dictation.recording ? theme.accent : theme.foreground,
+                  },
+                ]}
+                value={draft}
+                onChangeText={(text) => {
+                  setCaret((current) =>
+                    current >= draft.length ? text.length : Math.min(current, text.length),
+                  );
+                  setDraft(text);
+                }}
+                onSelectionChange={(
+                  event: NativeSyntheticEvent<TextInputSelectionChangeEventData>,
+                ) => {
+                  setCaret(event.nativeEvent.selection.end);
+                }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder={placeholder}
+                placeholderTextColor={theme.muted}
+                selectionColor={theme.accent}
+                editable={(target.kind === "session" || !sending) && !dictation.recording}
+                multiline
+                submitBehavior="newline"
+                returnKeyType="default"
+                keyboardAppearance={dark ? "dark" : "light"}
+                accessibilityLabel={placeholder}
+              />
+            </View>
+            <View
+              pointerEvents="box-none"
+              style={[field.actions, !expanded && field.collapsedActions]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add attachment"
+                accessibilityState={{ disabled: attachDisabled, expanded: attachVisible }}
+                disabled={attachDisabled}
+                onPress={attachVisible ? closeAttach : openAttach}
+                style={[field.plusHit, attachDisabled && field.disabled]}
+              >
+                <Animated.View style={triggerStyle}>
+                  <SymbolView name="plus" size={22} tintColor={theme.foreground} weight="regular" />
+                </Animated.View>
+              </Pressable>
+              {expanded && !dictation.recording ? (
+                <Host
+                  style={field.modelHost}
+                  matchContents={{ vertical: true }}
+                  ignoreSafeArea="all"
+                >
+                  <Button
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setLocalError(undefined);
+                      setModelPickerOpen(true);
+                    }}
+                    modifiers={[
+                      buttonStyle("plain"),
+                      disabled(busy),
+                      accessibilityLabel(`Choose model, ${chosenModel?.name ?? "Model"}`),
+                    ]}
+                  >
+                    <HStack
+                      spacing={spacing.xs}
+                      modifiers={[
+                        frame({ minHeight: controls.touchTarget, maxWidth: Infinity }),
+                        contentShape(shapes.rectangle()),
+                      ]}
+                    >
+                      <Text
+                        modifiers={[
+                          font(MODEL_FONT),
+                          foregroundStyle(theme.foreground),
+                          lineLimit(1),
+                        ]}
+                      >
+                        {chosenModel?.name ?? "Choose model"}
+                      </Text>
+                      <Image
+                        systemName="chevron.down"
+                        size={12}
+                        modifiers={[foregroundStyle(theme.foreground)]}
+                      />
+                    </HStack>
+                  </Button>
+                </Host>
+              ) : (
+                <View style={field.spacer} pointerEvents="none" />
+              )}
+              {expanded && canThink && !dictation.recording ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Thinking level"
+                  accessibilityValue={{ text: THINKING_LABELS[chosenThinking] }}
+                  accessibilityState={{ expanded: selectorOpen, disabled: busy }}
+                  disabled={busy}
+                  onPress={openSelector}
+                  style={[field.plusHit, busy && field.disabled]}
+                >
+                  {selectorOpen ? null : (
+                    <GaugeIcon
+                      level={thinkingAt}
+                      stopCount={thinkingStops.length}
+                      accent={theme.accent}
+                      track={theme.muted}
+                      needle={theme.foreground}
+                    />
+                  )}
+                </Pressable>
+              ) : null}
+              {dictation.recording ? (
+                <html.button
+                  aria-label="Stop dictation"
+                  onClick={dictation.stop}
+                  style={styles.primary}
+                >
+                  <SymbolView name="stop.circle.fill" size={28} tintColor={theme.accent} />
+                </html.button>
+              ) : hasContent ? (
+                <html.button
+                  aria-label={
+                    running && delivery === "next"
+                      ? "Queue message"
+                      : running
+                        ? "Steer response"
+                        : "Send message"
+                  }
+                  aria-busy={sending}
+                  disabled={busy}
+                  onClick={() => void submit()}
+                  style={styles.primary}
+                >
+                  <html.div style={styles.send}>
+                    {sending ? (
+                      <ActivityIndicator color={theme.onAccentFill} size="small" />
+                    ) : (
+                      <SymbolView
+                        name="arrow.up"
+                        size={19}
+                        tintColor={theme.onAccentFill}
+                        weight="semibold"
+                      />
+                    )}
+                  </html.div>
+                </html.button>
+              ) : (
+                <html.button
+                  aria-label="Dictate"
+                  disabled={busy}
+                  onClick={() => void startDictation()}
+                  style={styles.primary}
+                >
+                  <SymbolView name="mic.fill" size={22} tintColor={theme.muted} />
+                </html.button>
+              )}
+            </View>
+            {dictation.recording ? (
+              <html.div style={styles.recording} role="status">
+                <html.span style={[textStyles.caption, styles.recorderTime]}>
+                  {formatElapsed(dictation.elapsed)}
+                </html.span>
+                <View style={field.waveform} pointerEvents="none">
+                  {dictation.levels.map((sample, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        field.waveBar,
+                        { height: waveHeight(sample), backgroundColor: theme.accent },
+                      ]}
+                    />
+                  ))}
+                </View>
+              </html.div>
+            ) : null}
+          </AnimatedGlass>
+        </View>
+      </html.div>
+      <ModelPickerSheet
+        client={client}
+        open={modelPickerOpen}
+        onClose={() => setModelPickerOpen(false)}
+        selectedModel={chosenModel}
+        selectingModel={selectingModel}
+        modelError={localError}
+        onSelect={chooseModel}
+      />
+      <ThinkingSelector
+        open={selectorOpen && canThink}
+        level={thinkingAt}
+        initialIndex={thinkingIndex(thinkingStops, chosenThinking)}
+        levels={thinkingStops}
+        modelName={chosenModel?.name ?? "Model"}
+        onClose={closeSelector}
+        onCommit={(index) => {
+          const next = thinkingStops[index];
+
+          if (next !== undefined) chooseThinking(next);
+        }}
+      />
       {attachVisible ? (
         <AttachmentsMenu
           progress={attachProgress}
           extendProgress={attachExtend}
-          keyboardHeight={keyboard.height}
           cardDock={cardDock}
           plusLeft={plusLeft}
           access={access}
           disabled={attachDisabled}
           onClose={closeAttach}
-          onPick={(photo) => void attachPhoto(photo)}
-          onManageAccess={() => {
-            void chooseSharedPhotos().then(loadPhotos);
+          flight={flight}
+          remaining={MAX_ATTACHMENTS - images.length}
+          onPreparePhotos={preparePhotos}
+          onCommitPhotos={(prepared) =>
+            setImages((current) => [...current, ...prepared].slice(0, MAX_ATTACHMENTS))
+          }
+          onRequestPhotos={async () => {
+            setAccess(await requestPhotoAccess(PHOTO_PAGE));
+          }}
+          onReadPhotos={loadPhotos}
+          onManageAccess={async () => {
+            await chooseSharedPhotos();
+            await loadPhotos();
           }}
           onCapture={(image) => {
             setImages((current) => [...current, image].slice(0, MAX_ATTACHMENTS));
@@ -999,68 +1151,53 @@ function matchCatalogModel(
   );
 }
 
-const hit = { width: COMPOSER.hit, height: COMPOSER.hit };
-
 const field = StyleSheet.create({
-  card: { borderCurve: "continuous" },
+  card: { borderCurve: "continuous", borderRadius: 24, minWidth: 0, overflow: "hidden" },
+  expandedCard: { borderRadius: 28 },
+  plusHit: {
+    width: controls.touchTarget,
+    height: controls.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inputArea: { minHeight: COMPOSER.height, justifyContent: "center", paddingVertical: spacing.md },
+  collapsedInputArea: { paddingHorizontal: controls.touchTarget + spacing.sm },
+  expandedInputArea: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
   input: {
-    position: "absolute",
-    height: 22,
+    minWidth: 0,
+    minHeight: INPUT_LINE_HEIGHT,
     fontSize: COMPOSER.fontSize,
+    lineHeight: INPUT_LINE_HEIGHT,
     padding: 0,
+    textAlignVertical: "top",
+    alignSelf: "stretch",
   },
-  hit: {
-    ...hit,
-    position: "absolute",
-    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
+  actions: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: 2,
+    paddingBottom: 2,
+    minHeight: controls.touchTarget + 2,
   },
-  center: { alignItems: "center", justifyContent: "center", ...hit },
-  plus: { left: ICON_ROW_INSET - COMPOSER.hit / 2, zIndex: 1 },
-  model: {
-    position: "absolute",
-    left: ICON_ROW_INSET + COMPOSER.hit / 2 + 8,
-    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
-    height: COMPOSER.hit,
-    justifyContent: "center",
-    alignItems: "flex-start",
-    overflow: "hidden",
-  },
-  stop: { right: GAUGE_RIGHT - COMPOSER.hit / 2 },
-  primary: { right: ICON_ROW_INSET - COMPOSER.hit / 2 },
-  send: {
-    width: COMPOSER.sendSize,
-    height: COMPOSER.sendSize,
-    borderRadius: COMPOSER.sendSize / 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  collapsedActions: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  spacer: { flex: 1 },
+  modelHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
+  deliveryHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
   disabled: { opacity: controls.disabledOpacity },
-  recorder: {
-    position: "absolute",
-    right: 8,
-    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
-    height: COMPOSER.hit,
-    paddingHorizontal: 8,
-    borderRadius: COMPOSER.hit / 2,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  recorderTime: {
-    fontSize: typography.caption.fontSize,
-    fontVariant: ["tabular-nums"],
-  },
   waveform: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
     gap: 2,
-    height: 16,
+    height: 20,
     overflow: "hidden",
   },
-  waveBar: { width: 3, borderRadius: 99 },
+  waveBar: { width: 3, borderRadius: 2 },
 });
 
 const styles = css.create({
@@ -1069,7 +1206,72 @@ const styles = css.create({
     flexDirection: "column",
     gap: spacing.xs,
     paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
+  context: { paddingInline: spacing.md },
+  primary: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    width: controls.touchTarget,
+    height: controls.touchTarget,
+    borderWidth: 0,
+    padding: 0,
+    opacity: {
+      default: 1,
+      ":active": controls.pressedOpacity,
+      ":disabled": controls.disabledOpacity,
+    },
+  },
+  send: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 34,
+    height: 34,
+    borderRadius: radii.pill,
+    backgroundColor: tokens.accentFill,
+  },
+  deliveryRow: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    marginInline: spacing.sm,
+    marginTop: spacing.sm,
+    paddingLeft: spacing.sm,
+    borderBottomWidth: controls.hairline,
+    borderBottomColor: tokens.border,
+  },
+  queuedDelivery: {
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: tokens.accent,
+    borderRadius: radii.control,
+  },
+  stop: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    width: controls.touchTarget,
+    height: controls.touchTarget,
+    borderWidth: 0,
+    padding: 0,
+    opacity: {
+      default: 1,
+      ":active": controls.pressedOpacity,
+      ":disabled": controls.disabledOpacity,
+    },
+  },
+  recording: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingInline: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  recorderTime: { fontVariantNumeric: "tabular-nums" },
   attachment: {
     display: "flex",
     flexDirection: "row",

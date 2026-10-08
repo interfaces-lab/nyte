@@ -52,5 +52,5 @@ test("verified tenant and environment select the object, not the caller's query"
     assert.equal(await response.text(), "ok");
   }
 
-  assert.notEqual(keys[0], keys[1]);
+  assert.deepEqual(keys, ['["a/b","c"]', '["a","b/c"]']);
 });

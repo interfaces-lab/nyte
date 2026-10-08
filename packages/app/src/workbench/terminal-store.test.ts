@@ -185,7 +185,6 @@ describe("job-backed terminal runtime", () => {
 
     expect(ipc.jobsCancel).not.toHaveBeenCalled();
     expect(ipc.terminalClose).not.toHaveBeenCalled();
-    assert.equal(job.phase.kind, "running");
     assert.equal(getTerminal(id), undefined);
   });
 

@@ -43,9 +43,6 @@ const FALLBACK_TASK_MODEL = {
 /** The models an agent without an explicit choice tries, in order. */
 export const DEFAULT_TASK_MODELS = [DEFAULT_TASK_MODEL, FALLBACK_TASK_MODEL] as const;
 
-/** Appended to a model that advertises fast mode: the agent's requests ask for priority processing. */
-export const FAST_MODEL_SUFFIX = "-fast";
-
 const defaultModelDescription = `Defaults to ${DEFAULT_TASK_MODEL.model} with ${DEFAULT_TASK_MODEL.thinkingLevel} thinking, falling back to ${FALLBACK_TASK_MODEL.model} with ${FALLBACK_TASK_MODEL.thinkingLevel} thinking if the default is unavailable.`;
 
 const citationDescription =
@@ -116,7 +113,7 @@ export interface SubagentHost {
   inputPending(head: string): Promise<boolean>;
 }
 
-const modelDescription = `Exact provider/model. ${defaultModelDescription} Only set this when the user requests another model. Choose an enabled model from the current list; a model listed with ${FAST_MODEL_SUFFIX} runs in its fast mode. Unavailable explicit choices fail without substitution.`;
+const modelDescription = `Exact provider/model. ${defaultModelDescription} Only set this when the user requests another model. Choose an enabled model from the current list; a model listed with -fast runs in its fast mode. Unavailable explicit choices fail without substitution.`;
 
 const modelParameter = Type.Optional(
   Type.String({ pattern: "^[^/]+/.+$", description: modelDescription }),
@@ -222,7 +219,7 @@ const stopParameters = Type.Object({ agent: agentParameter }, { additionalProper
 
 export function subagentModelParameters(
   tool: "task" | "create",
-  models: readonly Pick<Model<Api>, "provider" | "id" | "modes">[],
+  models: readonly Pick<Model<Api>, "provider" | "id">[],
 ) {
   const parameters = tool === TASK_TOOL ? taskParameters : createParameters;
 
@@ -230,22 +227,9 @@ export function subagentModelParameters(
     {
       ...parameters.properties,
       model: Type.Optional(
-        Type.Enum(
-          [
-            ...new Set(
-              models.flatMap((model) => {
-                const name = `${model.provider}/${model.id}`;
-
-                return model.modes?.includes("fast") === true
-                  ? [name, `${name}${FAST_MODEL_SUFFIX}`]
-                  : [name];
-              }),
-            ),
-          ],
-          {
-            description: modelDescription,
-          },
-        ),
+        Type.Enum([...new Set(models.map((model) => `${model.provider}/${model.id}`))], {
+          description: modelDescription,
+        }),
       ),
     },
     { additionalProperties: false },

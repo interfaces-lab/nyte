@@ -33,8 +33,8 @@ export function SiteFooter() {
   ];
 
   return (
-    <footer className="relative isolate mx-(--plate-inset) mb-(--plate-inset) overflow-hidden rounded-(--plate-radius) bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
-      <div className="mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-20 sm:pt-24">
+    <footer className="relative isolate mx-(--plate-inset) mb-(--plate-inset) overflow-clip rounded-(--plate-radius) bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
+      <div className="mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-section">
         <nav aria-label="Sitemap" className="flex flex-wrap gap-x-16 gap-y-10">
           {columns.map((column) => (
             <div key={column.label} className="min-w-28">
@@ -61,7 +61,7 @@ export function SiteFooter() {
         <svg
           aria-hidden="true"
           viewBox="0 0 1000 351"
-          className="mt-20 block w-full text-foreground opacity-[0.14] select-none sm:mt-28 dark:opacity-[0.16]"
+          className="mt-section block w-full text-foreground opacity-[0.14] select-none dark:opacity-[0.16]"
         >
           <defs>
             <pattern id="footer-scanlines" width="8" height="9" patternUnits="userSpaceOnUse">

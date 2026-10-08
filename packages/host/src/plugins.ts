@@ -18,7 +18,6 @@ import {
 import type { ExecutionEnv, Plugin } from "@nyte-ai/core/plugins";
 import { pluginSource, withPluginSource } from "@nyte-ai/core/plugin-source";
 import { bashDescriptionPlugin } from "@nyte-ai/plugin/examples/bash-description";
-import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
 import { questionPlugin } from "@nyte-ai/plugin/examples/question";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
@@ -42,11 +41,12 @@ import { hostModules } from "./plugins/host-modules.ts";
 import { nodePluginLoader } from "./plugins/node-loader.ts";
 import { discoverPluginUnits } from "./plugins/units.ts";
 import type { PluginRoot, PluginUnit } from "./plugins/units.ts";
+import { hostMcpOAuth } from "./mcp-oauth.ts";
 import { createSourceWatcher, notifyPluginSources } from "./plugins/watch.ts";
 
 // MCP connections belong to the process: every session shares them, and a
 // session reload that leaves a server's config alone keeps its connection.
-const mcpServers = new McpServers();
+const mcpServers = new McpServers({ oauth: hostMcpOAuth() });
 
 export async function resolveHostPlugins(
   target: PluginTarget,
@@ -94,7 +94,6 @@ export async function resolveHostPlugins(
       bashDescriptionPlugin,
       openaiCompactionPlugin({ models: context.models }),
       openaiAstraContextPlugin(),
-      fastModePlugin({ models: context.models, defaultModel: context.model }),
       questionPlugin,
       ...webSearchPlugins({ credentials: webSearchCredentials() }),
       mcpPlugin({ servers: mcpServers, config: mcp }),

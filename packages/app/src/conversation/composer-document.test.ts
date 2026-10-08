@@ -5,7 +5,6 @@ import { registerPlainText } from "@lexical/plain-text";
 import {
   $getRoot,
   $getSelection,
-  $isNodeSelection,
   $isRangeSelection,
   CLEAR_HISTORY_COMMAND,
   createEditor,
@@ -234,23 +233,28 @@ describe("composer document", () => {
     expect(text()).toBe("use  today");
   });
 
-  it("selects a chip as a whole when the caret steps onto it", () => {
+  it("steps the caret over a chip as one unit in both directions", () => {
     const { editor, restore } = composer();
+    const after = 5 + file.url.length;
     restore(`use @${file.url} today`, 4);
-    editor.update(
-      () => {
-        $selectComposerRange(4);
-        const selection = $getSelection();
-        assert.ok($isRangeSelection(selection));
-        selection.modify("move", false, "character");
-      },
-      { discrete: true },
-    );
-    editor.getEditorState().read(() => {
-      const selection = $getSelection();
-      expect($isNodeSelection(selection)).toBe(true);
-      expect(selection?.getTextContent()).toBe(`@${file.url}`);
-    });
+
+    for (const [isBackward, expected] of [
+      [false, after],
+      [true, 4],
+    ] as const) {
+      editor.update(
+        () => {
+          const selection = $getSelection();
+          assert.ok($isRangeSelection(selection));
+          selection.modify("move", isBackward, "character");
+        },
+        { discrete: true },
+      );
+      editor.getEditorState().read(() => {
+        expect($isRangeSelection($getSelection())).toBe(true);
+        expect($composerSelection()).toEqual({ start: expected, end: expected });
+      });
+    }
   });
 
   it("undoes and redoes a chip insertion as one edit, and forgets history after a restore", () => {
@@ -299,7 +303,7 @@ describe("composer document", () => {
       () => {
         const selection = $getSelection();
         assert.ok($isRangeSelection(selection));
-        selection.modify("move", false, "character");
+        selection.modify("extend", false, "character");
       },
       { discrete: true },
     );
@@ -307,8 +311,8 @@ describe("composer document", () => {
 
     const previous = previousState.read(() => {
       const selection = $getSelection();
-      assert.ok($isNodeSelection(selection));
-      const node = selection.getNodes()[0];
+      assert.ok($isRangeSelection(selection));
+      const node = selection.getNodes().find((each) => each instanceof ComposerReferenceNode);
       assert.ok(node instanceof ComposerReferenceNode);
       expect(selection.getTextContent()).toBe(`@${file.url}`);
 
@@ -323,9 +327,8 @@ describe("composer document", () => {
     editor.getEditorState().read(() => {
       expect($composerReferences()).toEqual([reference]);
       const selection = $getSelection();
-      assert.ok($isNodeSelection(selection));
-      expect(selection.has(previous.node.getKey())).toBe(true);
-      expect(selection.getNodes()).toHaveLength(1);
+      assert.ok($isRangeSelection(selection));
+      expect(selection.getNodes()).toContain(previous.node.getLatest());
       expect(selection.getTextContent()).toBe(`@${file.url}`);
       expect(previous.node.decorate()).toEqual(reference);
       expect(previous.node.exportJSON().reference).toEqual(reference);
@@ -339,8 +342,8 @@ describe("composer document", () => {
     editor.update(
       () => {
         const selection = $getSelection();
-        assert.ok($isNodeSelection(selection));
-        selection.deleteNodes();
+        assert.ok($isRangeSelection(selection));
+        selection.removeText();
       },
       { discrete: true },
     );

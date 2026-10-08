@@ -56,7 +56,7 @@ export const TooltipTrigger = TooltipPrimitive.Trigger;
 
 export function TooltipContent({
   side = "bottom",
-  align = "center",
+  align,
   sideOffset = 6,
   alignOffset,
   tint,

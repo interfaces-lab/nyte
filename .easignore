@@ -19,6 +19,28 @@ dist/
 __pycache__/
 *.pyc
 .uji/
+scratch/
+share/
+/*.html
+/tmp/
+.next/
+/packages/ai/catalog/
+/packages/app/e2e/test-results/
+/packages/app/e2e/playwright-report/
+
+# Worker secrets
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# packages/demo/website
+.output/
+
+# packages/lab
+packages/lab/audits/
+packages/lab/references/
+packages/lab/research_notes/
+packages/lab/reports/
 
 # packages/desktop
 packages/desktop/out/

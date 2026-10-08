@@ -3,8 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
 import type { ConnectView, GitHubProviderState, HostState } from "../bridge.ts";
+import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
+import { createWebBridge } from "../web/bridge.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
+
+installBridge(createWebBridge().bridge);
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 

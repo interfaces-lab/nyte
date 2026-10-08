@@ -118,7 +118,7 @@ const catalog = {
   source: "local",
   providers: [],
   models: [],
-  defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off", fast: false },
+  defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off" },
 } satisfies DesktopCatalog;
 
 const plugins = { plugins: [], commands: [], skills: [], settings: [] } satisfies PluginCatalog;

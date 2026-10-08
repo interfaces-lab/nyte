@@ -46,6 +46,7 @@ function harness() {
   return {
     feed,
     rows,
+    directories: () => directories,
     ids: () => directories?.flatMap((entry) => entry.sessions.map((item) => item.sessionId)),
     resyncs: () => resyncs,
   };
@@ -120,5 +121,12 @@ test("a dropped source leaves the directory and availability creates the cloud e
     changes: [{ kind: "availability", availability: { kind: "unavailable", message: "down" } }],
   });
   h.feed.receive({ revision: 3, changes: [{ kind: "dropped", source: home }] });
-  assert.deepEqual(h.ids(), []);
+  assert.deepEqual(h.directories(), [
+    {
+      environment: "cloud",
+      sessions: [],
+      delegating: [],
+      availability: { kind: "unavailable", message: "down" },
+    },
+  ]);
 });

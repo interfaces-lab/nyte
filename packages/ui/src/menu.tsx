@@ -8,12 +8,12 @@
  * edges in every menu.
  */
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { create, props } from "@stylexjs/stylex";
+import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
 import { glyph, layer, menu, radius, switchControl } from "./schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
@@ -94,7 +94,6 @@ export const menuStyles = create({
       "[data-highlighted]:not([data-disabled])": role.bgHover,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    "--_menu-meta": { default: role.contentSecondary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
@@ -123,7 +122,10 @@ export const menuStyles = create({
     minWidth: menu.metaMinWidth,
     minHeight: type.leadingBase,
     gap: 4,
-    color: "var(--_menu-meta)",
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-disabled]")]: role.contentDisabled,
+    },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
@@ -157,7 +159,10 @@ export const menuStyles = create({
   submenuValue: {
     maxWidth: 112,
     overflow: "hidden",
-    color: "var(--_menu-meta)",
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-disabled]")]: role.contentDisabled,
+    },
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -232,15 +237,16 @@ export function MenuItemBody({
   );
 }
 
-export function menuItemStyle(
+export function menuItemStyle<State>(
   { layout = "menu" }: Pick<MenuItemBodyProps, "layout">,
   variant: MenuItemVariant,
-  { xstyle, className, style }: StyledProps<object>,
-): ReturnType<typeof mergeStyleProps> {
+  { xstyle, className, style }: StateStyledProps<State> & { readonly xstyle?: XStyle },
+): StateStyledProps<State> {
   return mergeStyleProps(
     props(
       variant === "danger" && intent.danger,
       menuStyles.item,
+      defaultMarker(),
       itemVariants[variant],
       itemLayouts[layout],
       xstyle,
@@ -325,12 +331,12 @@ export function MenuContent({
 }
 
 export function MenuSubContent({
-  side = "right",
-  align = "start",
+  side,
+  align,
   sideOffset = 6,
   alignOffset,
   anchor,
-  collisionAvoidance = MENU_COLLISION,
+  collisionAvoidance,
   collisionPadding = 8,
   tint,
   xstyle,
@@ -377,7 +383,6 @@ export function MenuItem({
   icon,
   leading,
   meta,
-  selected = false,
   xstyle,
   className,
   style,
@@ -386,7 +391,6 @@ export function MenuItem({
 }: StyledProps<MenuPrimitive.Item.Props> &
   MenuItemBodyProps & {
     readonly variant?: MenuItemVariant;
-    readonly selected?: boolean;
   }): ReactElement {
   return (
     <MenuPrimitive.Item
@@ -394,23 +398,7 @@ export function MenuItem({
       {...menuItemStyle({ layout }, variant, { xstyle, className, style })}
       {...rest}
     >
-      <MenuItemBody
-        icon={icon}
-        leading={leading}
-        layout={layout}
-        meta={
-          selected ? (
-            <>
-              {meta}
-              <span {...props(menuStyles.indicator)}>
-                <Icon name="checkmark" size={11} />
-              </span>
-            </>
-          ) : (
-            meta
-          )
-        }
-      >
+      <MenuItemBody icon={icon} leading={leading} meta={meta} layout={layout}>
         {children}
       </MenuItemBody>
     </MenuPrimitive.Item>

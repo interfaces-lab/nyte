@@ -8,6 +8,33 @@ import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
+/** The row a model ref selects: the row itself, or the row whose fast sibling it names. */
+export function selectedModelOption(
+  options: readonly DesktopModelOption[],
+  model: RunConfig["model"],
+): { readonly option: DesktopModelOption; readonly fast: boolean } | undefined {
+  if (model === undefined) return undefined;
+
+  for (const option of options) {
+    if (model.provider !== undefined && option.provider !== model.provider) continue;
+
+    if (option.id === model.id) return { option, fast: false };
+
+    if (option.fastMode.kind === "available" && option.fastMode.id === model.id)
+      return { option, fast: true };
+  }
+
+  return undefined;
+}
+
+/** The ref that selects a row, or its fast sibling. */
+export function modelRefFor(option: DesktopModelOption, fast: boolean) {
+  return {
+    provider: option.provider,
+    id: fast && option.fastMode.kind === "available" ? option.fastMode.id : option.id,
+  };
+}
+
 /** The catalog's name for a session's model; the raw id until the catalog loads. */
 export function modelDisplayName(
   catalog: DesktopCatalog | undefined,
@@ -15,13 +42,11 @@ export function modelDisplayName(
 ): string | undefined {
   if (model === undefined) return undefined;
 
-  const option = catalog?.models.find(
-    (candidate) =>
-      candidate.id === model.id &&
-      (model.provider === undefined || candidate.provider === model.provider),
-  );
+  const selected = selectedModelOption(catalog?.models ?? [], model);
 
-  return option?.name ?? model.id;
+  if (selected === undefined) return model.id;
+
+  return selected.fast ? `${selected.option.name} Fast` : selected.option.name;
 }
 
 export function providerIcon(providerId: string): IconName {

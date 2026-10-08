@@ -56,7 +56,7 @@ let catalog: DesktopCatalog = {
   source: "local",
   providers: [],
   models: [],
-  defaults: { model: { provider: "", id: "" }, thinkingLevel: "off", fast: false },
+  defaults: { model: { provider: "", id: "" }, thinkingLevel: "off" },
 };
 
 let pendingLogin: { resolve(outcome: LoginOutcome): void; reject(error: Error): void } | undefined;

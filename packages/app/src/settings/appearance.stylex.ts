@@ -33,7 +33,7 @@ export const appearanceStyles = create({
     backgroundColor: role.bgInteractiveStrong,
   },
   codeFontPreview: {
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.indicator,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,

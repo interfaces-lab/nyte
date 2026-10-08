@@ -20,11 +20,8 @@ export async function testRenderer(
     pointer = "fine",
     forcePseudoClasses = [],
     forcePseudoSelector = "button",
-    runtimeInjection = false,
   }: {
     pointer?: "fine" | "coarse";
-    /** Inject rules from the bundle at runtime, as the development server does. */
-    runtimeInjection?: boolean;
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
   } = {},
@@ -43,7 +40,6 @@ export async function testRenderer(
       plugins: [
         stylex.rollup({
           devMode: "css-only",
-          runtimeInjection,
           // Electron's Chromium, as the app build targets. Older targets make
           // lightningcss polyfill the tokens' light-dark() with variables only
           // its own color-scheme rules define.

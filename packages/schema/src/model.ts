@@ -415,6 +415,8 @@ export interface Model<TApi extends Api> {
   reasoning: boolean;
   /** Provider-backed request modes available for this exact model. */
   modes?: ModelMode[];
+  /** A catalog entry that stands for its base model in one mode; requests go to `base` with that mode set. */
+  variant?: { mode: ModelMode; base: string };
   /**
    * Maps pi thinking levels to provider/model-specific values.
    * Missing keys use provider defaults. null marks a level as unsupported.
@@ -654,6 +656,7 @@ export const ModelSchema = typed<Model<Api>>()(
     baseUrl: Type.String(),
     reasoning: Type.Boolean(),
     modes: Type.Optional(Type.Array(Type.Enum(MODEL_MODES))),
+    variant: Type.Optional(object({ mode: Type.Enum(MODEL_MODES), base: Type.String() })),
     thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
     promptCache: Type.Optional(ModelPromptCacheSchema),
     input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),

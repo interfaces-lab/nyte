@@ -18,7 +18,7 @@ const styles = create({
     width: "100%",
     marginBlock: 10,
     marginInline: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,

@@ -28,7 +28,7 @@ focusManager.setEventListener((handleFocus) => {
 
 export default function RootLayout() {
   useAppliedAppearance();
-  // A new host means a new cache: another Mac's sessions are not this one's.
+  // A new host means a new cache: another host's sessions are not this one's.
   const [queryClient] = useState(() => new QueryClient());
 
   return (
@@ -81,6 +81,16 @@ function Gate() {
                       : { saved: host.editing.saved, onCancel: cancelEdit }
                   }
                   notice={host.notice}
+                  recovery={undefined}
+                />
+              </html.div>
+            ) : host.kind === "recovery" ? (
+              <html.div style={styles.root}>
+                <ConnectScreen
+                  onConnect={connect}
+                  edit={undefined}
+                  notice={undefined}
+                  recovery={host.recovery}
                 />
               </html.div>
             ) : (
@@ -90,6 +100,8 @@ function Gate() {
                   client: host.client,
                   connection: host.connection,
                   saved: host.saved,
+                  info: host.info,
+                  scope: host.scope,
                   edit,
                   disconnect,
                 }}
@@ -104,7 +116,7 @@ function Gate() {
 }
 
 /**
- * The connected half of the gate. Its own QueryClient means a different Mac can
+ * The connected half of the gate. Its own QueryClient means a different host can
  * never see the previous one's cached sessions, models, or workspaces — the
  * `key` on the call site remounts this when the connection target changes.
  */

@@ -1,5 +1,7 @@
+import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { applyServiceTierPricing } from "../model-pricing.ts";
 import { calculateCost } from "../models.ts";
 import type { Api, JsonValue, Model, Usage } from "../types.ts";
 
@@ -7,6 +9,15 @@ const tokenCount = Type.Number({ minimum: 0 });
 
 const compactResponse = Type.Object({
   output: Type.Array(Type.Object({ type: Type.String({ minLength: 1 }) }), { minItems: 1 }),
+  service_tier: Type.Optional(
+    Type.Union([
+      Type.Literal("auto"),
+      Type.Literal("default"),
+      Type.Literal("flex"),
+      Type.Literal("priority"),
+      Type.Null(),
+    ]),
+  ),
   usage: Type.Optional(
     Type.Object({
       input_tokens: tokenCount,
@@ -35,6 +46,7 @@ export interface OpenAICompactResult {
 export async function readOpenAICompactResponse(
   response: Response,
   model: Model<Api>,
+  requestedServiceTier?: ResponseCreateParamsStreaming["service_tier"],
 ): Promise<OpenAICompactResult> {
   const decoded: unknown = await response.json();
 
@@ -60,6 +72,8 @@ export async function readOpenAICompactResponse(
   };
 
   calculateCost(model, usage);
+  // The endpoint reports the tier it ran at; the request's stands in when it says nothing.
+  applyServiceTierPricing(usage, decoded.service_tier ?? requestedServiceTier, model);
 
   return { data, usage };
 }

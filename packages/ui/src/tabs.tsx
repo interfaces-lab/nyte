@@ -9,8 +9,9 @@ import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 
 const lists = create({
   segmented: {
-    display: "flex",
-    flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
+    display: "grid",
+    gridAutoFlow: { default: "column", '[data-orientation="vertical"]': "row" },
+    gridAutoColumns: "1fr",
     alignItems: "center",
     gap: 0,
     padding: 2,
@@ -51,19 +52,17 @@ const tab = create({
 
 const tabs = create({
   segmented: {
-    flex: "1 1 0",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    minWidth: 0,
     height: button.heightSm,
     paddingInline: button.paddingInlineSm,
     borderStyle: "none",
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": role.bgHover,
+      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
       "[data-active]": role.bgElevated,
     },
     boxShadow: { default: "none", "[data-active]": shadow.shadowSm },
@@ -90,7 +89,7 @@ const tabs = create({
     backgroundColor: "transparent",
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": role.contentInteractivePrimary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
       "[data-active]": role.contentPrimary,
     },
     fontFamily: type.fontSans,
@@ -124,7 +123,7 @@ const tabs = create({
     },
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": role.bgHover,
+      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
       "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
@@ -145,7 +144,7 @@ const tabs = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": role.bgHover,
+      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
       "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },

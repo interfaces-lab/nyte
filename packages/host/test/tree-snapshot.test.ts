@@ -341,6 +341,7 @@ test("without a discard hook a created file moves under the shadow trash", async
 
 test("a path outside the workspace fails the restore before anything moves", async () => {
   const cwd = await workspace({ "a.txt": "x\n" });
+  await writeFile(join(root, "escape.txt"), "outside\n");
   const snapshot = snapshotAt(cwd);
   const from = await treeOf(snapshot);
   const outcome = await snapshot.restoreTree({
@@ -349,6 +350,7 @@ test("a path outside the workspace fails the restore before anything moves", asy
     paths: [{ path: "../escape.txt", kind: "added", added: 1, removed: 0, patch: "" }],
   });
   assert.equal(outcome.kind, "failed");
+  assert.equal(await readFile(join(root, "escape.txt"), "utf8"), "outside\n");
 });
 
 test(".gitignore'd files are excluded from the tree", async () => {

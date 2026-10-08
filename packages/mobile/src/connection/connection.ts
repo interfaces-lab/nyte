@@ -128,7 +128,7 @@ export function parseConnection(value: Connection): Connection {
   }
 
   if (url.protocol !== "https:" && !(url.protocol === "http:" && isPrivateHost(url.hostname))) {
-    throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
+    throw new Error("Use HTTPS, or HTTP with the computer's local or Tailscale address.");
   }
 
   if (url.username || url.password || url.search || url.hash)
@@ -176,26 +176,26 @@ export function parseConnectionPayload(text: string): Connection {
 export function describeHostError(cause: unknown): string {
   if (cause instanceof NyteWireError) {
     if (cause.code === "unauthorized" || cause.code === "forbidden")
-      return `Your Mac refused the token. Scan a new code from ${SHARE_LOCATION}.`;
+      return `The host refused the token. Scan a new code from ${SHARE_LOCATION}, or use the current token from nyte serve.`;
 
     if (cause.code === "unknown_session") return "This conversation is no longer available.";
 
-    if (cause.code === "closed") return "Nyte is closed on your Mac.";
+    if (cause.code === "closed") return "Nyte is closed on the host.";
 
     // The one error a version difference produces: the app asked for something
-    // this Mac's Nyte does not serve yet.
+    // this host's Nyte does not serve yet.
     if (cause.code === "unknown_operation")
-      return "Your Mac is running an older Nyte than this app. Update it there.";
+      return "The host is running an older Nyte than this app. Update it there.";
 
-    return "Your Mac couldn't complete the request.";
+    return "The host couldn't complete the request.";
   }
 
   if (cause instanceof NyteTransportError) {
     switch (cause.failure.kind) {
       case "network":
-        return "Couldn't reach your Mac. Check the address and that sharing is on.";
+        return "Couldn't reach the host. Check the address and that sharing is on.";
       case "disconnected":
-        return "The connection to your Mac dropped.";
+        return "The connection to the host dropped.";
       case "bad_status":
       case "bad_content_type":
       case "bad_body":
@@ -208,5 +208,5 @@ export function describeHostError(cause: unknown): string {
     }
   }
 
-  return "Couldn't reach your Mac. Check that Nyte is running.";
+  return "Couldn't reach the host. Check that Nyte is running.";
 }

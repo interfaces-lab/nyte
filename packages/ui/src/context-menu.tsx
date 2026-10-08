@@ -7,7 +7,6 @@ import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { Icon } from "./icon.tsx";
 import {
-  MENU_COLLISION,
   MenuItemBody,
   menuItemStyle,
   menuStyles,
@@ -32,7 +31,7 @@ export function ContextMenuContent({
   sideOffset,
   alignOffset,
   anchor,
-  collisionAvoidance = MENU_COLLISION,
+  collisionAvoidance,
   collisionPadding = 8,
   tint,
   xstyle,
@@ -86,12 +85,12 @@ export function ContextMenuContent({
 }
 
 export function ContextMenuSubContent({
-  side = "right",
-  align = "start",
+  side,
+  align,
   sideOffset = 6,
   alignOffset,
   anchor,
-  collisionAvoidance = MENU_COLLISION,
+  collisionAvoidance,
   collisionPadding = 8,
   tint,
   xstyle,

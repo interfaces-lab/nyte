@@ -1,12 +1,15 @@
 /**
  * The devices the Nyte account enrolled to reach this Mac, as a card of their
- * own under the Mac's row. Revoking one refuses it here at once.
+ * own under the Mac's row. Revoking one refuses it here at once and ends the
+ * Nyte sign-in that enrolled it.
  */
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import type { ConnectBridge, ConnectDevice } from "../bridge.ts";
 import { settings } from "../theme/schema.stylex.ts";
@@ -34,9 +37,7 @@ function deviceDetail(device: ConnectDevice, view: LinkedView): string {
     year: "numeric",
   })}`;
 
-  return view.lease.kind === "current" && !device.authorized
-    ? `Not authorized yet · ${added}`
-    : added;
+  return view.lease.kind === "current" && !device.authorized ? `Not active yet · ${added}` : added;
 }
 
 export function ConnectDevices({
@@ -46,6 +47,9 @@ export function ConnectDevices({
   readonly view: LinkedView;
   readonly connect: ConnectBridge;
 }): ReactElement | null {
+  const [target, setTarget] = useState<ConnectDevice>();
+  const [confirming, setConfirming] = useState(false);
+
   const revoke = useConnectAction(
     (deviceId: string) => connect.revokeDevice({ deviceId }),
     "Couldn’t revoke the device",
@@ -71,14 +75,29 @@ export function ConnectDevices({
               variant="ghost"
               loading={revoke.isPending && revoke.variables === device.id}
               disabled={revoke.isPending}
-              onClick={() => revoke.mutate(device.id)}
+              onClick={() => {
+                setTarget(device);
+                setConfirming(true);
+              }}
             >
-              Revoke
+              Revoke…
               <span {...props(srOnly)}>{` ${device.name}`}</span>
             </Button>
           }
         />
       ))}
+      {target !== undefined && (
+        <ConfirmDialog
+          open={confirming}
+          pending={revoke.isPending}
+          title="Revoke Device"
+          description={`${target.name} loses access to this Mac right away, and the Nyte sign-in used to connect it ends.`}
+          confirmLabel="Revoke Device"
+          pendingLabel="Revoking…"
+          onOpenChange={setConfirming}
+          onConfirm={() => revoke.mutate(target.id, { onSuccess: () => setConfirming(false) })}
+        />
+      )}
     </section>
   );
 }

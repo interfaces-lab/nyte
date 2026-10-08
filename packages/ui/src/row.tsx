@@ -60,11 +60,16 @@ const styles = create({
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
       ":focus-visible": role.contentPrimary,
       ":disabled": role.contentDisabled,
+      "[data-disabled]": role.contentDisabled,
     },
     font: "inherit",
     textDecoration: "none",
     appearance: "none",
-    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
+    cursor: {
+      default: appearance.cursorInteractive,
+      ":disabled": "default",
+      "[data-disabled]": "default",
+    },
   },
   selected: {
     "--_row-fill": role.bgInteractiveSecondaryTranslucent,
@@ -83,13 +88,13 @@ const styles = create({
   revealActions: {
     "--_row-actions-display": {
       default: "none",
-      ":hover": "inline-flex",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
       ":focus-within": "inline-flex",
       "@media (hover: none), (pointer: coarse)": "inline-flex",
     },
     "--_row-actions-opacity": {
       default: 0,
-      ":hover": 1,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
       ":focus-within": 1,
       "@media (hover: none), (pointer: coarse)": 1,
     },
@@ -276,8 +281,6 @@ export function Row({
         onClick: activateRow,
       }),
       "data-slot": "row",
-      "data-variant": variant,
-      "data-selected": selected ? "" : undefined,
       ...mergeStyleProps(
         props(
           styles.root,
@@ -292,6 +295,7 @@ export function Row({
         style,
       ),
     },
+    state: { variant, selected },
   });
 }
 

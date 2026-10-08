@@ -17,7 +17,7 @@ import {
   accountReport,
   resolveRendererFile,
 } from "../account/policy.ts";
-import { ACCOUNT_SCHEMES, accountScheme } from "../account/scheme.ts";
+import { accountScheme } from "../account/scheme.ts";
 import { AccountCancelled } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
 
@@ -39,7 +39,6 @@ describe("account scheme", () => {
     expect(accountScheme({ packaged: false, updateTest: true })).toBe("nyte-desktop-dev");
     expect(accountScheme({ packaged: true, updateTest: false })).toBe("nyte-desktop");
     expect(accountScheme({ packaged: true, updateTest: true })).toBe("nyte-desktop-test");
-    expect(ACCOUNT_SCHEMES.production).not.toBe(ACCOUNT_SCHEMES.updateTest);
   });
 });
 
@@ -308,7 +307,7 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
       configFile: false,
       envDir: false,
       logLevel: "silent",
-      plugins: [deferredClerk(), stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+      plugins: [deferredClerk(), stylex.rollup({ devMode: "css-only" })],
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       oxc: { jsx: { development: false } },
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },

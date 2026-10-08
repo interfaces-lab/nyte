@@ -32,6 +32,20 @@ Use `nyte --resume` in a terminal to continue the latest conversation.
 Installed copies can update with `nyte update`. Run `nyte update --models` to refresh the model catalog without updating Nyte. The update command installs the new
 release's docs beside the executable when the release archive carries them.
 
+## Serve this machine
+
+`nyte serve` runs a host without the terminal interface, so a phone or browser can use it:
+
+```sh
+nyte account login
+nyte serve --workspace ~/code/app --trust --account
+```
+
+`nyte account login` links the host to your Nyte account. Approve it from a browser on any
+device. `nyte serve` serves until you press Ctrl-C. `nyte serve --help` and `nyte account --help`
+list the flags. The [remote access guide](https://nyte.sh/docs/remote-access) covers connecting
+a device.
+
 ## Delegated tasks
 
 The agent waits for a delegated task by default. It can start independent work in the

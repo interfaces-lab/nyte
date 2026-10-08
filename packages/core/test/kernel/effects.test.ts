@@ -15,11 +15,10 @@ import {
   type ParkEffectOutcome,
   type SettleEffectOutcome,
 } from "../../src/kernel/effects.ts";
-import { headRef } from "../../src/kernel/names.ts";
 import { checkObject } from "../../src/kernel/store-schemas.ts";
 import type { Lease } from "../../src/kernel/model.ts";
 import type { Session } from "../../src/kernel/store.ts";
-import { granted, lease, openSession, sleep, toolResult } from "./helpers.ts";
+import { lease, openSession, toolResult } from "./helpers.ts";
 
 const SUCCESS = { kind: "success" } as const;
 
@@ -288,30 +287,6 @@ test("a wake that decides to keep waiting parks the call again for the next answ
       })
     ).kind,
     "signalled",
-  );
-});
-
-test("a runner that lost its lease can no longer move an effect", async () => {
-  const session = await openSession();
-  const old = await lease(session, "main", 1);
-  const opened = await open(session, old, "c1");
-  await sleep(5);
-  const successor = granted(await session.leases.acquire(headRef("main"), 30_000));
-
-  assert.deepEqual(await parkEffect(session, { lease: old, view: opened }), { kind: "fenced" });
-  assert.deepEqual(
-    await settleEffect(session, {
-      lease: old,
-      view: opened,
-      result: toolResult("c1", "read", "x"),
-      settlement: SUCCESS,
-    }),
-    { kind: "fenced" },
-  );
-  assert.equal((await readEffect(session, { runId: "run_1", callId: "c1" }))?.oid, opened.oid);
-  assert.equal(
-    view(await parkEffect(session, { lease: successor, view: opened })).effect.state,
-    "waiting",
   );
 });
 

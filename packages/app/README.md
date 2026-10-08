@@ -16,7 +16,7 @@ Other modules are imported by path through the `./*` export, for example `@nyte-
 
 ## Web
 
-`pnpm --dir packages/app build` writes a static SPA to `dist`. At `https://app.nyte.sh`, sign in with your Nyte account and pick a linked desktop. The browser is a client: its workspace and edits belong to that desktop. Phones and browsers are never connection targets.
+`pnpm --dir packages/app build` writes a static SPA to `dist`. Production serves it at `https://app.nyte.sh`. The app signs in with your Nyte account and lists linked hosts: the desktop app, or `nyte serve` on another computer. The browser is a client: its folders and edits belong to that host. Phones and browsers are never connection targets. User steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
 
 Set these public build variables in Vercel, using the same Clerk instance and broker as desktop and mobile:
 
@@ -29,7 +29,9 @@ Add `https://app.nyte.sh`, `http://localhost:5179`, and `http://127.0.0.1:5179` 
 
 ### Connections
 
-The account picker lists linked desktops and their broker-reported online state. Enrollment sends a random device token's digest, waits for the desktop's lease to accept it, and connects through the broker's relay. The token, binding, and owner-scoped client ID live only in `sessionStorage`. Reloading resumes that credential without enrollment. Each tab has its own client ID so tabs do not replace one another's devices.
+The account picker lists linked hosts and their broker-reported online state. Enrollment sends a random device token's digest, waits for the host's lease to accept it, and connects through the broker's relay. The token, binding, and owner-scoped client ID live only in `sessionStorage`. Reloading resumes that credential without enrollment. Each tab has its own client ID so tabs do not replace one another's devices.
+
+A desktop share keeps a folder cursor on the host, and the browser moves it with `workspace.select`. A host that reports `workspaces: registry`, such as `nyte serve`, has no cursor. The browser picks one of its registered folders and keeps the choice in `sessionStorage`, per host identity and principal. A folder that isn't trusted yet waits for an admin to trust it. The first message starts the chat through `environment.start`, recorded in IndexedDB before it is sent, so a retry or reload asks about the same request. A host that advertises an identity is pinned per route in `localStorage` on first pairing. A different key at that route is refused until Pair as New Host, and the pin outlives tokens and sign-outs.
 
 Switch Desktop weakly releases the bearer and reloads into the picker with fresh router and query state. Sign Out also asks the broker to revoke the device and ends the Clerk session. Both forget the credential even when the desktop is offline. A Clerk owner change also drops the connection and reloads, keeping the previous desktop's UI state out of the next account. Closing a tab forgets it client-side, but does not guarantee server revocation, and browser session restoration may restore it. There is no unload release: browsers cannot reliably distinguish a tab close from a reload, and releasing on both breaks resume.
 

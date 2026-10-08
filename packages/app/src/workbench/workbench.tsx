@@ -384,6 +384,7 @@ function PanelContent({
           surface={tab.id}
           visible={visible}
           historyVisible={sidebarVisible}
+          onToggleHistory={onToggleSidebar}
           url={tab.url}
           onUrlChange={(url) =>
             workbenchController.actions.updateTab({
@@ -592,7 +593,7 @@ function WorkbenchViewHost({
       inert={panelHidden ? true : undefined}
       {...props(
         workbenchStyles.panel,
-        workbenchStyles.edge,
+        panelVisible && workbenchStyles.edge,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
         panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,

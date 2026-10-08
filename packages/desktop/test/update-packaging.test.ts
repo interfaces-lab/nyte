@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";
 
 const desktop = fileURLToPath(new URL("../", import.meta.url));
@@ -26,9 +28,34 @@ function packaging({
   });
 }
 
+const Names = Type.Object({
+  productName: Type.String(),
+  executableName: Type.String(),
+  extraMetadata: Type.Object({ name: Type.String(), productName: Type.String() }),
+  linux: Type.Object({ executableName: Type.String() }),
+  win: Type.Object({ executableName: Type.String() }),
+});
+
+/** The product name, once every installer names its executable after it and none inherits the `@scope/` package name. */
+function installerName(stdout: string): string {
+  const names = Value.Parse(Names, JSON.parse(stdout));
+  expect(names.productName).toMatch(/^[A-Za-z][A-Za-z0-9 ]*$/u);
+  expect([
+    names.executableName,
+    names.extraMetadata.name,
+    names.extraMetadata.productName,
+    names.linux.executableName,
+    names.win.executableName,
+  ]).toEqual(Array.from({ length: 5 }, () => names.productName));
+
+  return names.productName;
+}
+
 describe("Sparkle packaging boundary", () => {
   test("local builds cannot fall back to the production key", () => {
-    expect(packaging({ local: "1" }).status).not.toBe(0);
+    const result = packaging({ local: "1" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("NYTE_SPARKLE_PUBLIC_KEY");
   });
 
   test("macOS cannot ship an updater without a valid public key", () => {
@@ -47,13 +74,9 @@ describe("Sparkle packaging boundary", () => {
     const result = packaging({ key: publicKey });
     expect(result.status, result.stderr).toBe(0);
     const config: unknown = JSON.parse(result.stdout);
+    installerName(result.stdout);
     expect(config).toMatchObject({
       appId: "ai.nyte.desktop",
-      productName: "Nyte",
-      executableName: "Nyte",
-      extraMetadata: { name: "Nyte", productName: "Nyte" },
-      linux: { executableName: "Nyte" },
-      win: { executableName: "Nyte" },
       mac: {
         hardenedRuntime: true,
         forceCodeSigning: true,
@@ -73,11 +96,12 @@ describe("Sparkle packaging boundary", () => {
     const result = packaging({ key: publicKey, local: "1" });
     expect(result.status, result.stderr).toBe(0);
     const config: unknown = JSON.parse(result.stdout);
+    // A shared product name would install the test build over the real app.
+    expect(installerName(result.stdout)).not.toBe(
+      installerName(packaging({ key: publicKey }).stdout),
+    );
     expect(config).toMatchObject({
       appId: "ai.nyte.desktop.update-test",
-      productName: "Nyte Update Test",
-      executableName: "Nyte Update Test",
-      extraMetadata: { name: "Nyte Update Test", productName: "Nyte Update Test" },
       mac: {
         identity: "-",
         notarize: false,

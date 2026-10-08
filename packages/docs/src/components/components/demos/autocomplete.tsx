@@ -34,12 +34,13 @@ export function AutocompleteDemo() {
   return (
     <Autocomplete
       items={groups}
-      value={search}
-      autoHighlight
-      onValueChange={setSearch}
-      onOpenChange={(open) => {
-        if (!open) setSearch("");
+      value={model}
+      onValueChange={(next) => {
+        if (next !== null) setModel(next);
       }}
+      inputValue={search}
+      onInputValueChange={setSearch}
+      autoHighlight
     >
       <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
       <AutocompleteContent>
@@ -51,12 +52,7 @@ export function AutocompleteDemo() {
               <AutocompleteGroupLabel>{group.label}</AutocompleteGroupLabel>
               <AutocompleteCollection>
                 {(item: string) => (
-                  <AutocompleteItem
-                    key={item}
-                    value={item}
-                    selected={item === model}
-                    onClick={() => setModel(item)}
-                  >
+                  <AutocompleteItem key={item} value={item}>
                     {item}
                   </AutocompleteItem>
                 )}

@@ -131,6 +131,8 @@ export interface AccountLimits {
 /** Authentication, HTTP transport, and lifecycle callbacks shared by provider requests. */
 export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
+  /** Request the model's advertised fast inference mode; each API maps it to its own field. */
+  fast?: boolean;
   /** Explicit parent context for telemetry produced by this logical request. */
   telemetryContext?: TelemetryContext;
   apiKey?: string;
@@ -301,8 +303,6 @@ export interface SimpleStreamOptions extends StreamOptions {
   /** Provider-neutral tool selection for simple requests. Default: "auto". */
   toolChoice?: ToolChoice;
   reasoning?: ThinkingLevel;
-  /** Request the selected model's advertised fast inference mode. */
-  fast?: boolean;
   /** Ask a capable provider to return a durable handle and continue the request asynchronously. */
   deferred?: boolean | { window?: "15m" | "1h" | "24h" };
   /** Custom token budgets for thinking levels (token-based providers only) */

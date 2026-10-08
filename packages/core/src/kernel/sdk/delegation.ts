@@ -13,7 +13,6 @@ import { Value } from "typebox/value";
 import { definePlugin, type Plugin } from "../../plugins/types.ts";
 import {
   DEFAULT_TASK_MODELS,
-  FAST_MODEL_SUFFIX,
   awaitedAgents,
   satisfied,
   subagentsPlugin,
@@ -48,7 +47,6 @@ import {
 } from "./types.ts";
 
 const SYSTEM_FACT = "system";
-const FAST_FACT = "fast";
 
 type Request = StoredDelegation;
 
@@ -130,11 +128,6 @@ export function createDelegation(input: {
                 if (Value.Check(Type.String(), text)) {
                   api.prompt.add((draft) => draft.set("delegate-system", { text, order: 1 }));
                 }
-
-                if ((await pool.readFact(pooled.session, FAST_FACT)) !== true) return;
-                api.hook("before_request", (event) =>
-                  event.step === "assistant" ? { streamOptions: { fast: true } } : undefined,
-                );
               },
             }),
           ];
@@ -572,23 +565,16 @@ export function createDelegation(input: {
       });
 
       input.signal?.throwIfAborted();
+
       const named = (name: string) =>
         available.find((candidate) => `${candidate.provider}/${candidate.id}` === name);
-      const exact = input.model === undefined ? undefined : named(input.model);
-      const fastModel =
-        exact === undefined && input.model?.endsWith(FAST_MODEL_SUFFIX) === true
-          ? named(input.model.slice(0, -FAST_MODEL_SUFFIX.length))
-          : undefined;
-      const fast = fastModel?.modes?.includes("fast") === true;
+
       const choice =
         input.model === undefined
           ? DEFAULT_TASK_MODELS.map((entry) => ({ ...entry, model: named(entry.model) })).find(
               (entry) => entry.model !== undefined,
             )
-          : {
-              model: exact ?? (fast ? fastModel : undefined),
-              thinkingLevel: DEFAULT_TASK_MODELS[0].thinkingLevel,
-            };
+          : { model: named(input.model), thinkingLevel: DEFAULT_TASK_MODELS[0].thinkingLevel };
 
       if (choice?.model === undefined) {
         throw new Error(
@@ -597,6 +583,7 @@ export function createDelegation(input: {
             : `Subagent model is unavailable: ${input.model}. Choose an enabled model or connect its provider.`,
         );
       }
+
       const { model } = choice;
       const thinkingLevel = input.thinkingLevel ?? choice.thinkingLevel;
 
@@ -612,8 +599,6 @@ export function createDelegation(input: {
       initialFacts[NAME_FACT] = input.title;
 
       if (input.system !== undefined) initialFacts[SYSTEM_FACT] = input.system;
-
-      if (fast) initialFacts[FAST_FACT] = true;
       input.signal?.throwIfAborted();
 
       const session = await options.store.create({

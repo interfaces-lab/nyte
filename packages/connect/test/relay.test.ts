@@ -5,6 +5,7 @@ import {
   RELAY_FRAME_CHARS,
   RELAY_PING,
   RELAY_PONG,
+  RELAY_WINDOW_BYTES,
   RelayPath,
   decodeChunk,
   encodeChunks,
@@ -110,9 +111,14 @@ describe("frames", () => {
     expect(parseDesktopFrame(JSON.stringify(open))).toBeUndefined();
     expect(parseRelayFrame(RELAY_PONG)).toEqual({ t: "pong" });
     expect(parseDesktopFrame(RELAY_PING)).toEqual({ t: "ping" });
-    expect(
-      parseDesktopFrame(JSON.stringify({ t: "head", ch, status: 204, headers: {} })),
-    ).toBeDefined();
+
+    for (const frame of [
+      { t: "head", ch, status: 204, headers: {} },
+      { t: "head", ch, status: 200, headers: { "cache-control": "no-store" } },
+      { t: "end", ch },
+      { t: "credit", ch, bytes: RELAY_WINDOW_BYTES },
+    ])
+      expect(parseDesktopFrame(JSON.stringify(frame))).toEqual(frame);
   });
 
   it.each([
@@ -124,7 +130,7 @@ describe("frames", () => {
       { t: "head", ch, status: 200, headers: { "cache-control": "a\r\nb" } },
     ],
     ["a short channel id", { t: "end", ch: "abc" }],
-    ["credit past a window", { t: "credit", ch, bytes: 262_145 }],
+    ["credit past a window", { t: "credit", ch, bytes: RELAY_WINDOW_BYTES + 1 }],
     ["an extra field", { t: "end", ch, extra: true }],
   ])("refuses %s from a desktop", (_, frame) => {
     expect(parseDesktopFrame(JSON.stringify(frame))).toBeUndefined();
@@ -183,7 +189,7 @@ describe("headers and refusals", () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({
       ok: false,
-      error: { code: "closed", message: "This Mac is not connected" },
+      error: { code: "closed", message: expect.any(String) },
     });
   });
 });

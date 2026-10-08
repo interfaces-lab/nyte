@@ -1,5 +1,6 @@
 import {
   createAssistantMessageEventStream,
+  providerIdentity,
   type Api,
   type AssistantMessage,
   type Context,
@@ -23,12 +24,15 @@ export function failedAssistant(
   cause: unknown,
   stopReason: "error" | "aborted",
 ): AssistantMessage {
+  // History carries the provider's identity for the model, as its answers do.
+  const identity = providerIdentity(model);
+
   return {
     role: "assistant",
     content: [],
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
+    api: identity.api,
+    provider: identity.provider,
+    model: identity.model,
     usage: {
       input: 0,
       output: 0,

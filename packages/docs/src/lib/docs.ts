@@ -25,7 +25,7 @@ interface Section {
 
 /* Editorial order. Every MDX file under content/docs appears here exactly once. */
 const outline: Section[] = [
-  { files: ["index", "build/composition"] },
+  { files: ["index", "remote-access", "build/composition"] },
   { label: "Kernel", source: KERNEL, files: ["kernel/architecture", "kernel/life-of-a-message"] },
   {
     label: "Runtime",

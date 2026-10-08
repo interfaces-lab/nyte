@@ -1,7 +1,8 @@
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
+import type { SearchBarCommands } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { css, html } from "react-strict-dom";
@@ -9,6 +10,7 @@ import type { SessionInfo } from "@nyte-ai/protocol";
 import { useHost } from "../connection/host-context.tsx";
 import { SessionRow } from "../chat/session-row.tsx";
 import { Composer } from "../chat/composer.tsx";
+import { WorkspacePicker } from "../chat/workspace-menu.tsx";
 import {
   hasFailed,
   isActive,
@@ -23,6 +25,7 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { SessionRowsSkeleton } from "../ui/skeleton.tsx";
 import { FilterGrid } from "./filter-grid.tsx";
+import { AccountButton } from "./account-button.tsx";
 import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
@@ -33,7 +36,7 @@ type Filter = (typeof filterOrder)[number];
 
 const filterLabels: Record<Filter, string> = {
   all: "All Agents",
-  attention: "Needs you",
+  attention: "Needs attention",
   working: "Working",
   pinned: "Pinned",
 };
@@ -83,10 +86,15 @@ function SessionSection({
 
 export function InboxScreen() {
   const theme = useTheme();
-  const { client, connection } = useHost();
+  const { client } = useHost();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const searchBar = useRef<SearchBarCommands>(null);
+  const workspacePending = useRef<Promise<void> | undefined>(undefined);
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const [creating, setCreating] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { list, busy, error, refresh, reload, more } = useSessionList(client, search);
   // A pull is the only load that blanks the rows, so the spinner belongs to it
@@ -135,7 +143,7 @@ export function InboxScreen() {
 
   // Hiding the filter cards also hides the only way back out of a filter, so
   // the list falls back to showing everything while they are off.
-  const activeFilter = filterCards ? filter : "all";
+  const activeFilter = filterCards && !searchActive ? filter : "all";
 
   const visible = groups.filter(
     (group) =>
@@ -156,27 +164,58 @@ export function InboxScreen() {
   useMountEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(searchTimer.current);
+    };
   });
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack.Toolbar placement="left">
+      <Stack.Screen options={{ title: "Inbox" }} />
+      <AccountButton />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="magnifyingglass"
+          accessibilityLabel="Search agents"
+          onPress={() => searchBar.current?.focus()}
+          separateBackground
+        />
         <Stack.Toolbar.View>
-          <GlassButton
-            label={`${connection.name} settings`}
-            systemImage="laptopcomputer"
-            iconOnly
-            href="/settings"
-          />
+          <View style={{ width: controls.touchTarget, height: controls.touchTarget }}>
+            <WorkspacePicker
+              client={client}
+              toolbar
+              busy={creating}
+              onSettings={() => router.navigate("/settings")}
+              onSelecting={(pending) => {
+                workspacePending.current = pending;
+                void pending
+                  .finally(() => {
+                    if (workspacePending.current === pending) workspacePending.current = undefined;
+                  })
+                  .catch(() => undefined);
+              }}
+              onWorkspaceChange={() => {
+                setWorkspaceEpoch((epoch) => epoch + 1);
+                reload();
+              }}
+            />
+          </View>
         </Stack.Toolbar.View>
       </Stack.Toolbar>
-      <Stack.Toolbar placement="right"></Stack.Toolbar>
       <Stack.SearchBar
+        ref={searchBar}
         placement="automatic"
         allowToolbarIntegration={false}
         hideWhenScrolling
         placeholder="Search agents"
+        onFocus={() => setSearchActive(true)}
+        onCancelButtonPress={() => {
+          clearTimeout(searchTimer.current);
+          setSearch("");
+          setSearchActive(false);
+        }}
         onChangeText={(event) => {
           const text = event.nativeEvent.text.trim();
           clearTimeout(searchTimer.current);
@@ -188,7 +227,7 @@ export function InboxScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           paddingTop: spacing.xs,
-          paddingBottom: controls.composerBar + insets.bottom + spacing.xl,
+          paddingBottom: (searchActive ? 0 : controls.composerBar) + insets.bottom + spacing.xl,
         }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -205,14 +244,14 @@ export function InboxScreen() {
           />
         }
       >
-        {list.kind === "ready" && search === "" && filterCards ? (
+        {list.kind === "ready" && !searchActive && search === "" && filterCards ? (
           <FilterGrid
             cards={[
               {
                 id: "all",
                 label: filterLabels.all,
-                icon: "square.stack",
-                tint: theme.muted,
+                icon: "paperplane",
+                tint: theme.agentAccent,
                 count: sessions.length,
               },
               {
@@ -233,7 +272,7 @@ export function InboxScreen() {
                 id: "pinned",
                 label: filterLabels.pinned,
                 icon: "pin",
-                tint: theme.success,
+                tint: theme.pinnedAccent,
                 count: pinned.length,
               },
             ]}
@@ -268,8 +307,8 @@ export function InboxScreen() {
                 search !== ""
                   ? "Try another name."
                   : activeFilter === "all"
-                    ? "Describe a task below. Your Mac runs it and it shows up here."
-                    : "Other agents are hidden by this filter."
+                    ? "Send a message to start a chat."
+                    : undefined
               }
               systemImage="square.stack"
             >
@@ -283,7 +322,7 @@ export function InboxScreen() {
             visible.map((group, index) => (
               <SessionSection
                 key={group.title ?? "settled"}
-                title={group.title}
+                title={group.title ?? "Conversations"}
                 sessions={group.sessions}
                 now={now}
                 first={index === 0}
@@ -310,13 +349,24 @@ export function InboxScreen() {
           </html.p>
         )}
       </ScrollView>
-      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 1 }}>
+      <KeyboardStickyView
+        pointerEvents={searchActive ? "none" : "auto"}
+        style={{
+          display: searchActive ? "none" : "flex",
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1,
+        }}
+      >
         <Composer
           target={{ kind: "new" }}
           placeholder="Ask anything"
-          backdrop="background"
           gutters={{ left: insets.left + spacing.gutter, right: insets.right + spacing.gutter }}
-          onWorkspaceChange={reload}
+          workspacePending={workspacePending}
+          workspaceEpoch={workspaceEpoch}
+          onBusyChange={setCreating}
         />
       </KeyboardStickyView>
     </View>

@@ -105,6 +105,8 @@ async function fixture(active: boolean) {
       find: () => Promise.resolve({ active: 0, total: 0 }),
       cancelDownload: () => undefined,
       login: () => undefined,
+      history: async () => [],
+      forgetHistory: async () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,
@@ -207,7 +209,7 @@ test("desktop retains the SDK summary cause under its public ID and shares IPC e
 
 test("inactive summary and missing-head refusal add no desktop diagnostics", async () => {
   const { host, sessionId, diagnostics } = await fixture(false);
-  const retained = ipcFailure(new Error("existing diagnostic"));
+  ipcFailure(new Error("existing diagnostic"));
   const before = [...ipcDiagnostics];
   assert.deepEqual(await host.call(1, "heads.move", { sessionId, to: null, summary: {} }), {
     kind: "failed",
@@ -217,7 +219,6 @@ test("inactive summary and missing-head refusal add no desktop diagnostics", asy
   assert.deepEqual(await host.call(1, "heads.move", { sessionId, head: "missing", to: null }), {
     kind: "not_found",
   });
-  assert.ok(retained.correlationId);
   assert.deepEqual(diagnostics, []);
   assert.deepEqual([...ipcDiagnostics], before);
 });

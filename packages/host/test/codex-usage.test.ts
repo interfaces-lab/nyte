@@ -193,7 +193,7 @@ test("a priced model is costed from the catalog", async () => {
   const result = await read(homeDir);
   assert.equal(result.unpricedRecords, 0);
   // 30 uncached at $2/M, 20 output at $10/M, 60 cache reads at $0.2/M.
-  assert.ok(result.summary.total.cost.total > 0);
+  assert.ok(Math.abs(result.summary.total.cost.total - 0.000272) < 1e-12);
 });
 
 test("a malformed line is counted, not fatal", async () => {

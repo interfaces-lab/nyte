@@ -40,8 +40,6 @@ const PREVIEW_LINES = 5;
 
 const PREVIEW_CHARS = 2000;
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 const MONO = {
   margin: 0,
   fontFamily: type.fontMono,
@@ -57,7 +55,7 @@ const styles = create({
   panel: { paddingTop: 4 },
   body: {
     position: "relative",
-    overflow: "hidden",
+    overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
@@ -95,9 +93,19 @@ const styles = create({
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    "--_icon-default": { default: "inline-flex", ":hover": { [HOVER]: "none" } },
-    "--_icon-hover": { default: "none", ":hover": { [HOVER]: "inline-flex" } },
-    "--_actions": { default: 0, ":hover": 1, ":focus-within": 1 },
+    "--_icon-default": {
+      default: "inline-flex",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+    },
+    "--_icon-hover": {
+      default: "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+    },
+    "--_actions": {
+      default: 0,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":focus-within": 1,
+    },
   },
   headerRow: { position: "relative", display: "flex", minWidth: 0 },
   header: {
@@ -145,7 +153,7 @@ const styles = create({
     width: "100%",
     maxHeight: `calc(${String(PREVIEW_LINES)} * ${type.leadingSm} + 6px)`,
     paddingTop: 6,
-    overflow: "hidden",
+    overflow: "clip",
     cursor: appearance.cursorInteractive,
     maskImage: {
       default: null,

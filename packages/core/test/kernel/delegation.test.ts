@@ -7,7 +7,13 @@
  */
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
-import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import {
+  contentText,
+  createAssistantMessageEventStream,
+  withFastVariants,
+  type Api,
+  type Model,
+} from "@nyte-ai/ai";
 import { getCurrentTools, type ToolCall } from "@nyte-ai/schema";
 import {
   isTerminalPhase,
@@ -39,7 +45,6 @@ import { definePlugin } from "../../src/plugins/index.ts";
 import {
   assistant,
   call,
-  granted,
   drain,
   localOptions,
   message,
@@ -65,6 +70,14 @@ const model: Model<Api> = {
   modes: ["fast"],
 };
 const MODEL = `${model.provider}/${model.id}`;
+/** The catalog as a host hands it over: the fast sibling beside its base. */
+const catalog = withFastVariants([model]);
+const models = {
+  getModels: () => catalog,
+  getModel: (provider: string, id: string) =>
+    catalog.find((candidate) => candidate.provider === provider && candidate.id === id),
+  getAvailable: async () => catalog,
+};
 const poll = { timeout: 5_000, interval: 10 };
 
 type RefUpdateHook = (input: {
@@ -127,7 +140,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
     completions: string[];
     fast: boolean | undefined;
   }[] = [];
-  const streamFn: StreamFn = (_model, context, options) => {
+  const streamFn: StreamFn = (model, context, options) => {
     const messages = context.messages;
     const isCompletion = (message: (typeof messages)[number]) =>
       message.role === "user" && contentText(message.content).startsWith("Background ");
@@ -140,7 +153,8 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       text,
       tools: getCurrentTools(context.messages).map((tool) => tool.name),
       completions: messages.filter(isCompletion).map((message) => contentText(message.content)),
-      fast: options?.fast,
+      // The host receives the selected model; the ai boundary lowers a fast sibling on the way out.
+      fast: model.variant?.mode === "fast",
     });
     const result = tail.findLast((message) => message.role === "toolResult");
     const command = /^do (\S+) (.*)$/su.exec(text);
@@ -184,11 +198,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
     }),
     streamFn,
     model,
-    models: {
-      getModels: () => [model],
-      getModel: () => model,
-      getAvailable: async () => [model],
-    },
+    models,
     ...localOptions(cwd, [
       definePlugin({
         id: "delegation-test-tools",
@@ -246,6 +256,16 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       const said = parts.findLast((item) => item.kind === "assistant");
       assert.ok(said?.kind === "assistant");
       return { part, said: said.text };
+    },
+    /** Another host on the same store: its writes are not ordered behind this host's. */
+    peer() {
+      return createNyte({
+        store: openStore(path),
+        streamFn,
+        model,
+        models,
+        ...localOptions(cwd),
+      });
     },
     async child() {
       const children = await nyte.sessions.list({ parent });
@@ -618,7 +638,7 @@ test("a failed child publication abandons its prepared delegation request", asyn
   }
 });
 
-test("an agent created with a -fast model asks for fast mode on every request", async () => {
+test("an agent created with a -fast model runs every request on the fast sibling", async () => {
   const f = await fixture();
   try {
     await f.command("create", { title: "quick", model: `${MODEL}-fast` });
@@ -760,11 +780,10 @@ test("a keyed participant receipt loss abandons the unpublished child request", 
       key: "same-request",
     });
     await within(updateEntered.promise);
-    const winner = await f.nyte.messages.send({
-      sessionId: child.sessionId,
-      content: "winning request",
-      key: "same-request",
-    });
+    const peer = await f.peer();
+    const winner = await peer.messages
+      .send({ sessionId: child.sessionId, content: "winning request", key: "same-request" })
+      .finally(() => peer.close());
     releaseUpdate.resolve();
     const lost = await losing;
     expect(new Set([winner.change, lost.change]).size).toBe(1);
@@ -1243,80 +1262,4 @@ test("one chain budget covers two outstanding children and user input starts a f
   await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("done");
   expect(script.calls).toBe(3);
-});
-
-test("two steps racing one authorization publish one continuation", async () => {
-  const session = await openSession("continuation-race");
-  const parentScript = new ResponseScript([completed("parent")]);
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "user",
-    body: message(user("start")),
-  });
-  await step(session, parentScript, { head: "main", drain });
-  const parent = await storedRun(session);
-  assert.ok(parent);
-  await step(session, parentScript, { head: "main", drain });
-  const child = sessionId("race-child");
-  const request = { kind: "commit", oid: "race-request" } satisfies DelegateRequest;
-  await writeDelegation({
-    session,
-    child,
-    change: "race-change",
-    request,
-    runId: parent.id,
-    head: "main",
-    continuation: { kind: "authorized", root: parent.root },
-  });
-  await queueDelegate(session, child, request, "main");
-
-  const lease = granted(await session.leases.acquire(headRef("main"), 30_000));
-  const gate = Promise.withResolvers<void>();
-  let arrived = 0;
-  const beforeStep = async (): Promise<void> => {
-    arrived += 1;
-    if (arrived === 2) gate.resolve();
-    await gate.promise;
-  };
-  try {
-    await Promise.all([
-      step(session, new ResponseScript([completed("continued")]), {
-        head: "main",
-        drain,
-        lease,
-        beforeStep,
-      }),
-      step(session, new ResponseScript([completed("continued")]), {
-        head: "main",
-        drain,
-        lease,
-        beforeStep,
-      }),
-    ]);
-  } finally {
-    await session.leases.release(lease);
-  }
-
-  const continuationIds = new Set<string>();
-  for (const event of await session.events.read({ afterSeq: 0 })) {
-    if (event.kind !== "ref" || event.name !== runRef("main") || event.to === null) continue;
-    const object = await session.objects.get(event.to);
-    if (object?.kind === "run" && object.origin.kind === "continuation") {
-      continuationIds.add(object.id);
-    }
-  }
-  expect(continuationIds.size).toBe(1);
-  const current = await storedRun(session);
-  expect(current).toMatchObject({
-    origin: { kind: "continuation", session: child, request },
-    root: parent.root,
-  });
-  const commits = await branch(session.objects, await session.refs.read(headRef("main")));
-  expect(
-    commits.filter(
-      (item) => item.commit.body.kind === "completion" && item.commit.body.job.kind === "delegate",
-    ),
-  ).toHaveLength(1);
 });

@@ -60,8 +60,6 @@ describe("durable session dispatch", () => {
       expect(duration).toBeInstanceOf(Date);
       if (!(duration instanceof Date)) throw new Error("Expected a durable deadline");
       expect(duration.getTime()).toBeGreaterThanOrEqual(deadline);
-    } else {
-      expect(duration).toBeDefined();
     }
     resume.resolve();
     await running;

@@ -39,19 +39,17 @@ const html = await readFile(join(rendererRoot, "index.html"), "utf8");
 
 const preloadPath = join(desktopRoot, "out", "preload", "index.js");
 
-const preloadSource = await readFile(preloadPath, "utf8");
+// Sandboxed preloads can only require "electron".
+for await (const path of glob("out/preload/**/*.js", { cwd: desktopRoot })) {
+  const source = await readFile(join(desktopRoot, path), "utf8");
 
-// The sandboxed preload can only require "electron".
-const unsupportedPreloadRequires = [
-  ...new Set(
-    [...preloadSource.matchAll(/\brequire\(["']([^"']+)["']\)/g)].map((match) => match[1]),
-  ),
-].filter((specifier) => specifier !== "electron");
+  const unsupported = [
+    ...new Set([...source.matchAll(/\brequire\(["']([^"']+)["']\)/g)].map((match) => match[1])),
+  ].filter((specifier) => specifier !== "electron");
 
-if (unsupportedPreloadRequires.length > 0) {
-  problems.push(
-    `sandboxed preload contains external requires: ${unsupportedPreloadRequires.join(", ")}`,
-  );
+  if (unsupported.length > 0) {
+    problems.push(`${path} contains external requires: ${unsupported.join(", ")}`);
+  }
 }
 
 const manifest = JSON.parse(await readFile(join(rendererRoot, ".vite", "manifest.json"), "utf8"));

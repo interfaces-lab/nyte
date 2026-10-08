@@ -93,6 +93,17 @@ export function uniqueDownloadName(filename: string, taken: (name: string) => bo
 
 const CRASH_WINDOW_MS = 30_000;
 
+const ZOOM_FACTORS = [
+  0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
+];
+
+/** Chrome's page zoom steps; a factor between two steps moves to the nearer one in that direction. */
+export function nextZoomFactor(current: number, direction: "in" | "out"): number {
+  if (direction === "in") return ZOOM_FACTORS.find((factor) => factor > current + 0.01) ?? current;
+
+  return ZOOM_FACTORS.findLast((factor) => factor < current - 0.01) ?? current;
+}
+
 const CRASH_RETRY_LIMIT = 3;
 
 /**

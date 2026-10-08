@@ -18,12 +18,21 @@ import {
 
 type Listener = (next: HostSettings, previous: HostSettings) => void;
 
+function same(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) && Array.isArray(right))
+    return (
+      left.length === right.length && left.every((item, index) => Object.is(item, right[index]))
+    );
+
+  return Object.is(left, right);
+}
+
 function changed(next: HostSettings, previous: HostSettings): boolean {
   const keys: readonly (keyof HostSettings)[] = Object.keys(next).filter(
     (key): key is keyof HostSettings => Object.hasOwn(previous, key),
   );
 
-  return keys.some((key) => !Object.is(next[key], previous[key]));
+  return keys.some((key) => !same(next[key], previous[key]));
 }
 
 export class HostSettingsStore {

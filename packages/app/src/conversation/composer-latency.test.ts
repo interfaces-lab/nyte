@@ -42,7 +42,7 @@ beforeAll(async () => {
     esbuild: { jsxDev: false },
     logLevel: "silent",
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
-    plugins: [stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+    plugins: [stylex.rollup({ devMode: "css-only" })],
     build: {
       outDir: directory,
       emptyOutDir: false,

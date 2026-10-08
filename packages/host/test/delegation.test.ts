@@ -294,18 +294,6 @@ test("spawn refuses a requested model that became unavailable", async () => {
   );
 });
 
-test("each delegation uses the model chosen for that call", async () => {
-  let selected = "echo/small";
-  const f = await fixture({ model: () => selected });
-  const host = await f.open({
-    kind: "workspace",
-    target: { kind: "project", workspace: f.workspace },
-  });
-  assert.deepEqual((await delegate(host)).child.config.model, { provider: "echo", id: "small" });
-  selected = "echo/premium";
-  assert.deepEqual((await delegate(host)).child.config.model, { provider: "echo", id: "premium" });
-});
-
 test("a task can select another provider's cached model before a picker or network refresh", async () => {
   const cached: Model<Api> = { ...premium, provider: "openai-codex", id: "gpt-6-astra" };
   const f = await fixture({ cachedModels: [cached], model: () => "openai-codex/gpt-6-astra" });

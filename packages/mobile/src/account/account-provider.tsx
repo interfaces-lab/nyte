@@ -1,7 +1,7 @@
 import { createContext, use, useRef } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ClerkProvider, useAuth, useClerk, useUser } from "@clerk/expo";
+import { ClerkProvider, isClerkAPIResponseError, useAuth, useClerk, useUser } from "@clerk/expo";
 import { releaseCopy } from "./account-copy.ts";
 import { useHostedAuth } from "@clerk/expo/hosted-auth";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -9,7 +9,7 @@ import { fetch } from "expo/fetch";
 import { BrokerError, createBrokerClient } from "@nyte-ai/connect";
 import type { BrokerClient, EnvironmentSummary } from "@nyte-ai/connect";
 import type { ManagedConnection } from "../connection/connection.ts";
-import { connectionStore } from "../connection/host.ts";
+import { connectionStore, verifyHost } from "../connection/host.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { readAccountConfig, type AccountConfig } from "./account-config.ts";
 import { CLIENT_NAME, deviceCrypto, forgetClientId, readClientId } from "./device.ts";
@@ -29,6 +29,7 @@ export type AccountStatus =
       readonly kind: "signedIn";
       readonly ownerId: string;
       readonly label: string;
+      readonly avatarUrl: string | undefined;
       /** Signs every call with the owner's own session, or reports `signed_out`. */
       readonly broker: BrokerClient;
     };
@@ -38,6 +39,7 @@ export type SignInEnding =
   | { readonly kind: "cancelled" }
   /** Clerk has not loaded, usually because this phone is offline. */
   | { readonly kind: "unavailable" }
+  | { readonly kind: "unregisteredApp" }
   | { readonly kind: "failed" };
 
 /** The Mac this account let go on the way out, and what it and the broker confirmed. */
@@ -66,13 +68,15 @@ export interface Account {
   readonly renew: () => Promise<SignInEnding>;
   readonly signOut: () => Promise<SignOutEnding>;
   /**
-   * Enroll with one of `ownerId`'s Macs. Refused unless that owner is still
-   * the one signed in, so a list drawn for one account never enrolls under
-   * another.
+   * Enroll with one of `ownerId`'s computers. Refused unless that owner is
+   * still the one signed in, so a list drawn for one account never enrolls
+   * under another. `repair` replaces the environment's pinned host identity,
+   * and only after the host signs for its new one.
    */
   readonly connect: (input: {
     readonly ownerId: string;
     readonly environment: EnvironmentSummary;
+    readonly repair: boolean;
     readonly signal: AbortSignal;
   }) => Promise<ConnectEnding>;
 }
@@ -213,6 +217,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
             user?.username ??
             user?.fullName ??
             "Nyte account",
+          avatarUrl: user?.imageUrl,
           broker: brokerFor(auth.userId),
         };
 
@@ -228,7 +233,13 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
           authSessionOptions: { preferEphemeralSession: true },
         })
       ).createdSessionId;
-    } catch {
+    } catch (cause) {
+      if (
+        isClerkAPIResponseError(cause) &&
+        cause.errors.some((error) => error.code === "resource_missmatch")
+      )
+        return { kind: "unregisteredApp" };
+
       return { kind: "failed" };
     }
 
@@ -298,6 +309,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
   async function connect({
     ownerId,
     environment,
+    repair,
     signal,
   }: Parameters<Account["connect"]>[0]): Promise<ConnectEnding> {
     if (clerk.user?.id !== ownerId) return { kind: "broker", failure: { kind: "signed_out" } };
@@ -319,6 +331,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
           clientName: CLIENT_NAME,
           crypto: deviceCrypto,
           fetch,
+          verify: (saved, verifying) => verifyHost({ saved, repair, signal: verifying }),
           save: connectionStore.save,
           signal: both,
         });

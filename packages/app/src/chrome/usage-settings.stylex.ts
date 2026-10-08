@@ -156,7 +156,7 @@ export const usageStyles = create({
     borderRadius: radius.pill,
     // One step above the group fill, so the unranked remainder is still a track.
     backgroundColor: role.bgInteractivePrimaryTranslucent,
-    overflow: "hidden",
+    overflow: "clip",
   },
   barSegment: {
     flexGrow: 0,
@@ -260,7 +260,7 @@ export const usageStyles = create({
     height: 6,
     borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
-    overflow: "hidden",
+    overflow: "clip",
   },
   meterFill: {
     display: "block",

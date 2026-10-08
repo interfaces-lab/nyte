@@ -110,6 +110,19 @@ type SessionPlace =
 
 const COLLAPSED_SESSION_LIMIT = 5;
 
+const SESSION_PAGE_SIZE = 8;
+
+/**
+ * How many rows a folded list shows, and how many its next "Show More" adds.
+ * A lone leftover row shows instead of a "Show 1 More".
+ */
+function sessionPage(total: number, base: number, revealed: number) {
+  const fit = (count: number): number => (total - count <= 1 ? total : count);
+  const visible = fit(base + revealed);
+
+  return { visible, next: fit(base + revealed + SESSION_PAGE_SIZE) - visible };
+}
+
 /** With window tabs, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
 function openTarget(event: MouseEvent): OpenTarget {
   if (!windowTabs.enabled) return "here";
@@ -355,8 +368,8 @@ export function Sidebar(): ReactElement {
   const cloudFolderVisible =
     cloudFailure !== undefined || (cloudDirectory?.sessions.length ?? 0) > 0;
 
-  const [expandedSessionLists, setExpandedSessionLists] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const [revealedSessions, setRevealedSessions] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
   );
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -586,7 +599,9 @@ export function Sidebar(): ReactElement {
    * running or waiting on you always shows; finished chats fold after a few.
    */
   const revealSessionList = (key: string, listId: string, visibleCount: number): void => {
-    setExpandedSessionLists((current) => new Set([...current, key]));
+    setRevealedSessions((current) =>
+      new Map(current).set(key, (current.get(key) ?? 0) + SESSION_PAGE_SIZE),
+    );
     window.requestAnimationFrame(() => {
       document
         .getElementById(listId)
@@ -664,12 +679,7 @@ export function Sidebar(): ReactElement {
       />
     ));
 
-    const showMore = (
-      key: string,
-      id: string,
-      hidden: number,
-      focusIndex: number,
-    ): ReactElement => (
+    const showMore = (key: string, id: string, next: number, focusIndex: number): ReactElement => (
       <Row
         variant="nav"
         aria-expanded={false}
@@ -677,7 +687,7 @@ export function Sidebar(): ReactElement {
         xstyle={styles.showMore}
         onClick={() => revealSessionList(key, id, focusIndex)}
       >
-        Show {hidden} More
+        Show {next} More
       </Row>
     );
 
@@ -702,11 +712,12 @@ export function Sidebar(): ReactElement {
 
         const panelId = `${listId}-${shelf}`;
         const open = openShelves.has(shelf);
-        const listExpanded = expandedSessionLists.has(shelf);
-        const hasOverflow = capped && members.length > COLLAPSED_SESSION_LIMIT + 1;
 
-        const visible =
-          listExpanded || !hasOverflow ? members : members.slice(0, COLLAPSED_SESSION_LIMIT);
+        const page = capped
+          ? sessionPage(members.length, COLLAPSED_SESSION_LIMIT, revealedSessions.get(shelf) ?? 0)
+          : { visible: members.length, next: 0 };
+
+        const visible = members.slice(0, page.visible);
 
         return (
           <Shelf
@@ -727,9 +738,7 @@ export function Sidebar(): ReactElement {
             }
           >
             {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled && open))}
-            {hasOverflow &&
-              !listExpanded &&
-              showMore(shelf, panelId, members.length - visible.length, visible.length)}
+            {page.next > 0 && showMore(shelf, panelId, page.next, visible.length)}
           </Shelf>
         );
       };
@@ -754,19 +763,20 @@ export function Sidebar(): ReactElement {
         sessionActivityMark(session, workingSessions.has(session.sessionId)) !== "idle",
     ).length;
 
-    const limit = live + COLLAPSED_SESSION_LIMIT;
-    const listExpanded = expandedSessionLists.has("chats");
-    const hasOverflow = listed.length > limit + 1;
-    const visible = listExpanded || !hasOverflow ? listed : listed.slice(0, limit);
+    const page = sessionPage(
+      listed.length,
+      live + COLLAPSED_SESSION_LIMIT,
+      revealedSessions.get("chats") ?? 0,
+    );
+
+    const visible = listed.slice(0, page.visible);
 
     return (
       <div id={listId} {...props(styles.section)}>
         {empty}
         {draftRows}
         {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
-        {hasOverflow &&
-          !listExpanded &&
-          showMore("chats", listId, listed.length - visible.length, visible.length + drafts.length)}
+        {page.next > 0 && showMore("chats", listId, page.next, visible.length + drafts.length)}
       </div>
     );
   };
@@ -801,11 +811,14 @@ export function Sidebar(): ReactElement {
     );
 
     const listKey = place.kind === "cloud" ? "cloud" : `local:${place.path ?? ""}`;
-    const listExpanded = expandedSessionLists.has(listKey);
-    const hasOverflow = displayedSessionCount > COLLAPSED_SESSION_LIMIT + 1;
 
-    const visibleLimit =
-      listExpanded || !hasOverflow ? displayedSessionCount : COLLAPSED_SESSION_LIMIT;
+    const page = sessionPage(
+      displayedSessionCount,
+      COLLAPSED_SESSION_LIMIT,
+      revealedSessions.get(listKey) ?? 0,
+    );
+
+    const visibleLimit = page.visible;
 
     const visibleDrafts = drafts.slice(0, visibleLimit);
     let remaining = visibleLimit - visibleDrafts.length;
@@ -863,7 +876,7 @@ export function Sidebar(): ReactElement {
             )}
           </div>
         ))}
-        {hasOverflow && !listExpanded && (
+        {page.next > 0 && (
           <Row
             variant="nav"
             aria-expanded={false}
@@ -871,7 +884,7 @@ export function Sidebar(): ReactElement {
             xstyle={styles.showMore}
             onClick={() => revealSessionList(listKey, listId, visibleLimit)}
           >
-            Show {displayedSessionCount - visibleLimit} More
+            Show {page.next} More
           </Row>
         )}
       </div>

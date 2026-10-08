@@ -17,6 +17,7 @@ import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -103,6 +104,7 @@ export function StatusLine({
 }): ReactElement {
   const writing = current?.status === "running" || (current === undefined && request.requesting);
   const turns = useHeadTurns(review.sessionId, writing ? current : undefined, version);
+  const density = useSetting(preferences.toolCalls);
   const step = lastStep(turns);
 
   const behind =
@@ -189,6 +191,7 @@ export function StatusLine({
           <div key={turn.id} {...props(styles.steps)}>
             <TurnView
               turn={{ ...turn, parts: turn.parts.filter((part) => part.kind !== "user") }}
+              density={density}
               liveTools={NO_LIVE_TOOLS}
               cwd={workspace.path}
               onOpenChanges={() => {}}

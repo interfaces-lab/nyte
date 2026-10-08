@@ -1,10 +1,12 @@
+import { useFocusEffect } from "expo-router";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import type { ExpoSpeechRecognitionErrorCode } from "expo-speech-recognition";
 // oxlint-disable-next-line no-restricted-imports -- the elapsed clock runs only while recording
-import { useEffect, useRef, useState } from "react";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const WAVEFORM_LEVELS = 8;
+
+let recognizerOwner: symbol | undefined;
 
 /**
  * What a recognizer failure reads as. The platform's own message names its
@@ -48,27 +50,60 @@ export function useDictation(onTranscript: (transcript: string) => void) {
   const [elapsed, setElapsed] = useState(0);
   const [levels, setLevels] = useState<number[]>([]);
   const [error, setError] = useState<string>();
-  const recordingRef = useRef(false);
+  const focused = useRef(false);
+  const session = useRef<symbol | undefined>(undefined);
+  const recognitionStarted = useRef(false);
 
-  // useEventListener already calls the latest listener; no ref needed here.
   useSpeechRecognitionEvent("result", (event) => {
+    if (session.current === undefined || recognizerOwner !== session.current) return;
     onTranscript(event.results[0]?.transcript ?? "");
   });
   useSpeechRecognitionEvent("volumechange", (event) => {
+    if (session.current === undefined || recognizerOwner !== session.current) return;
     setLevels((current) => [...current.slice(-(WAVEFORM_LEVELS - 1)), event.value]);
   });
   useSpeechRecognitionEvent("end", () => {
-    recordingRef.current = false;
+    if (session.current === undefined || recognizerOwner !== session.current) return;
+    recognizerOwner = undefined;
+    session.current = undefined;
+    recognitionStarted.current = false;
     setRecording(false);
   });
   useSpeechRecognitionEvent("error", (event) => {
-    recordingRef.current = false;
+    if (session.current === undefined || recognizerOwner !== session.current) return;
     setRecording(false);
     setError(dictationFailure(event.error));
   });
-  useMountEffect(() => () => {
-    if (recordingRef.current) ExpoSpeechRecognitionModule.abort();
-  });
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+
+      return () => {
+        focused.current = false;
+        const owner = session.current;
+        session.current = undefined;
+        setRecording(false);
+
+        if (owner === undefined || recognizerOwner !== owner) return;
+
+        if (!recognitionStarted.current) {
+          recognizerOwner = undefined;
+
+          return;
+        }
+
+        recognitionStarted.current = false;
+
+        const ended = ExpoSpeechRecognitionModule.addListener("end", () => {
+          ended.remove();
+
+          if (recognizerOwner === owner) recognizerOwner = undefined;
+        });
+
+        ExpoSpeechRecognitionModule.abort();
+      };
+    }, []),
+  );
   // The clock runs only while the speech session does.
   useEffect(() => {
     if (!recording) return;
@@ -80,14 +115,21 @@ export function useDictation(onTranscript: (transcript: string) => void) {
   const stop = () => {
     setError(undefined);
 
-    if (recordingRef.current) ExpoSpeechRecognitionModule.stop();
+    if (recognitionStarted.current) ExpoSpeechRecognitionModule.stop();
   };
 
   const start = async () => {
+    if (!focused.current) return;
     setError(undefined);
 
-    if (recordingRef.current) {
+    if (recognitionStarted.current) {
       ExpoSpeechRecognitionModule.stop();
+
+      return;
+    }
+
+    if (recognizerOwner !== undefined) {
+      setError("Dictation is already running.");
 
       return;
     }
@@ -98,27 +140,39 @@ export function useDictation(onTranscript: (transcript: string) => void) {
       return;
     }
 
-    const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-
-    if (!permission.granted) {
-      setError("Microphone or speech recognition permission is off. Enable it in Settings.");
-
-      return;
-    }
-
-    setLevels([]);
-    setElapsed(0);
+    const owner = Symbol();
+    recognizerOwner = owner;
+    session.current = owner;
 
     try {
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+      if (session.current !== owner || recognizerOwner !== owner) return;
+
+      if (!permission.granted) {
+        session.current = undefined;
+        recognizerOwner = undefined;
+        setError("Microphone or speech recognition permission is off. Enable it in Settings.");
+
+        return;
+      }
+
+      setLevels([]);
+      setElapsed(0);
+      recognitionStarted.current = true;
+      setRecording(true);
       ExpoSpeechRecognitionModule.start({
         interimResults: true,
         continuous: true,
         addsPunctuation: true,
         volumeChangeEventOptions: { enabled: true, intervalMillis: 120 },
       });
-      recordingRef.current = true;
-      setRecording(true);
     } catch {
+      if (session.current !== owner || recognizerOwner !== owner) return;
+      session.current = undefined;
+      recognizerOwner = undefined;
+      recognitionStarted.current = false;
+      setRecording(false);
       setError("Couldn't start dictation. Try again.");
     }
   };

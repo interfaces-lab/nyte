@@ -26,6 +26,7 @@ import type { VcsLineStat } from "@nyte-ai/protocol";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
+import { WorkbenchRail } from "./workbench-rail.tsx";
 
 export interface ChangesSidebarFile {
   readonly path: string;
@@ -51,19 +52,6 @@ const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly labe
 ];
 
 const styles = create({
-  rail: {
-    order: 1,
-    display: "flex",
-    flexDirection: "column",
-    width: workbench.fileListWidth,
-    flexShrink: 0,
-    minHeight: 0,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-    backgroundColor: role.bgBase,
-  },
-  railHidden: { display: "none" },
   // The stack's file header sits beside this row, so both take the workbench header height.
   search: {
     display: "flex",
@@ -92,7 +80,7 @@ const styles = create({
     lineHeight: type.leadingSm,
     fontWeight: 590,
   },
-  overviewLabel: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
+  overviewLabel: { flex: 1, minWidth: 0, overflow: "clip", whiteSpace: "nowrap" },
   checkbox: { marginInlineStart: 4 },
   checkboxChanged: {
     borderColor: role.contentInteractiveTertiary,
@@ -164,14 +152,12 @@ export function sidebarCountLabel(total: number, shown: number, filtered: boolea
 
 export const ChangesSidebar = memo(function ChangesSidebar({
   files,
-  visible,
   activePath,
   filterInputRef,
   onRevealPath,
   onAllViewedChange,
 }: {
   readonly files: readonly ChangesSidebarFile[];
-  readonly visible: boolean;
   readonly activePath: string | undefined;
   readonly filterInputRef?: RefObject<HTMLInputElement | null>;
   readonly onRevealPath: (path: string) => void;
@@ -297,7 +283,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   );
 
   return (
-    <div {...props(styles.rail, !visible && styles.railHidden)}>
+    <WorkbenchRail>
       {/* Outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */}
       <div {...props(styles.search)}>
         <Input
@@ -379,6 +365,6 @@ export const ChangesSidebar = memo(function ChangesSidebar({
         aria-label="Changed files"
         {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
       />
-    </div>
+    </WorkbenchRail>
   );
 });

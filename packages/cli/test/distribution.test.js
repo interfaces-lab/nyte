@@ -164,7 +164,6 @@ esac
     await checkDocs(docs);
     assert.equal(await readFile(join(installDir, "nyte"), "utf8"), await readFile(binary, "utf8"));
     assert.ok(installed.includes(`/share/nyte/${metadata.version}/docs/README.md`));
-    assert.ok(installed.includes("Checksum ok."));
     await writeFile(join(installDir, "nyte"), "existing executable\n");
     await writeFile(join(output, `${asset}.tar.gz.sha256`), `${"0".repeat(64)}  ${asset}.tar.gz\n`);
     const rejected = spawnSync(

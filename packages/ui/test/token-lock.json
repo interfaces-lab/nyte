@@ -126,6 +126,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
+    "ui/src/theme.stylex.ts danger": ["border"],
     "ui/src/theme.stylex.ts gray": [
       "--nyte-theme-0",
       "--nyte-theme-10",

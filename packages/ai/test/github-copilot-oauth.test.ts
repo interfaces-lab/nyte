@@ -6,6 +6,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test, vi } from "vitest";
 import { githubCopilotOAuth } from "@nyte-ai/ai/auth/oauth/github-copilot";
+import {
+  GITHUB_COPILOT_API_VERSION,
+  GITHUB_COPILOT_HEADERS,
+} from "../src/api/github-copilot-headers.ts";
 import type { OAuthCredential } from "../src/auth/types.ts";
 import {
   DEVICE,
@@ -99,7 +103,7 @@ describe("GitHub Copilot device sign-in", () => {
     const auth = await oauth.toAuth(credential);
     assert.equal(auth.apiKey, SESSION_TOKEN);
     assert.equal(auth.baseUrl, ORIGIN);
-    assert.equal(auth.headers?.["Copilot-Integration-Id"], "vscode-chat");
+    assert.deepEqual(auth.headers, GITHUB_COPILOT_HEADERS);
 
     const device = transport.requests[0];
     assert.ok(device);
@@ -121,8 +125,8 @@ describe("GitHub Copilot device sign-in", () => {
     const catalog = transport.requests.find((request) => request.url.endsWith("/models"));
     assert.equal(exchange?.headers.get("authorization"), "Bearer gh-token");
     assert.equal(catalog?.headers.get("authorization"), `Bearer ${SESSION_TOKEN}`);
-    assert.equal(catalog?.headers.get("x-github-api-version"), "2026-06-01");
-    assert.equal(catalog?.headers.get("editor-version"), "vscode/1.107.0");
+    assert.equal(catalog?.headers.get("x-github-api-version"), GITHUB_COPILOT_API_VERSION);
+    assert.equal(catalog?.headers.get("editor-version"), GITHUB_COPILOT_HEADERS["Editor-Version"]);
   });
 
   test("the default device prompt identifies the Copilot app rather than claiming Nyte consent", async () => {

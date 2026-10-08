@@ -50,11 +50,19 @@ const styles = create({
   toolbar: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
   /** The match options sit inside the field and show once it is in use. */
   searchField: {
-    "--_search-options-opacity": { default: "0", ":hover": "1", ":focus-within": "1" },
-    "--_search-options-events": { default: "none", ":hover": "auto", ":focus-within": "auto" },
+    "--_search-options-opacity": {
+      default: "0",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":focus-within": "1",
+    },
+    "--_search-options-events": {
+      default: "none",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
+      ":focus-within": "auto",
+    },
     "--_search-options-space": {
       default: "0px",
-      ":hover": `calc(3 * ${target.min} + 2px)`,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": `calc(3 * ${target.min} + 2px)` },
       ":focus-within": `calc(3 * ${target.min} + 2px)`,
     },
     position: "relative",
@@ -122,7 +130,10 @@ const styles = create({
     paddingInlineEnd: 8,
     marginBlockEnd: 2,
     borderRadius: radius.indicator,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,

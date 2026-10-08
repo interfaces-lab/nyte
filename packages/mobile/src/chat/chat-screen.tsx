@@ -9,7 +9,7 @@ import type { Delivery, ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai
 import { waitingCall, type SessionState } from "@nyte-ai/client";
 import type { FileChange } from "@nyte-ai/client";
 import type { UserContent } from "./remote-chat.ts";
-import { spacing, tokens, useTheme } from "../theme.ts";
+import { spacing, tokens } from "../theme.ts";
 import { Composer } from "./composer.tsx";
 import { ReviewStrip } from "./review-strip.tsx";
 import { conversationLayout } from "./conversation-layout.ts";
@@ -22,10 +22,10 @@ import { Timeline } from "./timeline.tsx";
 
 type ChatScreenProps = {
   state: SessionState;
-  streamingText: string;
   sending: boolean;
   error: string | undefined;
   onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
+  getSubmissionKey: () => string | undefined;
   onStop: () => void;
   onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
   delegateNames: ReadonlyMap<SessionId, string>;
@@ -36,10 +36,10 @@ type ChatScreenProps = {
 
 export function ChatScreen({
   state,
-  streamingText,
   sending,
   error,
   onSend,
+  getSubmissionKey,
   onStop,
   onReply,
   delegateNames,
@@ -47,7 +47,6 @@ export function ChatScreen({
   onAskMerge,
   prefill,
 }: ChatScreenProps) {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
   // The glass header floats over the list; start the transcript below it.
   const headerHeight = insets.top + 44;
@@ -64,6 +63,7 @@ export function ChatScreen({
     autoScroll: true,
     scrollPreviousItemPeek: spacing.lg,
   });
+
   const running = state.run !== undefined && !isTerminalPhase(state.run.phase);
   const stopping = state.run?.abortRequested === true;
   const waiting = waitingCall(state);
@@ -80,7 +80,6 @@ export function ChatScreen({
         >
           <Timeline
             state={state}
-            streamingText={streamingText}
             delegateNames={delegateNames}
             onReply={onReply}
             layout={layout}
@@ -94,13 +93,7 @@ export function ChatScreen({
             label={answerable ? "Answer question" : "Latest"}
             prominent={answerable}
           />
-          {/* One opaque bar over the transcript: the review chips share the
-            composer's fill rather than letting rows scroll behind them. */}
-          <View
-            ref={composerRef}
-            onLayout={onComposerLayout}
-            style={{ backgroundColor: theme.canvas }}
-          >
+          <View ref={composerRef} onLayout={onComposerLayout}>
             {changes !== undefined ? (
               <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
                 <ReviewStrip
@@ -121,12 +114,15 @@ export function ChatScreen({
                 running,
                 stopping,
                 error,
-                onSend: (content, delivery) => anchorSend(onSend(content, delivery)),
+                onSend: (content, delivery) => {
+                  const sent = onSend(content, delivery);
+
+                  return anchorSend(sent, getSubmissionKey());
+                },
                 onStop,
               }}
               placeholder="Follow up…"
               prefill={prefill}
-              backdrop="canvas"
               gutters={{ left: layout.paddingLeft, right: layout.paddingRight }}
             />
           </View>

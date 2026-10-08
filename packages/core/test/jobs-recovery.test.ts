@@ -520,6 +520,7 @@ test("quiet interruption suppresses a terminal completion before delivery claims
   try {
     await f.seed({ kind: "completed" });
     await jobs.interruptOwned({ runId: f.run.id, kind: "cancelled" });
+    await jobs.recover();
     expect(f.notifications).toEqual([]);
     expect(await pending(f.session, "main")).toEqual([]);
   } finally {

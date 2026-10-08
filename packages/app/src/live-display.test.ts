@@ -1,7 +1,7 @@
 import "../test/window-bridge.ts";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, test, vi } from "vitest";
-import { QueryObserver } from "@tanstack/react-query";
+import { MutationObserver, QueryObserver } from "@tanstack/react-query";
 import { sessionId } from "@nyte-ai/protocol";
 import type {
   CommitBody,
@@ -24,6 +24,13 @@ import {
 } from "./live.ts";
 import { livePartKey } from "./live-fold.ts";
 import { keys, queryClient } from "./queries.ts";
+import {
+  acknowledgedThrough,
+  projectSessionConfiguration,
+  sessionConfigurationOptions,
+  type ConfigureSessionPatch,
+  type PendingConfiguration,
+} from "./session-configuration.ts";
 import type { SessionPage } from "./session-directory.ts";
 import { displayTranscriptParts } from "./conversation/transcript-presentation.ts";
 
@@ -31,11 +38,12 @@ import { displayTranscriptParts } from "./conversation/transcript-presentation.t
 const bridge = vi.hoisted(() => {
   const snapshot = vi.fn<NyteBridge["sessions"]["snapshot"]>();
   const metadata = vi.fn<NyteBridge["sessions"]["metadata"]>();
+  const get = vi.fn<NyteBridge["sessions"]["get"]>();
   const watch = vi.fn<NyteBridge["watch"]>();
   const frames = new Map<number, FrameRequestCallback>();
   let nextFrame = 0;
   vi.stubGlobal("window", {
-    nyte: { sessions: { snapshot, metadata }, watch },
+    nyte: { sessions: { snapshot, metadata, get }, watch },
     requestAnimationFrame: (callback: FrameRequestCallback) => {
       nextFrame += 1;
       frames.set(nextFrame, callback);
@@ -47,7 +55,7 @@ const bridge = vi.hoisted(() => {
     clearTimeout: (timer: number) => clearTimeout(timer),
   });
 
-  return { snapshot, metadata, watch, frames };
+  return { snapshot, metadata, get, watch, frames };
 });
 
 type CommitEvent = Extract<SessionEvent, { kind: "commit" }>;
@@ -79,6 +87,7 @@ afterEach(async () => {
   frame();
   bridge.snapshot.mockReset();
   bridge.metadata.mockReset();
+  bridge.get.mockReset();
   bridge.watch.mockReset();
 });
 
@@ -973,7 +982,6 @@ test("acknowledging a selection waits for a read at that version before releasin
   const initial = snapshot([], 0);
   await open(initial);
   const selection = sessionSelection(ID);
-  selection.request();
 
   const chosen: SessionSnapshot = {
     ...initial,
@@ -994,4 +1002,321 @@ test("acknowledging a selection waits for a read at that version before releasin
   await acknowledging;
   assert.deepEqual(durable().session.config, { thinkingLevel: "high" });
   assert.equal(bridge.snapshot.mock.calls.length, 1);
+});
+
+const chosenModel = { provider: "provider", id: "chosen" } as const;
+
+type ConfigureReply = Awaited<ReturnType<NyteBridge["sessions"]["configure"]>>;
+
+/**
+ * Configure requests against the real selection and observer. Core admits
+ * each call in call order before it answers, so a read reflects every call
+ * made before it that core did not reject.
+ */
+function configuring(initial: SessionSnapshot) {
+  const calls: {
+    readonly patch: ConfigureSessionPatch;
+    readonly reply: PromiseWithResolvers<ConfigureReply>;
+  }[] = [];
+
+  const rejected = new Set<number>();
+
+  const admitted = (): SessionSnapshot => ({
+    ...initial,
+    session: {
+      ...initial.session,
+      config: calls.reduce(
+        (config, call, index) => (rejected.has(index) ? config : { ...config, ...call.patch }),
+        initial.session.config,
+      ),
+    },
+  });
+
+  const arm = (): void => {
+    bridge.metadata.mockImplementation(async () => metadataOf(admitted()));
+    bridge.snapshot.mockImplementation(async () => admitted());
+    bridge.get.mockImplementation(async () => admitted().session);
+  };
+
+  arm();
+
+  const options = sessionConfigurationOptions({
+    client: queryClient,
+    sessionId: ID,
+    sessions: {
+      configure: async ({ sessionId: _sessionId, ...patch }) => {
+        const reply = Promise.withResolvers<ConfigureReply>();
+        const index = calls.push({ patch, reply }) - 1;
+        const outcome = await reply.promise;
+
+        if (outcome.kind !== "queued") rejected.add(index);
+
+        return outcome;
+      },
+    },
+    selection: sessionSelection(ID),
+  });
+
+  const states: PendingConfiguration[] = [];
+
+  return {
+    /** `open` scripts the bridge for its first read; put core's answers back behind it. */
+    arm,
+    configure: (patch: ConfigureSessionPatch) => {
+      const observer = new MutationObserver(queryClient, options);
+      const index = states.push(observer.getCurrentResult()) - 1;
+      cleanups.push(
+        observer.subscribe((result) => {
+          states[index] = result;
+        }),
+      );
+
+      return observer.mutate(patch);
+    },
+    reply: (index: number) => {
+      const call = calls[index];
+      assert.ok(call);
+
+      return call.reply;
+    },
+    /** What the chip shows: the cached session under the pending choices. */
+    shown: () =>
+      projectSessionConfiguration(
+        durable().session,
+        states.filter((state) => state.status === "pending"),
+        acknowledgedThrough(queryClient, ID),
+      ).config,
+  };
+}
+
+test("a choice paints until its acknowledged read lands; an older reply landing late restores nothing", async () => {
+  const initial = snapshot([], 0);
+  await open(initial);
+  const f = configuring(initial);
+  const older = f.configure({ model: chosenModel, thinkingLevel: "low" });
+  const newer = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(1));
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(1).resolve({ kind: "queued", change: "newer" });
+  await newer;
+  assert.deepEqual(durable().session.config, { model: chosenModel, thinkingLevel: "high" });
+  // The older request is still pending, but it was admitted before the newer
+  // one, so the newer acknowledgement already carries it and it stops painting.
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(0).resolve({ kind: "queued", change: "older" });
+  await older;
+  assert.deepEqual(durable().session.config, { model: chosenModel, thinkingLevel: "high" });
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+});
+
+test("a rejected newer request leaves the older acknowledged one in the cache", async () => {
+  const initial = snapshot([], 0);
+  await open(initial);
+  const f = configuring(initial);
+  const older = f.configure({ model: chosenModel, thinkingLevel: "high" });
+  const newer = f.configure({ thinkingLevel: "low" });
+  await vi.waitFor(() => f.reply(1));
+  f.reply(1).resolve({ kind: "unknown_model" });
+  await assert.rejects(newer, /no longer available/u);
+  f.reply(0).resolve({ kind: "queued", change: "older" });
+  await older;
+  assert.deepEqual(durable().session.config, { model: chosenModel, thinkingLevel: "high" });
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+});
+
+test("closing the observer settles an acknowledgement, and a reopened one ignores the old read", async () => {
+  const initial = snapshot([], 0);
+  const view = await open(initial);
+  const f = configuring(initial);
+  const saving = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(0));
+  const stale = Promise.withResolvers<SessionMetadata>();
+  bridge.metadata.mockReturnValueOnce(stale.promise);
+  f.reply(0).resolve({ kind: "queued", change: "change" });
+  await vi.waitFor(() => assert.ok(bridge.metadata.mock.calls.length >= 1));
+  view.live.dispose();
+  await saving;
+  bridge.snapshot.mockResolvedValueOnce({ ...initial, seq: 1 });
+  bridge.metadata.mockResolvedValue(metadataOf(initial));
+  await open({ ...initial, seq: 1 });
+  // The closed observer's read lands after a new observation started counting at zero.
+  stale.resolve(
+    metadataOf({ ...initial, session: { ...initial.session, config: { thinkingLevel: "off" } } }),
+  );
+  await folded();
+  assert.deepEqual(durable().session.config, {});
+});
+
+test("a request pending across a reopen stops painting once a later one is acknowledged", async () => {
+  const initial = snapshot([], 0);
+  const view = await open(initial);
+  const f = configuring(initial);
+  const older = f.configure({ model: chosenModel, thinkingLevel: "low" });
+  await vi.waitFor(() => f.reply(0));
+  view.live.dispose();
+  await open({ ...initial, seq: 1 });
+  f.arm();
+  const newer = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(1));
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(1).resolve({ kind: "queued", change: "newer" });
+  await newer;
+  // The newer acknowledgement, read by the reopened observer, already carries the older request.
+  assert.deepEqual(durable().session.config, { model: chosenModel, thinkingLevel: "high" });
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(0).resolve({ kind: "queued", change: "older" });
+  await older;
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+});
+
+test("an unobserved session's acknowledgement reads the session and snapshot even with nothing mounted", async () => {
+  const initial = snapshot([], 0);
+  queryClient.setQueryData(keys.snapshot(ID), initial);
+  queryClient.setQueryData(keys.session(ID), initial.session);
+  const f = configuring(initial);
+  const older = f.configure({ model: chosenModel, thinkingLevel: "low" });
+  const newer = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(1));
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(1).resolve({ kind: "queued", change: "newer" });
+  await newer;
+  // Unobserved, the same rule: the older request is covered by the newer acknowledgement.
+  assert.deepEqual(f.shown(), { model: chosenModel, thinkingLevel: "high" });
+  f.reply(0).resolve({ kind: "queued", change: "older" });
+  await older;
+  assert.deepEqual(durable().session.config, { model: chosenModel, thinkingLevel: "high" });
+  assert.deepEqual(queryClient.getQueryData<SessionInfo>(keys.session(ID))?.config, {
+    model: chosenModel,
+    thinkingLevel: "high",
+  });
+  assert.ok(bridge.snapshot.mock.calls.length >= 1);
+  assert.ok(bridge.get.mock.calls.length >= 1);
+  assert.equal(bridge.watch.mock.calls.length, 0);
+});
+
+test("cancelling or removing the snapshot during an unobserved acknowledgement does not resolve it with old data", async () => {
+  for (const interrupt of ["cancel", "remove"] as const) {
+    const initial = snapshot([], 0);
+    queryClient.setQueryData(keys.snapshot(ID), initial);
+    const f = configuring(initial);
+    const saving = f.configure({ thinkingLevel: "high" });
+    await vi.waitFor(() => f.reply(0));
+    const interrupted = Promise.withResolvers<SessionSnapshot>();
+    const fresh = Promise.withResolvers<SessionSnapshot>();
+    bridge.snapshot.mockReturnValueOnce(interrupted.promise).mockReturnValueOnce(fresh.promise);
+    f.reply(0).resolve({ kind: "queued", change: "change" });
+    await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 1));
+    let acknowledged = false;
+    void saving.then(() => {
+      acknowledged = true;
+    });
+
+    if (interrupt === "cancel") {
+      await queryClient.cancelQueries({ queryKey: keys.snapshot(ID), exact: true });
+    } else {
+      queryClient.removeQueries({ queryKey: keys.snapshot(ID), exact: true });
+    }
+
+    // The read is made again; only that fresh read acknowledges, with its data in the cache.
+    await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 2));
+    await folded();
+    assert.equal(acknowledged, false);
+    interrupted.resolve(initial);
+    await folded();
+    assert.equal(acknowledged, false);
+    fresh.resolve({
+      ...initial,
+      session: { ...initial.session, config: { thinkingLevel: "high" } },
+    });
+    await saving;
+    assert.deepEqual(durable().session.config, { thinkingLevel: "high" });
+    assert.equal(acknowledgedThrough(queryClient, ID) > 0, true);
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    bridge.snapshot.mockReset();
+    bridge.get.mockReset();
+  }
+});
+
+test("a cancel on an empty cache does not count a new entry as a read", async () => {
+  const initial = snapshot([], 0);
+  const f = configuring(initial);
+  const saving = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(0));
+  const interrupted = Promise.withResolvers<SessionSnapshot>();
+  const fresh = Promise.withResolvers<SessionSnapshot>();
+  bridge.snapshot.mockReturnValueOnce(interrupted.promise).mockReturnValueOnce(fresh.promise);
+  f.reply(0).resolve({ kind: "queued", change: "change" });
+  await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 1));
+  let acknowledged = false;
+  void saving.then(() => {
+    acknowledged = true;
+  });
+  // The first fetch created the entry; cancelling it leaves an entry with no data.
+  await queryClient.cancelQueries({ queryKey: keys.snapshot(ID), exact: true });
+  await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 2));
+  await folded();
+  assert.equal(acknowledged, false);
+  assert.equal(queryClient.getQueryData(keys.snapshot(ID)), undefined);
+  fresh.resolve({ ...initial, session: { ...initial.session, config: { thinkingLevel: "high" } } });
+  await saving;
+  assert.deepEqual(durable().session.config, { thinkingLevel: "high" });
+});
+
+test("a cancel after the entry was replaced waits for the replacement to write data", async () => {
+  const initial = snapshot([], 0);
+  queryClient.setQueryData(keys.snapshot(ID), initial);
+  const f = configuring(initial);
+  const saving = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(0));
+  const interrupted = Promise.withResolvers<SessionSnapshot>();
+  const replaced = Promise.withResolvers<SessionSnapshot>();
+  const fresh = Promise.withResolvers<SessionSnapshot>();
+  bridge.snapshot
+    .mockReturnValueOnce(interrupted.promise)
+    .mockReturnValueOnce(replaced.promise)
+    .mockReturnValueOnce(fresh.promise);
+  f.reply(0).resolve({ kind: "queued", change: "change" });
+  await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 1));
+  let acknowledged = false;
+  void saving.then(() => {
+    acknowledged = true;
+  });
+  // Removal makes the next read a new entry; cancelling that one leaves it without data.
+  queryClient.removeQueries({ queryKey: keys.snapshot(ID), exact: true });
+  await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 2));
+  await queryClient.cancelQueries({ queryKey: keys.snapshot(ID), exact: true });
+  await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 3));
+  await folded();
+  assert.equal(acknowledged, false);
+  replaced.resolve(initial);
+  await folded();
+  assert.equal(acknowledged, false);
+  fresh.resolve({ ...initial, session: { ...initial.session, config: { thinkingLevel: "high" } } });
+  await saving;
+  assert.deepEqual(durable().session.config, { thinkingLevel: "high" });
+});
+
+test("an unobserved acknowledgement whose read fails fails the request and keeps the cache", async () => {
+  const initial = snapshot([], 0);
+  queryClient.setQueryData(keys.snapshot(ID), initial);
+  const f = configuring(initial);
+  const saving = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(0));
+  bridge.snapshot.mockRejectedValueOnce(new Error("store is away"));
+  f.reply(0).resolve({ kind: "queued", change: "change" });
+  await assert.rejects(saving, /store is away/u);
+  assert.deepEqual(durable().session.config, {});
+});
+
+test("an observed acknowledgement whose read fails fails the request", async () => {
+  const initial = snapshot([], 0);
+  await open(initial);
+  const f = configuring(initial);
+  const saving = f.configure({ thinkingLevel: "high" });
+  await vi.waitFor(() => f.reply(0));
+  bridge.metadata.mockRejectedValueOnce(new Error("store is away"));
+  f.reply(0).resolve({ kind: "queued", change: "change" });
+  await assert.rejects(saving, /store is away/u);
+  assert.deepEqual(durable().session.config, {});
 });

@@ -160,12 +160,12 @@ The popup scrolls when it runs out of room.
 
 ### MenuSubContent
 
-Takes the same props as `MenuContent` except `matchAnchorWidth`.
+Takes the same props as `MenuContent` except `matchAnchorWidth`. `side`, `align`, and
+`collisionAvoidance` have no defaults of their own. Base UI opens a submenu at `inline-end`,
+aligned to `start`.
 
 | Prop          | Default                           |
 | ------------- | --------------------------------- |
-| `side`        | `"right"`                         |
-| `align`       | `"start"`                         |
 | `sideOffset`  | `6`                               |
 | `alignOffset` | `0` when centered, otherwise `-4` |
 
@@ -177,7 +177,6 @@ Takes the same props as `MenuContent` except `matchAnchorWidth`.
 | `leading`  | `ReactNode`             |             | Overrides `icon`.                            |
 | `meta`     | `ReactNode`             |             | Display only. It binds no key.               |
 | `variant`  | `"default" \| "danger"` | `"default"` |                                              |
-| `selected` | `boolean`               | `false`     | Sets `data-nyte-selected`.                   |
 | `layout`   | `"menu" \| "plain"`     | `"menu"`    | `plain` removes the leading column.          |
 | `children` | `ReactNode`             |             | Optional when `render` supplies the content. |
 
@@ -185,13 +184,13 @@ Takes the same props as `MenuContent` except `matchAnchorWidth`.
 
 ### MenuLinkItem
 
-Renders a link. Takes the props in the `MenuItem` table except `variant` and `selected`.
+Renders a link. Takes the props in the `MenuItem` table except `variant`.
 
 <include>../../../base-ui-reference/menu/LinkItem.md</include>
 
 ### MenuCheckboxItem
 
-Takes the props in the `MenuItem` table except `variant` and `selected`. A checkmark follows `meta`
+Takes the props in the `MenuItem` table except `variant`. A checkmark follows `meta`
 while checked.
 
 <include>../../../base-ui-reference/menu/CheckboxItem.md</include>
@@ -206,7 +205,7 @@ A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. I
 
 ### MenuRadioItem
 
-Takes the props in the `MenuItem` table except `variant` and `selected`. A checkmark follows `meta`
+Takes the props in the `MenuItem` table except `variant`. A checkmark follows `meta`
 on the chosen row.
 
 | Prop           | Type      | Default | Description                       |

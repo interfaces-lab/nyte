@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from "react";
 import { useSessionLive } from "../live.ts";
 import type { LiveToolProgress } from "../live-fold.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
@@ -26,6 +27,7 @@ type EditUserMessage = (
 const SettledTurnView = memo(function SettledTurnView({
   turn,
   continuations,
+  density,
   cwd,
   onEditUser,
   branchModel,
@@ -33,6 +35,7 @@ const SettledTurnView = memo(function SettledTurnView({
 }: {
   turn: RenderedTurn;
   continuations: readonly ConversationTurn[];
+  density: ToolCallDensity;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -42,6 +45,7 @@ const SettledTurnView = memo(function SettledTurnView({
     <TurnView
       turn={turn}
       continuations={continuations}
+      density={density}
       liveTools={NO_LIVE_TOOLS}
       cwd={cwd}
       onEditUser={onEditUser}
@@ -56,6 +60,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   sessionId,
   turn,
   continuations,
+  density,
   cwd,
   onEditUser,
   branchModel,
@@ -64,6 +69,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   sessionId: SessionId;
   turn: RenderedTurn;
   continuations: readonly ConversationTurn[];
+  density: ToolCallDensity;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -75,6 +81,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
     <TurnView
       turn={turn}
       continuations={continuations}
+      density={density}
       liveTools={live.tools}
       live={live}
       cwd={cwd}
@@ -90,16 +97,20 @@ const SessionLiveTurn = memo(function SessionLiveTurn({
   sessionId,
   working,
   settledWork,
+  density,
   cwd,
 }: {
   sessionId: SessionId;
   working: boolean;
   settledWork: boolean;
+  density: ToolCallDensity;
   cwd: string | undefined;
 }): ReactElement | null {
   const live = useSessionLive(sessionId);
 
-  return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
+  return (
+    <LiveTurn live={live} working={working} settledWork={settledWork} density={density} cwd={cwd} />
+  );
 });
 
 /** The session's rows mapped onto the scroller's items and the row surfaces. */
@@ -159,6 +170,7 @@ export function Timeline({
                 sessionId={sessionId}
                 turn={row.turn}
                 continuations={row.continuations}
+                density={density}
                 cwd={cwd}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
@@ -171,6 +183,7 @@ export function Timeline({
             <SettledTurnView
               turn={row.turn}
               continuations={row.continuations}
+              density={density}
               cwd={cwd}
               onEditUser={onEditUser}
               branchModel={branchModel}
@@ -200,6 +213,7 @@ export function Timeline({
               sessionId={sessionId}
               working={working}
               settledWork={settledWork}
+              density={density}
               cwd={cwd}
             />
           );
@@ -210,7 +224,18 @@ export function Timeline({
         }
       }
     },
-    [branchModel, cwd, onEditUser, onOpenChanges, onRetry, rows, sessionId, settledWork, working],
+    [
+      branchModel,
+      cwd,
+      density,
+      onEditUser,
+      onOpenChanges,
+      onRetry,
+      rows,
+      sessionId,
+      settledWork,
+      working,
+    ],
   );
 
   return (

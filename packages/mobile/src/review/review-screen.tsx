@@ -19,7 +19,7 @@ import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
 import { formatDuration, latestChangedTurn } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
-import { Markdown } from "../chat/messages.tsx";
+import { Markdown } from "../chat/markdown.tsx";
 import {
   controls,
   list,

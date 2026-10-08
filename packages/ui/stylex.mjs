@@ -1,20 +1,26 @@
 /**
  * `@stylexjs/unplugin` for every build that compiles `@nyte-ai/ui` from source.
  *
+ * Development and production emit the same stylesheet: rules are collected at
+ * compile time and served as one layered sheet, never injected at runtime.
+ * Runtime injection keys some at-rules by their condition alone, so it drops
+ * every rule after the first under a condition like
+ * `(hover: hover) and (pointer: fine)`; an extracted sheet keeps them all, and
+ * an uncompilable declaration fails the transform instead of vanishing.
+ *
  * The published build ships component rules in a `nyte-ui` layer below the
  * app's, so an app style always beats a component style. A source build
  * compiles both in one StyleX pass, where two rules for one property at one
- * priority are ordered by their declaration text, and the outcome flips
- * between development and production. This restores the published order
- * after StyleX has compiled each file:
+ * priority are ordered by their declaration text. This restores the published
+ * order after StyleX has compiled each file:
  *
  * - Component classes take the `nyte` prefix, as in the published build, so a
  *   component never shares an atomic class with the app.
- * - App rules rise above every component priority. With CSS layers that is a
- *   later layer; with runtime injection, a higher specificity level.
+ * - App rules rise above every component priority, into later layers.
  *
  * StyleX's own `classNamePrefix` cannot do the first: it also names the
- * constants and variables the app reads from `@nyte-ai/ui`.
+ * constants the app reads from `@nyte-ai/ui`, which would then resolve to
+ * nothing in app rules.
  */
 import unplugin from "@stylexjs/unplugin";
 
@@ -44,7 +50,7 @@ function nyteStylexOrder({ types }) {
       if (COMPONENT_SOURCE.test(file.opts.filename ?? "")) {
         renameComponentClasses(file, atomic, types);
       } else {
-        raiseAppPriorities(file, atomic, types);
+        for (const rule of atomic) rule[2] += APP_OFFSET;
       }
     },
   };
@@ -71,40 +77,34 @@ function renameComponentClasses(file, atomic, types) {
   });
 }
 
-function raiseAppPriorities(file, atomic, types) {
-  for (const rule of atomic) rule[2] += APP_OFFSET;
-
-  // Runtime injection: each `inject({ ltr, priority })` call carries its own copy.
-  file.path.traverse({
-    ObjectExpression(path) {
-      if (!path.parentPath.isCallExpression()) return;
-      const properties = path.node.properties;
-
-      if (!properties.some((property) => property.key?.name === "ltr")) return;
-
-      for (const property of properties) {
-        if (
-          property.key?.name === "priority" &&
-          property.value.type === "NumericLiteral" &&
-          property.value.value >= ATOMIC_PRIORITY
-        ) {
-          property.value = types.numericLiteral(property.value.value + APP_OFFSET);
-        }
-      }
-    },
-  });
-}
-
 function withOrder(options = {}) {
   const babelConfig = options.babelConfig ?? {};
 
   return {
+    runtimeInjection: false,
+    propertyValidationMode: "throw",
     ...options,
     babelConfig: { ...babelConfig, plugins: [...(babelConfig.plugins ?? []), nyteStylexOrder] },
   };
 }
 
+/**
+ * Holds the development stylesheet until the server has transformed the
+ * modules the page requested, so a cold start does not paint with a partial
+ * sheet and then swap.
+ */
+const settledStylesheet = {
+  name: "nyte-stylex-settled-stylesheet",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use((request, _response, next) => {
+      if (request.url?.startsWith("/virtual:stylex.css") !== true) return next();
+      void server.waitForRequestsIdle().then(() => next(), next);
+    });
+  },
+};
+
 export const stylex = {
-  vite: (options) => unplugin.vite(withOrder(options)),
+  vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
   rollup: (options) => unplugin.rollup(withOrder(options)),
 };

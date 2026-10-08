@@ -9,11 +9,12 @@
  */
 
 import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
+import type { SavedConnection } from "./connection.ts";
 
 /**
  * How one attempt ended badly. `host.ts` is the only producer, because that is
  * where the client's errors exist. Naming each ending as a value is what keeps
- * a refused token apart from a Mac that never answered.
+ * a refused token apart from a host that never answered.
  */
 export type ConnectFailure =
   /** Reached a Nyte server; it refused the token. */
@@ -22,8 +23,17 @@ export type ConnectFailure =
   | { readonly kind: "silent"; readonly address: string }
   /** Something answered and was not a Nyte server. */
   | { readonly kind: "wrongServer"; readonly address: string }
-  /** The Mac answered; the Keychain would not hold the token. */
+  /** The host answered; the Keychain would not hold the token. */
   | { readonly kind: "notSaved" }
+  /**
+   * This route pinned a host identity and the answer did not prove it: another
+   * key, or none. Only an explicit re-pair of the same `url` replaces the pin.
+   */
+  | { readonly kind: "identityChanged"; readonly address: string; readonly url: string }
+  /** It named an identity it could not sign for, or is a registry host naming none. */
+  | { readonly kind: "unverified"; readonly address: string }
+  /** The Keychain would not read or keep this route's host pin. */
+  | { readonly kind: "keychain" }
   /** Nothing here recognized the ending. Say so rather than blame the network. */
   | { readonly kind: "unexpected"; readonly detail: string }
   | { readonly kind: "cancelled" };
@@ -45,20 +55,20 @@ export interface ConnectCopy {
   readonly retry: string | undefined;
 }
 
-/** Where the Mac shares itself, by address and token or through a Nyte account. Spelled as the desktop labels it. */
+/** Where a Mac shares itself, by address and token or through a Nyte account. Spelled as the desktop labels it. */
 export const SHARE_LOCATION = "Environments › Remote Access";
 
 export function connectCopy(stage: ConnectStage): ConnectCopy {
   switch (stage.kind) {
     case "idle":
       return {
-        title: "Connect your Mac",
-        body: `On your Mac, open ${SHARE_LOCATION} and start sharing. Enter the address and token it shows.`,
+        title: "Connect a computer",
+        body: `On your Mac, open ${SHARE_LOCATION} and start sharing, or run nyte serve on another computer. Enter the address and token it shows.`,
         retry: undefined,
       };
     case "verifying":
       return {
-        title: "Checking your Mac",
+        title: "Checking the host",
         body: `Waiting for ${stage.address} to answer.`,
         retry: undefined,
       };
@@ -67,13 +77,13 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "refused":
       return {
         title: "Token refused",
-        body: `Your Mac didn't accept this token. Scan a new code from ${SHARE_LOCATION} on your Mac.`,
+        body: `The host didn't accept this token. Scan a new code from ${SHARE_LOCATION} on your Mac, or use the current token from nyte serve.`,
         retry: "Try again",
       };
     case "silent":
       return {
         title: "No answer",
-        body: `Nothing replied at ${stage.address}. Check that your Mac is awake with sharing on and that this phone is online. A Tailscale address also needs Tailscale running on this phone.`,
+        body: `Nothing replied at ${stage.address}. Check that the computer is awake and sharing, and that this phone is online. A Tailscale address also needs Tailscale running on this phone.`,
         retry: "Try again",
       };
     case "wrongServer":
@@ -85,7 +95,25 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "notSaved":
       return {
         title: "Token not saved",
-        body: "Your Mac answered, but the token didn't reach the Keychain. Unlock your phone and try again.",
+        body: "The host answered, but the token didn't reach the Keychain. Unlock your phone and try again.",
+        retry: "Try again",
+      };
+    case "identityChanged":
+      return {
+        title: "Different host",
+        body: `${stage.address} isn't the computer this iPhone paired with. If Nyte was reinstalled or its profile reset there, pair it as a new host.`,
+        retry: "Pair as New Host",
+      };
+    case "unverified":
+      return {
+        title: "Host not verified",
+        body: `${stage.address} didn't prove which computer it is. Update Nyte there, then try again.`,
+        retry: "Try again",
+      };
+    case "keychain":
+      return {
+        title: "Keychain unavailable",
+        body: "Unlock your phone and try again.",
         retry: "Try again",
       };
     case "unexpected":
@@ -112,7 +140,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
  * The lead paragraph before an attempt. Editing an existing connection needs a
  * different instruction: the details are already filled in, and the user is
  * here to replace them. With a Nyte account, the account comes first, and an
- * account connection is replaced by picking its Mac again.
+ * account connection is replaced by picking its computer again.
  */
 export function introCopy(input: {
   editing: "manual" | "managed" | undefined;
@@ -120,25 +148,43 @@ export function introCopy(input: {
 }): ConnectCopy {
   if (input.editing === "managed" && input.account)
     return {
-      title: "Update your Mac",
-      body: "Pick your Mac from your Nyte account again.",
+      title: "Update your computer",
+      body: "Pick it from your Nyte account again.",
       retry: undefined,
     };
 
   if (input.editing !== undefined)
     return {
-      title: "Update your Mac",
-      body: `Enter the address and token your Mac shows now, or scan a new code from ${SHARE_LOCATION}.`,
+      title: "Update your computer",
+      body: `Enter the address and token it uses now, or scan a new code from ${SHARE_LOCATION}.`,
       retry: undefined,
     };
 
   return input.account
     ? {
-        title: "Connect your Mac",
-        body: "Sign in with the Nyte account your Mac uses.",
+        title: "Connect a computer",
+        body: "Sign in with the Nyte account your computer is linked to.",
         retry: undefined,
       }
     : connectCopy({ kind: "idle" });
+}
+
+/**
+ * The saved host did not verify on the way back in. An account device the
+ * host refuses is picked again from the account, not fixed with a new token.
+ */
+export function recoveryCopy(
+  failure: Exclude<ConnectFailure, { kind: "cancelled" }>,
+  saved: SavedConnection,
+): ConnectCopy {
+  if (failure.kind === "refused" && saved.kind === "managed")
+    return {
+      title: "Not accepted",
+      body: `${saved.connection.name} no longer accepts this iPhone. Pick it from your Nyte account again.`,
+      retry: "Try again",
+    };
+
+  return connectCopy(failure);
 }
 
 /**

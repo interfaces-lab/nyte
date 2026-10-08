@@ -7,7 +7,7 @@ import { defaultClientConditions, type Plugin } from "vite";
 import { dropInlinedGhosttyWasm, stylex } from "@nyte-ai/app/vite";
 import { deferredClerk } from "./account.vite.ts";
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(() => ({
   main: {
     plugins: [
       {
@@ -49,7 +49,10 @@ export default defineConfig(({ command }) => ({
       minify: true,
       target: "node24",
       rolldownOptions: {
-        input: { index: resolve("src/preload/index.ts") },
+        input: {
+          index: resolve("src/preload/index.ts"),
+          "browser-page": resolve("src/preload/browser-page.ts"),
+        },
         treeshake: { moduleSideEffects: false },
         output: { format: "cjs", entryFileNames: "[name].js" },
       },
@@ -60,13 +63,7 @@ export default defineConfig(({ command }) => ({
       deferredClerk(),
       dropInlinedGhosttyWasm(),
       stylex.vite({
-        // Development installs component rules before React mounts them.
-        // Production still extracts one layered stylesheet.
-        devMode: command === "serve" ? "css-only" : "off",
-        runtimeInjection: command === "serve",
         useCSSLayers: true,
-        // A key StyleX cannot compile, like `border`, fails the build instead of vanishing.
-        propertyValidationMode: "throw",
         lightningcssOptions: { targets: { chrome: 152 << 16 } },
       }),
       react({ compiler: true }),

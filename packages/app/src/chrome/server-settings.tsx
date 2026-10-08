@@ -30,6 +30,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { nyte } from "../nyte.ts";
 import { keys, useRemoteAccessState, useServerState } from "../queries.ts";
@@ -49,7 +50,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 const shareStyles = create({
   panel: { display: "flex", flexDirection: "column", gap: 8 },
   step: { display: "flex", flexDirection: "column", gap: 8 },
-  switcher: { display: "inline-flex", gap: 8, alignSelf: "flex-start" },
+  switcher: { alignSelf: "flex-start" },
   scan: { display: "flex", alignItems: "center", gap: 12 },
   scanText: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
   // One grid for both fields so the value boxes share a left edge and width.
@@ -390,12 +391,12 @@ function ServingPanel({ state }: { state: TokenServing }) {
           </code>
           <span {...props(shareStyles.fieldActions)}>
             <CopyButton label="Token" value={state.token} />
-            <Button
+            <Toggle
               iconOnly
               icon="eye"
               aria-label={revealed ? "Hide token" : "Reveal token"}
-              aria-pressed={revealed}
-              onClick={() => setRevealed((value) => !value)}
+              pressed={revealed}
+              onPressedChange={setRevealed}
             />
           </span>
         </div>

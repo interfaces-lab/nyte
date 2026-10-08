@@ -6,7 +6,6 @@ import {
 } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/ai";
 import type { ThinkingLevel } from "@nyte-ai/core";
-import { fastModeSettingId } from "@nyte-ai/plugin/examples/fast-mode";
 import {
   bold,
   BoxRenderable,
@@ -23,10 +22,10 @@ import type { CliTheme } from "./theme.ts";
 import { padDisplay, truncateDisplay } from "./width.ts";
 import { PanelLayout } from "./panel-layout.ts";
 
+/** The model is the row's fast sibling when fast mode was turned on. */
 export interface ModelSelection {
   readonly model: Model<Api>;
   readonly thinkingLevel: ThinkingLevel;
-  readonly fast: { readonly settingId: string; readonly enabled: boolean } | undefined;
 }
 
 interface ModelPickerBaseOptions {
@@ -45,7 +44,6 @@ interface ModelPickerOptions extends ModelPickerBaseOptions {
   readonly kind: "session";
   readonly current: Model<Api>;
   readonly thinkingLevel: ThinkingLevel;
-  readonly fastModes: ReadonlyMap<string, boolean>;
   readonly onSelect: (selection: ModelSelection) => void;
 }
 
@@ -53,6 +51,11 @@ type Field = "effort" | "fast";
 
 function identity(model: Pick<Model<Api>, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
+}
+
+/** Fast siblings ride on their base's row. */
+function rowsOf(models: readonly Model<Api>[]): readonly Model<Api>[] {
+  return models.filter((model) => model.variant === undefined);
 }
 
 function effortLabel(level: ThinkingLevel): string {
@@ -84,7 +87,10 @@ export class ModelPicker implements EphemeralPanel {
   private readonly count: TextRenderable;
   private readonly rowViews: TextRenderable[] = [];
   private readonly efforts = new Map<string, ThinkingLevel>();
-  private readonly fastModes: Map<string, boolean>;
+  /** Rows whose fast sibling is the draft. */
+  private readonly fast = new Set<string>();
+  /** Every entry, fast siblings included; rows list only the bases. */
+  private catalog: readonly Model<Api>[];
   private models: readonly Model<Api>[];
   private costCeiling: number | undefined;
   private matches: readonly Model<Api>[];
@@ -96,10 +102,12 @@ export class ModelPicker implements EphemeralPanel {
 
   constructor(options: ModelPickerOptions) {
     this.options = options;
-    this.models = options.models;
-    this.matches = options.models;
-    this.fastModes = new Map(options.kind === "session" ? options.fastModes : []);
-    const current = identity(options.current);
+    this.catalog = options.models;
+    this.models = rowsOf(options.models);
+    this.matches = this.models;
+    const current = identity(this.currentRow);
+
+    if (options.current.variant !== undefined) this.fast.add(current);
     this.selected = Math.max(
       0,
       this.matches.findIndex((model) => identity(model) === current),
@@ -156,7 +164,8 @@ export class ModelPicker implements EphemeralPanel {
       options.load,
       (models) => {
         this.catalogStatus = "ready";
-        this.models = models;
+        this.catalog = models;
+        this.models = rowsOf(models);
         this.costCeiling = undefined;
         this.filter();
       },
@@ -196,7 +205,7 @@ export class ModelPicker implements EphemeralPanel {
 
     if (getSupportedThinkingLevels(model).length > 1) fields.push("effort");
 
-    if (this.fastSetting(model) !== undefined) fields.push("fast");
+    if (this.fastOf(model) !== undefined) fields.push("fast");
 
     return fields;
   }
@@ -268,18 +277,23 @@ export class ModelPicker implements EphemeralPanel {
     );
   }
 
-  private fastSetting(model: Model<Api>): string | undefined {
-    const settingId = fastModeSettingId(model.provider);
+  /** The row the current selection sits on: a fast sibling's base, else itself. */
+  private get currentRow(): Pick<Model<Api>, "provider" | "id"> {
+    const { current } = this.options;
 
-    return model.modes?.includes("fast") === true && this.fastModes.has(settingId)
-      ? settingId
-      : undefined;
+    return current.variant === undefined
+      ? current
+      : { provider: current.provider, id: current.variant.base };
+  }
+
+  private fastOf(model: Model<Api>): Model<Api> | undefined {
+    return this.catalog.find(
+      (candidate) => candidate.provider === model.provider && candidate.variant?.base === model.id,
+    );
   }
 
   private fastEnabled(model: Model<Api>): boolean {
-    const settingId = this.fastSetting(model);
-
-    return settingId !== undefined && this.fastModes.get(settingId) === true;
+    return this.fastOf(model) !== undefined && this.fast.has(identity(model));
   }
 
   private readonly filter = (): void => {
@@ -290,7 +304,7 @@ export class ModelPicker implements EphemeralPanel {
 
       return terms.every((term) => text.includes(term));
     });
-    const current = identity(previous ?? this.options.current);
+    const current = identity(previous ?? this.currentRow);
     this.selected = Math.max(
       0,
       this.matches.findIndex((model) => identity(model) === current),
@@ -312,9 +326,8 @@ export class ModelPicker implements EphemeralPanel {
     if (model === undefined) return;
 
     if (this.activeField(model) === "fast") {
-      const settingId = this.fastSetting(model);
-
-      if (settingId !== undefined) this.fastModes.set(settingId, delta === 1);
+      if (delta === 1) this.fast.add(identity(model));
+      else this.fast.delete(identity(model));
     } else {
       const levels = getSupportedThinkingLevels(model);
 
@@ -331,11 +344,9 @@ export class ModelPicker implements EphemeralPanel {
     const model = this.selectedModel;
 
     if (model === undefined) return;
-    const settingId = this.fastSetting(model);
     this.options.onSelect({
-      model,
+      model: (this.fastEnabled(model) ? this.fastOf(model) : undefined) ?? model,
       thinkingLevel: this.effort(model),
-      fast: settingId === undefined ? undefined : { settingId, enabled: this.fastEnabled(model) },
     });
   }
 
@@ -378,15 +389,13 @@ export class ModelPicker implements EphemeralPanel {
       : effortLabel(level);
 
     const fast =
-      this.fastSetting(model) === undefined
-        ? ""
-        : `Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
+      this.fastOf(model) === undefined ? "" : `Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
 
     return new StyledText([
       fg(color)(
         selected
           ? `${GLYPHS.prompt} `
-          : identity(model) === identity(this.options.current)
+          : identity(model) === identity(this.currentRow)
             ? "· "
             : "  ",
       ),
@@ -401,7 +410,7 @@ export class ModelPicker implements EphemeralPanel {
   }
 
   private isCurrent(model: Model<Api>): boolean {
-    return identity(model) === identity(this.options.current);
+    return identity(model) === identity(this.currentRow);
   }
 
   private detail(model: Model<Api>, width: number): StyledText {
@@ -409,7 +418,7 @@ export class ModelPicker implements EphemeralPanel {
     const level = effortLabel(this.effort(model));
 
     const fast =
-      this.fastSetting(model) === undefined
+      this.fastOf(model) === undefined
         ? ""
         : ` · Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
 

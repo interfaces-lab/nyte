@@ -1,5 +1,6 @@
 // One-shot provider calls. Each loads its client on first use so importing the
 // package root does not bundle every SDK.
+import { providerRequest } from "../model-variants.ts";
 import type { AccountLimits, Context, Model } from "../types.ts";
 import type { AnthropicOptions } from "./anthropic-messages.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
@@ -28,21 +29,23 @@ export async function fetchOpenAICodexAccountLimits(
 }
 
 export async function compactOpenAICodexContext(
-  model: Model<"openai-codex-responses">,
+  selected: Model<"openai-codex-responses">,
   context: Context,
-  options?: OpenAICodexResponsesOptions,
+  selectedOptions?: OpenAICodexResponsesOptions,
 ): Promise<OpenAICodexCompactResult> {
   const api = await import("./openai-codex-responses.ts");
+  const { model, options } = providerRequest(selected, selectedOptions);
 
   return api.compactOpenAICodexContext(model, context, options);
 }
 
 export async function compactOpenAIResponsesContext(
-  model: Model<"openai-responses">,
+  selected: Model<"openai-responses">,
   context: Context,
-  options?: OpenAIResponsesOptions,
+  selectedOptions?: OpenAIResponsesOptions,
 ): Promise<OpenAICompactResult> {
   const api = await import("./openai-responses.ts");
+  const { model, options } = providerRequest(selected, selectedOptions);
 
   return api.compactOpenAIResponsesContext(model, context, options);
 }

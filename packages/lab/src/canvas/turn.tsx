@@ -1,6 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
+import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import type { ReactElement } from "react";
 import { CanvasFrame } from "./frame";
 import type { ConversationTurn } from "./demo";
@@ -16,6 +17,8 @@ export function CanvasTurn({
   readonly turn: ConversationTurn;
   readonly running: boolean;
 }): ReactElement {
+  const density = useSetting(preferences.toolCalls);
+
   const ids = turn.parts.flatMap((part) => {
     if (
       part.kind !== "tool" ||
@@ -42,6 +45,7 @@ export function CanvasTurn({
       <TurnView
         turn={before}
         continuations={noContinuations}
+        density={density}
         liveTools={noTools}
         cwd={undefined}
         onOpenChanges={() => {}}
@@ -54,6 +58,7 @@ export function CanvasTurn({
         <TurnView
           turn={{ ...turn, parts: finalParts }}
           continuations={noContinuations}
+          density={density}
           liveTools={noTools}
           cwd={undefined}
           onOpenChanges={() => {}}

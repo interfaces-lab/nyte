@@ -1,464 +1,293 @@
 import { useState } from "react";
-import { useMountEffect } from "../use-mount-effect.ts";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  useColorScheme,
-} from "react-native";
-import { BlurView } from "expo-blur";
-import { OverKeyboardView } from "react-native-keyboard-controller";
+import { ScrollView, View } from "react-native";
+import { BottomSheet, RNHostView } from "@expo/ui";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   clamp,
-  Extrapolation,
-  interpolate,
   useAnimatedReaction,
   useAnimatedStyle,
-  useDerivedValue,
+  useSharedValue,
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { SELECTOR, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
+import { css, html } from "react-strict-dom";
+import { controls, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
+import { GlassButton } from "../ui/glass-button.tsx";
+import { SELECTOR, SPRING } from "./composer-geometry.ts";
 import { GaugeIcon } from "./gauge-icon.tsx";
 import { THINKING_LABELS, type ThinkingLevel } from "./thinking.ts";
 
-export type ThinkingSelectorColors = {
-  text: string;
-  accent: string;
-  accentFill: string;
-  track: string;
-  tickOnTrack: string;
-  tickOnFill: string;
-  knob: string;
-  gaugeTrack: string;
-  needle: string;
-  scrim: string;
-};
+const KNOB_SIZE = controls.touchTarget;
+
+const TRACK_START = SELECTOR.inset + KNOB_SIZE / 2;
 
 export function ThinkingSelector({
-  progress,
-  opening,
+  open,
   level,
-  gaugeCenterX,
-  cardDock,
+  initialIndex,
   levels,
   modelName,
-  colors,
   onClose,
   onCommit,
 }: {
-  progress: SharedValue<number>;
-  opening: SharedValue<boolean>;
+  open: boolean;
   level: SharedValue<number>;
-  gaugeCenterX: number;
-  cardDock: SharedValue<number>;
+  initialIndex: number;
   levels: readonly ThinkingLevel[];
   modelName: string;
-  colors: ThinkingSelectorColors;
   onClose: () => void;
   onCommit: (index: number) => void;
 }) {
-  const { width: screenWidth } = useWindowDimensions();
-  const scheme = useColorScheme();
-  // Mount owns the entrance: one frame for the closed position to exist, then
-  // the spring to open. A close that beats the frame leaves `opening` false.
-  useMountEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      if (opening.get()) progress.set(withSpring(1, SPRING.open));
-    });
-
-    return () => cancelAnimationFrame(frame);
-  });
+  const theme = useTheme();
+  const width = useSharedValue(0);
   const span = Math.max(levels.length - 1, 0);
-  const titles = levels.map((entry) => `${modelName} ${THINKING_LABELS[entry]}`);
-  const [title, setTitle] = useState(() => titles[Math.round(level.get())] ?? "");
-  // Prop changes (a new model's stops, a renamed model) adjust the label here;
-  // mid-gesture changes never re-render and are published by the reaction below.
-  const wanted = titles[Math.round(clamp(level.get(), 0, span))];
+  const [previewIndex, setPreviewIndex] = useState(initialIndex);
+  const [previousOpen, setPreviousOpen] = useState(open);
+  const [previousIndex, setPreviousIndex] = useState(initialIndex);
 
-  if (wanted !== undefined && wanted !== title) setTitle(wanted);
+  if (previousOpen !== open || previousIndex !== initialIndex) {
+    setPreviousOpen(open);
+    setPreviousIndex(initialIndex);
+    setPreviewIndex(initialIndex);
+  }
 
-  const openLeft = SELECTOR.trackInset;
-  const openRight = screenWidth - SELECTOR.trackInset;
-  const closedLeft = gaugeCenterX - SELECTOR.closedHeight / 2;
-  const closedRight = gaugeCenterX + SELECTOR.closedHeight / 2;
-
-  const trackLeft = useDerivedValue(() =>
-    interpolate(progress.get(), [0, 1], [closedLeft, openLeft]),
-  );
-
-  const trackWidth = useDerivedValue(
-    () => interpolate(progress.get(), [0, 1], [closedRight, openRight]) - trackLeft.get(),
-  );
-
-  const trackHeight = useDerivedValue(() =>
-    interpolate(progress.get(), [0, 1], [SELECTOR.closedHeight, SELECTOR.trackHeight]),
-  );
-
-  const inset = useDerivedValue(() =>
-    interpolate(progress.get(), [0, 1], [SELECTOR.closedInset, SELECTOR.inset]),
-  );
-
-  const fillHeight = useDerivedValue(() => trackHeight.get() - inset.get() * 2);
-  const stop0 = useDerivedValue(() => inset.get() + fillHeight.get() / 2);
-  const travel = useDerivedValue(() => trackWidth.get() - stop0.get() * 2);
-
-  const knobX = useDerivedValue(() => {
-    const t = span === 0 ? 0 : level.get() / span;
-
-    return interpolate(
-      progress.get(),
-      [0, 1],
-      [trackWidth.get() / 2, stop0.get() + travel.get() * t],
-    );
-  });
-
-  const trackStyle = useAnimatedStyle(() => ({
-    left: trackLeft.get(),
-    width: trackWidth.get(),
-    height: trackHeight.get(),
-    borderRadius: trackHeight.get() / 2,
-    // Icon-row centre, not the keyboard. This composer sits above extra padding.
-    bottom: cardDock.get() + ICON_ROW_INSET - trackHeight.get() / 2,
-    shadowColor: colors.scrim,
-    shadowOpacity: interpolate(progress.get(), [0, 1], [0, 0.1]),
-  }));
-
-  const clipStyle = useAnimatedStyle(() => ({ borderRadius: trackHeight.get() / 2 }));
-
-  const fillStyle = useAnimatedStyle(() => ({
-    left: inset.get(),
-    height: fillHeight.get(),
-    borderRadius: fillHeight.get() / 2,
-    width: knobX.get() + fillHeight.get() / 2 - inset.get(),
-  }));
-
-  const knobStyle = useAnimatedStyle(() => {
-    const ring = interpolate(progress.get(), [0, 1], [SELECTOR.closedRing, SELECTOR.knobRing]);
-    const size = fillHeight.get() - ring * 2;
-
-    return { left: knobX.get() - size / 2, width: size, height: size, borderRadius: size / 2 };
-  });
-
-  const gaugeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.get(), [0, 0.1], [1, 0], Extrapolation.CLAMP),
-  }));
-
-  const rootStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.get(),
-      [SELECTOR.handoff, SELECTOR.handoff * 4],
-      [0, 1],
-      Extrapolation.CLAMP,
-    ),
-  }));
-
-  const ticksStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.get(), [0.25, 0.8], [0, 1], Extrapolation.CLAMP),
-  }));
-
-  const scrimStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.get(), [0, 1], [0, 1], Extrapolation.CLAMP),
-  }));
+  const current = levels[previewIndex] ?? levels[0];
+  const title = current === undefined ? "Thinking level" : THINKING_LABELS[current];
 
   useAnimatedReaction(
     () => Math.round(clamp(level.get(), 0, span)),
     (index, previous) => {
-      if (index === previous) return;
-      const next = titles[index];
-
-      if (next !== undefined) scheduleOnRN(setTitle, next);
+      if (index !== previous) scheduleOnRN(setPreviewIndex, index);
     },
   );
 
-  const labelStyle = useAnimatedStyle(() => {
-    const p = progress.get();
+  const fillStyle = useAnimatedStyle(() => ({
+    width:
+      KNOB_SIZE +
+      (span === 0 ? 0 : (Math.max(0, width.get() - TRACK_START * 2) * level.get()) / span),
+  }));
 
-    return {
-      bottom: cardDock.get() + ICON_ROW_INSET + SELECTOR.trackHeight / 2 + SELECTOR.labelGap,
-      opacity:
-        interpolate(p, [0.2, 0.8], [0, 1], Extrapolation.CLAMP) *
-        interpolate(p, [SELECTOR.handoff, SELECTOR.handoff * 4], [0, 1], Extrapolation.CLAMP),
-      transform: [
-        { scale: interpolate(p, [0, 1], [0.58, 1]) },
-        { translateY: interpolate(p, [0, 1], [30, 0]) },
-      ],
-    };
-  });
+  const knobStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX:
+          span === 0 ? 0 : (Math.max(0, width.get() - TRACK_START * 2) * level.get()) / span,
+      },
+    ],
+  }));
 
   const pan = Gesture.Pan()
     .minDistance(0)
     .onBegin((event) => {
-      const t = clamp((event.x - stop0.get()) / travel.get(), 0, 1) * span;
-      level.set(withSpring(Math.round(t), SPRING.knob));
+      const travel = Math.max(1, width.get() - TRACK_START * 2);
+      const next = Math.round(clamp((event.x - TRACK_START) / travel, 0, 1) * span);
+      level.set(withSpring(next, SPRING.knob));
     })
     .onUpdate((event) => {
-      level.set(clamp((event.x - stop0.get()) / travel.get(), 0, 1) * span);
+      const travel = Math.max(1, width.get() - TRACK_START * 2);
+      level.set(clamp((event.x - TRACK_START) / travel, 0, 1) * span);
     })
     .onFinalize(() => {
-      const snapped = Math.round(clamp(level.get(), 0, span));
-      level.set(withSpring(snapped, SPRING.knob));
-      scheduleOnRN(onCommit, snapped);
+      const next = Math.round(clamp(level.get(), 0, span));
+      level.set(withSpring(next, SPRING.knob));
+      scheduleOnRN(onCommit, next);
     });
 
-  const commitLevel = (index: number) => {
+  const commit = (index: number) => {
     const next = Math.round(clamp(index, 0, span));
     level.set(next);
+    setPreviewIndex(next);
     onCommit(next);
   };
 
-  const actionsStyle = useAnimatedStyle(() => ({
-    bottom:
-      cardDock.get() +
-      ICON_ROW_INSET +
-      SELECTOR.trackHeight / 2 +
-      SELECTOR.labelGap +
-      SELECTOR.labelSize * 1.2 +
-      8,
-  }));
-
   return (
-    <OverKeyboardView visible>
-      <GestureHandlerRootView style={styles.fill}>
-        <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close thinking selector"
-            onPress={onClose}
-            style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]}
-          />
-        </Animated.View>
-
-        <Animated.View style={[styles.actions, actionsStyle, rootStyle]}>
-          {levels.map((entry, index) => (
-            <Pressable
-              key={entry}
-              accessibilityRole="button"
-              accessibilityState={{ selected: titles[index] === title }}
-              onPress={() => commitLevel(index)}
-              style={[
-                styles.levelButton,
-                {
-                  backgroundColor: colors.track,
-                  borderColor: titles[index] === title ? colors.accent : colors.track,
-                },
-              ]}
-            >
-              <Text style={{ color: colors.text }}>{THINKING_LABELS[entry]}</Text>
-            </Pressable>
-          ))}
-        </Animated.View>
-
-        <Animated.View style={[styles.labelHost, labelStyle]} pointerEvents="none">
-          <Text style={[styles.label, { color: colors.text }]}>{title}</Text>
-        </Animated.View>
-
-        <Animated.View style={[styles.track, trackStyle, rootStyle]}>
-          <Animated.View style={[styles.trackClip, clipStyle]}>
-            <BlurView
-              style={StyleSheet.absoluteFill}
-              intensity={22}
-              tint={scheme === "dark" ? "dark" : "light"}
+    <BottomSheet
+      isPresented={open}
+      onDismiss={onClose}
+      snapPoints={["half", "full"]}
+      contentPadding={0}
+      containerColor={theme.surface}
+    >
+      <RNHostView>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.surface }}>
+          <html.div style={styles.header}>
+            <html.h2 style={[textStyles.title, styles.heading]}>Thinking level</html.h2>
+            <GlassButton
+              label="Close thinking selector"
+              systemImage="xmark"
+              iconOnly
+              onPress={onClose}
             />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.track }]} />
+          </html.div>
+          <ScrollView contentContainerStyle={{ paddingBottom: spacing.xl }}>
+            <html.div style={styles.content}>
+              <html.div style={styles.summary}>
+                <html.span style={textStyles.secondary}>{modelName}</html.span>
+                <html.span style={textStyles.heading}>{title}</html.span>
+              </html.div>
+              <GestureDetector gesture={pan}>
+                <View
+                  onLayout={(event) => width.set(event.nativeEvent.layout.width)}
+                  accessible
+                  accessibilityRole="adjustable"
+                  accessibilityLabel="Thinking level"
+                  accessibilityValue={{ min: 0, max: span, now: previewIndex, text: title }}
+                  accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+                  onAccessibilityAction={({ nativeEvent }) => {
+                    if (nativeEvent.actionName === "increment") commit(previewIndex + 1);
 
-            <Animated.View style={[styles.ticks, ticksStyle]} pointerEvents="none">
-              <Ticks
-                levels={levels}
-                color={colors.tickOnTrack}
-                stop0={stop0}
-                travel={travel}
-                span={span}
-                offset={0}
-              />
-            </Animated.View>
-
-            <Animated.View
-              style={[styles.fillPill, fillStyle, { backgroundColor: colors.accentFill }]}
-              pointerEvents="none"
+                    if (nativeEvent.actionName === "decrement") commit(previewIndex - 1);
+                  }}
+                  style={{
+                    height: SELECTOR.trackHeight,
+                    borderRadius: SELECTOR.trackHeight / 2,
+                    backgroundColor: theme.raised,
+                  }}
+                >
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      {
+                        position: "absolute",
+                        left: SELECTOR.inset,
+                        top: (SELECTOR.trackHeight - KNOB_SIZE) / 2,
+                        height: KNOB_SIZE,
+                        borderRadius: KNOB_SIZE / 2,
+                        backgroundColor: theme.accentFill,
+                      },
+                      fillStyle,
+                    ]}
+                  />
+                  {levels.map((entry, index) => (
+                    <Tick key={entry} index={index} span={span} width={width} level={level} />
+                  ))}
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      {
+                        position: "absolute",
+                        left: SELECTOR.inset,
+                        top: (SELECTOR.trackHeight - KNOB_SIZE) / 2,
+                        width: KNOB_SIZE,
+                        height: KNOB_SIZE,
+                        borderRadius: KNOB_SIZE / 2,
+                        backgroundColor: theme.surface,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      },
+                      knobStyle,
+                    ]}
+                  >
+                    <GaugeIcon
+                      level={level}
+                      stopCount={levels.length}
+                      accent={theme.accent}
+                      track={theme.muted}
+                      needle={theme.foreground}
+                    />
+                  </Animated.View>
+                </View>
+              </GestureDetector>
+            </html.div>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              contentContainerStyle={{ paddingHorizontal: spacing.gutter, gap: spacing.xs }}
             >
-              <Animated.View style={[styles.ticks, ticksStyle]}>
-                <Ticks
-                  levels={levels}
-                  color={colors.tickOnFill}
-                  stop0={stop0}
-                  travel={travel}
-                  span={span}
-                  offset={inset}
-                />
-              </Animated.View>
-            </Animated.View>
-
-            <Animated.View
-              style={[styles.knob, knobStyle, { backgroundColor: colors.knob }]}
-              pointerEvents="none"
-            >
-              <Animated.View style={gaugeStyle}>
-                <GaugeIcon
-                  level={level}
-                  stopCount={levels.length}
-                  accent={colors.accent}
-                  track={colors.gaugeTrack}
-                  needle={colors.needle}
-                />
-              </Animated.View>
-            </Animated.View>
-          </Animated.View>
-
-          <GestureDetector gesture={pan}>
-            <View
-              style={StyleSheet.absoluteFill}
-              accessible
-              accessibilityRole="adjustable"
-              accessibilityLabel="Thinking level"
-              accessibilityValue={{
-                min: 0,
-                max: span,
-                now: Math.max(0, titles.indexOf(title)),
-                text: title,
-              }}
-              accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
-              onAccessibilityAction={({ nativeEvent }) => {
-                if (nativeEvent.actionName === "increment") commitLevel(level.get() + 1);
-                if (nativeEvent.actionName === "decrement") commitLevel(level.get() - 1);
-              }}
-            />
-          </GestureDetector>
-        </Animated.View>
-      </GestureHandlerRootView>
-    </OverKeyboardView>
-  );
-}
-
-function Ticks({
-  levels,
-  color,
-  stop0,
-  travel,
-  span,
-  offset,
-}: {
-  levels: readonly ThinkingLevel[];
-  color: string;
-  stop0: SharedValue<number>;
-  travel: SharedValue<number>;
-  span: number;
-  offset: SharedValue<number> | 0;
-}) {
-  return (
-    <>
-      {levels.map((entry, index) => (
-        <Tick
-          key={entry}
-          index={index}
-          color={color}
-          stop0={stop0}
-          travel={travel}
-          span={span}
-          offset={offset}
-        />
-      ))}
-    </>
+              {levels.map((entry, index) => (
+                <html.button
+                  key={entry}
+                  aria-pressed={index === previewIndex}
+                  onClick={() => commit(index)}
+                  style={[styles.level, index === previewIndex && styles.selected]}
+                >
+                  <html.span
+                    style={[textStyles.secondary, index === previewIndex && styles.selectedText]}
+                  >
+                    {THINKING_LABELS[entry]}
+                  </html.span>
+                </html.button>
+              ))}
+            </ScrollView>
+          </ScrollView>
+        </GestureHandlerRootView>
+      </RNHostView>
+    </BottomSheet>
   );
 }
 
 function Tick({
   index,
-  color,
-  stop0,
-  travel,
   span,
-  offset,
+  width,
+  level,
 }: {
   index: number;
-  color: string;
-  stop0: SharedValue<number>;
-  travel: SharedValue<number>;
   span: number;
-  offset: SharedValue<number> | 0;
+  width: SharedValue<number>;
+  level: SharedValue<number>;
 }) {
-  const style = useAnimatedStyle(() => {
-    const shift = offset === 0 ? 0 : offset.get();
-    const x = span === 0 ? stop0.get() : stop0.get() + (travel.get() * index) / span;
+  const theme = useTheme();
 
-    return { left: x - shift - SELECTOR.tickSize / 2 };
-  });
+  const style = useAnimatedStyle(() => ({
+    left:
+      TRACK_START -
+      SELECTOR.tickSize / 2 +
+      (span === 0 ? 0 : (Math.max(0, width.get() - TRACK_START * 2) * index) / span),
+    backgroundColor: level.get() >= index ? theme.onAccentFill : theme.muted,
+  }));
 
-  return <Animated.View style={[styles.tick, { backgroundColor: color }, style]} />;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: "absolute",
+          top: (SELECTOR.trackHeight - SELECTOR.tickSize) / 2,
+          width: SELECTOR.tickSize,
+          height: SELECTOR.tickSize,
+          borderRadius: SELECTOR.tickSize / 2,
+        },
+        style,
+      ]}
+    />
+  );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1 },
-  actions: {
-    position: "absolute",
-    left: SELECTOR.trackInset,
-    right: SELECTOR.trackInset,
+const styles = css.create({
+  header: {
+    display: "flex",
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  levelButton: {
-    borderWidth: 1,
-    minWidth: 44,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    borderRadius: 22,
+  heading: { margin: 0, flex: 1 },
+  content: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.xl,
+    paddingInline: spacing.gutter,
+    paddingBottom: spacing.lg,
+  },
+  summary: { display: "flex", flexDirection: "column", gap: spacing.xs },
+  level: {
+    display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    minWidth: controls.touchTarget,
+    minHeight: controls.touchTarget,
+    paddingInline: spacing.sm,
+    paddingBlock: spacing.xs,
+    flexShrink: 0,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: "transparent",
+    borderRadius: radii.sm,
+    backgroundColor: "transparent",
   },
-  track: {
-    position: "absolute",
-    justifyContent: "center",
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  trackClip: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: "hidden",
-    justifyContent: "center",
-  },
-  ticks: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-  },
-  tick: {
-    position: "absolute",
-    width: SELECTOR.tickSize,
-    height: SELECTOR.tickSize,
-    borderRadius: SELECTOR.tickSize / 2,
-  },
-  fillPill: {
-    position: "absolute",
-    overflow: "hidden",
-  },
-  knob: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  labelHost: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-  },
-  label: {
-    width: "100%",
-    fontSize: SELECTOR.labelSize,
-    lineHeight: SELECTOR.labelSize * 1.2,
-    fontWeight: "600",
-    textAlign: "center",
-  },
+  selected: { borderColor: tokens.accent, backgroundColor: tokens.selection },
+  selectedText: { color: tokens.accent, fontWeight: 600 },
 });

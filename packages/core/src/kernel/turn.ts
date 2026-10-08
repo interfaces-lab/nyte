@@ -19,6 +19,7 @@
 import {
   classifyAssistantFailure,
   isRetryableFailureClass,
+  providerIdentity,
   retryDelayMs,
   validateToolArguments,
 } from "@nyte-ai/ai";
@@ -313,7 +314,7 @@ async function prepare(options: TurnOptions, input: TurnInput): Promise<PrepareO
     checkpoint?.kind === "checkpoint" && checkpoint.material !== undefined
       ? estimateModelContextTokens(
           input.commits.map((entry) => entry.commit),
-          { provider: options.model.provider, api: options.model.api, model: options.model.id },
+          providerIdentity(options.model),
         ).tokens
       : usage === undefined
         ? undefined
@@ -858,11 +859,7 @@ function agentContext(options: {
 }): AgentContext {
   const projected = modelContext(
     options.input.commits.map((entry) => entry.commit),
-    {
-      provider: options.options.model.provider,
-      api: options.options.model.api,
-      model: options.options.model.id,
-    },
+    providerIdentity(options.options.model),
   );
 
   const context: AgentContext = {
