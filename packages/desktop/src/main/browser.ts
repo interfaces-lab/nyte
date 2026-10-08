@@ -10,7 +10,6 @@ import type {
   BrowserDownload,
   BrowserFindResult,
   BrowserFocusMessage,
-  BrowserHistoryEntry,
   BrowserKey,
   BrowserNavigationAction,
   BrowserSurfaceState,
@@ -493,26 +492,23 @@ export function createBrowserSurfaces(
     dependencies.emit({ kind: "browser_changed", surface: surface.id, state: stateOf(surface) });
   };
 
-  const publishHistory = (
-    owner: BrowserOwner,
-    entries: readonly BrowserHistoryEntry[] | undefined,
-  ): void => {
-    if (entries === undefined) return;
-    dependencies.emit({ kind: "browser_history_changed", owner: ownerPath(owner), entries });
-  };
+  dependencies.history.listen((owner, entries) =>
+    dependencies.emit({ kind: "browser_history_changed", owner, entries }),
+  );
 
   /**
    * History holds what a person saw: a page a panel holds, never one an agent
-   * drives on its own, so a crawl cannot bury the user's own visits.
+   * drives on its own, so a crawl cannot bury or retitle the user's own visits.
    */
+  const remembers = (surface: Surface): boolean =>
+    !surface.destroyed && hasViewHolder(surface.holderState);
+
   const remember = (surface: Surface, url: string): void => {
     const page = webUrl(url);
 
-    if (surface.destroyed || page === undefined || !hasViewHolder(surface.holderState)) return;
+    if (page === undefined || !remembers(surface)) return;
     surface.visited = page;
-    void dependencies.history
-      .record(surface.owner, { url: page, at: Date.now() })
-      .then((entries) => publishHistory(surface.owner, entries));
+    void dependencies.history.record(surface.owner, { url: page, at: Date.now() });
   };
 
   /**
@@ -792,11 +788,8 @@ export function createBrowserSurfaces(
     contents.on("page-title-updated", (_event, title, explicitSet) => {
       const page = webUrl(contents.getURL());
 
-      if (explicitSet && page !== undefined) {
-        void dependencies.history
-          .retitle(surface.owner, { url: page, title })
-          .then((entries) => publishHistory(surface.owner, entries));
-      }
+      if (explicitSet && page !== undefined && remembers(surface))
+        void dependencies.history.retitle(surface.owner, { url: page, title });
 
       publish(surface);
     });
@@ -1284,10 +1277,16 @@ export function createBrowserSurfaces(
       }
     },
     async menu(input, window) {
-      const contents = surfaces.get(input.surface)?.view.webContents;
+      const surface = surfaces.get(input.surface);
+      const contents = surface?.view.webContents;
       const hasPage = contents !== undefined && !contents.isDestroyed() && contents.getURL() !== "";
 
-      return showBrowserMenu({ window: dependencies.window(window), hasPage, input });
+      return showBrowserMenu({
+        window: dependencies.window(window),
+        hasPage,
+        owner: surface?.owner ?? ownerOf(input.owner),
+        input,
+      });
     },
     async perform({ surface: id, action, owner: path }, window) {
       const surface = surfaces.get(id);
@@ -1295,6 +1294,8 @@ export function createBrowserSurfaces(
       const owner = surface?.owner ?? ownerOf(path);
 
       if (action === "clear-history") {
+        await dependencies.history.clear(owner);
+
         for (const other of surfaces.values()) {
           const contents = other.view.webContents;
 
@@ -1304,8 +1305,6 @@ export function createBrowserSurfaces(
           other.visited = undefined;
           publish(other);
         }
-
-        publishHistory(owner, await dependencies.history.clear(owner));
 
         return;
       }
@@ -1388,9 +1387,8 @@ export function createBrowserSurfaces(
     history({ owner }) {
       return dependencies.history.entries(ownerOf(owner));
     },
-    async forgetHistory({ owner: path, url }) {
-      const owner = ownerOf(path);
-      publishHistory(owner, await dependencies.history.remove(owner, url));
+    forgetHistory({ owner, url }) {
+      return dependencies.history.remove(ownerOf(owner), url);
     },
     login({ surface: id, credentials }) {
       const surface = surfaces.get(id);

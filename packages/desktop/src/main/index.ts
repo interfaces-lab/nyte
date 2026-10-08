@@ -180,9 +180,13 @@ const settings = new HostSettingsStore();
 /** The page whose forwarded key is running a menu item: it held keyboard focus when the key was pressed. */
 let forwardingSurface: string | undefined;
 
+const browserHistory = new BrowserHistoryStore(
+  join(app.getPath("userData"), "browser-history.json"),
+);
+
 const browserSurfaces = createBrowserSurfaces({
   settings: settings.current,
-  history: new BrowserHistoryStore(join(app.getPath("userData"), "browser-history.json")),
+  history: browserHistory,
   window: (id) =>
     (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
   emit: broadcast,
@@ -679,6 +683,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("before-quit", () => {
+    void browserHistory.flush();
     void desktopHost?.close();
   });
 

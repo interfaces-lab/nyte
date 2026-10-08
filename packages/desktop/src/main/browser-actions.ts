@@ -3,14 +3,18 @@ import type { BrowserWindow, Session, WebContents } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrowserAction, BrowserBridge, BrowserMenuAction } from "@nyte-ai/app/bridge.ts";
+import type { BrowserOwner } from "./browser-agent.ts";
 
 export async function showBrowserMenu({
   window,
   hasPage,
+  owner,
   input: { bookmarksVisible, x, y },
 }: {
   readonly window: BrowserWindow | undefined;
   readonly hasPage: boolean;
+  /** The cookie jar a clear would empty, named in its confirmation. */
+  readonly owner: BrowserOwner;
   readonly input: Parameters<BrowserBridge["menu"]>[0];
 }): Promise<BrowserMenuAction | undefined> {
   if (window === undefined || window.isDestroyed()) return undefined;
@@ -43,23 +47,22 @@ export async function showBrowserMenu({
   });
 
   if (action === "clear-history" || action === "clear-cookies" || action === "clear-cache") {
+    const scope = owner.kind === "home" ? "Home" : "this project";
+
     const labels = {
-      "clear-history": {
-        title: "Clear Browsing History",
-        detail: "Remove browsing history from all Nyte browser tabs?",
-      },
+      "clear-history": { message: `Clear browsing history for ${scope}?`, detail: "" },
       "clear-cookies": {
-        title: "Clear Cookies",
-        detail: "Remove cookies from all Nyte browser tabs? This may sign you out of websites.",
+        message: `Clear cookies for ${scope}?`,
+        detail: "This may sign you out of websites.",
       },
-      "clear-cache": { title: "Clear Cache", detail: "Clear the cache used by Nyte browser tabs?" },
+      "clear-cache": { message: `Clear the cache for ${scope}?`, detail: "" },
     };
 
     const choice = labels[action];
 
     const result = await dialog.showMessageBox(window, {
       type: "question",
-      message: choice.title,
+      message: choice.message,
       detail: choice.detail,
       buttons: ["Cancel", "Clear"],
       defaultId: 0,

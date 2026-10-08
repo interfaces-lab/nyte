@@ -241,6 +241,7 @@ export const CALL_INPUT_SCHEMAS = {
       bookmarksVisible: Type.Boolean(),
       x: Type.Integer(),
       y: Type.Integer(),
+      owner: Type.Union([nonEmpty, Type.Null()]),
     }),
   ),
   "host.browser.perform": compile(

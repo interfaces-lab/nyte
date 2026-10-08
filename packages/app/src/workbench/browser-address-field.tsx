@@ -10,7 +10,7 @@ import { flushSync } from "react-dom";
 import type { BrowserHistoryEntry } from "../bridge.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";
-import type { BrowserSuggestion } from "./browser-suggestions.ts";
+import type { BrowserCompletion, BrowserSuggestion } from "./browser-suggestions.ts";
 
 const styles = create({
   form: {
@@ -147,12 +147,15 @@ export function AddressField({
   /** The selected row came from the arrow keys, so the field shows its address. */
   const [previewing, setPreviewing] = useState(false);
   const [now, setNow] = useState(0);
+  /** The completion Tab or the right arrow took into the draft, so going opens its page. */
+  const [accepted, setAccepted] = useState<BrowserCompletion>();
 
   const typed = draft !== undefined && edited ? draft : "";
 
   const { rows, completion } = browserSuggestions({
     text: typed,
     complete,
+    accepted,
     current: currentUrl,
     history,
     bookmarks,
@@ -168,7 +171,7 @@ export function AddressField({
       ? optionAddress(preview)
       : draft === undefined
         ? displayAddress(currentUrl)
-        : `${draft}${typed === "" ? "" : completion}`;
+        : (completion?.text ?? draft);
 
   /** The filled-in part stays selected, so the next key typed replaces it. */
   const selectCompletion = (typedText: string): void => {
@@ -193,8 +196,9 @@ export function AddressField({
     onOpen(url);
   };
 
-  const accept = (): void => {
-    onDraftChange(value);
+  const accept = (taken: BrowserCompletion): void => {
+    onDraftChange(taken.text);
+    setAccepted(taken);
     setComplete(false);
   };
 
@@ -238,11 +242,11 @@ export function AddressField({
         return;
       case "Tab":
       case "ArrowRight":
-        if (preview !== undefined || typed === "" || completion === "" || event.shiftKey) return;
+        if (preview !== undefined || completion === undefined || event.shiftKey) return;
 
         // Tab would leave the field; the arrow already lands the caret after the completion.
         if (event.key === "Tab") event.preventDefault();
-        accept();
+        accept(completion);
 
         return;
       case "Delete":
@@ -275,6 +279,7 @@ export function AddressField({
 
     const inserted =
       event instanceof InputEvent &&
+      !event.isComposing &&
       event.inputType.startsWith("insert") &&
       field !== null &&
       field.selectionEnd === next.length;
@@ -293,7 +298,11 @@ export function AddressField({
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const target = resolveBrowserAddress(draft ?? "");
+
+    const target =
+      accepted !== undefined && accepted.text === draft
+        ? accepted.url
+        : resolveBrowserAddress(draft ?? "");
 
     if (target !== undefined) go(target);
   };
@@ -326,6 +335,7 @@ export function AddressField({
               setActive(-1);
               setPreviewing(false);
               setNow(Date.now());
+              setAccepted(undefined);
             });
             event.currentTarget.select();
           }}
@@ -335,6 +345,15 @@ export function AddressField({
           }}
           onClick={() => setOpen(true)}
           onValueChange={(next, details) => change(next, details.event)}
+          // Composing text is not yet typed; the finished text fills in like an insertion.
+          onCompositionEnd={(event) => {
+            const field = event.currentTarget;
+            const text = field.value;
+
+            if (event.data === "" || field.selectionEnd !== text.length) return;
+            flushSync(() => setComplete(true));
+            selectCompletion(text);
+          }}
           onKeyDown={keyDown}
         />
       </InputGroup>

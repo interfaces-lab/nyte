@@ -8,10 +8,17 @@ export interface BrowserSuggestion {
   readonly label: string;
 }
 
+export interface BrowserCompletion {
+  /** The whole address the field shows: the typed text and the visited rest. */
+  readonly text: string;
+  /** The page it opens, exactly as visited, which the text alone may not name. */
+  readonly url: string;
+}
+
 export interface BrowserSuggestions {
   readonly rows: readonly BrowserSuggestion[];
-  /** Follows the typed text in the field, selected, so typing on replaces it. Empty for none. */
-  readonly completion: string;
+  /** Follows the typed text in the field, selected, so typing on replaces it. */
+  readonly completion: BrowserCompletion | undefined;
 }
 
 interface Page {
@@ -69,16 +76,18 @@ function matchTier(row: BrowserSuggestion, query: string): number | undefined {
   return row.label.toLowerCase().includes(query) ? 3 : undefined;
 }
 
-/** The rest of the top match's address, when the text is how that address starts. */
-function inlineCompletion(text: string, url: string): string {
-  if (text === "" || /\s/.test(text)) return "";
+/** The top match's address, when the text is how that address starts. */
+function inlineCompletion(text: string, url: string): BrowserCompletion | undefined {
+  if (text === "" || /\s/.test(text)) return undefined;
   const typed = text.toLowerCase();
 
   const form = typedForms(new URL(url)).find((candidate) =>
     candidate.toLowerCase().startsWith(typed),
   );
 
-  return form === undefined ? "" : form.slice(text.length);
+  return form === undefined || form.length === text.length
+    ? undefined
+    : { text: `${text}${form.slice(text.length)}`, url };
 }
 
 /**
@@ -88,10 +97,12 @@ function inlineCompletion(text: string, url: string): string {
  * the typed address itself, then addresses it starts at the host, then other
  * address matches, then titles, each by frecency. `complete` allows filling
  * in the top match's address, which a deletion must not bring straight back.
+ * While the text still reads as the `accepted` completion, it opens that page.
  */
 export function browserSuggestions(input: {
   readonly text: string;
   readonly complete: boolean;
+  readonly accepted: BrowserCompletion | undefined;
   readonly current: string;
   readonly history: readonly BrowserHistoryEntry[];
   readonly bookmarks: readonly Page[];
@@ -108,7 +119,7 @@ export function browserSuggestions(input: {
             : [{ kind: "history", url: entry.url, label: entry.title }],
         )
         .slice(0, LIMIT),
-      completion: "",
+      completion: undefined,
     };
   }
 
@@ -145,16 +156,17 @@ export function browserSuggestions(input: {
   const completion =
     input.complete && top !== undefined && top.tier <= 1
       ? inlineCompletion(input.text, top.row.url)
-      : "";
+      : undefined;
 
   const resolved = resolveBrowserAddress(query) ?? searchAddress(query);
   const search: BrowserSuggestion = { kind: "search", url: searchAddress(query), label: query };
   const address = resolved === search.url ? undefined : resolved;
-  const target = top !== undefined && completion !== "" ? top.row.url : address;
+  const accepted = input.accepted?.text === input.text ? input.accepted.url : undefined;
+  const target = accepted ?? completion?.url ?? address;
   const guess = target ?? (/\s/.test(query) ? undefined : parseWebUrl(`https://${query}`));
 
   const go: readonly BrowserSuggestion[] =
-    guess === undefined ? [] : [{ kind: "go", url: guess, label: `${query}${completion}` }];
+    guess === undefined ? [] : [{ kind: "go", url: guess, label: completion?.text ?? query }];
 
   const literal = target === undefined ? [search, ...go] : [...go, search];
   const shown = new Set(literal.map((row) => row.url));

@@ -5,8 +5,11 @@
  * profile. Newest first, one entry per URL, at most `HISTORY_LIMIT` per owner.
  *
  * Changes run one at a time against the history as it stands after every
- * earlier change, and each lands on disk through a renamed temporary file. A
- * file that cannot be read or parsed reads as no history.
+ * earlier change. Visits change memory at once; the file and listeners follow
+ * within one write window. A removal or clear lands on disk before memory takes
+ * it, so a failed write rejects and changes nothing. Every write replaces the
+ * whole file through a renamed temporary file, and a failed one is retried by
+ * the next. A file that cannot be read or parsed reads as no history.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -14,8 +17,16 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { BrowserHistoryEntry } from "@nyte-ai/app/bridge.ts";
 import type { BrowserOwner } from "./browser-agent.ts";
+import { retainDiagnostic } from "./errors.ts";
 
 export const HISTORY_LIMIT = 200;
+
+export const TITLE_LIMIT = 300;
+
+/** A longer address is not remembered at all; a cut one would open a different page. */
+export const URL_LIMIT = 2048;
+
+const WRITE_DELAY = 2000;
 
 const entryType = Type.Object({
   url: Type.String({ pattern: "^https?://" }),
@@ -37,17 +48,48 @@ type Change = (
   entries: readonly BrowserHistoryEntry[],
 ) => readonly BrowserHistoryEntry[] | undefined;
 
+type Writer = (path: string, contents: string) => Promise<void>;
+
+type Listener = (owner: string | null, entries: readonly BrowserHistoryEntry[]) => void;
+
 function ownerKey(owner: BrowserOwner): string | null {
   return owner.kind === "home" ? null : owner.path;
 }
 
+function assign(history: History, key: string | null, entries: readonly BrowserHistoryEntry[]) {
+  if (entries.length === 0) history.delete(key);
+  else history.set(key, entries);
+}
+
+async function writeAtomically(path: string, contents: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, contents, { mode: 0o600 });
+  await rename(temporary, path);
+}
+
 export class BrowserHistoryStore {
   private readonly path: string;
+  private readonly write: Writer;
+  private readonly delay: number;
   private loaded: Promise<History> | undefined;
   private tail: Promise<unknown> = Promise.resolve();
+  /** Memory holds changes the file lacks. */
+  private dirty = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  /** Owners whose entries changed since the listener last heard. */
+  private readonly unpublished = new Set<string | null>();
+  private listener: Listener = () => undefined;
 
-  constructor(path: string) {
+  constructor(path: string, options: { readonly write?: Writer; readonly delay?: number } = {}) {
     this.path = path;
+    this.write = options.write ?? writeAtomically;
+    this.delay = options.delay ?? WRITE_DELAY;
+  }
+
+  /** Hears an owner's entries at most once per write window, and once a removal or clear lands. */
+  listen(listener: Listener): void {
+    this.listener = listener;
   }
 
   async entries(owner: BrowserOwner): Promise<readonly BrowserHistoryEntry[]> {
@@ -58,13 +100,15 @@ export class BrowserHistoryStore {
   record(
     owner: BrowserOwner,
     visit: { readonly url: string; readonly title?: string; readonly at: number },
-  ): Promise<readonly BrowserHistoryEntry[] | undefined> {
-    return this.update(owner, (entries) => {
+  ): Promise<void> {
+    if (visit.url.length > URL_LIMIT) return Promise.resolve();
+
+    return this.change(owner, (entries) => {
       const previous = entries.find((entry) => entry.url === visit.url);
 
       const entry = {
         url: visit.url,
-        title: visit.title ?? previous?.title ?? "",
+        title: visit.title?.slice(0, TITLE_LIMIT) ?? previous?.title ?? "",
         visitedAt: visit.at,
         visits: (previous?.visits ?? 0) + 1,
       };
@@ -76,49 +120,80 @@ export class BrowserHistoryStore {
   retitle(
     owner: BrowserOwner,
     page: { readonly url: string; readonly title: string },
-  ): Promise<readonly BrowserHistoryEntry[] | undefined> {
-    return this.update(owner, (entries) =>
-      entries.some((entry) => entry.url === page.url && entry.title !== page.title)
-        ? entries.map((entry) => (entry.url === page.url ? { ...entry, title: page.title } : entry))
+  ): Promise<void> {
+    const title = page.title.slice(0, TITLE_LIMIT);
+
+    return this.change(owner, (entries) =>
+      entries.some((entry) => entry.url === page.url && entry.title !== title)
+        ? entries.map((entry) => (entry.url === page.url ? { ...entry, title } : entry))
         : undefined,
     );
   }
 
-  remove(owner: BrowserOwner, url: string): Promise<readonly BrowserHistoryEntry[] | undefined> {
-    return this.update(owner, (entries) =>
+  remove(owner: BrowserOwner, url: string): Promise<void> {
+    return this.commit(owner, (entries) =>
       entries.some((entry) => entry.url === url)
         ? entries.filter((entry) => entry.url !== url)
         : undefined,
     );
   }
 
-  clear(owner: BrowserOwner): Promise<readonly BrowserHistoryEntry[] | undefined> {
-    return this.update(owner, (entries) => (entries.length === 0 ? undefined : []));
+  clear(owner: BrowserOwner): Promise<void> {
+    return this.commit(owner, (entries) => (entries.length === 0 ? undefined : []));
   }
 
-  /** Resolves with the owner's new entries, or undefined when nothing changed. */
-  private update(
-    owner: BrowserOwner,
-    change: Change,
-  ): Promise<readonly BrowserHistoryEntry[] | undefined> {
-    const run = this.tail.then(async () => {
+  /** Writes pending visits now. A failure is kept as a diagnostic and the next write retries it. */
+  flush(): Promise<void> {
+    return this.queue(async () => {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      const history = await this.read();
+      this.publish(history);
+
+      if (this.dirty) await this.save(history);
+    }).catch((cause: unknown) => retainDiagnostic({ correlationId: "browser-history", cause }));
+  }
+
+  private change(owner: BrowserOwner, change: Change): Promise<void> {
+    return this.queue(async () => {
       const history = await this.read();
       const key = ownerKey(owner);
       const next = change(history.get(key) ?? []);
 
-      if (next === undefined) return undefined;
-
-      if (next.length === 0) history.delete(key);
-      else history.set(key, next);
-
-      await this.persist(history).catch(() => undefined);
-
-      return next;
+      if (next === undefined) return;
+      assign(history, key, next);
+      this.dirty = true;
+      this.unpublished.add(key);
+      this.timer ??= setTimeout(() => void this.flush(), this.delay);
     });
+  }
 
+  private commit(owner: BrowserOwner, change: Change): Promise<void> {
+    return this.queue(async () => {
+      const history = await this.read();
+      const key = ownerKey(owner);
+      const next = change(history.get(key) ?? []);
+
+      if (next === undefined) return;
+      const updated = new Map(history);
+      assign(updated, key, next);
+      await this.save(updated);
+      assign(history, key, next);
+      this.unpublished.add(key);
+      this.publish(history);
+    });
+  }
+
+  private queue(task: () => Promise<void>): Promise<void> {
+    const run = this.tail.then(task);
     this.tail = run.catch(() => undefined);
 
     return run;
+  }
+
+  private publish(history: History): void {
+    for (const key of this.unpublished) this.listener(key, history.get(key) ?? []);
+    this.unpublished.clear();
   }
 
   private read(): Promise<History> {
@@ -142,18 +217,16 @@ export class BrowserHistoryStore {
     }
   }
 
-  private async persist(history: History): Promise<void> {
+  private async save(history: History): Promise<void> {
     const projects = Object.fromEntries(
       [...history].filter(
         (item): item is [string, readonly BrowserHistoryEntry[]] => item[0] !== null,
       ),
     );
 
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    const temporary = `${this.path}.tmp`;
-    await writeFile(temporary, JSON.stringify({ home: history.get(null) ?? [], projects }), {
-      mode: 0o600,
-    });
-    await rename(temporary, this.path);
+    await this.write(this.path, JSON.stringify({ home: history.get(null) ?? [], projects }));
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.dirty = false;
   }
 }

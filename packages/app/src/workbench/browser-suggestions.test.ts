@@ -21,6 +21,7 @@ function suggest(text: string, complete = true) {
   return browserSuggestions({
     text,
     complete,
+    accepted: undefined,
     current: "https://docs.example.com/guide",
     history: HISTORY,
     bookmarks: [{ url: "https://localbase.dev/", title: "Local base" }],
@@ -31,7 +32,7 @@ function suggest(text: string, complete = true) {
 test("typing a host prefix fills in the visited address and offers it first", () => {
   const { rows, completion } = suggest("local");
 
-  expect(completion).toBe("host:3000");
+  expect(completion).toEqual({ text: "localhost:3000", url: "http://localhost:3000/" });
   expect(rows.slice(0, 3)).toEqual([
     { kind: "go", url: "http://localhost:3000/", label: "localhost:3000" },
     { kind: "search", url: "https://duckduckgo.com/?q=local", label: "local" },
@@ -43,6 +44,7 @@ test("a typed address that was visited wins over a busier page under it", () => 
   const { rows, completion } = browserSuggestions({
     text: "http://localhost:3000/",
     complete: true,
+    accepted: undefined,
     current: "",
     history: [
       visit("http://localhost:3000/admin", "Admin", 0, 9),
@@ -52,7 +54,7 @@ test("a typed address that was visited wins over a busier page under it", () => 
     now: NOW,
   });
 
-  expect(completion).toBe("");
+  expect(completion).toBeUndefined();
   expect(rows[0]).toEqual({
     kind: "go",
     url: "http://localhost:3000/",
@@ -63,7 +65,7 @@ test("a typed address that was visited wins over a busier page under it", () => 
 test("a deletion does not bring the completion straight back", () => {
   const { rows, completion } = suggest("local", false);
 
-  expect(completion).toBe("");
+  expect(completion).toBeUndefined();
   expect(rows[0]).toEqual({
     kind: "search",
     url: "https://duckduckgo.com/?q=local",
@@ -73,10 +75,10 @@ test("a deletion does not bring the completion straight back", () => {
 });
 
 test("matches ignore the scheme, www, and case, and rank host prefixes before titles", () => {
-  expect(suggest("GitHub.com/n").completion).toBe("yte-ai/nyte");
+  expect(suggest("GitHub.com/n").completion?.text).toBe("GitHub.com/nyte-ai/nyte");
   expect(suggest("HTTPS://www.git").rows[0]?.url).toBe("https://www.github.com/nyte-ai/nyte");
 
-  expect(suggest("news").completion).toBe(".ycombinator.com");
+  expect(suggest("news").completion?.text).toBe("news.ycombinator.com");
   expect(suggest("ycombinator").rows.map((row) => [row.kind, row.url])).toEqual([
     ["search", "https://duckduckgo.com/?q=ycombinator"],
     ["go", "https://ycombinator/"],
@@ -99,4 +101,37 @@ test("an empty field lists recent pages other than the current one", () => {
     "https://www.github.com/nyte-ai/nyte",
     "https://news.ycombinator.com/",
   ]);
+});
+
+test("an accepted completion opens the visited page, not its text read afresh", () => {
+  const history = [
+    visit("http://example.com/Path", "Plain", 0),
+    visit("https://www.example.org/", "With www", 1),
+  ];
+
+  const accept = (text: string) => {
+    const options = { current: "", history, bookmarks: [], now: NOW };
+
+    const { completion } = browserSuggestions({
+      ...options,
+      text,
+      complete: true,
+      accepted: undefined,
+    });
+
+    return browserSuggestions({
+      ...options,
+      text: completion?.text ?? "",
+      complete: false,
+      accepted: completion,
+    }).rows[0];
+  };
+
+  expect(accept("exam")).toEqual({
+    kind: "go",
+    url: "http://example.com/Path",
+    label: "example.com/Path",
+  });
+  expect(accept("example.com/p")?.url).toBe("http://example.com/Path");
+  expect(accept("example.o")?.url).toBe("https://www.example.org/");
 });

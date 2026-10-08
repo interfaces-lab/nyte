@@ -520,6 +520,7 @@ export function BrowserPanel({
         bookmarksVisible: bookmarks.visible,
         x: Math.round(rect.left),
         y: Math.round(rect.bottom),
+        owner: workspacePath,
       })
       .then(async (action) => {
         if (action === undefined) return;

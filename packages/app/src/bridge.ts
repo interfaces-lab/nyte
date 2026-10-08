@@ -708,6 +708,8 @@ export interface BrowserBridge {
     bookmarksVisible: boolean;
     x: number;
     y: number;
+    /** The panel's cookie jar, named when a clear asks to confirm. */
+    owner: string | null;
   }): Promise<BrowserMenuAction | undefined>;
   perform(input: {
     surface: string;
