@@ -84,7 +84,7 @@ function CardBody({ card }: { card: Card }) {
         )}
       </h3>
 
-      <div className="relative my-8 grid h-32 place-items-center rounded-full bg-background text-foreground transition-colors duration-300 ease-nav group-hover/card:bg-(--hero-blue) group-hover/card:text-white group-focus-visible/card:bg-(--hero-blue) group-focus-visible/card:text-white">
+      <div className="relative my-8 grid h-32 place-items-center self-center rounded-full bg-background text-foreground transition-colors duration-300 ease-nav group-hover/card:bg-(--hero-blue) group-hover/card:text-white group-focus-visible/card:bg-(--hero-blue) group-focus-visible/card:text-white">
         <DotIcon glyph={card.glyph} />
         {card.action ? (
           <span className="absolute inset-0 grid translate-y-1 place-items-center font-mono text-[13px] opacity-0 transition-[opacity,translate] delay-0 duration-300 ease-nav group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:delay-150 group-focus-visible/card:translate-y-0 group-focus-visible/card:opacity-100 group-focus-visible/card:delay-150 motion-reduce:transition-none">
@@ -100,14 +100,14 @@ function CardBody({ card }: { card: Card }) {
   );
 }
 
-const cardClass = `flex min-h-[17rem] sm:min-h-[22rem] w-full flex-col justify-between p-5 sm:p-6 ${tileClass}`;
+const cardClass = `row-span-3 grid min-h-[17rem] sm:min-h-[22rem] w-full grid-rows-subgrid gap-0 p-5 sm:p-6 ${tileClass}`;
 
 export function ProductCards() {
   return (
     <Section id="products-title" title="Where it runs.">
-      <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid auto-rows-[auto_1fr_auto] gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
         {CARDS.map((card) => (
-          <li key={card.title} className="flex">
+          <li key={card.title} className="row-span-3 grid grid-rows-subgrid gap-0">
             {card.action ? (
               <Link
                 href={card.action.href}
