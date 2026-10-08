@@ -7,7 +7,7 @@ import { AsciiArt } from "./ascii-art";
 import { ASCII_LOGOS } from "./ascii-logos";
 import { AsciiMoon } from "./ascii-moon";
 import { HARNESSES, harnessMeta } from "../hero-3/harnesses";
-import { CubePrint } from "./cube-print";
+import { BlockPrint } from "./block-print";
 import { Section, brandTileClass, tileClass } from "./section";
 
 const NYTE = { name: "Nyte", meta: "mine, and yours · MIT" };
@@ -114,9 +114,9 @@ export function CoreMosaic() {
               {...stop(index)}
               className={`group/tile relative grid size-full cursor-default place-items-center text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-foreground data-[active=true]:text-background ${tileClass}`}
             >
-              <CubePrint
-                seed={harness.name}
-                className="h-auto w-[88%] transition-opacity duration-200 group-data-[active=true]/tile:opacity-0 motion-reduce:transition-none"
+              <BlockPrint
+                index={index}
+                className="w-[86%] transition-opacity duration-200 group-data-[active=true]/tile:opacity-0 motion-reduce:transition-none"
               />
               <AsciiArt
                 rows={ASCII_LOGOS[harness.logo]}
