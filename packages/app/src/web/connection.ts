@@ -41,6 +41,10 @@ function isPrivateHost(hostname: string): boolean {
   return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "[::1]" || /^127(\.\d{1,3}){3}$/u.test(hostname);
+}
+
 export function parseConnection(value: Connection): Connection {
   const token = value.token.trim();
 
@@ -57,8 +61,8 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
   }
 
-  // The browser blocks HTTP requests from an HTTPS page, so the hosted app can only reach HTTPS.
-  if (url.protocol === "http:" && location.protocol === "https:") {
+  // An HTTPS page can only fetch plain HTTP from loopback, which browsers count as secure.
+  if (url.protocol === "http:" && location.protocol === "https:" && !isLoopbackHost(url.hostname)) {
     throw new Error(
       "This page is served over HTTPS, so it needs an HTTPS address, such as one from Tailscale HTTPS.",
     );
