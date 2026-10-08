@@ -122,6 +122,7 @@ export function AddressField({
   bookmarks,
   onOpen,
   onForget,
+  onDismiss,
   children,
 }: {
   readonly ref: Ref<AddressFieldHandle>;
@@ -133,6 +134,8 @@ export function AddressField({
   readonly bookmarks: readonly { readonly url: string; readonly title: string }[];
   readonly onOpen: (url: string) => void;
   readonly onForget: (url: string) => void;
+  /** Escape left the field with nothing to close, so the page takes the keyboard back. */
+  readonly onDismiss: () => void;
   /** Status icons ahead of the address. */
   readonly children?: ReactNode;
 }): ReactElement {
@@ -268,6 +271,7 @@ export function AddressField({
 
         onDraftChange(undefined);
         event.currentTarget.blur();
+        onDismiss();
 
         return;
       default:

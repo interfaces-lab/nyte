@@ -41,9 +41,12 @@ export interface FindBarHandle {
 export function FindBar({
   surface,
   ref,
+  onClose,
 }: {
   readonly surface: string;
   readonly ref: Ref<FindBarHandle>;
+  /** The bar closed, so the page takes the keyboard back. */
+  readonly onClose: () => void;
 }): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
@@ -62,6 +65,7 @@ export function FindBar({
   const close = (): void => {
     find("", "next");
     setBrowserFinding(surface, false);
+    onClose();
   };
 
   useImperativeHandle(ref, () => ({
@@ -86,11 +90,17 @@ export function FindBar({
           aria-label="Find in page"
           placeholder="Find in page"
           value={text}
-          onValueChange={(value) => {
+          onValueChange={(value, details) => {
             setText(value);
-            find(value, "next");
+
+            if (!(details.event instanceof InputEvent && details.event.isComposing))
+              find(value, "next");
           }}
+          // Composing text is not yet typed; the finished text searches once.
+          onCompositionEnd={(event) => find(event.currentTarget.value, "next")}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+
             if (event.key === "Enter") {
               event.preventDefault();
               find(text, event.shiftKey ? "previous" : "next");

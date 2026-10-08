@@ -322,6 +322,7 @@ async function desktop(createModels: () => MutableModels) {
       login: () => undefined,
       history: async () => [],
       forgetHistory: async () => undefined,
+      focusPage: () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => undefined,
       retain: () => undefined,

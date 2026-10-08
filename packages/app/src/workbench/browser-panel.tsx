@@ -32,7 +32,7 @@ import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
 import type { FindBarHandle } from "./browser-find.tsx";
 import { LoginDialog } from "./browser-login.tsx";
-import { resolveBrowserShortcut } from "./browser-shortcuts.ts";
+import { repeatsWhenHeld, resolveBrowserShortcut } from "./browser-shortcuts.ts";
 import type { BrowserShortcut } from "./browser-shortcuts.ts";
 
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
@@ -449,6 +449,13 @@ export function BrowserPanel({
   /** Typing follows: main moves native focus off the page when it holds it. */
   const focusControls = (): void => browserBridge().setFocus({ surface, focused: true });
 
+  /** Dismissing the address bar or find hands the keyboard back to the page. */
+  const focusPage = (): void => {
+    void browserBridge()
+      .focusPage({ surface })
+      .catch(() => undefined);
+  };
+
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
     switch (shortcut) {
       case "back":
@@ -560,9 +567,23 @@ export function BrowserPanel({
       }}
       onKeyDown={(event) => {
         if (event.defaultPrevented || event.nativeEvent.isComposing) return;
-        const shortcut = resolveBrowserShortcut(event, macPlatform(undefined));
 
-        if (shortcut === undefined || !runShortcut(shortcut)) return;
+        // A forwarded page key is dispatched on the panel itself, which never takes focus.
+        const shortcut = resolveBrowserShortcut(
+          event,
+          macPlatform(undefined),
+          event.target === event.currentTarget ? "page" : "panel",
+        );
+
+        if (shortcut === undefined) return;
+
+        if (event.repeat && !repeatsWhenHeld(shortcut)) {
+          event.preventDefault();
+
+          return;
+        }
+
+        if (!runShortcut(shortcut)) return;
         event.preventDefault();
       }}
     >
@@ -597,6 +618,7 @@ export function BrowserPanel({
           bookmarks={bookmarks.items}
           onOpen={go}
           onForget={forget}
+          onDismiss={focusPage}
         >
           {secure === "https" && draft === undefined && (
             <span {...props(styles.addressIcon)} title="Secure connection">
@@ -697,7 +719,7 @@ export function BrowserPanel({
           ))}
         </div>
       )}
-      {finding && hasPage && <FindBar ref={findRef} surface={surface} />}
+      {finding && hasPage && <FindBar ref={findRef} surface={surface} onClose={focusPage} />}
       <DownloadsBar surface={surface} downloads={downloads} />
       {login !== undefined && (
         <LoginDialog key={login.host} surface={surface} host={login.host} realm={login.realm} />

@@ -17,6 +17,8 @@ const HISTORY = [
 
 const opened: string[] = [];
 
+let dismissed = 0;
+
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
@@ -38,6 +40,9 @@ function Harness(): ReactElement {
       bookmarks={[]}
       onOpen={(url) => opened.push(url)}
       onForget={() => undefined}
+      onDismiss={() => {
+        dismissed += 1;
+      }}
     />
   );
 }
@@ -101,6 +106,17 @@ export async function run(): Promise<string> {
   check(
     opened.join() === "http://example.com/path",
     `Enter after Tab opened ${opened.join() || "nothing"}`,
+  );
+
+  field.focus();
+  await nextFrame();
+  key(field, "Escape");
+  check(dismissed === 0 && document.activeElement === field, "Escape left before closing the list");
+  await nextFrame();
+  key(field, "Escape");
+  check(
+    dismissed === 1 && document.activeElement !== field,
+    "The second Escape did not hand the keyboard back",
   );
 
   return "passed";

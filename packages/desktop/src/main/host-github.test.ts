@@ -71,6 +71,7 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       login: () => undefined,
       history: async () => [],
       forgetHistory: async () => undefined,
+      focusPage: () => undefined,
       settingsChanged: () => undefined,
       setBounds: () => {},
       retain: () => {},

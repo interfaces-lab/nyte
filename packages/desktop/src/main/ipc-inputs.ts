@@ -279,6 +279,7 @@ export const CALL_INPUT_SCHEMAS = {
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
+  "host.browser.focusPage": compile(strict({ surface: nonEmpty })),
   "host.terminal.create": compile(
     strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
   ),

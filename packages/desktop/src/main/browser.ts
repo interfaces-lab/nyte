@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { app, session, WebContentsView, webContents } from "electron";
-import type { BrowserWindow, DownloadItem, Session, WebContents } from "electron";
+import type { BrowserWindow, DownloadItem, IpcMainEvent, Session, WebContents } from "electron";
 import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
@@ -26,7 +26,9 @@ import {
   nextZoomFactor,
   permissionAllowed,
   plainRetry,
+  rememberPressedKey,
   surfaceSecurity,
+  takePressedKey,
   uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
@@ -146,6 +148,7 @@ export interface BrowserSurfaces {
   forgetHistory(
     input: Parameters<BrowserBridge["forgetHistory"]>[0],
   ): ReturnType<BrowserBridge["forgetHistory"]>;
+  focusPage(input: Parameters<BrowserBridge["focusPage"]>[0]): void;
   /** A visible placement moves the page into the reporting window. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void;
   /** Retain a surface with a holder. Creates the surface if it does not exist. */
@@ -188,12 +191,14 @@ export interface BrowserSurfacesDependencies {
   >;
   /** Visits of pages a panel holds, per cookie jar. */
   readonly history: BrowserHistoryStore;
-  /** The guest preload that forwards keys a page leaves unhandled. */
+  /** The guest preload that forwards keys a page or its DevTools leaves unhandled. */
   readonly pagePreload: string;
   /** A key the focused page left unhandled, for the window whose panel shows it. */
   readonly forwardKey: (input: {
     readonly surface: string;
     readonly window: HostWindow;
+    /** The page or its DevTools, where the key was pressed. */
+    readonly contents: WebContents;
     readonly key: BrowserKey;
   }) => void;
 }
@@ -243,6 +248,10 @@ interface Surface {
   popup: BrowserWindow | undefined;
   /** The URL this page last added to history, so an in-page jump to an anchor adds nothing. */
   visited: string | undefined;
+  /** DevTools paused the page's JavaScript, preload included, so main forwards its keys. */
+  paused: boolean;
+  /** The user's keydowns the page has yet to forward; agent input never adds one. */
+  readonly pressed: BrowserKey[];
 }
 
 /**
@@ -320,6 +329,8 @@ export function createBrowserSurfaces(
 
     guest.setUserAgent(guestUserAgent());
     guest.setSpellCheckerEnabled(false);
+    // Registered on the session rather than the view, so the page's DevTools runs it too.
+    guest.registerPreloadScript({ type: "frame", filePath: dependencies.pagePreload });
 
     guest.setPermissionRequestHandler((contents, permission, callback) => {
       const allowed = permissionAllowed(permission);
@@ -675,27 +686,55 @@ export function createBrowserSurfaces(
       if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
       callback(false);
     });
-    contents.ipc.on(BROWSER_PAGE_KEY_CHANNEL, (event, message) => {
-      if (event.senderFrame !== contents.mainFrame) return;
-      let key: BrowserKey;
+    const forwardFrom =
+      (source: WebContents, user: (key: BrowserKey) => boolean) =>
+      (event: IpcMainEvent, message: BrowserKey): void => {
+        if (event.senderFrame !== source.mainFrame) return;
+        let key: BrowserKey;
 
-      try {
-        key = decodeBrowserKey(message);
-      } catch {
-        return;
-      }
+        try {
+          key = decodeBrowserKey(message);
+        } catch {
+          return;
+        }
 
-      forwardKey(surface, key);
+        if (user(key)) forwardKey(surface, source, key);
+      };
+
+    contents.ipc.on(
+      BROWSER_PAGE_KEY_CHANNEL,
+      forwardFrom(contents, (key) => takePressedKey(surface.pressed, key)),
+    );
+    // DevTools runs the session's preload too; no agent drives it.
+    contents.on("devtools-opened", () => {
+      const devtools = contents.devToolsWebContents;
+
+      if (devtools !== null)
+        devtools.ipc.removeAllListeners(BROWSER_PAGE_KEY_CHANNEL).on(
+          BROWSER_PAGE_KEY_CHANNEL,
+          forwardFrom(devtools, () => true),
+        );
+      void watchPauses(contents).catch(() => undefined);
     });
-    // A hidden or crashed page runs no preload, so its command keys are forwarded from here.
+    contents.on("devtools-closed", () => {
+      surface.paused = false;
+
+      if (!contents.isDestroyed() && contents.debugger.isAttached())
+        void contents.debugger.sendCommand("Debugger.disable").catch(() => undefined);
+    });
+    contents.debugger.on("message", (_event, method) => {
+      if (method === "Debugger.paused") surface.paused = true;
+
+      if (method === "Debugger.resumed") surface.paused = false;
+    });
+    contents.debugger.on("detach", () => {
+      surface.paused = false;
+    });
+    // A hidden, crashed, or paused page runs no preload, so its command keys are forwarded from here.
     contents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown" || (surface.view.getVisible() && !contents.isCrashed())) return;
+      if (input.type !== "keyDown") return;
 
-      if (!(input.control || input.alt || input.meta) && !/^F\d+$/.test(input.key)) return;
-
-      if (["Control", "Shift", "Alt", "Meta"].includes(input.key)) return;
-      event.preventDefault();
-      forwardKey(surface, {
+      const key: BrowserKey = {
         key: input.key,
         code: input.code,
         ctrlKey: input.control,
@@ -703,7 +742,19 @@ export function createBrowserSurfaces(
         altKey: input.alt,
         metaKey: input.meta,
         repeat: input.isAutoRepeat,
-      });
+      };
+
+      if (surface.view.getVisible() && !contents.isCrashed() && !surface.paused) {
+        rememberPressedKey(surface.pressed, key);
+
+        return;
+      }
+
+      if (!(input.control || input.alt || input.meta) && !/^F\d+$/.test(input.key)) return;
+
+      if (["Control", "Shift", "Alt", "Meta"].includes(input.key)) return;
+      event.preventDefault();
+      forwardKey(surface, contents, key);
     });
     contents.on("found-in-page", (_event, result) => {
       const pending = surface.find;
@@ -848,9 +899,9 @@ export function createBrowserSurfaces(
     attachConsoleCapture(contents, surface.runtime);
   };
 
-  const forwardKey = (surface: Surface, key: BrowserKey): void => {
+  const forwardKey = (surface: Surface, contents: WebContents, key: BrowserKey): void => {
     if (surface.destroyed || surface.home === undefined) return;
-    dependencies.forwardKey({ surface: surface.id, window: surface.home, key });
+    dependencies.forwardKey({ surface: surface.id, window: surface.home, contents, key });
   };
 
   const create = (id: string, owner: BrowserOwner): Surface => {
@@ -859,7 +910,6 @@ export function createBrowserSurfaces(
     const view = new WebContentsView({
       webPreferences: {
         session: guestSession.session,
-        preload: dependencies.pagePreload,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -895,6 +945,8 @@ export function createBrowserSurfaces(
       crashes: [],
       popup: undefined,
       visited: undefined,
+      paused: false,
+      pressed: [],
     };
 
     surfaces.set(id, surface);
@@ -1085,6 +1137,8 @@ export function createBrowserSurfaces(
       const surface = surfaceForSession(input.session);
 
       if (surface === undefined) return CLOSED;
+      // A keydown the page kept must not let the agent's same chord through later.
+      surface.pressed.splice(0);
 
       return operate(surface, (contents) =>
         performType(
@@ -1104,6 +1158,7 @@ export function createBrowserSurfaces(
       const surface = surfaceForSession(input.session);
 
       if (surface === undefined) return CLOSED;
+      surface.pressed.splice(0);
 
       return operate(surface, (contents) =>
         performPress(
@@ -1390,6 +1445,14 @@ export function createBrowserSurfaces(
     forgetHistory({ owner, url }) {
       return dependencies.history.remove(ownerOf(owner), url);
     },
+    focusPage({ surface: id }) {
+      const surface = surfaces.get(id);
+      const contents = surface?.view.webContents;
+
+      if (surface === undefined || contents === undefined || contents.isDestroyed()) return;
+
+      if (surface.view.getVisible()) contents.focus();
+    },
     login({ surface: id, credentials }) {
       const surface = surfaces.get(id);
       const answer = surface?.login;
@@ -1471,6 +1534,17 @@ export function createBrowserSurfaces(
     },
     agent,
   };
+}
+
+/**
+ * DevTools pausing the page also pauses its preload, so main listens for the pause.
+ * Only an enabled debugger session hears it; with its own breakpoints off, this one
+ * never pauses the page itself, and disabling it when DevTools closes resumes the page.
+ */
+async function watchPauses(contents: WebContents): Promise<void> {
+  if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
+  await contents.debugger.sendCommand("Debugger.enable");
+  await contents.debugger.sendCommand("Debugger.setBreakpointsActive", { active: false });
 }
 
 /**

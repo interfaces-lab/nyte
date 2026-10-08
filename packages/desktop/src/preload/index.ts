@@ -314,6 +314,7 @@ const bridge = {
       login: object("host.browser.login"),
       history: object("host.browser.history"),
       forgetHistory: object("host.browser.forgetHistory"),
+      focusPage: object("host.browser.focusPage"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),

@@ -31,7 +31,13 @@ import {
 import type { WatchEnvelope } from "../shared/ipc.ts";
 import type { HostEvent, UpdateState } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import { applicationMenuTemplate, createMenuCommandDelivery, menuItemForKey } from "./app-menu.ts";
+import {
+  applicationMenuTemplate,
+  createMenuCommandDelivery,
+  menuItemForKey,
+  menuItemRepeats,
+  performMenuRole,
+} from "./app-menu.ts";
 import type { ViewCommand } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
@@ -196,7 +202,7 @@ const browserSurfaces = createBrowserSurfaces({
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
   pagePreload: join(import.meta.dirname, "../preload/browser-page.js"),
   // A key the page forwarded runs the menu item it names, as it would have without the page.
-  forwardKey: ({ surface, window, key }) => {
+  forwardKey: ({ surface, window, contents, key }) => {
     const entry = windows.get(window);
 
     if (entry === undefined || entry.window.isDestroyed()) return;
@@ -211,10 +217,19 @@ const browserSurfaces = createBrowserSurfaces({
       return;
     }
 
+    // A held key repeats the item only where a browser would; a one-shot item runs once.
+    if (key.repeat && !menuItemRepeats(item)) return;
     forwardingSurface = surface;
 
     try {
-      item.click(undefined, entry.window, entry.window.webContents);
+      const performed = performMenuRole(item.role ?? "", {
+        app,
+        window: entry.window,
+        contents,
+        sendAction: (action) => Menu.sendActionToFirstResponder(action),
+      });
+
+      if (!performed) item.click(undefined, entry.window, entry.window.webContents);
     } finally {
       forwardingSurface = undefined;
     }

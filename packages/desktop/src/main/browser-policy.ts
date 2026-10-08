@@ -1,5 +1,5 @@
 /** Browser panel decisions that need no Electron; `browser.ts` applies them. */
-import type { BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
+import type { BrowserKey, BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
 
 const NET_ERROR_ABORTED = -3;
 
@@ -115,4 +115,34 @@ export function crashRetryDelay(crashes: readonly number[], now: number): number
   const recent = crashes.filter((at) => now - at < CRASH_WINDOW_MS).length;
 
   return recent > CRASH_RETRY_LIMIT ? undefined : 250 * 2 ** (recent - 1);
+}
+
+const PRESSED_LIMIT = 8;
+
+/** The user's keydown, kept until its page forwards it or a newer one replaces it. */
+export function rememberPressedKey(pressed: BrowserKey[], key: BrowserKey): void {
+  if (["Control", "Shift", "Alt", "Meta"].includes(key.key)) return;
+  pressed.push(key);
+  pressed.splice(0, pressed.length - PRESSED_LIMIT);
+}
+
+/**
+ * Whether a key the page forwards came from the user: it consumes the matching keydown
+ * and the older ones the page kept. Agent input reaches the page through CDP, which
+ * never passes `before-input-event`, so it has no keydown to consume.
+ */
+export function takePressedKey(pressed: BrowserKey[], key: BrowserKey): boolean {
+  const index = pressed.findIndex(
+    (candidate) =>
+      candidate.code === key.code &&
+      candidate.ctrlKey === key.ctrlKey &&
+      candidate.shiftKey === key.shiftKey &&
+      candidate.altKey === key.altKey &&
+      candidate.metaKey === key.metaKey,
+  );
+
+  if (index === -1) return false;
+  pressed.splice(0, index + 1);
+
+  return true;
 }

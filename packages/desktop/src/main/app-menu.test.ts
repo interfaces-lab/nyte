@@ -7,7 +7,10 @@ import {
   applicationMenuTemplate,
   createMenuCommandDelivery,
   menuItemForKey,
+  menuItemRepeats,
+  performMenuRole,
 } from "./app-menu.ts";
+import type { MenuRoleTarget } from "./app-menu.ts";
 
 const info = {
   name: "Nyte",
@@ -138,6 +141,104 @@ test("a key a page forwards runs the menu item a native key equivalent would", (
       true,
     ),
   ).toBe(true);
+});
+
+test("letters follow the layout, falling back to the physical key for another script", () => {
+  const command = (key: string, code: string): BrowserKey => ({
+    key,
+    code,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: true,
+    repeat: false,
+  });
+
+  const dvorakP = command("p", "KeyR");
+  expect(acceleratorMatches("CommandOrControl+R", dvorakP, true)).toBe(false);
+  expect(acceleratorMatches("CommandOrControl+P", dvorakP, true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+R", command("r", "KeyO"), true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+R", command("\u043a", "KeyR"), true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+0", command("\u00e0", "Digit0"), true)).toBe(true);
+});
+
+test("held keys repeat only zoom", () => {
+  const template = applicationMenuTemplate({
+    platform: "linux",
+    name: "Nyte",
+    appInfo: () => info,
+    dispatch: () => {},
+    newWindow: () => {},
+    view: () => {},
+  });
+
+  const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    entries.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? items(item.submenu) : [])]);
+
+  const repeating = items(template)
+    .filter((item) => menuItemRepeats({ id: item.id ?? "" }))
+    .map((item) => item.label);
+
+  expect(repeating).toEqual(["Zoom In", "Zoom Out"]);
+});
+
+test("a forwarded key performs the native role a click leaves to AppKit", () => {
+  const calls: string[] = [];
+  let fullScreen = false;
+
+  const record = (name: string) => (): void => {
+    calls.push(name);
+  };
+
+  const target: MenuRoleTarget = {
+    app: { quit: record("quit"), hide: record("hide") },
+    window: {
+      minimize: record("minimize"),
+      close: record("close"),
+      isFullScreen: () => fullScreen,
+      setFullScreen: (flag) => {
+        fullScreen = flag;
+        calls.push(`fullscreen ${String(flag)}`);
+      },
+    },
+    contents: {
+      undo: record("undo"),
+      redo: record("redo"),
+      cut: record("cut"),
+      copy: record("copy"),
+      paste: record("paste"),
+      pasteAndMatchStyle: record("pasteAndMatchStyle"),
+      selectAll: record("selectAll"),
+    },
+    sendAction: (action) => calls.push(action),
+  };
+
+  for (const role of [
+    "quit",
+    "hide",
+    "hideothers",
+    "minimize",
+    "close",
+    "togglefullscreen",
+    "togglefullscreen",
+    "pasteandmatchstyle",
+    "selectAll",
+  ])
+    expect(performMenuRole(role, target)).toBe(true);
+
+  expect(performMenuRole("services", target)).toBe(false);
+  expect(performMenuRole("", target)).toBe(false);
+  expect(calls).toEqual([
+    "quit",
+    "hide",
+    "hideOtherApplications:",
+    "minimize",
+    "close",
+    "fullscreen true",
+    "fullscreen false",
+    "pasteAndMatchStyle",
+    "selectAll",
+  ]);
 });
 
 test("a forwarded key finds its item in a menu shaped like Electron's at runtime", () => {

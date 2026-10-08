@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
-test("composed text fills in once finished, and an accepted completion opens its page", async () => {
+test("composed text fills in once finished, an accepted completion opens its page, and Escape hands back the keyboard", async () => {
   expect(
     await testRenderer(
       new URL("./browser-address-field.browser-test.tsx", import.meta.url),

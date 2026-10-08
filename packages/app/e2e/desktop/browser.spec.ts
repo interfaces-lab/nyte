@@ -24,6 +24,16 @@ async function guestPages(application: ElectronApplication) {
   );
 }
 
+async function guestFocused(application: ElectronApplication, url: string): Promise<boolean> {
+  return application.evaluate(
+    ({ webContents }, target) =>
+      webContents
+        .getAllWebContents()
+        .some((contents) => contents.getURL() === target && contents.isFocused()),
+    url,
+  );
+}
+
 async function clickGuestControl(
   application: ElectronApplication,
   url: string,
@@ -355,6 +365,15 @@ test("integrated browser desktop journey", async () => {
     await pressInGuest(application, popup, "l", [primary]);
     await expect(panel.getByRole("combobox", { name: "Address", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect.poll(() => guestFocused(application, popup)).toBe(true);
+
+    if (process.platform === "darwin") {
+      await pressInGuest(application, popup, "Left", ["meta"]);
+      await expect
+        .poll(() => guestPages(application))
+        .toContainEqual({ url, loading: false, title: "First" });
+    }
   });
 
   await test.step("open a child popup and receive its opener message", async () => {

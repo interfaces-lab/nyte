@@ -145,6 +145,7 @@ export const HOST_OPERATION_PATHS = [
   "host.browser.login",
   "host.browser.history",
   "host.browser.forgetHistory",
+  "host.browser.focusPage",
   "host.terminal.create",
   "host.terminal.write",
   "host.terminal.resize",

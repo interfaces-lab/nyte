@@ -230,6 +230,7 @@ async function fixture() {
         login: () => undefined,
         history: async () => [],
         forgetHistory: async () => undefined,
+        focusPage: () => undefined,
         settingsChanged: () => undefined,
         setBounds: () => undefined,
         retain: () => undefined,

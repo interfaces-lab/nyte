@@ -1,7 +1,7 @@
 /**
- * Runs in every browser page's isolated world: it shares the page's DOM, never its
- * JavaScript, and exposes nothing. A key the page leaves unhandled goes to main so
- * Nyte's shortcuts work while the page has focus. Editing keys, typed characters,
+ * Runs in every browser page's isolated world, and in its DevTools: it shares the
+ * page's DOM, never its JavaScript, and exposes nothing. A key the page leaves
+ * unhandled goes to main so Nyte's shortcuts work while the page has focus. Editing keys, typed characters,
  * and Escape stay with the page. Assume a hostile page: main validates every message.
  */
 import { ipcRenderer } from "electron";
@@ -33,6 +33,17 @@ const editing = mac
 
 const pageKeys = new Set(["Control", "Shift", "Alt", "Meta", "Insert", "Help"]);
 
+/** In text the user edits, ⌘← and ⌘→ move the caret; elsewhere they go back and forward. */
+function editsText(event: KeyboardEvent): boolean {
+  const target = event.composedPath()[0];
+
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 function pageKeeps(event: KeyboardEvent): boolean {
   const named =
     /^F\d+$/.test(event.key) ||
@@ -58,6 +69,9 @@ function pageKeeps(event: KeyboardEvent): boolean {
       ? event.code.slice(3).toLowerCase()
       : typed;
 
+  if (mac && !event.ctrlKey && !event.shiftKey && (key === "arrowleft" || key === "arrowright"))
+    return editsText(event);
+
   return (
     editing.always.has(key) ||
     (event.shiftKey ? editing.shifted : editing.plain).has(key) ||
@@ -65,17 +79,19 @@ function pageKeeps(event: KeyboardEvent): boolean {
   );
 }
 
-window.addEventListener("keydown", (event) => {
-  if (!event.isTrusted || event.defaultPrevented || event.isComposing || pageKeeps(event)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  ipcRenderer.send(BROWSER_PAGE_KEY_CHANNEL, {
-    key: event.key,
-    code: event.code,
-    ctrlKey: event.ctrlKey,
-    shiftKey: event.shiftKey,
-    altKey: event.altKey,
-    metaKey: event.metaKey,
-    repeat: event.repeat,
-  } satisfies BrowserKey);
-});
+// A sign-in popup shares the page's session, and so this preload, but has no panel.
+if (window.opener === null)
+  window.addEventListener("keydown", (event) => {
+    if (!event.isTrusted || event.defaultPrevented || event.isComposing || pageKeeps(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    ipcRenderer.send(BROWSER_PAGE_KEY_CHANNEL, {
+      key: event.key,
+      code: event.code,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      repeat: event.repeat,
+    } satisfies BrowserKey);
+  });

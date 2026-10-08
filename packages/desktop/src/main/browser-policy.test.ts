@@ -6,9 +6,12 @@ import {
   isLocalHost,
   permissionAllowed,
   plainRetry,
+  rememberPressedKey,
+  takePressedKey,
   uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
+import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
 
 describe("browser policy", () => {
   test("accepts only web addresses", () => {
@@ -75,5 +78,38 @@ describe("browser policy", () => {
     assert.equal(crashRetryDelay([now - 2000, now - 1000, now], now), 1000);
     assert.equal(crashRetryDelay([now - 3000, now - 2000, now - 1000, now], now), undefined);
     assert.equal(crashRetryDelay([now - 60_000, now - 50_000, now - 40_000, now], now), 250);
+  });
+
+  test("forwards a page key only for a keydown the user pressed", () => {
+    const key = (code: string, init: Partial<BrowserKey> = {}): BrowserKey => ({
+      key: code.slice(3).toLowerCase(),
+      code,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: true,
+      repeat: false,
+      ...init,
+    });
+
+    const pressed: BrowserKey[] = [];
+    rememberPressedKey(pressed, key("MetaLeft", { key: "Meta" }));
+    rememberPressedKey(pressed, key("KeyK"));
+    rememberPressedKey(pressed, key("KeyL"));
+    rememberPressedKey(pressed, key("KeyR"));
+    assert.equal(pressed.length, 3);
+
+    assert.equal(takePressedKey(pressed, key("KeyL")), true);
+    assert.deepEqual(
+      pressed.map((entry) => entry.code),
+      ["KeyR"],
+    );
+    assert.equal(takePressedKey(pressed, key("KeyL")), false);
+    assert.equal(takePressedKey(pressed, key("KeyR", { shiftKey: true })), false);
+    assert.equal(takePressedKey(pressed, key("KeyR")), true);
+    assert.equal(takePressedKey(pressed, key("KeyR")), false);
+
+    for (let index = 0; index < 20; index += 1) rememberPressedKey(pressed, key("KeyG"));
+    assert.equal(pressed.length, 8);
   });
 });
