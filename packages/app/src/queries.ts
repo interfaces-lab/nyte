@@ -25,7 +25,6 @@ export { keys } from "./query-keys.ts";
 
 import { toast } from "@nyte-ai/ui/toast";
 import { sessionMark } from "@nyte-ai/client";
-import { VCS_PATHS_MAX } from "@nyte-ai/protocol";
 import type {
   OperationInput,
   PluginCatalog,
@@ -34,7 +33,7 @@ import type {
   SessionId,
   SessionInfo,
   SettingInfo,
-  VcsDiff,
+  VcsChange,
   VcsLog,
   VcsRefs,
   VcsSnapshot,
@@ -462,13 +461,8 @@ export function useVcsSnapshot(enabled: boolean) {
  * invalidates, so a run or a save refreshes history and refs with the status.
  */
 const vcsKeys = {
-  diff: (
-    root: string,
-    revision: string,
-    scopeKey: string,
-    pathsKey: string,
-    ignoreWhitespace: boolean,
-  ) => ["vcs", "diffs", root, revision, scopeKey, pathsKey, ignoreWhitespace] as const,
+  changes: (root: string, revision: string, scopeKey: string, ignoreWhitespace: boolean) =>
+    ["vcs", "changes", root, revision, scopeKey, ignoreWhitespace] as const,
   log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
   refs: ["vcs", "refs"] as const,
   runDiff: (sessionId: SessionId, runId: RunId, live: boolean) =>
@@ -504,15 +498,16 @@ export function useRunDiff(input: {
   });
 }
 
-export type VcsDiffRequest = Parameters<typeof nyte.workspace.vcs.diff>[0];
+export type VcsChangesRequest = Parameters<typeof nyte.workspace.vcs.changes>[0];
 
-export interface VcsDiffRead {
+/** One comparison at one checkout state: what a manifest and its patches are read under. */
+export interface VcsRead {
   readonly root: string;
   readonly revision: string;
-  readonly request: VcsDiffRequest;
+  readonly request: VcsChangesRequest;
 }
 
-function scopeKey(scope: VcsDiffRequest["scope"]): string {
+function scopeKey(scope: VcsChangesRequest["scope"]): string {
   switch (scope.kind) {
     case "worktree":
     case "staged":
@@ -530,53 +525,47 @@ function scopeKey(scope: VcsDiffRequest["scope"]): string {
   }
 }
 
-/**
- * Every revision is its own key, so a working tree that keeps moving would
- * otherwise drop to "pending" on each refresh and the stack would rebuild every
- * file twice. The last answer for the same checkout and comparison stands in
- * until the next one lands; only patches that changed then re-render.
- */
-export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
-  const request = read?.request;
-  const diffScopeKey = request === undefined ? undefined : scopeKey(request.scope);
-  const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
+/** A commit never changes; every other comparison moves with the checkout's revision. */
+function readRevision(read: VcsRead): string {
+  return read.request.scope.kind === "commit" ? read.request.scope.oid : read.revision;
+}
 
-  return useQuery<readonly VcsDiff[]>({
+/** The identity patches are read under: a patch from another key is stale. */
+export function vcsReadKey(read: VcsRead): string {
+  return [
+    read.root,
+    readRevision(read),
+    scopeKey(read.request.scope),
+    read.request.ignoreWhitespace ? "ignore-whitespace" : "",
+  ].join("\0");
+}
+
+/**
+ * Which files a comparison reports and what each would count, without a
+ * patch. Every revision is its own key; the last answer for the same checkout
+ * and comparison stands in until the next one lands, so counts do not blink.
+ */
+export function useVcsChanges(read: VcsRead | undefined, enabled: boolean) {
+  const request = read?.request;
+  const changesScopeKey = request === undefined ? undefined : scopeKey(request.scope);
+
+  return useQuery<readonly VcsChange[]>({
     placeholderData: (previous, previousQuery) =>
       read !== undefined &&
       previousQuery?.queryKey[2] === read.root &&
-      previousQuery.queryKey[4] === diffScopeKey
+      previousQuery.queryKey[4] === changesScopeKey
         ? previous
         : undefined,
     queryKey:
       read === undefined
-        ? vcsKeys.diff("unavailable", "unavailable", "", "", false)
-        : vcsKeys.diff(
+        ? vcsKeys.changes("unavailable", "unavailable", "", false)
+        : vcsKeys.changes(
             read.root,
-            read.request.scope.kind === "commit" ? read.request.scope.oid : read.revision,
-            diffScopeKey ?? "",
-            pathsKey,
-            read.request.ignoreWhitespace === true,
+            readRevision(read),
+            changesScopeKey ?? "",
+            read.request.ignoreWhitespace,
           ),
-    queryFn: async () => {
-      if (request === undefined) return [];
-
-      const { paths } = request;
-
-      if (paths === undefined || paths.length <= VCS_PATHS_MAX)
-        return nyte.workspace.vcs.diff(request);
-
-      const batches: string[][] = [];
-
-      for (let start = 0; start < paths.length; start += VCS_PATHS_MAX)
-        batches.push(paths.slice(start, start + VCS_PATHS_MAX));
-
-      return (
-        await Promise.all(
-          batches.map((batch) => nyte.workspace.vcs.diff({ ...request, paths: batch })),
-        )
-      ).flat();
-    },
+    queryFn: () => (request === undefined ? [] : nyte.workspace.vcs.changes(request)),
     enabled: enabled && request !== undefined,
     gcTime: request?.scope.kind === "commit" ? undefined : 0,
   });
@@ -604,8 +593,8 @@ export function useVcsRefs(enabled: boolean) {
 }
 
 function vcsNeedsRefresh({ queryKey }: { readonly queryKey: readonly unknown[] }): boolean {
-  // A diff key's scope is always a string; see `vcsKeys.diff`.
-  return queryKey[1] !== "diffs" || String(queryKey[4]).startsWith("branch:");
+  // A manifest key's scope is always a string; see `vcsKeys.changes`.
+  return queryKey[1] !== "changes" || String(queryKey[4]).startsWith("branch:");
 }
 
 export function refreshVcs(): void {

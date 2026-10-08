@@ -227,20 +227,15 @@ export async function run(): Promise<string> {
       "the scope menu to close",
     );
 
-    const unstagedPatches = () =>
-      queryClient
-        .getQueryCache()
-        .findAll({ queryKey: ["vcs", "diffs"] })
-        .some(
-          (query) =>
-            query.queryKey[4] === "unstaged" &&
-            Array.isArray(query.state.data) &&
-            query.state.data.length === 1,
-        );
+    const readsBeforeUnstaged = changesScopeScript.diffReads;
 
     await selectScope("Unstaged");
     await until(
-      () => unstagedPatches() && container.querySelector("diffs-container") !== null,
+      () =>
+        changesScopeScript.diffReads === readsBeforeUnstaged + 1 &&
+        Array.from(container.querySelectorAll("diffs-container")).some(
+          (node) => node.shadowRoot?.textContent?.includes("working") === true,
+        ),
       "the unstaged patch to load and render",
     );
     await settle();
@@ -282,14 +277,6 @@ export async function run(): Promise<string> {
     await until(
       () => container.textContent?.includes("Working tree is clean") === true,
       "a clean working tree despite recorded edits",
-    );
-    await until(
-      () =>
-        queryClient
-          .getQueryCache()
-          .findAll({ queryKey: ["vcs", "diffs"] })
-          .every((query) => query.state.data === undefined),
-      "unused working-tree patches leaving the cache",
     );
     observe("all conversation files reverted");
 

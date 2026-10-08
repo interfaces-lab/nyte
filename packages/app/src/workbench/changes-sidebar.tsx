@@ -22,6 +22,7 @@ import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
+import type { VcsLineStat } from "@nyte-ai/protocol";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
@@ -29,8 +30,7 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 export interface ChangesSidebarFile {
   readonly path: string;
   readonly status?: ChangeStatus;
-  readonly added: number;
-  readonly removed: number;
+  readonly stat: VcsLineStat;
   readonly viewed: ViewedState;
 }
 
@@ -123,8 +123,11 @@ const styles = create({
   },
 });
 
-/** `"changed"` is a viewed mark the patch has outrun: a check would claim too much. */
-export type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "mixed";
+/**
+ * `"changed"` is a viewed mark the patch has outrun: a check would claim too much.
+ * `"unknown"` is a mark not yet checked against an unread patch, which no check claims either.
+ */
+export type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "unknown" | "mixed";
 
 export function ReviewCheckbox({
   state,
@@ -204,10 +207,11 @@ export const ChangesSidebar = memo(function ChangesSidebar({
     renderRowDecoration: ({ item }) => {
       const file = current.current.fileByPath.get(item.path);
 
-      if (file === undefined) return null;
+      if (file?.stat.kind !== "text") return null;
+      const { added, removed } = file.stat;
 
       return {
-        text: [file.added > 0 ? `+${file.added}` : "", file.removed > 0 ? `-${file.removed}` : ""]
+        text: [added > 0 ? `+${added}` : "", removed > 0 ? `-${removed}` : ""]
           .filter(Boolean)
           .join(" "),
       };
@@ -271,11 +275,14 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   useLayoutEffect(() => {
     model.setGitStatus(
       files.map((file) => {
+        const added = file.stat.kind === "text" ? file.stat.added : 0;
+        const removed = file.stat.kind === "text" ? file.stat.removed : 0;
+
         const status =
           file.status ??
-          (file.added > 0 && file.removed === 0
+          (added > 0 && removed === 0
             ? "added"
-            : file.removed > 0 && file.added === 0
+            : removed > 0 && added === 0
               ? "deleted"
               : "modified");
 

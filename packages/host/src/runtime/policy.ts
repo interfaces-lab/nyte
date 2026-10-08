@@ -91,6 +91,7 @@ const CALL_RULES: { readonly [O in Operation]: CallRule } = {
   "workspace.forget": "refused",
   "workspace.vcs.snapshot": "target",
   "workspace.vcs.diff": "target",
+  "workspace.vcs.changes": "target",
   "workspace.vcs.contents": "target",
   "workspace.vcs.log": "target",
   "workspace.vcs.refs": "target",

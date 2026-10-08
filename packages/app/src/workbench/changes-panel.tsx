@@ -1,19 +1,28 @@
 import { create, props } from "@stylexjs/stylex";
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactElement } from "react";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { RunId, SessionId, Turn, VcsFileKind } from "@nyte-ai/protocol";
+import type { RunId, SessionId, Turn, VcsFileKind, VcsLineStat } from "@nyte-ai/protocol";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { nyte } from "../nyte.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { macPlatform } from "../platform.ts";
 import {
   refreshVcs,
   useRunDiff,
   useSessionSnapshot,
-  useVcsDiff,
+  useVcsChanges,
   useVcsSnapshot,
+  vcsReadKey,
 } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
@@ -21,10 +30,10 @@ import {
   changesRepository,
   changesScopeLabel,
   changesScopeValue,
-  diffRequestForScope,
   scopeFiles,
   turnChangeOptions,
   turnScopeOption,
+  vcsRequestForScope,
   workingTreeScopeOptions,
 } from "./change-scopes.ts";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
@@ -32,41 +41,96 @@ import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
+import { createPatchLoader } from "./changes-patches.ts";
+import type { PatchEntry, PatchSource } from "./changes-patches.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
 import { changesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
 import { changesViewed, patchDigest } from "./changes-viewed.ts";
-import type { ViewedFile, ViewedState } from "./changes-viewed.ts";
+import type { ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
-import {
-  EMPTY_PATCH,
-  uncommittedStackSection,
-  type ChangeStackSection,
-  type UncommittedPatch,
-} from "./stacked-diff.ts";
+import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
 
-interface WorkingChangeRow {
-  readonly source: "working";
+/** A file Git reports: from status in a working scope, from the manifest for a commit. */
+interface VcsChangeRow {
+  readonly source: "working" | "commit";
   readonly path: string;
   readonly status: VcsFileKind;
 }
 
-/** A file whose patch is the record: a turn's edit, or one commit's diff. */
-interface PatchChange {
-  readonly source: "patch";
+/** A file whose patch is the record: one turn's edit. */
+interface RecordedChangeRow {
+  readonly source: "recorded";
   readonly path: string;
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
 }
 
-type PatchChangeRow = PatchChange &
-  ({ readonly origin: "recorded" } | { readonly origin: "vcs"; readonly status: VcsFileKind });
-
-type ChangeRow = WorkingChangeRow | PatchChangeRow;
+type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
 const EMPTY_TURNS: readonly Turn[] = [];
 
-const EMPTY_ROWS: readonly WorkingChangeRow[] = [];
+const EMPTY_ROWS: readonly VcsChangeRow[] = [];
+
+const EMPTY_RECORDED: readonly RecordedChangeRow[] = [];
+
+const UNKNOWN_STAT: VcsLineStat = { kind: "unknown" };
+
+/**
+ * Each set of a turn's recorded rows is one state of that turn's patches, so a
+ * live turn's next answer reads as a new state rather than as the same one.
+ */
+const recordedVersions = new WeakMap<readonly RecordedChangeRow[], number>();
+
+let nextRecordedVersion = 0;
+
+function recordedVersion(rows: readonly RecordedChangeRow[]): number {
+  const known = recordedVersions.get(rows);
+
+  if (known !== undefined) return known;
+  nextRecordedVersion += 1;
+  recordedVersions.set(rows, nextRecordedVersion);
+
+  return nextRecordedVersion;
+}
+
+/** What a review mark records for an entry; an unreadable patch has nothing to record. */
+function viewedDigest(entry: PatchEntry): string | undefined {
+  switch (entry.kind) {
+    case "ready":
+    case "binary":
+      return entry.digest;
+    case "empty":
+      return patchDigest(EMPTY_PATCH);
+    case "too_large":
+    case "failed":
+      return undefined;
+    default: {
+      const _exhaustive: never = entry;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function entryStat(entry: PatchEntry): VcsLineStat | undefined {
+  switch (entry.kind) {
+    case "ready":
+      return { kind: "text", added: entry.added, removed: entry.removed };
+    case "binary":
+      return { kind: "binary" };
+    case "empty":
+      return { kind: "text", added: 0, removed: 0 };
+    case "too_large":
+    case "failed":
+      return undefined;
+    default: {
+      const _exhaustive: never = entry;
+
+      return _exhaustive;
+    }
+  }
+}
 
 const UNCOMMITTED_SCOPE: WorkbenchChangesScope = { kind: "uncommitted" };
 
@@ -82,6 +146,13 @@ const styles = create({
     backgroundColor: role.bgBase,
   },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
+  unmarked: {
+    paddingBlock: 6,
+    paddingInline: 12,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    textWrap: "pretty",
+  },
   empty: {
     display: "flex",
     flex: 1,
@@ -101,19 +172,6 @@ function queryError(error: Error | null): string | undefined {
   const message = error.message;
 
   return message.length > 160 ? `${message.slice(0, 159)}…` : message;
-}
-
-function uncommittedPatchState(
-  patch: string | undefined,
-  diffs: { readonly isLoading: boolean; readonly isError: boolean },
-): UncommittedPatch {
-  if (patch !== undefined && patch.trim() !== "") return { kind: "ready", patch };
-
-  if (diffs.isError) return { kind: "failed" };
-
-  if (diffs.isLoading) return { kind: "pending" };
-
-  return { kind: "empty" };
 }
 
 function emptyScopeText(scope: WorkbenchChangesScope): string {
@@ -279,7 +337,7 @@ function ChangesPanelView({
       statusFiles === undefined
         ? EMPTY_ROWS
         : statusFiles
-            .map((file): WorkingChangeRow => ({
+            .map((file): VcsChangeRow => ({
               source: "working",
               path: file.path,
               status: file.kind,
@@ -288,23 +346,33 @@ function ChangesPanelView({
     [statusFiles],
   );
 
-  const workingPaths = useMemo(() => workingRows.map((row) => row.path), [workingRows]);
-
-  const diffRequest = diffRequestForScope(activeScope, {
-    paths: workingScope ? workingPaths : undefined,
+  const vcsRequest = vcsRequestForScope(activeScope, {
     ignoreWhitespace: options.ignoreWhitespace,
   });
 
-  const diffs = useVcsDiff(
-    repository === undefined || diffRequest === undefined
+  const vcsRead =
+    repository === undefined || vcsRequest === undefined
       ? undefined
-      : { ...repository, request: diffRequest },
-    visible && (!workingScope || workingPaths.length > 0),
+      : { ...repository, request: vcsRequest };
+
+  // The manifest names a commit's files and counts every file's lines, without a patch.
+  const manifest = useVcsChanges(vcsRead, visible && (!workingScope || workingRows.length > 0));
+
+  const statByPath = useMemo(
+    () => new Map((manifest.data ?? []).map((change) => [change.path, change.stat])),
+    [manifest.data],
   );
 
-  const diffByPath = useMemo(
-    () => new Map((diffs.data ?? []).map((item) => [item.path, item])),
-    [diffs.data],
+  const commitRows = useMemo(
+    (): readonly VcsChangeRow[] =>
+      activeScope.kind === "commit"
+        ? (manifest.data ?? []).map((change) => ({
+            source: "commit",
+            path: change.path,
+            status: change.kind,
+          }))
+        : EMPTY_ROWS,
+    [activeScope.kind, manifest.data],
   );
 
   const selectedRun = selectedTurn?.run.kind === "run" ? selectedTurn.run.id : undefined;
@@ -321,41 +389,34 @@ function ChangesPanelView({
       ? undefined
       : runDiff.data.files;
 
-  const patchRows = useMemo(
-    (): readonly PatchChangeRow[] =>
-      selectedTurn !== undefined
-        ? runFiles !== undefined
-          ? runFiles.map((file): PatchChangeRow => ({
-              source: "patch",
-              origin: "recorded",
+  const recordedRows = useMemo(
+    (): readonly RecordedChangeRow[] =>
+      selectedTurn === undefined
+        ? EMPTY_RECORDED
+        : runFiles !== undefined
+          ? runFiles.map((file): RecordedChangeRow => ({
+              source: "recorded",
               path: file.path,
               patch: file.patch,
               added: file.added,
               removed: file.removed,
             }))
-          : selectedTurn.files.map(({ change, patch }): PatchChangeRow => ({
-              source: "patch",
-              origin: "recorded",
+          : selectedTurn.files.map(({ change, patch }): RecordedChangeRow => ({
+              source: "recorded",
               path: change.path,
               patch,
               added: change.added,
               removed: change.removed,
-            }))
-        : activeScope.kind === "commit"
-          ? (diffs.data ?? []).map((diff): PatchChangeRow => ({
-              source: "patch",
-              origin: "vcs",
-              path: diff.path,
-              status: diff.status,
-              patch: diff.patch,
-              added: diff.kind === "text" ? diff.added : 0,
-              removed: diff.kind === "text" ? diff.removed : 0,
-            }))
-          : [],
-    [selectedTurn, runFiles, activeScope.kind, diffs.data],
+            })),
+    [selectedTurn, runFiles],
   );
 
-  const rows: readonly ChangeRow[] = workingScope ? workingRows : patchRows;
+  const rows: readonly ChangeRow[] = workingScope
+    ? workingRows
+    : selectedTurn !== undefined
+      ? recordedRows
+      : commitRows;
+
   const rowByPath = useMemo(() => new Map(rows.map((row) => [row.path, row])), [rows]);
   const stackOrder = useMemo(() => rows.map((row) => row.path), [rows]);
 
@@ -366,63 +427,157 @@ function ChangesPanelView({
     stackOrder.length > 0 && stackOrder.every((path) => collapsedPaths.includes(path));
 
   const activePath = stackOrder.includes(selectedPath ?? "") ? selectedPath : stackOrder[0];
-  // A file the last answer did not cover is still on its way.
-  const diffsLoading = diffs.isLoading || diffs.isPlaceholderData;
-  const diffsError = diffs.isError;
+
+  // Every expanded file is read while the stack shows, nearest the file in
+  // view first, alternating below and above it, so whichever way the reader
+  // scrolls the next files are already read.
+  const preparedPaths = useMemo((): readonly string[] => {
+    if (!visible) return [];
+    const collapsed = new Set(collapsedPaths);
+    const active = Math.max(stackOrder.indexOf(activePath ?? ""), 0);
+    const nearest: string[] = [];
+
+    for (let distance = 0; nearest.length < stackOrder.length; distance += 1) {
+      const below = stackOrder[active + distance];
+      const above = distance === 0 ? undefined : stackOrder[active - distance];
+
+      if (below !== undefined) nearest.push(below);
+
+      if (above !== undefined) nearest.push(above);
+    }
+
+    return nearest.filter((path) => !collapsed.has(path));
+  }, [visible, collapsedPaths, stackOrder, activePath]);
+
+  // Patches are read for every expanded file, rendered headers first, under a
+  // key that names the comparison and its state. A turn's patches are already
+  // in hand; they take the same path so parsing stays off the main thread.
+  const selectedTurnId = selectedTurn?.scope.turnId;
+  const patchKey = vcsRead === undefined ? undefined : vcsReadKey(vcsRead);
+  const { ignoreWhitespace } = options;
+  const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${ignoreWhitespace ? "w" : ""}`;
+
+  const patchSource = useMemo((): PatchSource | undefined => {
+    if (selectedTurnId !== undefined) {
+      const byPath = new Map(recordedRows.map((row) => [row.path, row]));
+
+      return {
+        key: `turn\u0000${selectedTurnId}\u0000${String(recordedVersion(recordedRows))}`,
+        lineage: `turn\u0000${selectedTurnId}`,
+        paths: stackOrder,
+        read: async (paths) =>
+          paths.flatMap((path) => {
+            const row = byPath.get(path);
+
+            return row === undefined || row.patch.trim() === ""
+              ? []
+              : [
+                  {
+                    path,
+                    status: "modified" as const,
+                    kind: "text" as const,
+                    added: row.added,
+                    removed: row.removed,
+                    patch: row.patch,
+                  },
+                ];
+          }),
+      };
+    }
+
+    // The key names the revision; the request names only the comparison, which the
+    // host reads at whatever state the repository is in when the read lands.
+    const request = vcsRequestForScope(activeScope, { ignoreWhitespace });
+
+    if (patchKey === undefined || request === undefined) return undefined;
+
+    return {
+      key: patchKey,
+      lineage: vcsLineage,
+      paths: stackOrder,
+      read: (paths) => nyte.workspace.vcs.diff({ ...request, paths: [...paths] }),
+    };
+  }, [
+    selectedTurnId,
+    recordedRows,
+    patchKey,
+    vcsLineage,
+    stackOrder,
+    activeScope,
+    ignoreWhitespace,
+  ]);
+
+  const [patches] = useState(createPatchLoader);
+
+  const patchSnapshot = useSyncExternalStore(
+    patches.subscribe,
+    patches.getSnapshot,
+    patches.getSnapshot,
+  );
+
+  useLayoutEffect(() => {
+    if (patchSource !== undefined) patches.setSource(patchSource);
+  }, [patches, patchSource]);
+
+  useLayoutEffect(() => {
+    patches.prepare(preparedPaths);
+  }, [patches, preparedPaths]);
+
+  // Leaving the panel drops every patch it read and any read still in flight.
+  useMountEffect(() => () => patches.release());
+
+  /** The entry a row shows, and whether it was read under the current key. */
+  const patchFor = useCallback(
+    (path: string): { readonly entry: PatchEntry; readonly fresh: boolean } | undefined => {
+      const current = patchSource !== undefined && patchSnapshot.key === patchSource.key;
+      const fresh = current ? patchSnapshot.fresh.get(path) : undefined;
+
+      if (fresh !== undefined) return { entry: fresh, fresh: true };
+
+      if (patchSource === undefined || patchSnapshot.lineage !== patchSource.lineage) {
+        return undefined;
+      }
+
+      const stale =
+        patchSnapshot.stale.get(path) ?? (current ? undefined : patchSnapshot.fresh.get(path));
+
+      return stale === undefined ? undefined : { entry: stale, fresh: false };
+    },
+    [patchSnapshot, patchSource],
+  );
 
   const sections = useMemo(
     () =>
       rows.map((row): ChangesStackItem => {
-        const path = row.path;
-        const diff = diffByPath.get(path);
+        const found = patchFor(row.path);
+        const section = patchStackSection({ path: row.path, entry: found?.entry });
 
-        if (diff?.kind === "binary") {
-          return { kind: "raw", path, text: diff.patch, added: 0, removed: 0 };
-        }
+        const stat: VcsLineStat =
+          row.source === "recorded"
+            ? { kind: "text", added: row.added, removed: row.removed }
+            : ((found?.fresh === true ? entryStat(found.entry) : undefined) ??
+              statByPath.get(row.path) ??
+              UNKNOWN_STAT);
 
-        if (row.source === "patch") {
-          const section: ChangeStackSection =
-            row.patch.trim() === ""
-              ? { kind: "notice", path, text: EMPTY_PATCH }
-              : { kind: "diff", path, patch: row.patch };
-
-          return { ...section, added: row.added, removed: row.removed };
-        }
-
-        const section = uncommittedStackSection({
-          path,
-          state: uncommittedPatchState(diff?.patch, {
-            isLoading: diffsLoading,
-            isError: diffsError,
-          }),
-        });
-
-        return {
-          ...section,
-          added: diff?.added ?? 0,
-          removed: diff?.removed ?? 0,
-        };
+        return { ...section, stat };
       }),
-    [rows, diffByPath, diffsLoading, diffsError],
+    [rows, patchFor, statByPath],
   );
 
-  // A review mark records the patch that was read, so the digest is taken from
-  // the section the stack renders rather than from the raw working-tree diff.
-  const viewedFiles = useMemo(
-    (): readonly ViewedFile[] =>
-      sections.map((section) => ({
-        path: section.path,
-        digest: patchDigest(
-          section.kind === "diff" ? section.patch : section.kind === "pending" ? "" : section.text,
-        ),
-      })),
-    [sections],
-  );
+  // A review mark records the patch that was read, so only an entry read under
+  // the current key has a digest; anything else leaves a mark unchecked.
+  const digestByPath = useMemo(() => {
+    const digests = new Map<string, string>();
 
-  const digestByPath = useMemo(
-    () => new Map(viewedFiles.map((file) => [file.path, file.digest])),
-    [viewedFiles],
-  );
+    for (const row of rows) {
+      const found = patchFor(row.path);
+      const digest = found?.fresh === true ? viewedDigest(found.entry) : undefined;
+
+      if (digest !== undefined) digests.set(row.path, digest);
+    }
+
+    return digests;
+  }, [rows, patchFor]);
 
   const vcsError = queryError(snapshot.error);
   const transcriptError = queryError(turnsError);
@@ -443,14 +598,14 @@ function ChangesPanelView({
       ? undefined
       : { text: "Couldn't read this conversation's changes.", detail: transcriptError };
 
-  const diffFailure = diffs.isError
-    ? { text: "Couldn't read changes.", detail: queryError(diffs.error) }
+  const manifestFailure = manifest.isError
+    ? { text: "Couldn't read changes.", detail: queryError(manifest.error) }
     : undefined;
 
   const readFailure =
     scope.kind === "turn"
       ? (transcriptFailure ?? vcsFailure)
-      : (diffFailure ?? vcsFailure ?? transcriptFailure);
+      : (manifestFailure ?? vcsFailure ?? transcriptFailure);
 
   // The turn's own files are loaded, so its emptiness is a fact that a stale
   // background failure cannot change.
@@ -459,7 +614,7 @@ function ChangesPanelView({
       ? { text: "This turn made no file changes" }
       : (readFailure ?? {
           text:
-            snapshot.isLoading || diffs.isLoading
+            snapshot.isLoading || manifest.isLoading
               ? "Loading changes…"
               : emptyScopeText(activeScope),
         });
@@ -469,16 +624,23 @@ function ChangesPanelView({
   const viewedByPath = useMemo(
     () =>
       new Map(
-        viewedFiles.map((file) => {
-          const mark = viewedSnapshot[viewedScopeId]?.files[file.path];
+        rows.map((row) => {
+          const mark = viewedSnapshot[viewedScopeId]?.files[row.path];
+          const digest = digestByPath.get(row.path);
 
           const state: ViewedState =
-            mark === undefined ? "unviewed" : mark.digest === file.digest ? "viewed" : "changed";
+            mark === undefined
+              ? "unviewed"
+              : digest === undefined
+                ? "unknown"
+                : mark.digest === digest
+                  ? "viewed"
+                  : "changed";
 
-          return [file.path, state];
+          return [row.path, state];
         }),
       ),
-    [viewedFiles, viewedSnapshot, viewedScopeId],
+    [rows, digestByPath, viewedSnapshot, viewedScopeId],
   );
 
   const viewedState = useCallback(
@@ -486,24 +648,54 @@ function ChangesPanelView({
     [viewedByPath],
   );
 
+  const [markNotice, setMarkNotice] = useState({ scope: "", text: "" });
+
+  // Marking reads every named patch first, in the loader's bounded batches, so
+  // a mark always records a patch. A file whose patch cannot be read stays
+  // unmarked and is reported, never certified; so is a request the changes
+  // outran before every patch was read.
   const setViewed = useCallback(
     (paths: readonly string[], viewed: boolean): void => {
-      if (viewed) {
-        changesViewed.markAllViewed(
-          viewedScopeId,
-          paths.flatMap((path) => {
-            const digest = digestByPath.get(path);
-
-            return digest === undefined ? [] : [{ path, digest }];
-          }),
-        );
+      if (!viewed) {
+        changesViewed.clearAllViewed(viewedScopeId, paths);
 
         return;
       }
 
-      changesViewed.clearAllViewed(viewedScopeId, paths);
+      const scopeValue = activeScopeValue;
+
+      void patches.ensure(paths).then((answer) => {
+        if (answer.kind === "superseded") {
+          setMarkNotice({
+            scope: scopeValue,
+            text: "The changes moved before every file was read, so nothing was marked viewed.",
+          });
+
+          return;
+        }
+
+        const marks = paths.flatMap((path) => {
+          const entry = answer.entries.get(path);
+          const digest = entry === undefined ? undefined : viewedDigest(entry);
+
+          return digest === undefined ? [] : [{ path, digest }];
+        });
+
+        changesViewed.markAllViewed(viewedScopeId, marks);
+        const unread = paths.length - marks.length;
+
+        setMarkNotice({
+          scope: scopeValue,
+          text:
+            unread === 0
+              ? ""
+              : unread === 1
+                ? "1 file wasn’t marked viewed because its diff couldn’t be read."
+                : `${String(unread)} files weren’t marked viewed because their diffs couldn’t be read.`,
+        });
+      });
     },
-    [viewedScopeId, digestByPath],
+    [viewedScopeId, patches, activeScopeValue],
   );
 
   const setFileViewed = useCallback(
@@ -536,28 +728,26 @@ function ChangesPanelView({
     (): readonly ChangesSidebarFile[] =>
       sections.map((section) => {
         const row = rowByPath.get(section.path);
+        const file = { path: section.path, stat: section.stat, viewed: viewedState(section.path) };
 
-        const file = {
-          path: section.path,
-          added: section.added,
-          removed: section.removed,
-          viewed: viewedState(section.path),
-        };
-
-        if (row?.source === "working" || (row?.source === "patch" && row.origin === "vcs")) {
-          return { ...file, status: row.status };
-        }
-
-        return file;
+        return row === undefined || row.source === "recorded"
+          ? file
+          : { ...file, status: row.status };
       }),
     [sections, rowByPath, viewedState],
   );
 
-  const scopeStats = sections.reduce(
-    (total, section) => ({
-      added: total.added + section.added,
-      removed: total.removed + section.removed,
-    }),
+  // A total over files whose counts are unknown would understate the change.
+  const scopeStats = sections.reduce<{ added: number; removed: number } | undefined>(
+    (total, section) =>
+      total === undefined || section.stat.kind === "unknown"
+        ? undefined
+        : section.stat.kind === "binary"
+          ? total
+          : {
+              added: total.added + section.stat.added,
+              removed: total.removed + section.stat.removed,
+            },
     { added: 0, removed: 0 },
   );
 
@@ -748,8 +938,14 @@ function ChangesPanelView({
               onRevertPath={revertPath}
               onScrollTop={onScrollTop}
               onActivePath={onSelectPath}
+              onDemandPatch={patches.mount}
             />
           )}
+        </div>
+      )}
+      {markNotice.scope === activeScopeValue && markNotice.text !== "" && (
+        <div role="status" {...props(styles.unmarked)}>
+          {markNotice.text}
         </div>
       )}
       <ConfirmDialog

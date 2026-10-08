@@ -177,7 +177,7 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
       .toBe(true);
     assert.equal(setup.requests.length, priorRequests);
     assert.equal((await old.messages.pending(input)).length, 1);
-    assert.equal((await old.sessionWorkspace(input)).cwd, workspace.cwd);
+    assert.equal((await old.sessionRoot(input))?.workspace.cwd, workspace.cwd);
     assert.equal((await old.sessions.get(input))?.activation.kind, "requires");
     assert.deepEqual(await old.plugins.commands.run({ ...input, name: "where" }), {
       kind: "not_found",
@@ -299,8 +299,8 @@ test("children follow the root across moves and resume without bypassing trust",
   const resumedGrants = setup.grants();
   const resumed = await setup.open(resumedGrants);
   try {
-    assert.equal((await resumed.sessionWorkspace(oldChildInput)).cwd, workspace.cwd);
-    assert.equal((await resumed.sessionWorkspace(childInput)).cwd, workspace.cwd);
+    assert.equal((await resumed.sessionRoot(oldChildInput))?.workspace.cwd, workspace.cwd);
+    assert.equal((await resumed.sessionRoot(childInput))?.workspace.cwd, workspace.cwd);
     assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "requires");
     assert.deepEqual(await resumed.plugins.list(childInput), []);
     resumed.attach({ sessions: [parent.sessionId] });
@@ -379,7 +379,7 @@ test("spawned subagents follow a later parent move", async () => {
     const resumedGrants = setup.grants();
     const resumed = await setup.open(resumedGrants);
     try {
-      assert.equal((await resumed.sessionWorkspace(childInput)).cwd, nextWorkspace.cwd);
+      assert.equal((await resumed.sessionRoot(childInput))?.workspace.cwd, nextWorkspace.cwd);
       assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "requires");
       resumedGrants.set(elsewhere, plugins("elsewhere"));
       await resumed.relocate({ ...input, workspace: nextWorkspace });

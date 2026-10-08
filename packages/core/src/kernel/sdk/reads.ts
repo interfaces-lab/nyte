@@ -17,13 +17,28 @@ import type {
 } from "@nyte-ai/protocol";
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
-import type { Commit, Seq } from "../model.ts";
-import { WORKSPACE_REF, headRef } from "../names.ts";
+import type { Commit, Oid, Seq } from "../model.ts";
+import { WORKSPACE_REF, factRef, headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import type { Session } from "../store.ts";
 import { projectContextStatus, projectUsage, transcriptFromCommits } from "@nyte-ai/client";
-import { clientActivation, type Pooled, type SessionPool } from "./session-pool.ts";
-import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
+import {
+  CWD_FACT,
+  clientActivation,
+  workspaceRef,
+  type Pooled,
+  type SessionPool,
+} from "./session-pool.ts";
+import {
+  PARENT_FACT,
+  ROW_FACTS,
+  factFields,
+  headConfig,
+  pendingItems,
+  sessionInfo,
+  withFacts,
+  withLease,
+} from "./snapshot.ts";
 import {
   CorruptObject,
   MAIN,
@@ -64,23 +79,71 @@ function decodeListing(body: string): SessionInfo | undefined {
   return checkListing.Check(value) ? value.row : undefined;
 }
 
+type RowChange = "none" | "facts" | "rebuild";
+
+/** A built row still answering for its session, and whether its facts must be read again. */
+interface Reusable {
+  readonly change: Exclude<RowChange, "rebuild">;
+  readonly info: SessionInfo;
+}
+
+const FACTS = factRef("");
+
+/** Row facts read again in place; a new parent moves the tree, so it rebuilds. */
+const REFRESHED_FACTS: ReadonlySet<string> = new Set(
+  ROW_FACTS.filter((key) => key !== PARENT_FACT).map(factRef),
+);
+
+/** Facts that decide the row without being row facts, or that move the tree. */
+const REBUILT_FACTS: ReadonlySet<string> = new Set([factRef(PARENT_FACT), factRef(CWD_FACT)]);
+
 /**
- * Whether a row built at `builtAt` still describes the session at `seq`: the
- * stream has not moved, or has moved only by events no row reads.
+ * What the stream after `builtAt`, up to `seq`, did to a row built at
+ * `builtAt`. Every ref a store update moves appends its own event, so each is
+ * classified: a row fact is read again, a fact the row never reads leaves it,
+ * and anything else (a parent, a legacy `cwd`, history, queue, runs, effects,
+ * and every family added later) rebuilds it. A stream the store trimmed, or
+ * one too far past the row, rebuilds it too.
  */
-async function rowHolds(session: Session, builtAt: Seq, seq: Seq): Promise<boolean> {
-  if (builtAt === seq) return true;
+async function rowChange(session: Session, builtAt: Seq, seq: Seq): Promise<RowChange> {
+  if (builtAt === seq) return "none";
 
-  if (seq - builtAt > 256) return false;
+  if (seq - builtAt > 256) return "rebuild";
 
-  try {
-    const events = await session.events.read({ afterSeq: builtAt, limit: 256 });
+  const events = await session.events
+    .read({ afterSeq: builtAt, limit: 256 })
+    .catch((cause: unknown) => {
+      if (cause instanceof CursorExpired) return undefined;
+      throw cause;
+    });
 
-    return events.every((event) => event.kind !== "ref");
-  } catch (cause) {
-    if (cause instanceof CursorExpired) return false;
-    throw cause;
+  if (events === undefined) return "rebuild";
+  let change: RowChange = "none";
+
+  for (const event of events) {
+    if (event.seq > seq) break;
+
+    if (event.kind !== "ref") continue;
+
+    if (REFRESHED_FACTS.has(event.name)) change = "facts";
+    else if (!event.name.startsWith(FACTS) || REBUILT_FACTS.has(event.name)) return "rebuild";
   }
+
+  return change;
+}
+
+interface RowFilter {
+  readonly parent?: SessionId | null;
+  readonly includeArchived?: boolean;
+}
+
+/** One test for a row and for the facts it is built from, so a filter before the build agrees with one after. */
+function admits(filter: RowFilter, row: Pick<SessionInfo, "archived" | "parent">): boolean {
+  if (row.archived && filter.includeArchived !== true) return false;
+
+  if (filter.parent === null) return row.parent === undefined;
+
+  return filter.parent === undefined || row.parent?.sessionId === filter.parent;
 }
 
 function matches(info: SessionInfo, needle: string): boolean {
@@ -164,8 +227,8 @@ export function createReads(input: {
   };
 
   /**
-   * The row the store kept from an earlier list, when it still describes the
-   * session. The host's answer is never stored, so it is asked for again; a
+   * The row the store kept from an earlier list, and what the stream did to
+   * it since. The host's answer is never stored, so it is asked for again; a
    * child's workspace is its root's, whose move leaves this stream untouched,
    * so the stored workspace is checked against the one the tree acts in now.
    */
@@ -173,13 +236,16 @@ export function createReads(input: {
     pooled: Pooled,
     id: SessionId,
     seq: Seq,
-  ): Promise<SessionInfo | undefined> => {
+  ): Promise<Reusable | undefined> => {
     const stored = await pooled.session.listing.read();
 
     if (stored === undefined) return undefined;
     const row = decodeListing(stored.body);
 
-    if (row === undefined || !(await rowHolds(pooled.session, stored.seq, seq))) return undefined;
+    if (row === undefined) return undefined;
+    const change = await rowChange(pooled.session, stored.seq, seq);
+
+    if (change === "rebuild") return undefined;
 
     const [workspace, activation] = await Promise.all([
       pool.storedWorkspace(pooled),
@@ -194,70 +260,80 @@ export function createReads(input: {
       return undefined;
     }
 
-    return { ...row, activation: clientActivation(activation) };
+    return { change, info: { ...row, activation: clientActivation(activation) } };
   };
 
-  const listedInfo = async (pooled: Pooled, id: SessionId): Promise<SessionInfo> => {
-    const seq = await pooled.session.events.last();
-    const workspace = await (await pool.rootOf(pooled)).session.refs.read(WORKSPACE_REF);
+  /** The row this process or an earlier launch built, while it still answers for the session. */
+  const reusable = async (
+    pooled: Pooled,
+    id: SessionId,
+    seq: Seq,
+    workspace: Oid | null,
+  ): Promise<Reusable | undefined> => {
     const listed = pooled.listed;
 
-    if (
-      listed !== undefined &&
-      listed.activation === pooled.activationState &&
-      listed.workspace === workspace
-    ) {
-      if (await rowHolds(pooled.session, listed.seq, seq)) {
-        pooled.listed = { ...listed, seq };
+    if (listed === undefined) return storedListing(pooled, id, seq);
 
-        return listed.info;
-      }
-    } else if (listed === undefined) {
-      const info = await storedListing(pooled, id, seq);
+    if (listed.activation !== pooled.activationState || listed.workspace !== workspace) {
+      return undefined;
+    }
 
-      if (info !== undefined) {
-        pooled.listed = { seq, activation: pooled.activationState, workspace, info };
+    const change = await rowChange(pooled.session, listed.seq, seq);
 
-        return info;
-      }
+    return change === "rebuild" ? undefined : { change, info: listed.info };
+  };
+
+  /**
+   * The session's row, or `undefined` when `filter` leaves it out. The cursor
+   * is read before anything the row is built from, so a write after it is an
+   * event the next read classifies. A row the stream left alone is reused, a
+   * row whose facts moved takes them as they are now, and any other row is
+   * rebuilt; a rebuild reads the facts first, so a session the filter leaves
+   * out never has its history walked.
+   */
+  const listedInfo = async (
+    pooled: Pooled,
+    id: SessionId,
+    filter: RowFilter,
+  ): Promise<SessionInfo | undefined> => {
+    const seq = await pooled.session.events.last();
+    const workspace = await (await pool.rootOf(pooled)).session.refs.read(WORKSPACE_REF);
+    const reused = await reusable(pooled, id, seq, workspace);
+
+    if (reused?.change === "none") {
+      pooled.listed = { seq, activation: pooled.activationState, workspace, info: reused.info };
+
+      return admits(filter, reused.info) ? reused.info : undefined;
     }
 
     const facts = await pool.readFacts(pooled.session);
-    const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
+
+    if (reused === undefined && !admits(filter, factFields(facts))) return undefined;
+
+    const info =
+      reused === undefined
+        ? sessionInfo(await pool.readSession(id, pooled, { facts }))
+        : withFacts(reused.info, facts);
+
     pooled.listed = { seq, activation: pooled.activationState, workspace, info };
     // A cache the next launch reads; a store that cannot keep it costs that launch a walk, nothing more.
     await pooled.session.listing.write({ seq, body: encodeListing(info) }).catch(() => undefined);
 
-    return info;
+    return admits(filter, info) ? info : undefined;
   };
 
   const listedSession = async (
     stored: { readonly id: string; readonly createdAt: number },
-    filter: {
-      readonly search?: string;
-      readonly parent?: SessionId | null;
-      readonly includeArchived?: boolean;
-    },
+    filter: RowFilter & { readonly search?: string },
   ): Promise<SessionInfo | undefined> => {
     const id = sessionId(stored.id);
 
     try {
       const pooled = await pool.open(id);
       pooled.createdAt ??= stored.createdAt;
-      const info = await listedInfo(pooled, id);
+      const info = await listedInfo(pooled, id, filter);
 
-      if (info.archived && filter.includeArchived !== true) return undefined;
-      const parent = info.parent;
-
-      if (filter.parent === null && parent !== undefined) return undefined;
-
-      if (
-        filter.parent !== undefined &&
-        filter.parent !== null &&
-        parent?.sessionId !== filter.parent
-      ) {
-        return undefined;
-      }
+      if (info === undefined) return undefined;
 
       if (filter.search !== undefined && !matches(info, filter.search)) return undefined;
 
@@ -272,6 +348,52 @@ export function createReads(input: {
         return undefined;
       }
 
+      throw error;
+    }
+  };
+
+  /**
+   * The row a client acts on. Its history comes through the listing reader;
+   * what lives outside the session's stream is read now, as a full read
+   * would: the tree's workspace (a child inherits its root's, legacy `cwd`
+   * included) and the host's answer for it, both through history-free
+   * ancestry, and every run's lease, which is taken, renewed, and expires
+   * without an event.
+   */
+  const get = async (input: {
+    readonly sessionId: SessionId;
+  }): Promise<SessionInfo | undefined> => {
+    pool.alive();
+
+    try {
+      const pooled = await pool.open(input.sessionId);
+      const row = await listedInfo(pooled, input.sessionId, { includeArchived: true });
+
+      if (row === undefined) return undefined;
+
+      const [workspace, activation, heads] = await Promise.all([
+        pool.storedWorkspace(pooled),
+        pool.resolveSessionActivation(input.sessionId, pooled),
+        Promise.all(
+          row.heads.map(async (head) =>
+            head.run === undefined
+              ? head
+              : {
+                  ...head,
+                  run: withLease(head.run, await pooled.session.leases.read(headRef(head.head))),
+                },
+          ),
+        ),
+      ]);
+
+      return {
+        ...row,
+        activation: clientActivation(activation),
+        workspace: workspaceRef(workspace),
+        heads,
+      };
+    } catch (error) {
+      if (error instanceof UnknownSession) return undefined;
       throw error;
     }
   };
@@ -596,5 +718,5 @@ export function createReads(input: {
     }
   };
 
-  return { snapshot, metadata, list, context, diff, revert };
+  return { get, snapshot, metadata, list, context, diff, revert };
 }

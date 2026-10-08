@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { parsePatchFiles } from "@pierre/diffs";
+import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
 import type { VcsDiff } from "@nyte-ai/protocol";
 import { createGitVcs } from "../../host/src/git.ts";
-import { gitOutput, readGitManifest } from "./git-manifest.ts";
+import { gitOutput } from "./git-manifest.ts";
 
 function integer(value: string | undefined, fallback: number, name: string): number {
   const number = value === undefined ? fallback : Number(value);
@@ -25,35 +26,71 @@ async function measure<T>(operation: () => Promise<T>) {
   return { value, ms: performance.now() - start };
 }
 
+/** The host's per-file patch cap, which a fixture patch past it must report. */
+const PATCH_LIMIT = 2_000_000;
+
+/** The patch the backend returned, or nothing when it stopped at the cap. */
+function patchOf(file: VcsDiff): string | undefined {
+  if (file.kind === "failed") throw new Error(`Fixture patch failed: ${file.path}: ${file.reason}`);
+
+  return file.kind === "too_large" ? undefined : file.patch;
+}
+
 function patchBytes(files: readonly VcsDiff[]): number {
-  return files.reduce((bytes, file) => bytes + Buffer.byteLength(file.patch), 0);
+  return files.reduce((bytes, file) => bytes + Buffer.byteLength(patchOf(file) ?? ""), 0);
 }
 
 function parseInstalled(files: readonly VcsDiff[]) {
+  const read = files.flatMap((file) => {
+    const patch = patchOf(file);
+
+    return patch === undefined ? [] : [{ path: file.path, patch }];
+  });
+
   const start = performance.now();
 
-  const parsed = files.flatMap((file) =>
+  const parsed = read.flatMap((file) =>
     parsePatchFiles(file.patch, undefined, true).flatMap((patch) => patch.files),
   );
 
   const ms = performance.now() - start;
 
-  assert.equal(parsed.length, files.length);
+  assert.equal(parsed.length, read.length);
   assert.deepEqual(
     parsed.map((file) => file.name).toSorted(),
-    files.map((file) => file.path).toSorted(),
+    read.map((file) => file.path).toSorted(),
   );
 
   return {
     ms,
-    inputPatches: files.length,
+    inputPatches: read.length,
     inputPatchBytes: patchBytes(files),
+    tooLargeFiles: files.length - read.length,
     parsedFiles: parsed.length,
     parsedSideLines: parsed.reduce(
       (lines, file) => lines + file.additionLines.length + file.deletionLines.length,
       0,
     ),
   };
+}
+
+/**
+ * Git's own full patch for each file the backend capped: it must really be past
+ * the cap, so `too_large` is the cap at work and not a misread.
+ */
+async function rawSizesPastCap(cwd: string, oid: string, files: readonly VcsDiff[]) {
+  const capped = files.filter((file) => file.kind === "too_large");
+  const sizes = [];
+
+  for (const file of capped) {
+    assert.equal(file.kind === "too_large" ? file.limit : 0, PATCH_LIMIT);
+    const raw = await gitOutput(cwd, ["show", "--format=", "--no-color", oid, "--", file.path]);
+    const bytes = Buffer.byteLength(raw);
+    assert.ok(bytes > PATCH_LIMIT, `${file.path} was capped at ${String(bytes)} bytes`);
+    sizes.push({ path: file.path, rawPatchBytes: bytes });
+  }
+
+  return sizes;
 }
 
 function verifyPatches({
@@ -73,9 +110,11 @@ function verifyPatches({
 
   for (const file of baseline) {
     assert.equal(file.status, "modified");
+
+    if (file.kind === "too_large") continue;
     assert.equal(file.kind, "text");
 
-    if (file.kind !== "text") throw new Error("Expected text patch");
+    if (file.kind !== "text") throw new Error("Expected a text patch or the cap");
     assert.equal(file.added, lines);
     assert.equal(file.removed, lines);
     assert.ok(file.patch.length > 0);
@@ -84,7 +123,7 @@ function verifyPatches({
   for (const file of demanded) {
     const expected = byPath.get(file.path);
     assert.ok(expected, `Missing baseline patch for ${file.path}`);
-    assert.ok(Buffer.from(file.patch).equals(Buffer.from(expected.patch)));
+    assert.ok(Buffer.from(patchOf(file) ?? "").equals(Buffer.from(patchOf(expected) ?? "")));
     assert.deepEqual(file, expected);
   }
 }
@@ -151,9 +190,14 @@ async function main(): Promise<void> {
   const selectedCount = integer(args[2], 1, "selected");
   const trials = integer(args[3], 1, "trials");
 
-  if (fileCount > 512 || selectedCount > fileCount || fileCount * lines > 200_000 || trials > 10) {
+  if (
+    fileCount > 512 ||
+    selectedCount > Math.min(fileCount, VCS_DIFF_PATHS_MAX) ||
+    fileCount * lines > 200_000 ||
+    trials > 10
+  ) {
     throw new Error(
-      "Fixture limits: files <= 512, selected <= files, files * lines <= 200000, trials <= 10",
+      `Fixture limits: files <= 512, selected <= min(files, ${String(VCS_DIFF_PATHS_MAX)}), files * lines <= 200000, trials <= 10`,
     );
   }
 
@@ -165,48 +209,73 @@ async function main(): Promise<void> {
     assert.equal(paths.length, selectedCount);
     const scope = { kind: "commit", oid: fixture.oid } as const;
     const backend = createGitVcs();
-    const fullRead = () => backend.diff({ cwd, scope, ignoreWhitespace: false });
+    const manifestRead = () => backend.changes({ cwd, scope, ignoreWhitespace: false });
+
+    // Every file, in the bounded batches a patch read allows.
+    const fullRead = async () => {
+      const all = (await manifestRead()).map((change) => change.path);
+      const diffs: VcsDiff[] = [];
+
+      for (let start = 0; start < all.length; start += VCS_DIFF_PATHS_MAX) {
+        diffs.push(
+          ...(await backend.diff({
+            cwd,
+            scope,
+            paths: all.slice(start, start + VCS_DIFF_PATHS_MAX),
+            ignoreWhitespace: false,
+          })),
+        );
+      }
+
+      return diffs;
+    };
+
     const samples = [];
 
     for (let trial = 0; trial < trials; trial += 1) {
       const first = trial % 2 === 0 ? await measure(fullRead) : undefined;
-      const discovery = await measure(() => readGitManifest(cwd, fixture.oid));
-      const { manifest } = discovery.value;
-      assert.ok(manifest.files.length > 0);
-      assert.deepEqual(manifest.scope, scope);
+      const discovery = await measure(manifestRead);
+      const manifest = discovery.value;
+      assert.ok(manifest.length > 0);
       assert.deepEqual(
-        manifest.files,
-        fixture.paths.map((path) => ({ path, status: "modified" })),
+        manifest,
+        fixture.paths.map((path) => ({
+          path,
+          kind: "modified",
+          stat: { kind: "text", added: lines, removed: lines },
+        })),
       );
-      assert.ok(manifest.files.every((file) => !("patch" in file)));
+      assert.ok(manifest.every((file) => !("patch" in file)));
 
       const selected = await measure(() =>
-        backend.diff({ cwd, scope: manifest.scope, paths, ignoreWhitespace: false }),
+        backend.diff({ cwd, scope, paths, ignoreWhitespace: false }),
       );
 
       const baseline = first ?? (await measure(fullRead));
       assert.deepEqual(
-        baseline.value.map((file) => ({ path: file.path, status: file.status })),
-        manifest.files,
+        baseline.value.map((file) => ({ path: file.path, kind: file.status })),
+        manifest.map((file) => ({ path: file.path, kind: file.kind })),
       );
       verifyPatches({ baseline: baseline.value, demanded: selected.value, paths, lines });
+      const capped = await rawSizesPastCap(cwd, fixture.oid, baseline.value);
       const fullParse = parseInstalled(baseline.value);
       const selectedParse = parseInstalled(selected.value);
-      assert.equal(fullParse.parsedSideLines, 2 * fileCount * lines);
-      assert.equal(selectedParse.parsedSideLines, 2 * selectedCount * lines);
+      assert.equal(fullParse.parsedSideLines, 2 * fullParse.parsedFiles * lines);
+      assert.equal(selectedParse.parsedSideLines, 2 * selectedParse.parsedFiles * lines);
+      assert.equal(fullParse.parsedFiles + capped.length, fileCount);
       samples.push({
         trial,
         order: first === undefined ? "manifest-selected-baseline" : "baseline-manifest-selected",
         manifest: {
           ms: discovery.ms,
-          files: manifest.files.length,
-          discoveryBytes: discovery.value.discoveryBytes,
+          files: manifest.length,
           jsonBytes: Buffer.byteLength(JSON.stringify(manifest)),
           patchBytes: 0,
         },
         baseline: {
           ms: baseline.ms,
           files: baseline.value.length,
+          capped,
           patchBytes: patchBytes(baseline.value),
           jsonBytes: Buffer.byteLength(JSON.stringify(baseline.value)),
           parse: fullParse,
@@ -215,7 +284,8 @@ async function main(): Promise<void> {
           ms: selected.ms,
           files: selected.value.map((file) => ({
             path: file.path,
-            patchBytes: Buffer.byteLength(file.patch),
+            kind: file.kind,
+            patchBytes: Buffer.byteLength(patchOf(file) ?? ""),
           })),
           patchBytes: patchBytes(selected.value),
           jsonBytes: Buffer.byteLength(JSON.stringify(selected.value)),
@@ -236,7 +306,7 @@ async function main(): Promise<void> {
           },
           runtime: { node: process.version, git: (await gitOutput(cwd, ["--version"])).trim() },
           checks:
-            "Nonempty exact manifest, full files and facts, selected patch byte equality, parsed files and lines",
+            "Nonempty exact manifest, full files and facts, selected patch byte equality, capped files really past the 2 MB cap with nothing parsed, parsed files and lines",
           timingsMs: {
             manifestDiscovery: spread(samples.map((sample) => sample.manifest.ms)),
             baselineDiscoveryAndPatches: spread(samples.map((sample) => sample.baseline.ms)),
@@ -246,9 +316,9 @@ async function main(): Promise<void> {
           },
           limitations: [
             "Single-parent modified ASCII text fixture only; no rename, binary, merge, root-commit or worktree parity",
-            "Selected backend still discovers the full commit; metadata read does not request patches",
-            "Cold parser calls without React, CodeView, highlight workers, or Nyte review hashing",
-            "No process-count instrumentation, cancellation, interactive byte limits, FPS or production integration",
+            "Selected backend still discovers the full commit; the production manifest runs one numstat but requests no patches",
+            "Synchronous Node parser calls stand in for the app's parse worker; no React, CodeView, highlight workers, or review hashing",
+            "The backend's per-file byte cap and shared patch-process bound are the production ones; this demo does not count processes, measure renderer work or FPS, or cancel reads",
             "Sequential trials alternate read order; OS caches are not cleared; fixture setup is excluded",
             "Temporary repository is deleted on exit",
           ],

@@ -57,7 +57,7 @@ refs/deleted                   Blob: the session is being deleted
 | File          | Owns                                                                   |
 | ------------- | ---------------------------------------------------------------------- |
 | `model.ts`    | The types. Objects, ref updates, leases, events.                       |
-| `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. `listing` keeps the SDK's directory row between launches: a cache keyed by the stream position it was built at, rebuilt when the stream moves past it, never an authority. |
+| `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. `listing` keeps the SDK's directory row between launches: a cache keyed by the stream position it was built at, never an authority. A later stream that moved only the row's name, pinned, or archived facts has them read again; any other ref, a trimmed stream, or a long gap rebuilds it. |
 | `names.ts`    | Ref names and their rules.                                             |
 | `hash.ts`     | `hashObject(object)`.                                                       |
 | `sqlite.ts`   | The SQLite backend: five tables and the listing cache, `BEGIN IMMEDIATE`, one seq per session. |
@@ -450,9 +450,11 @@ from `input.workspace` or the host's `defaultWorkspace`, before it returns. A
 child stores no location; it resolves through its parent to the root. A root
 without the ref acts in the default workspace at the directory its legacy
 `refs/facts/cwd` holds; nothing writes that fact. Host-only
-`sessionWorkspace({ sessionId })` returns the tree's workspace, locator
-included. `sessionCwd({ sessionId })` returns its `cwd` only while the tree is
-active in the environment the host's workspace backend reads, else `undefined`.
+`sessionRoot({ sessionId })` returns the tree's root, its workspace with the
+locator, and the parent links between, without reading history; `undefined`
+once the session or an ancestor is gone, and stored parents that loop throw.
+`sessionCwd({ sessionId })` returns its `cwd` only while the tree is active in
+the environment the host's workspace backend reads, else `undefined`.
 
 Each `Nyte` opens a workspace once. The host's `trust(workspace)` answers first,
 then the provider for its `kind` opens it, then the trust answer's `plugins`

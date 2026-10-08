@@ -110,6 +110,7 @@ import type {
   ModelInfo as ModelInfoType,
   ProviderAuthStatus as ProviderAuthStatusType,
   VcsBranchOutcome as VcsBranchOutcomeType,
+  VcsChange as VcsChangeType,
   VcsCommitOutcome as VcsCommitOutcomeType,
   VcsCommitTarget as VcsCommitTargetType,
   VcsContents as VcsContentsType,
@@ -119,6 +120,7 @@ import type {
   VcsFileKind as VcsFileKindType,
   VcsHead as VcsHeadType,
   VcsIndexFile as VcsIndexFileType,
+  VcsLineStat as VcsLineStatType,
   VcsLog as VcsLogType,
   VcsPathsOutcome as VcsPathsOutcomeType,
   VcsPushOutcome as VcsPushOutcomeType,
@@ -1503,7 +1505,57 @@ export const VcsDiff = typed<VcsDiffType>()(
         removed: Type.Optional(Type.Never()),
         binary: Type.Optional(Type.Never()),
       }),
+      open({
+        kind: Type.Literal("too_large"),
+        limit: Type.Integer({ minimum: 1 }),
+        patch: Type.Optional(Type.Never()),
+        added: Type.Optional(Type.Never()),
+        removed: Type.Optional(Type.Never()),
+      }),
+      open({
+        kind: Type.Literal("failed"),
+        reason: Type.String(),
+        patch: Type.Optional(Type.Never()),
+        added: Type.Optional(Type.Never()),
+        removed: Type.Optional(Type.Never()),
+      }),
     ]),
+  ]),
+);
+
+const VcsLineStat = typed<VcsLineStatType>()(
+  Type.Union([
+    open({
+      kind: Type.Literal("text"),
+      added: Type.Integer({ minimum: 0 }),
+      removed: Type.Integer({ minimum: 0 }),
+    }),
+    open({
+      kind: Type.Literal("binary"),
+      added: Type.Optional(Type.Never()),
+      removed: Type.Optional(Type.Never()),
+    }),
+    open({
+      kind: Type.Literal("unknown"),
+      added: Type.Optional(Type.Never()),
+      removed: Type.Optional(Type.Never()),
+    }),
+  ]),
+);
+
+export const VcsChange = typed<VcsChangeType>()(
+  Type.Union([
+    open({
+      path: Type.String(),
+      kind: literals(["added", "modified", "deleted", "untracked", "conflicted"]),
+      stat: VcsLineStat,
+    }),
+    open({
+      path: Type.String(),
+      kind: Type.Literal("renamed"),
+      from: Type.String(),
+      stat: VcsLineStat,
+    }),
   ]),
 );
 

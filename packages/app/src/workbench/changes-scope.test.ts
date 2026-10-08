@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { testRenderer } from "../../test/renderer.ts";
-import { diffRequestForScope } from "./change-scopes.ts";
+import { vcsRequestForScope } from "./change-scopes.ts";
 
 const report = Type.Array(
   Type.Object({
@@ -121,27 +121,26 @@ test(
   },
 );
 
-test("each scope requests the corresponding Git diff", () => {
-  assert.deepEqual(diffRequestForScope({ kind: "uncommitted" }), {
+test("each scope requests the corresponding Git comparison", () => {
+  assert.deepEqual(vcsRequestForScope({ kind: "uncommitted" }), {
     target: { kind: "workspace" },
     scope: { kind: "worktree" },
     ignoreWhitespace: false,
   });
-  assert.deepEqual(diffRequestForScope({ kind: "staged" }, { ignoreWhitespace: true }), {
+  assert.deepEqual(vcsRequestForScope({ kind: "staged" }, { ignoreWhitespace: true }), {
     target: { kind: "workspace" },
     scope: { kind: "staged" },
     ignoreWhitespace: true,
   });
-  assert.deepEqual(diffRequestForScope({ kind: "unstaged" }, { paths: ["src/a.ts"] }), {
+  assert.deepEqual(vcsRequestForScope({ kind: "unstaged" }), {
     target: { kind: "workspace" },
     scope: { kind: "unstaged" },
-    paths: ["src/a.ts"],
     ignoreWhitespace: false,
   });
-  assert.deepEqual(diffRequestForScope({ kind: "commit", oid: "c0ffee" }), {
+  assert.deepEqual(vcsRequestForScope({ kind: "commit", oid: "c0ffee" }), {
     target: { kind: "workspace" },
     scope: { kind: "commit", oid: "c0ffee" },
     ignoreWhitespace: false,
   });
-  assert.equal(diffRequestForScope({ kind: "turn", turnId: "turn-1" }), undefined);
+  assert.equal(vcsRequestForScope({ kind: "turn", turnId: "turn-1" }), undefined);
 });

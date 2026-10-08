@@ -98,6 +98,7 @@ function fakeVcs(): VcsBackend & {
     restores,
     snapshot: async () => ({ kind: "none" }),
     diff: async () => [],
+    changes: async () => [],
     contents: async ({ path }) => ({
       path,
       old: { kind: "absent" },

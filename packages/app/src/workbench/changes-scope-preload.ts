@@ -169,13 +169,21 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => {
 
 // The read answers from the same scripted status: staged is empty, and every
 // other scope shows the working files.
+const changes: NyteBridge["workspace"]["vcs"]["changes"] = async (input) =>
+  input.scope.kind === "staged"
+    ? []
+    : changesScopeScript.vcsFiles.map((file) => ({
+        path: file.path,
+        kind: file.kind,
+        stat: { kind: "text", added: 1, removed: 0 },
+      }));
+
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   changesScopeScript.diffReads += 1;
 
   if (input.scope.kind === "staged") return [];
-  const paths = input.paths ?? changesScopeScript.vcsFiles.map((file) => file.path);
 
-  return paths.map((path) => ({
+  return input.paths.map((path) => ({
     path,
     status: "modified",
     kind: "text",
@@ -203,7 +211,7 @@ Object.defineProperty(window, "nyte", {
       background: async () => {},
     },
     watch: () => () => {},
-    workspace: { vcs: { snapshot: vcsSnapshot, diff, log, refs } },
+    workspace: { vcs: { snapshot: vcsSnapshot, changes, diff, log, refs } },
     host: {
       state: () => new Promise(() => {}),
       catalog: () => new Promise(() => {}),

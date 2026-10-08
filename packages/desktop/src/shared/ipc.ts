@@ -62,6 +62,7 @@ export const SDK_OPERATION_PATHS = [
   "workspace.search",
   "workspace.blame",
   "workspace.vcs.snapshot",
+  "workspace.vcs.changes",
   "workspace.vcs.diff",
   "workspace.vcs.contents",
   "workspace.vcs.log",

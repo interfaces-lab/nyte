@@ -4,6 +4,7 @@ import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { VcsLineStat } from "@nyte-ai/protocol";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -21,6 +22,7 @@ import { workbench } from "../theme/schema.stylex.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
 import type { ViewedState } from "./changes-viewed.ts";
@@ -107,6 +109,7 @@ export function ChangesStack({
   onRevertPath,
   onScrollTop,
   onActivePath,
+  onDemandPatch,
 }: {
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
@@ -123,6 +126,12 @@ export function ChangesStack({
   readonly onRevertPath?: (path: string) => void;
   readonly onScrollTop: (scrollTop: number) => void;
   readonly onActivePath: (path: string) => void;
+  /**
+   * An expanded header CodeView renders asks for its file's patch until it
+   * unmounts. CodeView renders headers only inside its window and overscan,
+   * so this is the stack's viewport demand.
+   */
+  readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
   const theme = useSetting(preferences.theme);
   const viewer = useRef<CodeViewHandle<string, undefined>>(null);
@@ -190,9 +199,9 @@ export function ChangesStack({
       return (
         <StackHeader
           path={item.path}
-          added={item.added}
-          removed={item.removed}
+          stat={item.stat}
           collapsed={collapsed.has(item.path)}
+          demand={onDemandPatch}
           onToggleCollapsed={onToggleCollapsed}
         >
           {onRevertPath !== undefined && (
@@ -210,14 +219,24 @@ export function ChangesStack({
                 ? `Mark ${item.path} not viewed`
                 : viewed === "changed"
                   ? `Mark ${item.path} viewed; changed since last view`
-                  : `Mark ${item.path} viewed`
+                  : viewed === "unknown"
+                    ? `Mark ${item.path} viewed; its earlier mark is not checked against this diff yet`
+                    : `Mark ${item.path} viewed`
             }
             onChange={(next) => onViewedChange(item.path, next)}
           />
         </StackHeader>
       );
     },
-    [collapsed, model.sourceById, onRevertPath, onToggleCollapsed, onViewedChange, viewedState],
+    [
+      collapsed,
+      model.sourceById,
+      onDemandPatch,
+      onRevertPath,
+      onToggleCollapsed,
+      onViewedChange,
+      viewedState,
+    ],
   );
 
   return (
@@ -272,19 +291,22 @@ export function ChangesStack({
 
 function StackHeader({
   path,
-  added = 0,
-  removed = 0,
+  stat,
   collapsed,
+  demand,
   onToggleCollapsed,
   children,
 }: {
   readonly path: string;
-  readonly added?: number;
-  readonly removed?: number;
+  readonly stat: VcsLineStat;
   readonly collapsed: boolean;
+  readonly demand: ((path: string) => () => void) | undefined;
   readonly onToggleCollapsed: (path: string) => void;
   readonly children: ReactNode;
 }): ReactElement {
+  const added = stat.kind === "text" ? stat.added : 0;
+  const removed = stat.kind === "text" ? stat.removed : 0;
+
   return (
     <Collapsible.Root
       open={!collapsed}
@@ -325,6 +347,21 @@ function StackHeader({
         )}
       </Collapsible.Trigger>
       {children}
+      {/* A collapsed file shows no body, so it asks for none. */}
+      {!collapsed && demand !== undefined && <PatchDemand key={path} path={path} demand={demand} />}
     </Collapsible.Root>
   );
+}
+
+/** Asks for one file's patch for as long as its expanded header is rendered. */
+function PatchDemand({
+  path,
+  demand,
+}: {
+  readonly path: string;
+  readonly demand: (path: string) => () => void;
+}): null {
+  useMountEffect(() => demand(path));
+
+  return null;
 }

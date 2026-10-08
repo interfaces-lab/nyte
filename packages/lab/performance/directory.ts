@@ -348,9 +348,10 @@ try {
   const included = await query("fact-list-include-archived", { includeArchived: true });
   assert.equal(included.length, 180);
   assert.equal(included.find((row) => row.sessionId === root)?.archived, true);
+  // A fact-only change refreshes the row's facts; the archived root's history stays unread.
   const current = await measure("core-list-after-archive", () => client.sessions.list());
   assert.deepEqual(compact(current.value.items), archived);
-  assert.equal(current.counts.commits, commitCount);
+  assert.equal(current.counts.commits, 0);
   const inspection = await raw.open(root);
   const seq = await inspection.events.last();
   await measure("core-repeat-archive", () =>

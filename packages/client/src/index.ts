@@ -405,6 +405,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       blame: operation("workspace.blame"),
       vcs: {
         snapshot: operation("workspace.vcs.snapshot"),
+        changes: operation("workspace.vcs.changes"),
         diff: operation("workspace.vcs.diff"),
         contents: operation("workspace.vcs.contents"),
         log: operation("workspace.vcs.log"),

@@ -20,15 +20,7 @@ import { listHeads, type ListedHead } from "../stacks.ts";
 import type { Session } from "../store.ts";
 import { activate, type Activation } from "./activation.ts";
 import type { createJobs } from "./jobs.ts";
-import {
-  ARCHIVED_FACT,
-  NAME_FACT,
-  PARENT_FACT,
-  PINNED_FACT,
-  headInfo,
-  parentFromFact,
-  runInfo,
-} from "./snapshot.ts";
+import { PARENT_FACT, ROW_FACTS, headInfo, parentFromFact, runInfo } from "./snapshot.ts";
 import {
   CorruptObject,
   MAIN,
@@ -54,10 +46,11 @@ import {
 } from "./types.ts";
 import type { HostNotice, NoticeListener } from "./watch.ts";
 
-const CWD_FACT = "cwd";
+/** Where a root from before `refs/workspace` acts; every child of that root inherits it. */
+export const CWD_FACT = "cwd";
 
 /** What clients see of a workspace: never the locator. */
-function workspaceRef(workspace: Workspace): WorkspaceRef {
+export function workspaceRef(workspace: Workspace): WorkspaceRef {
   return { kind: workspace.kind, id: workspace.id, cwd: workspace.cwd };
 }
 
@@ -301,14 +294,27 @@ export function createSessionPool(input: {
     return adopt(await options.store.open(id));
   };
 
-  const rootOf = async (pooled: Pooled, seen = new Set<string>()): Promise<Pooled> => {
-    if (pooled.parent === undefined) return pooled;
+  /**
+   * The tree's root and how many parent links lead to it. Parents come from
+   * each handle's adoption, which the SDK writes only at creation; a cycle in
+   * stored parents is an error. Reads no history.
+   */
+  const ancestry = async (
+    pooled: Pooled,
+  ): Promise<{ readonly root: Pooled; readonly depth: number }> => {
+    const seen = new Set<string>();
+    let current = pooled;
 
-    if (seen.has(pooled.session.id)) throw new Error("Session parent chain forms a cycle");
-    seen.add(pooled.session.id);
+    while (current.parent !== undefined) {
+      if (seen.has(current.session.id)) throw new Error("Session parent chain forms a cycle");
+      seen.add(current.session.id);
+      current = await open(current.parent.sessionId);
+    }
 
-    return rootOf(await open(pooled.parent.sessionId), seen);
+    return { root: current, depth: seen.size };
   };
+
+  const rootOf = async (pooled: Pooled): Promise<Pooled> => (await ancestry(pooled)).root;
 
   /** Delete the session from the store and drop its handle, after its work has stopped. */
   const retire = async (id: SessionId, pooled: Pooled): Promise<void> => {
@@ -455,10 +461,9 @@ export function createSessionPool(input: {
 
   const readFacts = async (session: Session): Promise<ReadonlyMap<string, JsonValue>> => {
     // Session rows do not consume plugin settings or other host metadata.
-    const keys = [NAME_FACT, PINNED_FACT, ARCHIVED_FACT, PARENT_FACT];
-    const values = await Promise.all(keys.map((key) => readFact(session, key)));
+    const values = await Promise.all(ROW_FACTS.map((key) => readFact(session, key)));
     const facts = new Map<string, JsonValue>();
-    keys.forEach((key, index) => {
+    ROW_FACTS.forEach((key, index) => {
       const value = values[index];
 
       if (value !== undefined) facts.set(key, value);
@@ -1081,6 +1086,7 @@ export function createSessionPool(input: {
     writeFact,
     writeBlobRef,
     readFacts,
+    ancestry,
     rootOf,
     storedWorkspace,
     writeWorkspace,

@@ -58,10 +58,17 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => {
   };
 };
 
+const changes: NyteBridge["workspace"]["vcs"]["changes"] = async () =>
+  revertScript.files.map((file) => ({
+    path: file.path,
+    kind: file.kind,
+    stat: { kind: "text", added: 1, removed: 0 },
+  }));
+
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   revertScript.diffReads += 1;
 
-  return (input.paths ?? revertScript.files.map((file) => file.path)).map((path) => ({
+  return input.paths.map((path) => ({
     path,
     status: "modified",
     kind: "text",
@@ -99,7 +106,7 @@ Object.defineProperty(window, "nyte", {
   value: {
     sessions: { snapshot: () => new Promise(() => {}) },
     watch: () => () => {},
-    workspace: { vcs: { snapshot: vcsSnapshot, diff, log, refs, discard } },
+    workspace: { vcs: { snapshot: vcsSnapshot, changes, diff, log, refs, discard } },
     host: {
       state: () => new Promise(() => {}),
       catalog: () => new Promise(() => {}),

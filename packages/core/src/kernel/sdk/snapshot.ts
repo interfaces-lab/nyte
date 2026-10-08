@@ -88,9 +88,16 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
   const withAbort =
     run.abortRequested === undefined ? base : { ...base, abortRequested: run.abortRequested };
 
+  return withLease(withAbort, lease);
+}
+
+/** The run as `lease` finds it now: a lease the run no longer holds is dropped, not kept. */
+export function withLease(run: RunInfo, lease: Lease | undefined): RunInfo {
+  const { lease: _held, ...rest } = run;
+
   return lease === undefined
-    ? withAbort
-    : { ...withAbort, lease: { owner: lease.owner, expiresAt: lease.expiresAt } };
+    ? rest
+    : { ...rest, lease: { owner: lease.owner, expiresAt: lease.expiresAt } };
 }
 
 /** Only submitted user messages are client-visible queue items; completions and the rest are not. */
@@ -199,21 +206,13 @@ export function sessionInfo(input: {
   readonly mainCommits: readonly Commit[];
   readonly pendingChanges: readonly PendingChange[];
 }): SessionInfo {
-  const nameFact = input.facts.get(NAME_FACT);
-  const name = Value.Check(StringFact, nameFact) ? nameFact : undefined;
-
-  const directoryInput = {
+  const row = sessionDirectoryEntry({
     id: input.id,
     createdAt: input.createdAt,
     heads: input.heads.map((head) => head.head),
     commits: input.mainCommits,
-  };
+  });
 
-  const row = sessionDirectoryEntry(
-    name === undefined ? directoryInput : { ...directoryInput, name },
-  );
-
-  const parent = parentFromFact(input.facts.get(PARENT_FACT));
   // A queued choice can land between the queue read and the branch read.
   const landed = new Set(input.mainCommits.map((commit) => commit.change));
 
@@ -222,20 +221,69 @@ export function sessionInfo(input: {
     ...input.pendingChanges.filter((item) => !landed.has(item.oid)).map((item) => item.change),
   ]);
 
-  const base = {
+  const history = {
     sessionId: sessionId(input.id),
     activation: input.activation,
     workspace: input.workspace,
     createdAt: input.createdAt,
     lastActivityAt: row.lastActivity,
-    pinned: input.facts.get(PINNED_FACT) === true,
-    archived: input.facts.get(ARCHIVED_FACT) === true,
     heads: input.heads,
     config: clientRunConfig(selected),
   };
 
-  const withName = row.name === undefined ? base : { ...base, name: row.name };
-  const withPreview = row.preview === undefined ? withName : { ...withName, preview: row.preview };
+  return withFacts(
+    row.preview === undefined ? history : { ...history, preview: row.preview },
+    input.facts,
+  );
+}
 
-  return parent === undefined ? withPreview : { ...withPreview, parent };
+/** The facts a session row reads; any other fact leaves the row as it is. */
+export const ROW_FACTS = [NAME_FACT, PINNED_FACT, ARCHIVED_FACT, PARENT_FACT] as const;
+
+/** What a session's history and its host decide about its row; facts decide the rest. */
+export type HistoryRow = Omit<SessionInfo, "name" | "pinned" | "archived" | "parent">;
+
+/** The row's fact-owned fields, the only reading of those facts. */
+export function factFields(
+  facts: ReadonlyMap<string, JsonValue>,
+): Pick<SessionInfo, "name" | "pinned" | "archived" | "parent"> {
+  const nameFact = facts.get(NAME_FACT);
+  const parent = parentFromFact(facts.get(PARENT_FACT));
+
+  const flags = {
+    pinned: facts.get(PINNED_FACT) === true,
+    archived: facts.get(ARCHIVED_FACT) === true,
+  };
+
+  const named = Value.Check(StringFact, nameFact) ? { ...flags, name: nameFact } : flags;
+
+  return parent === undefined ? named : { ...named, parent };
+}
+
+/**
+ * The row for `history` under `facts`. Every field is named, never spread, so
+ * a removed name or parent leaves nothing behind even when `history` is a
+ * whole earlier row.
+ */
+export function withFacts(history: HistoryRow, facts: ReadonlyMap<string, JsonValue>): SessionInfo {
+  const fields = factFields(facts);
+
+  const base = {
+    sessionId: history.sessionId,
+    activation: history.activation,
+    workspace: history.workspace,
+    createdAt: history.createdAt,
+    lastActivityAt: history.lastActivityAt,
+    pinned: fields.pinned,
+    archived: fields.archived,
+    heads: history.heads,
+    config: history.config,
+  };
+
+  const withName = fields.name === undefined ? base : { ...base, name: fields.name };
+
+  const withPreview =
+    history.preview === undefined ? withName : { ...withName, preview: history.preview };
+
+  return fields.parent === undefined ? withPreview : { ...withPreview, parent: fields.parent };
 }

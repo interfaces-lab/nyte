@@ -64,6 +64,7 @@ export interface RemoteWorkspace {
   readonly blame: OperationFn<"workspace.blame">;
   readonly vcs: {
     readonly snapshot: OperationFn<"workspace.vcs.snapshot">;
+    readonly changes: OperationFn<"workspace.vcs.changes">;
     readonly diff: OperationFn<"workspace.vcs.diff">;
     readonly contents: OperationFn<"workspace.vcs.contents">;
     readonly log: OperationFn<"workspace.vcs.log">;

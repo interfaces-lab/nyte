@@ -1,0 +1,231 @@
+{
+  "fixture": {
+    "files": 180,
+    "linesPerSide": 40,
+    "selectedCount": 4,
+    "trials": 3,
+    "oid": "75e14e7af71895f0b9a0c1b912214c302995f274"
+  },
+  "runtime": {
+    "node": "v26.11.0",
+    "git": "git version 2.54.0 (Apple Git-157)"
+  },
+  "checks": "Nonempty exact manifest, full files and facts, selected patch byte equality, capped files really past the 2 MB cap with nothing parsed, parsed files and lines",
+  "timingsMs": {
+    "manifestDiscovery": {
+      "median": 88.60379199999988,
+      "min": 77.26804200000015,
+      "max": 146.38270900000134
+    },
+    "baselineDiscoveryAndPatches": {
+      "median": 3948.4222089999994,
+      "min": 1882.803166,
+      "max": 5161.082666
+    },
+    "selectedBackendDiscoveryAndPatches": {
+      "median": 69.96695900000032,
+      "min": 68.57491700000037,
+      "max": 141.31204099999923
+    },
+    "fullSynchronousParse": {
+      "median": 10.251374999999825,
+      "min": 8.898833999999624,
+      "max": 18.32758400000057
+    },
+    "selectedSynchronousParse": {
+      "median": 0.19650000000001455,
+      "min": 0.18025000000034197,
+      "max": 0.24195899999995163
+    }
+  },
+  "limitations": [
+    "Single-parent modified ASCII text fixture only; no rename, binary, merge, root-commit or worktree parity",
+    "Selected backend still discovers the full commit; the production manifest runs one numstat but requests no patches",
+    "Synchronous Node parser calls stand in for the app's parse worker; no React, CodeView, highlight workers, or review hashing",
+    "The backend's per-file byte cap and shared patch-process bound are the production ones; this demo does not count processes, measure renderer work or FPS, or cancel reads",
+    "Sequential trials alternate read order; OS caches are not cleared; fixture setup is excluded",
+    "Temporary repository is deleted on exit"
+  ],
+  "samples": [
+    {
+      "trial": 0,
+      "order": "baseline-manifest-selected",
+      "manifest": {
+        "ms": 77.26804200000015,
+        "files": 180,
+        "jsonBytes": 16921,
+        "patchBytes": 0
+      },
+      "baseline": {
+        "ms": 1882.803166,
+        "files": 180,
+        "capped": [],
+        "patchBytes": 696060,
+        "jsonBytes": 757801,
+        "parse": {
+          "ms": 10.251374999999825,
+          "inputPatches": 180,
+          "inputPatchBytes": 696060,
+          "tooLargeFiles": 0,
+          "parsedFiles": 180,
+          "parsedSideLines": 14400
+        }
+      },
+      "selected": {
+        "ms": 69.96695900000032,
+        "files": [
+          {
+            "path": "src/file-00000.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00001.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00002.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00003.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          }
+        ],
+        "patchBytes": 15468,
+        "jsonBytes": 16841,
+        "parse": {
+          "ms": 0.18025000000034197,
+          "inputPatches": 4,
+          "inputPatchBytes": 15468,
+          "tooLargeFiles": 0,
+          "parsedFiles": 4,
+          "parsedSideLines": 320
+        }
+      }
+    },
+    {
+      "trial": 1,
+      "order": "manifest-selected-baseline",
+      "manifest": {
+        "ms": 88.60379199999988,
+        "files": 180,
+        "jsonBytes": 16921,
+        "patchBytes": 0
+      },
+      "baseline": {
+        "ms": 5161.082666,
+        "files": 180,
+        "capped": [],
+        "patchBytes": 696060,
+        "jsonBytes": 757801,
+        "parse": {
+          "ms": 8.898833999999624,
+          "inputPatches": 180,
+          "inputPatchBytes": 696060,
+          "tooLargeFiles": 0,
+          "parsedFiles": 180,
+          "parsedSideLines": 14400
+        }
+      },
+      "selected": {
+        "ms": 68.57491700000037,
+        "files": [
+          {
+            "path": "src/file-00000.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00001.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00002.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00003.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          }
+        ],
+        "patchBytes": 15468,
+        "jsonBytes": 16841,
+        "parse": {
+          "ms": 0.24195899999995163,
+          "inputPatches": 4,
+          "inputPatchBytes": 15468,
+          "tooLargeFiles": 0,
+          "parsedFiles": 4,
+          "parsedSideLines": 320
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "order": "baseline-manifest-selected",
+      "manifest": {
+        "ms": 146.38270900000134,
+        "files": 180,
+        "jsonBytes": 16921,
+        "patchBytes": 0
+      },
+      "baseline": {
+        "ms": 3948.4222089999994,
+        "files": 180,
+        "capped": [],
+        "patchBytes": 696060,
+        "jsonBytes": 757801,
+        "parse": {
+          "ms": 18.32758400000057,
+          "inputPatches": 180,
+          "inputPatchBytes": 696060,
+          "tooLargeFiles": 0,
+          "parsedFiles": 180,
+          "parsedSideLines": 14400
+        }
+      },
+      "selected": {
+        "ms": 141.31204099999923,
+        "files": [
+          {
+            "path": "src/file-00000.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00001.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00002.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          },
+          {
+            "path": "src/file-00003.ts",
+            "kind": "text",
+            "patchBytes": 3867
+          }
+        ],
+        "patchBytes": 15468,
+        "jsonBytes": 16841,
+        "parse": {
+          "ms": 0.19650000000001455,
+          "inputPatches": 4,
+          "inputPatchBytes": 15468,
+          "tooLargeFiles": 0,
+          "parsedFiles": 4,
+          "parsedSideLines": 320
+        }
+      }
+    }
+  ]
+}

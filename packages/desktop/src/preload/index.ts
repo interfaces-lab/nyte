@@ -132,6 +132,7 @@ const bridge = {
     blame: object("workspace.blame"),
     vcs: {
       snapshot: object("workspace.vcs.snapshot"),
+      changes: object("workspace.vcs.changes"),
       diff: object("workspace.vcs.diff"),
       contents: object("workspace.vcs.contents"),
       log: object("workspace.vcs.log"),

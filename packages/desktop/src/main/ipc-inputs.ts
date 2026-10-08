@@ -97,6 +97,7 @@ export const CALL_INPUT_SCHEMAS = {
   "workspace.search": compile(OPERATIONS["workspace.search"].input),
   "workspace.blame": compile(OPERATIONS["workspace.blame"].input),
   "workspace.vcs.snapshot": compile(OPERATIONS["workspace.vcs.snapshot"].input),
+  "workspace.vcs.changes": compile(OPERATIONS["workspace.vcs.changes"].input),
   "workspace.vcs.diff": compile(OPERATIONS["workspace.vcs.diff"].input),
   "workspace.vcs.contents": compile(OPERATIONS["workspace.vcs.contents"].input),
   "workspace.vcs.log": compile(OPERATIONS["workspace.vcs.log"].input),

@@ -129,7 +129,7 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
     const resumedGrants = new Map([[cwd, [locationPlugin("original")]]]);
     const resumed = await open(resumedGrants);
     try {
-      assert.equal((await resumed.sessionWorkspace(input)).cwd, workspace.cwd);
+      assert.equal((await resumed.sessionRoot(input))?.workspace.cwd, workspace.cwd);
       assert.deepEqual((await resumed.sessions.get(input))?.activation, {
         kind: "requires",
         requirement: { kind: "workspace_trust", cwd: workspace.cwd },

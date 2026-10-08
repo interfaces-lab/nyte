@@ -1,110 +1,84 @@
-# Desktop demand-loading experiment
+# Bounded desktop reads
 
-Run from the repository root with the installed pnpm dependencies and Node 26:
+The production implementation keeps sidebar hover and neighbor prewarming. It changes what the backend reads, not which chats can be prewarmed.
+
+## Implemented
+
+- **Session rows:** `core/src/kernel/sdk/reads.ts` refreshes name, pin and archive facts without rebuilding unchanged history. Parent/archive filters run before history hydration. Content, run, effect, queue and ancestry changes still invalidate the row. `get` refreshes workspace, activation and leases. No new persistent projection was added.
+- **Ownership:** the host-only `sessionRoot` replaces `sessionWorkspace`. Headless visibility checks read ancestry and workspace without ancestor histories, preserving the depth limit and fail-closed behavior.
+- **Git metadata:** `workspace.vcs.changes` supplies file identities, rename sources and line counts. Untracked counts remain unknown until their patches arrive.
+- **Git payloads:** `diff.paths` is required, with at most 16 paths per call. The backend permits four patch reads at once and caps each file's collected Git output at 2,000,000 bytes. Oversized and failed files have explicit outcomes. Empty demand starts no Git process.
+- **Rendering:** while the stack shows, every expanded file is read in the background, one read in flight per panel and at most 8 paths per read. Each read takes rendered headers first, then mark-viewed requests, then unread files nearest the file in view, then stale stand-ins. Text parsing runs in a dedicated worker, and each read publishes once. Collapsed files are read only for mark-all; a hidden stack reads nothing new. Unread review marks remain unknown. Scope changes discard queued old demand and stale replies.
+
+Untracked patch generation and line counting now run in Git, not synchronous JavaScript on the desktop host. The adapter uses collapsed native diff placeholders to preserve CodeView's scroll anchor. These remain `pending` in app state; they are not fabricated `VcsDiff` results.
+
+## Runnable demos
+
+From the repository root, with installed dependencies and Node 26:
 
 ```sh
 pnpm exec node --conditions=nyte-source packages/lab/performance/directory.ts
 pnpm exec node --conditions=nyte-source packages/lab/performance/git.ts
-```
-
-Both commands create synthetic data in temporary directories, assert actual results, print JSON, and remove their fixtures. No server, model request, personal session, dependency install or production source change is needed.
-
-Read [FINDINGS.md](FINDINGS.md) for the traced causes and architecture decision. The `research/` directory preserves the GPT-6.1 Sol investigations of Nyte, Pierre and installed Cursor Glass, with source references and raw synthetic measurements. Architect compared two different read designs; principles review checked the synthesis and source claims.
-
-## What the code demonstrates
-
-### Directory
-
-[`directory.ts`](directory.ts) compares the real core SDK with one relational query over the same SQLite database. The query joins current name/archive/pin/parent fact refs. It returns a distinct compact row, not a fabricated `SessionInfo`. Returned fact bodies pass core shape/hash validation. A fact ref whose object is missing, hash-mismatched or not a blob drops that one row, as core list does; the script asserts this for a dangling `archived` ref and a tampered name. No history is needed to list those facts.
-
-The query reads authoritative refs directly and keeps no derived state. It is evidence that these four fields need no history, not evidence for any maintained projection.
-
-Default fixture: 180 sessions, 14 children, 256 real content-addressed commits per session.
-
-| Operation | Session opens | History commits returned | SQL calls |
-| --- | ---: | ---: | ---: |
-| Current core cold list | 180 | 46,080 | 4,557 |
-| Current core warm list | 0 | 0 | 361 |
-| Compact fact query | 0 | 0 | 1 |
-| Current core list after archiving one row | 0 | 256 | 386 |
-| Compact fact query after archive | 0 | 0 | 1 |
-| Current core list, fresh SDK over persisted listing rows | 180 | 0 | 1,663 |
-
-The cold row is a store with no listing rows. Once `a3536dc2` listing rows exist, a fresh SDK reads no history; history reads remain for missing or invalidated rows. The 256 commits after archiving rebuild the archived row and then filter it out of the default list. Warm core list and fact query wall times are both about 2 ms in this fixture, so the table shows removed work, not a latency win.
-
-The script verifies explicit names, pin/parent values, root/child filters, real SDK archive visibility, rename, unpin, restore, corrupt-fact row isolation, and a fresh SDK instance using the existing persisted listing rows. It also re-checks existing behavior the query does not own: core's repeated-archive idempotency and the store's CAS rejection. Those cannot fail because of a projection defect, since there is no projection. A fresh SDK is not a database close/reopen test.
-
-The SQL statement count measures statements executed through the connection. Rows returned are not rows visited internally. The compact query still reads fact objects, 13,520 returned body bytes in the default initial query. It does not claim zero database work or indexed bounded pagination.
-
-Important limits: it omits preview-derived titles, activity ordering, run/question status, workspace, activation, config, pagination and search. Filtering happens before validation, so excluded corrupt facts are not checked; parent filtering assumes valid stored parent facts. This is a real-core demonstration of history independence, **not the complete proposed transactional directory projection**.
-
-A larger history, same session count:
-
-```sh
-pnpm exec node --conditions=nyte-source packages/lab/performance/directory.ts 1024
-```
-
-### Git
-
-[`git-manifest.ts`](git-manifest.ts) lists changed paths using Git's NUL-delimited name/status output. [`git.ts`](git.ts) then calls the existing real `createGitVcs().diff` with explicit selected paths and parses only those returned patches using the installed Pierre parser.
-
-The essential caller change is:
-
-```ts
-const { manifest } = await readGitManifest(cwd, oid);
-const selected = await backend.diff({
-  cwd,
-  scope: manifest.scope,
-  paths: [selectedPath],
-  ignoreWhitespace: false,
-});
-```
-
-The file tree gets `manifest.files`; it does not wait for `selected` or for every patch in the commit. The current host still repeats full scope discovery for the selected read. The demo removes unnecessary patch acquisition, not all repository work. `readGitManifest` is a lab copy of the host's internal `nameStatus` that only accepts modified files. Production should expose the host's existing scope discovery, not port this parser.
-
-Default fixture: one two-commit repository, 180 modified text files, 40 replaced lines per file, one selected file.
-
-| Result | Files represented | Patch bytes | Files parsed |
-| --- | ---: | ---: | ---: |
-| Metadata manifest | 180 | 0 | 0 |
-| Current whole-commit diff | 180 | 696,060 | 180 |
-| Explicit selected diff | 1 | 3,867 | 1 |
-
-The manifest's paths and statuses equal the current backend's full result. The selected patch is byte-for-byte equal to the corresponding current-backend patch; both come from the same `git show <oid> -- <path>`, so this is a sanity check that path filtering changes nothing, not proof of a separate payload path. The script also asserts added/removed counts, parsed paths and line counts. No patch-result memoization was added.
-
-In the default fixture the full synchronous parse of 180 files takes about 5 to 7 ms, while the full backend read takes hundreds of milliseconds of subprocess work. The measured saving is acquisition, not parsing.
-
-Arguments are files, lines per side, selected files and trial count. The demo caps file count at 512 because the baseline deliberately exercises today's subprocess fan-out.
-
-```sh
-pnpm exec node --conditions=nyte-source packages/lab/performance/git.ts 180 40 4 3
 pnpm exec node --conditions=nyte-source packages/lab/performance/git.ts 1 100000 1 1
 ```
 
-The second command is a deliberate counterexample: demand loading alone does not solve one enormous selected file. It still reads/parses that body. Production also needs a byte gate during collection, explicit deferred/too-large results, cancellation and off-renderer parsing where warranted. This demo supports modified ASCII files in single-parent commits only. It does not implement all Git scopes, rename/binary semantics, new protocol operations, viewport integration or a desktop performance fix.
+Both scripts use temporary synthetic data and remove their fixtures. They make no model requests or personal-session reads.
 
-## Recorded verification
+### Session directory
 
-Independent default executions are retained in [`results/directory.json`](results/directory.json) and [`results/git.json`](results/git.json). `results/directory.json` predates the corrupt-fact check; [`results/directory-boundary-check.json`](results/directory-boundary-check.json) is a later run of the current script with identical counters. The verified [single-large-file counterexample](results/git-single-large-file.json) returned the same 10,555,715 patch bytes for both full and selected reads. Their wall times are single-run fixture observations, not speedup or desktop-FPS claims. The counts above describe removed work and have behavioral assertions behind them. The earlier research has three-trial data with caveats about uncontrolled machine load.
+The default fixture has 180 sessions with 256 commits each.
 
-Checks:
+| Operation | History commits before | History commits now | SQL calls now |
+| --- | ---: | ---: | ---: |
+| Cold list without stored rows | 46,080 | 46,080 | 4,557 |
+| Warm list | 0 | 0 | 361 |
+| List after archiving one row | 256 | 0 | 373 |
+| Fresh SDK over persisted rows | 0 | 0 | 1,663 |
+
+The archive case previously made 386 SQL calls. These are operation counts, not desktop latency measurements. Current output is retained in [directory-after-fact-refresh.json](results/directory-after-fact-refresh.json); [directory.json](results/directory.json) is the earlier baseline.
+
+The script also compares a compact fact-only SQL query. That query omits preview, activity, run status, workspace, activation, configuration, search and pagination. It is not a replacement for `SessionInfo` or evidence for a new directory table. It validates returned fact objects but filters before validation, so excluded corrupt facts are not checked. A fresh SDK over the same connection is not a database reopen test.
+
+### Git
+
+The script calls the production manifest and bounded patch APIs. Reading all files uses sequential batches of 16; selected reads request only their named paths. Accepted patches are compared byte-for-byte, then parsed with the installed Pierre parser in Node.
+
+| Fixture | Full patch bytes returned | Selected patch bytes returned |
+| --- | ---: | ---: |
+| 180 files, 40 replaced lines, one selected | 696,060 | 3,867 |
+| One 100,000-line file | 0 | 0 |
+
+The giant file returns `too_large`, and no returned patch is parsed. The demo separately obtains Git's uncapped control patch to verify its real size, 10,555,715 bytes. That control read means this script is **not** a peak-memory benchmark.
+
+Current runs: [git-capped.json](results/git-capped.json), with four selected files and three trials, and [git-single-large-file-capped.json](results/git-single-large-file-capped.json). Earlier unbounded results remain in [git.json](results/git.json) and [git-single-large-file.json](results/git-single-large-file.json).
+
+Reading every file now trades throughput for bounded work. Sequential batches repeat discovery, and line-count metadata costs more than names alone. Old and new wall times are not a controlled comparison: trial counts, selection size and machine load differ. No desktop speedup is claimed from these scripts.
+
+## Behavioral proof
+
+- `core/test/kernel/sdk-session-rows.test.ts`: fact refresh, concurrent content changes, trimmed history, parent filtering, lease/workspace freshness, corrupt facts and history-free roots. Runs against SQLite and WorkerStore.
+- `serve/test/headless.test.ts`: ancestry reads and the existing depth admission rule.
+- `desktop/src/main/host-workspaces.test.ts`: archiving does not release queued or delegated live work.
+- `host/test/git.test.ts`: real Git scopes, byte equality, oversized output, per-file failures and subprocess start/exit counts. Concurrent calls peak at four patch processes.
+- `app/src/workbench/changes-demand.test.ts`: real Electron/CodeView with a scripted bridge. Its 180-file tree exists before patch arrival. Collapsed files cost no reads until mark-all, which reads them in batches of at most 16. A fresh panel reads all 180 files in 23 reads of at most 8 without scrolling, and a far jump afterwards lands on bodies with no further read. A file revealed while a background read is held is first in the next read and stays at the top while files above it fill in. Frame-paced scrolling during preparation shows no content drift.
+- `app/src/workbench/changes-patches.test.ts`: source replacement, release, bounded mark-all and omitted results.
 
 ```sh
+NYTE_TEST_STORE=worker pnpm --dir packages/core exec vitest run test/kernel/sdk-session-rows.test.ts --maxWorkers=1
+pnpm --dir packages/host exec vitest run test/git.test.ts --maxWorkers=1
+pnpm --dir packages/app exec vitest run src/workbench/changes- src/workbench/change- --maxWorkers=1
 pnpm exec tsc --noEmit -p packages/lab/performance/tsconfig.json
-pnpm exec oxlint packages/lab/performance/directory.ts packages/lab/performance/git.ts packages/lab/performance/git-manifest.ts
-pnpm exec oxfmt --check packages/lab/performance
 ```
 
-## What should change in production
+## Remaining work
 
-1. Preserve sidebar hover prewarming. The initial removal was an overcorrection and has been reverted in full, including neighbor warming. Cursor explicitly preloads the hovered composer. The unresolved fix is to constrain speculative reads and stop child/directory queries from hydrating unrelated sessions, not remove navigation latency work. No sidebar change is included in this commit.
-2. Remove history reads that only fact changes cause before adding durable state: `refreshRow` hydrating a row after archive, `rowHolds` treating fact ref events as full invalidation, and hydrating rows that a fact filter then excludes. Measure those with the counters here. A store-owned read model for preview, all-head status and question semantics is a later option this demo does not justify; if built, migrate all store writers and callers, then delete the current read-time listing repair path.
-3. Count-only patch reads are removed from the collapsed rail and working-tree scope-menu rows. They now show file counts from existing Git status, not +/- line totals. The selected scope's toolbar totals still come from the panel's patch read. Viewport-demand loading for the changes stack remains unimplemented; keep Pierre's existing virtualized viewer and tree when addressing it.
-4. Treat a giant selected patch as a separate bounded-input problem. A worker or another cache does not make unlimited input safe.
+- The first cold directory rebuild still walks history. Many-session metadata validation also remains.
+- Git discovery and manifest numstat still scan the scope. Discovery runs outside the patch-process limit.
+- No cancellation signal crosses IPC or HTTP. Old host reads finish; the app discards their results.
+- Mobile reads all requested files in bounded batches rather than using viewport demand. Turn scopes still acquire all recorded patches up front; parsing follows the stack's read order.
+- Pierre derives each item's height from its parsed diff and has no per-item height hint, so an unread file stays header-tall until read. The scrollbar grows while the review prepares, including above the viewport, where CodeView's anchor keeps visible content still. Scrolling upward into unread files right after opening can outrun preparation: in a real-input probe, 7 to 104 of about 640 frames showed header-only files, all within the first 1.6 s. Revision changes restart preparation; stand-ins keep their geometry meanwhile.
+- The parser worker is a separate asset with a 30-second idle lifetime. The renderer test harness uses relative asset paths so it exercises that production loading shape.
+- Commit caching assumes the full object IDs supplied by the app's log; the host still accepts revision expressions.
+- No full-desktop FPS or large-repository click-to-paint claim has been established.
 
-The production dependency table and remaining risks are in [FINDINGS.md](FINDINGS.md). The independent reviews are [OPUS-DEMO-AUDIT.md](OPUS-DEMO-AUDIT.md) and [OPUS-IMPACT-AUDIT.md](OPUS-IMPACT-AUDIT.md). The retained production changes cover five Git UI files, plus three existing scope-test files. The sidebar deletion described in the historical audits was reverted after the user challenged it and Cursor's hover preloading was traced directly. No core, host, protocol, bridge or storage contract changed; pre-existing edits in touched files were preserved.
-
-Combined verification: app and demo typechecks, both default demos, targeted lint/format, and seven focused workbench test files with eleven tests pass. The scope-menu regression observes zero additional patch reads on opening the menu, correct file counts, and one read plus a rendered patch after selecting another working scope. The auditor's full app run had five failures in four unmodified test files; no baseline established whether they predated these edits. No live desktop responsiveness measurement was made.
-
-
-Pre-commit recheck after restoring sidebar prewarming: the eleven focused tests, demo typecheck, scoped lint and formatting pass. The app-wide typecheck now reports `HostBridge.start`/`starts` and registry journal API errors in `screens/thread.tsx`, `web/bridge.test.ts` and `web/registry.test.ts`, outside this change. Those in-progress files were left untouched.
+[FINDINGS.md](FINDINGS.md), [OPUS-DEMO-AUDIT.md](OPUS-DEMO-AUDIT.md), [OPUS-IMPACT-AUDIT.md](OPUS-IMPACT-AUDIT.md) and `research/` preserve the earlier investigation and rejected proposals. Their implementation-status statements describe that earlier stage; this page describes the current code.

@@ -121,7 +121,7 @@ test("a host without the kind's provider cannot run a tree stored there", async 
       requirement: { kind: "workspace_unavailable", workspace: ref, reason: "unsupported" },
     });
     assert.deepEqual(info?.workspace, ref);
-    assert.deepEqual(await nyte.sessionWorkspace({ sessionId }), workspace);
+    assert.deepEqual((await nyte.sessionRoot({ sessionId }))?.workspace, workspace);
   } finally {
     await nyte.close();
   }
@@ -235,7 +235,7 @@ test("a root with no stored workspace acts where new sessions start", async () =
     const info = await nyte.sessions.get({ sessionId: root });
     assert.deepEqual(info?.activation, { kind: "active" });
     assert.deepEqual(info?.workspace, ref);
-    assert.deepEqual(await nyte.sessionWorkspace({ sessionId: root }), workspace);
+    assert.deepEqual((await nyte.sessionRoot({ sessionId: root }))?.workspace, workspace);
     nyte.attach();
     await nyte.messages.send({ sessionId: root, content: "write and run" });
     await within(nyte.runs.wait({ sessionId: root }));
@@ -275,7 +275,7 @@ test("a tree from before the workspace ref resolves through its root's cwd fact"
     const { sessionId: child } = await nyte.sessions.create({
       parent: { sessionId: root, runId: "run_1", callId: "call_1", depth: 1 },
     });
-    assert.equal((await nyte.sessionWorkspace({ sessionId: child })).cwd, cwd);
+    assert.equal((await nyte.sessionRoot({ sessionId: child }))?.workspace.cwd, cwd);
   } finally {
     await nyte.close();
   }
@@ -362,6 +362,7 @@ test("host operations on a session in a refused workspace act nowhere", async ()
   const vcs: VcsBackend = {
     snapshot: unreachable("vcs.snapshot"),
     diff: unreachable("vcs.diff"),
+    changes: unreachable("vcs.changes"),
     contents: unreachable("vcs.contents"),
     log: unreachable("vcs.log"),
     refs: unreachable("vcs.refs"),
@@ -534,7 +535,7 @@ test("a new root keeps the workspace it was created in when the host's default c
   });
   try {
     const { sessionId } = await first.sessions.create();
-    assert.deepEqual(await second.sessionWorkspace({ sessionId }), created);
+    assert.deepEqual((await second.sessionRoot({ sessionId }))?.workspace, created);
   } finally {
     await first.close();
     await second.close();
@@ -574,7 +575,7 @@ test("relocation refuses another environment at the same directory", async () =>
       kind: "requires",
       requirement: { kind: "workspace_unavailable", workspace: impostor, reason: "unreachable" },
     });
-    assert.deepEqual(await nyte.sessionWorkspace({ sessionId }), localWorkspace(cwd));
+    assert.deepEqual((await nyte.sessionRoot({ sessionId }))?.workspace, localWorkspace(cwd));
   } finally {
     await nyte.close();
   }

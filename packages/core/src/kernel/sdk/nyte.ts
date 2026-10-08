@@ -262,8 +262,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const firstLiveRunAt = async (cwd: string) => {
     const target = await realpath(cwd).catch(() => cwd);
 
-    for (const [id, pooled] of pool.entries()) {
-      const workspace = await relocation.sessionWorkspace({ sessionId: id });
+    for (const [, pooled] of pool.entries()) {
+      const workspace = await pool.storedWorkspace(pooled);
 
       if (!pool.served(workspace)) continue;
       const resolved = await realpath(workspace.cwd).catch(() => workspace.cwd);
@@ -320,18 +320,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           throw error;
         }
       },
-      async get(input) {
-        pool.alive();
-
-        try {
-          const pooled = await pool.open(input.sessionId);
-
-          return sessionInfo(await pool.readSession(input.sessionId, pooled));
-        } catch (error) {
-          if (error instanceof UnknownSession) return undefined;
-          throw error;
-        }
-      },
+      get: reads.get,
       snapshot: reads.snapshot,
       metadata: reads.metadata,
       list: reads.list,
@@ -904,6 +893,11 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
           return at === undefined ? [] : at.backend.diff({ ...input, cwd: at.cwd });
         },
+        async changes(input) {
+          const at = await vcsAt(input.target);
+
+          return at === undefined ? [] : at.backend.changes({ ...input, cwd: at.cwd });
+        },
         async contents(input) {
           const at = await vcsAt(input.target);
 
@@ -1102,7 +1096,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     },
 
     sessionCwd: relocation.sessionCwd,
-    sessionWorkspace: relocation.sessionWorkspace,
+    sessionRoot: relocation.sessionRoot,
 
     relocate: relocation.relocate,
 

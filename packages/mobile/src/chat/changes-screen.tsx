@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
+import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
 import type { SessionId, VcsDiff, VcsFileKind } from "@nyte-ai/protocol";
 import { parsePatchFacts, type PatchFile } from "@nyte-ai/client";
 import { EmptyState } from "../ui/empty-state.tsx";
@@ -141,13 +142,33 @@ export function ChangesScreen({
   const macDiffsQuery = useQuery({
     queryKey: ["mac-diffs", sessionId, conversationPaths],
     enabled: source === "mac",
-    queryFn: () =>
-      client.workspace.vcs.diff({
-        target: { kind: "session", sessionId },
-        scope: { kind: "worktree" },
-        paths: conversationPaths.length === 0 ? undefined : conversationPaths,
-        ignoreWhitespace: false,
-      }),
+    queryFn: async () => {
+      const target = { kind: "session", sessionId } as const;
+      const scope = { kind: "worktree" } as const;
+
+      // Without recorded edits the screen shows every changed file, named from the manifest.
+      const paths =
+        conversationPaths.length > 0
+          ? conversationPaths
+          : (await client.workspace.vcs.changes({ target, scope, ignoreWhitespace: false })).map(
+              (change) => change.path,
+            );
+
+      const diffs: VcsDiff[] = [];
+
+      for (let start = 0; start < paths.length; start += VCS_DIFF_PATHS_MAX) {
+        diffs.push(
+          ...(await client.workspace.vcs.diff({
+            target,
+            scope,
+            paths: paths.slice(start, start + VCS_DIFF_PATHS_MAX),
+            ignoreWhitespace: false,
+          })),
+        );
+      }
+
+      return diffs;
+    },
   });
 
   const snapshotQuery = useQuery({
@@ -197,7 +218,7 @@ export function ChangesScreen({
     const out: FileSection[] = [];
 
     for (const diff of macDiffsQuery.data) {
-      if (diff.kind === "binary") continue;
+      if (diff.kind !== "text") continue;
       const facts = parsePatchFacts(diff.patch);
 
       if (facts === undefined) continue;

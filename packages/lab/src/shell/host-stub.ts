@@ -1,4 +1,4 @@
-import type { VcsDiff, VcsSnapshot } from "@nyte-ai/protocol";
+import type { VcsChange, VcsDiff, VcsSnapshot } from "@nyte-ai/protocol";
 import type { HostState, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import { installBridge } from "@nyte-ai/app/nyte.ts";
 
@@ -81,6 +81,12 @@ const diffs = [
   },
 ] satisfies VcsDiff[];
 
+const changes = diffs.map(({ path, status, added, removed }) => ({
+  path,
+  kind: status,
+  stat: { kind: "text", added, removed },
+})) satisfies VcsChange[];
+
 const vcs = {
   kind: "repository",
   root: workspace.path,
@@ -106,6 +112,7 @@ const vcs = {
 const answers = new Map<string, unknown>([
   ["host.state", host],
   ["workspace.vcs.snapshot", vcs],
+  ["workspace.vcs.changes", changes],
   ["workspace.vcs.diff", diffs],
   ["host.setThemePreference", undefined],
 ]);

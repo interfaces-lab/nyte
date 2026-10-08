@@ -769,7 +769,9 @@ test("relocation asks the host's trust for the destination, then loads its plugi
   });
   hosts.push(host);
   const id = (await host.sessions.create()).sessionId;
-  const moved = { ...(await host.sessionWorkspace({ sessionId: id })), cwd: destination };
+  const root = await host.sessionRoot({ sessionId: id });
+  assert.ok(root !== undefined);
+  const moved = { ...root.workspace, cwd: destination };
   assert.deepEqual(await host.relocate({ sessionId: id, workspace: moved }), {
     kind: "requires",
     requirement: { kind: "workspace_trust", cwd: destination },

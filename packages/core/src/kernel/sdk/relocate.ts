@@ -17,11 +17,13 @@ import type { Runners } from "./runner.ts";
 import { actsIn, type Pooled, type SessionPool } from "./session-pool.ts";
 import type { Delegation } from "./delegation.ts";
 import {
+  UnknownSession,
   sessionId,
   type HeadName,
   type NyteOptions,
   type RelocateOutcome,
   type SessionId,
+  type SessionRoot,
   type Workspace,
 } from "./types.ts";
 
@@ -42,8 +44,22 @@ export function createRelocation(input: {
     run: Run | undefined,
   ): Promise<boolean> => landsNow(session, run, await pending(session, head), drain);
 
-  const sessionWorkspace = async (input: { readonly sessionId: SessionId }): Promise<Workspace> =>
-    pool.storedWorkspace(await pool.open(input.sessionId));
+  const sessionRoot = async (input: {
+    readonly sessionId: SessionId;
+  }): Promise<SessionRoot | undefined> => {
+    try {
+      const { root, depth } = await pool.ancestry(await pool.open(input.sessionId));
+
+      return {
+        sessionId: sessionId(root.session.id),
+        workspace: await pool.storedWorkspace(root),
+        depth,
+      };
+    } catch (error) {
+      if (error instanceof UnknownSession) return undefined;
+      throw error;
+    }
+  };
 
   const sessionCwd = async (input: {
     readonly sessionId: SessionId;
@@ -253,5 +269,5 @@ export function createRelocation(input: {
     }
   };
 
-  return { sessionCwd, sessionWorkspace, relocate };
+  return { sessionCwd, sessionRoot, relocate };
 }

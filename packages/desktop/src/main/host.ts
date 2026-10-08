@@ -966,6 +966,7 @@ export class DesktopHost {
 
       case "workspace.vcs.snapshot":
       case "workspace.vcs.diff":
+      case "workspace.vcs.changes":
       case "workspace.vcs.contents":
       case "workspace.vcs.log":
       case "workspace.vcs.refs":
@@ -2726,6 +2727,10 @@ export class DesktopHost {
             (
               await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
             ).diff(input),
+          changes: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).changes(input),
           contents: async (input) =>
             (
               await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
@@ -2808,7 +2813,7 @@ export class DesktopHost {
       advance: (input) => sdk(input.sessionId).advance(input),
       reactivate: () => cursor.open.sdk.reactivate(),
       sessionCwd: (input) => sdk(input.sessionId).sessionCwd(input),
-      sessionWorkspace: (input) => sdk(input.sessionId).sessionWorkspace(input),
+      sessionRoot: (input) => sdk(input.sessionId).sessionRoot(input),
       relocate: (input) => sdk(input.sessionId).relocate(input),
       close: () => cursor.open.sdk.close(),
     };

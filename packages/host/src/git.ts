@@ -10,11 +10,12 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createTwoFilesPatch } from "diff";
-import { parsePatchFacts, worktreeFiles } from "@nyte-ai/client";
+import { worktreeFiles } from "@nyte-ai/client";
+import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
 import type { VcsBackend } from "@nyte-ai/core";
 import type {
   VcsBranchOutcome,
+  VcsChange,
   VcsCommitInfo,
   VcsCommitOutcome,
   VcsContents,
@@ -23,6 +24,7 @@ import type {
   VcsFileKind,
   VcsHead,
   VcsIndexFile,
+  VcsLineStat,
   VcsLog,
   VcsPathsOutcome,
   VcsPushOutcome,
@@ -44,6 +46,12 @@ interface GitResult {
 
 const MAX_PREVIEW_BYTES = 2_000_000;
 
+/** One file's patch: past this many bytes the read stops and the file answers `too_large`. */
+const MAX_PATCH_BYTES = 2_000_000;
+
+/** File patches one backend reads at once, across every concurrent diff call. */
+const PATCH_CONCURRENCY = 4;
+
 class GitCommandError extends Error {
   readonly result: GitResult;
 
@@ -54,12 +62,22 @@ class GitCommandError extends Error {
   }
 }
 
+/** Standard output outgrew the byte limit the caller set, so git was stopped mid-read. */
+class GitOutputLimitError extends Error {
+  constructor(args: readonly string[], limit: number) {
+    super(`git ${args.join(" ")} wrote more than ${String(limit)} bytes`);
+    this.name = "GitOutputLimitError";
+  }
+}
+
 function runGit(
   cwd: string,
   args: readonly string[],
   options: {
     readonly env?: Readonly<Record<string, string>>;
     readonly input?: string;
+    /** Kills git once its output passes this many bytes, before any of it is joined or decoded. */
+    readonly maxStdoutBytes?: number;
   } = {},
 ): Promise<GitResult> {
   return new Promise((resolveResult, reject) => {
@@ -88,14 +106,41 @@ function runGit(
 
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
+    const limit = options.maxStdoutBytes;
+    let stdoutLength = 0;
+    let overflowed = false;
     child.stdin.on("error", (cause) => {
       if (!isFileError(cause, ["EPIPE"])) reject(cause);
     });
     child.stdin.end(options.input ?? "");
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    // Past the limit the output is dropped as it arrives, so git never blocks on a full pipe
+    // before the signal lands. The promise settles only on close: a caller that bounds how
+    // many processes run must not see a slot free while this one is still exiting.
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (overflowed) return;
+      stdoutLength += chunk.byteLength;
+
+      if (limit !== undefined && stdoutLength > limit) {
+        overflowed = true;
+        stdout.length = 0;
+        child.kill();
+
+        return;
+      }
+
+      stdout.push(chunk);
+    });
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", reject);
+    child.on("error", (cause) => {
+      if (!overflowed) reject(cause);
+    });
     child.on("close", (code) => {
+      if (overflowed && limit !== undefined) {
+        reject(new GitOutputLimitError(args, limit));
+
+        return;
+      }
+
       const stdoutBytes = Buffer.concat(stdout);
 
       const result = {
@@ -421,35 +466,99 @@ async function snapshot(cwd: string): Promise<VcsSnapshot> {
 // Diffs
 // ---------------------------------------------------------------------------
 
-async function untrackedPatch(cwd: string, path: string): Promise<string> {
-  const absolute = resolve(cwd, path);
-  const metadata = await lstat(absolute);
+/**
+ * A file's patch with the line counts git took while writing it, or the word
+ * that it outgrew `MAX_PATCH_BYTES` before it was all read.
+ */
+type PatchRead =
+  | { readonly kind: "patch"; readonly text: string; readonly stat: PatchStat }
+  | { readonly kind: "too_large" };
+
+type PatchStat = Exclude<VcsLineStat, { readonly kind: "unknown" }>;
+
+const TOO_LARGE: PatchRead = { kind: "too_large" };
+
+/**
+ * `--numstat --patch -z` output: numstat records, an extra NUL, then the patch.
+ * The counts come from git, so the host never parses a patch body to count it.
+ */
+function statedPatch(output: string): PatchRead {
+  const separator = output.indexOf("\0\0");
+
+  const [records, text] =
+    separator === -1
+      ? output.startsWith("\0")
+        ? ["", output.slice(1)]
+        : [output, ""]
+      : [output.slice(0, separator + 1), output.slice(separator + 2)];
+
+  let added = 0;
+  let removed = 0;
+  let binary = false;
+
+  for (const stat of parseNumstat(records).values()) {
+    if (stat.kind === "binary") binary = true;
+
+    if (stat.kind === "text") {
+      added += stat.added;
+      removed += stat.removed;
+    }
+  }
+
+  return {
+    kind: "patch",
+    text,
+    stat: binary ? { kind: "binary" } : { kind: "text", added, removed },
+  };
+}
+
+/** Reads one patch with `--numstat --patch -z`; `args` name the comparison and paths after the command. */
+async function cappedPatch(
+  cwd: string,
+  [command = "diff", ...args]: readonly string[],
+  limit = MAX_PATCH_BYTES,
+): Promise<PatchRead> {
+  try {
+    const result = await runGit(cwd, [command, "--numstat", "--patch", "-z", ...args], {
+      maxStdoutBytes: limit,
+    });
+
+    return statedPatch(result.stdout);
+  } catch (cause) {
+    if (cause instanceof GitOutputLimitError) return TOO_LARGE;
+
+    // `--no-index` exits 1 when the sides differ, which against the empty side they always do.
+    if (
+      cause instanceof GitCommandError &&
+      cause.result.code === 1 &&
+      args.includes("--no-index")
+    ) {
+      return statedPatch(cause.result.stdout);
+    }
+
+    throw cause;
+  }
+}
+
+/**
+ * Git writes an untracked file's patch against the empty side, streamed under
+ * the same byte cap as any other patch and classified binary by git itself. The
+ * path stays relative to the root so the header names the repository path; a
+ * path that is not a regular file is refused, and git diffs a symlink swapped
+ * in after the check as a link, never through it.
+ */
+async function untrackedPatch(
+  cwd: string,
+  path: string,
+  flags: readonly string[],
+): Promise<PatchRead> {
+  const metadata = await lstat(resolve(cwd, path));
 
   if (!metadata.isFile()) throw new Error(`Diff paths must be files: ${path}`);
 
-  if (metadata.size > MAX_PREVIEW_BYTES) return `File is too large to preview: b/${path}\n`;
-  let numstat: GitResult;
+  if (metadata.size > MAX_PATCH_BYTES) return TOO_LARGE;
 
-  try {
-    numstat = await runGit(cwd, [
-      "diff",
-      "--no-index",
-      "--numstat",
-      "--no-ext-diff",
-      "--no-textconv",
-      "--",
-      devNull,
-      absolute,
-    ]);
-  } catch (cause) {
-    if (!(cause instanceof GitCommandError) || cause.result.code !== 1) throw cause;
-    numstat = cause.result;
-  }
-
-  if (numstat.stdout.startsWith("-\t-\t")) return `Binary file b/${path}\n`;
-  const contents = await readFile(absolute);
-
-  return createTwoFilesPatch("/dev/null", `b/${path}`, "", contents.toString("utf8"), "", "");
+  return cappedPatch(cwd, ["diff", "--no-index", ...DIFF_FLAGS, ...flags, "--", devNull, path]);
 }
 
 const DIFF_FLAGS = ["--no-ext-diff", "--no-textconv", "--no-color", "--find-renames"];
@@ -463,20 +572,122 @@ function isMissingHead(cause: unknown): boolean {
   );
 }
 
-/** Before the first commit there is no HEAD to diff against; both sides of the index stand in. */
-async function worktreePatch(cwd: string, flags: readonly string[], paths: readonly string[]) {
+/**
+ * Before the first commit there is no HEAD to diff against; both sides of the
+ * index stand in. They run one after the other inside the file's patch slot,
+ * and the unstaged half may only use the bytes the staged half left.
+ */
+async function worktreePatch(
+  cwd: string,
+  flags: readonly string[],
+  paths: readonly string[],
+): Promise<PatchRead> {
   try {
-    return (await runGit(cwd, ["diff", ...DIFF_FLAGS, ...flags, "HEAD", "--", ...paths])).stdout;
+    return await cappedPatch(cwd, ["diff", ...DIFF_FLAGS, ...flags, "HEAD", "--", ...paths]);
   } catch (cause) {
     if (!isMissingHead(cause)) throw cause;
 
-    const [staged, unstaged] = await Promise.all([
-      runGit(cwd, ["diff", "--cached", ...DIFF_FLAGS, ...flags, "--", ...paths]),
-      runGit(cwd, ["diff", ...DIFF_FLAGS, ...flags, "--", ...paths]),
+    const staged = await cappedPatch(cwd, [
+      "diff",
+      "--cached",
+      ...DIFF_FLAGS,
+      ...flags,
+      "--",
+      ...paths,
     ]);
 
-    return `${staged.stdout}${unstaged.stdout}`;
+    if (staged.kind === "too_large") return staged;
+
+    const unstaged = await cappedPatch(
+      cwd,
+      ["diff", ...DIFF_FLAGS, ...flags, "--", ...paths],
+      MAX_PATCH_BYTES - Buffer.byteLength(staged.text),
+    );
+
+    if (unstaged.kind === "too_large") return unstaged;
+
+    return {
+      kind: "patch",
+      text: `${staged.text}${unstaged.text}`,
+      stat:
+        staged.stat.kind === "text" && unstaged.stat.kind === "text"
+          ? {
+              kind: "text",
+              added: staged.stat.added + unstaged.stat.added,
+              removed: staged.stat.removed + unstaged.stat.removed,
+            }
+          : { kind: "binary" },
+    };
   }
+}
+
+const UNKNOWN_STAT: VcsLineStat = { kind: "unknown" };
+
+/**
+ * `--numstat -z` records: added, removed, and the path, tab-separated; a
+ * rename leaves the path empty and follows with its old and new paths.
+ */
+function parseNumstat(output: string): ReadonlyMap<string, VcsLineStat> {
+  const fields = output.split("\0");
+  const stats = new Map<string, VcsLineStat>();
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+
+    if (record === undefined || record === "") continue;
+    const [added = "", removed = "", ...rest] = record.split("\t");
+    let path = rest.join("\t");
+
+    if (path === "") {
+      path = fields[index + 2] ?? "";
+      index += 2;
+    }
+
+    if (path === "") continue;
+    stats.set(
+      path,
+      added === "-" || removed === "-"
+        ? { kind: "binary" }
+        : { kind: "text", added: Number(added), removed: Number(removed) },
+    );
+  }
+
+  return stats;
+}
+
+async function numstat(
+  cwd: string,
+  command: readonly string[],
+  revisions: readonly string[],
+): Promise<ReadonlyMap<string, VcsLineStat>> {
+  return parseNumstat(
+    (await runGit(cwd, [...command, "--numstat", "-z", ...DIFF_FLAGS, ...revisions])).stdout,
+  );
+}
+
+/** An unborn checkout's worktree patch is its staged patch followed by its unstaged one. */
+function summedStats(
+  left: ReadonlyMap<string, VcsLineStat>,
+  right: ReadonlyMap<string, VcsLineStat>,
+): ReadonlyMap<string, VcsLineStat> {
+  const sums = new Map(left);
+
+  for (const [path, stat] of right) {
+    const prior = sums.get(path);
+
+    sums.set(
+      path,
+      prior === undefined
+        ? stat
+        : prior.kind === "text" && stat.kind === "text"
+          ? { kind: "text", added: prior.added + stat.added, removed: prior.removed + stat.removed }
+          : prior.kind === "binary" || stat.kind === "binary"
+            ? { kind: "binary" }
+            : UNKNOWN_STAT,
+    );
+  }
+
+  return sums;
 }
 
 /** `--name-status -z` records: a status letter, the path, and for renames the old path first. */
@@ -535,10 +746,12 @@ async function nameStatus(cwd: string, args: readonly string[]): Promise<readonl
   );
 }
 
-/** Which files a scope reports and how one of them is patched. */
+/** Which files a scope reports, how one of them is patched, and what each would count. */
 interface ScopeRead {
   readonly files: readonly VcsFile[];
-  readonly patch: (file: VcsFile) => Promise<string>;
+  readonly patch: (file: VcsFile) => Promise<PatchRead>;
+  /** Tracked files' line counts from one numstat over the comparison `patch` reads. */
+  readonly stats: () => Promise<ReadonlyMap<string, VcsLineStat>>;
 }
 
 async function scopeRead(
@@ -551,9 +764,10 @@ async function scopeRead(
 
   const tracked = (base: readonly string[]) => async (file: VcsFile) =>
     file.kind === "untracked"
-      ? untrackedPatch(cwd, file.path)
-      : (await runGit(cwd, ["diff", ...base, ...DIFF_FLAGS, ...flags, "--", ...pathArgs(file)]))
-          .stdout;
+      ? untrackedPatch(cwd, file.path, flags)
+      : cappedPatch(cwd, ["diff", ...base, ...DIFF_FLAGS, ...flags, "--", ...pathArgs(file)]);
+
+  const trackedStats = (base: readonly string[]) => () => numstat(cwd, ["diff", ...flags], base);
 
   switch (scope.kind) {
     case "commit": {
@@ -561,18 +775,17 @@ async function scopeRead(
 
       return {
         files: await nameStatus(cwd, ["diff-tree", "-r", "--root", "--no-commit-id", oid]),
-        patch: async (file) =>
-          (
-            await runGit(cwd, [
-              "show",
-              "--format=",
-              ...DIFF_FLAGS,
-              ...flags,
-              oid,
-              "--",
-              ...pathArgs(file),
-            ])
-          ).stdout,
+        patch: (file) =>
+          cappedPatch(cwd, [
+            "show",
+            "--format=",
+            ...DIFF_FLAGS,
+            ...flags,
+            oid,
+            "--",
+            ...pathArgs(file),
+          ]),
+        stats: () => numstat(cwd, ["show", "--format=", ...flags], [oid]),
       };
     }
 
@@ -587,15 +800,20 @@ async function scopeRead(
       return {
         files: [...(await nameStatus(cwd, ["diff", base])), ...untracked],
         patch: tracked([base]),
+        stats: trackedStats([base]),
       };
     }
 
     case "staged":
-      return { files: await nameStatus(cwd, ["diff", "--cached"]), patch: tracked(["--cached"]) };
+      return {
+        files: await nameStatus(cwd, ["diff", "--cached"]),
+        patch: tracked(["--cached"]),
+        stats: trackedStats(["--cached"]),
+      };
     case "unstaged": {
       const status = await readStatus(cwd);
 
-      return { files: status?.unstaged ?? [], patch: tracked([]) };
+      return { files: status?.unstaged ?? [], patch: tracked([]), stats: trackedStats([]) };
     }
 
     case "worktree": {
@@ -605,8 +823,22 @@ async function scopeRead(
         files: status === undefined ? [] : worktreeFiles(status),
         patch: async (file) =>
           file.kind === "untracked"
-            ? untrackedPatch(cwd, file.path)
+            ? untrackedPatch(cwd, file.path, flags)
             : worktreePatch(cwd, flags, pathArgs(file)),
+        stats: async () => {
+          try {
+            return await numstat(cwd, ["diff", ...flags], ["HEAD"]);
+          } catch (cause) {
+            if (!isMissingHead(cause)) throw cause;
+
+            const [staged, unstaged] = await Promise.all([
+              numstat(cwd, ["diff", ...flags], ["--cached"]),
+              numstat(cwd, ["diff", ...flags], []),
+            ]);
+
+            return summedStats(staged, unstaged);
+          }
+        },
       };
     }
 
@@ -618,37 +850,100 @@ async function scopeRead(
   }
 }
 
+/** Runs at most `size` tasks at once; a finishing task hands its slot straight to the next. */
+function slots(size: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+
+  return async <Output>(task: () => Promise<Output>): Promise<Output> => {
+    if (active < size) active += 1;
+    else await new Promise<void>((resolveSlot) => waiting.push(resolveSlot));
+
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+
+      if (next === undefined) active -= 1;
+      else next();
+    }
+  };
+}
+
+type Slots = ReturnType<typeof slots>;
+
+async function changes(
+  cwd: string,
+  input: { readonly scope: VcsScope; readonly ignoreWhitespace: boolean },
+): Promise<readonly VcsChange[]> {
+  const read = await scopeRead(cwd, input.scope, input.ignoreWhitespace ? ["-w"] : []);
+  const stats = await read.stats();
+
+  return read.files.map((file) => ({
+    ...file,
+    stat: file.kind === "untracked" ? UNKNOWN_STAT : (stats.get(file.path) ?? UNKNOWN_STAT),
+  }));
+}
+
+/** The patch a file has, or why it has none; `undefined` leaves the file out of the answer. */
+async function filePatch(read: ScopeRead, file: VcsFile): Promise<VcsDiff | undefined> {
+  let result: PatchRead;
+
+  try {
+    result = await read.patch(file);
+  } catch (cause) {
+    // A file that vanished since the scope listed it has no patch to show.
+    if (isFileError(cause, ["ENOENT"])) return undefined;
+
+    return {
+      path: file.path,
+      status: file.kind,
+      kind: "failed",
+      reason: failureReason(cause, "Git could not read this file's patch."),
+    };
+  }
+
+  if (result.kind === "too_large") {
+    return { path: file.path, status: file.kind, kind: "too_large", limit: MAX_PATCH_BYTES };
+  }
+
+  const { text: patch, stat } = result;
+
+  if (patch === "") return undefined;
+
+  return stat.kind === "binary"
+    ? { path: file.path, status: file.kind, kind: "binary", patch }
+    : {
+        path: file.path,
+        status: file.kind,
+        kind: "text",
+        added: stat.added,
+        removed: stat.removed,
+        patch,
+      };
+}
+
+/**
+ * Patches for the named files the scope reports; a name the scope does not
+ * report answers nothing, so a caller can never widen what is read. At most
+ * `VCS_DIFF_PATHS_MAX` names, each capped at `MAX_PATCH_BYTES`, bound the
+ * whole answer. Every file's read waits for one of the backend's patch slots,
+ * and one file's failure is that file's answer, not the call's; only reading
+ * what the scope reports fails the call.
+ */
 async function diff(
   cwd: string,
   input: {
     readonly scope: VcsScope;
-    readonly paths?: readonly string[];
+    readonly paths: readonly string[];
     readonly ignoreWhitespace: boolean;
   },
+  patchSlot: Slots,
 ): Promise<readonly VcsDiff[]> {
   const read = await scopeRead(cwd, input.scope, input.ignoreWhitespace ? ["-w"] : []);
-  const wanted = input.paths === undefined ? undefined : new Set(input.paths);
-  const files = read.files.filter((file) => wanted === undefined || wanted.has(file.path));
-
-  const diffs = await Promise.all(
-    files.map(async (file): Promise<VcsDiff | undefined> => {
-      const patch = await read.patch(file);
-
-      if (patch === "") return undefined;
-      const facts = parsePatchFacts(patch);
-
-      return facts === undefined || /^(?:Binary files .* differ|GIT binary patch)$/m.test(patch)
-        ? { path: file.path, status: file.kind, kind: "binary", patch }
-        : {
-            path: file.path,
-            status: file.kind,
-            kind: "text",
-            added: facts.added,
-            removed: facts.removed,
-            patch,
-          };
-    }),
-  );
+  const wanted = new Set(input.paths);
+  const files = read.files.filter((file) => wanted.has(file.path));
+  const diffs = await Promise.all(files.map((file) => patchSlot(() => filePatch(read, file))));
 
   return diffs.filter((item) => item !== undefined);
 }
@@ -1333,12 +1628,26 @@ export function createGitVcs(options: GitVcsOptions = {}): VcsBackend {
     return operation();
   };
 
+  const patchSlot = slots(PATCH_CONCURRENCY);
+
   return {
     tree: (input) => run(() => snapshots.tree(input)),
     diffTrees: (input) => run(() => snapshots.diffTrees(input)),
     restoreTree: (input) => run(() => snapshots.restoreTree(input)),
     snapshot: (input) => run(() => snapshot(input.cwd)),
-    diff: (input) => run(() => diff(input.cwd, input)),
+    changes: (input) => run(() => changes(input.cwd, input)),
+    // Nothing named, nothing to discover: an empty demand costs no git process.
+    diff: (input) => {
+      if (input.paths.length > VCS_DIFF_PATHS_MAX) {
+        return Promise.reject(
+          new Error(`A patch read names at most ${String(VCS_DIFF_PATHS_MAX)} paths.`),
+        );
+      }
+
+      return input.paths.length === 0
+        ? Promise.resolve([])
+        : run(() => diff(input.cwd, input, patchSlot));
+    },
     contents: (input) => run(() => contents(input.cwd, input)),
     log: (input) => run(() => log(input.cwd, input)),
     refs: (input) => run(() => refs(input.cwd)),

@@ -35,6 +35,7 @@ export async function testRenderer(
     await mkdir(join(directory, "profile"));
     await build({
       configFile: false,
+      base: "./",
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
       logLevel: "silent",
       esbuild: { jsxDev: false },

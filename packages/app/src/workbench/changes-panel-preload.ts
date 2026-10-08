@@ -1,4 +1,4 @@
-import type { VcsDiff, VcsLog, VcsRefs, VcsSnapshot } from "@nyte-ai/protocol";
+import type { VcsChange, VcsLog, VcsRefs, VcsSnapshot } from "@nyte-ai/protocol";
 import type { NyteBridge } from "../bridge.ts";
 
 export const STAGED = "src/staged.ts";
@@ -13,7 +13,7 @@ export const BINARY_OID = "b1a0000";
 
 export const PENDING_OID = "de1a000";
 
-export const pendingCommit = Promise.withResolvers<readonly VcsDiff[]>();
+export const pendingCommit = Promise.withResolvers<readonly VcsChange[]>();
 
 const patchOf = ({
   path,
@@ -52,47 +52,52 @@ const repository: VcsSnapshot = {
   unstaged: [{ path: WORKING, kind: "modified" }],
 };
 
-const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
+const BINARY_PATCH =
+  "diff --git a/image.png b/image.png\nindex 1234567..7654321 100644\nBinary files a/image.png and b/image.png differ\n";
+
+const entriesFor = (scope: { readonly kind: string }) =>
+  scope.kind === "commit"
+    ? [{ path: COMMITTED, added: 2, removed: 1 }]
+    : scope.kind === "staged"
+      ? [{ path: STAGED, added: 3, removed: 0 }]
+      : scope.kind === "unstaged"
+        ? [{ path: WORKING, added: 1, removed: 2 }]
+        : [
+            { path: STAGED, added: 3, removed: 0 },
+            { path: WORKING, added: 1, removed: 2 },
+          ];
+
+const changes: NyteBridge["workspace"]["vcs"]["changes"] = async (input) => {
   if (input.scope.kind === "commit" && input.scope.oid === PENDING_OID)
     return pendingCommit.promise;
 
+  if (input.scope.kind === "commit" && input.scope.oid === BINARY_OID)
+    return [{ path: "image.png", kind: "modified", stat: { kind: "binary" } }];
+
+  return entriesFor(input.scope).map(({ path, added, removed }) => ({
+    path,
+    kind: "modified",
+    stat: { kind: "text", added, removed },
+  }));
+};
+
+const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   if (input.scope.kind === "commit" && input.scope.oid === BINARY_OID) {
-    return [
-      {
-        path: "image.png",
-        status: "modified",
-        kind: "binary",
-        patch:
-          "diff --git a/image.png b/image.png\nindex 1234567..7654321 100644\nBinary files a/image.png and b/image.png differ\n",
-      },
-    ];
+    return input.paths.includes("image.png")
+      ? [{ path: "image.png", status: "modified", kind: "binary", patch: BINARY_PATCH }]
+      : [];
   }
 
-  const entries =
-    input.scope.kind === "commit"
-      ? [{ path: COMMITTED, added: 2, removed: 1 }]
-      : input.scope.kind === "staged"
-        ? [{ path: STAGED, added: 3, removed: 0 }]
-        : input.scope.kind === "unstaged"
-          ? [{ path: WORKING, added: 1, removed: 2 }]
-          : [
-              { path: STAGED, added: 3, removed: 0 },
-              { path: WORKING, added: 1, removed: 2 },
-            ];
-
-  const paths =
-    input.paths === undefined
-      ? entries
-      : entries.filter((entry) => input.paths?.includes(entry.path));
-
-  return paths.map((entry) => ({
-    path: entry.path,
-    status: "modified",
-    kind: "text",
-    added: entry.added,
-    removed: entry.removed,
-    patch: patchOf(entry),
-  }));
+  return entriesFor(input.scope)
+    .filter((entry) => input.paths.includes(entry.path))
+    .map((entry) => ({
+      path: entry.path,
+      status: "modified",
+      kind: "text",
+      added: entry.added,
+      removed: entry.removed,
+      patch: patchOf(entry),
+    }));
 };
 
 const log = async (): Promise<VcsLog> => ({ commits: [], hasMore: false });
@@ -107,6 +112,7 @@ Object.defineProperty(window, "nyte", {
     workspace: {
       vcs: {
         snapshot: async () => repository,
+        changes,
         diff,
         log,
         refs,

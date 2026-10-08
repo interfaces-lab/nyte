@@ -284,6 +284,7 @@ export function createWebBridge(): WebBridge {
       blame: targeted((current) => current.workspace.blame),
       vcs: {
         snapshot: targeted((current) => current.workspace.vcs.snapshot),
+        changes: targeted((current) => current.workspace.vcs.changes),
         diff: targeted((current) => current.workspace.vcs.diff),
         contents: targeted((current) => current.workspace.vcs.contents),
         log: targeted((current) => current.workspace.vcs.log),

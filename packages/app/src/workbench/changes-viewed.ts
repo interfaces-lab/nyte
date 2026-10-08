@@ -31,8 +31,9 @@ export type ChangesViewed = Static<typeof changesViewedSchema>;
 /**
  * `changed` means the file was reviewed at an older patch: the mark is stale, so the
  * panel can offer a "recently changed" affordance instead of a plain unviewed row.
+ * `unknown` means a mark exists but the current patch has not been read to check it.
  */
-export type ViewedState = "unviewed" | "viewed" | "changed";
+export type ViewedState = "unviewed" | "viewed" | "changed" | "unknown";
 
 export type ViewedSummary = "none" | "some" | "all";
 

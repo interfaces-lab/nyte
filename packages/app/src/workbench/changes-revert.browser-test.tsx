@@ -113,7 +113,17 @@ export async function run(): Promise<string> {
       );
     }
 
-    await until(() => queryClient.isFetching({ queryKey: ["vcs"] }) === 0, "the diffs to load");
+    // Patches arrive through the stack's own reads, not the query cache: both
+    // bodies on screen means both files' patches were read and parsed.
+    const loadedBodies = (): number =>
+      Array.from(container.querySelectorAll("diffs-container")).filter(
+        (node) => node.shadowRoot?.querySelector('[data-line-type="change-addition"]') != null,
+      ).length;
+
+    await until(
+      () => loadedBodies() === 2 && queryClient.isFetching({ queryKey: ["vcs"] }) === 0,
+      "both patches to load and render",
+    );
     const tree = container.querySelector('file-tree-container[aria-label="Changed files"]');
     const snapshotReads = revertScript.snapshotReads;
     const diffReads = revertScript.diffReads;

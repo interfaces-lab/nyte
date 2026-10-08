@@ -65,6 +65,7 @@ import type {
   Turn,
   VcsBranchOutcome,
   VcsCommitOutcome,
+  VcsChange,
   VcsContents,
   VcsDiff,
   VcsDiscardOutcome,
@@ -151,6 +152,7 @@ export {
   type TreeOutcome,
   type Turn,
   type VcsBranchOutcome,
+  type VcsChange,
   type VcsCommitInfo,
   type VcsCommitOutcome,
   type VcsCommitTarget,
@@ -160,6 +162,7 @@ export {
   type VcsFile,
   type VcsFileKind,
   type VcsHead,
+  type VcsLineStat,
   type VcsLog,
   type VcsPathsOutcome,
   type VcsPushOutcome,
@@ -185,6 +188,14 @@ export {
  * keep credentials out. Children act in their root's.
  */
 export type Workspace = WorkspaceRef & { readonly locator?: JsonValue };
+
+/** A session tree's root, the workspace it acts in, and the parent links from the session to it. */
+export interface SessionRoot {
+  readonly sessionId: SessionId;
+  readonly workspace: Workspace;
+  /** Parent links followed from the session to the root; a root's is 0. */
+  readonly depth: number;
+}
 
 export interface Sessions {
   /** A root acts in `workspace`, or where the host starts new sessions; a child acts in its root's. */
@@ -342,6 +353,7 @@ export type VcsMutationOutcome<Outcome> = Outcome | { readonly kind: "stale" };
 export interface VcsBackend {
   snapshot(input: { readonly cwd: string }): Promise<VcsSnapshot>;
   diff(input: InWorkspace<"workspace.vcs.diff">): Promise<readonly VcsDiff[]>;
+  changes(input: InWorkspace<"workspace.vcs.changes">): Promise<readonly VcsChange[]>;
   contents(input: InWorkspace<"workspace.vcs.contents">): Promise<VcsContents>;
   log(input: InWorkspace<"workspace.vcs.log">): Promise<VcsLog>;
   refs(input: { readonly cwd: string }): Promise<VcsRefs>;
@@ -436,6 +448,7 @@ export interface WorkspaceApi {
   vcs: {
     snapshot(input: OperationInput<"workspace.vcs.snapshot">): Promise<VcsSnapshot>;
     diff(input: OperationInput<"workspace.vcs.diff">): Promise<readonly VcsDiff[]>;
+    changes(input: OperationInput<"workspace.vcs.changes">): Promise<readonly VcsChange[]>;
     contents(input: OperationInput<"workspace.vcs.contents">): Promise<VcsContents>;
     log(input: OperationInput<"workspace.vcs.log">): Promise<VcsLog>;
     refs(input: OperationInput<"workspace.vcs.refs">): Promise<VcsRefs>;
@@ -688,8 +701,12 @@ export interface Nyte {
    * otherwise. A saved path is not a trust grant.
    */
   sessionCwd(input: { readonly sessionId: SessionId }): Promise<string | undefined>;
-  /** Host-only read of the tree's workspace, locator included. */
-  sessionWorkspace(input: { readonly sessionId: SessionId }): Promise<Workspace>;
+  /**
+   * Host-only read of the tree's root and its workspace, locator included,
+   * without reading history. `undefined` once the session or an ancestor is
+   * gone; stored parents that form a cycle throw.
+   */
+  sessionRoot(input: { readonly sessionId: SessionId }): Promise<SessionRoot | undefined>;
   /**
    * Move an idle session tree to another workspace, opened as any workspace
    * opens: a child moves its root. Store and history stay.

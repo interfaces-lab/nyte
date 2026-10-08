@@ -115,6 +115,11 @@ export type VcsSnapshot =
       readonly unstaged: readonly VcsWorktreeFile[];
     };
 
+/**
+ * One demanded file's patch. A demanded path the answer leaves out has no
+ * patch: the scope no longer reports it, its patch is empty (as a
+ * whitespace-only change is under `ignoreWhitespace`), or it vanished.
+ */
 export type VcsDiff = {
   readonly path: string;
   readonly status: VcsFileKind;
@@ -126,7 +131,20 @@ export type VcsDiff = {
       readonly patch: string;
     }
   | { readonly kind: "binary"; readonly patch: string }
+  /** The patch outgrew `limit` bytes, so the backend stopped reading it. */
+  | { readonly kind: "too_large"; readonly limit: number }
+  /** This file's patch could not be read; the other files in the answer could. */
+  | { readonly kind: "failed"; readonly reason: string }
 );
+
+/** What a file's patch would count, before the patch itself is read. */
+export type VcsLineStat =
+  | { readonly kind: "text"; readonly added: number; readonly removed: number }
+  | { readonly kind: "binary" }
+  | { readonly kind: "unknown" };
+
+/** A file a scope reports as changed: its rename identity and its line counts. */
+export type VcsChange = VcsFile & { readonly stat: VcsLineStat };
 
 export type VcsSide =
   | { readonly kind: "absent" }

@@ -1,46 +1,46 @@
-import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata, LineAnnotation } from "@pierre/diffs";
 import type { CodeViewItem } from "@pierre/diffs/react";
+import type { VcsLineStat } from "@nyte-ai/protocol";
 import { patchDigest } from "./changes-viewed.ts";
 import type { ChangeStackSection } from "./stacked-diff.ts";
 
-export type ChangesStackItem = ChangeStackSection & {
-  readonly added: number;
-  readonly removed: number;
-};
+export type ChangesStackItem = ChangeStackSection & { readonly stat: VcsLineStat };
 
 interface CachedItem {
   readonly payload: string;
   readonly item: CodeViewItem<string>;
 }
 
-const NO_DIFFS: readonly FileDiffMetadata[] = [];
-
 function itemId(path: string, index: number): string {
   return index === 0 ? path : `${path}\u0000${String(index)}`;
 }
 
-export function createChangesCodeViewItems() {
-  const parsedByPatch = new Map<string, readonly FileDiffMetadata[]>();
-  const cachedById = new Map<string, CachedItem>();
-
-  const parseDiffs = (patch: string): readonly FileDiffMetadata[] => {
-    const cached = parsedByPatch.get(patch);
-
-    if (cached !== undefined) return cached;
-
-    try {
-      const parsed = parsePatchFiles(patch, patchDigest(patch)).flatMap((entry) => entry.files);
-      const files = parsed.length === 0 ? NO_DIFFS : parsed;
-      parsedByPatch.set(patch, files);
-
-      return files;
-    } catch {
-      parsedByPatch.set(patch, NO_DIFFS);
-
-      return NO_DIFFS;
-    }
+/**
+ * A pending file's stand-in: a diff with no hunks, shown collapsed, so only its
+ * header renders. It is a diff item like the patch that replaces it, so CodeView
+ * updates the record in place and can keep it as the scroll anchor while the
+ * body grows below its header; a record of another type would be replaced and
+ * skipped as an anchor, and the body would push the view past it.
+ */
+function placeholderDiff(path: string): FileDiffMetadata {
+  return {
+    name: path,
+    type: "change",
+    hunks: [],
+    splitLineCount: 0,
+    unifiedLineCount: 0,
+    isPartial: false,
+    deletionLines: [],
+    additionLines: [],
   };
+}
+
+/**
+ * Turns stack sections into CodeView items, reusing each item while its
+ * section is unchanged. Patches arrive parsed; nothing here parses.
+ */
+export function createChangesCodeViewItems() {
+  const cachedById = new Map<string, CachedItem>();
 
   const version = (id: string): number => (cachedById.get(id)?.item.version ?? -1) + 1;
 
@@ -121,28 +121,43 @@ export function createChangesCodeViewItems() {
     for (const source of sources) {
       const pathCollapsed = collapsed.has(source.path);
 
-      if (source.kind === "diff") {
-        const files = parseDiffs(source.patch);
-
-        if (files.length > 0) {
-          files.forEach((fileDiff, index) => {
-            const id = itemId(source.path, index);
-            const payload = `diff\u0000${source.patch}\u0000${pathCollapsed ? "c" : "e"}`;
-            nextItems.push(diffItem({ id, payload, fileDiff, collapsed: pathCollapsed }));
-            sourceById.set(id, source);
-          });
-          continue;
-        }
+      if (source.kind === "diff" && source.files.length > 0) {
+        source.files.forEach((fileDiff, index) => {
+          const id = itemId(source.path, index);
+          const payload = `diff\u0000${source.digest}\u0000${pathCollapsed ? "c" : "e"}`;
+          nextItems.push(diffItem({ id, payload, fileDiff, collapsed: pathCollapsed }));
+          sourceById.set(id, source);
+        });
+        continue;
       }
 
       const id = itemId(source.path, 0);
 
+      if (source.kind === "pending") {
+        nextItems.push(
+          diffItem({
+            id,
+            payload: "pending",
+            fileDiff: placeholderDiff(source.path),
+            collapsed: true,
+          }),
+        );
+        sourceById.set(id, source);
+        continue;
+      }
+
+      // A patch Pierre could not parse still shows, as its raw text.
       const contents =
         source.kind === "diff" ? source.patch : source.kind === "raw" ? source.text : "";
 
       const notice = source.kind === "notice" ? source.text : undefined;
-      const nativeCollapsed = pathCollapsed || source.kind === "pending";
-      const payload = `${source.kind}\u0000${contents}\u0000${notice ?? ""}\u0000${nativeCollapsed ? "c" : "e"}`;
+      const nativeCollapsed = pathCollapsed;
+
+      const payload =
+        source.kind === "diff"
+          ? `unparsed\u0000${source.digest}\u0000${nativeCollapsed ? "c" : "e"}`
+          : `${source.kind}\u0000${contents}\u0000${notice ?? ""}\u0000${nativeCollapsed ? "c" : "e"}`;
+
       nextItems.push(
         fileItem({
           id,
@@ -154,14 +169,6 @@ export function createChangesCodeViewItems() {
         }),
       );
       sourceById.set(id, source);
-    }
-
-    const patches = new Set(
-      sources.flatMap((source) => (source.kind === "diff" ? [source.patch] : [])),
-    );
-
-    for (const patch of parsedByPatch.keys()) {
-      if (!patches.has(patch)) parsedByPatch.delete(patch);
     }
 
     for (const id of cachedById.keys()) {

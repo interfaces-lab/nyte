@@ -7,7 +7,7 @@ import type {
   VcsFile,
   VcsSnapshot,
 } from "@nyte-ai/protocol";
-import type { VcsDiffRequest } from "../queries.ts";
+import type { VcsChangesRequest } from "../queries.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
@@ -128,29 +128,27 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
 }
 
 /**
- * Which diff read answers a scope. A turn's changes are folded from the
+ * Which Git comparison answers a scope. A turn's changes are folded from the
  * transcript the panel already holds, so no VCS read serves it.
  */
-export function diffRequestForScope(
+export function vcsRequestForScope(
   scope: WorkbenchChangesScope,
-  options?: { readonly paths?: readonly string[]; readonly ignoreWhitespace?: boolean },
-): VcsDiffRequest | undefined {
+  options?: { readonly ignoreWhitespace?: boolean },
+): VcsChangesRequest | undefined {
   const base = {
     target: { kind: "workspace" } as const,
     ignoreWhitespace: options?.ignoreWhitespace ?? false,
   };
 
-  const narrowing = options?.paths === undefined ? base : { ...base, paths: [...options.paths] };
-
   switch (scope.kind) {
     case "uncommitted":
-      return { scope: { kind: "worktree" }, ...narrowing };
+      return { scope: { kind: "worktree" }, ...base };
     case "staged":
-      return { scope: { kind: "staged" }, ...narrowing };
+      return { scope: { kind: "staged" }, ...base };
     case "unstaged":
-      return { scope: { kind: "unstaged" }, ...narrowing };
+      return { scope: { kind: "unstaged" }, ...base };
     case "commit":
-      return { scope: { kind: "commit", oid: scope.oid }, ...narrowing };
+      return { scope: { kind: "commit", oid: scope.oid }, ...base };
     case "turn":
       return undefined;
     default: {

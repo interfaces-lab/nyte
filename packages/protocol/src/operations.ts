@@ -54,6 +54,7 @@ import {
   TreeId,
   UserContent,
   VcsBranchOutcome,
+  VcsChange,
   VcsCommitOutcome,
   VcsCommitTarget,
   VcsContents,
@@ -109,6 +110,12 @@ const vcsExpect = strict({ revision: Type.String() });
 
 /** Paths one VCS call may name; a client with more splits them across calls. */
 export const VCS_PATHS_MAX = 1000;
+
+/**
+ * Paths one patch read may name. Each file's patch is capped on its own, so
+ * this bounds a whole answer to this many capped patches.
+ */
+export const VCS_DIFF_PATHS_MAX = 16;
 
 const vcsPaths = Unsafe<readonly [string, ...string[]]>(
   Type.Array(NonEmptyString, { minItems: 1, maxItems: VCS_PATHS_MAX }),
@@ -262,11 +269,15 @@ export const OPERATIONS = Object.freeze({
   "workspace.select": operation(WorkspaceSelectInput, WorkspaceSelectOutcome),
   "workspace.forget": operation(strict({ path: Type.String() }), Type.Void()),
   "workspace.vcs.snapshot": operation(strict(workspaceTarget), VcsSnapshot),
+  "workspace.vcs.changes": operation(
+    strict({ ...workspaceTarget, scope: VcsScope, ignoreWhitespace: Type.Boolean() }),
+    list(VcsChange),
+  ),
   "workspace.vcs.diff": operation(
     strict({
       ...workspaceTarget,
       scope: VcsScope,
-      paths: Type.Optional(Type.Array(NonEmptyString, { maxItems: VCS_PATHS_MAX })),
+      paths: Type.Array(NonEmptyString, { maxItems: VCS_DIFF_PATHS_MAX }),
       ignoreWhitespace: Type.Boolean(),
     }),
     list(VcsDiff),

@@ -53,6 +53,7 @@ const DISPATCH: Dispatch = {
   "workspace.blame": (sdk, input) => sdk.workspace.blame(input),
   "workspace.vcs.snapshot": (sdk, input) => sdk.workspace.vcs.snapshot(input),
   "workspace.vcs.diff": (sdk, input) => sdk.workspace.vcs.diff(input),
+  "workspace.vcs.changes": (sdk, input) => sdk.workspace.vcs.changes(input),
   "workspace.vcs.contents": (sdk, input) => sdk.workspace.vcs.contents(input),
   "workspace.vcs.log": (sdk, input) => sdk.workspace.vcs.log(input),
   "workspace.vcs.refs": (sdk, input) => sdk.workspace.vcs.refs(input),

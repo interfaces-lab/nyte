@@ -33,8 +33,7 @@ export async function run(): Promise<string> {
     PATHS.map((path) => ({
       path,
       status: path.endsWith(".md") ? "added" : "modified",
-      added,
-      removed: 1,
+      stat: { kind: "text", added, removed: 1 },
       viewed: viewed.get(path) ?? "unviewed",
     }));
 

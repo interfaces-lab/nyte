@@ -20,7 +20,14 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import type { MutableModels } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
-import type { Disposer, Nyte, SessionId, SessionInfo, ThinkingLevel } from "@nyte-ai/core";
+import type {
+  Disposer,
+  Nyte,
+  SessionId,
+  SessionInfo,
+  SessionRoot,
+  ThinkingLevel,
+} from "@nyte-ai/core";
 import { sessionId } from "@nyte-ai/core";
 import type { Store } from "@nyte-ai/core/store";
 import { StartInputSchema } from "@nyte-ai/protocol";
@@ -128,7 +135,7 @@ const STORE_FAILURE = "Couldn't read this host's chat history.";
 
 const DEFAULT_ACCOUNT_LIMITS_TIMEOUT_MS = 10_000;
 
-/** Deeper than any delegation tree Nyte builds; a cycle in stored parents stops here. */
+/** Deeper than any delegation tree Nyte builds; a longer stored parent chain is no tree this host shows. */
 const MAX_TREE_DEPTH = 32;
 
 function bearerDigest(request: AuthorizingRequest): Buffer | undefined {
@@ -275,22 +282,14 @@ async function composeRuntime(
   // Trees: the root's start decides for every session under it
   // -------------------------------------------------------------------------
 
-  const rootOf = async (id: SessionId): Promise<SessionInfo | undefined> => {
-    let current = id;
+  /** The tree's root, read without history; a tree deeper than this host shows is no tree. */
+  const rootOf = async (id: SessionId): Promise<SessionRoot | undefined> => {
+    const root = await sdk.sessionRoot({ sessionId: id });
 
-    for (let depth = 0; depth < MAX_TREE_DEPTH; depth++) {
-      const info = await sdk.sessions.get({ sessionId: current });
-
-      if (info === undefined) return undefined;
-
-      if (info.parent === undefined) return info;
-      current = info.parent.sessionId;
-    }
-
-    return undefined;
+    return root === undefined || root.depth >= MAX_TREE_DEPTH ? undefined : root;
   };
 
-  const folderReady = async (root: SessionInfo): Promise<boolean> =>
+  const folderReady = async (root: SessionRoot): Promise<boolean> =>
     root.workspace.id === environment &&
     (await registry.resolveCwd(root.workspace.cwd))?.kind === "trusted";
 
@@ -637,11 +636,8 @@ async function composeRuntime(
     ...sdk,
     sessions: {
       ...sdk.sessions,
-      get: async (input) => {
-        const info = await sdk.sessions.get(input);
-
-        return info !== undefined && (await visible(info.sessionId)) ? info : undefined;
-      },
+      get: async (input) =>
+        (await visible(input.sessionId)) ? sdk.sessions.get(input) : undefined,
       list: async (input) => {
         const page = await sdk.sessions.list(input);
         const kept = await Promise.all(page.items.map((info) => visible(info.sessionId)));

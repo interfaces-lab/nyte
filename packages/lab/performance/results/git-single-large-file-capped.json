@@ -1,0 +1,101 @@
+{
+  "fixture": {
+    "files": 1,
+    "linesPerSide": 100000,
+    "selectedCount": 1,
+    "trials": 1,
+    "oid": "ae7124989732e12d21feca34fea872f2f99e2784"
+  },
+  "runtime": {
+    "node": "v26.11.0",
+    "git": "git version 2.54.0 (Apple Git-157)"
+  },
+  "checks": "Nonempty exact manifest, full files and facts, selected patch byte equality, capped files really past the 2 MB cap with nothing parsed, parsed files and lines",
+  "timingsMs": {
+    "manifestDiscovery": {
+      "median": 81.79266699999994,
+      "min": 81.79266699999994,
+      "max": 81.79266699999994
+    },
+    "baselineDiscoveryAndPatches": {
+      "median": 205.78112499999997,
+      "min": 205.78112499999997,
+      "max": 205.78112499999997
+    },
+    "selectedBackendDiscoveryAndPatches": {
+      "median": 99.53366700000015,
+      "min": 99.53366700000015,
+      "max": 99.53366700000015
+    },
+    "fullSynchronousParse": {
+      "median": 0.0008330000000569271,
+      "min": 0.0008330000000569271,
+      "max": 0.0008330000000569271
+    },
+    "selectedSynchronousParse": {
+      "median": 0.0013750000000527507,
+      "min": 0.0013750000000527507,
+      "max": 0.0013750000000527507
+    }
+  },
+  "limitations": [
+    "Single-parent modified ASCII text fixture only; no rename, binary, merge, root-commit or worktree parity",
+    "Selected backend still discovers the full commit; the production manifest runs one numstat but requests no patches",
+    "Synchronous Node parser calls stand in for the app's parse worker; no React, CodeView, highlight workers, or review hashing",
+    "The backend's per-file byte cap and shared patch-process bound are the production ones; this demo does not count processes, measure renderer work or FPS, or cancel reads",
+    "Sequential trials alternate read order; OS caches are not cleared; fixture setup is excluded",
+    "Temporary repository is deleted on exit"
+  ],
+  "samples": [
+    {
+      "trial": 0,
+      "order": "baseline-manifest-selected",
+      "manifest": {
+        "ms": 81.79266699999994,
+        "files": 1,
+        "jsonBytes": 103,
+        "patchBytes": 0
+      },
+      "baseline": {
+        "ms": 205.78112499999997,
+        "files": 1,
+        "capped": [
+          {
+            "path": "src/file-00000.ts",
+            "rawPatchBytes": 10555715
+          }
+        ],
+        "patchBytes": 0,
+        "jsonBytes": 85,
+        "parse": {
+          "ms": 0.0008330000000569271,
+          "inputPatches": 0,
+          "inputPatchBytes": 0,
+          "tooLargeFiles": 1,
+          "parsedFiles": 0,
+          "parsedSideLines": 0
+        }
+      },
+      "selected": {
+        "ms": 99.53366700000015,
+        "files": [
+          {
+            "path": "src/file-00000.ts",
+            "kind": "too_large",
+            "patchBytes": 0
+          }
+        ],
+        "patchBytes": 0,
+        "jsonBytes": 85,
+        "parse": {
+          "ms": 0.0013750000000527507,
+          "inputPatches": 0,
+          "inputPatchBytes": 0,
+          "tooLargeFiles": 1,
+          "parsedFiles": 0,
+          "parsedSideLines": 0
+        }
+      }
+    }
+  ]
+}

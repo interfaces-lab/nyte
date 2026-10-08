@@ -547,6 +547,35 @@ test("archiving waits for delegated work before releasing session resources", as
   host.watchStop("archived");
 });
 
+test("archiving keeps a session whose queued message has not landed", async () => {
+  const { root, browserReleases, createHost, watchEvents } = await fixture();
+  const host = createHost();
+  const path = join(root, "queued-project");
+  await mkdir(path);
+  await host.call(1, "host.openWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "Queued" });
+  const sessionId = session.sessionId;
+  host.watchStart(1, { watchId: "queued", sessionId, live: true });
+  await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
+  // The directory row is built before the queue moves, so archiving must not trust it for work.
+  await host.call(1, "host.sessionDirectory", undefined);
+  const queued = await host.call(1, "messages.send", {
+    sessionId,
+    content: "waits for trust",
+    key: "queued",
+  });
+  assert.equal(queued.kind, "queued");
+
+  await host.call(1, "sessions.setArchived", { sessionId, archived: true });
+  assert.deepEqual(browserReleases, []);
+  assert.equal((await host.call(1, "sessions.get", { sessionId }))?.archived, true);
+
+  await host.call(1, "messages.cancel", { sessionId, change: queued.change });
+  await host.call(1, "host.sessionDirectory", undefined);
+  await vi.waitFor(() => assert.deepEqual(browserReleases, [sessionId]));
+  host.watchStop("queued");
+});
+
 test("deleting a session releases its retained resources", async () => {
   const { browserReleases, createHost, watchEvents } = await fixture();
   const host = createHost();

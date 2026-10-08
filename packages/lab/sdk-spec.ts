@@ -335,7 +335,7 @@ async function currentCoreRoots(sdk: Nyte, id: SessionId) {
     try {
       const advanceResult = await sdk.advance({ sessionId: id, head: "main", signal });
       const sessionCwdResult = await sdk.sessionCwd({ sessionId: id }); // Promise<string|undefined>.
-      const sessionWorkspaceResult = await sdk.sessionWorkspace({ sessionId: id }); // Promise<Workspace>.
+      const sessionRootResult = await sdk.sessionRoot({ sessionId: id });
       const relocateResult = await sdk.relocate({ sessionId: id, workspace: otherWorkspace });
       await sdk.reactivate();
       const cacheWarmingValue = sdk.cacheWarming.status({ sessionId: id });
@@ -1788,7 +1788,7 @@ function currentExportAndNegativeIndex() {
       "runs.wait/compact/context",
       "heads.list/create/delete/merge",
       "cacheWarming",
-      "attach/advance/reactivate/sessionCwd/sessionWorkspace/relocate/close",
+      "attach/advance/reactivate/sessionCwd/sessionRoot/relocate/close",
       "raw store/history/retained tree/GC",
       "core sessions.create.workspace",
       "full Models auth/streaming",
@@ -3093,7 +3093,7 @@ async function currentExtraTuiHost(options: Parameters<typeof Host.open>[0]) {
     const session = await host.nyte.sessions.create({ name: "Owned TUI demo" });
     const release = host.attach(session.sessionId); // S→D; children follow, NOT durable Stop.
     try {
-      const sessionWorkspaceResult = await host.nyte.sessionWorkspace({
+      const sessionRootResult = await host.nyte.sessionRoot({
         sessionId: session.sessionId,
       });
     } finally {

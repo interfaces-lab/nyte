@@ -5,7 +5,8 @@ import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, test, vi } from "vitest";
 import { createGitVcs } from "../src/git.ts";
-import type { VcsSnapshot } from "@nyte-ai/protocol";
+import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
+import type { VcsDiff, VcsScope, VcsSnapshot } from "@nyte-ai/protocol";
 
 const roots: string[] = [];
 
@@ -94,11 +95,41 @@ function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[0]) {
     backend,
     snapshot: () => backend.snapshot({ cwd }),
     repository,
-    diff: (
-      input: Omit<Parameters<typeof backend.diff>[0], "cwd" | "ignoreWhitespace"> & {
-        readonly ignoreWhitespace?: boolean;
-      },
-    ) => backend.diff({ cwd, ignoreWhitespace: input.ignoreWhitespace ?? false, ...input }),
+    changes: (input: { readonly scope: VcsScope; readonly ignoreWhitespace?: boolean }) =>
+      backend.changes({
+        cwd,
+        scope: input.scope,
+        ignoreWhitespace: input.ignoreWhitespace ?? false,
+      }),
+    /** Without `paths`, every file the scope's manifest reports, named explicitly. */
+    diff: async (input: {
+      readonly scope: VcsScope;
+      readonly paths?: readonly string[];
+      readonly ignoreWhitespace?: boolean;
+    }) => {
+      const ignoreWhitespace = input.ignoreWhitespace ?? false;
+
+      const paths =
+        input.paths ??
+        (await backend.changes({ cwd, scope: input.scope, ignoreWhitespace })).map(
+          (change) => change.path,
+        );
+
+      const diffs: VcsDiff[] = [];
+
+      for (let start = 0; start < paths.length; start += VCS_DIFF_PATHS_MAX) {
+        diffs.push(
+          ...(await backend.diff({
+            cwd,
+            scope: input.scope,
+            paths: paths.slice(start, start + VCS_DIFF_PATHS_MAX),
+            ignoreWhitespace,
+          })),
+        );
+      }
+
+      return diffs;
+    },
     contents: (input: Omit<Parameters<typeof backend.contents>[0], "cwd">) =>
       backend.contents({ cwd, ...input }),
     log: (input: Omit<Parameters<typeof backend.log>[0], "cwd">) => backend.log({ cwd, ...input }),
@@ -118,6 +149,12 @@ function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[0]) {
 }
 
 const WORKTREE = { kind: "worktree" } as const;
+
+function patchText(diff: VcsDiff | undefined): string {
+  return diff === undefined || diff.kind === "too_large" || diff.kind === "failed"
+    ? ""
+    : diff.patch;
+}
 
 function attachedBranch(snapshot: Extract<VcsSnapshot, { kind: "repository" }>): string {
   assert.equal(snapshot.head.kind, "attached");
@@ -424,8 +461,8 @@ describe("diff", () => {
     assert.equal(stagedDiff.removed, 0);
     assert.match(stagedDiff.patch, /\+staged/);
     assert.doesNotMatch(stagedDiff.patch, /\+working/);
-    assert.match(unstaged[0]?.patch ?? "", /\+working/);
-    assert.doesNotMatch(unstaged[0]?.patch ?? "", /\+staged/);
+    assert.match(patchText(unstaged[0]), /\+working/);
+    assert.doesNotMatch(patchText(unstaged[0]), /\+staged/);
   });
 
   test("worktree keeps the whole change since HEAD", async () => {
@@ -471,7 +508,7 @@ describe("diff", () => {
 
     assert.equal(diffs.length, 1);
     assert.equal(diffs[0]?.status, "untracked");
-    assert.match(diffs[0]?.patch ?? "", /\+fresh/);
+    assert.match(patchText(diffs[0]), /\+fresh/);
   });
 
   test("ignoreWhitespace drops an indentation-only change", async () => {
@@ -506,7 +543,7 @@ describe("diff", () => {
       narrowed.map((diff) => diff.path),
       ["other.txt"],
     );
-    assert.match(narrowed[0]?.patch ?? "", /\+other/);
+    assert.match(patchText(narrowed[0]), /\+other/);
   });
 
   test("branch scope compares the worktree with the merge base", async () => {
@@ -541,7 +578,7 @@ describe("diff", () => {
       diffs.map((diff) => diff.path),
       ["first.txt"],
     );
-    assert.match(diffs[0]?.patch ?? "", /\+hello/);
+    assert.match(patchText(diffs[0]), /\+hello/);
   });
 
   test("matches a literal pathspec that looks like magic", async () => {
@@ -558,6 +595,335 @@ describe("diff", () => {
       diffs.map((item) => item.path),
       [":(glob)*.txt"],
     );
+  });
+});
+
+/**
+ * A `git` first on PATH that logs every call, and for patch reads (the only
+ * calls carrying `--no-color`) logs when the real process starts and when it
+ * has exited, so overlapping lines in the log are overlapping processes.
+ * `NYTE_GIT_FLOOD` swaps a patch read for endless output.
+ */
+async function loggingGit(): Promise<{
+  readonly log: string;
+  readonly events: () => Promise<readonly string[]>;
+}> {
+  const bin = await mkdtemp(join(tmpdir(), "nyte-git-bin-"));
+  roots.push(bin);
+  const log = join(bin, "calls.log");
+  const real = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  await writeFile(log, "");
+  await writeFile(
+    join(bin, "git"),
+    [
+      "#!/bin/sh",
+      'echo call >> "$NYTE_GIT_LOG"',
+      'case " $* " in *" --no-color "*) ;; *) exec "$NYTE_REAL_GIT" "$@" ;; esac',
+      'echo start >> "$NYTE_GIT_LOG"',
+      "trap 'kill $child 2>/dev/null; wait $child 2>/dev/null; echo end >> \"$NYTE_GIT_LOG\"; exit 143' TERM",
+      "sleep 0.1 & child=$!; wait $child",
+      'if [ -n "$NYTE_GIT_FLOOD" ]; then yes +flood & child=$!; else "$NYTE_REAL_GIT" "$@" & child=$!; fi',
+      "wait $child; status=$?",
+      'echo end >> "$NYTE_GIT_LOG"',
+      "exit $status",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  vi.stubEnv("PATH", `${bin}:${process.env.PATH ?? ""}`);
+  vi.stubEnv("NYTE_REAL_GIT", real);
+  vi.stubEnv("NYTE_GIT_LOG", log);
+
+  return {
+    log,
+    events: async () => (await readFile(log, "utf8")).split("\n").filter((line) => line !== ""),
+  };
+}
+
+/** The most patch processes alive at once, and how many were still alive at the end. */
+function patchProcesses(events: readonly string[]): {
+  readonly peak: number;
+  readonly left: number;
+} {
+  let active = 0;
+  let peak = 0;
+
+  for (const event of events) {
+    if (event === "start") active += 1;
+    if (event === "end") active -= 1;
+    peak = Math.max(peak, active);
+  }
+
+  return { peak, left: active };
+}
+
+describe("demanded patches", () => {
+  test("changes keeps rename identity and counts what diff would count", async () => {
+    const root = await repository();
+    const git = gitIn(root);
+    await writeFile(join(root, "image.bin"), new Uint8Array([0, 1, 2]));
+    await writeFile(join(root, "body.txt"), "a\nb\nc\nd\ne\nf\n");
+    git("add", ".");
+    git("commit", "-m", "files");
+    git("mv", "body.txt", "renamed.txt");
+    await writeFile(join(root, "renamed.txt"), "a\nb\nc\nd\ne\nf\ng\n");
+    git("add", "renamed.txt");
+    await writeFile(join(root, "image.bin"), new Uint8Array([0, 3, 4]));
+    await writeFile(join(root, "tracked.txt"), "one\nchanged\nthree\n");
+    await writeFile(join(root, "new.txt"), "fresh\n");
+    const vcs = vcsAt(root);
+
+    const changes = await vcs.changes({ scope: WORKTREE });
+    const diffs = await vcs.diff({ scope: WORKTREE });
+
+    assert.deepEqual(
+      changes.toSorted((left, right) => left.path.localeCompare(right.path)),
+      [
+        { path: "image.bin", kind: "modified", stat: { kind: "binary" } },
+        { path: "new.txt", kind: "untracked", stat: { kind: "unknown" } },
+        {
+          path: "renamed.txt",
+          kind: "renamed",
+          from: "body.txt",
+          stat: { kind: "text", added: 1, removed: 0 },
+        },
+        { path: "tracked.txt", kind: "modified", stat: { kind: "text", added: 2, removed: 1 } },
+      ],
+    );
+
+    for (const change of changes) {
+      const diff = diffs.find((entry) => entry.path === change.path);
+
+      if (change.stat.kind === "text") {
+        assert.equal(diff?.kind, "text");
+        if (diff?.kind !== "text") throw new Error("unreachable");
+        assert.deepEqual([diff.added, diff.removed], [change.stat.added, change.stat.removed]);
+      }
+
+      if (change.stat.kind === "binary") assert.equal(diff?.kind, "binary");
+    }
+
+    const commit = git("rev-parse", "HEAD").trim();
+    assert.deepEqual(await vcs.changes({ scope: { kind: "commit", oid: commit } }), [
+      { path: "body.txt", kind: "added", stat: { kind: "text", added: 6, removed: 0 } },
+      { path: "image.bin", kind: "added", stat: { kind: "binary" } },
+    ]);
+  });
+
+  test("a demanded patch is byte-equal to git's own and alone in the answer", async () => {
+    const root = await repository();
+    await writeFile(join(root, "tracked.txt"), "one\nchanged\n");
+    await writeFile(join(root, "other.txt"), "other\n");
+    gitIn(root)("add", "other.txt");
+    const vcs = vcsAt(root);
+
+    const [alone] = await vcs.diff({ scope: WORKTREE, paths: ["tracked.txt"] });
+    const all = await vcs.diff({ scope: WORKTREE });
+
+    assert.equal(
+      patchText(alone),
+      gitIn(root)(
+        "-c",
+        "core.quotepath=false",
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--find-renames",
+        "HEAD",
+        "--",
+        "tracked.txt",
+      ),
+    );
+    assert.equal(patchText(alone), patchText(all.find((diff) => diff.path === "tracked.txt")));
+    assert.deepEqual(await vcs.diff({ scope: WORKTREE, paths: ["not-reported.txt"] }), []);
+  });
+
+  test("git writes untracked patches: a new-file header, and binary by git's own test", async () => {
+    const root = await repository();
+    await writeFile(join(root, "new file.txt"), "fresh\nlines\n");
+    await writeFile(join(root, "blob.dat"), new Uint8Array([0, 1, 2]));
+
+    const diffs = await vcsAt(root).diff({ scope: { kind: "unstaged" } });
+    const text = diffs.find((diff) => diff.path === "new file.txt");
+
+    assert.equal(text?.kind, "text");
+    if (text?.kind !== "text") throw new Error("unreachable");
+    assert.equal(text.status, "untracked");
+    assert.deepEqual([text.added, text.removed], [2, 0]);
+    assert.match(
+      text.patch,
+      /^diff --git a\/new file\.txt b\/new file\.txt\nnew file mode 100644\n/,
+    );
+    assert.match(
+      text.patch,
+      /^--- \/dev\/null\n\+\+\+ b\/new file\.txt\t?\n@@ -0,0 \+1,2 @@\n\+fresh\n\+lines\n/m,
+    );
+    assert.equal(diffs.find((diff) => diff.path === "blob.dat")?.kind, "binary");
+  });
+
+  test("one unreadable file fails alone; a vanished or whitespace-only one is left out", async () => {
+    const root = await repository();
+    await writeFile(join(root, "tracked.txt"), "  one\n  two\n");
+    await writeFile(join(root, "kept.txt"), "kept\n");
+    await writeFile(join(root, "gone.txt"), "soon gone\n");
+    await mkdir(join(root, "target"));
+    execFileSync("ln", ["-s", "target", join(root, "link")]);
+    const backend = createGitVcs();
+    const paths = ["tracked.txt", "kept.txt", "gone.txt", "link"];
+
+    const changes = await backend.changes({ cwd: root, scope: WORKTREE, ignoreWhitespace: true });
+    assert.deepEqual(changes.map((change) => change.path).toSorted(), [...paths].toSorted());
+    await rm(join(root, "gone.txt"));
+
+    const diffs = await backend.diff({ cwd: root, scope: WORKTREE, paths, ignoreWhitespace: true });
+
+    assert.deepEqual(diffs.map((diff) => `${diff.path} ${diff.kind}`).toSorted(), [
+      "kept.txt text",
+      "link failed",
+    ]);
+    const failed = diffs.find((diff) => diff.path === "link");
+    assert.equal(failed?.kind === "failed" ? failed.reason : "", "Diff paths must be files: link");
+  });
+
+  test("a patch read names at most VCS_DIFF_PATHS_MAX paths", async () => {
+    const root = await repository();
+    const paths = Array.from({ length: VCS_DIFF_PATHS_MAX + 1 }, (_, index) => `f${String(index)}`);
+
+    await assert.rejects(
+      createGitVcs().diff({ cwd: root, scope: WORKTREE, paths, ignoreWhitespace: false }),
+      /at most 16 paths/,
+    );
+  });
+
+  test("an empty demand answers nothing without running git", async () => {
+    const git = await loggingGit();
+    const backend = createGitVcs();
+
+    assert.deepEqual(
+      await backend.diff({
+        cwd: "/nonexistent/nyte",
+        scope: WORKTREE,
+        paths: [],
+        ignoreWhitespace: false,
+      }),
+      [],
+    );
+    assert.deepEqual(await git.events(), []);
+  });
+
+  test("a patch past the byte limit answers too_large, tracked or untracked", async () => {
+    const root = await repository();
+    const line = `${"x".repeat(99)}\n`;
+    await writeFile(join(root, "tracked.txt"), line.repeat(25_000));
+    await writeFile(join(root, "huge-new.txt"), line.repeat(25_000));
+    await writeFile(join(root, "small.txt"), "small\n");
+    const vcs = vcsAt(root);
+
+    const diffs = await vcs.diff({ scope: WORKTREE });
+
+    assert.deepEqual(
+      diffs
+        .map((diff) => `${diff.path} ${diff.kind === "too_large" ? String(diff.limit) : diff.kind}`)
+        .toSorted(),
+      ["huge-new.txt 2000000", "small.txt text", "tracked.txt 2000000"],
+    );
+  });
+
+  test("endless patch output stops at the limit and its process exits first", async () => {
+    const root = await repository();
+    await writeFile(join(root, "tracked.txt"), "changed\n");
+    const git = await loggingGit();
+    vi.stubEnv("NYTE_GIT_FLOOD", "1");
+
+    const [diff] = await vcsAt(root).diff({ scope: WORKTREE, paths: ["tracked.txt"] });
+
+    assert.deepEqual(diff, {
+      path: "tracked.txt",
+      status: "modified",
+      kind: "too_large",
+      limit: 2_000_000,
+    });
+    assert.deepEqual(patchProcesses(await git.events()), { peak: 1, left: 0 });
+  });
+
+  test("an unborn worktree joins staged and unstaged patches within one byte budget", async () => {
+    const root = await emptyRepository();
+    const git = gitIn(root);
+    await writeFile(join(root, "first.txt"), "hello\n");
+    git("add", "first.txt");
+    await writeFile(join(root, "first.txt"), "hello\nworld\n");
+    const half = `${"y".repeat(99)}\n`.repeat(12_000);
+    await writeFile(join(root, "split.txt"), half);
+    git("add", "split.txt");
+    await writeFile(join(root, "split.txt"), `${half}${half}`);
+    const vcs = vcsAt(root);
+
+    const changes = await vcs.changes({ scope: WORKTREE });
+    const diffs = await vcs.diff({ scope: WORKTREE });
+    const first = diffs.find((diff) => diff.path === "first.txt");
+
+    assert.deepEqual(changes.find((change) => change.path === "first.txt")?.stat, {
+      kind: "text",
+      added: 2,
+      removed: 0,
+    });
+    assert.equal(first?.kind, "text");
+    if (first?.kind !== "text") throw new Error("unreachable");
+    assert.deepEqual([first.added, first.removed], [2, 0]);
+    assert.match(first.patch, /^\+hello\n/m);
+    assert.match(first.patch, /^\+world\n/m);
+    assert.deepEqual(
+      diffs.find((diff) => diff.path === "split.txt"),
+      {
+        path: "split.txt",
+        status: "added",
+        kind: "too_large",
+        limit: 2_000_000,
+      },
+    );
+  });
+
+  test("unborn fallbacks read their halves one after another inside the shared bound", async () => {
+    const root = await emptyRepository();
+    const git = gitIn(root);
+    const paths = Array.from({ length: 6 }, (_, index) => `file-${String(index)}.txt`);
+    await Promise.all(paths.map((path) => writeFile(join(root, path), "staged\n")));
+    git("add", ".");
+    await Promise.all(paths.map((path) => writeFile(join(root, path), "staged\nworking\n")));
+    const logging = await loggingGit();
+
+    const diffs = await createGitVcs().diff({
+      cwd: root,
+      scope: WORKTREE,
+      paths,
+      ignoreWhitespace: false,
+    });
+
+    assert.equal(diffs.length, 6);
+    const events = await logging.events();
+    assert.equal(events.filter((event) => event === "start").length, 18);
+    assert.deepEqual(patchProcesses(events), { peak: 4, left: 0 });
+  });
+
+  test("concurrent diff calls share four patch processes", async () => {
+    const root = await repository();
+    const paths = Array.from({ length: 12 }, (_, index) => `file-${String(index)}.txt`);
+    await Promise.all(paths.map((path) => writeFile(join(root, path), "base\n")));
+    gitIn(root)("add", ".");
+    gitIn(root)("commit", "-m", "many");
+    await Promise.all(paths.map((path) => writeFile(join(root, path), "changed\n")));
+    const git = await loggingGit();
+    const backend = createGitVcs();
+    const read = () => backend.diff({ cwd: root, scope: WORKTREE, paths, ignoreWhitespace: false });
+
+    const [first, second] = await Promise.all([read(), read()]);
+
+    assert.equal(first.length, 12);
+    assert.equal(second.length, 12);
+    const events = await git.events();
+    assert.equal(events.filter((event) => event === "start").length, 24);
+    assert.deepEqual(patchProcesses(events), { peak: 4, left: 0 });
   });
 });
 

@@ -146,8 +146,7 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
           files={files.map((file) => ({
             path: file.path,
             status: "modified" as const,
-            added: file.added,
-            removed: file.removed,
+            stat: { kind: "text" as const, added: file.added, removed: file.removed },
             viewed:
               componentProps.reviewed(file.path) === "reviewed"
                 ? "viewed"

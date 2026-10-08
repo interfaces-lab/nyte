@@ -70,8 +70,15 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => ({
   unstaged: commitScript.files,
 });
 
+const changes: NyteBridge["workspace"]["vcs"]["changes"] = async () =>
+  commitScript.files.map((file) => ({
+    path: file.path,
+    kind: file.kind,
+    stat: { kind: "text", added: 1, removed: 0 },
+  }));
+
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) =>
-  (input.paths ?? commitScript.files.map((file) => file.path)).map((path) => ({
+  input.paths.map((path) => ({
     path,
     status: "modified",
     kind: "text",
@@ -146,6 +153,7 @@ Object.defineProperty(window, "nyte", {
     workspace: {
       vcs: {
         snapshot: vcsSnapshot,
+        changes,
         diff,
         log,
         refs,

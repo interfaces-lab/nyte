@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ import type { MutableModels, Provider } from "@nyte-ai/ai";
 import { createNyteClient, NyteWireError } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
-import type { Store } from "@nyte-ai/core/store";
+import type { Session, Store } from "@nyte-ai/core/store";
 import {
   openHostRuntime,
   openProfile,
@@ -779,6 +779,96 @@ test("a child inherits its root's tree state, and deleting a root deletes the tr
   assert.equal(await runtime.sdk.sessions.get({ sessionId: child }), undefined);
   assert.equal(await runtime.sdk.sessions.get({ sessionId: root }), undefined);
   assert.deepEqual((await owner.sessions.list({ parent: null })).items, []);
+});
+
+/** The host's store, counting the commits each session's history hands out. */
+function countingStore(path: string, commits: Map<string, number>): Store {
+  const store = new SqliteStore(path);
+  const count = (id: string, read: number) => commits.set(id, (commits.get(id) ?? 0) + read);
+  const wrap = (opened: Session): Session => ({
+    id: opened.id,
+    refs: opened.refs,
+    leases: opened.leases,
+    events: opened.events,
+    listing: opened.listing,
+    close: () => opened.close(),
+    objects: {
+      put: (objects) => opened.objects.put(objects),
+      async get(oid) {
+        const object = await opened.objects.get(oid);
+        if (object?.kind === "commit") count(opened.id, 1);
+        return object;
+      },
+      async chain(from, options) {
+        const page = await opened.objects.chain(from, options);
+        count(opened.id, page.filter((item) => item.object.kind === "commit").length);
+        return page;
+      },
+      list: () => opened.objects.list(),
+      commits: () => opened.objects.commits(),
+      delete: (oids) => opened.objects.delete(oids),
+    },
+  });
+  return {
+    create: async (input) => wrap(await store.create(input)),
+    open: async (id) => wrap(await store.open(id)),
+    list: () => store.list(),
+    delete: (id) => store.delete(id),
+    close: () => store.close(),
+  };
+}
+
+test("tree visibility reads no ancestor history and keeps the host's depth bound", async () => {
+  const { home, plain } = await fixture();
+  const commits = new Map<string, number>();
+  const stores: Store[] = [];
+  const { owner, runtime } = await run(home, "default", (path) => {
+    const store = countingStore(path, commits);
+    stores.push(store);
+    return store;
+  });
+  const { id } = await registered(owner, plain);
+  const root = await admittedRoot(owner, id, "deep");
+  const chain = [root];
+  for (let depth = 1; depth <= 32; depth += 1) {
+    const created = await runtime.sdk.sessions.create({
+      sessionId: sessionId(randomUUID()),
+      parent: { sessionId: chain[depth - 1] ?? root, runId: "run", callId: "call", depth: 1 },
+    });
+    chain.push(created.sessionId);
+  }
+  const [, , , third] = chain;
+  const deepest = chain[31];
+  const beyond = chain[32];
+  assert.ok(third !== undefined && deepest !== undefined && beyond !== undefined);
+
+  commits.clear();
+  assert.equal((await owner.sessions.get({ sessionId: third }))?.sessionId, third);
+  assert.deepEqual(
+    (await owner.sessions.list({ parent: chain[2] ?? root })).items.map((item) => item.sessionId),
+    [third],
+  );
+  assert.equal(commits.get(root) ?? 0, 0);
+
+  assert.equal((await owner.sessions.get({ sessionId: deepest }))?.sessionId, deepest);
+  assert.equal(await owner.sessions.get({ sessionId: beyond }), undefined);
+  assert.deepEqual((await owner.sessions.list({ parent: deepest })).items, []);
+  assert.notEqual(
+    await wireCode(() => owner.messages.send({ sessionId: beyond, content: "too deep" })),
+    "ok",
+  );
+
+  // Stored parents that loop have no root: the read fails, and nothing is shown.
+  const [store] = stores;
+  assert.ok(store !== undefined);
+  const first = randomUUID();
+  const second = randomUUID();
+  const link = (to: string) => ({
+    parent: { sessionId: to, runId: "run", callId: "call", depth: 1 },
+  });
+  await (await store.create({ id: first, initialFacts: link(second) })).close();
+  await (await store.create({ id: second, initialFacts: link(first) })).close();
+  assert.notEqual(await wireCode(() => owner.sessions.get({ sessionId: sessionId(first) })), "ok");
 });
 
 test("an interrupted deletion finishes at the next startup", async () => {

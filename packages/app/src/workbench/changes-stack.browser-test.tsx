@@ -3,6 +3,8 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
+import { patchDigest } from "./changes-viewed.ts";
+import { parsePatchFiles } from "@pierre/diffs";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
@@ -12,22 +14,21 @@ function patchOf(path: string, prefix: string): string {
   return [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,17 @@", " keep", ...added, ""].join("\n");
 }
 
-const ITEMS = [
-  {
+function itemOf(path: string, prefix: string): ChangesStackItem {
+  const patch = patchOf(path, prefix);
+  const digest = patchDigest(patch);
+
+  return {
     kind: "diff",
-    path: "src/alpha.ts",
-    patch: patchOf("src/alpha.ts", "alpha"),
-    added: 16,
-    removed: 0,
-  },
-  {
-    kind: "diff",
-    path: "src/beta.ts",
-    patch: patchOf("src/beta.ts", "beta"),
-    added: 16,
-    removed: 0,
-  },
-] satisfies readonly ChangesStackItem[];
+    path,
+    patch,
+    digest,
+    files: parsePatchFiles(patch, digest).flatMap((parsed) => parsed.files),
+    stat: { kind: "text", added: 16, removed: 0 },
+  };
+}
+
+const ITEMS = [itemOf("src/alpha.ts", "alpha"), itemOf("src/beta.ts", "beta")];
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -96,6 +97,14 @@ export async function run(): Promise<string> {
     render();
     await settle();
     render();
+    const deadline = performance.now() + 10_000;
+
+    // CodeView portals headers in once its first layout lands, later under load.
+    while (container.querySelector('[data-change-path="src/beta.ts"]') === null) {
+      if (performance.now() > deadline) throw new Error("Timed out waiting for the headers");
+      await settle();
+    }
+
     await settle();
     const expandedHeight = height();
 

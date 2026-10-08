@@ -203,8 +203,8 @@ the default workspace at the directory its `refs/facts/cwd` holds, or at the
 default directory when it has none. Nothing writes the `cwd` fact or backfills
 the ref.
 
-Host-only `sessionWorkspace({ sessionId })` returns the tree's workspace with
-its locator. `sessionCwd` returns its `cwd` while the tree is active in the
+Host-only `sessionRoot({ sessionId })` returns the tree's root and its
+workspace with the locator, read without history. `sessionCwd` returns its `cwd` while the tree is active in the
 environment the host's workspace backend reads, and `undefined` otherwise. A
 saved path is not a trust grant.
 
