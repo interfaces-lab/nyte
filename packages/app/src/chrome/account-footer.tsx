@@ -122,8 +122,9 @@ export function AccountFooterMenu({
   const host = useHostState();
   const account = useGitHubAccount(github);
   const update = useUpdateState().data ?? { kind: "idle" };
-  // Downloading asks nothing of the user; the dot is for a restart or a retry.
-  const attention = update.kind !== "idle" && update.kind !== "downloading";
+  const busy = update.kind === "downloading" || update.kind === "installing";
+  // Busy states ask nothing of the user; the dot is for a restart or a retry.
+  const attention = update.kind !== "idle" && !busy;
   // A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile.
   const [last, setLast] = useState(account.query.data);
 
@@ -167,7 +168,7 @@ export function AccountFooterMenu({
           <>
             <MenuItem
               layout="plain"
-              disabled={update.kind === "downloading"}
+              disabled={busy}
               variant={update.kind === "failed" ? "danger" : "default"}
               xstyle={styles.accountMenuItem}
               onClick={() => void nyte.host.updates?.check().catch(() => undefined)}

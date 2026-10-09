@@ -152,7 +152,7 @@ app.setPath(
   ),
 );
 
-// The packaged test must remain isolated after Sparkle relaunches without shell variables.
+// The packaged test must remain isolated after an update relaunches without shell variables.
 if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
@@ -390,9 +390,9 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
         onChange: () => connect?.accountChanged(),
         // macOS lets an app read its Keychain item without asking only while the app's
-        // signature meets the requirement recorded with the item. Development and update-test
-        // builds are ad-hoc signed, which names the exact binary, so they keep the sign-in for
-        // one run.
+        // signature meets the requirement recorded with the item. Development builds are
+        // ad-hoc signed, which names the exact binary, so they and the throwaway update-test
+        // builds keep the sign-in for one run.
         store:
           app.isPackaged && !updateTest
             ? new AccountStore({

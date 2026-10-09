@@ -15,7 +15,7 @@ const UPDATE_DEMO: readonly UpdateState[] = [
   { kind: "idle" },
   { kind: "downloading", version: "0.3.0", percent: 42 },
   { kind: "ready", version: "0.3.0" },
-  { kind: "blocked", version: "0.3.0", taskCount: 2, terminalCommandCount: 1 },
+  { kind: "installing", version: "0.3.0" },
   { kind: "failed", version: "0.3.0", message: "Checksum mismatch" },
 ];
 

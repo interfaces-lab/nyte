@@ -713,9 +713,6 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
-      electron-sparkle:
-        specifier: 0.2.0
-        version: 0.2.0(electron@44.4.5(supports-color@7.2.0))
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@7.2.0)
@@ -8768,12 +8765,6 @@ packages:
   electron-publish@26.15.3:
     resolution: {integrity: sha512-g/2bn8YTavY4cuS5F+jOS7zmZbXXBV8KZ8yHKfJjFPoKtzBqrpCdNPxBd3tqdBwP7BVd0lGzf7Bk2s0KesWZ4Q==}
 
-  electron-sparkle@0.2.0:
-    resolution: {integrity: sha512-h7JKIEsTuKJGruzNE7IDfRcl6wFdRTIqLg9RbZmu7/r+ZhivIm4I+LYVv621NEcck5ibHEjxxJnpG9wR/1KDfg==}
-    hasBin: true
-    peerDependencies:
-      electron: '>=42'
-
   electron-store@8.2.0:
     resolution: {integrity: sha512-ukLL5Bevdil6oieAOXz3CMy+OgaItMiVBg701MNlG6W5RaC0AHN7rvlqTCmeb6O7jP0Qa1KKYTE0xV0xbhF4Hw==}
 
@@ -11836,10 +11827,6 @@ packages:
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
     engines: {node: '>=10.4.0'}
-
-  plist@5.0.0:
-    resolution: {integrity: sha512-20N+g1DvMm/DFRbsvER7tT4wDryq0WunK7VMkDaiJcKNapAnUMkTsAnacFYf8n420F4Hf6/hefgmJRkMb1M0fg==}
-    engines: {node: '>=18'}
 
   pngjs@3.4.0:
     resolution: {integrity: sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w==}
@@ -22288,11 +22275,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-sparkle@0.2.0(electron@44.4.5(supports-color@7.2.0)):
-    dependencies:
-      electron: 44.4.5(supports-color@7.2.0)
-      plist: 5.0.0
-
   electron-store@8.2.0:
     dependencies:
       conf: 10.2.0
@@ -26450,11 +26432,6 @@ snapshots:
     dependencies:
       '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1
-      xmlbuilder: 15.1.1
-
-  plist@5.0.0:
-    dependencies:
-      '@xmldom/xmldom': 0.9.12
       xmlbuilder: 15.1.1
 
   pngjs@3.4.0: {}

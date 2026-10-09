@@ -1,32 +1,19 @@
 import type { Configuration, MacConfiguration } from "electron-builder";
-import { electronSparkle } from "electron-sparkle/electron-builder";
 import { ACCOUNT_SCHEMES } from "./src/account/scheme.ts";
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
 
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
 
-const publicKey =
-  process.env["NYTE_SPARKLE_PUBLIC_KEY"] ??
-  (updateTest ? undefined : "u6NmdrN0PD5XXdy2KJyUfyvzB3hCtI3+6Gf1bg8IYDc=");
-
 const mac = {
-  bundleVersion: process.env.GITHUB_RUN_NUMBER,
   category: "public.app-category.developer-tools",
   icon: "build/icon.icns",
   target: [
     { target: "dmg", arch: ["arm64"] },
     { target: "zip", arch: ["arm64"] },
   ],
-  hardenedRuntime: !updateTest,
+  hardenedRuntime: true,
   forceCodeSigning: true,
-  extendInfo: {
-    SUFeedURL:
-      "https://github.com/interfaces-lab/nyte/releases/download/desktop-updates/appcast.xml",
-    SUPublicEDKey: publicKey,
-    SUEnableAutomaticChecks: false,
-    SUAutomaticallyUpdate: false,
-  },
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
 } satisfies MacConfiguration;
@@ -38,20 +25,6 @@ export default {
   // `@nyte-aidesktop`, which AppImage and NSIS reject as an executable name.
   executableName: productName,
   extraMetadata: { name: productName, productName },
-  beforePack: (context) => {
-    if (context.electronPlatformName !== "darwin") return;
-
-    if (
-      publicKey === undefined ||
-      !/^[A-Za-z0-9+/]{43}=$/u.test(publicKey) ||
-      Buffer.from(publicKey, "base64").length !== 32
-    ) {
-      throw new Error(
-        "Set NYTE_SPARKLE_PUBLIC_KEY to the Sparkle Ed25519 public key before packaging macOS.",
-      );
-    }
-  },
-  afterPack: electronSparkle,
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
   // Clerk's OAuth callback returns here. macOS reads it from Info.plist and Linux from
   // the .desktop entry; Windows registers it at run time.
@@ -59,36 +32,20 @@ export default {
     name: productName,
     schemes: [updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production],
   },
-  publish: { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
+  // The update test serves its own release from scripts/update-test.mjs.
+  publish: updateTest
+    ? { provider: "generic", url: "http://localhost:8917" }
+    : { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
   directories: { output: "dist", buildResources: "build" },
-  files: [
-    "out/**/*",
-    "package.json",
-    // The afterPack hook reads this archive from node_modules and copies the extracted
-    // framework into Contents/Frameworks, where electron-builder signs it. The `.node`
-    // addons beside it make electron-builder unpack the whole module out of the asar, so
-    // the archive ships too, and notarization rejects the ad-hoc-signed binaries Apple
-    // finds when it recurses into it.
-    "!node_modules/electron-sparkle/dist/Sparkle-*.zip",
-  ],
+  files: ["out/**/*", "package.json"],
   asarUnpack: ["node_modules/@lydell/**/*"],
   extraResources: [
     { from: "resources/adblock.bin", to: "adblock.bin" },
     // The web app Remote access serves beside the API; scripts/build.mjs builds it first.
     { from: "../app/dist", to: "app" },
   ],
-  mac: updateTest
-    ? {
-        ...mac,
-        identity: "-",
-        notarize: false,
-        extendInfo: {
-          ...mac.extendInfo,
-          SUFeedURL: "http://localhost:8917/appcast.xml",
-          NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-        },
-      }
-    : mac,
+  // Squirrel.Mac installs only an update signed by the running app's Developer ID.
+  mac: updateTest ? { ...mac, notarize: false } : mac,
   linux: {
     target: ["AppImage"],
     category: "Development",

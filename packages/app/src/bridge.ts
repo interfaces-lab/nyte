@@ -571,12 +571,7 @@ export type UpdateState =
   | { readonly kind: "idle" }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
   | { readonly kind: "ready"; readonly version: string }
-  | {
-      readonly kind: "blocked";
-      readonly version: string;
-      readonly taskCount: number;
-      readonly terminalCommandCount: number;
-    }
+  | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
 export type HostEvent =
