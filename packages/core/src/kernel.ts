@@ -16,6 +16,8 @@ import type {
   JobId,
   Json,
   MessageId,
+  ModelRequestInput,
+  ModelRequestOutcome,
   PartId,
   Placement,
   PrincipalId,
@@ -24,6 +26,7 @@ import type {
   RunEnd,
   RunId,
   RunView,
+  SessionCatalogView,
   SessionId,
   SnapshotId,
   Submission,
@@ -37,8 +40,9 @@ import type { SessionBus } from "./bus.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
-import type { ExecutionEnv } from "./environment.ts";
+import type { EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
 import { SdkError } from "./error.ts";
+import { EMPTY_CATALOG } from "./fold.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
 import type { Job, Jobs } from "./jobs.ts";
@@ -46,7 +50,9 @@ import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
 import { createPartsApi } from "./parts-api.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
-import type { PluginApi } from "./plugin.ts";
+import type { Plugin, PluginApi } from "./plugin.ts";
+import { createPluginRuntime } from "./plugin-runtime.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { StoreConnection } from "./store.ts";
 import { stoppableTool } from "./tool-runner.ts";
@@ -124,6 +130,22 @@ export interface Kernel {
   snapshots(session: SessionId): Promise<RunSnapshots | null>;
   /** Resolves the environment a session's tools run against; core-f fills it. */
   env(session: SessionId): Promise<ExecutionEnv>;
+  /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`; core-f (f2) fills it. */
+  wrapEnv(session: SessionId, wrap: EnvironmentWrap): Disposer;
+  /** Resolves what core scanned for a session, gated by its workspace's `projectResources`: `PluginApi.inputs`; core-f (f2) fills it. */
+  resources(session: SessionId): Promise<Resources>;
+  /** Sends one non-run model request charged to a session: `PluginApi.request`; core-f (f3) fills it. */
+  request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
+  /** The key core encrypts plugin secrets with (decision 10); null when the composer gave none, and then `secrets.set` answers `unavailable`. */
+  readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
+  /** The core plugins every session loads, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
+  hostPlugins: readonly Plugin<"core">[];
+  /** Returns a session's plugin runtime, created empty on first use and kept for the kernel's life. */
+  pluginsFor(session: SessionId): PluginRuntime;
+  /** Returns what a session's plugins contributed as last published, in memory; default the empty catalog. */
+  catalog(session: SessionId): SessionCatalogView;
+  /** Sets a session's catalog in memory and publishes a `catalog` event to it. */
+  setCatalog(session: SessionId, catalog: SessionCatalogView): void;
   /** Returns the api of the plugin that owns a part definition, in a session; core-f fills it. */
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
   /** Hot plugin replacement and preflight; core-f fills it. */
@@ -335,7 +357,7 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null) and `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null), `secrets` (null), `hostPlugins` (none), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists) and `pluginsFor` (a `createPluginRuntime` per session over this kernel, built on first use). */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -364,6 +386,12 @@ export function createKernel(
         | "afterTool"
         | "snapshots"
         | "env"
+        | "wrapEnv"
+        | "resources"
+        | "request"
+        | "secrets"
+        | "hostPlugins"
+        | "pluginsFor"
         | "pluginApi"
         | "plugins"
         | "principals"
@@ -376,6 +404,8 @@ export function createKernel(
   const activations = new Map<SessionId, Activation>();
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
+  const catalogs = new Map<SessionId, SessionCatalogView>();
+  const runtimes = new Map<SessionId, PluginRuntime>();
   let waits = input.waits ?? null;
   let definitions = input.partDefinitions ?? null;
 
@@ -434,6 +464,33 @@ export function createKernel(
     afterTool: input.afterTool ?? (async (outcome) => outcome),
     snapshots: input.snapshots ?? (async () => null),
     env: input.env ?? (async () => unavailable("env")),
+    wrapEnv: input.wrapEnv ?? (() => unavailable("wrapEnv")),
+    resources: input.resources ?? (async () => unavailable("resources")),
+    request: input.request ?? (async () => unavailable("request")),
+    secrets: input.secrets ?? null,
+    hostPlugins: input.hostPlugins ?? [],
+    pluginsFor:
+      input.pluginsFor ??
+      ((session) => {
+        const known = runtimes.get(session);
+
+        if (known !== undefined) return known;
+        const created = createPluginRuntime(kernel, session);
+        runtimes.set(session, created);
+
+        return created;
+      }),
+    catalog: (session) => catalogs.get(session) ?? EMPTY_CATALOG,
+    setCatalog(session, value) {
+      catalogs.set(session, value);
+      bus.publish(session, {
+        seq: asSeq(0),
+        at: Date.now(),
+        head: null,
+        kind: "catalog",
+        catalog: value,
+      });
+    },
     pluginApi: input.pluginApi ?? (() => unavailable("pluginApi")),
     plugins: input.plugins ?? NO_PLUGINS,
     principals: input.principals ?? NO_PRINCIPALS,

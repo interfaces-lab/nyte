@@ -157,7 +157,8 @@ const UNCONFIGURED: SessionView["configuration"] = { selected: null, effective: 
 
 const NO_CONTEXT: ContextView = { tokens: 0, window: 0, lastRequest: null };
 
-const EMPTY_CATALOG: SessionCatalogView = {
+/** The catalog of a session with no plugin contributions: what a fold starts with and `kernel.catalog` answers before any publish. */
+export const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],
   settings: [],
   skills: [],

@@ -170,7 +170,8 @@ export type RecordKind =
   | "seen"
   | "workspace"
   | "lease"
-  | "call";
+  | "call"
+  | "kv";
 
 /** Returns a record in the stored-object envelope `{ kind, parent, at, body }`; `parent` is a commit's parent and null for every other record. */
 export function envelope(
