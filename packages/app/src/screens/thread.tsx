@@ -1145,6 +1145,18 @@ function DropPreview({
 const KEY_OWNERS =
   'input, textarea, select, [contenteditable], [role="textbox"], [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"]';
 
+/** A key owner outside every pane keeps focus: a file editor or terminal mid-edit, a dialog. */
+function keysOwnedOutsidePanes(): boolean {
+  const host = document.activeElement;
+  let active = host;
+
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+
+  return (
+    active !== null && active.matches(KEY_OWNERS) && host?.closest("[data-nyte-pane-id]") === null
+  );
+}
+
 /**
  * Typing while nothing owns the keys starts a message in the active pane.
  * Focus moves during keydown, so the browser types the character into the
@@ -1225,7 +1237,8 @@ function PaneHost({
   );
 
   useLayoutEffect(() => {
-    if (focusRequest.paneId === pane.id) inputRef.current?.focus();
+    if (focusRequest.paneId !== pane.id || keysOwnedOutsidePanes()) return;
+    inputRef.current?.focus();
   }, [focusRequest.paneId, focusRequest.revision, pane.id]);
 
   return (
