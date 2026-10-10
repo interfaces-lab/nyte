@@ -1,6 +1,7 @@
 import { asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
+  CallId,
   CommandOutcome,
   CommitId,
   Configuration,
@@ -35,9 +36,13 @@ import { SdkError } from "./error.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
 import type { Job, Jobs } from "./jobs.ts";
+import { createPartDefinitions } from "./part-definitions.ts";
+import type { PartDefinitions } from "./part-definitions.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
+import type { PluginApi } from "./plugin.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { StoreConnection } from "./store.ts";
+import type { Durable } from "./tools.ts";
 import { createFoldCache } from "./watch.ts";
 import type { FoldCache } from "./watch.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
@@ -94,6 +99,12 @@ export interface Kernel {
   workspace(id: WorkspaceId): Workspace;
   /** Creates parts and binds part handles; core-d fills it. */
   readonly parts: PartProvider;
+  /** The part definitions this host knows, by kind, with their owners. */
+  readonly partDefinitions: PartDefinitions;
+  /** Builds the durable-step primitives a tool, part action or decide hook uses; core-e fills it. */
+  readonly durable: DurableProvider;
+  /** Returns the api of the plugin that owns a part definition, in a session; core-f fills it. */
+  pluginApi(owner: string, session: SessionId): PluginApi<"core">;
   /** Hot plugin replacement and preflight; core-f fills it. */
   readonly plugins: Host["plugins"];
   /** Who may connect; core-f fills it. */
@@ -212,6 +223,18 @@ export interface PartProvider {
   part(context: ConnectionContext, session: SessionId, id: PartId): Part<PartDefinition>;
 }
 
+/** Builds the `Durable` one step runs with: its call, where it runs, and the signal that stops it. */
+export interface DurableProvider {
+  /** Returns the durable-step primitives for a call; `run` is null for a step outside a run, `head` null for one outside a head. */
+  context(input: {
+    readonly session: SessionId;
+    readonly head: HeadName | null;
+    readonly run: RunId | null;
+    readonly call: CallId;
+    readonly signal: AbortSignal;
+  }): Durable;
+}
+
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
 
 const NO_TURN: TurnDriver = { run: async () => unavailable("turn") };
@@ -252,6 +275,14 @@ const NO_JOBS: Jobs = {
   watch: () => unavailableStream("workspace"),
 };
 
+const UNRECORDED: DurableProvider = {
+  context: () => ({
+    wait: async () => unavailable("durable"),
+    memo: async (_name, compute) => compute(),
+    now: () => Date.now(),
+  }),
+};
+
 const NO_PLUGINS: Host["plugins"] = {
   replace: async () => unavailable("plugins"),
   check: async () => unavailable("plugins"),
@@ -263,7 +294,7 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table and wakes; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown) and `wake` (false). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `wake` (false) and `durable` (unrecorded: `wait` rejects `unavailable`, `memo` computes, `now` is the wall clock). */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -285,6 +316,9 @@ export function createKernel(
         | "workspaces"
         | "workspace"
         | "parts"
+        | "partDefinitions"
+        | "durable"
+        | "pluginApi"
         | "plugins"
         | "principals"
         | "prune"
@@ -333,6 +367,9 @@ export function createKernel(
     workspaces: input.workspaces ?? NO_WORKSPACES,
     workspace: input.workspace ?? unavailableWorkspace,
     parts: input.parts ?? NO_PARTS,
+    partDefinitions: input.partDefinitions ?? createPartDefinitions(),
+    durable: input.durable ?? UNRECORDED,
+    pluginApi: input.pluginApi ?? (() => unavailable("pluginApi")),
     plugins: input.plugins ?? NO_PLUGINS,
     principals: input.principals ?? NO_PRINCIPALS,
     prune: input.prune ?? (async () => unavailable("prune")),

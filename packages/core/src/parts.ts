@@ -276,7 +276,7 @@ export function isPart<K extends PartDefinition>(message: Message, kind: K): mes
  * @category parts
  * @since 0.1.0
  */
-export const text: PartDefinition<{ readonly markdown: string }, {}> = notImplemented();
+export const text: PartDefinition<{ readonly markdown: string }, {}> = placeholder("text", {});
 
 /**
  * Returns the built-in thinking part. Role step; adjacent thoughts are one
@@ -285,7 +285,7 @@ export const text: PartDefinition<{ readonly markdown: string }, {}> = notImplem
  * @category parts
  * @since 0.1.0
  */
-export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}> = notImplemented();
+export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}> = placeholder("thinking", {});
 
 /**
  * Returns the built-in tool part. Role step; its one action stops the call.
@@ -293,7 +293,7 @@ export const thinking: PartDefinition<{ readonly markdown: string; readonly merg
  * @category parts
  * @since 0.1.0
  */
-export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = notImplemented();
+export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = placeholder("tool", { stop: { input: rejecting() } });
 
 /**
  * Returns the built-in compaction part. Role note: context was summarised
@@ -302,7 +302,7 @@ export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly inp
  * @category parts
  * @since 0.1.0
  */
-export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = notImplemented();
+export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = placeholder("compaction", {});
 
 /**
  * Returns the built-in branch summary part. Role note: what an abandoned
@@ -311,8 +311,28 @@ export const compaction: PartDefinition<{ readonly summary: string | null; reado
  * @category parts
  * @since 0.1.0
  */
-export const branchSummary: PartDefinition<{ readonly markdown: string }, {}> = notImplemented();
+export const branchSummary: PartDefinition<{ readonly markdown: string }, {}> = placeholder("branchSummary", {});
 
-function notImplemented(): never {
-  throw new Error("not implemented");
+/** Returns an inert built-in until core-d's implement phase: its state schema rejects every value and its fallback throws, so importing the barrel does not. */
+function placeholder<State, Actions extends ActionSchemas>(kind: string, actions: Actions): PartDefinition<State, Actions> {
+  return {
+    kind,
+    state: rejecting(),
+    actions,
+    fallback: () => {
+      throw new Error("not implemented");
+    },
+  };
+}
+
+/** Returns a schema that rejects every value with one `not implemented` issue and converts to the empty JSON Schema. */
+function rejecting<T>(): Schema<T> {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "nyte",
+      validate: () => ({ issues: [{ message: "not implemented" }] }),
+      jsonSchema: { input: () => ({}), output: () => ({}) },
+    },
+  };
 }
