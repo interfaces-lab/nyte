@@ -225,8 +225,6 @@ interface OpenOptions {
   readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
   /** The key core encrypts secrets with before storing them. The host composes it: OS keychain, else a 0600 file. Omitted = `secrets.set` answers unavailable. */
   readonly secrets?: { key(): Promise<Uint8Array> };
-  /** The person's own `.nyte` (skills, prompts, SYSTEM.md, AGENTS.md) as files. The host's, not the environment's: a session in a sandbox still gets its owner's skills. A desktop passes the local provider's files over `~/.nyte`; a durable object passes nothing. */
-  readonly inputs?: { readonly user: FilesApi };
 }
 
 /**
@@ -743,7 +741,7 @@ interface HostView {
  *
  * **Details**
  *
- * There is no trust state. A registered workspace runs; `projectInput` says
+ * There is no trust state. A registered workspace runs; `projectResources` says
  * whether its own code runs too. A tool invocation's sdk has no owner
  * authority, so a run cannot register a folder.
  *
@@ -758,7 +756,7 @@ interface Workspaces {
    */
   list(): Promise<readonly WorkspaceInfo[]>;
   /**
-   * Resolves a target's identity and scans its project input; registers
+   * Resolves a target's identity and scans its project resources; registers
    * nothing. What a client shows before `add`.
    *
    * @throws {SdkError} unavailable when no environment provider serves the target's kind.
@@ -777,7 +775,7 @@ interface Workspaces {
    *
    * **Details**
    *
-   * `projectInput` defaults to true: the owner adding it is the consent. Pass
+   * `projectResources` defaults to true: the owner adding it is the consent. Pass
    * the inspected identity as `expect` so a folder swapped under the path is
    * `stale`, not added.
    *
@@ -804,7 +802,7 @@ interface Workspaces {
    *
    * @authority owner
    */
-  add(target: WorkspaceTarget, options?: { readonly projectInput?: boolean; readonly expect?: { readonly identity: EnvironmentIdentity } }): Promise<AddOutcome>;
+  add(target: WorkspaceTarget, options?: { readonly projectResources?: boolean; readonly expect?: { readonly identity: EnvironmentIdentity } }): Promise<AddOutcome>;
   /**
    * Removes the workspace record; never touches files.
    *
@@ -1160,7 +1158,7 @@ interface Sessions {
     readonly workspace?: WorkspaceId;
     /** A child is a session with lineage, nothing more. */
     readonly parent?: SessionId;
-    readonly configuration?: InputChoice;
+    readonly configuration?: Choice;
     /** This session's own system prompt section: a subagent's role, without a registered agent. */
     readonly prompt?: PromptOverride;
   }): Promise<Session>;
@@ -1600,9 +1598,9 @@ interface SendOptions {
   /** With replace on a pending message: reorder the queue. */
   readonly position?: { readonly kind: "last" } | { readonly kind: "before"; readonly message: MessageId };
   /** Default user. */
-  readonly source?: InputSource;
+  readonly source?: MessageSource;
   /** Default: capture the head's selection at admission. */
-  readonly configuration?: InputChoice;
+  readonly configuration?: Choice;
   /** Only to retry across your own restart; same id + same content replays the receipt. */
   readonly id?: ReceiptId;
 }
@@ -1688,7 +1686,7 @@ type Position = { readonly kind: "start" } | { readonly kind: "commit"; readonly
  *
  * `configure` takes a patch and changes the head's durable selection. `send`
  * takes a patch or a {@link ResolvedChoice} and affects that input only. A
- * patch has no discriminant; `InputChoice` narrows on `"kind" in choice`.
+ * patch has no discriminant; `Choice` narrows on `"kind" in choice`.
  *
  * @see {@link ResolvedChoice} for what admission resolves it to
  * @category heads
@@ -1733,7 +1731,7 @@ type ResolvedChoice = {
  * @category heads
  * @since 0.1.0
  */
-type InputChoice = ChoicePatch | ResolvedChoice;
+type Choice = ChoicePatch | ResolvedChoice;
 /**
  * Names who sent an input.
  *
@@ -1746,7 +1744,7 @@ type InputChoice = ChoicePatch | ResolvedChoice;
  * @category heads
  * @since 0.1.0
  */
-type InputSource =
+type MessageSource =
   | { readonly kind: "user" }
   | { readonly kind: "child"; readonly session: SessionId }
   | { readonly kind: "job"; readonly job: JobId }
@@ -2592,7 +2590,7 @@ type Message = { readonly id: MessageId; readonly turn: TurnId; readonly at: num
   | {
       readonly kind: "user";
       readonly content: UserContent;
-      readonly source: InputSource;
+      readonly source: MessageSource;
       readonly delivery: Delivery;
       readonly status: UserStatus;
       /** Alternatives sharing this message's parent; count 1 = never edited. */
@@ -2627,7 +2625,7 @@ type Message = { readonly id: MessageId; readonly turn: TurnId; readonly at: num
  */
 type UserStatus =
   | { readonly kind: "unsent"; readonly attempts: number; readonly retrying: { readonly at: number; readonly reason: string } | null }
-  | { readonly kind: "pending"; readonly schedule: InputSchedule; readonly covered: boolean }
+  | { readonly kind: "pending"; readonly schedule: Schedule; readonly covered: boolean }
   | { readonly kind: "landed"; readonly commit: CommitId; readonly run: RunId | null; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null };
 /**
  * Returns when a pending input will run.
@@ -2641,7 +2639,7 @@ type UserStatus =
  * @category views
  * @since 0.1.0
  */
-type InputSchedule =
+type Schedule =
   | { readonly kind: "joined"; readonly run: RunId }
   | { readonly kind: "next-turn"; readonly reason: "requested" | "idle" | "run-ended" | "configuration" }
   | { readonly kind: "attached" };
@@ -2901,7 +2899,7 @@ interface Workspace {
    */
   watch(): AsyncIterable<WorkspaceInfo>;
   /**
-   * Turns project input on or off.
+   * Turns project resources on or off.
    *
    * **Details**
    *
@@ -2910,9 +2908,9 @@ interface Workspace {
    *
    * @authority owner
    */
-  update(patch: { readonly projectInput?: boolean }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
+  update(patch: { readonly projectResources?: boolean }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
   /**
-   * Re-reads project input; sessions on this workspace re-activate. The
+   * Re-reads project resources; sessions on this workspace re-activate. The
    * retry after `Activation` failed.
    *
    * @authority owner
@@ -2988,11 +2986,11 @@ interface WorkspaceInfo {
    * **Details**
    *
    * There is no trust state. Core loads project plugins and skills for a
-   * workspace with project input through its environment provider; the host
+   * workspace with project resources through its environment provider; the host
    * supplies no loader closure and no trust store.
    */
-  readonly projectInput: boolean;
-  /** What project input would load. */
+  readonly projectResources: boolean;
+  /** What project resources would load. */
   readonly projectSources: readonly string[];
   readonly addedBy: PrincipalId;
   /** How many sessions use it. */
@@ -4217,7 +4215,7 @@ interface Agent {
    * **Details**
    *
    * The system prompt is sections: builtins (system-prompt 0, tools, rules,
-   * cwd, skills, project-context), `Inputs.prompt` from SYSTEM.md /
+   * cwd, skills, project-context), `Resources.prompt` from SYSTEM.md /
    * APPEND_SYSTEM.md, and plugins'. `layer` adds one more at an order.
    * `replace` makes the whole prompt this text, every section suppressed,
    * byte for byte: what a cached reviewer role needs. Tools are declared
@@ -4589,7 +4587,7 @@ interface IntegrityReport { readonly ok: boolean; readonly issues: readonly { re
  */
 interface ValidationIssue { readonly severity: "error" | "warning"; readonly path: readonly (string | number)[]; readonly message: string; readonly source?: { readonly plugin: string; readonly file?: string; readonly line?: number } }
 
-// 4c-bis. Inputs
+// 4c-bis. Resources
 
 /**
  * Returns what core scanned for a session: user and project files, skills,
@@ -4606,7 +4604,7 @@ interface ValidationIssue { readonly severity: "error" | "warning"; readonly pat
  *   `.nyte/APPEND_SYSTEM.md`, `.agents/skills`, and AGENTS.override.md ›
  *   AGENTS.md › CLAUDE.md in the workspace root and every ancestor up to /,
  *   root first; a git worktree's file shadows the main repository's by real
- *   path. Hidden entirely when `projectInput` is false.
+ *   path. Hidden entirely when `projectResources` is false.
  * - extra: skill paths from the host setting "skills.paths": a directory or
  *   a .md.
  *
@@ -4614,13 +4612,13 @@ interface ValidationIssue { readonly severity: "error" | "warning"; readonly pat
  * knows another source (a company registry) adds through
  * `contribute.skills`; nothing in core is the last word on where skills live.
  *
- * @category inputs
+ * @category resources
  * @since 0.1.0
  */
-interface Inputs {
-  /** `OpenOptions.inputs.user`; null when the host passed none. */
+interface Resources {
+  /** The local provider attached at the host home's `.nyte`; null when no local provider is registered (a durable object). The host machine is just another target of the local provider. */
   readonly user: FilesApi | null;
-  /** Rooted at .nyte; null when projectInput is false or absent. */
+  /** Rooted at .nyte; null when projectResources is false or absent. */
   readonly project: FilesApi | null;
   /** Deduplicated by name, project wins; collisions reported on `HostView.plugins[].issues`. */
   readonly skills: readonly { readonly name: string; readonly location: string; readonly scope: "user" | "project" | "path"; readonly description: string }[];
@@ -4722,8 +4720,8 @@ type SideTable = {
       readonly env: ExecutionEnv;
       /** Layers on the environment; may add a browser to one that lacks it: the desktop adds its viewport browser to local. */
       wrapEnv(wrap: EnvironmentWrap): Disposer;
-      /** What core scanned for this session; gated by projectInput. Skills and context files read this, never the raw tree. */
-      readonly inputs: Inputs;
+      /** What core scanned for this session; gated by projectResources. Skills and context files read this, never the raw tree. */
+      readonly inputs: Resources;
       /** Sends one non-turn request, charged to the session. Nothing streams; nothing is a run. */
       request<T = string>(input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
     };
@@ -4891,11 +4889,11 @@ type Declared<S extends Side> = {
  * @category hooks
  * @since 0.1.0
  */
-interface UserInput {
+interface Submission {
   readonly content: UserContent;
-  readonly source: InputSource;
+  readonly source: MessageSource;
   readonly delivery: Delivery;
-  readonly configuration: InputChoice | null;
+  readonly configuration: Choice | null;
   readonly replace: MessageId | null;
 }
 /**
@@ -5083,7 +5081,7 @@ type HookTable = {
   /** After a session's plugins activate. */
   session_activated: Observe<{ readonly session: Session }, "core">;
   /** Every caller: user, tool, child, job. */
-  before_send: Decide<UserInput, "core">;
+  before_send: Decide<Submission, "core">;
   /** When a run starts. */
   run_started: Observe<RunView, "core">;
   /** Rewrites what the kernel assembled for a request. */
@@ -5493,8 +5491,8 @@ type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "head"; readonly from: CommitId | null; readonly to: CommitId | null; readonly reason: "moved" | "merged" | "created" | "removed" }
   | { readonly kind: "seen"; readonly principal: PrincipalId; readonly commit: CommitId | null }
   | { readonly kind: "input"; readonly message: MessageId } & (
-      | { readonly change: "admitted"; readonly content: UserContent; readonly source: InputSource; readonly delivery: Delivery; readonly schedule: InputSchedule; readonly covered: boolean; readonly choice: ResolvedChoice; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
-      | { readonly change: "scheduled"; readonly schedule: InputSchedule }
+      | { readonly change: "admitted"; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly schedule: Schedule; readonly covered: boolean; readonly choice: ResolvedChoice; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
+      | { readonly change: "scheduled"; readonly schedule: Schedule }
       | { readonly change: "landed"; readonly commit: CommitId; readonly run: RunId | null }
       | { readonly change: "withdrawn" }
       | { readonly change: "superseded"; readonly by: MessageId }
@@ -5559,7 +5557,7 @@ type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & ({ readonl
  * @since 0.1.0
  */
 type CommitBody =
-  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: InputSource; readonly delivery: Delivery; readonly siblings: readonly CommitId[] }
+  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly siblings: readonly CommitId[] }
   | { readonly kind: "part"; readonly part: PartId }
   | { readonly kind: "compaction"; readonly part: PartId; readonly replaces: readonly CommitId[] }
   | { readonly kind: "branchSummary"; readonly part: PartId; readonly replaces: readonly CommitId[] };

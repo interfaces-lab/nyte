@@ -133,7 +133,7 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done
 | [ ] | `NyteServerOptions.environment, permissions` | workspaces and resources are declarations with authority owner. |
 | [ ] | `OperationFn<"workspace.vcs.diff"> remote` | generated from declarations; the Sdk shape is the client. |
 | [ ] | `RemoteNyte / RemoteSessions / Remote*` | one Sdk type for local and remote. |
-| [ ] | `NyteOptions.trust callback, WorkspaceTrust` | no trust state. add() is the consent; projectInput is the one fact. |
+| [ ] | `NyteOptions.trust callback, WorkspaceTrust` | no trust state. add() is the consent; projectResources is the one fact. |
 | [ ] | `HostOptions.resolveWorkspace,` | workspaces.inspect/add; the record lives in core's store. WorkspaceStore + workspaces.json |
 | [ ] | `EnvironmentProvider provision/suspend/open` | inspect / attach / destroy; git, snapshots, browser, terminals as optional supplies. |
 | [ ] | `"git on every host"` | wrong layer. Git is per environment; unsupported stays possible for a no-filesystem environment. |
@@ -148,7 +148,7 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done
 | [ ] | `HookMap, hand-written Owns<S>` | ContributionTable / HookTable rows; Available<> derives the rest. |
 | [ ] | `TSchema / typebox at the plugin boundary` | Schema<T> = StandardSchemaV1 & StandardJSONSchemaV1. |
 | [ ] | `admin.session(id) diagnostics` | host.inspect(id). |
-| [ ] | `WorkspaceTrust.plugins / changes closures` | core loads project input through the environment provider. |
+| [ ] | `WorkspaceTrust.plugins / changes closures` | core loads project resources through the environment provider. |
 | [ ] | `CacheWarmingPlan, NyteOptions.cacheWarming` | request for the warm. Core decides nothing about caches. NyteOptions.telemetry / onDiagnostic / drain a telemetry plugin on after_request; summary failures are run failures; drain is kernel policy. |
 | [ ] | `diagnostics.notify (bell from core)` | no. Core asks and alerts nothing; a client plugin on a hook may. |
 | [ ] | `host.pluginSources.invalidate` | workspace.reload(). |

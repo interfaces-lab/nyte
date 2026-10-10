@@ -35,7 +35,7 @@ every authority. A token principal is `PrincipalId("token")` with
 `"local"` and `"token"` are reserved; `pair` never mints them.
 
 **5. `OpenOptions.workspace`.** `open` registers it as `addedBy: "local"`,
-`projectInput: true`, with `expect` unset (the owner starting the host is the
+`projectResources: true`, with `expect` unset (the owner starting the host is the
 consent). If it is already registered, `exists`. It becomes the default for
 `sessions.create` without `workspace`.
 
@@ -67,7 +67,7 @@ its account session.
 - `stream` kind (`bytes`, `capture`, `blob`, `output`): `application/octet-stream`
   response, chunked. `job.output` frames `gap` and `exit` as a trailing JSON
   line after a zero-length chunk; the sdk reconstructs `OutputFrame`.
-- Inputs that carry bytes (`files.write`, `job.write`, `upload`,
+- Resources that carry bytes (`files.write`, `job.write`, `upload`,
   `batch().put` with contents): `application/octet-stream` body, and the JSON
   input in the `X-Nyte-Input` header, base64url. One shape for all four.
 - `fetch` transport is identical; it is the same handler without a socket.
@@ -79,13 +79,13 @@ the journal over AsyncStorage. There is no Swift generation. The catalog on
 appears later; nothing in this rewrite consumes it. The package map row for
 `mobile` is corrected to say this.
 
-**9. `Inputs.user`.** The person's `.nyte` belongs to the host composition,
-not to the environment: a session whose tools run in a sandbox still wants
-its owner's skills, and a sandbox provider cannot know them.
-`OpenOptions.inputs?: { user: FilesApi }`; the desktop passes the local
-provider's files over `~/.nyte`, a durable object passes nothing.
-`Inputs.user` is `FilesApi | null`. Core still touches no filesystem except
-through a `FilesApi` it was handed.
+**9. `Resources.user`.** The person's `.nyte` is on the host machine, and
+the host machine is the local provider's machine by construction. Core
+attaches the registered `"local"` provider at the home's `.nyte` and that is
+`Resources.user`; no local provider (a durable object) → `null`. A session
+whose tools run in a sandbox still gets its owner's skills, because the
+resources come from the host, not from the session's environment. No option
+on `open`; core still touches no filesystem except through an `ExecutionEnv`.
 
 **10. Secrets key.** `OpenOptions.secrets?: { key(): Promise<Uint8Array> }`.
 Core encrypts secret values with it before `objects.put` and never logs or
@@ -109,7 +109,7 @@ first `open`, written never. Unknown ids are reported as warnings on
 |---|---|
 | `system-prompt` | prompt sections `system-prompt` (0), `tools` (1), `rules` (2), `docs` (3) |
 | `environment` | prompt section `cwd`; the `read`, `write`, `edit`, `list`, `bash` tools (`ToolClass` read / edit / edit / list / shell) |
-| `inputs` | prompt sections `project-context` (10), `skills` (90); skills from `Inputs` |
+| `inputs` | prompt sections `project-context` (10), `skills` (90); skills from `Resources` |
 | `delegation` | tools `task`, `create`, `send`, `await`, `read`, `stop` (`ToolClass.delegate` with the matching role) |
 | `parts` | the built-in part definitions and their fallback renderers |
 
