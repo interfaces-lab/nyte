@@ -397,7 +397,6 @@ interface Connection {
    */
   watch(): AsyncIterable<HostView>;
 
-  /** Providers, credentials, models, limits: one thing. Authority is per operation. */
   /**
    * Reads a blob a message or tool result refers to: an attached image, a
    * screenshot. Blobs are content-addressed and immutable.
@@ -407,6 +406,7 @@ interface Connection {
    * @authority participant
    */
   blob(id: BlobId): Promise<ByteReader>;
+  /** Providers, credentials, models, limits: one thing. Authority is per operation. */
   readonly models: ModelsApi;
   /** Host-scope settings, builtin and plugin. */
   readonly settings: SettingsApi;
@@ -1394,17 +1394,6 @@ interface Head {
   compact(input?: { readonly instructions?: string }): Promise<{ readonly kind: "started"; readonly message: MessageId } | { readonly kind: "busy"; readonly run: RunId } | { readonly kind: "nothing-to-compact" }>;
 }
 /**
- * Returns the head's commit DAG as flat rows, ready to draw in one pass.
- *
- * **Details**
- *
- * Filters (hide tools, users only, all) are the client's one pass over
- * `nodes`; folding is client state. Nothing walks the DAG outside core.
- *
- * @category heads
- * @since 0.1.0
- */
-/**
  * Bounds what a view carries. The tail is what a client draws on open; the
  * rest comes from `history()` as the user scrolls back. Turns, parts and
  * everything else are whole.
@@ -1416,6 +1405,17 @@ interface ViewOptions {
   /** How many messages from the end to carry. Default: the host's bound. */
   readonly tail?: number;
 }
+/**
+ * Returns the head's commit DAG as flat rows, ready to draw in one pass.
+ *
+ * **Details**
+ *
+ * Filters (hide tools, users only, all) are the client's one pass over
+ * `nodes`; folding is client state. Nothing walks the DAG outside core.
+ *
+ * @category heads
+ * @since 0.1.0
+ */
 interface TreeView {
   /** Pass as `expect` to `move`; stale if the tree grew meanwhile. */
   readonly revision: Revision;
@@ -1640,6 +1640,21 @@ type UserContent =
  * @since 0.1.0
  */
 type Position = { readonly kind: "start" } | { readonly kind: "commit"; readonly id: CommitId };
+/**
+ * Changes a head's selection one field at a time: omit a field to keep it,
+ * pass null where allowed to clear an override.
+ *
+ * **Details**
+ *
+ * `configure` takes a patch and changes the head's durable selection. `send`
+ * takes a patch or a {@link ResolvedChoice} and affects that input only. A
+ * patch has no discriminant; `InputChoice` narrows on `"kind" in choice`.
+ *
+ * @see {@link ResolvedChoice} for what admission resolves it to
+ * @category heads
+ * @since 0.1.0
+ */
+type ChoicePatch = {
   /** Omit = keep. A fast variant is a model ref, not a flag. */
   readonly model?: ModelRef;
   /** Omit = keep; null = clear the override, resolve the default at admission. */
@@ -2988,12 +3003,6 @@ interface JobView {
   readonly tail: string;
 }
 /**
- * Starts, lists and watches a workspace's background processes.
- *
- * @category jobs
- * @since 0.1.0
- */
-/**
  * How a job stands: running, exited with a code, or lost with the host.
  *
  * @category jobs
@@ -3015,6 +3024,12 @@ type JobEnd = Extract<JobState, { readonly kind: "exited" | "lost" }>;
  */
 type EndReason = "exited" | "terminated" | "expired" | "host-lost";
 
+/**
+ * Starts, lists and watches a workspace's background processes.
+ *
+ * @category jobs
+ * @since 0.1.0
+ */
 interface Jobs {
   /**
    * Starts a process that outlives the caller: a background command, or an

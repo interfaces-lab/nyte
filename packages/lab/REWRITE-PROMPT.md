@@ -13,8 +13,7 @@ plan, split, assign, verify and merge. You do not write package code yourself.
 ## Models
 
 Every agent in this effort, runs on `anthropic/claude-opus-5-5`
-with thinking level `high`. No implementer or reviewer runs on another model.
-When you spawn a subagent, set both explicitly.
+with thinking level `high`. No implementer or reviewer runs on another model. You should not stop until a serious error is encountered or the implementation is fully done
 
 ## Source of truth
 
@@ -105,7 +104,11 @@ Within a package, declarations before implementations.
    `ByteReader`, `ScanFrame`, `SearchFrame`, `FileEvent`, `FileChange`,
    `GitFileSides`, `GitCommitView`, `GitRefsView`, `BlameView`, `PageInfo`,
    `PageSnapshot`, `DocumentRevision`, `IdentityChallenge`, `HostDescription`,
-   `Owned`, `Disposer`, `Json`, `Seq`, `Cursor`, `Revision`, every `*Id`).
+   `Owned`, `Disposer`, `Json`, `JsonSchema`, `Seq`, `Cursor`, `Revision`,
+   `Paged<T>`, `ParentFilter`, `PartView`, `RequestOptions`,
+   `CatalogGeneration`, `FileVersion`, `GitRevision`, `JobKey`, `HeadName`,
+   `AddOutcome`, `ForgetOutcome`, `FormatOutcome` (their variants are listed
+   in prose on the method), `Failure` (the existing schema type), every `*Id`).
    The schema work order lists each one with its proposed declaration, for my
    approval, before any is implemented.
 2. `packages/core` — the kernel. Too large for one work order; it is six, in
@@ -182,7 +185,7 @@ passed.
 
 ## What you report to me
 
-After reading the baseline, before any work order: a one-page plan listing the
+After reading the baseline, before any work order: a one-paragraph plan listing the
 packages in order, what each deletes and creates in one line, and every place
 the baseline is silent on something a package needs. I answer; then you start.
 
