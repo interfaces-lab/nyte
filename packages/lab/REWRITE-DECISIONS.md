@@ -139,3 +139,58 @@ the word and they change:
 - **10**: secrets key from the OS keychain with a file fallback (vs. file only).
 - **13**: the built-in set, especially that delegation and the five fs tools
   are built in while codemode is not.
+
+## Vocabulary, settled
+
+Names the baseline uses on purpose; do not propose alternatives for these.
+
+| word | means | not |
+|---|---|---|
+| `Configuration` | a run's resolved selection: model, thinking, agent, settings, `settingsVersion`; carries `kind: "exact"` | "choice" |
+| `ConfigurationPatch` | the partial form a caller passes: omit = keep, value = set, `null` = clear the override. Data, not an action; "patch" is the file's word for this omit/set/null shape, as in `session.update(patch)` and `workspace.update(patch)` | `Partial<Configuration>` (that would promise the wrong thing about `null`) |
+| `Resources` | what core scanned from the person's and the project's `.nyte` and the `.agents` convention: skills, prompts, context files, `SYSTEM.md` | "inputs" |
+| `projectResources` | whether the project's own code runs | "projectInput", "trust" |
+| `Submission` | the `before_send` payload | "UserInput" |
+| `MessageSource` | who sent a message: user, child, job, shell, action | "InputSource" |
+| `Schedule` | where an admitted message was placed: joined, next-turn, attached | "InputPlacement" |
+| `input` | a tool's, an action's or a declaration's arguments. Nothing else. | |
+| `Placement` | where a part shows: transcript, modal, or any string a client knows | |
+| `receipt` | the handle for durable work: send, move, batch | "operation" |
+| `job` | the one process primitive; a pty job is a terminal | "terminal" as a separate thing |
+| `reload` | `PluginApi.reload()`: re-derive what a plugin offers; `Workspace.reload()`: re-read project resources | "rebuild", "refresh" |
+
+## Since the core (a) questions
+
+Changes to the baseline after the fourteen answers, so a work order written
+against an earlier read is corrected here:
+
+- Relay transport withdrawn (decision 6 rewritten). `ListenOptions.transport`
+  is `http | fetch`; `connect` stays as the desktop-side relay over
+  `listener.fetch`.
+- `EnvironmentProvider.user` and `OpenOptions.inputs` withdrawn (decision 9
+  rewritten). `Resources.user` is the `"local"` provider attached at `~/.nyte`,
+  or `null`.
+- `OpenOptions.secrets`, `Connection.credential`, `host/identity` and
+  `sessions/<id>/leases/<head>` refs stand.
+- `Inputs` → `Resources`; `projectInput` → `projectResources`; `UserInput` →
+  `Submission`; `InputSource` → `MessageSource`; `InputSchedule` → `Schedule`;
+  `ChoicePatch` → `ConfigurationPatch`; `ResolvedChoice` → `Configuration`;
+  the `Choice` / `InputChoice` union is gone, fields are typed
+  `Configuration | ConfigurationPatch` and narrow on `"kind" in value`.
+- `ModelMessage` imports from `@nyte-ai/schema/model`.
+- Job and terminal are one primitive: `jobs.start({ pty })`, `Job.key`,
+  `jobs.recover(key)`, `Job.resize`, `Job.idle`, `Job.close` detaches, `Job.stop`
+  ends. `TerminalsApi`, `Terminal`, `TerminalAttachment` do not exist.
+- `view(options)` / `watch(options)` take `ViewOptions { tail }`;
+  `head.history({ before, limit })` pages back. `SessionView.seq` is gone.
+- `connection.blob(id)` reads an attachment. `HostView.authority` says what
+  the connected principal may do.
+- `ToolPartState` is phased: `calling | running { progress } | settled { outcome, changes }`.
+- `TurnInfo.summary.byClass` is keyed by `ToolClass["kind"]`.
+- `Registry<T, S, Handle>` and `Command<Args, S>` carry the side.
+- `Declaration.capability` derives from `EnvironmentProvider`'s keys.
+- `packages/bench` exists; the host work order delivers `@nyte-ai/host/bench`
+  per its README. It carries no workspace dependency until `@nyte-ai/sdk` lands.
+
+Start from the baseline as it is now; this list is why a sentence in an older
+work order may no longer match.
