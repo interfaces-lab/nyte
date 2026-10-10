@@ -126,9 +126,79 @@ Store and driver interfaces, `EnvironmentProvider` and `ExecutionEnv` are core
 exports. `Declaration` is a schema record and `declarations` is protocol's.
 Core wraps a provider's files to supply `upload` and `batch().apply()`
 receipts. Jobs are in-memory and lost on restart; `JobView.state.lost` is how
-a client learns it. Undefined names are proposed by the work order that first
-reaches them. Docs live at `packages/docs/content/docs/kernel`. `demo` and
-`lab/src` do not compile at root until the end.
+a client learns it. Names the baseline uses without declaring are declared in
+§15 below; the subagent writes them into `@nyte-ai/schema` in the work order
+that first imports them. There is no proposal or approval step. Docs live at
+`packages/docs/content/docs/kernel`. `demo` and `lab/src` do not compile at
+root until the end.
+
+## 15. Leaf declarations
+
+Every name the baseline uses without declaring. These are the declarations;
+write them into `@nyte-ai/schema` verbatim in the work order that first needs
+them, with a one-line JSDoc each. Nothing here is open.
+
+```ts
+// Ids. One brand helper is the baseline's own pattern (EnvironmentIdentity).
+type Id<Name extends string> = string & { readonly __brand: Name };
+type SessionId = Id<"session">;        type HeadName = Id<"head">;
+type RunId = Id<"run">;                type CallId = Id<"call">;
+type MessageId = Id<"message">;        type TurnId = Id<"turn">;
+type CommitId = Id<"commit">;          type ObjectId = Id<"object">;
+type BlobId = Id<"blob">;              type PartId = Id<"part">;
+type ReceiptId = Id<"receipt">;        type JobId = Id<"job">;
+type JobKey = Id<"job-key">;           type WorkspaceId = Id<"workspace">;
+type PageId = Id<"page">;              type HostId = Id<"host">;
+type PrincipalId = Id<"principal">;    type SnapshotId = Id<"snapshot">;
+type GitCommitId = Id<"git-commit">;   type GitRevision = Id<"git-revision">;
+type FileVersion = Id<"file-version">; type DocumentRevision = Id<"document-revision">;
+type Revision = Id<"revision">;        type CatalogGeneration = Id<"catalog-generation">;
+type Cursor = Id<"cursor">;
+type Seq = number & { readonly __brand: "seq" };
+
+// Primitives.
+type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
+type JsonSchema = { readonly [key: string]: Json };
+type Disposer = () => void;
+interface Owned { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> }
+interface RequestOptions { readonly signal?: AbortSignal }
+interface Paged<T> { readonly items: readonly T[]; readonly next: Cursor | null }
+type ParentFilter = { readonly kind: "all" } | { readonly kind: "roots" } | { readonly kind: "children"; readonly session: SessionId };
+type Capability<T> =
+  | { readonly kind: "available"; readonly api: T }
+  | { readonly kind: "unsupported"; readonly reason: string }
+  | { readonly kind: "denied"; readonly reason: string }
+  | { readonly kind: "unavailable"; readonly retry: "allowed" | "manual"; readonly reason: string };
+interface ByteReader extends Owned { readonly size: number | null; readonly mime: string | null; chunks(): AsyncIterable<Uint8Array> }
+interface IdentityChallenge { readonly nonce: string; readonly signature: string; readonly publicKey: string }
+interface HostDescription { readonly name: string; readonly platform: string; readonly version: string }
+
+// Views and outcomes the baseline names in prose.
+interface PartView { readonly id: PartId; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly status: PartStatus; readonly owner: string | null }
+interface FileChange { readonly path: string; readonly status: FileStatus; readonly added: number; readonly removed: number; readonly from?: string }
+interface FileEntryView { readonly path: string; readonly kind: "file" | "directory" | "symlink"; readonly size: number | null; readonly version: FileVersion | null }
+type FileEvent = { readonly path: string; readonly version: FileVersion | null } & ({ readonly kind: "created" } | { readonly kind: "modified" } | { readonly kind: "removed" });
+type ScanFrame = { readonly kind: "entries"; readonly entries: readonly FileEntryView[] } | { readonly kind: "complete" } | { readonly kind: "incomplete"; readonly reason: "limit" | "changed" | "permission" };
+type SearchFrame = { readonly kind: "match"; readonly path: string; readonly line: number; readonly column: number; readonly text: string } | { readonly kind: "complete" } | { readonly kind: "truncated"; readonly limit: number };
+type AddOutcome = { readonly kind: "added"; readonly workspace: WorkspaceId } | { readonly kind: "exists"; readonly workspace: WorkspaceId } | { readonly kind: "stale"; readonly identity: EnvironmentIdentity } | { readonly kind: "unavailable"; readonly reason: "unsupported" | "unreachable" };
+type ForgetOutcome = { readonly kind: "forgotten" } | { readonly kind: "busy"; readonly sessions: readonly SessionId[] } | { readonly kind: "missing" };
+type FormatOutcome = { readonly kind: "formatted"; readonly contents: string } | { readonly kind: "unchanged" } | { readonly kind: "unavailable"; readonly reason: string };
+type GitStatus =
+  | { readonly kind: "none" }
+  | { readonly kind: "repository"; readonly root: string; readonly head: GitCommitId | null; readonly branch: string | null; readonly upstream: { readonly name: string; readonly ahead: number; readonly behind: number } | null; readonly revision: GitRevision; readonly staged: readonly FileChange[]; readonly unstaged: readonly FileChange[]; readonly untracked: readonly string[]; readonly conflicts: readonly string[] };
+interface GitCommitView { readonly id: GitCommitId; readonly subject: string; readonly author: string; readonly committedAt: number; readonly parents: readonly GitCommitId[] }
+interface GitRefsView { readonly current: string | null; readonly branches: readonly { readonly name: string; readonly commit: GitCommitId; readonly upstream: string | null }[]; readonly remotes: readonly string[] }
+type GitFileSide = { readonly kind: "absent" } | { readonly kind: "text"; readonly text: string } | { readonly kind: "truncated"; readonly head: string } | { readonly kind: "binary" };
+interface GitFileSides { readonly path: string; readonly old: GitFileSide; readonly new: GitFileSide }
+interface BlameView { readonly path: string; readonly lines: readonly { readonly line: number; readonly commit: GitCommitId; readonly author: string; readonly at: number }[] }
+interface PageInfo { readonly id: PageId; readonly url: string; readonly title: string; readonly holders: number }
+interface PageView { readonly id: PageId; readonly url: string; readonly title: string; readonly loading: boolean; readonly revision: DocumentRevision; readonly canGoBack: boolean; readonly canGoForward: boolean }
+interface PageSnapshot { readonly revision: DocumentRevision; readonly nodes: readonly { readonly ref: string; readonly role: string; readonly name: string; readonly editable: boolean; readonly depth: number }[] }
+interface ConsoleEntry { readonly level: "log" | "info" | "warn" | "error"; readonly text: string; readonly at: number }
+```
+
+`Failure`, `ModelMessage`, `Model<Api>` and the provider `Usage` come from
+`@nyte-ai/schema/model` as they exist today; `Failure` is reused unchanged.
 
 ## Flagged for the owner
 

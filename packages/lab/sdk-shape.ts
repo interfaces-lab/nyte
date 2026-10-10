@@ -2,8 +2,10 @@
  * Nyte SDK baseline.
  *
  * The logical shape core, host, protocol and the clients are written to.
- * Declarations only. Unresolved names are schema rows. The old surfaces are
- * mapped in sdk-migration.md; nothing here is defined in terms of them.
+ * Declarations only. Names used here without a declaration are declared in
+ * REWRITE-DECISIONS.md §15 and written into @nyte-ai/schema by the work order
+ * that first needs them; nothing is unresolved. The old surfaces are listed
+ * in REWRITE-TRACKING.md; nothing here is defined in terms of them.
  *
  * **Rules**
  *

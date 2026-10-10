@@ -29,7 +29,11 @@ the plan is complete or you are blocked on input only the user can provide.
 ## Start
 
 Read the four files and the repository layout (`packages/*/package.json`,
-each package's `src` tree). Then start work order `core-a`. Do not write a
+each package's `src` tree). Then start work order `core-a`. The baseline
+references names it does not declare; every one is declared in
+`REWRITE-DECISIONS.md` §15, and the subagent writes them into
+`@nyte-ai/schema` as its work order reaches them. There is no schema step
+before core. Do not write a
 preliminary review of the baseline, a list of concerns, or a plan for
 approval; the plan is this file and the tracking file. If a question comes
 up, first do everything that does not depend on the answer, state the
@@ -39,7 +43,7 @@ a wrong guess would make the work useless.
 
 ## Models
 
-Every subagent runs on `anthropic/claude-opus-5-5` with thinking `high`. Set
+Every subagent runs on `anthropic/claude-opus-5-5` with thinking `xhigh`. Set
 both explicitly on every spawn.
 
 ## Rules
