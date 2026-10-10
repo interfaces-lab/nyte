@@ -62,11 +62,27 @@ export type ToolOutcome =
  * @category tools
  * @since 0.1.0
  */
-export interface ToolProgress {
+export type ToolProgress = {
   /** One line, replaces the previous. Sent as a patch; never logged. */
   readonly text?: string;
   /** 0..1 when known. */
   readonly fraction?: number;
   /** For a renderer that knows the tool. */
   readonly detail?: Json;
+}
+
+/**
+ * Returns what a tool call produced: content for the model, typed output for
+ * clients, and parts to show.
+ *
+ * @category tools
+ * @since 0.1.0
+ */
+export type ToolResult<Output> = {
+  /** What the model reads: text, files (an image a read returned, a screenshot). One shape; text is `{ kind: "text" }`. */
+  readonly content: readonly ToolContent[];
+  /** Validated against `ToolDefinition.output`; what clients and codemode read. */
+  readonly output?: Output;
+  /** Parts this call created and wants shown with it. */
+  readonly parts?: readonly PartId[];
 }

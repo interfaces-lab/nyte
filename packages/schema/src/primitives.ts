@@ -7,11 +7,11 @@ export type JsonSchema = { readonly [key: string]: Json };
 /** Removes what it was returned for. */
 export type Disposer = () => void;
 /** Holds a resource until it is closed. */
-export interface Owned { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> }
+export type Owned = { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> }
 /** Describes how a wait may be aborted. */
-export interface RequestOptions { readonly signal?: AbortSignal }
+export type RequestOptions = { readonly signal?: AbortSignal }
 /** Returns one page of items and the cursor to the next. */
-export interface Paged<T> { readonly items: readonly T[]; readonly next: Cursor | null }
+export type Paged<T> = { readonly items: readonly T[]; readonly next: Cursor | null }
 /** Names which sessions a directory read returns: all, roots, or one session's children. */
 export type ParentFilter = { readonly kind: "all" } | { readonly kind: "roots" } | { readonly kind: "children"; readonly session: SessionId };
 /** Returns a capability's provision: available with its api, or why not. */
@@ -21,8 +21,16 @@ export type Capability<T> =
   | { readonly kind: "denied"; readonly reason: string }
   | { readonly kind: "unavailable"; readonly retry: "allowed" | "manual"; readonly reason: string };
 /** Returns an owned byte stream with its size and mime when known. */
-export interface ByteReader extends Owned { readonly size: number | null; readonly mime: string | null; chunks(): AsyncIterable<Uint8Array> }
+export type ByteReader = Owned & { readonly size: number | null; readonly mime: string | null; chunks(): AsyncIterable<Uint8Array> }
 /** Returns a host's signature over a nonce, so a client can pin it. */
-export interface IdentityChallenge { readonly nonce: string; readonly signature: string; readonly publicKey: string }
+export type IdentityChallenge = { readonly nonce: string; readonly signature: string; readonly publicKey: string }
 /** Returns what a listener advertises about its host. */
-export interface HostDescription { readonly name: string; readonly platform: string; readonly version: string }
+export type HostDescription = { readonly name: string; readonly platform: string; readonly version: string }
+
+/**
+ * Returns `T` or a promise of `T`.
+ *
+ * @category schemas
+ * @since 0.1.0
+ */
+export type Awaitable<T> = T | Promise<T>;

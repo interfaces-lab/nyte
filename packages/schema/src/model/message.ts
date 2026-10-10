@@ -211,7 +211,7 @@ export type FailureClass =
   | "provider"
   | "runner";
 
-export interface Failure {
+export type Failure = {
   readonly class: FailureClass;
   readonly message: string;
   /** A delay the provider asked for before the next attempt. */

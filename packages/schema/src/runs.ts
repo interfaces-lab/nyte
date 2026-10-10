@@ -1,7 +1,9 @@
 import type { Configuration } from "./configuration.ts";
 import type { CallId, HeadName, JobId, MessageId, PartId, RunId, SessionId } from "./ids.ts";
+import type { JobEnd } from "./jobs.ts";
 import type { Failure } from "./model/message.ts";
 import type { Usage } from "./models.ts";
+import type { Json } from "./primitives.ts";
 
 /**
  * Returns a run's fixed metadata: head, start, attempt, configuration and
@@ -15,7 +17,7 @@ import type { Usage } from "./models.ts";
  * @category runs
  * @since 0.1.0
  */
-export interface RunView {
+export type RunView = {
   readonly id: RunId;
   readonly head: HeadName;
   readonly startedAt: number;
@@ -70,7 +72,7 @@ export type Execution =
  * @category views
  * @since 0.1.0
  */
-export interface BackgroundItem {
+export type BackgroundItem = {
   readonly kind: "child" | "job" | "page";
   readonly id: string;
   readonly title: string;
@@ -98,3 +100,44 @@ export type WaitTarget = { readonly deadline?: number } & (
   | { readonly kind: "part"; readonly part: PartId }
   | { readonly kind: "timer"; readonly until: number }
 );
+
+/**
+ * Returns the result of stopping durable work.
+ *
+ * **Outcomes**
+ *
+ * - `requested`: the stop is recorded; the work settles later.
+ * - `settled`: the work had already ended; `outcome` is how.
+ * - `missing`: the host does not have this work.
+ *
+ * @category receipts
+ * @since 0.1.0
+ */
+export type StopOutcome<O> = { readonly kind: "requested" } | { readonly kind: "settled"; readonly outcome: O } | { readonly kind: "missing" };
+
+/**
+ * Returns what woke a durable wait.
+ *
+ * **Outcomes**
+ *
+ * - `run`: the awaited run ended; `end` is how.
+ * - `job`: the awaited job ended.
+ * - `part`: the modal part was answered; `answer` null = dismissed or closed.
+ * - `timer`: the timer fired.
+ * - `deadline`: the deadline passed first.
+ * - `input`: `untilInput` and the user sent `message`.
+ * - `all`: every target settled; `outcomes` in target order.
+ * - `stopped`: this run was stopped while parked; return promptly.
+ *
+ * @category durability
+ * @since 0.1.0
+ */
+export type WaitOutcome =
+  | { readonly kind: "run"; readonly session: SessionId; readonly run: RunId; readonly end: RunEnd }
+  | { readonly kind: "job"; readonly job: JobId; readonly end: JobEnd }
+  | { readonly kind: "part"; readonly part: PartId; readonly answer: { readonly action: string; readonly input: Json } | null }
+  | { readonly kind: "timer" }
+  | { readonly kind: "deadline" }
+  | { readonly kind: "input"; readonly message: MessageId }
+  | { readonly kind: "all"; readonly outcomes: readonly WaitOutcome[] }
+  | { readonly kind: "stopped" };

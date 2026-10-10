@@ -984,11 +984,13 @@ interface Host extends Connection {
 interface ListenOptions {
   /**
    * `http` binds a socket (default 127.0.0.1, port 0). `fetch` binds none;
-   * `Listener.fetch` is the handler: Cloudflare, Vercel, tests.
+   * `Listener.fetch` is the handler: Cloudflare, Vercel, tests, and any
+   * relay: a relay dials out and forwards each frame to `fetch()`,
+   * authorising through `auth.custom`.
    */
   readonly transport:
     | { readonly kind: "http"; readonly hostname?: string; readonly port?: number }
-    | { readonly kind: "fetch" }; // no socket; Listener.fetch is the handler. Cloudflare, Vercel, tests, and any relay: a relay dials out and forwards each frame to fetch(), authorising through auth.custom.
+    | { readonly kind: "fetch" };
   /**
    * `token` is Bearer, compared in constant time, at least 16 characters.
    * `custom` maps a request to a principal and its authority, or denies it.
@@ -4860,7 +4862,7 @@ type Available<Table, S extends Side> = {
  * @since 0.1.0
  */
 type Registries<S extends Side> = {
-  readonly [K in keyof Available<ContributionTable, S>]: Registry<ContributionTable[K]["item"], S, ContributionTable[K]["handle"]>;
+  readonly [K in keyof Available<ContributionTable, S>]: Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
 };
 /**
  * Returns the static contribution arrays a plugin may declare for a side.
@@ -4869,7 +4871,7 @@ type Registries<S extends Side> = {
  * @since 0.1.0
  */
 type Declared<S extends Side> = {
-  readonly [K in keyof Available<ContributionTable, S>]?: readonly ContributionTable[K]["item"][];
+  readonly [K in keyof Available<ContributionTable, S>]?: readonly ContributionTable[K & keyof ContributionTable]["item"][];
 };
 
 /**
@@ -5123,7 +5125,7 @@ type HookName<S extends Side> = keyof Available<HookTable, S>;
  * @since 0.1.0
  */
 type HookHandler<S extends Side, N extends HookName<S>> = (
-  event: Readonly<HookTable[N]["event"]>,
+  event: Readonly<HookTable[N & keyof HookTable]["event"]>,
   context: {
     readonly api: PluginApi<S>;
     /** This invocation's budget; before_compaction gets 300 s, others 5 s. Deactivation also fires it. */
@@ -5131,8 +5133,8 @@ type HookHandler<S extends Side, N extends HookName<S>> = (
     readonly session: SessionId | null;
     readonly head: HeadName | null;
     readonly run: RunId | null;
-  } & (HookTable[N]["phase"] extends "decide" ? (S extends "core" ? Durable : {}) : {}),
-) => Awaitable<HookTable[N]["result"]>;
+  } & (HookTable[N & keyof HookTable]["phase"] extends "decide" ? (S extends "core" ? Durable : {}) : {}),
+) => Awaitable<HookTable[N & keyof HookTable]["result"]>;
 /**
  * Returns a hook entry: a handler, or a handler with an order.
  *
@@ -5443,7 +5445,10 @@ type SessionEvent = { readonly seq: Seq; readonly at: number } & DurableEvent;
  *
  * - `commit`: the head advanced to this commit.
  * - `head`: a move that wrote no commit.
- * - `part` `created`: `state` is the initial state.
+ * - `part` `created`: `state` is the initial state; `owner` is the plugin
+ *   that contributed the definition, null for an ownerless part.
+ * - `input` `scheduled`: `position` is the message's index in the head's
+ *   inbox after the change, so a reorder is a scheduled event.
  * - `request`: a provider request settled.
  * - `changes`: the session's changed files after a write-class call; the
  *   whole list, latest per path.
@@ -5481,7 +5486,7 @@ type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "seen"; readonly principal: PrincipalId; readonly commit: CommitId | null }
   | { readonly kind: "input"; readonly message: MessageId } & (
       | { readonly change: "admitted"; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly schedule: Schedule; readonly covered: boolean; readonly configuration: Configuration; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
-      | { readonly change: "scheduled"; readonly schedule: Schedule }
+      | { readonly change: "scheduled"; readonly schedule: Schedule; readonly position: number }
       | { readonly change: "landed"; readonly commit: CommitId; readonly run: RunId | null }
       | { readonly change: "withdrawn" }
       | { readonly change: "superseded"; readonly by: MessageId }
@@ -5495,7 +5500,7 @@ type DurableEvent = { readonly head: HeadName | null } & (
       | { readonly change: "ended"; readonly end: RunEnd }
     )
   | { readonly kind: "part"; readonly part: PartId } & (
-      | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null }
+      | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null; readonly owner: string | null }
       | { readonly change: "updated"; readonly state: Json; readonly version: number }
       | { readonly change: "settled"; readonly commit: CommitId; readonly endedAt: number }
       | { readonly change: "failed"; readonly failure: Failure }

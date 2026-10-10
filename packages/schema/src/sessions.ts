@@ -1,4 +1,5 @@
-import type { HeadName, SessionId, WorkspaceId } from "./ids.ts";
+import type { ValidationIssue } from "./errors.ts";
+import type { HeadName, ReceiptId, RunId, SessionId, WorkspaceId } from "./ids.ts";
 import type { Position } from "./messages.ts";
 import type { ModelRef } from "./models.ts";
 import type { Json, JsonSchema } from "./primitives.ts";
@@ -12,7 +13,7 @@ import type { Activation } from "./workspaces.ts";
  * @category sessions
  * @since 0.1.0
  */
-export interface SessionInfo {
+export type SessionInfo = {
   readonly id: SessionId;
   /** Null until named. */
   readonly name: string | null;
@@ -35,7 +36,7 @@ export interface SessionInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface HeadInfo {
+export type HeadInfo = {
   readonly name: HeadName;
   readonly tip: Position;
   /** What `heads.create({ from })` defaults to and `heads.merge()` targets. */
@@ -52,7 +53,7 @@ export interface HeadInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface SessionCatalogView {
+export type SessionCatalogView = {
   readonly commands: readonly CommandInfo[];
   readonly settings: readonly SettingInfo[];
   readonly skills: readonly SkillInfo[];
@@ -67,7 +68,7 @@ export interface SessionCatalogView {
  * @category sessions
  * @since 0.1.0
  */
-export interface CommandInfo {
+export type CommandInfo = {
   /** Owner-qualified; bare names are the owner's own. */
   readonly name: string;
   readonly owner: string;
@@ -88,7 +89,7 @@ export interface CommandInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface SettingInfo {
+export type SettingInfo = {
   readonly id: string;
   readonly owner: string;
   readonly scope: "host" | "session";
@@ -108,7 +109,7 @@ export interface SettingInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface SkillInfo {
+export type SkillInfo = {
   readonly name: string;
   readonly owner: string;
   readonly description: string;
@@ -122,7 +123,7 @@ export interface SkillInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface AgentInfo {
+export type AgentInfo = {
   readonly id: string;
   readonly owner: string;
   readonly description: string | null;
@@ -138,7 +139,7 @@ export interface AgentInfo {
  * @category sessions
  * @since 0.1.0
  */
-export interface ToolInfo {
+export type ToolInfo = {
   readonly name: string;
   readonly owner: string;
   readonly description: string;
@@ -146,3 +147,58 @@ export interface ToolInfo {
   readonly output: JsonSchema | null;
   readonly exposure: "model" | "deferred" | "code" | "hidden";
 }
+
+/**
+ * Returns the result of running a command.
+ *
+ * **Outcomes**
+ *
+ * - `ran`: the command ran; `output` is text to show, if any.
+ * - `sent`: the command produced a prompt; core sent it with source action as `receipt`.
+ * - `invalid`: `args` failed the command's schema.
+ * - `unknown`: no core command has this name, including client-side commands.
+ * - `failed`: the command threw; `message` says why.
+ *
+ * @category sessions
+ * @since 0.1.0
+ */
+export type CommandOutcome =
+  | { readonly kind: "ran"; readonly output: string | null }
+  | { readonly kind: "sent"; readonly receipt: ReceiptId }
+  | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/**
+ * Returns the result of updating a session's metadata.
+ *
+ * **Outcomes**
+ *
+ * - `updated`: the patch applied.
+ * - `busy`: relocate while `runs` are live.
+ * - `unknown-workspace`: the target workspace is not registered.
+ *
+ * @category sessions
+ * @since 0.1.0
+ */
+export type UpdateOutcome =
+  | { readonly kind: "updated" }
+  | { readonly kind: "busy"; readonly runs: readonly RunId[] }
+  | { readonly kind: "unknown-workspace" };
+
+/**
+ * Returns the result of removing a session.
+ *
+ * **Outcomes**
+ *
+ * - `removed`: the session is gone.
+ * - `busy`: `runs` are live.
+ * - `has-children`: remove `children` first, or archive instead.
+ *
+ * @category sessions
+ * @since 0.1.0
+ */
+export type RemoveSessionOutcome =
+  | { readonly kind: "removed" }
+  | { readonly kind: "busy"; readonly runs: readonly RunId[] }
+  | { readonly kind: "has-children"; readonly children: readonly SessionId[] };

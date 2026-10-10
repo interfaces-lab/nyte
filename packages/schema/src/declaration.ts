@@ -53,7 +53,7 @@ export type Authority = "participant" | "owner" | "maintenance";
  * @category host
  * @since 0.1.0
  */
-export interface Declaration<Input, Output> {
+export type Declaration<Input, Output> = {
   /** The wire record the call takes. */
   readonly input: Schema<Input>;
   /** The wire record the call returns. */

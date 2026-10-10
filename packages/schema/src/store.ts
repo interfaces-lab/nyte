@@ -7,7 +7,7 @@ import type { ObjectId, Revision, Seq } from "./ids.ts";
  * @category store
  * @since 0.1.0
  */
-export interface Ref { readonly name: string; readonly target: ObjectId | null; readonly revision: Revision }
+export type Ref = { readonly name: string; readonly target: ObjectId | null; readonly revision: Revision }
 
 /**
  * Describes one entry of a ref publish.
@@ -15,7 +15,7 @@ export interface Ref { readonly name: string; readonly target: ObjectId | null; 
  * @category store
  * @since 0.1.0
  */
-export interface RefUpdate {
+export type RefUpdate = {
   readonly name: string;
   /** Null deletes. */
   readonly target: ObjectId | null;

@@ -27,6 +27,7 @@
     "build:package": "bun ../../scripts/sdk-packages.mjs build core"
   },
   "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/schema": "workspace:*"
   },
   "devDependencies": {

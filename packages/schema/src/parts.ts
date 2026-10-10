@@ -1,7 +1,8 @@
-import type { CommitId, PartId, RunId } from "./ids.ts";
+import type { CallId, CommitId, PartId, RunId } from "./ids.ts";
 import type { Failure } from "./model/message.ts";
 import type { Json } from "./primitives.ts";
 import type { WaitTarget } from "./runs.ts";
+import type { ToolClass, ToolOutcome, ToolProgress } from "./tools.ts";
 
 /**
  * Names where a part is shown.
@@ -46,4 +47,45 @@ export type PartStatus =
   | { readonly kind: "failed"; readonly run: RunId; readonly failure: Failure };
 
 /** Returns one part outside the transcript, with its placement as given. */
-export interface PartView { readonly id: PartId; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly status: PartStatus; readonly owner: string | null }
+export type PartView = { readonly id: PartId; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly status: PartStatus; readonly owner: string | null }
+
+/**
+ * Returns the result of calling a part action.
+ *
+ * **Outcomes**
+ *
+ * - `ok`: `output` is the action's return value.
+ * - `rejected`: `onAction` threw a domain refusal; `reason` says why.
+ * - `unknown-action`: the definition has no such action.
+ * - `closed`: the part was closed first.
+ * - `no-owner`: the definition has an `onAction` but the plugin that supplied it unloaded; the part stays readable.
+ * - `failed`: `onAction` threw; `message` says what.
+ *
+ * @category parts
+ * @since 0.1.0
+ */
+export type ActOutcome<Output> =
+  | { readonly kind: "ok"; readonly output: Output }
+  | { readonly kind: "rejected"; readonly reason: string }
+  | { readonly kind: "unknown-action" }
+  | { readonly kind: "closed" }
+  | { readonly kind: "no-owner" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/**
+ * Returns the state of a tool part: the call, its class, progress, outcome
+ * and file changes.
+ *
+ * @category parts
+ * @since 0.1.0
+ */
+export type ToolPartState = {
+  readonly call: CallId;
+  readonly name: string;
+  readonly args: Json;
+  readonly class: ToolClass;
+} & (
+  | { readonly phase: "calling" }
+  | { readonly phase: "running"; readonly progress: ToolProgress | null }
+  | { readonly phase: "settled"; readonly outcome: ToolOutcome; readonly changes: { readonly added: number; readonly removed: number; readonly paths: readonly string[] } | null }
+);

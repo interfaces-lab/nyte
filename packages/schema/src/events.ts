@@ -36,7 +36,10 @@ export type SessionEvent = { readonly seq: Seq; readonly at: number } & DurableE
  *
  * - `commit`: the head advanced to this commit.
  * - `head`: a move that wrote no commit.
- * - `part` `created`: `state` is the initial state.
+ * - `part` `created`: `state` is the initial state; `owner` is the plugin
+ *   that contributed the definition, null for an ownerless part.
+ * - `input` `scheduled`: `position` is the message's index in the head's
+ *   inbox after the change, so a reorder is a scheduled event.
  * - `request`: a provider request settled.
  * - `changes`: the session's changed files after a write-class call; the
  *   whole list, latest per path.
@@ -74,7 +77,7 @@ export type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "seen"; readonly principal: PrincipalId; readonly commit: CommitId | null }
   | { readonly kind: "input"; readonly message: MessageId } & (
       | { readonly change: "admitted"; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly schedule: Schedule; readonly covered: boolean; readonly configuration: Configuration; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
-      | { readonly change: "scheduled"; readonly schedule: Schedule }
+      | { readonly change: "scheduled"; readonly schedule: Schedule; readonly position: number }
       | { readonly change: "landed"; readonly commit: CommitId; readonly run: RunId | null }
       | { readonly change: "withdrawn" }
       | { readonly change: "superseded"; readonly by: MessageId }
@@ -88,7 +91,7 @@ export type DurableEvent = { readonly head: HeadName | null } & (
       | { readonly change: "ended"; readonly end: RunEnd }
     )
   | { readonly kind: "part"; readonly part: PartId } & (
-      | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null }
+      | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null; readonly owner: string | null }
       | { readonly change: "updated"; readonly state: Json; readonly version: number }
       | { readonly change: "settled"; readonly commit: CommitId; readonly endedAt: number }
       | { readonly change: "failed"; readonly failure: Failure }

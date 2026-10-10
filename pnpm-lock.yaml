@@ -503,6 +503,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
