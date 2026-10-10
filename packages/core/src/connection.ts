@@ -35,6 +35,7 @@ import { createSessions } from "./sessions.ts";
 import type { Sessions } from "./sessions.ts";
 import type { Store } from "./store.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
+import { createWorkspaces, workspaceHandle } from "./workspaces.ts";
 
 /**
  * Describes everything `sdk.open` needs to compose a host.
@@ -423,30 +424,9 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
       create: async (input) => session(await sessions.create(input)),
       list: (input) => sessions.list(input),
     },
-    workspaces: {
-      async list() {
-        need("participant", "workspaces.list");
-
-        return kernel.workspaces.list();
-      },
-      async inspect(target) {
-        need("owner", "workspaces.inspect");
-
-        return kernel.workspaces.inspect(target);
-      },
-      async add(target, options) {
-        need("owner", "workspaces.add");
-
-        return kernel.workspaces.add(target, options);
-      },
-      async forget(id) {
-        need("owner", "workspaces.forget");
-
-        return kernel.workspaces.forget(id);
-      },
-    },
+    workspaces: createWorkspaces(kernel, context),
     session: (id) => session(sessionHandle(kernel, context, id)),
-    workspace: (id) => kernel.workspace(id),
+    workspace: (id) => workspaceHandle(kernel, context, id),
     watch() {
       need("participant", "watch");
 

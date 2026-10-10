@@ -38,6 +38,7 @@ import {
 import type { Found } from "./session-state.ts";
 import { executeCall, owedCalls } from "./tool-runner.ts";
 import { loadWaits } from "./wait-registry.ts";
+import { ensureActivated } from "./workspaces.ts";
 
 const LEASE_MS = 30_000;
 
@@ -102,7 +103,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head: renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. Under an open coverage the lease stays in the kernel's table; without one it is released when the step returns. */
+/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. Under an open coverage the lease stays in the kernel's table; without one it is released when the step returns. */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
@@ -112,6 +113,7 @@ export async function advance(
 
   if (found === null || !found.record.heads.some((entry) => entry.name === head))
     return { kind: "idle" };
+  await ensureActivated(kernel, session);
   const refused = await claim(kernel, session, head);
 
   if (refused !== null) return refused;

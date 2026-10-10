@@ -33,13 +33,13 @@ export interface ParkedWait {
   readonly target: NonNullable<CallRecord["waiting"]>;
 }
 
-/** Holds the durable waits parked in this process, by what wakes them. Each wake method finds the parked entries the event settles and records the outcome in their call record. A per-target outcome of a pending `all` fills its slot in `CallRecord.partial` and shows the next unsettled target with `call waiting` and `run waiting`. A step whose wait completes (`all` once every slot is filled, `any` and a single target on the first outcome, or a deadline, an input or a stop) gets its `WaitOutcome` appended to `CallRecord.waits` with `waiting` cleared, and its run leaves `waiting` with `run phase executing` in the same set, unless another of the run's calls is still parked. Then `kernel.wakes.notify(session, head)` runs, so `advance` re-runs the step. Each method resolves whether a step woke, a filled slot alone not being a wake, except `runEnded`, which resolves whether a wait consumed the end, a filled slot included. A head-less entry notifies no head; its step re-runs through the act that runs it. */
+/** Holds the durable waits parked in this process, by what wakes them. Each wake method finds the parked entries the event settles and records the outcome in their call record. A per-target outcome of a pending `all` fills its slot in `CallRecord.partial` and shows the next unsettled target with `call waiting` and `run waiting`. A step whose wait completes (`all` once every slot is filled, `any` and a single target on the first outcome, or a deadline, an input or a stop) gets its `WaitOutcome` appended to `CallRecord.waits` with `waiting` cleared, and its run leaves `waiting` with `run phase executing` in the same set, unless another of the run's calls is still parked. Then `kernel.wakes.notify(session, head)` runs, so `advance` re-runs the step. Each method resolves whether a step woke, a filled slot alone not being a wake, except `runEnded` and `jobEnded`, which resolve whether a wait consumed the end, a filled slot included. A head-less entry notifies no head; its step re-runs through the act that runs it. */
 export interface WaitRegistry {
   /** Parks a step on its target; a target that already has its outcome (a run ended, a part answered in this process or closed, a job this registry saw end, a timer or deadline passed) settles at once. */
   park(entry: ParkedWait): Promise<void>;
   /** Wakes the waits on a run that ended, with `run { end }`, and resolves whether a wait consumed the end: a step woke or a pending `all` filled its slot. `endRun` hands the answer to the child report, so a consumed end attaches no report. */
   runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
-  /** Wakes the waits on a job that ended, with `job { end }`, and remembers the end for waits parked later. */
+  /** Wakes the waits on a job that ended, with `job { end }`, remembers the end for waits parked later, and resolves whether a wait consumed the end, as `runEnded` does: `endJob` sends the exit report only when none did. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
   /** Wakes the waits on a part that was answered, with `part { answer }`. */
   partAnswered(
@@ -323,14 +323,16 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
           { kind: "run", session, run, end },
         )
       ).some((taken) => taken !== "none"),
-    jobEnded(job, end) {
+    async jobEnded(job, end) {
       jobs.set(job, end);
 
-      return wokeBy((target) => target.kind === "job" && target.job === job, {
-        kind: "job",
-        job,
-        end,
-      });
+      return (
+        await deliver((target) => target.kind === "job" && target.job === job, {
+          kind: "job",
+          job,
+          end,
+        })
+      ).some((taken) => taken !== "none");
     },
     partAnswered: (part, answer) =>
       wokeBy((target) => target.kind === "part" && target.part === part, {

@@ -152,6 +152,7 @@ function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["sn
           ? [{ path: "a.ts", status: "modified", stat: { kind: "text", added: 3, removed: 1 } }]
           : [],
     }),
+    patches: async () => [],
   });
 }
 

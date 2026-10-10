@@ -38,6 +38,7 @@ import { sessionRef, workspaceRef } from "./refs.ts";
 import type { Run } from "./run.ts";
 import { runHandle, stopRun } from "./runs.ts";
 import { sessionInfo } from "./session-info.ts";
+import { activateSession, ensureActivated } from "./workspaces.ts";
 import {
   MAIN,
   STALE,
@@ -274,8 +275,9 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     },
     async command(name, args) {
       need("command");
+      await ensureActivated(kernel, id, context);
 
-      return kernel.command(id, name, args);
+      return kernel.command(id, name, args, context);
     },
     parts: {
       async create(kind, input) {
@@ -288,22 +290,31 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
   };
 }
 
+/** Updates a session's record; a relocation to another workspace then detaches the session's environment and re-activates it there with its plugins reloaded, so `env.cwd`, resources and every plugin api see the new folder (§37k). */
 async function update(
   kernel: Kernel,
   session: SessionId,
   patch: Parameters<Session["update"]>[0],
 ): Promise<UpdateOutcome> {
-  return attempt<UpdateOutcome>(`Updating ${session}`, async () => {
+  const { outcome, moved } = await attempt<{
+    readonly outcome: UpdateOutcome;
+    readonly moved: boolean;
+  }>(`Updating ${session}`, async () => {
     const found = await requireSession(kernel, session);
     const workspace = patch.workspace ?? found.record.workspace;
+    const moving = workspace !== found.record.workspace;
 
-    if (workspace !== found.record.workspace) {
+    if (moving) {
       const runs = await liveRuns(kernel, session);
 
-      if (runs.length > 0) return { kind: "busy", runs: runs.map((run) => run.record.view.id) };
+      if (runs.length > 0)
+        return {
+          outcome: { kind: "busy", runs: runs.map((run) => run.record.view.id) },
+          moved: false,
+        };
 
       if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
-        return { kind: "unknown-workspace" };
+        return { outcome: { kind: "unknown-workspace" }, moved: false };
     }
 
     const record: SessionRecord = {
@@ -314,7 +325,7 @@ async function update(
       workspace,
     };
 
-    const outcome = await commit(kernel, [
+    const written = await commit(kernel, [
       {
         name: sessionRef(session),
         target: await put(kernel, "session", record),
@@ -323,8 +334,15 @@ async function update(
       },
     ]);
 
-    return outcome.kind === "set" ? { kind: "updated" } : STALE;
+    return written.kind === "set" ? { outcome: { kind: "updated" }, moved: moving } : STALE;
   });
+
+  if (moved) {
+    await kernel.environments.detach(session);
+    await activateSession(kernel, session, { reload: true });
+  }
+
+  return outcome;
 }
 
 async function remove(
@@ -354,6 +372,7 @@ async function remove(
 
     if (outcome.kind === "stale") return STALE;
     await kernel.closePlugins(session);
+    await kernel.environments.detach(session);
 
     return { kind: "removed" };
   });

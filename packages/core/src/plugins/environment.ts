@@ -1,8 +1,28 @@
 import { standard } from "@nyte-ai/schema";
-import type { Infer } from "@nyte-ai/schema";
+import type { Infer, ToolContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import type { FilesApi } from "../files.ts";
 import type { Plugin } from "../plugin.ts";
 import type { ToolDefinition } from "../tools.ts";
+
+const READ_LINES = 2000;
+
+const READ_CHARS = 50 * 1024;
+
+const LIST_LIMIT = 500;
+
+const SHELL_BYTES = 32 * 1024;
+
+const MIME_TYPES: Readonly<Record<string, string>> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+};
 
 const readParameters = standard(
   Type.Object({
@@ -52,7 +72,7 @@ const bashParameters = standard(
   }),
 );
 
-/** Reads a file through `env.files.read`: text as numbered lines from `offset` for `limit` lines (bounded), an image stored with `files.upload` and returned as `file` content, a binary or large file as its kind and size, a missing file as `failed`. */
+/** Reads a file through `env.files.read`: text as numbered lines from `offset` for `limit` lines (at most 2000 lines and 50 KiB, noting where to continue); a binary or large file streamed through `files.bytes`, stored with the wrapped files' `upload` and returned as `file` content after a line naming its kind and size; a missing file as text saying so. */
 const read: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read",
   description:
@@ -60,8 +80,20 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
   parameters: readParameters,
   class: (args) => ({ kind: "read", path: args.path }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const { files } = invocation.env;
+    const document = await files.read(args.path);
+
+    if (document.kind === "missing") return text(`${args.path} does not exist.`);
+
+    if (document.kind === "text") return text(numbered(args.path, document.contents, args));
+
+    return {
+      content: [
+        { kind: "text", text: `${args.path} is ${document.kind}: ${document.size} bytes.` },
+        await upload(files, args.path),
+      ],
+    };
   },
 };
 
@@ -73,12 +105,18 @@ const write: ToolDefinition<Infer<typeof writeParameters>> = {
   parameters: writeParameters,
   class: (args) => ({ kind: "edit", path: args.path }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const outcome = await invocation.env.files.write(args.path, args.content, { parents: true });
+
+    if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
+
+    return text(
+      `Wrote ${new TextEncoder().encode(args.content).byteLength} bytes to ${args.path}.`,
+    );
   },
 };
 
-/** Edits a text file by exact replacement against the version it read: every `oldText` must occur exactly once in the current contents and no two may overlap, else `failed` naming the edit and nothing is written; the result is written with `expect` set to that version, a `stale` answer failing the call. A replay whose `newText`s are already in place and whose `oldText`s are gone succeeds without writing. */
+/** Edits a text file by exact replacement against the version it read: every `oldText` must occur exactly once in the current contents and no two may overlap, else `failed` naming the edit and nothing is written; the result is written with `expect` set to that version, a `stale` answer failing the call. An `oldText` that does not occur is `failed` (no match), replays included: whether an earlier run already made the edit cannot be known. */
 const edit: ToolDefinition<Infer<typeof editParameters>> = {
   name: "edit",
   description:
@@ -86,8 +124,53 @@ const edit: ToolDefinition<Infer<typeof editParameters>> = {
   parameters: editParameters,
   class: (args) => ({ kind: "edit", path: args.path }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const { files } = invocation.env;
+    const document = await files.read(args.path);
+
+    if (document.kind !== "text")
+      throw new Error(`${args.path} is ${document.kind}, not a text file.`);
+    const { contents } = document;
+
+    const spans = args.edits.map((change, index) => {
+      const found = count(contents, change.oldText);
+
+      if (change.oldText === "" || found === 0)
+        throw new Error(`Edit ${index + 1}: no match for oldText in ${args.path}.`);
+
+      if (found > 1)
+        throw new Error(
+          `Edit ${index + 1}: oldText occurs ${found} times in ${args.path}; make it unique.`,
+        );
+      const start = contents.indexOf(change.oldText);
+
+      return { start, end: start + change.oldText.length, newText: change.newText, index };
+    });
+
+    const ordered = [...spans].sort((left, right) => left.start - right.start);
+
+    for (const [position, span] of ordered.entries()) {
+      const next = ordered[position + 1];
+
+      if (next !== undefined && next.start < span.end)
+        throw new Error(`Edits ${span.index + 1} and ${next.index + 1} overlap in ${args.path}.`);
+    }
+
+    const edited = ordered.reduceRight(
+      (current, span) => current.slice(0, span.start) + span.newText + current.slice(span.end),
+      contents,
+    );
+
+    const outcome = await files.write(args.path, edited, { expect: document.version });
+
+    if (outcome.kind === "stale")
+      throw new Error(`${args.path} changed while it was being edited; read it again.`);
+
+    if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
+
+    return text(
+      `Edited ${args.path}: ${spans.length} ${spans.length === 1 ? "replacement" : "replacements"}.`,
+    );
   },
 };
 
@@ -98,12 +181,49 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   parameters: listParameters,
   class: (args) => ({ kind: "list", path: args.path ?? "." }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const directory = (args.path ?? ".").replace(/^\.\/?/, "").replace(/\/+$/, "");
+    const limit = args.limit ?? LIST_LIMIT;
+    const names = new Set<string>();
+    let incomplete = false;
+
+    for await (const frame of invocation.env.files.scan({
+      directory: directory === "" ? undefined : directory,
+      ignored: "exclude",
+    })) {
+      if (frame.kind === "incomplete") incomplete = true;
+
+      if (frame.kind !== "entries") continue;
+
+      for (const entry of frame.entries) {
+        const relative =
+          directory !== "" && entry.path.startsWith(`${directory}/`)
+            ? entry.path.slice(directory.length + 1)
+            : entry.path;
+
+        if (relative !== "" && !relative.includes("/"))
+          names.add(entry.kind === "directory" ? `${relative}/` : relative);
+      }
+    }
+
+    const sorted = [...names].sort();
+    const shown = sorted.slice(0, limit);
+    const more = sorted.length - shown.length;
+
+    const notes = [
+      ...(more > 0 ? [`… ${more} more entries not shown.`] : []),
+      ...(incomplete ? ["The listing stopped early; some entries may be missing."] : []),
+    ];
+
+    return text(
+      shown.length === 0 && notes.length === 0
+        ? `${args.path ?? "."} is empty.`
+        : [...shown, ...notes].join("\n"),
+    );
   },
 };
 
-/** Runs a command through `env.exec` in the workspace root, tied to the call's signal: output and exit code, the output bounded to its last 50 KiB with the cut noted. Never replayed: after a crash the call settles `interrupted`. */
+/** Runs a command through `env.exec` in the workspace root, tied to the call's signal: output and exit code, the output bounded to its last 32 KiB with the cut noted. Never replayed: after a crash the call settles `interrupted`. */
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
   description:
@@ -111,8 +231,56 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   parameters: bashParameters,
   class: (args) => ({ kind: "shell", command: args.command, description: args.description }),
   replay: "never",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const { env } = invocation;
+    const job = await env.exec(args.command, { cwd: env.cwd, signal: invocation.signal });
+    const chunks: Uint8Array[] = [];
+    let kept = 0;
+    let dropped = 0;
+    let code: number | null = null;
+
+    for await (const frame of job.output()) {
+      if (frame.kind === "exit") {
+        code = frame.code;
+
+        break;
+      }
+
+      if (frame.kind === "gap") continue;
+      chunks.push(frame.data);
+      kept += frame.data.byteLength;
+
+      while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
+        const first = chunks.shift();
+        kept -= first?.byteLength ?? 0;
+        dropped += first?.byteLength ?? 0;
+      }
+    }
+
+    const end = await job.settled();
+    const exit = end.kind === "exited" ? (end.code ?? code) : code;
+    const joined = new Uint8Array(kept);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+      joined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    const cut = Math.max(0, joined.byteLength - SHELL_BYTES);
+    const output = new TextDecoder().decode(joined.subarray(cut)).trimEnd();
+
+    const truncated =
+      dropped + cut > 0
+        ? [`[truncated: the first ${dropped + cut} bytes of output are not shown]`]
+        : [];
+
+    const status =
+      end.kind === "lost"
+        ? "[the process was lost]"
+        : `[exit code ${exit ?? "none"}${end.reason === "exited" ? "" : `, ${end.reason}`}]`;
+
+    return text([...truncated, ...(output === "" ? [] : [output]), status].join("\n"));
   },
 };
 
@@ -121,6 +289,94 @@ export const environmentPlugin: Plugin<"core"> = {
   id: "environment",
   contribute: { tools: [read, write, edit, list, bash] },
   activate(api) {
-    throw new Error("not implemented");
+    const cwd = cwdOf(() => api.env);
+
+    if (cwd !== null)
+      api.contribute.prompt.add({
+        id: "cwd",
+        order: 100,
+        text: `The workspace root is ${cwd}. Tool paths are relative to it.`,
+      });
   },
 };
+
+/** Returns a tool result of one text item. */
+function text(value: string): { readonly content: readonly ToolContent[] } {
+  return { content: [{ kind: "text", text: value }] };
+}
+
+/** Returns the environment's cwd, or null when reading the environment throws (the session has none). */
+function cwdOf(env: () => { readonly cwd: string }): string | null {
+  try {
+    return env().cwd;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns text as `cat -n` style lines from `offset` for `limit` lines, bounded, with a note on where to continue. */
+function numbered(
+  path: string,
+  contents: string,
+  args: { readonly offset?: number; readonly limit?: number },
+): string {
+  const lines = contents.split("\n");
+
+  if (lines.at(-1) === "") lines.pop();
+  const first = args.offset ?? 1;
+
+  if (lines.length === 0) return `${path} is empty.`;
+
+  if (first > lines.length)
+    return `${path} has ${lines.length} lines; offset ${first} is past the end.`;
+  const shown: string[] = [];
+  let size = 0;
+  const last = Math.min(lines.length, first - 1 + (args.limit ?? READ_LINES));
+
+  for (let number = first; number <= last; number += 1) {
+    const line = `${String(number).padStart(6)}\t${lines[number - 1] ?? ""}`;
+
+    if (size + line.length > READ_CHARS && shown.length > 0) break;
+    shown.push(line);
+    size += line.length + 1;
+  }
+
+  const through = first + shown.length - 1;
+
+  return through < lines.length
+    ? `${shown.join("\n")}\n… ${lines.length - through} more lines; continue with offset ${through + 1}.`
+    : shown.join("\n");
+}
+
+/** Streams a file through the wrapped files' `upload` and returns it as `file` content. */
+async function upload(files: FilesApi, path: string): Promise<ToolContent> {
+  const reader = await files.bytes(path);
+
+  try {
+    const blob = await files.upload(reader.chunks());
+    const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+
+    return {
+      kind: "file",
+      blob,
+      mime: reader.mime ?? MIME_TYPES[extension] ?? "application/octet-stream",
+      name: path.slice(path.lastIndexOf("/") + 1),
+    };
+  } finally {
+    await reader.close();
+  }
+}
+
+/** Returns how many places `needle` matches in `haystack`, overlapping matches included; 0 for an empty needle. */
+function count(haystack: string, needle: string): number {
+  if (needle === "") return 0;
+  let found = 0;
+  let from = haystack.indexOf(needle);
+
+  while (from >= 0) {
+    found += 1;
+    from = haystack.indexOf(needle, from + 1);
+  }
+
+  return found;
+}

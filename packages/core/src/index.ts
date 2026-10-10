@@ -28,6 +28,7 @@ export * from "./jobs.ts";
 export * from "./kernel.ts";
 export * from "./memory-store.ts";
 export * from "./move.ts";
+export * from "./pages.ts";
 export * from "./part-definitions.ts";
 export * from "./part-handle.ts";
 export * from "./parts-api.ts";

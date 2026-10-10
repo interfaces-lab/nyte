@@ -10,6 +10,7 @@ import type {
   StopOutcome,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
+import { stopBatch } from "./files-wrap.ts";
 import type { Kernel } from "./kernel.ts";
 import { LOCAL } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
@@ -211,6 +212,8 @@ async function stopReceipt<O extends Json>(
 
   if (found.record.outcome !== null)
     return { kind: "settled", outcome: outcomeOf(found.record.outcome) };
+
+  if (found.record.kind === "batch") stopBatch(kernel, id);
 
   if (found.record.kind !== "send") return { kind: "requested" };
   const message = asId<"message">(id);

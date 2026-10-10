@@ -9,16 +9,17 @@ import type {
   ConfigurationPatch,
   ConfigureOutcome,
   Decision,
+  DiffOptions,
   Disposer,
   HeadName,
   HostDescription,
   HostId,
-  JobId,
   Json,
   MessageId,
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
+  PatchEntry,
   Placement,
   PrincipalId,
   PruneReport,
@@ -43,22 +44,30 @@ import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import type { EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
+import { createEnvironmentRegistry } from "./environment-registry.ts";
 import type { EnvironmentRegistry } from "./environment-registry.ts";
 import { SdkError } from "./error.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
 import { gateSubmission } from "./hooks.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
-import type { Job, JobTable, Jobs } from "./jobs.ts";
+import { createJobTable } from "./jobs.ts";
+import type { JobTable } from "./jobs.ts";
 import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
+import { createPageTable } from "./pages.ts";
+import type { PageTable } from "./pages.ts";
 import { createPartsApi } from "./parts-api.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
 import { checkPlugins, createPluginRuntime, replacePlugins } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
+import { CORE_CONTEXT } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
+import { createConnectionRegistry, createPrincipals } from "./principals-api.ts";
 import type { ConnectionRegistry } from "./principals-api.ts";
+import { prune } from "./prune.ts";
+import { scanResources } from "./resources.ts";
 import { createSettingsApi } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { stoppableTool } from "./tool-runner.ts";
@@ -69,6 +78,7 @@ import type { WaitRegistry } from "./wait-registry.ts";
 import { createFoldCache } from "./watch.ts";
 import type { FoldCache } from "./watch.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
+import { activateSession, createWorkspaces, workspaceHandle } from "./workspaces.ts";
 
 /** Returns the in-process context every kernel operation closes over; later work orders add fields, none are removed. */
 export interface Kernel {
@@ -116,9 +126,9 @@ export interface Kernel {
   readonly models: ModelsApi;
   /** Host-scope settings. Default `createSettingsApi`. */
   readonly settings: SettingsApi;
-  /** The workspaces registered on this host; f2 fills it with `createWorkspaces` as `CORE_CONTEXT`. */
+  /** The workspaces registered on this host. Default `createWorkspaces` as `CORE_CONTEXT`, built on first use. */
   readonly workspaces: Workspaces;
-  /** Returns a handle on a workspace by id; f2 fills it with `workspaceHandle` as `CORE_CONTEXT`. */
+  /** Returns a handle on a workspace by id. Default `workspaceHandle` as `CORE_CONTEXT`. */
   workspace(id: WorkspaceId): Workspace;
   /** Creates parts and binds part handles; core-d fills it. */
   readonly parts: PartProvider;
@@ -132,29 +142,33 @@ export interface Kernel {
   readonly beforeTool: ToolGate;
   /** Dispatches `after_tool` over a call's outcome. Default: the session's hook dispatch. */
   readonly afterTool: ToolOutcomeRewriter;
-  /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. f2 fills it with `environments.snapshots`. Default null. */
+  /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. Default `environments.snapshots`. */
   snapshots(session: SessionId): Promise<RunSnapshots | null>;
-  /** Resolves the environment a session's tools run against; f2 fills it with `environments.attach`. */
+  /** Resolves the environment a session's tools run against. Default `environments.attach`. */
   env(session: SessionId): Promise<ExecutionEnv>;
-  /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`; f2 fills it with `environments.wrap`. */
+  /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`. Default `environments.wrap`. */
   wrapEnv(session: SessionId, wrap: EnvironmentWrap): Disposer;
-  /** Resolves what core scanned for a session, gated by its workspace's `projectResources`: `PluginApi.inputs`; f2 fills it with `scanResources`. */
+  /** Resolves what core scanned for a session, gated by its workspace's `projectResources`: `PluginApi.inputs`. Default `scanResources`. */
   resources(session: SessionId): Promise<Resources>;
   /** The host's home directory as the composer passes it; `Resources.user` attaches the `"local"` provider there (decision 9). Default null: no user resources, as on a durable object. */
   readonly home: string | null;
-  /** The environment providers the loaded plugins supply and the environments attached through them; f2 builds it with `createEnvironmentRegistry` on first use. */
+  /** The environment providers the loaded plugins supply and the environments attached through them. Default `createEnvironmentRegistry`, built on first use. */
   readonly environments: EnvironmentRegistry;
-  /** The jobs this process started, in memory; f2 builds it with `createJobTable` on first use. */
+  /** The jobs this process started, in memory. Default `createJobTable`, built on first use. */
   readonly jobs: JobTable;
-  /** The open connections by principal, so revoking a principal drops its streams; f2 builds it with `createConnectionRegistry` on first use. */
+  /** The browser pages held through this kernel, in memory, with their holds (§37i). Default `createPageTable`, built on first use. */
+  readonly pages: PageTable;
+  /** The open connections by principal, so revoking a principal drops its streams. Default `createConnectionRegistry`, built on first use. */
   readonly connections: ConnectionRegistry;
   /** Sends one non-run model request charged to a session: `PluginApi.request`; core-f (f3) fills it. */
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
   /** The key core encrypts plugin secrets with (decision 10); null when the composer gave none, and then `secrets.set` answers `unavailable`. */
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
-  /** The core plugins every session loads, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
+  /** The decision-13 built-ins every session loads before its list, kept apart from `hostPlugins` so no `plugins.replace` drops them (§36a); f3's composer sets them. Default none. */
+  readonly builtins: readonly Plugin<"core">[];
+  /** The core plugins every session loads after the built-ins, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
   hostPlugins: readonly Plugin<"core">[];
-  /** Returns a session's plugin runtime, created empty on first use and kept until `closePlugins`. */
+  /** Returns a session's plugin runtime, created empty on first use and kept until `closePlugins`; creating it starts `activateSession` for the session, which loads the session's list (`sessionPlugins`) into a known session that has loaded nothing in this process (§36c). */
   pluginsFor(session: SessionId): PluginRuntime;
   /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
@@ -168,9 +182,9 @@ export interface Kernel {
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
   /** Hot plugin replacement and preflight. */
   readonly plugins: Host["plugins"];
-  /** Who may connect; f2 fills it with `createPrincipals`. */
+  /** Who may connect. Default `createPrincipals`, built on first use. */
   readonly principals: Host["principals"];
-  /** Collects unreachable history; f2 fills it with `prune`, which reports reachability and leaves collection to the store driver. */
+  /** Collects unreachable history. Default `prune`, which reports reachability and leaves collection to the store driver (§37e). */
   prune(): Promise<PruneReport>;
 }
 
@@ -262,9 +276,14 @@ export interface AdmissionGate {
   ): Promise<Decision<Submission>>;
 }
 
-/** Runs a core command by name in a session. */
+/** Runs a core command by name in a session; `context` is the caller's, so a plugin running a command from its own session's activation sends its prompt without waiting on that activation (§37j). */
 export interface CommandRunner {
-  (session: SessionId, name: string, args?: Json): Promise<CommandOutcome>;
+  (
+    session: SessionId,
+    name: string,
+    args?: Json,
+    context?: ConnectionContext,
+  ): Promise<CommandOutcome>;
 }
 
 /** Creates parts and binds part handles for a connection's principal in a session. */
@@ -329,6 +348,13 @@ export interface RunSnapshots {
   after(run: RunId): Promise<SnapshotId>;
   /** Returns what changed between two snapshots. */
   diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
+  /** Returns the parsed patches of the listed paths between two snapshots; a path the comparison does not report is left out (§37a). */
+  patches(
+    from: SnapshotId,
+    to: SnapshotId,
+    paths: readonly string[],
+    options?: DiffOptions,
+  ): Promise<readonly PatchEntry[]>;
 }
 
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
@@ -344,54 +370,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-const NO_WORKSPACES: Workspaces = {
-  list: async () => unavailable("workspaces"),
-  inspect: async () => unavailable("workspaces"),
-  add: async () => unavailable("workspaces"),
-  forget: async () => unavailable("workspaces"),
-};
-
-const NO_JOBS: Jobs = {
-  start: async () => unavailable("workspace"),
-  recover: async () => unavailable("workspace"),
-  list: async () => unavailable("workspace"),
-  watch: () => unavailableStream("workspace"),
-};
-
-const NO_PRINCIPALS: Host["principals"] = {
-  list: async () => unavailable("principals"),
-  pair: async () => unavailable("principals"),
-  revoke: async () => unavailable("principals"),
-};
-
-const NO_ENVIRONMENTS: EnvironmentRegistry = {
-  providers: () => unavailable("environments"),
-  provider: () => unavailable("environments"),
-  attach: async () => unavailable("environments"),
-  wrap: () => unavailable("environments"),
-  snapshots: async () => unavailable("environments"),
-  capabilities: async () => unavailable("environments"),
-  detach: async () => unavailable("environments"),
-  attachWorkspace: async () => unavailable("environments"),
-  workspaceCapabilities: async () => unavailable("environments"),
-  detachWorkspace: async () => unavailable("environments"),
-};
-
-const NO_JOB_TABLE: JobTable = {
-  get: () => unavailable("jobs"),
-  byKey: () => unavailable("jobs"),
-  list: () => unavailable("jobs"),
-  add: () => unavailable("jobs"),
-  update: () => unavailable("jobs"),
-  subscribe: () => unavailable("jobs"),
-};
-
-const NO_CONNECTIONS: ConnectionRegistry = {
-  register: () => unavailable("connections"),
-  revoke: () => unavailable("connections"),
-};
-
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `snapshots` (null), `secrets` (null), `home` (null), `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists); `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use. */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -426,8 +405,10 @@ export function createKernel(
         | "home"
         | "environments"
         | "jobs"
+        | "pages"
         | "connections"
         | "secrets"
+        | "builtins"
         | "hostPlugins"
         | "pluginApi"
         | "plugins"
@@ -450,6 +431,12 @@ export function createKernel(
   let waits = input.waits ?? null;
   let definitions = input.partDefinitions ?? null;
   let settings = input.settings ?? null;
+  let workspaces = input.workspaces ?? null;
+  let environments = input.environments ?? null;
+  let jobs = input.jobs ?? null;
+  let pages = input.pages ?? null;
+  let connections = input.connections ?? null;
+  let principals = input.principals ?? null;
 
   const kernel: Kernel = {
     hostId: input.hostId,
@@ -457,7 +444,19 @@ export function createKernel(
     description: input.description,
     bus,
     host: input.host,
-    folds: createFoldCache({ store: input.store, bus, revisions, activation, catalog }),
+    folds: createFoldCache({
+      store: input.store,
+      bus,
+      revisions,
+      activation,
+      catalog,
+      get jobs() {
+        return kernel.jobs;
+      },
+      get pages() {
+        return kernel.pages;
+      },
+    }),
     revisions,
     activation,
     setActivation(session, value) {
@@ -480,7 +479,9 @@ export function createKernel(
     resolveConfiguration:
       input.resolveConfiguration ?? (async () => unavailable("resolveConfiguration")),
     admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
-    command: input.command ?? ((session, name, args) => runCommand(kernel, session, name, args)),
+    command:
+      input.command ??
+      ((session, name, args, context) => runCommand(kernel, session, name, args, context)),
     get waits() {
       waits ??= createWaitRegistry(kernel);
 
@@ -492,8 +493,12 @@ export function createKernel(
 
       return settings;
     },
-    workspaces: input.workspaces ?? NO_WORKSPACES,
-    workspace: input.workspace ?? unavailableWorkspace,
+    get workspaces() {
+      workspaces ??= createWorkspaces(kernel, CORE_CONTEXT);
+
+      return workspaces;
+    },
+    workspace: input.workspace ?? ((id) => workspaceHandle(kernel, CORE_CONTEXT, id)),
     parts: input.parts ?? {
       create: (context, session, kind, value) =>
         createPartsApi(kernel, context, session).create(kind, value),
@@ -520,16 +525,34 @@ export function createKernel(
       input.afterTool ??
       ((outcome, context) =>
         kernel.pluginsFor(context.session).hooks.transform("after_tool", outcome, context)),
-    snapshots: input.snapshots ?? (async () => null),
-    env: input.env ?? (async () => unavailable("env")),
-    wrapEnv: input.wrapEnv ?? (() => unavailable("wrapEnv")),
-    resources: input.resources ?? (async () => unavailable("resources")),
+    snapshots: input.snapshots ?? ((session) => kernel.environments.snapshots(session)),
+    env: input.env ?? ((session) => kernel.environments.attach(session)),
+    wrapEnv: input.wrapEnv ?? ((session, wrap) => kernel.environments.wrap(session, wrap)),
+    resources: input.resources ?? ((session) => scanResources(kernel, session)),
     request: input.request ?? (async () => unavailable("request")),
     home: input.home ?? null,
-    environments: input.environments ?? NO_ENVIRONMENTS,
-    jobs: input.jobs ?? NO_JOB_TABLE,
-    connections: input.connections ?? NO_CONNECTIONS,
+    get environments() {
+      environments ??= createEnvironmentRegistry(kernel);
+
+      return environments;
+    },
+    get jobs() {
+      jobs ??= createJobTable(kernel);
+
+      return jobs;
+    },
+    get pages() {
+      pages ??= createPageTable(kernel);
+
+      return pages;
+    },
+    get connections() {
+      connections ??= createConnectionRegistry();
+
+      return connections;
+    },
     secrets: input.secrets ?? null,
+    builtins: input.builtins ?? [],
     hostPlugins: input.hostPlugins ?? [],
     pluginsFor(session) {
       const known = runtimes.get(session);
@@ -537,6 +560,7 @@ export function createKernel(
       if (known !== undefined) return known;
       const created = createPluginRuntime(kernel, session);
       runtimes.set(session, created);
+      void activateSession(kernel, session);
 
       return created;
     },
@@ -569,8 +593,12 @@ export function createKernel(
       replace: (plugins, scope) => replacePlugins(kernel, plugins, scope),
       check: async (plugins) => checkPlugins(plugins),
     },
-    principals: input.principals ?? NO_PRINCIPALS,
-    prune: input.prune ?? (async () => unavailable("prune")),
+    get principals() {
+      principals ??= createPrincipals(kernel);
+
+      return principals;
+    },
+    prune: input.prune ?? (() => prune(kernel)),
   };
 
   return kernel;
@@ -618,42 +646,6 @@ function createWakes(): Wakes {
       };
     },
   };
-}
-
-function unavailableWorkspace(id: WorkspaceId): Workspace {
-  return {
-    id,
-    info: async () => unavailable("workspace"),
-    watch: () => unavailableStream("workspace"),
-    update: async () => unavailable("workspace"),
-    reload: async () => unavailable("workspace"),
-    jobs: NO_JOBS,
-    job: unavailableJob,
-    changes: async () => unavailable("workspace"),
-    patches: () => unavailableStream("workspace"),
-    files: async () => unavailable("workspace"),
-    git: async () => unavailable("workspace"),
-    browser: async () => unavailable("workspace"),
-  };
-}
-
-function unavailableJob(id: JobId): Job {
-  return {
-    id,
-    key: null,
-    write: async () => unavailable("workspace"),
-    output: () => unavailableStream("workspace"),
-    resize: async () => unavailable("workspace"),
-    idle: async () => unavailable("workspace"),
-    stop: async () => unavailable("workspace"),
-    settled: async () => unavailable("workspace"),
-    close: async () => unavailable("workspace"),
-    [Symbol.asyncDispose]: async () => unavailable("workspace"),
-  };
-}
-
-function unavailableStream(slot: string): AsyncIterable<never> {
-  return { [Symbol.asyncIterator]: () => ({ next: async () => unavailable(slot) }) };
 }
 
 function unavailable(slot: string): never {

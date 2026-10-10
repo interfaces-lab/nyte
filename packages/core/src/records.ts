@@ -1,4 +1,5 @@
 import type {
+  Authority,
   CallId,
   CommitBody,
   CommitId,
@@ -158,6 +159,24 @@ export type WorkspaceRecord = {
   readonly createdAt: number;
 };
 
+/** Returns what `host/principals` holds, as an envelope of kind `principals`: every paired principal with its authority, when it paired and was last seen, and `tokenDigest`, the SHA-256 hex digest of its device token (the token itself is never stored); and the pairing codes not yet redeemed, each with the authority and label it grants and when it expires. */
+export type PrincipalRecord = {
+  readonly principals: readonly {
+    readonly id: PrincipalId;
+    readonly label: string;
+    readonly authority: readonly Authority[];
+    readonly pairedAt: number;
+    readonly lastSeenAt: number | null;
+    readonly tokenDigest: string;
+  }[];
+  readonly codes: readonly {
+    readonly code: string;
+    readonly authority: readonly Authority[];
+    readonly label: string;
+    readonly expiresAt: number;
+  }[];
+};
+
 /** Names the record a stored object's envelope carries. */
 export type RecordKind =
   | "session"
@@ -232,6 +251,11 @@ export function decodeWorkspaceRecord(object: Json | null): WorkspaceRecord | nu
 /** Returns the call record a stored object holds, or null when it holds another record. */
 export function decodeCallRecord(object: Json | null): CallRecord | null {
   return decode(object, "call", isCallRecord);
+}
+
+/** Returns the principal record a stored object holds, or null when it holds another record. */
+export function decodePrincipalRecord(object: Json | null): PrincipalRecord | null {
+  return decode(object, "principals", isPrincipalRecord);
 }
 
 /** Returns the value a stored `kv` object holds (a setting, a plugin's stored value, a sealed secret), or undefined when it holds another record. */
@@ -354,5 +378,24 @@ function isCallRecord(value: Json | undefined): value is CallRecord {
     isJsonObject(value.acquisitions) &&
     "result" in value &&
     typeof value.replay === "string"
+  );
+}
+
+function isPrincipalRecord(value: Json | undefined): value is PrincipalRecord {
+  return (
+    isJsonObject(value) &&
+    Array.isArray(value.principals) &&
+    value.principals.every(
+      (principal) =>
+        isJsonObject(principal) &&
+        typeof principal.id === "string" &&
+        typeof principal.tokenDigest === "string" &&
+        Array.isArray(principal.authority),
+    ) &&
+    Array.isArray(value.codes) &&
+    value.codes.every(
+      (code) =>
+        isJsonObject(code) && typeof code.code === "string" && typeof code.expiresAt === "number",
+    )
   );
 }

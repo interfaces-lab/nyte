@@ -9,6 +9,7 @@ import type { ConnectionContext } from "./principals.ts";
 import type { SessionRecord } from "./records.ts";
 import { sessionRef, workspaceRef } from "./refs.ts";
 import { sessionHandle } from "./session.ts";
+import { activateSession } from "./workspaces.ts";
 import type { Session } from "./session.ts";
 import { MAIN, commit, put, readSession, requireSession, sessionEvent } from "./session-state.ts";
 
@@ -74,7 +75,7 @@ export interface Sessions {
   }): Promise<Paged<SessionInfo>>;
 }
 
-/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin` as its lineage when the origin has a run and head, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call before the session is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. A session this call writes loads `kernel.hostPlugins` before `create` resolves. */
+/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin` as its lineage when the origin has a run and head, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call before the session is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. A session this call writes is activated (`activateSession`: `kernel.hostPlugins` loaded, its environment attached) before `create` resolves. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `sessions.${operation}`);
@@ -166,7 +167,7 @@ async function create(
     ...configured,
   ]);
 
-  if (outcome.kind === "set") await kernel.pluginsFor(id).load(kernel.hostPlugins);
+  if (outcome.kind === "set") await activateSession(kernel, id);
 
   return id;
 }
