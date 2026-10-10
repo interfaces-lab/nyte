@@ -21,7 +21,9 @@ import type {
   RunView,
   Schedule,
   SessionId,
+  ToolOutcome,
   UserContent,
+  WaitOutcome,
   WaitTarget,
   WorkspaceId,
   WorkspaceTarget,
@@ -116,6 +118,32 @@ export type ReceiptRecord = {
 /** Returns what `sessions/<id>/seen/<principal>/<head>` holds: the tip the principal last saw. */
 export type SeenRecord = { readonly commit: CommitId | null };
 
+/** Returns what `sessions/<id>/calls/<call>` holds: one durable step (a tool call, a part action or a decide hook), where it runs (`head` null for an action or hook outside a head), its intent and replay policy, and everything it recorded so a re-run replays it: memos by name, clock readings and wait outcomes in call order, nested tool outcomes and acquisitions by key, the whole target it is parked on, and its result once settled. */
+export type CallRecord = {
+  readonly id: CallId;
+  readonly kind: "tool" | "action" | "hook";
+  readonly run: RunId | null;
+  readonly head: HeadName | null;
+  readonly part: PartId | null;
+  readonly intent: Json;
+  readonly memos: Readonly<Record<string, Json>>;
+  readonly clock: readonly number[];
+  readonly waits: readonly WaitOutcome[];
+  readonly waiting:
+    | WaitTarget
+    | {
+        readonly kind: "any" | "all";
+        readonly targets: readonly WaitTarget[];
+        readonly deadline?: number;
+        readonly untilInput?: boolean;
+      }
+    | null;
+  readonly nested: Readonly<Record<string, ToolOutcome>>;
+  readonly acquisitions: Readonly<Record<string, Json>>;
+  readonly result: Json | null;
+  readonly replay: "safe" | "never";
+};
+
 /** Returns what `workspaces/<id>` holds: the registered workspace without its live fields. */
 export type WorkspaceRecord = {
   readonly id: WorkspaceId;
@@ -138,7 +166,8 @@ export type RecordKind =
   | "receipt"
   | "seen"
   | "workspace"
-  | "lease";
+  | "lease"
+  | "call";
 
 /** Returns a record in the stored-object envelope `{ kind, parent, at, body }`; `parent` is a commit's parent and null for every other record. */
 export function envelope(
@@ -193,6 +222,11 @@ export function decodeReceiptRecord(object: Json | null): ReceiptRecord | null {
 /** Returns the workspace record a stored object holds, or null when it holds another record. */
 export function decodeWorkspaceRecord(object: Json | null): WorkspaceRecord | null {
   return decode(object, "workspace", isWorkspaceRecord);
+}
+
+/** Returns the call record a stored object holds, or null when it holds another record. */
+export function decodeCallRecord(object: Json | null): CallRecord | null {
+  throw new Error("not implemented");
 }
 
 function decode<T extends Json>(

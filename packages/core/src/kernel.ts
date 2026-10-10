@@ -2,6 +2,7 @@ import { asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
   CallId,
+  ChangeSet,
   CommandOutcome,
   CommitId,
   Configuration,
@@ -24,14 +25,18 @@ import type {
   RunId,
   RunView,
   SessionId,
+  SnapshotId,
   Submission,
+  ToolCall,
+  ToolOutcome,
   Usage,
-  WaitTarget,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import { createBus } from "./bus.ts";
 import type { SessionBus } from "./bus.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
+import type { StepOutcome } from "./durable.ts";
+import type { ExecutionEnv } from "./environment.ts";
 import { SdkError } from "./error.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
@@ -43,7 +48,9 @@ import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { PluginApi } from "./plugin.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { StoreConnection } from "./store.ts";
+import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
+import type { WaitRegistry } from "./wait-registry.ts";
 import { createFoldCache } from "./watch.ts";
 import type { FoldCache } from "./watch.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
@@ -88,8 +95,8 @@ export interface Kernel {
   readonly admit: AdmissionGate;
   /** Runs a core command in a session; core-f fills it. Default `unknown`. */
   readonly command: CommandRunner;
-  /** Wakes a parked durable wait on a target; core-e fills it. Default false. */
-  readonly wake: Waker;
+  /** The durable waits parked in this process, by what wakes them; core-e fills it. */
+  readonly waits: WaitRegistry;
   /** Providers, credentials and the model catalog; core-f fills it. */
   readonly models: ModelsApi;
   /** Host-scope settings; core-f fills it. */
@@ -102,8 +109,18 @@ export interface Kernel {
   readonly parts: PartProvider;
   /** The part definitions this host knows, by kind, with their owners. */
   readonly partDefinitions: PartDefinitions;
-  /** Builds the durable-step primitives a tool, part action or decide hook uses; core-e fills it. */
+  /** Runs part actions as durable steps; core-e fills it. */
   readonly durable: DurableProvider;
+  /** Returns the tools a session can call, with deferred tools activated for `run` alone; core-f fills it from the registries. Default: none. */
+  tools(session: SessionId, run: RunId | null): ToolSource;
+  /** Dispatches `before_tool` for a call; core-f fills it. Default continue. */
+  readonly beforeTool: ToolGate;
+  /** Dispatches `after_tool` over a call's outcome; core-f fills it. Default: the outcome as given. */
+  readonly afterTool: ToolOutcomeRewriter;
+  /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. core-f fills it. Default null. */
+  snapshots(session: SessionId): Promise<RunSnapshots | null>;
+  /** Resolves the environment a session's tools run against; core-f fills it. */
+  env(session: SessionId): Promise<ExecutionEnv>;
   /** Returns the api of the plugin that owns a part definition, in a session; core-f fills it. */
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
   /** Hot plugin replacement and preflight; core-f fills it. */
@@ -206,11 +223,6 @@ export interface CommandRunner {
   (session: SessionId, name: string, args?: Json): Promise<CommandOutcome>;
 }
 
-/** Wakes the durable wait parked on a target and returns true, or returns false when none is parked. */
-export interface Waker {
-  (target: WaitTarget): Promise<boolean>;
-}
-
 /** Creates parts and binds part handles for a connection's principal in a session. */
 export interface PartProvider {
   /** Creates a part from a definition with an initial state and a placement. */
@@ -224,16 +236,54 @@ export interface PartProvider {
   part(context: ConnectionContext, session: SessionId, id: PartId): Part<PartDefinition>;
 }
 
-/** Builds the `Durable` one step runs with: its call, where it runs, and the signal that stops it. */
+/** Runs a part action as a durable step of kind `action` over the part's call record. */
 export interface DurableProvider {
-  /** Returns the durable-step primitives for a call; `run` is null for a step outside a run, `head` null for one outside a head. */
-  context(input: {
+  /** Runs the action's `body` with the step's `Durable` and returns how the step ended; `parked` means the act waits until a wake completes the step in this host's life. */
+  run<T>(input: {
     readonly session: SessionId;
-    readonly head: HeadName | null;
-    readonly run: RunId | null;
+    readonly part: PartId;
+    readonly action: string;
     readonly call: CallId;
     readonly signal: AbortSignal;
-  }): Durable;
+    body(durable: Durable): Promise<T>;
+  }): Promise<StepOutcome<T>>;
+}
+
+/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch. It runs as a durable step, so a handler may park on `durable.wait`. */
+export interface ToolGate {
+  (
+    call: ToolCall,
+    context: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly run: RunId;
+      readonly principal: PrincipalId;
+      readonly durable: Durable;
+    },
+  ): Promise<Decision<ToolCall>>;
+}
+
+/** Rewrites a tool call's outcome before it is recorded: the `after_tool` dispatch. */
+export interface ToolOutcomeRewriter {
+  (
+    outcome: ToolOutcome,
+    context: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly run: RunId;
+      readonly call: CallId;
+    },
+  ): Promise<ToolOutcome>;
+}
+
+/** Takes content-addressed snapshots of a session's environment before and after a run and diffs them: where a tool call's `changes` come from. */
+export interface RunSnapshots {
+  /** Returns the snapshot taken before the run. */
+  before(run: RunId): Promise<SnapshotId>;
+  /** Returns the snapshot taken after the run. */
+  after(run: RunId): Promise<SnapshotId>;
+  /** Returns what changed between two snapshots. */
+  diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
 }
 
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
@@ -265,12 +315,32 @@ const NO_JOBS: Jobs = {
   watch: () => unavailableStream("workspace"),
 };
 
+const INERT: Durable = {
+  wait: async () => unavailable("durable"),
+  memo: async (_name, compute) => compute(),
+  now: () => Date.now(),
+};
+
 const UNRECORDED: DurableProvider = {
-  context: () => ({
-    wait: async () => unavailable("durable"),
-    memo: async (_name, compute) => compute(),
-    now: () => Date.now(),
-  }),
+  run: async (input) => ({ kind: "done", value: await input.body(INERT) }),
+};
+
+const NO_TOOLS: ToolSource = {
+  get: () => undefined,
+  list: () => [],
+  activate: async () => undefined,
+};
+
+const STUB_WAITS: WaitRegistry = {
+  park: notImplemented,
+  runEnded: notImplemented,
+  jobEnded: notImplemented,
+  partAnswered: notImplemented,
+  partClosed: notImplemented,
+  inputAdmitted: notImplemented,
+  runStopped: notImplemented,
+  tick: notImplemented,
+  nextDeadline: notImplemented,
 };
 
 const NO_PLUGINS: Host["plugins"] = {
@@ -284,7 +354,7 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `wake` (false), `parts` (this kernel's `createPartsApi`) and `durable` (unrecorded: `wait` rejects `unavailable`, `memo` computes, `now` is the wall clock). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (unrecorded: the action's body runs once with a `Durable` whose `wait` rejects `unavailable`, `memo` computes and `now` is the wall clock, and the step is `done`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null) and `waits` (a stub whose methods throw until core-e's implement builds it with `createWaitRegistry` once the kernel object exists). */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -300,7 +370,7 @@ export function createKernel(
         | "resolveConfiguration"
         | "admit"
         | "command"
-        | "wake"
+        | "waits"
         | "models"
         | "settings"
         | "workspaces"
@@ -308,6 +378,11 @@ export function createKernel(
         | "parts"
         | "partDefinitions"
         | "durable"
+        | "tools"
+        | "beforeTool"
+        | "afterTool"
+        | "snapshots"
+        | "env"
         | "pluginApi"
         | "plugins"
         | "principals"
@@ -351,7 +426,7 @@ export function createKernel(
       input.resolveConfiguration ?? (async () => unavailable("resolveConfiguration")),
     admit: input.admit ?? (async () => ({ action: "continue" })),
     command: input.command ?? (async () => ({ kind: "unknown" })),
-    wake: input.wake ?? (async () => false),
+    waits: input.waits ?? STUB_WAITS,
     models: input.models ?? NO_MODELS,
     settings: input.settings ?? NO_SETTINGS,
     workspaces: input.workspaces ?? NO_WORKSPACES,
@@ -363,6 +438,11 @@ export function createKernel(
     },
     partDefinitions: input.partDefinitions ?? createPartDefinitions(),
     durable: input.durable ?? UNRECORDED,
+    tools: input.tools ?? (() => NO_TOOLS),
+    beforeTool: input.beforeTool ?? (async () => ({ action: "continue" })),
+    afterTool: input.afterTool ?? (async (outcome) => outcome),
+    snapshots: input.snapshots ?? (async () => null),
+    env: input.env ?? (async () => unavailable("env")),
     pluginApi: input.pluginApi ?? (() => unavailable("pluginApi")),
     plugins: input.plugins ?? NO_PLUGINS,
     principals: input.principals ?? NO_PRINCIPALS,
@@ -454,4 +534,8 @@ function unavailableStream(slot: string): AsyncIterable<never> {
 
 function unavailable(slot: string): never {
   throw new SdkError("unavailable", `${slot} is not provided`);
+}
+
+function notImplemented(): never {
+  throw new Error("not implemented");
 }

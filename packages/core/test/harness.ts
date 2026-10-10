@@ -110,9 +110,9 @@ export async function until<T>(
 
 /** Returns a kernel over a memory store with a registered workspace, scripted slots, and the in-process host over it. */
 export async function setup(
-  options?: Partial<
-    Pick<Kernel, "summarize" | "wake" | "execution" | "admit" | "hostId" | "store">
-  > & { readonly script?: Script },
+  options?: Partial<Pick<Kernel, "summarize" | "execution" | "admit" | "hostId" | "store">> & {
+    readonly script?: Script;
+  },
 ): Promise<{
   readonly kernel: Kernel;
   readonly host: Omit<Host, "listen">;
@@ -130,7 +130,6 @@ export async function setup(
     turn: turns.driver,
     resolveConfiguration: async () => configuration,
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
-    wake: options?.wake,
     execution: options?.execution,
     admit: options?.admit,
   });

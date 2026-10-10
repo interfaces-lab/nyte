@@ -15,19 +15,19 @@ const CORE: ConnectionContext = {
   origin: null,
 };
 
-/** Delivers a child run's report exactly once: wakes the durable wait parked on that run, or else attaches a bounded report to the parent's originating head. */
+/** Delivers a child run's report exactly once: nothing when `woke` (a durable wait parked on that run took its end), or else a bounded report attached to the parent's originating head. */
 export async function deliverChildReport(
   kernel: Kernel,
   child: SessionId,
   run: RunId,
   end: RunEnd,
+  woke: boolean,
 ): Promise<void> {
+  if (woke) return;
   const found = await readSession(kernel, child);
   const parent = found?.record.parent ?? null;
 
   if (found === null || parent === null) return;
-
-  if (await kernel.wake({ kind: "run", session: child, run })) return;
   const target = await readSession(kernel, parent);
 
   if (target === null) return;

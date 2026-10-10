@@ -171,7 +171,7 @@ export async function fenceUpdates(
   };
 }
 
-/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, settles every send receipt whose message landed in this run, delivers a child's report, and wakes the head when input is queued. */
+/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, settles every send receipt whose message landed in this run, delivers a child's report, and wakes the head when input is queued. The report is told no durable wait woke (`woke` false) until core-e's implement passes `await kernel.waits.runEnded(session, run, end)`. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -239,7 +239,7 @@ export async function endRun(
   for (const message of new Set([...landed, ...folded]))
     await settleReceipt(kernel, session, asId<"receipt">(message), end);
 
-  if (ended.parent !== null) await deliverChildReport(kernel, session, run, end);
+  if (ended.parent !== null) await deliverChildReport(kernel, session, run, end, false);
 
   if (runnable) kernel.wakes.notify(session, ended.head);
 }

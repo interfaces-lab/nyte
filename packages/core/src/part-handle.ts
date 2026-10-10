@@ -48,14 +48,13 @@ interface Answered {
   readonly input: unknown;
 }
 
-/** Returns what one kernel holds in memory about its parts, keyed by part ref: the definitions that created them, closed parts, modal answers, `answer()` waiters, the acts in flight and how many acts each part has run. */
+/** Returns what one kernel holds in memory about its parts, keyed by part ref: the definitions that created them, closed parts, modal answers, `answer()` waiters and the acts in flight. */
 interface PartTable {
   readonly created: Map<string, PartDefinition>;
   readonly closed: Set<string>;
   readonly answered: Map<string, Answered>;
   readonly waiters: Map<string, Set<(answer: Answered | null) => void>>;
   readonly acting: Map<string, Set<AbortController>>;
-  readonly acts: Map<string, number>;
 }
 
 /** Returns a value a schema validated, or the issues it found. */
@@ -78,7 +77,7 @@ type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 /** Each kernel's in-memory part table. */
 const tables = new WeakMap<Kernel, PartTable>();
 
-/** Creates a part: validates `state` against the definition (`invalid` with issues), writes the `PartRecord` at `parts/<part>` with `part created` (owner from the registry by kind, null when unregistered; `run` default null), and returns its handle. A definition with `onAction` must be registered. An existing id with the same kind and an equal state is a replay and writes nothing; any other existing id is `invalid`. A transcript part outside a run also lands as a commit on `head` (default main) in the same set: `[part created, part settled, commit]`. The kernel remembers the creating definition in memory, so handles bound by id validate against it when the kind is unregistered. */
+/** Creates a part: validates `state` against the definition (`invalid` with issues), writes the `PartRecord` at `parts/<part>` with `part created` (owner from the registry by kind, null when unregistered; `run` default null), and returns its handle. A definition with `onAction` must be registered. An existing id with the same kind and an equal state is a replay and writes nothing; any other existing id is `invalid`. A transcript part outside a run also lands as a commit on `head` (default main) in the same set: `[part created, part settled, commit]`. The kernel remembers the creating definition in memory, so handles bound by id validate against it when the kind is unregistered. From a durable step (`context.origin` set) the creation is an acquisition recorded on the step's call, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the part it already created. */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -383,7 +382,7 @@ function partHandleFor<K extends PartDefinition>(
   };
 }
 
-/** Runs a registered definition's `onAction` with an `ActionContext` over the kernel's durable step for this act; resolves closed as soon as the part closes, aborting the handler's signal. */
+/** Runs a registered definition's `onAction` as a durable step through `kernel.durable.run`, with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending until the part closes; core-e's implement also resolves it when a wake completes the step in this host's life. An interrupted step fails the act. */
 async function perform(
   kernel: Kernel,
   context: ConnectionContext,
@@ -400,42 +399,54 @@ async function perform(
   const table = tableOf(kernel);
 
   if (table.closed.has(name)) return { kind: "closed" };
-  const count = (table.acts.get(name) ?? 0) + 1;
-  table.acts.set(name, count);
   const controller = new AbortController();
   const acting = table.acting.get(name) ?? new Set<AbortController>();
   acting.add(controller);
   table.acting.set(name, acting);
 
-  const durable = kernel.durable.context({
-    session,
-    head: null,
-    run: record.run,
-    call: asId<"call">(`act:${record.id}:${count}`),
-    signal: controller.signal,
-  });
-
-  const actionContext: ActionContext<unknown, ActionSchemas> = {
-    wait: (target) => durable.wait(target),
-    memo: (key, compute) => durable.memo(key, compute),
-    now: () => durable.now(),
-    part: partHandle(kernel, context, session, record.id),
-    get api() {
-      return kernel.pluginApi(registered.owner ?? "core", session);
-    },
-    principal: context.principal,
-    signal: controller.signal,
-  };
-
   const closed = new Promise<Performed>((resolve) =>
     controller.signal.addEventListener("abort", () => resolve({ kind: "closed" }), { once: true }),
   );
 
-  const ran = (async () =>
-    registered.definition.onAction?.(input.action, input.input, actionContext))().then(
-    (output): Performed => ({ kind: "returned", output }),
-    (error: unknown): Performed => ({ kind: "threw", error }),
-  );
+  const ran = kernel.durable
+    .run({
+      session,
+      part: record.id,
+      action: input.action,
+      call: asId<"call">(`act:${record.id}:${crypto.randomUUID()}`),
+      signal: controller.signal,
+      async body(durable) {
+        const actionContext: ActionContext<unknown, ActionSchemas> = {
+          wait: (target) => durable.wait(target),
+          memo: (key, compute) => durable.memo(key, compute),
+          now: () => durable.now(),
+          part: partHandle(kernel, context, session, record.id),
+          get api() {
+            return kernel.pluginApi(registered.owner ?? "core", session);
+          },
+          principal: context.principal,
+          signal: controller.signal,
+        };
+
+        return registered.definition.onAction?.(input.action, input.input, actionContext);
+      },
+    })
+    .then(
+      (outcome): Performed | Promise<Performed> => {
+        if (outcome.kind === "done") return { kind: "returned", output: outcome.value };
+
+        if (outcome.kind === "interrupted")
+          return {
+            kind: "threw",
+            error: new Error(
+              `The ${input.action} action was interrupted and may have partially run.`,
+            ),
+          };
+
+        return new Promise<Performed>(() => undefined);
+      },
+      (error: unknown): Performed => ({ kind: "threw", error }),
+    );
 
   try {
     return await Promise.race([ran, closed]);
@@ -472,7 +483,7 @@ function settle(table: PartTable, name: string, answer: Answered): void {
   table.waiters.delete(name);
 }
 
-/** Marks a part closed in memory: its waiters resolve null, its acts in flight resolve closed, and its creating definition, answer and act count are dropped. */
+/** Marks a part closed in memory: its waiters resolve null, its acts in flight resolve closed, and its creating definition and answer are dropped. */
 function release(table: PartTable, name: string): void {
   table.closed.add(name);
   table.created.delete(name);
@@ -483,7 +494,6 @@ function release(table: PartTable, name: string): void {
   table.waiters.delete(name);
   table.acting.delete(name);
   table.answered.delete(name);
-  table.acts.delete(name);
 }
 
 /** Returns an act's input as the definition validates it for the action, or null when the definition has no such action; throws `invalid` with the issues. Without a definition the input passes as given. */
@@ -608,7 +618,6 @@ function tableOf(kernel: Kernel): PartTable {
     answered: new Map(),
     waiters: new Map(),
     acting: new Map(),
-    acts: new Map(),
   };
 
   tables.set(kernel, table);

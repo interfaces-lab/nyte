@@ -6,6 +6,7 @@ import type {
   HeadName,
   PrincipalId,
   RunId,
+  SessionId,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
 
@@ -14,11 +15,13 @@ export interface ConnectionContext {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
   readonly credential: CredentialSource;
-  /** The run, head and call a tool invocation's connection acts from; null for a client. `before_send` sees the run; `sessions.create` records it. */
+  /** The durable step a tool invocation's connection acts from: its session, run, head and call, and the per-execution counter that acquisitions without an explicit id key by (`acq:<n>`), reset on every re-run of the step; null for a client. `before_send` sees the run; `sessions.create` records the run, head and call. */
   readonly origin: {
+    readonly session: SessionId;
     readonly run: RunId;
     readonly head: HeadName;
     readonly call: CallId | null;
+    readonly sequence: { next(): number };
   } | null;
 }
 

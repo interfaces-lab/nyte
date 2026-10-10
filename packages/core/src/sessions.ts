@@ -73,7 +73,7 @@ export interface Sessions {
   }): Promise<Paged<SessionInfo>>;
 }
 
-/** Returns the session directory for a connection; every session it creates records `context.origin`, the run, head and call a tool invocation creates children from. */
+/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin`, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `sessions.${operation}`);
@@ -121,7 +121,10 @@ async function create(
     id,
     name: input.name ?? null,
     parent: input.parent ?? null,
-    origin: context.origin,
+    origin:
+      context.origin === null
+        ? null
+        : { run: context.origin.run, head: context.origin.head, call: context.origin.call },
     workspace,
     pinned: false,
     archived: false,

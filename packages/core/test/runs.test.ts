@@ -1,10 +1,11 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { PatchEvent, WaitTarget } from "@nyte-ai/schema";
+import type { PatchEvent } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   LOCAL,
   decodePartRecord,
   decodeRunRecord,
+  deliverChildReport,
   driveInProcess,
   envelope,
   partRef,
@@ -12,7 +13,7 @@ import {
   runRef,
   startRun,
 } from "../src/index.ts";
-import { configuration, label, livePart, main, setup } from "./harness.ts";
+import { completed, configuration, label, livePart, main, setup } from "./harness.ts";
 
 describe("runs", () => {
   it("logs the stop fence before the run ends, then aborts: parts fail and patches drop", async () => {
@@ -199,26 +200,13 @@ describe("runs", () => {
     });
   });
 
-  it("wakes the parked wait instead of attaching a report", async () => {
-    const woken: WaitTarget[] = [];
-
-    const { host, script: turns } = await setup({
-      wake: async (target) => {
-        woken.push(target);
-
-        return true;
-      },
-    });
-
+  it("attaches no report when a parked wait took the child's end", async () => {
+    const { kernel, host } = await setup();
     const parent = await host.sessions.create();
     const child = await host.sessions.create({ parent: parent.id });
-    await child.send("Investigate.");
-    const step = host.execution.advance({ session: child.id, head: main });
-    const turn = await turns.started(1);
-    turn.finish();
-    await step;
 
-    expect(woken).toEqual([{ kind: "run", session: child.id, run: turn.input.run.id }]);
+    await deliverChildReport(kernel, child.id, asId("r1"), completed, true);
+
     expect((await parent.view()).messages).toEqual([]);
   });
 });
