@@ -1,3 +1,4 @@
+import { isJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -10,7 +11,6 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
-import { isJson } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import type { CallRecord } from "./records.ts";
 import { changeCall, readCall, runWaiting } from "./session-state.ts";

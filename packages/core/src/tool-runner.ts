@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { ToolOutcomeType, asId, isJson, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -25,7 +25,6 @@ import { Compile } from "typebox/compile";
 import { isParked, runStep } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import { createInvocation } from "./invocation.ts";
-import { ToolOutcomeSchema, isJson, withJson } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import { sessionOfPart } from "./part-handle.ts";
 import { definePart, tool } from "./parts.ts";
@@ -113,7 +112,7 @@ const INTERRUPTED: ToolOutcome = { kind: "interrupted" };
 
 const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
-const outcomes = Compile(withJson(ToolOutcomeSchema));
+const outcomes = Compile(withJson(ToolOutcomeType));
 
 const stops = new WeakMap<Kernel, Map<string, Set<AbortController>>>();
 

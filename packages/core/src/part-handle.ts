@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJson } from "@nyte-ai/schema";
 import type {
   HeadName,
   Json,
@@ -13,7 +13,7 @@ import type {
 import { objectId } from "./content.ts";
 import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
-import { check, isJson } from "./json-schema.ts";
+import { check } from "./json-schema.ts";
 import type { Checked } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import type { RegisteredDefinition } from "./part-definitions.ts";

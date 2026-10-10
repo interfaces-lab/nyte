@@ -1,9 +1,10 @@
+import { isJson } from "@nyte-ai/schema";
 import type { Disposer, Json, SessionId, SettingInfo } from "@nyte-ai/schema";
 import { jsonSchemaOf, publishCatalog } from "./catalog.ts";
 import type { SettingsApi } from "./connection.ts";
 import { SdkError } from "./error.ts";
 import { headHandle } from "./head.ts";
-import { check, isJson } from "./json-schema.ts";
+import { check } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Setting, SettingDefinition } from "./plugin.ts";
 import { pluginRuntimes } from "./plugin-runtime.ts";

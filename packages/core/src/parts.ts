@@ -1,4 +1,11 @@
-import { standard } from "@nyte-ai/schema";
+import {
+  JsonType,
+  SignatureType,
+  ToolPartStateSchema,
+  UsageType,
+  standard,
+  withJson,
+} from "@nyte-ai/schema";
 import type {
   ActOutcome,
   Awaitable,
@@ -13,16 +20,6 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import {
-  JsonSchema,
-  ToolClassSchema,
-  ToolOutcomeSchema,
-  SignatureSchema,
-  ToolProgressSchema,
-  UsageSchema,
-  idSchema,
-  withJson,
-} from "./json-schema.ts";
 import type { PluginApi } from "./plugin.ts";
 import type { Durable } from "./tools.ts";
 
@@ -273,14 +270,6 @@ export function isPart<K extends PartDefinition>(message: Message, kind: K): mes
   return message.kind === "part" && message.partKind === kind.kind;
 }
 
-/** The fields every tool part phase carries: the call, its name, its arguments and its class. */
-const TOOL_CALL = {
-  call: idSchema<"call">(),
-  name: Type.String(),
-  args: JsonSchema,
-  class: ToolClassSchema,
-};
-
 /** Accepts only an object with no own keys: the input of an action that takes none. */
 const EMPTY_INPUT: Schema<Record<string, never>> = {
   "~standard": {
@@ -318,7 +307,7 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
  */
 export const text: PartDefinition<{ readonly markdown: string; readonly signature: Json | null }, {}> = definePart({
   kind: "text",
-  state: standard(withJson(Type.Object({ markdown: Type.String(), signature: SignatureSchema }))),
+  state: standard(withJson(Type.Object({ markdown: Type.String(), signature: SignatureType }))),
   actions: {},
   fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
 });
@@ -336,7 +325,7 @@ export const thinking: PartDefinition<{ readonly markdown: string; readonly merg
   kind: "thinking",
   state: standard(
     withJson(
-      Type.Object({ markdown: Type.String(), merged: Type.Number(), signature: SignatureSchema }),
+      Type.Object({ markdown: Type.String(), merged: Type.Number(), signature: SignatureType }),
     ),
   ),
   actions: {},
@@ -351,31 +340,7 @@ export const thinking: PartDefinition<{ readonly markdown: string; readonly merg
  */
 export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = definePart({
   kind: "tool",
-  state: standard(
-    withJson(
-      Type.Union([
-        Type.Object({ ...TOOL_CALL, phase: Type.Literal("calling") }),
-      Type.Object({
-        ...TOOL_CALL,
-        phase: Type.Literal("running"),
-        progress: Type.Union([ToolProgressSchema, Type.Null()]),
-      }),
-      Type.Object({
-        ...TOOL_CALL,
-        phase: Type.Literal("settled"),
-        outcome: ToolOutcomeSchema,
-        changes: Type.Union([
-          Type.Object({
-            added: Type.Number(),
-            removed: Type.Number(),
-            paths: Type.Array(Type.String()),
-          }),
-          Type.Null(),
-        ]),
-      }),
-    ]),
-    ),
-  ),
+  state: ToolPartStateSchema,
   actions: { stop: { input: EMPTY_INPUT } },
   fallback: (state, { id }) =>
     `${clip(state.name)} ${state.phase}${state.phase === "settled" ? ` ${state.outcome.kind}` : ""} [${id}]`,
@@ -399,12 +364,12 @@ export const compaction: PartDefinition<{ readonly summary: string | null; reado
           provider: Type.String(),
           api: Type.String(),
           model: Type.String(),
-          data: JsonSchema,
+          data: JsonType,
         }),
         Type.Null(),
       ]),
       tokensBefore: Type.Number(),
-      usage: Type.Union([UsageSchema, Type.Null()]),
+      usage: Type.Union([UsageType, Type.Null()]),
     }),
     ),
   ),

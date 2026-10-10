@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJson } from "@nyte-ai/schema";
 import type {
   CatalogGeneration,
   CommandInfo,
@@ -9,7 +9,6 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
-import { isJson } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import { isJsonObject } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";

@@ -2,7 +2,7 @@ import type { Models } from "@nyte-ai/ai";
 import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
 import { isContextOverflow, isRecoverableLength } from "@nyte-ai/ai/utils/overflow";
 import { abortableSleep, isRetryableAssistantError, retryDelayMs } from "@nyte-ai/ai/utils/retry";
-import { asId } from "@nyte-ai/schema";
+import { asId, isJson } from "@nyte-ai/schema";
 import type {
   HeadName,
   Json,
@@ -29,7 +29,7 @@ import type {
 import { compactIfNeeded } from "./compaction.ts";
 import { providerContext, requestBody } from "./context.ts";
 import type { HookContext } from "./hooks.ts";
-import { check, isJson } from "./json-schema.ts";
+import { check } from "./json-schema.ts";
 import type { Kernel, LandedInput, TurnDriver } from "./kernel.ts";
 import { modelInfo, withLimits } from "./models.ts";
 import { createPart } from "./part-handle.ts";

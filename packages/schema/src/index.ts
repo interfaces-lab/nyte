@@ -23,3 +23,4 @@ export * from "./store.ts";
 export * from "./tools.ts";
 export * from "./views.ts";
 export * from "./workspaces.ts";
+export * from "./wire/index.ts";

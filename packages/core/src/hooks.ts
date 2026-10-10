@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { ToolClassType, asId } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -17,7 +17,6 @@ import { Compile } from "typebox/compile";
 import { isParked, runStep } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import { SdkError } from "./error.ts";
-import { ToolClassSchema } from "./json-schema.ts";
 import type { AdmissionGate, Kernel } from "./kernel.ts";
 import type { HookEntry, HookHandler, HookName, HookTable, PluginApi } from "./plugin.ts";
 import { stepPluginApi } from "./plugin-api.ts";
@@ -115,7 +114,7 @@ const CONTINUE = { action: "continue" } as const;
 
 const NEVER = new AbortController().signal;
 
-const classes = Compile(ToolClassSchema);
+const classes = Compile(ToolClassType);
 
 /** Calls each observe hook's handler with its context: one entry per hook, so a call indexed by a generic hook name is typed by that hook. */
 type Observers = {

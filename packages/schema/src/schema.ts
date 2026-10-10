@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import type { StaticDecode, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
+import type { Validator } from "typebox/compile";
 
 /**
  * Accepts any validator that implements both Standard Schema halves.
@@ -66,24 +67,27 @@ export type Schema<T> = StandardSchemaV1<unknown, T> & StandardJSONSchemaV1<unkn
  */
 export type Infer<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
 
-/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself. */
+/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself, compiled on first validation. */
 export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> {
-  const validator = Compile(schema);
+  let validator: Validator<{}, T> | undefined;
   const json: Record<string, unknown> = Object.fromEntries(Object.entries(schema));
 
   return {
     "~standard": {
       version: 1,
       vendor: "typebox",
-      validate: (value) =>
-        validator.Check(value)
+      validate: (value) => {
+        validator ??= Compile(schema);
+
+        return validator.Check(value)
           ? { value: validator.Decode(value) }
           : {
               issues: validator.Errors(value).map((error) => ({
                 message: error.message,
                 path: error.instancePath.split("/").filter(Boolean),
               })),
-            },
+            };
+      },
       jsonSchema: { input: () => json, output: () => json },
       types: undefined,
     },
