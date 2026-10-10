@@ -76,7 +76,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/sp
 /** Catalog, execution and credential store together. */
 import type { Models } from "@nyte-ai/ai";
 /** The provider-facing message; never the view's Message. Renamed only to avoid the collision. */
-import type { Message as ModelMessage } from "@nyte-ai/schema";
+import type { Message as ModelMessage } from "@nyte-ai/schema/model";
 /**
  * Accepts any validator that implements both Standard Schema halves.
  *
@@ -223,6 +223,8 @@ interface OpenOptions {
   readonly workspace: WorkspaceTarget;
   /** Run sessions here, or only admit and leave running to a driver. Default run. */
   readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
+  /** The key core encrypts secrets with before storing them. The host composes it: OS keychain, else a 0600 file. Omitted = `secrets.set` answers unavailable. */
+  readonly secrets?: { key(): Promise<Uint8Array> };
 }
 
 /**
@@ -402,6 +404,8 @@ interface Connection {
   readonly hostId: HostId;
   /** Who this connection acts as. */
   readonly principal: PrincipalId;
+  /** The credential to reconnect with: for a pairing connect, the device token it yielded. The client persists it; the sdk keeps it in memory. */
+  readonly credential: CredentialSource;
   /** The session directory: create, list, watch. */
   readonly sessions: Sessions;
   /** The workspaces registered on this host. */
@@ -982,7 +986,8 @@ interface ListenOptions {
    */
   readonly transport:
     | { readonly kind: "http"; readonly hostname?: string; readonly port?: number }
-    | { readonly kind: "fetch" };
+    | { readonly kind: "fetch" }
+    | { readonly kind: "relay"; readonly url: string; readonly credential: CredentialSource }; // the host dials the relay outbound; the relay forwards each request to fetch(). No socket is opened here.
   /**
    * `token` is Bearer, compared in constant time, at least 16 characters.
    * `custom` maps a request to a principal and its authority, or denies it.
@@ -4459,6 +4464,8 @@ interface EnvironmentProvider {
   /** Binds a folder, boots or joins a VM, connects a sandbox: the tools' hands. `close()` detaches; `destroy()` tears down. */
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
   /** Required for local and sandbox. */
+  /** The host home's `.nyte` as files (local: `~/.nyte`); absent on a sandbox. Core reaches no filesystem except through a provider. */
+  readonly user?: () => FilesApi;
   readonly git?: (env: ExecutionEnv) => GitApi;
   /** Required wherever files are served: content-addressed trees before and after each run. */
   readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet> };
@@ -4612,8 +4619,8 @@ interface ValidationIssue { readonly severity: "error" | "warning"; readonly pat
  * @since 0.1.0
  */
 interface Inputs {
-  /** Rooted at ~/.nyte. */
-  readonly user: FilesApi;
+  /** Rooted at the host home's `.nyte`; null when the provider supplies none (a sandbox). */
+  readonly user: FilesApi | null;
   /** Rooted at .nyte; null when projectInput is false or absent. */
   readonly project: FilesApi | null;
   /** Deduplicated by name, project wins; collisions reported on `HostView.plugins[].issues`. */
@@ -5327,6 +5334,8 @@ interface ObjectStore {
  * - `sessions/<id>/journal/<principal>`: client-side only; the sdk's RequestJournal over the same interface.
  * - `workspaces/<id>`: workspace record.
  * - `kv/<scope>/<owner>/<key>`: settings, plugin storage, secrets (encrypted object).
+ * - `sessions/<id>/leases/<head>`: `{ holder: HostId, expiresAt }`; what `execution.cover` takes and `advance` renews. `fenced` is this CAS answering stale.
+ * - `host/identity`: `{ id: HostId, createdAt }`, written once, never moved.
  * - `host/settings`, `host/principals`, `host/catalog`.
  *
  * Receipts, memos and kv are refs, not tables: put-unless-exists is

@@ -12,6 +12,7 @@ import { ChangesPage } from "./changes/page";
 import { SdkSpecPage } from "./sdk/page";
 import { MessagesPage } from "./messages/page";
 import { ProfilePage } from "./profile/page";
+import { UsagePage } from "./usage/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -79,6 +80,12 @@ const routeTree = rootRoute.addChildren([
     path: "/profile",
     component: ProfilePage,
     head: () => ({ meta: [{ title: "Lab · Profile" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/usage",
+    component: UsagePage,
+    head: () => ({ meta: [{ title: "Lab · Usage" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

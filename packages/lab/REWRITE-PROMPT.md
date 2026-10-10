@@ -22,6 +22,10 @@ with thinking level `high`. No implementer or reviewer runs on another model. Yo
   Read it in full before anything else. It is the contract; it is not a
   suggestion. Where the baseline is silent, the rules in its `@module` header
   decide. Where it is still silent, stop and ask me; do not invent.
+- `packages/lab/REWRITE-DECISIONS.md` — answers to what the baseline was silent
+  on, numbered as the work orders asked. Binding. Read it before writing a
+  work order; add a question there, numbered, when the baseline and this file
+  are both silent, and wait for the answer.
 - `packages/lab/REWRITE-TRACKING.md` — what the old code had and what the
   baseline has instead, one checkbox per row. Tick rows as they land. Use it
   only to find code to delete; never to keep an old shape "for now".
@@ -85,7 +89,7 @@ is rewritten or deleted; nothing is adapted.
 | `desktop` | rewritten: Electron shell, `open` + `wrapEnv` for the viewport browser and native pty, `app` mounted |
 | `tui` | rewritten over the sdk |
 | `cli` | rewritten: `nyte -p` print mode and the tui entry, `open` + `listen` composition |
-| `mobile` | rewritten against the served catalog (`HostView.operations`) and the delta stream; it is native and never imports the TS sdk, so protocol's generated artifacts must include a Swift-consumable catalog |
+| `mobile` | rewritten over `@nyte-ai/sdk`, which must run in React Native (no Node; `fetch`, `EventSource`, the journal over AsyncStorage). Decision 8 in REWRITE-DECISIONS.md |
 | `connect-worker` | separate deployment; only the wire contract it shares with `host` changes |
 | `docs` | `content/kernel` rewritten from the baseline; the site itself untouched |
 | `ui`, `lab`, `demo` | untouched |

@@ -11,6 +11,7 @@ const PAGES = [
   ["/changes", "Changes"],
   ["/messages", "Messages"],
   ["/profile", "Profile"],
+  ["/usage", "Usage"],
   ["/sdk", "SDK"],
   ["/settings", "Settings"],
 ] as const;
