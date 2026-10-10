@@ -40,6 +40,8 @@ export interface PluginRuntime {
   issues(): readonly HostView["plugins"][number][];
   /** Returns the api of the active plugin with this id, core's minimal api for `core` (`corePluginApi`), or undefined: what `kernel.pluginApi` resolves through. */
   api(owner: string): PluginApi<"core"> | undefined;
+  /** Returns the active plugins in load order: what the environment registry reads providers from. */
+  plugins(): readonly Plugin<"core">[];
   /** Deactivates every plugin in reverse load order (aborting each one's signal removes its contributions and hooks), runs a last reload pass and republishes `HostView.plugins`; the runtime may load again. */
   close(): Promise<void>;
 }
@@ -300,6 +302,7 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
 
       return core;
     },
+    plugins: () => [...active.values()].map((entry) => entry.plugin),
     async close() {
       closed = true;
 

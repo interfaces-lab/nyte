@@ -1,4 +1,4 @@
-import type { Availability, ChangeSet, EnvironmentIdentity, RunId, SnapshotId, WorkspaceTarget } from "@nyte-ai/schema";
+import type { Availability, ChangeSet, DiffOptions, EnvironmentIdentity, PatchEntry, RunId, SnapshotId, WorkspaceTarget } from "@nyte-ai/schema";
 import type { BrowserApi } from "./browser.ts";
 import type { FilesApi } from "./files.ts";
 import type { GitApi } from "./git.ts";
@@ -77,7 +77,7 @@ export interface EnvironmentProvider {
   /** Required for local and sandbox. */
   readonly git?: (env: ExecutionEnv) => GitApi;
   /** Required wherever files are served: content-addressed trees before and after each run. */
-  readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet> };
+  readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>; patches(from: SnapshotId, to: SnapshotId, paths: readonly string[], options?: DiffOptions): Promise<readonly PatchEntry[]> };
   /** Supplies a browser capability. */
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
   /** Tears down remote sandboxes; local providers reject. */
@@ -111,9 +111,9 @@ export interface EnvironmentProvider {
  * @since 0.1.0
  */
 export interface Resources {
-  /** The local provider attached at the host home's `.nyte`; null when no local provider is registered (a durable object). The host machine is just another target of the local provider. */
+  /** The local provider attached at the host home (its `.nyte` and `.agents` are under it); null when no local provider is registered (a durable object). The host machine is just another target of the local provider. */
   readonly user: FilesApi | null;
-  /** Rooted at .nyte; null when projectResources is false or absent. */
+  /** Rooted at the workspace root (its `.nyte` and `.agents` are under it); null when projectResources is false or absent. */
   readonly project: FilesApi | null;
   /** Deduplicated by name, project wins; collisions reported on `HostView.plugins[].issues`. */
   readonly skills: readonly { readonly name: string; readonly location: string; readonly scope: "user" | "project" | "path"; readonly description: string }[];

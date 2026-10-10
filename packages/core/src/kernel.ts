@@ -43,12 +43,13 @@ import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import type { EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
+import type { EnvironmentRegistry } from "./environment-registry.ts";
 import { SdkError } from "./error.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
 import { gateSubmission } from "./hooks.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
-import type { Job, Jobs } from "./jobs.ts";
+import type { Job, JobTable, Jobs } from "./jobs.ts";
 import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
 import { createPartsApi } from "./parts-api.ts";
@@ -57,6 +58,7 @@ import type { Plugin, PluginApi } from "./plugin.ts";
 import { checkPlugins, createPluginRuntime, replacePlugins } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { ConnectionContext } from "./principals.ts";
+import type { ConnectionRegistry } from "./principals-api.ts";
 import { createSettingsApi } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { stoppableTool } from "./tool-runner.ts";
@@ -114,9 +116,9 @@ export interface Kernel {
   readonly models: ModelsApi;
   /** Host-scope settings. Default `createSettingsApi`. */
   readonly settings: SettingsApi;
-  /** The workspaces registered on this host; core-f fills it. */
+  /** The workspaces registered on this host; f2 fills it with `createWorkspaces` as `CORE_CONTEXT`. */
   readonly workspaces: Workspaces;
-  /** Returns a handle on a workspace by id; core-f fills it. */
+  /** Returns a handle on a workspace by id; f2 fills it with `workspaceHandle` as `CORE_CONTEXT`. */
   workspace(id: WorkspaceId): Workspace;
   /** Creates parts and binds part handles; core-d fills it. */
   readonly parts: PartProvider;
@@ -130,14 +132,22 @@ export interface Kernel {
   readonly beforeTool: ToolGate;
   /** Dispatches `after_tool` over a call's outcome. Default: the session's hook dispatch. */
   readonly afterTool: ToolOutcomeRewriter;
-  /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. core-f fills it. Default null. */
+  /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. f2 fills it with `environments.snapshots`. Default null. */
   snapshots(session: SessionId): Promise<RunSnapshots | null>;
-  /** Resolves the environment a session's tools run against; core-f fills it. */
+  /** Resolves the environment a session's tools run against; f2 fills it with `environments.attach`. */
   env(session: SessionId): Promise<ExecutionEnv>;
-  /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`; core-f (f2) fills it. */
+  /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`; f2 fills it with `environments.wrap`. */
   wrapEnv(session: SessionId, wrap: EnvironmentWrap): Disposer;
-  /** Resolves what core scanned for a session, gated by its workspace's `projectResources`: `PluginApi.inputs`; core-f (f2) fills it. */
+  /** Resolves what core scanned for a session, gated by its workspace's `projectResources`: `PluginApi.inputs`; f2 fills it with `scanResources`. */
   resources(session: SessionId): Promise<Resources>;
+  /** The host's home directory as the composer passes it; `Resources.user` attaches the `"local"` provider there (decision 9). Default null: no user resources, as on a durable object. */
+  readonly home: string | null;
+  /** The environment providers the loaded plugins supply and the environments attached through them; f2 builds it with `createEnvironmentRegistry` on first use. */
+  readonly environments: EnvironmentRegistry;
+  /** The jobs this process started, in memory; f2 builds it with `createJobTable` on first use. */
+  readonly jobs: JobTable;
+  /** The open connections by principal, so revoking a principal drops its streams; f2 builds it with `createConnectionRegistry` on first use. */
+  readonly connections: ConnectionRegistry;
   /** Sends one non-run model request charged to a session: `PluginApi.request`; core-f (f3) fills it. */
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
   /** The key core encrypts plugin secrets with (decision 10); null when the composer gave none, and then `secrets.set` answers `unavailable`. */
@@ -158,9 +168,9 @@ export interface Kernel {
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
   /** Hot plugin replacement and preflight. */
   readonly plugins: Host["plugins"];
-  /** Who may connect; core-f fills it. */
+  /** Who may connect; f2 fills it with `createPrincipals`. */
   readonly principals: Host["principals"];
-  /** Collects unreachable history; core-f fills it. */
+  /** Collects unreachable history; f2 fills it with `prune`, which reports reachability and leaves collection to the store driver. */
   prune(): Promise<PruneReport>;
 }
 
@@ -354,7 +364,34 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `snapshots` (null), `secrets` (null), `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists); `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use. */
+const NO_ENVIRONMENTS: EnvironmentRegistry = {
+  providers: () => unavailable("environments"),
+  provider: () => unavailable("environments"),
+  attach: async () => unavailable("environments"),
+  wrap: () => unavailable("environments"),
+  snapshots: async () => unavailable("environments"),
+  capabilities: async () => unavailable("environments"),
+  detach: async () => unavailable("environments"),
+  attachWorkspace: async () => unavailable("environments"),
+  workspaceCapabilities: async () => unavailable("environments"),
+  detachWorkspace: async () => unavailable("environments"),
+};
+
+const NO_JOB_TABLE: JobTable = {
+  get: () => unavailable("jobs"),
+  byKey: () => unavailable("jobs"),
+  list: () => unavailable("jobs"),
+  add: () => unavailable("jobs"),
+  update: () => unavailable("jobs"),
+  subscribe: () => unavailable("jobs"),
+};
+
+const NO_CONNECTIONS: ConnectionRegistry = {
+  register: () => unavailable("connections"),
+  revoke: () => unavailable("connections"),
+};
+
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `snapshots` (null), `secrets` (null), `home` (null), `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists); `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use. */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -386,6 +423,10 @@ export function createKernel(
         | "wrapEnv"
         | "resources"
         | "request"
+        | "home"
+        | "environments"
+        | "jobs"
+        | "connections"
         | "secrets"
         | "hostPlugins"
         | "pluginApi"
@@ -484,6 +525,10 @@ export function createKernel(
     wrapEnv: input.wrapEnv ?? (() => unavailable("wrapEnv")),
     resources: input.resources ?? (async () => unavailable("resources")),
     request: input.request ?? (async () => unavailable("request")),
+    home: input.home ?? null,
+    environments: input.environments ?? NO_ENVIRONMENTS,
+    jobs: input.jobs ?? NO_JOB_TABLE,
+    connections: input.connections ?? NO_CONNECTIONS,
     secrets: input.secrets ?? null,
     hostPlugins: input.hostPlugins ?? [],
     pluginsFor(session) {
