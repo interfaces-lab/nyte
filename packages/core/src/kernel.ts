@@ -38,6 +38,7 @@ import type { HostState } from "./host-view.ts";
 import type { Job, Jobs } from "./jobs.ts";
 import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
+import { createPartsApi } from "./parts-api.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { PluginApi } from "./plugin.ts";
 import type { ConnectionContext } from "./principals.ts";
@@ -257,17 +258,6 @@ const NO_WORKSPACES: Workspaces = {
   forget: async () => unavailable("workspaces"),
 };
 
-const NO_PARTS: PartProvider = {
-  create: async () => unavailable("parts"),
-  part: (_context, _session, id) => ({
-    id,
-    update: async () => unavailable("parts"),
-    act: async () => unavailable("parts"),
-    answer: async () => unavailable("parts"),
-    close: async () => unavailable("parts"),
-  }),
-};
-
 const NO_JOBS: Jobs = {
   start: async () => unavailable("workspace"),
   recover: async () => unavailable("workspace"),
@@ -294,7 +284,7 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `wake` (false) and `durable` (unrecorded: `wait` rejects `unavailable`, `memo` computes, `now` is the wall clock). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `wake` (false), `parts` (this kernel's `createPartsApi`) and `durable` (unrecorded: `wait` rejects `unavailable`, `memo` computes, `now` is the wall clock). */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -331,7 +321,7 @@ export function createKernel(
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
 
-  return {
+  const kernel: Kernel = {
     hostId: input.hostId,
     store: input.store,
     description: input.description,
@@ -366,7 +356,11 @@ export function createKernel(
     settings: input.settings ?? NO_SETTINGS,
     workspaces: input.workspaces ?? NO_WORKSPACES,
     workspace: input.workspace ?? unavailableWorkspace,
-    parts: input.parts ?? NO_PARTS,
+    parts: input.parts ?? {
+      create: (context, session, kind, value) =>
+        createPartsApi(kernel, context, session).create(kind, value),
+      part: (context, session, id) => createPartsApi(kernel, context, session).part(id),
+    },
     partDefinitions: input.partDefinitions ?? createPartDefinitions(),
     durable: input.durable ?? UNRECORDED,
     pluginApi: input.pluginApi ?? (() => unavailable("pluginApi")),
@@ -374,6 +368,8 @@ export function createKernel(
     principals: input.principals ?? NO_PRINCIPALS,
     prune: input.prune ?? (async () => unavailable("prune")),
   };
+
+  return kernel;
 }
 
 function createRunTable(): RunTable {

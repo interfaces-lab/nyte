@@ -1,5 +1,6 @@
 import type { SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "./kernel.ts";
+import { createPart, partHandle } from "./part-handle.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { Session } from "./session.ts";
 
@@ -9,5 +10,8 @@ export function createPartsApi(
   context: ConnectionContext,
   session: SessionId,
 ): { readonly create: Session["parts"]["create"]; readonly part: Session["part"] } {
-  throw new Error("not implemented");
+  return {
+    create: (kind, input) => createPart(kernel, context, session, kind, input),
+    part: (id) => partHandle(kernel, context, session, id),
+  };
 }

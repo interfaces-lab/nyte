@@ -1,3 +1,4 @@
+import { standard } from "@nyte-ai/schema";
 import type {
   ActOutcome,
   Awaitable,
@@ -11,6 +12,16 @@ import type {
   Usage,
   ValidationIssue,
 } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import {
+  JsonSchema,
+  ToolClassSchema,
+  ToolOutcomeSchema,
+  ToolProgressSchema,
+  UsageSchema,
+  idSchema,
+  withJson,
+} from "./json-schema.ts";
 import type { PluginApi } from "./plugin.ts";
 import type { Durable } from "./tools.ts";
 
@@ -142,7 +153,7 @@ export interface ActionContext<State, Actions extends ActionSchemas> extends Dur
  * @since 0.1.0
  */
 export function definePart<State, const Actions extends ActionSchemas>(definition: PartDefinition<State, Actions>): PartDefinition<State, Actions> {
-  throw new Error("not implemented");
+  return definition;
 }
 
 /**
@@ -258,8 +269,35 @@ export interface Part<K extends PartDefinition> {
  * @since 0.1.0
  */
 export function isPart<K extends PartDefinition>(message: Message, kind: K): message is Extract<Message, { readonly kind: "part" }> & { readonly state: PartState<K> } {
-  throw new Error("not implemented");
+  return message.kind === "part" && message.partKind === kind.kind;
 }
+
+/** The fields every tool part phase carries: the call, its name, its arguments and its class. */
+const TOOL_CALL = {
+  call: idSchema<"call">(),
+  name: Type.String(),
+  args: JsonSchema,
+  class: ToolClassSchema,
+};
+
+/** Accepts only an object with no own keys: the input of an action that takes none. */
+const EMPTY_INPUT: Schema<Record<string, never>> = {
+  "~standard": {
+    version: 1,
+    vendor: "nyte",
+    validate: (value) =>
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 0
+        ? { value: {} }
+        : { issues: [{ message: "Expected an object with no keys." }] },
+    jsonSchema: {
+      input: () => ({ type: "object", properties: {}, additionalProperties: false }),
+      output: () => ({ type: "object", properties: {}, additionalProperties: false }),
+    },
+  },
+};
 
 /**
  * Returns the built-in text part: the model's prose. Role answer; streaming
@@ -276,7 +314,12 @@ export function isPart<K extends PartDefinition>(message: Message, kind: K): mes
  * @category parts
  * @since 0.1.0
  */
-export const text: PartDefinition<{ readonly markdown: string }, {}> = placeholder("text", {});
+export const text: PartDefinition<{ readonly markdown: string }, {}> = definePart({
+  kind: "text",
+  state: standard(Type.Object({ markdown: Type.String() })),
+  actions: {},
+  fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
+});
 
 /**
  * Returns the built-in thinking part. Role step; adjacent thoughts are one
@@ -285,7 +328,12 @@ export const text: PartDefinition<{ readonly markdown: string }, {}> = placehold
  * @category parts
  * @since 0.1.0
  */
-export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}> = placeholder("thinking", {});
+export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}> = definePart({
+  kind: "thinking",
+  state: standard(Type.Object({ markdown: Type.String(), merged: Type.Number() })),
+  actions: {},
+  fallback: (state, { id }) => `Thinking (${state.merged})… [${id}]`,
+});
 
 /**
  * Returns the built-in tool part. Role step; its one action stops the call.
@@ -293,7 +341,37 @@ export const thinking: PartDefinition<{ readonly markdown: string; readonly merg
  * @category parts
  * @since 0.1.0
  */
-export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = placeholder("tool", { stop: { input: rejecting() } });
+export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = definePart({
+  kind: "tool",
+  state: standard(
+    withJson(
+      Type.Union([
+        Type.Object({ ...TOOL_CALL, phase: Type.Literal("calling") }),
+      Type.Object({
+        ...TOOL_CALL,
+        phase: Type.Literal("running"),
+        progress: Type.Union([ToolProgressSchema, Type.Null()]),
+      }),
+      Type.Object({
+        ...TOOL_CALL,
+        phase: Type.Literal("settled"),
+        outcome: ToolOutcomeSchema,
+        changes: Type.Union([
+          Type.Object({
+            added: Type.Number(),
+            removed: Type.Number(),
+            paths: Type.Array(Type.String()),
+          }),
+          Type.Null(),
+        ]),
+      }),
+    ]),
+    ),
+  ),
+  actions: { stop: { input: EMPTY_INPUT } },
+  fallback: (state, { id }) =>
+    `${clip(state.name)} ${state.phase}${state.phase === "settled" ? ` ${state.outcome.kind}` : ""} [${id}]`,
+});
 
 /**
  * Returns the built-in compaction part. Role note: context was summarised
@@ -302,7 +380,25 @@ export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly inp
  * @category parts
  * @since 0.1.0
  */
-export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = placeholder("compaction", {});
+export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = definePart({
+  kind: "compaction",
+  state: standard(
+    withJson(
+    Type.Object({
+      summary: Type.Union([Type.String(), Type.Null()]),
+      material: Type.Union([
+        Type.Object({ provider: Type.String(), data: JsonSchema }),
+        Type.Null(),
+      ]),
+      tokensBefore: Type.Number(),
+      usage: Type.Union([UsageSchema, Type.Null()]),
+    }),
+    ),
+  ),
+  actions: {},
+  fallback: (state, { id }) =>
+    `Context compacted at ${state.tokensBefore} tokens${state.summary === null ? "" : `: ${clip(state.summary)}`} [${id}]`,
+});
 
 /**
  * Returns the built-in branch summary part. Role note: what an abandoned
@@ -311,28 +407,16 @@ export const compaction: PartDefinition<{ readonly summary: string | null; reado
  * @category parts
  * @since 0.1.0
  */
-export const branchSummary: PartDefinition<{ readonly markdown: string }, {}> = placeholder("branchSummary", {});
+export const branchSummary: PartDefinition<{ readonly markdown: string }, {}> = definePart({
+  kind: "branchSummary",
+  state: standard(Type.Object({ markdown: Type.String() })),
+  actions: {},
+  fallback: (state, { id }) => `Branch summary: ${clip(state.markdown)} [${id}]`,
+});
 
-/** Returns an inert built-in until core-d's implement phase: its state schema rejects every value and its fallback throws, so importing the barrel does not. */
-function placeholder<State, Actions extends ActionSchemas>(kind: string, actions: Actions): PartDefinition<State, Actions> {
-  return {
-    kind,
-    state: rejecting(),
-    actions,
-    fallback: () => {
-      throw new Error("not implemented");
-    },
-  };
-}
+/** Returns text as one line of at most 120 characters, an ellipsis marking a cut. */
+function clip(content: string): string {
+  const line = content.replace(/\s+/g, " ").trim();
 
-/** Returns a schema that rejects every value with one `not implemented` issue and converts to the empty JSON Schema. */
-function rejecting<T>(): Schema<T> {
-  return {
-    "~standard": {
-      version: 1,
-      vendor: "nyte",
-      validate: () => ({ issues: [{ message: "not implemented" }] }),
-      jsonSchema: { input: () => ({}), output: () => ({}) },
-    },
-  };
+  return line.length > 120 ? `${line.slice(0, 120)}…` : line;
 }
