@@ -114,7 +114,11 @@ Two phases per package, never mixed:
    declares the records it needs in `schema` as it reaches them; later work
    orders and packages add theirs the same way. One definition per record,
    Standard Schema (`Schema<T>`) at every plugin boundary, no TypeBox at any
-   boundary a plugin author sees. The baseline references names it does not define
+   boundary a plugin author sees. TypeBox (1.3.36, pinned) does not implement
+   Standard Schema; `@nyte-ai/schema` exports `standard(schema)` (the adapter in
+   the baseline's §0 doc) and core's records cross the boundary through it.
+   `@standard-schema/spec` is the only schema dependency the sdk and plugin
+   packages take. The baseline references names it does not define
    (`FileEntryView`, `GitStatus`, `PageView`, `ConsoleEntry`, `Capability`,
    `ByteReader`, `ScanFrame`, `SearchFrame`, `FileEvent`, `FileChange`,
    `GitFileSides`, `GitCommitView`, `GitRefsView`, `BlameView`, `PageInfo`,

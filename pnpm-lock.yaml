@@ -974,6 +974,9 @@ importers:
 
   packages/lab:
     dependencies:
+      '@chenglou/pretext':
+        specifier: 0.0.9
+        version: 0.0.9
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
@@ -2224,6 +2227,9 @@ packages:
 
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
+
+  '@chenglou/pretext@0.0.9':
+    resolution: {integrity: sha512-vInlpC//3vjRfWTs78k2BBIq/0bUdpjIp8TIn9fXe0NvnChhTQZfjioVzERQQbkQvCVpPpw7PDOrTWMHpq27VA==}
 
   '@clerk/backend@3.22.0':
     resolution: {integrity: sha512-YBJtclx3ytvQGNYhf0/pG+WHUk1ams7Aai3D2AB8c96AkSnzUE+i1Q98HyupIulPDr3fUWeQJtex4DYyO9D4fA==}
@@ -15087,6 +15093,8 @@ snapshots:
       '@cf-wasm/internals': 0.2.0
 
   '@cfworker/json-schema@4.1.1': {}
+
+  '@chenglou/pretext@0.0.9': {}
 
   '@clerk/backend@3.22.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
