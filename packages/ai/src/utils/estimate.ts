@@ -14,8 +14,8 @@ import type {
   ToolReference,
   TranscriptContext,
   Usage,
-} from "@nyte-ai/schema";
-import { getSystemMessageText } from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 export interface ContextUsageEstimate {
   /** Estimated total context tokens. */

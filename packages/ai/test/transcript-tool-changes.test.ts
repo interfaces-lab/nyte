@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";

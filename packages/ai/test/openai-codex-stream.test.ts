@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { arch, platform, release } from "node:os";
 import { zstdDecompressSync } from "node:zlib";
 import { Type } from "typebox";

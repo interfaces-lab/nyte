@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";

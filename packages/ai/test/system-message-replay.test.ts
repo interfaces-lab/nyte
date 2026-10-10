@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
 import type { Message, Tool, TranscriptContext } from "../src/types.ts";

@@ -5,7 +5,7 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/overflow.ts
  * Synced with pi 7ebf9087e.
  */
-import type { AssistantMessage } from "@nyte-ai/schema";
+import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { classifyAssistantFailure } from "./failure.ts";
 
 /**

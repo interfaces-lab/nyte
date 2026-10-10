@@ -4,7 +4,7 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/event-stream.ts
  * Synced with pi 7fbbd5f4a.
  */
-import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema";
+import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
 import { FifoQueue } from "./fifo-queue.ts";
 
 // Generic event stream class for async iteration

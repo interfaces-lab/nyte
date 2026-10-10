@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, vi, test } from "vitest";
-import type { AssistantMessage } from "@nyte-ai/schema";
+import type { AssistantMessage } from "@nyte-ai/schema/model";
 import {
   isRetryableAssistantError,
   type RetryPolicy,

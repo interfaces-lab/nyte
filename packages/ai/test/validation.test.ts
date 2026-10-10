@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import type { Tool, ToolCall } from "@nyte-ai/schema";
+import type { Tool, ToolCall } from "@nyte-ai/schema/model";
 import { validateToolArguments } from "../src/utils/validation.ts";
 
 function createToolCallWithPlainSchema(

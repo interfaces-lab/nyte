@@ -5,7 +5,7 @@
  * Based on https://github.com/earendil-works/pi/blob/c37b0e03b5d727c44a5d6b47d6ecf7e7b3d32e7a/packages/ai/src/utils/retry.ts
  * Synced with pi c37b0e03b.
  */
-import type { AssistantMessage } from "@nyte-ai/schema";
+import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { sleep } from "./abort.ts";
 import { classifyAssistantFailure, isRetryableFailureClass } from "./failure.ts";
 

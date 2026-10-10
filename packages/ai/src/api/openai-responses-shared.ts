@@ -24,7 +24,7 @@ import type {
 } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { TextSignatureV1Schema } from "@nyte-ai/schema";
+import { TextSignatureV1Schema } from "@nyte-ai/schema/model";
 import { calculateCost } from "../models.ts";
 import type {
   Api,

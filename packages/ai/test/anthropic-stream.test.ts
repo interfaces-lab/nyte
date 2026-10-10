@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { stream, type AnthropicOptions } from "../src/api/anthropic-messages.ts";

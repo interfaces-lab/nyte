@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import type { ResponseUsage } from "openai/resources/responses/responses.js";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/openai-responses.ts";

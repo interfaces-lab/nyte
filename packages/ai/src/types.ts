@@ -15,7 +15,7 @@ import type {
   Model,
   ThinkingLevel,
   TranscriptContext,
-} from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type { AnthropicOptions } from "./api/anthropic-messages.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
@@ -76,7 +76,7 @@ export type {
   TranscriptContext,
   Usage,
   UserMessage,
-} from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";
 
 export type ToolChoice = "auto" | "none";
 

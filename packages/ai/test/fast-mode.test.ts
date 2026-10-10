@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 /** `fast` is the user-facing name; OpenAI receives its existing priority tier. */
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";

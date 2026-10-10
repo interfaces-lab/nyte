@@ -2,7 +2,7 @@
  * Based on https://github.com/earendil-works/pi/blob/561a2e066c0742e3d3e33c75d5d32a69b1d89194/packages/ai/test/opencode-provider-headers.test.ts
  * Synced with pi 561a2e066.
  */
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { describe, expect, it } from "vitest";
 import { withOpenCodeSessionHeader } from "../src/providers/opencode-headers.ts";
 import type { Api, AssistantMessage, Model, ProviderStreams, StreamOptions } from "../src/types.ts";

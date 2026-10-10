@@ -6,7 +6,7 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/types.ts
  * Synced with pi 7ebf9087e.
  */
-import { typed } from "@nyte-ai/schema";
+import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import type { ProviderEnv, ProviderHeaders } from "../types.ts";
 

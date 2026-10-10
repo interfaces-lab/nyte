@@ -5,7 +5,7 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
  */
-import type { ProviderId } from "@nyte-ai/schema";
+import type { ProviderId } from "@nyte-ai/schema/model";
 import { defaultProviderAuthContext } from "../auth/context.ts";
 import { FileCredentialStore } from "../auth/store.ts";
 import { FileModelsStore } from "../file-models-store.ts";

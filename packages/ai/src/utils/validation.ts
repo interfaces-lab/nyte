@@ -9,7 +9,7 @@ import type { Validator } from "typebox/compile";
 import type { Static, TSchema } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
-import type { Tool, ToolCall } from "@nyte-ai/schema";
+import type { Tool, ToolCall } from "@nyte-ai/schema/model";
 
 const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
 

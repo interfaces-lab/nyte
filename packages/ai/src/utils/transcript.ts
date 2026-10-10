@@ -23,4 +23,4 @@ export {
   type TranscriptContext,
   type TranscriptMessages,
   type TranscriptTools,
-} from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";

@@ -1,4 +1,4 @@
-import { MODEL_THINKING_LEVELS, ModelSchema, normalizeContext } from "@nyte-ai/schema";
+import { MODEL_THINKING_LEVELS, ModelSchema, normalizeContext } from "@nyte-ai/schema/model";
 import { Value } from "typebox/value";
 import { lazyStream } from "./api/lazy.ts";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";

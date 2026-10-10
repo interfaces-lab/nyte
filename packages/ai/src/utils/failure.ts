@@ -37,7 +37,7 @@
  * - DashScope/Qwen: "Range of input length should be [1, X]"
  * - Ollama: "prompt too long; exceeded max context length by X tokens"
  */
-import type { Api, AssistantMessage, Failure, FailureClass, Model } from "@nyte-ai/schema";
+import type { Api, AssistantMessage, Failure, FailureClass, Model } from "@nyte-ai/schema/model";
 
 const CONTEXT_WINDOW_PATTERNS = [
   /prompt (?:is )?too long/i,
