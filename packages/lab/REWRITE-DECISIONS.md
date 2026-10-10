@@ -41,12 +41,17 @@ consent). If it is already registered, `exists`. It becomes the default for
 
 ## Blocking before protocol / host
 
-**6. Relay transport.** A third `ListenOptions.transport` kind:
-`{ kind: "relay"; url: string; credential: CredentialSource }`. The host dials
-the relay outbound and the relay forwards each request to `listener.fetch`;
-the listener never opens a socket. `connect-worker` is that relay; what it
-shares with host is the relay framing, which lives in `@nyte-ai/host/relay`.
-A phone connects with `url` = the relay's address for that host.
+**6. Relay.** Not a transport and not in host. The listener's `fetch` is the
+primitive; a relay adapter dials the broker outbound with the desktop's
+account-enrolled device identity (a signing key, not a `CredentialSource`)
+and forwards each frame to `listener.fetch`; the broker's signed assertion of
+account and device is what `auth: { kind: "custom", authorize }` reads to
+name the principal. That adapter is the `connect` package, which stays as the
+broker contract and the desktop-side dialer, and lives in the desktop, the
+only thing that enrolls. `connect-worker` is unchanged. The package map's
+"fold `connect` into host" is withdrawn. A phone connects with `url` = the
+broker's address for that host and `credentials: { kind: "custom" }` carrying
+its account session.
 
 **7. Wire encoding.** Fixed, not negotiable per deployment:
 
@@ -74,10 +79,13 @@ the journal over AsyncStorage. There is no Swift generation. The catalog on
 appears later; nothing in this rewrite consumes it. The package map row for
 `mobile` is corrected to say this.
 
-**9. `Inputs.user`.** `EnvironmentProvider.user?: () => FilesApi`, rooted at
-the host home's `.nyte` (local provider: `~/.nyte`; sandbox: none). `Inputs.user`
-becomes `FilesApi | null`. Core still reaches no filesystem except through a
-provider.
+**9. `Inputs.user`.** The person's `.nyte` belongs to the host composition,
+not to the environment: a session whose tools run in a sandbox still wants
+its owner's skills, and a sandbox provider cannot know them.
+`OpenOptions.inputs?: { user: FilesApi }`; the desktop passes the local
+provider's files over `~/.nyte`, a durable object passes nothing.
+`Inputs.user` is `FilesApi | null`. Core still touches no filesystem except
+through a `FilesApi` it was handed.
 
 **10. Secrets key.** `OpenOptions.secrets?: { key(): Promise<Uint8Array> }`.
 Core encrypts secret values with it before `objects.put` and never logs or

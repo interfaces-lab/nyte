@@ -225,6 +225,8 @@ interface OpenOptions {
   readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
   /** The key core encrypts secrets with before storing them. The host composes it: OS keychain, else a 0600 file. Omitted = `secrets.set` answers unavailable. */
   readonly secrets?: { key(): Promise<Uint8Array> };
+  /** The person's own `.nyte` (skills, prompts, SYSTEM.md, AGENTS.md) as files. The host's, not the environment's: a session in a sandbox still gets its owner's skills. A desktop passes the local provider's files over `~/.nyte`; a durable object passes nothing. */
+  readonly inputs?: { readonly user: FilesApi };
 }
 
 /**
@@ -986,8 +988,7 @@ interface ListenOptions {
    */
   readonly transport:
     | { readonly kind: "http"; readonly hostname?: string; readonly port?: number }
-    | { readonly kind: "fetch" }
-    | { readonly kind: "relay"; readonly url: string; readonly credential: CredentialSource }; // the host dials the relay outbound; the relay forwards each request to fetch(). No socket is opened here.
+    | { readonly kind: "fetch" }; // no socket; Listener.fetch is the handler. Cloudflare, Vercel, tests, and any relay: a relay dials out and forwards each frame to fetch(), authorising through auth.custom.
   /**
    * `token` is Bearer, compared in constant time, at least 16 characters.
    * `custom` maps a request to a principal and its authority, or denies it.
@@ -4464,8 +4465,6 @@ interface EnvironmentProvider {
   /** Binds a folder, boots or joins a VM, connects a sandbox: the tools' hands. `close()` detaches; `destroy()` tears down. */
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
   /** Required for local and sandbox. */
-  /** The host home's `.nyte` as files (local: `~/.nyte`); absent on a sandbox. Core reaches no filesystem except through a provider. */
-  readonly user?: () => FilesApi;
   readonly git?: (env: ExecutionEnv) => GitApi;
   /** Required wherever files are served: content-addressed trees before and after each run. */
   readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet> };
@@ -4619,7 +4618,7 @@ interface ValidationIssue { readonly severity: "error" | "warning"; readonly pat
  * @since 0.1.0
  */
 interface Inputs {
-  /** Rooted at the host home's `.nyte`; null when the provider supplies none (a sandbox). */
+  /** `OpenOptions.inputs.user`; null when the host passed none. */
   readonly user: FilesApi | null;
   /** Rooted at .nyte; null when projectInput is false or absent. */
   readonly project: FilesApi | null;

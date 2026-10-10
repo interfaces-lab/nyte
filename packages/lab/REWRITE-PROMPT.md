@@ -76,7 +76,7 @@ is rewritten or deleted; nothing is adapted.
 | `ai` | untouched except its `Models` export, which `OpenOptions.models` takes |
 | `core` | rewritten, six work orders |
 | `protocol` | rewritten: generated from the declaration table, no hand-written types |
-| `connect` | its relay framing and pairing become a listen transport in `host`; the package is deleted |
+| `connect` | kept: the broker contract and the desktop-side dialer over `listener.fetch`. Decision 6 |
 | `host` | rewritten: listen, stores, execution drivers, environment providers |
 | `server` | deleted; it is `host.listen` |
 | `serve` | deleted; it is the cli's composition of `open` + `listen` + the local provider |
