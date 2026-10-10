@@ -1259,6 +1259,9 @@ importers:
 
   packages/protocol:
     dependencies:
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
@@ -1266,6 +1269,9 @@ importers:
         specifier: 1.3.36
         version: 1.3.36
     devDependencies:
+      '@cfworker/json-schema':
+        specifier: 4.1.1
+        version: 4.1.1
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.4

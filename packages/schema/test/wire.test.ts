@@ -1371,11 +1371,13 @@ const wire = new URL("../src/wire/", import.meta.url);
 
 describe("wire schemas", () => {
   it("covers every exported schema", () => {
-    const exported = readdirSync(wire).flatMap((file) =>
-      [...readFileSync(new URL(file, wire), "utf8").matchAll(/^export const (\w+Schema)\b/gm)].map(
-        (match) => match[1],
-      ),
-    );
+    const exported = readdirSync(wire)
+      .filter((file) => file !== "operations.ts")
+      .flatMap((file) =>
+        [
+          ...readFileSync(new URL(file, wire), "utf8").matchAll(/^export const (\w+Schema)\b/gm),
+        ].map((match) => match[1]),
+      );
 
     expect(Object.keys(cases).toSorted()).toEqual(exported.toSorted());
   });

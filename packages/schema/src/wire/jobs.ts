@@ -2,12 +2,9 @@ import { Type } from "typebox";
 import type { EndReason, JobEnd, JobState, JobView, OutputFrame } from "../jobs.ts";
 import { standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
+import { base64Bytes } from "./base64.ts";
 import { idSchema } from "./ids.ts";
 import { nullable } from "./nullable.ts";
-
-const BASE64 = Type.Codec(Type.String({ pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$" }))
-  .Decode((value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0)))
-  .Encode((bytes) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join("")));
 
 /** The TypeBox schema of an `EndReason`. */
 export const EndReasonType = Type.Enum(["exited", "terminated", "expired", "host-lost"]);
@@ -43,7 +40,7 @@ export const JobViewType = Type.Object({
 
 /** The TypeBox schema of an `OutputFrame`; `bytes` data travels as base64 and decodes to bytes. */
 export const OutputFrameType = Type.Union([
-  Type.Object({ kind: Type.Literal("bytes"), data: BASE64 }),
+  Type.Object({ kind: Type.Literal("bytes"), data: base64Bytes }),
   Type.Object({ kind: Type.Literal("gap") }),
   Type.Object({ kind: Type.Literal("exit"), code: nullable(Type.Number()) }),
 ]);
