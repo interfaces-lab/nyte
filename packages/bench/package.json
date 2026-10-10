@@ -11,6 +11,6 @@
     "@nyte-ai/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "^26.6.3"
   }
 }
