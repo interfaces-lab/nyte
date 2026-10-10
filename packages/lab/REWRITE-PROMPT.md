@@ -68,7 +68,7 @@ is rewritten or deleted; nothing is adapted.
 
 | today | disposition |
 |---|---|
-| `schema` | rewritten first: every record in the baseline |
+| `schema` | rewritten alongside core's first work order: every record core needs, declared as core reaches them |
 | `ai` | untouched except its `Models` export, which `OpenOptions.models` takes |
 | `core` | rewritten, six work orders |
 | `protocol` | rewritten: generated from the declaration table, no hand-written types |
@@ -92,14 +92,29 @@ is rewritten or deleted; nothing is adapted.
 
 ## Package order and dependencies
 
-Rewrite in dependency order: schema → core → protocol → host → sdk → plugin →
-clients. A package starts only when the ones it imports are done and reviewed.
-Within a package, declarations before implementations.
+Core first. Everything else follows core: core → protocol → host → sdk →
+plugin → clients. A package starts only when the ones it imports are done and
+reviewed. Within a package, declarations before implementations.
 
-1. `packages/schema` — every record type in the baseline, plus `ModelMessage`
-   and `Model<Api>` from `@nyte-ai/ai`. One definition per record. Standard
-   Schema (`Schema<T>`) at every plugin boundary. No TypeBox at any boundary a
-   plugin author sees. The baseline references names it does not define
+Two phases per package, never mixed:
+
+- **Declare.** Write the package's exports as declarations only: types,
+  interfaces, function signatures with `not implemented` bodies. No typecheck
+  runs in this phase; the declarations are compared to the baseline by reading,
+  not by compiling. The reviewer passes the declare phase when every export
+  matches its baseline declaration.
+- **Implement.** Fill in the bodies. Typecheck runs here, scoped to the package
+  being rewritten: `pnpm --dir packages/<name> typecheck`. Never the root
+  `pnpm typecheck`; the rest of the repository is old code that will not
+  compile against the baseline until its own turn, and that is expected, not a
+  failure. A package's typecheck passing means that package compiles against
+  the packages already rewritten below it, nothing more.
+
+1. `packages/schema` — not a separate first step. Core's first work order
+   declares the records it needs in `schema` as it reaches them; later work
+   orders and packages add theirs the same way. One definition per record,
+   Standard Schema (`Schema<T>`) at every plugin boundary, no TypeBox at any
+   boundary a plugin author sees. The baseline references names it does not define
    (`FileEntryView`, `GitStatus`, `PageView`, `ConsoleEntry`, `Capability`,
    `ByteReader`, `ScanFrame`, `SearchFrame`, `FileEvent`, `FileChange`,
    `GitFileSides`, `GitCommitView`, `GitRefsView`, `BlameView`, `PageInfo`,
@@ -109,8 +124,8 @@ Within a package, declarations before implementations.
    `CatalogGeneration`, `FileVersion`, `GitRevision`, `JobKey`, `HeadName`,
    `AddOutcome`, `ForgetOutcome`, `FormatOutcome` (their variants are listed
    in prose on the method), `Failure` (the existing schema type), every `*Id`).
-   The schema work order lists each one with its proposed declaration, for my
-   approval, before any is implemented.
+   The work order that first needs one of these lists it with its proposed
+   declaration, for my approval, before any is implemented.
 2. `packages/core` — the kernel. Too large for one work order; it is six, in
    this order, each gated by the reviewer before the next starts:
    a. store contract and events (§7, §8): `Store`, `RefStore`, `ObjectStore`,
@@ -158,17 +173,20 @@ one file, `packages/<name>/REWRITE.md`, containing:
 - The files to delete first (from REWRITE-TRACKING.md), listed.
 - The files to create, each with the declarations it implements.
 - What this package may import, and from where. Nothing else.
-- The verification command(s): `pnpm --dir packages/<name> typecheck`, and the
-  package's test script if one exists.
+- The verification for the implement phase: `pnpm --dir packages/<name>
+  typecheck`, scoped to this package, and the package's test script if one
+  exists. The declare phase has no verification command; it is read.
 - Open questions for me, if any. A work order with open questions is not
   assigned until I answer.
 
-Assign one subagent per work order. Give it: the work order, the baseline path,
-AGENTS.md, and nothing from the old code except the delete list. Tell it to read
-the baseline sections it implements in full, implement exactly those
-declarations, delete exactly those files, run the verification, and report:
-files deleted, files created, every declaration implemented, every declaration
-it could not implement and why, verification output.
+Assign one subagent per work order and phase. Give it: the work order, the
+baseline path, AGENTS.md, and nothing from the old code except the delete list.
+Declare phase: delete exactly those files, write exactly those declarations,
+report files deleted and created and every declaration written. Implement
+phase: fill the bodies, run the package-scoped verification, report every
+declaration implemented, every one it could not and why, and the verification
+output. A subagent that runs the root typecheck, or typechecks a package other
+than its own, has left its scope; stop it.
 
 Subagents may not: change the baseline; add a type the baseline lacks; keep an
 old file "for reference"; skip a delete; leave a TODO that names old code.
@@ -179,9 +197,9 @@ A package is done when a **second** subagent, given only the baseline and the
 package, confirms: every export matches its declaration byte-for-byte in shape;
 no old surface remains (grep REWRITE-TRACKING.md's old column against the package);
 no `Result`, no `any`, no cast, no `import()` type, no transaction, no event
-subscription in a client; typecheck passes. The reviewer reports gaps; you send
-them back to the implementer. You do not merge a package the reviewer has not
-passed.
+subscription in a client; and, for the implement phase only, the package-scoped
+typecheck passes. The reviewer reports gaps; you send them back to the
+implementer. You do not merge a package the reviewer has not passed.
 
 ## What you report to me
 
