@@ -18,9 +18,10 @@ import { landing } from "./admission.ts";
 import { listSessions } from "./directory.ts";
 import type { FoldInput } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
-import { LOCAL } from "./principals.ts";
+import { LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
+import { decodeRunRecord } from "./records.ts";
 import type { RunRecord } from "./records.ts";
-import { leaseRef } from "./refs.ts";
+import { leaseRef, runRef } from "./refs.ts";
 import type { Lease } from "./refs.ts";
 import { endRun, startRun } from "./runs.ts";
 import {
@@ -28,12 +29,15 @@ import {
   covers,
   isJsonObject,
   liveRun,
+  load,
   put,
   readInbox,
   readSession,
   withFold,
 } from "./session-state.ts";
 import type { Found } from "./session-state.ts";
+import { executeCall, owedCalls } from "./tool-runner.ts";
+import { loadWaits } from "./wait-registry.ts";
 
 const LEASE_MS = 30_000;
 
@@ -56,7 +60,7 @@ const tables = new WeakMap<Kernel, LeaseTable>();
 
 const driving = new WeakMap<Kernel, Set<RunId>>();
 
-/** Takes the execution lease on every head the coverage names into the kernel's lease table and renews every lease in the table every 10 s; closing the last open coverage releases every lease in it. */
+/** Takes the execution lease on every head the coverage names into the kernel's lease table and renews every lease in the table every 10 s, and parks the durable waits the store records in `kernel.waits`; closing the last open coverage releases every lease in it. */
 export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promise<Owned> {
   const table = leasesOf(kernel);
   table.coverages += 1;
@@ -87,6 +91,8 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   try {
     for (const entry of await coveredHeads(kernel, coverage))
       await claim(kernel, entry.session, entry.head);
+
+    await loadWaits(kernel);
   } catch (error) {
     await close();
 
@@ -96,7 +102,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head: renews the lease, lands due inputs, runs a turn when one is owed, and reports what comes next. Under an open coverage the lease stays in the kernel's table; without one it is released when the step returns. */
+/** Runs one leased kernel step on a head: renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. Under an open coverage the lease stays in the kernel's table; without one it is released when the step returns. */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
@@ -147,7 +153,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return next(kernel, session, head);
 }
 
-/** Returns one page of heads with a steer or queue input waiting and no live run. */
+/** Returns one page of heads owed a step: a steer or queue input waiting and no live run, or a live run with a tool call to re-run (its wait completed, or its host died mid-call). */
 export async function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
@@ -157,20 +163,50 @@ export async function repair(
 
   for (const info of page.items) {
     for (const head of info.heads) {
-      if (head.execution.kind === "idle" && (await dueInputs(kernel, info.id, head.name)) !== null)
-        runnable.push({ session: info.id, head: head.name });
+      const live = await liveRun(kernel, info.id, head.name);
+
+      const owed =
+        live === null
+          ? (await dueInputs(kernel, info.id, head.name)) !== null
+          : !drivenBy(kernel).has(live.record.view.id) &&
+            (await owedCalls(kernel, info.id, live.record.view.id)).some((call) => !call.parked);
+
+      if (owed) runnable.push({ session: info.id, head: head.name });
     }
   }
 
   return { runnable, next: page.next };
 }
 
-/** Drives covered heads in process: on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; closing the handle stops it. */
+/** Drives covered heads in process: on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then. Closing the handle stops it. */
 export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Owned {
   const covering = cover(kernel, coverage);
   const inflight = new Map<string, Promise<void>>();
   const again = new Set<string>();
+  const due = new Set<number>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
+
+  const schedule = (until: number): void => {
+    if (closed) return;
+    due.add(until);
+    const next = Math.min(...due);
+
+    if (timer !== null) clearTimeout(timer);
+
+    timer = setTimeout(
+      () => {
+        timer = null;
+        const now = Date.now();
+
+        for (const at of due) if (at <= now) due.delete(at);
+        kernel.waits.tick(now).catch(() => undefined);
+
+        if (due.size > 0) schedule(Math.min(...due));
+      },
+      Math.max(0, next - Date.now()),
+    );
+  };
 
   const step = (session: SessionId, head: HeadName): void => {
     const key = JSON.stringify([session, head]);
@@ -191,6 +227,8 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       for (;;) {
         if (closed) return;
         const report = await advance(kernel, { session, head });
+
+        if (report.kind === "waiting" && report.until !== null) schedule(report.until);
 
         if (report.kind !== "continue") return;
       }
@@ -225,6 +263,8 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
     closing ??= (async () => {
       closed = true;
       dispose();
+
+      if (timer !== null) clearTimeout(timer);
       await Promise.all(inflight.values());
       await covering.then(
         (owned) => owned.close(),
@@ -345,28 +385,46 @@ async function coveredHeads(
   return heads;
 }
 
-/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended `stopped`, so the step goes on to the next input; stopping wins over waiting and retrying. */
+/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended `stopped`, so the step goes on to the next input; stopping wins over waiting and retrying. A run no turn drives here first re-runs its tool calls owed a re-run, a stopping one with its signal aborted first (after a restart too), so a stopped step sees `stopped` and returns; it reports `waiting` while a call stays parked. */
 async function settleLive(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   live: Found<RunRecord>,
 ): Promise<AdvanceReport | null> {
-  const record = live.record;
-  const run = record.view.id;
+  const run = live.record.view.id;
   const driven = drivenBy(kernel).has(run);
 
-  if (!driven && (record.stopping || kernel.runs.isStopping(run))) {
+  if (!driven && (live.record.stopping || kernel.runs.isStopping(run))) {
+    kernel.runs.markStopping(run);
+    kernel.runs.abort(run);
+    await kernel.waits.runStopped(session, run);
+    await resume(kernel, session, head, run);
     await endRun(kernel, session, run, { kind: "stopped" });
 
     return null;
   }
 
-  if (record.waiting !== null)
+  const parked = !driven && (await resume(kernel, session, head, run));
+
+  const record = driven
+    ? live.record
+    : (await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord))
+        ?.record;
+
+  if (record === undefined) return null;
+  const waiting = record.waiting;
+
+  if (parked || waiting !== null)
     return {
       kind: "waiting",
       until:
-        record.waiting.kind === "timer" ? record.waiting.until : (record.waiting.deadline ?? null),
+        kernel.waits.nextDeadline(session, head) ??
+        (waiting === null
+          ? null
+          : waiting.kind === "timer"
+            ? waiting.until
+            : (waiting.deadline ?? null)),
     };
 
   if (record.retrying !== null) return { kind: "retry", until: record.retrying.until };
@@ -375,6 +433,38 @@ async function settleLive(
   await drive(kernel, session, head, record.view);
 
   return next(kernel, session, head);
+}
+
+/** Re-runs, one at a time, a run's tool calls owed a re-run (their waits completed, or their host died mid-call) with the principal their intent recorded; returns whether a call is parked afterwards. */
+async function resume(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  run: RunId,
+): Promise<boolean> {
+  const signal = kernel.runs.signal(run) ?? kernel.runs.start(run).signal;
+
+  for (const owed of await owedCalls(kernel, session, run)) {
+    if (owed.parked) continue;
+
+    await executeCall(kernel, {
+      session,
+      head,
+      run,
+      call: owed.call,
+      name: owed.intent.name,
+      args: owed.intent.args,
+      context: {
+        principal: owed.intent.principal,
+        authority: PARTICIPANT_AUTHORITY,
+        credential: { kind: "token", token: "" },
+        origin: null,
+      },
+      signal,
+    });
+  }
+
+  return (await owedCalls(kernel, session, run)).some((owed) => owed.parked);
 }
 
 async function drive(
@@ -391,24 +481,32 @@ async function drive(
     claim(kernel, session, head).catch(() => undefined);
   }, RENEW_MS);
 
-  let end: RunEnd;
-
-  try {
-    end = await kernel.turn.run({
+  const ended = await kernel.turn
+    .run({
       session,
       head,
       run,
       signal,
       boundary: () => boundary(kernel, session, head, run.id),
+    })
+    .then(
+      (end) => ({ end, returned: true }),
+      (error: unknown) => ({ end: failed(error), returned: false }),
+    )
+    .finally(() => {
+      clearInterval(renewal);
+      driven.delete(run.id);
     });
-  } catch (error) {
-    end = failed(error);
-  } finally {
-    clearInterval(renewal);
-    driven.delete(run.id);
+
+  const stopping = kernel.runs.isStopping(run.id);
+
+  if (ended.returned && !stopping && (await owedCalls(kernel, session, run.id)).length > 0) {
+    kernel.wakes.notify(session, head);
+
+    return;
   }
 
-  await endRun(kernel, session, run.id, kernel.runs.isStopping(run.id) ? { kind: "stopped" } : end);
+  await endRun(kernel, session, run.id, stopping ? { kind: "stopped" } : ended.end);
 }
 
 async function boundary(

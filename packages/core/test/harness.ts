@@ -22,6 +22,7 @@ import {
   workspaceRef,
 } from "../src/index.ts";
 import type {
+  ExecutionEnv,
   Host,
   Kernel,
   PartRecord,
@@ -54,6 +55,30 @@ export const usage: Usage = {
 };
 
 export const completed: RunEnd = { kind: "completed", usage };
+
+/** An environment whose files and processes refuse: enough for tools that never touch them. */
+export const env: ExecutionEnv = {
+  identity: asId("identity"),
+  cwd: "/tmp/project",
+  files: {
+    read: refuse,
+    bytes: refuse,
+    stat: refuse,
+    write: refuse,
+    remove: refuse,
+    batch: () => {
+      throw new Error("No files in tests.");
+    },
+    format: refuse,
+    scan: refuseStream,
+    find: refuse,
+    search: refuseStream,
+    watch: refuseStream,
+    upload: refuse,
+  },
+  exec: refuse,
+  close: async () => undefined,
+};
 
 /** One call the scripted turn received, and how to end it. */
 export interface Turn {
@@ -110,7 +135,20 @@ export async function until<T>(
 
 /** Returns a kernel over a memory store with a registered workspace, scripted slots, and the in-process host over it. */
 export async function setup(
-  options?: Partial<Pick<Kernel, "summarize" | "execution" | "admit" | "hostId" | "store">> & {
+  options?: Partial<
+    Pick<
+      Kernel,
+      | "summarize"
+      | "execution"
+      | "admit"
+      | "hostId"
+      | "store"
+      | "tools"
+      | "beforeTool"
+      | "afterTool"
+      | "snapshots"
+    >
+  > & {
     readonly script?: Script;
   },
 ): Promise<{
@@ -132,6 +170,11 @@ export async function setup(
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
     execution: options?.execution,
     admit: options?.admit,
+    tools: options?.tools,
+    beforeTool: options?.beforeTool,
+    afterTool: options?.afterTool,
+    snapshots: options?.snapshots,
+    env: async () => env,
   });
 
   if ((await store.refs.get(workspaceRef(workspace))) === null) {
@@ -226,4 +269,12 @@ export function recording(store: StoreConnection) {
       },
     } satisfies StoreConnection,
   };
+}
+
+async function refuse(): Promise<never> {
+  throw new Error("No environment in tests.");
+}
+
+function refuseStream(): AsyncIterable<never> {
+  return { [Symbol.asyncIterator]: () => ({ next: refuse }) };
 }

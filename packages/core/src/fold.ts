@@ -1039,7 +1039,7 @@ function applyCall(draft: Draft, event: Logged<"call">): void {
       if (call !== undefined) draft.calls.set(event.call, { ...call, waiting: event.on });
 
       return updatePart(draft, event.part, (part) =>
-        part.status.kind === "live" && part.status.run !== null
+        (part.status.kind === "live" || part.status.kind === "waiting") && part.status.run !== null
           ? { ...part, status: { kind: "waiting", run: part.status.run, on: event.on } }
           : part,
       );

@@ -35,6 +35,7 @@ import type {
 import { createBus } from "./bus.ts";
 import type { SessionBus } from "./bus.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
+import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import type { ExecutionEnv } from "./environment.ts";
 import { SdkError } from "./error.ts";
@@ -48,8 +49,10 @@ import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { PluginApi } from "./plugin.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { StoreConnection } from "./store.ts";
+import { stoppableTool } from "./tool-runner.ts";
 import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
+import { createWaitRegistry } from "./wait-registry.ts";
 import type { WaitRegistry } from "./wait-registry.ts";
 import { createFoldCache } from "./watch.ts";
 import type { FoldCache } from "./watch.ts";
@@ -315,32 +318,10 @@ const NO_JOBS: Jobs = {
   watch: () => unavailableStream("workspace"),
 };
 
-const INERT: Durable = {
-  wait: async () => unavailable("durable"),
-  memo: async (_name, compute) => compute(),
-  now: () => Date.now(),
-};
-
-const UNRECORDED: DurableProvider = {
-  run: async (input) => ({ kind: "done", value: await input.body(INERT) }),
-};
-
 const NO_TOOLS: ToolSource = {
   get: () => undefined,
   list: () => [],
   activate: async () => undefined,
-};
-
-const STUB_WAITS: WaitRegistry = {
-  park: notImplemented,
-  runEnded: notImplemented,
-  jobEnded: notImplemented,
-  partAnswered: notImplemented,
-  partClosed: notImplemented,
-  inputAdmitted: notImplemented,
-  runStopped: notImplemented,
-  tick: notImplemented,
-  nextDeadline: notImplemented,
 };
 
 const NO_PLUGINS: Host["plugins"] = {
@@ -354,7 +335,7 @@ const NO_PRINCIPALS: Host["principals"] = {
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry; every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (unrecorded: the action's body runs once with a `Durable` whose `wait` rejects `unavailable`, `memo` computes and `now` is the wall clock, and the step is `done`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null) and `waits` (a stub whose methods throw until core-e's implement builds it with `createWaitRegistry` once the kernel object exists). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, run table, wakes and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null) and `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists). */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -395,6 +376,8 @@ export function createKernel(
   const activations = new Map<SessionId, Activation>();
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
+  let waits = input.waits ?? null;
+  let definitions = input.partDefinitions ?? null;
 
   const kernel: Kernel = {
     hostId: input.hostId,
@@ -426,7 +409,11 @@ export function createKernel(
       input.resolveConfiguration ?? (async () => unavailable("resolveConfiguration")),
     admit: input.admit ?? (async () => ({ action: "continue" })),
     command: input.command ?? (async () => ({ kind: "unknown" })),
-    waits: input.waits ?? STUB_WAITS,
+    get waits() {
+      waits ??= createWaitRegistry(kernel);
+
+      return waits;
+    },
     models: input.models ?? NO_MODELS,
     settings: input.settings ?? NO_SETTINGS,
     workspaces: input.workspaces ?? NO_WORKSPACES,
@@ -436,8 +423,12 @@ export function createKernel(
         createPartsApi(kernel, context, session).create(kind, value),
       part: (context, session, id) => createPartsApi(kernel, context, session).part(id),
     },
-    partDefinitions: input.partDefinitions ?? createPartDefinitions(),
-    durable: input.durable ?? UNRECORDED,
+    get partDefinitions() {
+      definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) });
+
+      return definitions;
+    },
+    durable: input.durable ?? { run: (step) => runAction(kernel, step) },
     tools: input.tools ?? (() => NO_TOOLS),
     beforeTool: input.beforeTool ?? (async () => ({ action: "continue" })),
     afterTool: input.afterTool ?? (async (outcome) => outcome),
@@ -534,8 +525,4 @@ function unavailableStream(slot: string): AsyncIterable<never> {
 
 function unavailable(slot: string): never {
   throw new SdkError("unavailable", `${slot} is not provided`);
-}
-
-function notImplemented(): never {
-  throw new Error("not implemented");
 }

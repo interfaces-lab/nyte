@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { Configuration, ConfigurationPatch, Cursor, Paged, ParentFilter, PromptOverride, RefUpdate, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/schema";
 import { listSessions, watchSessions } from "./directory.ts";
+import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import { requireAuthority } from "./principals.ts";
@@ -73,7 +74,7 @@ export interface Sessions {
   }): Promise<Paged<SessionInfo>>;
 }
 
-/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin`, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. */
+/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin`, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call before the session is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `sessions.${operation}`);
@@ -102,7 +103,20 @@ async function create(
   context: ConnectionContext,
   input: NonNullable<Parameters<Sessions["create"]>[0]>,
 ): Promise<SessionId> {
-  const id = input.id ?? asId<"session">(crypto.randomUUID());
+  const origin = context.origin;
+  const minted = input.id ?? asId<"session">(crypto.randomUUID());
+
+  const acquired =
+    origin === null || origin.call === null
+      ? minted
+      : await recordAcquisition(
+          kernel,
+          { session: origin.session, call: origin.call },
+          input.id ?? `acq:${origin.sequence.next()}`,
+          minted,
+        );
+
+  const id = typeof acquired === "string" ? asId<"session">(acquired) : minted;
 
   if ((await readSession(kernel, id)) !== null) return id;
   const parent = input.parent === undefined ? null : await requireSession(kernel, input.parent);

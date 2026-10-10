@@ -21,6 +21,7 @@ import type {
   RunView,
   Schedule,
   SessionId,
+  SnapshotId,
   ToolOutcome,
   UserContent,
   WaitOutcome,
@@ -82,7 +83,7 @@ export type MessageRecord = {
   readonly position: number;
 };
 
-/** Returns what `sessions/<id>/runs/<run>` holds while the run is live: its metadata, phase, fence, wait and retry. */
+/** Returns what `sessions/<id>/runs/<run>` holds while the run is live: its metadata, phase, fence, wait, retry, and the snapshot taken before its first write-class call. */
 export type RunRecord = {
   readonly view: RunView;
   readonly phase: "responding" | "executing";
@@ -93,6 +94,7 @@ export type RunRecord = {
     readonly until: number;
     readonly reason: string;
   } | null;
+  readonly snapshot: SnapshotId | null;
 };
 
 /** Returns what `sessions/<id>/parts/<part>` holds: the part's kind, placement, current state version and status. */
@@ -118,7 +120,7 @@ export type ReceiptRecord = {
 /** Returns what `sessions/<id>/seen/<principal>/<head>` holds: the tip the principal last saw. */
 export type SeenRecord = { readonly commit: CommitId | null };
 
-/** Returns what `sessions/<id>/calls/<call>` holds: one durable step (a tool call, a part action or a decide hook), where it runs (`head` null for an action or hook outside a head), its intent and replay policy, and everything it recorded so a re-run replays it: memos by name, clock readings and wait outcomes in call order, nested tool outcomes and acquisitions by key, the whole target it is parked on, and its result once settled. */
+/** Returns what `sessions/<id>/calls/<call>` holds: one durable step (a tool call, a part action or a decide hook), where it runs (`head` null for an action or hook outside a head), its intent and replay policy, and everything it recorded so a re-run replays it: memos by name, clock readings and wait outcomes in call order, nested tool outcomes and acquisitions by key, the whole target it is parked on with one outcome slot per target of a pending combination (`partial`, empty otherwise), and its result once settled. */
 export type CallRecord = {
   readonly id: CallId;
   readonly kind: "tool" | "action" | "hook";
@@ -138,6 +140,7 @@ export type CallRecord = {
         readonly untilInput?: boolean;
       }
     | null;
+  readonly partial: readonly (WaitOutcome | null)[];
   readonly nested: Readonly<Record<string, ToolOutcome>>;
   readonly acquisitions: Readonly<Record<string, Json>>;
   readonly result: Json | null;
@@ -226,7 +229,7 @@ export function decodeWorkspaceRecord(object: Json | null): WorkspaceRecord | nu
 
 /** Returns the call record a stored object holds, or null when it holds another record. */
 export function decodeCallRecord(object: Json | null): CallRecord | null {
-  throw new Error("not implemented");
+  return decode(object, "call", isCallRecord);
 }
 
 function decode<T extends Json>(
@@ -327,5 +330,22 @@ function isWorkspaceRecord(value: Json | undefined): value is WorkspaceRecord {
     isJsonObject(value.target) &&
     typeof value.identity === "string" &&
     typeof value.projectResources === "boolean"
+  );
+}
+
+function isCallRecord(value: Json | undefined): value is CallRecord {
+  return (
+    isJsonObject(value) &&
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    "intent" in value &&
+    isJsonObject(value.memos) &&
+    Array.isArray(value.clock) &&
+    Array.isArray(value.waits) &&
+    Array.isArray(value.partial) &&
+    isJsonObject(value.nested) &&
+    isJsonObject(value.acquisitions) &&
+    "result" in value &&
+    typeof value.replay === "string"
   );
 }

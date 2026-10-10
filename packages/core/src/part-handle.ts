@@ -11,6 +11,7 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { objectId } from "./content.ts";
+import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
 import { isJson } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
@@ -77,7 +78,10 @@ type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 /** Each kernel's in-memory part table. */
 const tables = new WeakMap<Kernel, PartTable>();
 
-/** Creates a part: validates `state` against the definition (`invalid` with issues), writes the `PartRecord` at `parts/<part>` with `part created` (owner from the registry by kind, null when unregistered; `run` default null), and returns its handle. A definition with `onAction` must be registered. An existing id with the same kind and an equal state is a replay and writes nothing; any other existing id is `invalid`. A transcript part outside a run also lands as a commit on `head` (default main) in the same set: `[part created, part settled, commit]`. The kernel remembers the creating definition in memory, so handles bound by id validate against it when the kind is unregistered. From a durable step (`context.origin` set) the creation is an acquisition recorded on the step's call, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the part it already created. */
+/** The session each handle this module bound acts in. */
+const boundIn = new WeakMap<object, SessionId>();
+
+/** Creates a part: validates `state` against the definition (`invalid` with issues), writes the `PartRecord` at `parts/<part>` with `part created` (owner from the registry by kind, null when unregistered; `run` default null), and returns its handle. A definition with `onAction` must be registered. An existing id with the same kind and an equal state is a replay and writes nothing; any other existing id is `invalid`. A transcript part outside a run also lands as a commit on `head` (default main) in the same set: `[part created, part settled, commit]`. The kernel remembers the creating definition in memory, so handles bound by id validate against it when the kind is unregistered. From a durable step (`context.origin` naming a call) the creation is an acquisition recorded on the step's call before the part is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the part it already created, whatever its state now. */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -91,6 +95,17 @@ export async function createPart<K extends PartDefinition>(
     readonly head?: HeadName;
   },
 ): Promise<Part<K>> {
+  const origin = context.origin;
+
+  const step =
+    origin === null || origin.call === null
+      ? null
+      : {
+          session: origin.session,
+          call: origin.call,
+          key: input.id ?? `acq:${origin.sequence.next()}`,
+        };
+
   const checked = await check(kind.state, input.state);
 
   if (checked.kind === "invalid")
@@ -105,7 +120,11 @@ export async function createPart<K extends PartDefinition>(
   if (registered === undefined && kind.onAction !== undefined)
     throw new SdkError("invalid", "a definition with onAction must be contributed");
   await requireSession(kernel, session);
-  const id = input.id ?? asId<"part">(crypto.randomUUID());
+  const minted = input.id ?? asId<"part">(crypto.randomUUID());
+
+  const acquired = step === null ? minted : await recordAcquisition(kernel, step, step.key, minted);
+
+  const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
   const run = input.run ?? null;
   const owner = registered?.owner ?? null;
   const name = partRef(session, id);
@@ -115,8 +134,9 @@ export async function createPart<K extends PartDefinition>(
 
     if (existing !== null) {
       if (
-        existing.record.partKind === kind.kind &&
-        (await objectId(existing.record.state)) === (await objectId(state))
+        step !== null ||
+        (existing.record.partKind === kind.kind &&
+          (await objectId(existing.record.state)) === (await objectId(state)))
       )
         return;
 
@@ -218,7 +238,7 @@ export async function createPart<K extends PartDefinition>(
   return partHandleFor(kernel, context, session, id, kind);
 }
 
-/** Returns a handle on a part by id: `update` validates against the registered definition, else the one that created the part in this process, and compare-and-sets the ref with `part updated`; `act` runs the registered definition's `onAction` as a durable step, or settles `answer()` and returns ok with no output when it has none; `answer()` waits in memory for the first act on a modal part, or null at close; `close` deletes the ref with `part closed`. Binds synchronously; no I/O. */
+/** Returns a handle on a part by id: `update` validates against the registered definition, else the one that created the part in this process, and compare-and-sets the ref with `part updated`; `act` runs the registered definition's `onAction` as a durable step, or settles `answer()` and returns ok with no output when it has none; an ok act on a modal part wakes the durable waits on it with its answer; `answer()` waits in memory for the first act on a modal part, or null at close; `close` deletes the ref with `part closed` and wakes the waits on it with no answer. Binds synchronously; no I/O. */
 export function partHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -245,7 +265,7 @@ function partHandleFor<K extends PartDefinition>(
   const definitionOf = (partKind: string): PartDefinition | null =>
     kernel.partDefinitions.get(partKind)?.definition ?? kind ?? table.created.get(name) ?? null;
 
-  return {
+  const handle: Part<K> = {
     id,
     async update(next) {
       need("update");
@@ -344,8 +364,13 @@ function partHandleFor<K extends PartDefinition>(
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
         };
 
-      if (record.placement.kind === "modal")
+      if (record.placement.kind === "modal") {
         settle(table, name, { action: named, input: accepted.value });
+        await kernel.waits.partAnswered(id, {
+          action: named,
+          input: isJson(accepted.value) ? accepted.value : null,
+        });
+      }
 
       return { kind: "ok", output };
     },
@@ -377,12 +402,36 @@ function partHandleFor<K extends PartDefinition>(
         return outcome.kind === "set" ? true : STALE;
       });
 
-      if (closed) release(table, name);
+      if (!closed) return;
+      release(table, name);
+      await kernel.waits.partClosed(id);
     },
   };
+
+  boundIn.set(handle, session);
+
+  return handle;
 }
 
-/** Runs a registered definition's `onAction` as a durable step through `kernel.durable.run`, with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending until the part closes; core-e's implement also resolves it when a wake completes the step in this host's life. An interrupted step fails the act. */
+/** Returns the first answer a modal part had in this process, its input when JSON, or null when it has none. */
+export function answerOf(
+  kernel: Kernel,
+  session: SessionId,
+  part: PartId,
+): { readonly action: string; readonly input: Json } | null {
+  const answered = tableOf(kernel).answered.get(partRef(session, part));
+
+  return answered === undefined
+    ? null
+    : { action: answered.action, input: isJson(answered.input) ? answered.input : null };
+}
+
+/** Returns the session a part handle this module bound acts in, or undefined for any other object. */
+export function sessionOfPart(part: object): SessionId | undefined {
+  return boundIn.get(part);
+}
+
+/** Runs a registered definition's `onAction` as a durable step through `kernel.durable.run`, with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending until a wake completes the step in this host's life, or the part closes. An interrupted step fails the act. */
 async function perform(
   kernel: Kernel,
   context: ConnectionContext,

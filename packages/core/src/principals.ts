@@ -41,6 +41,9 @@ export const ALL_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>([
 /** Participant and owner: what `TOKEN` holds. */
 export const TOKEN_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>(["participant", "owner"]);
 
+/** Participant alone: what a tool invocation's connection holds. */
+export const PARTICIPANT_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
+
 /** Throws `denied` naming the operation unless the authority includes what it needs. */
 export function requireAuthority(
   authority: ReadonlySet<Authority>,

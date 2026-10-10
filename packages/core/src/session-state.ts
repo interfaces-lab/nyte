@@ -1,5 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type {
+  CallId,
   CommitId,
   DurableEvent,
   ExecutionCoverage,
@@ -17,6 +18,7 @@ import type {
   SessionId,
   SetOutcome,
   UserContent,
+  WaitTarget,
 } from "@nyte-ai/schema";
 import { publishSet } from "./bus.ts";
 import { SdkError } from "./error.ts";
@@ -24,6 +26,7 @@ import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { LOCAL } from "./principals.ts";
 import {
+  decodeCallRecord,
   decodeCommitRecord,
   decodeInboxRecord,
   decodeReceiptRecord,
@@ -32,13 +35,14 @@ import {
   envelope,
 } from "./records.ts";
 import type {
+  CallRecord,
   CommitRecord,
   ReceiptRecord,
   RecordKind,
   RunRecord,
   SessionRecord,
 } from "./records.ts";
-import { headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
+import { callRef, headRef, inboxRef, receiptRef, runRef, sessionRef } from "./refs.ts";
 import { sessionInfo } from "./session-info.ts";
 
 /** The head every session has; "main" is the session itself. */
@@ -75,7 +79,18 @@ export interface Inbox {
 /** Returns the outcomes a move or an edit settles with when nothing moved. */
 export type MoveFailure = Exclude<MoveOutcome, { readonly kind: "moved" }>;
 
+/** Returns the next state of a call record and what lands in the same set: the event its own entry carries and further ref updates. */
+export interface CallChange {
+  readonly record: CallRecord;
+  readonly event?: DurableEvent;
+  readonly updates?: readonly RefUpdate[];
+}
+
+const CALL_TRIES = 8;
+
 const landedRuns = new WeakMap<Kernel, Map<RunId, MessageId[]>>();
+
+const callQueues = new WeakMap<Kernel, Map<string, Promise<unknown>>>();
 
 /** Returns the record a ref's object holds, or null when the ref is absent; throws `internal` when the object is another record. */
 export async function load<T>(
@@ -330,6 +345,95 @@ export function landedIn(kernel: Kernel): Map<RunId, MessageId[]> {
   landedRuns.set(kernel, known);
 
   return known;
+}
+
+/** Returns a durable step's call record and its ref, or null when the step has none. */
+export async function readCall(
+  kernel: Kernel,
+  session: SessionId,
+  call: CallId,
+): Promise<Found<CallRecord> | null> {
+  return load(kernel, await kernel.store.refs.get(callRef(session, call)), decodeCallRecord);
+}
+
+/** Returns every call record in a session. */
+export async function readCalls(
+  kernel: Kernel,
+  session: SessionId,
+): Promise<readonly CallRecord[]> {
+  const refs = await kernel.store.refs.list(`${sessionRef(session)}/calls/`);
+  const calls = await Promise.all(refs.map((ref) => load(kernel, ref, decodeCallRecord)));
+
+  return calls.flatMap((call) => (call === null ? [] : [call.record]));
+}
+
+/** Returns the update that marks a live run waiting on a target with `run waiting`, or none once the run has ended. */
+export async function runWaiting(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+  on: WaitTarget,
+): Promise<readonly RefUpdate[]> {
+  const name = runRef(session, run);
+  const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+
+  if (found === null) return [];
+
+  return [
+    {
+      name,
+      target: await put(kernel, "run", { ...found.record, waiting: on }),
+      expect: found.ref.revision,
+      event: { head: found.record.view.head, kind: "run", run, change: "waiting", on },
+    },
+  ];
+}
+
+/** Changes a call record one change at a time per call in this process: reads it (null when absent), asks `change` for the next state, and compare-and-sets it with the change's updates in one set; a lost race reads and asks again. Resolves the record as written, or as read when `change` returned null, and whether it wrote. */
+export function changeCall(
+  kernel: Kernel,
+  session: SessionId,
+  call: CallId,
+  change: (current: CallRecord | null) => Promise<CallChange | null>,
+): Promise<{ readonly record: CallRecord | null; readonly wrote: boolean }> {
+  const name = callRef(session, call);
+  const queues = callQueues.get(kernel) ?? new Map<string, Promise<unknown>>();
+  callQueues.set(kernel, queues);
+
+  const done = (queues.get(name) ?? Promise.resolve()).then(async () => {
+    for (let tries = 0; tries < CALL_TRIES; tries += 1) {
+      const found = await readCall(kernel, session, call);
+      const next = await change(found?.record ?? null);
+
+      if (next === null) return { record: found?.record ?? null, wrote: false };
+
+      const outcome = await commit(kernel, [
+        {
+          name,
+          target: await put(kernel, "call", next.record),
+          expect: expectOf(found?.ref ?? null),
+          event: next.event,
+        },
+        ...(next.updates ?? []),
+      ]);
+
+      if (outcome.kind === "set") return { record: next.record, wrote: true };
+    }
+
+    throw new SdkError("stale", `Call ${call} lost to concurrent writes ${CALL_TRIES} times.`);
+  });
+
+  const settled = done.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  queues.set(name, settled);
+  void settled.then(() => {
+    if (queues.get(name) === settled) queues.delete(name);
+  });
+
+  return done;
 }
 
 /** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed. */

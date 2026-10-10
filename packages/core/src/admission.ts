@@ -63,7 +63,7 @@ interface Sending {
 
 const USER: MessageSource = { kind: "user" };
 
-/** Admits user content to a head for a connection and returns its receipt: replays a known id, runs `before_send` with the context's principal and origin run, resolves the configuration, schedules, and publishes `input admitted` in one set; a `replace` revises a pending input in place or edits a landed one (stop, move, admit) in one set. */
+/** Admits user content to a head for a connection and returns its receipt: replays a known id, runs `before_send` with the context's principal and origin run, resolves the configuration, schedules, and publishes `input admitted` in one set, then wakes the head's `untilInput` waits when the user sent it; a `replace` revises a pending input in place or edits a landed one (stop, move, admit) in one set. */
 export async function send(
   kernel: Kernel,
   input: {
@@ -247,6 +247,8 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     if (run === null && message.delivery !== "attach" && covered)
       kernel.wakes.notify(session, head);
+
+    if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
 
     return sendReceipt(kernel, session, id);
   });

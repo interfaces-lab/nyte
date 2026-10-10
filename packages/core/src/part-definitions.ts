@@ -12,18 +12,24 @@ export interface RegisteredDefinition {
 export interface PartDefinitions {
   /** Returns the definition registered for a kind and its owner, or undefined when none is. */
   get(kind: string): RegisteredDefinition | undefined;
-  /** Registers a definition under its kind, replacing any earlier one; the disposer removes it while it is still the one registered. Registering the definition already registered is a no-op with an inert disposer. */
+  /** Registers a definition under its kind, replacing any earlier one; the disposer removes it while it is still the one registered. Registering the definition already registered, or any definition of a built-in kind (reserved, whatever the owner), is a no-op with an inert disposer. */
   register(definition: PartDefinition, owner: string | null): Disposer;
   /** Returns every registered definition with its owner. */
   list(): readonly RegisteredDefinition[];
 }
 
-/** Returns a definition registry holding the built-ins `text`, `thinking`, `tool`, `compaction` and `branchSummary`, each with owner null. */
-export function createPartDefinitions(): PartDefinitions {
-  const registered = new Map<string, RegisteredDefinition>();
+/** Returns a definition registry holding the built-ins `text`, `thinking`, `tool` (or the given `tool`, its stop action wired), `compaction` and `branchSummary`, each with owner null; their kinds are reserved from then on. */
+export function createPartDefinitions(input?: { readonly tool?: typeof tool }): PartDefinitions {
+  const builtIns = [text, thinking, input?.tool ?? tool, compaction, branchSummary];
+  const reserved = new Set(builtIns.map((definition) => definition.kind));
+
+  const registered = new Map<string, RegisteredDefinition>(
+    builtIns.map((definition) => [definition.kind, { definition, owner: null }]),
+  );
 
   const register = (definition: PartDefinition, owner: string | null): Disposer => {
-    if (registered.get(definition.kind)?.definition === definition) return () => {};
+    if (reserved.has(definition.kind) || registered.get(definition.kind)?.definition === definition)
+      return () => {};
 
     const entry: RegisteredDefinition = { definition, owner };
     registered.set(definition.kind, entry);
@@ -32,9 +38,6 @@ export function createPartDefinitions(): PartDefinitions {
       if (registered.get(definition.kind) === entry) registered.delete(definition.kind);
     };
   };
-
-  for (const definition of [text, thinking, tool, compaction, branchSummary])
-    register(definition, null);
 
   return {
     get: (kind) => registered.get(kind),

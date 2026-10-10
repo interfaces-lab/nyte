@@ -1,10 +1,17 @@
+import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, RunId, SessionId, WorkspaceId } from "@nyte-ai/schema";
+import { createConnection } from "./connection.ts";
+import { parkStep } from "./durable.ts";
 import type { ExecutionEnv } from "./environment.ts";
 import type { Kernel } from "./kernel.ts";
+import { PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
+import { publishPatch } from "./runs.ts";
+import { sessionHandle } from "./session.ts";
+import { executeCall } from "./tool-runner.ts";
 import type { Durable, ToolInvocation } from "./tools.ts";
 
-/** Returns what a tool's `execute` receives, bound to where the call runs. `session` and `sdk` act from the call: the context with participant authority only and `origin` set to `{ session, run, head, call, sequence }`, `sequence` a fresh counter for this execution so its acquisitions key `acq:<n>` the same way on every re-run; `workspace` is `kernel.workspace` of the session's workspace; `env` is the environment `executeCall` resolved through `kernel.env(session)`; `progress` publishes a `progress` patch on the tool part, dropped once the run is stopping; `tools.execute` is a nested `executeCall` keyed by the caller's key or call order; `tools.activate` and `tools.list` are `kernel.tools(session, run)`'s; `wait`, `memo` and `now` are the step's `durable`. Binds synchronously; no I/O. */
+/** Returns what a tool's `execute` receives, bound to where the call runs. `session` and `sdk` act from the call: the context with participant authority only and `origin` set to `{ session, run, head, call, sequence }`, `sequence` a fresh counter for this execution so its acquisitions key `acq:<n>` the same way on every re-run; `workspace` is `kernel.workspace` of the session's workspace; `env` is the environment `executeCall` resolved through `kernel.env(session)`; `progress` publishes a `progress` patch on the tool part, dropped once the run is stopping; `tools.execute` is a nested `executeCall` keyed by the caller's key or call order, whose parking parks this step too; `tools.activate` and `tools.list` are `kernel.tools(session, run)`'s; `wait`, `memo` and `now` are the step's `durable`. Binds synchronously; no I/O. */
 export function createInvocation(
   kernel: Kernel,
   input: {
@@ -19,5 +26,72 @@ export function createInvocation(
     readonly durable: Durable;
   },
 ): ToolInvocation {
-  throw new Error("not implemented");
+  const { session, head, run, call, durable, signal } = input;
+  let acquisitions = 0;
+  let calls = 0;
+
+  const context: ConnectionContext = {
+    principal: input.context.principal,
+    authority: PARTICIPANT_AUTHORITY,
+    credential: input.context.credential,
+    origin: {
+      session,
+      run,
+      head,
+      call,
+      sequence: {
+        next() {
+          acquisitions += 1;
+
+          return acquisitions - 1;
+        },
+      },
+    },
+  };
+
+  const source = kernel.tools(session, run);
+
+  return {
+    run,
+    call,
+    head,
+    signal,
+    session: sessionHandle(kernel, context, session),
+    sdk: createConnection(kernel, context),
+    workspace: kernel.workspace(input.workspace),
+    env: input.env,
+    progress(update) {
+      publishPatch(kernel, session, run, {
+        kind: "patch",
+        part: asId<"part">(call),
+        progress: update,
+      });
+    },
+    tools: {
+      async execute(name, args, options) {
+        const key = options?.key ?? `${calls}`;
+        calls += 1;
+
+        const outcome = await executeCall(kernel, {
+          session,
+          head,
+          run,
+          call,
+          name,
+          args,
+          context: input.context,
+          signal:
+            options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]),
+          key,
+        });
+
+        return outcome.kind === "parked" ? parkStep(durable) : outcome;
+      },
+      activate: (names) => source.activate(names),
+      list: () => source.list(),
+    },
+    wait: (target) => durable.wait(target),
+    memo: (name, compute) => durable.memo(name, compute),
+    now: () => durable.now(),
+  };
 }

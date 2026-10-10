@@ -54,6 +54,7 @@ export async function startRun(
     stopping: false,
     waiting: null,
     retrying: null,
+    snapshot: null,
   };
 
   kernel.runs.start(id);
@@ -76,7 +77,7 @@ export async function startRun(
   return view;
 }
 
-/** Stops one run at the fence (§30): marks it stopping in `kernel.runs` before any await, so its patches drop; publishes `run stopping` and fails its live parts in one set; then aborts its signal as cleanup and wakes its head, so the driver ends it. Resolves `requested`, or `settled` when the run ended before its fence. */
+/** Stops one run at the fence (§30): marks it stopping in `kernel.runs` before any await, so its patches drop; publishes `run stopping` and fails its live parts in one set; then aborts its signal as cleanup, wakes the waits its steps parked with `stopped`, and wakes its head, so the driver ends it. Resolves `requested`, or `settled` when the run ended before its fence. */
 export async function stopRun(
   kernel: Kernel,
   session: SessionId,
@@ -113,6 +114,7 @@ export async function stopRun(
   }
 
   kernel.runs.abort(run);
+  await kernel.waits.runStopped(session, run);
   kernel.wakes.notify(session, stopped.head);
 
   return stopped.outcome;
@@ -171,7 +173,7 @@ export async function fenceUpdates(
   };
 }
 
-/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, settles every send receipt whose message landed in this run, delivers a child's report, and wakes the head when input is queued. The report is told no durable wait woke (`woke` false) until core-e's implement passes `await kernel.waits.runEnded(session, run, end)`. */
+/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -239,7 +241,9 @@ export async function endRun(
   for (const message of new Set([...landed, ...folded]))
     await settleReceipt(kernel, session, asId<"receipt">(message), end);
 
-  if (ended.parent !== null) await deliverChildReport(kernel, session, run, end, false);
+  const woke = await kernel.waits.runEnded(session, run, end);
+
+  if (ended.parent !== null) await deliverChildReport(kernel, session, run, end, woke);
 
   if (runnable) kernel.wakes.notify(session, ended.head);
 }
@@ -279,7 +283,12 @@ export function publishPatch(
   kernel.bus.publish(session, patch);
 }
 
-async function endOf(kernel: Kernel, session: SessionId, run: RunId): Promise<RunEnd | null> {
+/** Returns how a run ended: its head's `lastRun`, else the ended turn the fold holds; null while it is live or when no run has the id. */
+export async function endOf(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+): Promise<RunEnd | null> {
   const found = await readSession(kernel, session);
   const last = found?.record.heads.find((head) => head.lastRun?.id === run)?.lastRun;
 
