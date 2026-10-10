@@ -71,6 +71,9 @@ both explicitly on every spawn.
     not fix it. Scratch checks are not committed. Tests are written only where
     an entry asks for them.
 12. Edit files surgically. Rewrite a file only when most of it changes.
+13. Every edit is allowed, in place. No new top-level folders, no `experiments/`,
+    `v2/`, `next/`, `_old/` or parallel trees, no copies kept beside the
+    original. A package is rewritten where it stands.
 
 ## Package map
 
