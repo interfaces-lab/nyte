@@ -63,7 +63,7 @@ export type CompactionPlan = {
   /** The retained tail. */
   readonly keep: readonly ModelMessage[];
   /** Set it and core writes the compaction part without a request; material is provider-opaque (encrypted Responses compaction). */
-  readonly result: { readonly kind: "summary"; readonly text: string } | { readonly kind: "material"; readonly provider: string; readonly data: Json; readonly usage: Usage | null } | null;
+  readonly result: { readonly kind: "summary"; readonly text: string } | { readonly kind: "material"; readonly provider: string; readonly api: string; readonly model: string; readonly data: Json; readonly usage: Usage | null } | null;
 }
 
 /**

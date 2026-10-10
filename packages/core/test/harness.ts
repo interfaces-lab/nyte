@@ -218,7 +218,7 @@ export async function livePart(
     id: part,
     partKind: "text",
     placement: { kind: "transcript", role: "answer" },
-    state: { markdown },
+    state: { markdown, signature: null },
     version: 1,
     owner: null,
     run,

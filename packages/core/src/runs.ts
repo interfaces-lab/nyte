@@ -17,6 +17,7 @@ import { dropActivations } from "./catalog.ts";
 import { deliverChildReport } from "./child-report.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import { LOCAL } from "./principals.ts";
 import { settleReceipt } from "./receipts.ts";
 import { decodeRunRecord } from "./records.ts";
 import type { RunRecord, SessionRecord } from "./records.ts";
@@ -37,7 +38,7 @@ import { waitFor } from "./waits.ts";
 
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
 
-/** Starts a run on a head: mints its id, writes its `RunRecord` with `run started`, and opens its controller in `kernel.runs`. */
+/** Starts a run on a head: mints its id, writes its `RunRecord` with `run started`, opens its controller in `kernel.runs`, and observes `run_started` with the logged view through the session's hooks when its plugin runtime is loaded here (§38q; not awaited, never rejects). */
 export async function startRun(
   kernel: Kernel,
   session: SessionId,
@@ -74,6 +75,11 @@ export async function startRun(
 
     throw new SdkError("internal", `Run ${id} already exists.`);
   }
+
+  void kernel
+    .runtimes()
+    .get(session)
+    ?.hooks.observe("run_started", view, { session, head, run: id, principal: LOCAL });
 
   return view;
 }
@@ -174,7 +180,7 @@ export async function fenceUpdates(
   };
 }
 
-/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, forgets the deferred tools it activated (§35f), settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
+/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, forgets the deferred tools it activated (§35f), observes `run_ended` with the logged end through the session's hooks when its plugin runtime is loaded here (§38n; not awaited, never rejects), settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -226,6 +232,12 @@ export async function endRun(
   dropActivations(kernel, run);
 
   if (ended === null) return;
+
+  void kernel
+    .runtimes()
+    .get(session)
+    ?.hooks.observe("run_ended", end, { session, head: ended.head, run, principal: LOCAL });
+
   const landed = landedIn(kernel).get(run) ?? [];
   landedIn(kernel).delete(run);
 

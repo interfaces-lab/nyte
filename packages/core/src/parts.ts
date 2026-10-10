@@ -17,6 +17,7 @@ import {
   JsonSchema,
   ToolClassSchema,
   ToolOutcomeSchema,
+  SignatureSchema,
   ToolProgressSchema,
   UsageSchema,
   idSchema,
@@ -301,7 +302,8 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
 
 /**
  * Returns the built-in text part: the model's prose. Role answer; streaming
- * appends and bumps version.
+ * appends and bumps version. `signature` is opaque provider continuity data
+ * (a response id) the next request replays; never shown.
  *
  * **Details**
  *
@@ -314,23 +316,29 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
  * @category parts
  * @since 0.1.0
  */
-export const text: PartDefinition<{ readonly markdown: string }, {}> = definePart({
+export const text: PartDefinition<{ readonly markdown: string; readonly signature: Json | null }, {}> = definePart({
   kind: "text",
-  state: standard(Type.Object({ markdown: Type.String() })),
+  state: standard(withJson(Type.Object({ markdown: Type.String(), signature: SignatureSchema }))),
   actions: {},
   fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
 });
 
 /**
  * Returns the built-in thinking part. Role step; adjacent thoughts are one
- * part, `merged` counts them, and the first id wins.
+ * part, `merged` counts them, and the first id wins. `signature` is opaque
+ * provider continuity data (a thinking signature, a redacted marker) the
+ * next request replays; never shown.
  *
  * @category parts
  * @since 0.1.0
  */
-export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}> = definePart({
+export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number; readonly signature: Json | null }, {}> = definePart({
   kind: "thinking",
-  state: standard(Type.Object({ markdown: Type.String(), merged: Type.Number() })),
+  state: standard(
+    withJson(
+      Type.Object({ markdown: Type.String(), merged: Type.Number(), signature: SignatureSchema }),
+    ),
+  ),
   actions: {},
   fallback: (state, { id }) => `Thinking (${state.merged})… [${id}]`,
 });
@@ -380,14 +388,19 @@ export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly inp
  * @category parts
  * @since 0.1.0
  */
-export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = definePart({
+export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly api: string; readonly model: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = definePart({
   kind: "compaction",
   state: standard(
     withJson(
     Type.Object({
       summary: Type.Union([Type.String(), Type.Null()]),
       material: Type.Union([
-        Type.Object({ provider: Type.String(), data: JsonSchema }),
+        Type.Object({
+          provider: Type.String(),
+          api: Type.String(),
+          model: Type.String(),
+          data: JsonSchema,
+        }),
         Type.Null(),
       ]),
       tokensBefore: Type.Number(),
@@ -397,7 +410,7 @@ export const compaction: PartDefinition<{ readonly summary: string | null; reado
   ),
   actions: {},
   fallback: (state, { id }) =>
-    `Context compacted at ${state.tokensBefore} tokens${state.summary === null ? "" : `: ${clip(state.summary)}`} [${id}]`,
+    `Context compacted at ${state.tokensBefore} tokens${state.summary !== null ? `: ${clip(state.summary)}` : state.material !== null ? ` into ${state.material.provider}/${state.material.model} material` : ""} [${id}]`,
 });
 
 /**

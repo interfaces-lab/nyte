@@ -249,7 +249,7 @@ function turn(message: string, run: string, parent: string | null): readonly Dur
     landed(message, commit, run),
     userCommit(commit, message, parent),
     started(run, message, 0),
-    created(answer, "text", "answer", run, { markdown: "" }),
+    created(answer, "text", "answer", run, { markdown: "", signature: null }),
     settled(answer, `c-${answer}`, 0),
     partCommit(`c-${answer}`, answer, commit, run),
     ended(run),
@@ -284,7 +284,7 @@ describe("fold", () => {
       landed("m1", "c1", "r1"),
       userCommit("c1", "m1", null),
       started("r1", "m1", 7),
-      created("r1:1:0", "text", "answer", "r1", { markdown: "" }),
+      created("r1:1:0", "text", "answer", "r1", { markdown: "", signature: null }),
       append("r1:1:0", "Hel"),
       append("r1:1:0", "lo."),
       settled("r1:1:0", "c2", 9),
@@ -369,7 +369,7 @@ describe("fold", () => {
           part: "r1:1:0",
           partKind: "text",
           role: "answer",
-          state: { markdown: "Hello." },
+          state: { markdown: "Hello.", signature: null },
           version: 3,
           status: { kind: "settled", commit: "c2", endedAt: 9 },
         },
@@ -442,7 +442,7 @@ describe("fold", () => {
       landed("m1", "c1", "r1"),
       userCommit("c1", "m1", "c-r0:1:0"),
       started("r1", "m1", 0),
-      created("r1:1:0", "text", "answer", "r1", { markdown: "" }),
+      created("r1:1:0", "text", "answer", "r1", { markdown: "", signature: { id: "msg_1" } }),
       append("r1:1:0", "Hel"),
     );
 
@@ -451,7 +451,10 @@ describe("fold", () => {
     const later = project(after, main);
 
     expect(ids(later)).toEqual(["m0", "r0:1:0", "m1", "r1:1:0"]);
-    expect(later.messages[3]).toMatchObject({ state: { markdown: "Hello." }, version: 3 });
+    expect(later.messages[3]).toMatchObject({
+      state: { markdown: "Hello.", signature: { id: "msg_1" } },
+      version: 3,
+    });
     expect(later).not.toBe(earlier);
     expect(later.messages).not.toBe(earlier.messages);
     expect(later.messages.slice(0, 3)).toEqual(earlier.messages.slice(0, 3));
@@ -605,7 +608,7 @@ describe("fold", () => {
       landed("m1", "c1", "r1"),
       userCommit("c1", "m1", null),
       started("r1", "m1", 0),
-      created(part, "text", "answer", run, { markdown: "Draft" }),
+      created(part, "text", "answer", run, { markdown: "Draft", signature: null }),
     );
 
     const stopping = play(
@@ -667,7 +670,7 @@ describe("fold", () => {
       landed("m1", "c1", "r1"),
       userCommit("c1", "m1", null),
       started("r1", "m1", 0),
-      created(part, "text", "answer", "r1", { markdown: "Hi." }),
+      created(part, "text", "answer", "r1", { markdown: "Hi.", signature: null }),
       partCommit("c2", part, "c1", "r1"),
     );
 

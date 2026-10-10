@@ -100,8 +100,8 @@ export interface Kernel {
   activation(session: SessionId): Activation;
   /** Sets a session's activation in memory and publishes an `activation` event to it. */
   setActivation(session: SessionId, activation: Activation): void;
-  /** Where a root session acts when `create` names no workspace (decision 5); null until the composer registers one. */
-  readonly defaultWorkspace: WorkspaceId | null;
+  /** Where a root session acts when `create` names no workspace (decision 5); null until the composer registers one. Writable: `composeHost` registers `OpenOptions.workspace` through the kernel's own workspaces, whose providers come from `hostPlugins`, and sets it then (§38p). */
+  defaultWorkspace: WorkspaceId | null;
   /** Whether this host runs the sessions it admits, and which; admission reads it for `covered`. Default run, covering all. */
   readonly execution: NonNullable<OpenOptions["execution"]>;
   /** The runs live in this process: their abort controllers and stop fences. */

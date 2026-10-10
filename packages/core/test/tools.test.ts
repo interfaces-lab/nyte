@@ -380,7 +380,7 @@ describe("tool calls", () => {
         const child = await invocation.sdk.sessions.create({ parent: invocation.session.id });
 
         const panel = await invocation.session.parts.create(text, {
-          state: { markdown: "Working." },
+          state: { markdown: "Working.", signature: null },
           placement: { kind: "panel" },
         });
 

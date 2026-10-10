@@ -276,7 +276,7 @@ export interface ModelsApi {
    *
    * @authority owner
    */
-  verify(provider: string): Promise<{ readonly kind: "verified" } | { readonly kind: "failed"; readonly reason: string }>;
+  verify(provider: string): Promise<{ readonly kind: "verified" } | { readonly kind: "unverified" } | { readonly kind: "failed"; readonly reason: string }>;
   /**
    * Starts a login flow the host runs; the client draws its steps.
    *
@@ -317,7 +317,9 @@ export interface Login {
    * **Details**
    *
    * - `open`: show the user the url (and code); the host polls.
-   * - `paste`: the host wants a code the user copies back through `answer`.
+   * - `paste`: the host wants text the user copies back through `answer`:
+   *   `message` says what, `secret` whether to mask it (an API key).
+   * - `choose`: the host wants one of `options`; `answer(id)` picks it.
    * - `waiting`, `done`, `failed`: progress and the end.
    *
    * **Gotchas**
@@ -330,13 +332,14 @@ export interface Login {
    */
   steps(): AsyncIterable<
     | { readonly kind: "open"; readonly url: string; readonly code?: string }
-    | { readonly kind: "paste" }
+    | { readonly kind: "paste"; readonly message: string; readonly secret: boolean }
+    | { readonly kind: "choose"; readonly message: string; readonly options: readonly { readonly id: string; readonly label: string }[] }
     | { readonly kind: "waiting" }
     | { readonly kind: "done" }
     | { readonly kind: "failed"; readonly reason: string }
   >;
   /**
-   * Sends the code the user pasted after a `paste` step.
+   * Sends the text the user pasted after a `paste` step, or the option id chosen after a `choose` step.
    *
    * @authority owner
    */

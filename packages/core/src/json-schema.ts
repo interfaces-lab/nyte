@@ -48,6 +48,9 @@ export const UsageSchema = Type.Object({
   }),
 });
 
+/** Validates a text or thinking part's `signature`: opaque provider continuity data, or null. Its `JsonSchema` resolves beneath `withJson`. */
+export const SignatureSchema = Type.Union([JsonSchema, Type.Null()]);
+
 /** Validates a `ToolClass`: what a tool call does. */
 export const ToolClassSchema = Type.Union([
   Type.Object({ kind: Type.Literal("read"), path: Type.String() }),

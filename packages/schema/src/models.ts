@@ -65,10 +65,10 @@ export type ModelCatalogView = {
     readonly id: string;
     readonly name: string;
     readonly credential: "missing" | "configured" | "verified" | "failed";
-    /** How a credential can be obtained: oauth, device-code, key. */
+    /** How a credential can be obtained: oauth, key. A device-code flow is an oauth login whose `open` step carries a code. */
     readonly methods: readonly LoginMethod[];
     /** Account windows the provider reported on its last response. */
-    readonly limits: readonly { readonly label: string; readonly used: number; readonly limit: number; readonly resetsAt: number }[];
+    readonly limits: readonly { readonly label: string; readonly used: number; readonly limit: number; readonly resetsAt: number | null }[];
     /** Base models only. */
     readonly models: readonly ModelInfo[];
   }[];
@@ -109,4 +109,4 @@ export type ModelInfo = {
  * @category connection
  * @since 0.1.0
  */
-export type LoginMethod = { readonly kind: "oauth" } | { readonly kind: "device-code" } | { readonly kind: "key" };
+export type LoginMethod = { readonly kind: "oauth" } | { readonly kind: "key" };

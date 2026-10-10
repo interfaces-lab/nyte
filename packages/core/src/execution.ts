@@ -387,7 +387,7 @@ async function coveredHeads(
   return heads;
 }
 
-/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended `stopped`, so the step goes on to the next input; stopping wins over waiting and retrying. A run no turn drives here first re-runs its tool calls owed a re-run, a stopping one with its signal aborted first (after a restart too), so a stopped step sees `stopped` and returns; it reports `waiting` while a call stays parked. */
+/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended `stopped`, so the step goes on to the next input; stopping wins over waiting and retrying. A retrying run reports `retry` until its `until`; once that passed, a run no turn drives here is driven again (§38o), the turn taking the next attempt. A run no turn drives here first re-runs its tool calls owed a re-run, a stopping one with its signal aborted first (after a restart too), so a stopped step sees `stopped` and returns; it reports `waiting` while a call stays parked. */
 async function settleLive(
   kernel: Kernel,
   session: SessionId,
@@ -429,7 +429,8 @@ async function settleLive(
             : (waiting.deadline ?? null)),
     };
 
-  if (record.retrying !== null) return { kind: "retry", until: record.retrying.until };
+  if (record.retrying !== null && record.retrying.until > Date.now())
+    return { kind: "retry", until: record.retrying.until };
 
   if (driven) return { kind: "idle" };
   await drive(kernel, session, head, record.view);

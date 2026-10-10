@@ -498,7 +498,7 @@ interface ModelsApi {
    *
    * @authority owner
    */
-  verify(provider: string): Promise<{ readonly kind: "verified" } | { readonly kind: "failed"; readonly reason: string }>;
+  verify(provider: string): Promise<{ readonly kind: "verified" } | { readonly kind: "unverified" } | { readonly kind: "failed"; readonly reason: string }>;
   /**
    * Starts a login flow the host runs; the client draws its steps.
    *
@@ -535,10 +535,10 @@ interface ModelCatalogView {
     readonly id: string;
     readonly name: string;
     readonly credential: "missing" | "configured" | "verified" | "failed";
-    /** How a credential can be obtained: oauth, device-code, key. */
+    /** How a credential can be obtained: oauth, key. A device-code flow is an oauth login whose `open` step carries a code. */
     readonly methods: readonly LoginMethod[];
     /** Account windows the provider reported on its last response. */
-    readonly limits: readonly { readonly label: string; readonly used: number; readonly limit: number; readonly resetsAt: number }[];
+    readonly limits: readonly { readonly label: string; readonly used: number; readonly limit: number; readonly resetsAt: number | null }[];
     /** Base models only. */
     readonly models: readonly ModelInfo[];
   }[];
@@ -591,7 +591,7 @@ type Thinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
  * @category connection
  * @since 0.1.0
  */
-type LoginMethod = { readonly kind: "oauth" } | { readonly kind: "device-code" } | { readonly kind: "key" };
+type LoginMethod = { readonly kind: "oauth" } | { readonly kind: "key" };
 /**
  * Returns one provider login attempt, run by the host and drawn by the client.
  *
@@ -612,7 +612,9 @@ interface Login {
    * **Details**
    *
    * - `open`: show the user the url (and code); the host polls.
-   * - `paste`: the host wants a code the user copies back through `answer`.
+   * - `paste`: the host wants text the user copies back through `answer`:
+   *   `message` says what, `secret` whether to mask it (an API key).
+   * - `choose`: the host wants one of `options`; `answer(id)` picks it.
    * - `waiting`, `done`, `failed`: progress and the end.
    *
    * **Gotchas**
@@ -625,13 +627,14 @@ interface Login {
    */
   steps(): AsyncIterable<
     | { readonly kind: "open"; readonly url: string; readonly code?: string }
-    | { readonly kind: "paste" }
+    | { readonly kind: "paste"; readonly message: string; readonly secret: boolean }
+    | { readonly kind: "choose"; readonly message: string; readonly options: readonly { readonly id: string; readonly label: string }[] }
     | { readonly kind: "waiting" }
     | { readonly kind: "done" }
     | { readonly kind: "failed"; readonly reason: string }
   >;
   /**
-   * Sends the code the user pasted after a `paste` step.
+   * Sends the text the user pasted after a `paste` step, or the option id chosen after a `choose` step.
    *
    * @authority owner
    */
@@ -2667,7 +2670,8 @@ declare function isPart<K extends PartDefinition>(message: Message, kind: K): me
 
 /**
  * Returns the built-in text part: the model's prose. Role answer; streaming
- * appends and bumps version.
+ * appends and bumps version. `signature` is opaque provider continuity data
+ * (a response id) the next request replays; never shown.
  *
  * **Details**
  *
@@ -2680,15 +2684,17 @@ declare function isPart<K extends PartDefinition>(message: Message, kind: K): me
  * @category parts
  * @since 0.1.0
  */
-declare const text: PartDefinition<{ readonly markdown: string }, {}>;
+declare const text: PartDefinition<{ readonly markdown: string; readonly signature: Json | null }, {}>;
 /**
  * Returns the built-in thinking part. Role step; adjacent thoughts are one
- * part, `merged` counts them, and the first id wins.
+ * part, `merged` counts them, and the first id wins. `signature` is opaque
+ * provider continuity data (a thinking signature, a redacted marker) the
+ * next request replays; never shown.
  *
  * @category parts
  * @since 0.1.0
  */
-declare const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number }, {}>;
+declare const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number; readonly signature: Json | null }, {}>;
 /**
  * Returns the state of a tool part: the call, its class, progress, outcome
  * and file changes.
@@ -2720,7 +2726,7 @@ declare const tool: PartDefinition<ToolPartState, { readonly stop: { readonly in
  * @category parts
  * @since 0.1.0
  */
-declare const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}>;
+declare const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly api: string; readonly model: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}>;
 /**
  * Returns the built-in branch summary part. Role note: what an abandoned
  * path was about, written by `move({ abandoned: summarize })`.
@@ -4931,7 +4937,7 @@ interface CompactionPlan {
   /** The retained tail. */
   readonly keep: readonly ModelMessage[];
   /** Set it and core writes the compaction part without a request; material is provider-opaque (encrypted Responses compaction). */
-  readonly result: { readonly kind: "summary"; readonly text: string } | { readonly kind: "material"; readonly provider: string; readonly data: Json; readonly usage: Usage | null } | null;
+  readonly result: { readonly kind: "summary"; readonly text: string } | { readonly kind: "material"; readonly provider: string; readonly api: string; readonly model: string; readonly data: Json; readonly usage: Usage | null } | null;
 }
 /**
  * Returns the `before_request` payload, per provider request.

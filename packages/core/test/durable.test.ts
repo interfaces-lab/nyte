@@ -576,7 +576,7 @@ describe("durable steps", () => {
     });
 
     const closed = await session.parts.create(text, {
-      state: { markdown: "Gone." },
+      state: { markdown: "Gone.", signature: null },
       placement: { kind: "panel" },
     });
 

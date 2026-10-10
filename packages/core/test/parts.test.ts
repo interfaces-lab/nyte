@@ -106,14 +106,14 @@ const builtIns: readonly {
 }[] = [
   {
     definition: text,
-    good: { markdown: "Hello\n  world." },
-    bad: { markdown: 1 },
+    good: { markdown: "Hello\n  world.", signature: { id: "msg_1" } },
+    bad: { markdown: 1, signature: null },
     fallback: "Hello world.",
   },
   {
     definition: thinking,
-    good: { markdown: "Considering.", merged: 2 },
-    bad: { markdown: "Considering." },
+    good: { markdown: "Considering.", merged: 2, signature: "sig" },
+    bad: { markdown: "Considering.", signature: null },
     fallback: "Thinking (2)…",
   },
   {
@@ -161,7 +161,7 @@ describe("parts", () => {
       expect(definition.fallback(good, { id })).toBe(`${fallback} [${id}]`);
     }
 
-    expect(text.fallback({ markdown: "x".repeat(200) }, { id })).toBe(
+    expect(text.fallback({ markdown: "x".repeat(200), signature: null }, { id })).toBe(
       `${"x".repeat(120)}… [${id}]`,
     );
     expect(
@@ -272,7 +272,7 @@ describe("parts", () => {
     const session = await host.sessions.create();
 
     const part = await session.parts.create(text, {
-      state: { markdown: "Hello." },
+      state: { markdown: "Hello.", signature: null },
       placement: { kind: "transcript", role: "note" },
     });
 
@@ -314,7 +314,7 @@ describe("parts", () => {
 
     const note: PartId = asId("n1");
     await session.parts.create(text, {
-      state: { markdown: "Kept." },
+      state: { markdown: "Kept.", signature: null },
       placement: { kind: "panel" },
       id: note,
     });
@@ -377,11 +377,11 @@ describe("parts", () => {
     ]);
 
     const note = await session.parts.create(text, {
-      state: { markdown: "Hello." },
+      state: { markdown: "Hello.", signature: null },
       placement: { kind: "status" },
     });
 
-    expect(await session.part(note.id).update({ markdown: 1 })).toMatchObject({
+    expect(await session.part(note.id).update({ markdown: 1, signature: null })).toMatchObject({
       kind: "invalid",
       issues: [{ severity: "error", path: ["markdown"] }],
     });

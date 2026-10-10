@@ -455,7 +455,7 @@ describe("prune", () => {
 
     for (const markdown of ["First.", "Second."])
       await session.parts.create(text, {
-        state: { markdown },
+        state: { markdown, signature: null },
         placement: { kind: "transcript", role: "note" },
       });
 
