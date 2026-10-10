@@ -1158,7 +1158,7 @@ interface Sessions {
     readonly workspace?: WorkspaceId;
     /** A child is a session with lineage, nothing more. */
     readonly parent?: SessionId;
-    readonly configuration?: Choice;
+    readonly configuration?: Configuration | ConfigurationPatch;
     /** This session's own system prompt section: a subagent's role, without a registered agent. */
     readonly prompt?: PromptOverride;
   }): Promise<Session>;
@@ -1325,7 +1325,7 @@ interface Head {
    * @returns {@link ConfigureOutcome}
    * @authority participant
    */
-  configure(patch: ChoicePatch): Promise<ConfigureOutcome>;
+  configure(patch: ConfigurationPatch): Promise<ConfigureOutcome>;
 
   /**
    * Returns one snapshot of the head's view. Moves no seen mark.
@@ -1600,7 +1600,7 @@ interface SendOptions {
   /** Default user. */
   readonly source?: MessageSource;
   /** Default: capture the head's selection at admission. */
-  readonly configuration?: Choice;
+  readonly configuration?: Configuration | ConfigurationPatch;
   /** Only to retry across your own restart; same id + same content replays the receipt. */
   readonly id?: ReceiptId;
 }
@@ -1641,7 +1641,7 @@ type Delivery = "steer" | "queue" | "attach";
  * @since 0.1.0
  */
 type ConfigureOutcome =
-  | { readonly kind: "configured"; readonly selected: ResolvedChoice; readonly revision: Revision }
+  | { readonly kind: "configured"; readonly selected: Configuration; readonly revision: Revision }
   | { readonly kind: "unknown-model"; readonly model: ModelRef }
   | { readonly kind: "unknown-agent"; readonly agent: string }
   | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] };
@@ -1685,14 +1685,14 @@ type Position = { readonly kind: "start" } | { readonly kind: "commit"; readonly
  * **Details**
  *
  * `configure` takes a patch and changes the head's durable selection. `send`
- * takes a patch or a {@link ResolvedChoice} and affects that input only. A
- * patch has no discriminant; `Choice` narrows on `"kind" in choice`.
+ * takes a patch or a {@link Configuration} and affects that input only. A
+ * patch has no discriminant; a field typed `Configuration | ConfigurationPatch` narrows on `"kind" in value`.
  *
- * @see {@link ResolvedChoice} for what admission resolves it to
+ * @see {@link Configuration} for what admission resolves it to
  * @category heads
  * @since 0.1.0
  */
-type ChoicePatch = {
+type ConfigurationPatch = {
   /** Omit = keep. A fast variant is a model ref, not a flag. */
   readonly model?: ModelRef;
   /** Omit = keep; null = clear the override, resolve the default at admission. */
@@ -1709,8 +1709,8 @@ type ChoicePatch = {
  * @category heads
  * @since 0.1.0
  */
-type ResolvedChoice = {
-  readonly kind: "exact";
+type Configuration = {
+  readonly kind: "exact"; // the one discriminant: a patch has none, so a field typed Configuration | ConfigurationPatch narrows on "kind" in value.
   readonly model: ModelRef;
   readonly thinking: Thinking;
   /** Null = the built-in agent, as a value. */
@@ -1719,19 +1719,6 @@ type ResolvedChoice = {
   /** Rejected if the host no longer has it; never silently re-resolved. */
   readonly settingsVersion: string;
 };
-/**
- * Returns either a patch or an exact choice for one input.
- *
- * **Details**
- *
- * `configure` takes a patch and changes the head's durable selection. `send`
- * takes either and affects that input only. The receipt record carries the
- * exact choice; no caller sees an unresolved default.
- *
- * @category heads
- * @since 0.1.0
- */
-type Choice = ChoicePatch | ResolvedChoice;
 /**
  * Names who sent an input.
  *
@@ -1917,7 +1904,7 @@ interface RunView {
   readonly startedAt: number;
   /** Provider retries; parts carry it in their ids. */
   readonly attempt: number;
-  readonly configuration: ResolvedChoice;
+  readonly configuration: Configuration;
   /** What started it. */
   readonly origin: { readonly kind: "input"; readonly message: MessageId } | { readonly kind: "continuation"; readonly from: "child" | "job" | "wake" };
 }
@@ -2544,7 +2531,7 @@ interface SessionView {
   /** Children, jobs and pages working for this head. */
   readonly background: readonly BackgroundItem[];
   /** The head's stored selection and what admission would resolve now. */
-  readonly configuration: { readonly selected: ResolvedChoice | null; readonly effective: ResolvedChoice | null };
+  readonly configuration: { readonly selected: Configuration | null; readonly effective: Configuration | null };
   readonly context: ContextView;
   readonly heads: readonly HeadInfo[];
   /** Files this session changed, latest state per path, first-seen order. A field, not a derivation. */
@@ -4893,7 +4880,7 @@ interface Submission {
   readonly content: UserContent;
   readonly source: MessageSource;
   readonly delivery: Delivery;
-  readonly configuration: Choice | null;
+  readonly configuration: Configuration | ConfigurationPatch | null;
   readonly replace: MessageId | null;
 }
 /**
@@ -5491,7 +5478,7 @@ type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "head"; readonly from: CommitId | null; readonly to: CommitId | null; readonly reason: "moved" | "merged" | "created" | "removed" }
   | { readonly kind: "seen"; readonly principal: PrincipalId; readonly commit: CommitId | null }
   | { readonly kind: "input"; readonly message: MessageId } & (
-      | { readonly change: "admitted"; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly schedule: Schedule; readonly covered: boolean; readonly choice: ResolvedChoice; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
+      | { readonly change: "admitted"; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly schedule: Schedule; readonly covered: boolean; readonly configuration: Configuration; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null }
       | { readonly change: "scheduled"; readonly schedule: Schedule }
       | { readonly change: "landed"; readonly commit: CommitId; readonly run: RunId | null }
       | { readonly change: "withdrawn" }
@@ -5518,7 +5505,7 @@ type DurableEvent = { readonly head: HeadName | null } & (
       | { readonly change: "settled"; readonly outcome: ToolOutcome; readonly changes: { readonly added: number; readonly removed: number; readonly paths: readonly string[] } | null }
     )
   | { readonly kind: "background"; readonly item: BackgroundItem }
-  | { readonly kind: "configured"; readonly selected: ResolvedChoice | null; readonly effective: ResolvedChoice | null }
+  | { readonly kind: "configured"; readonly selected: Configuration | null; readonly effective: Configuration | null }
   | { readonly kind: "request"; readonly usage: Usage; readonly context: ContextView; readonly step: "assistant" | "compaction" | "summary" | "plugin" }
   | { readonly kind: "changes"; readonly files: readonly FileChange[] }
   | { readonly kind: "session"; readonly info: SessionInfo }
