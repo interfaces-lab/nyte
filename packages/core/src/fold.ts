@@ -162,7 +162,6 @@ const EMPTY_CATALOG: SessionCatalogView = {
   tools: [],
 };
 
-const NO_RUN = asId<"run">("");
 
 const EMPTY_REVISION = asId<"revision">("");
 
@@ -897,7 +896,7 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
     case "failed":
       return updatePart(draft, id, (part) => ({
         ...part,
-        status: { kind: "failed", run: part.run ?? NO_RUN, failure: event.failure },
+        status: { kind: "failed", run: part.run, failure: event.failure },
       }));
     case "closed":
       if (!draft.parts.has(id) || draft.messages.has(messageOf(id))) return;
@@ -912,7 +911,7 @@ function create(
 ): void {
   const id = event.part;
   const run = event.run;
-  const status: PartStatus = { kind: "live", run: run ?? NO_RUN };
+  const status: PartStatus = { kind: "live", run };
 
   const record: PartRecord = {
     id,
@@ -1041,7 +1040,7 @@ function applyCall(draft: Draft, event: Logged<"call">): void {
       if (call !== undefined) draft.calls.set(event.call, { ...call, waiting: event.on });
 
       return updatePart(draft, event.part, (part) =>
-        part.status.kind === "live"
+        part.status.kind === "live" && part.status.run !== null
           ? { ...part, status: { kind: "waiting", run: part.status.run, on: event.on } }
           : part,
       );

@@ -33,18 +33,20 @@ export type Placement =
  * **Details**
  *
  * - `live`: being written: streaming text, a running tool, an open modal.
+ *   `run` is null for a part created outside a run (a modal a client opened).
  * - `waiting`: parked on a durable wait.
  * - `settled`: committed.
- * - `failed`: its run failed or was stopped.
+ * - `failed`: its run failed or was stopped; `run` null when closed by a
+ *   failure outside a run.
  *
  * @category views
  * @since 0.1.0
  */
 export type PartStatus =
-  | { readonly kind: "live"; readonly run: RunId }
+  | { readonly kind: "live"; readonly run: RunId | null }
   | { readonly kind: "waiting"; readonly run: RunId; readonly on: WaitTarget }
   | { readonly kind: "settled"; readonly commit: CommitId; readonly endedAt: number }
-  | { readonly kind: "failed"; readonly run: RunId; readonly failure: Failure };
+  | { readonly kind: "failed"; readonly run: RunId | null; readonly failure: Failure };
 
 /** Returns one part outside the transcript, with its placement as given. */
 export type PartView = { readonly id: PartId; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly status: PartStatus; readonly owner: string | null }
