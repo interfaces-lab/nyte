@@ -1,0 +1,12 @@
+{
+  "fold-token-throughput": { "tokenFoldP99Ms": 0.25, "yieldsPerSecondMax": 70 },
+  "initial-load": { "viewTailMs": 50, "historyPageMs": 30 },
+  "stop-fence": { "stopResolveMs": 5, "yieldsUntilStopped": 1 },
+  "edit-mid-stream": { "viewsUntilNewInput": 3 },
+  "durable-tool-replay": { "resumeMs": 500 },
+  "store-cas": { "setsPerSecondMin": 5000, "logReadMs": 5 },
+  "watch-coalescing": { "yieldsPerSecondMax": 70 },
+  "reconnect-resume": { "resumeMs": 300 },
+  "git-patches-batching": { "hostReadsMax": 63 },
+  "sessions-directory": { "watchPayloadBytesMax": 65536 }
+}

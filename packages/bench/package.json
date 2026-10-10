@@ -1,0 +1,16 @@
+{
+  "name": "@nyte-ai/bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmarks and invariants for the baseline guarantees in packages/lab/sdk-shape.ts. Runs against a BenchDriver the host package supplies; not part of the typecheck or test pipeline until @nyte-ai/sdk lands.",
+  "type": "module",
+  "scripts": {
+    "bench": "node --conditions=nyte-source src/main.ts"
+  },
+  "dependencies": {
+    "@nyte-ai/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}
