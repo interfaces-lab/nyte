@@ -1,4 +1,6 @@
 import type { Configuration, ConfigurationPatch, Cursor, Paged, ParentFilter, PromptOverride, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/schema";
+import type { Kernel } from "./kernel.ts";
+import type { ConnectionContext } from "./principals.ts";
 import type { Session } from "./session.ts";
 
 /**
@@ -61,4 +63,9 @@ export interface Sessions {
     readonly cursor?: Cursor;
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
+}
+
+/** Returns the session directory for a connection; every session it creates records `context.origin`, the run, head and call a tool invocation creates children from. */
+export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
+  throw new Error("not implemented");
 }

@@ -15,6 +15,8 @@ import type {
   UserContent,
   ViewOptions,
 } from "@nyte-ai/schema";
+import type { Kernel } from "./kernel.ts";
+import type { ConnectionContext } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
 
 /**
@@ -228,4 +230,14 @@ export interface Head {
    * @authority participant
    */
   compact(input?: { readonly instructions?: string }): Promise<{ readonly kind: "started"; readonly message: MessageId } | { readonly kind: "busy"; readonly run: RunId } | { readonly kind: "nothing-to-compact" }>;
+}
+
+/** Returns a handle on one head of a session for a connection. Binds synchronously; no I/O. */
+export function headHandle(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  head: HeadName,
+): Head {
+  throw new Error("not implemented");
 }

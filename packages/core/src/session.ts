@@ -19,7 +19,9 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/schema";
 import type { Head } from "./head.ts";
+import type { Kernel } from "./kernel.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
+import type { ConnectionContext } from "./principals.ts";
 import type { Receipt } from "./receipt.ts";
 import type { Run } from "./run.ts";
 
@@ -155,4 +157,9 @@ export interface Session extends Head {
    * @handle
    */
   part(id: PartId): Part<PartDefinition>;
+}
+
+/** Returns a handle on a session for a connection: its main head plus heads, runs, receipts, parts and management. Binds synchronously; no I/O. */
+export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: SessionId): Session {
+  throw new Error("not implemented");
 }

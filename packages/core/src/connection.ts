@@ -18,7 +18,10 @@ import type {
   WorkspaceId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
+import type { Host } from "./host.ts";
+import type { Kernel } from "./kernel.ts";
 import type { Plugin } from "./plugin.ts";
+import type { ConnectionContext } from "./principals.ts";
 import type { Session } from "./session.ts";
 import type { Sessions } from "./sessions.ts";
 import type { Store } from "./store.ts";
@@ -348,4 +351,17 @@ export interface SettingsApi {
    * @authority owner
    */
   apply(id: string, value: Json): Promise<SettingOutcome>;
+}
+
+/** Returns a connection bound to the kernel's host as one principal: every member checks its `@authority` tag against the context's authority. */
+export function createConnection(kernel: Kernel, context: ConnectionContext): Connection {
+  throw new Error("not implemented");
+}
+
+/** Returns the in-process host: a connection as `LOCAL` with every authority, plus plugins, principals, prune, inspect and execution. */
+export function createHost(
+  kernel: Kernel,
+  input: { readonly credential: CredentialSource },
+): Omit<Host, "listen"> {
+  throw new Error("not implemented");
 }
