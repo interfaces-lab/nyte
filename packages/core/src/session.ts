@@ -352,7 +352,10 @@ async function remove(
       },
     ]);
 
-    return outcome.kind === "set" ? { kind: "removed" } : STALE;
+    if (outcome.kind === "stale") return STALE;
+    await kernel.closePlugins(session);
+
+    return { kind: "removed" };
   });
 }
 

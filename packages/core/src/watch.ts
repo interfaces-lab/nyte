@@ -48,9 +48,9 @@ const LOG_PAGE = 512;
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a fold cache over the kernel's store and bus: one fold per session per principal, shared by every holder. */
+/** Returns a fold cache over the kernel's store and bus: one fold per session per principal, shared by every holder. A cold fold seeds the session's in-memory activation and catalog after its log; their seq-0 events pass at any seq (§35b). */
 export function createFoldCache(
-  kernel: Pick<Kernel, "store" | "bus" | "revisions" | "activation">,
+  kernel: Pick<Kernel, "store" | "bus" | "revisions" | "activation" | "catalog">,
 ): FoldCache {
   const entries = new Map<string, Entry>();
 
@@ -67,7 +67,12 @@ export function createFoldCache(
     let building = true;
 
     const step = (state: FoldState, event: SessionEvent | PatchEvent): FoldState => {
-      if (event.kind !== "patch" && event.kind !== "activation" && event.seq <= state.seq)
+      if (
+        event.kind !== "patch" &&
+        event.kind !== "activation" &&
+        event.kind !== "catalog" &&
+        event.seq <= state.seq
+      )
         return state;
       const next = fold(state, event);
 
@@ -110,6 +115,14 @@ export function createFoldCache(
           head: null,
           kind: "activation",
           activation: kernel.activation(session),
+        });
+
+        entry.state = fold(entry.state, {
+          seq: entry.state.seq,
+          at: Date.now(),
+          head: null,
+          kind: "catalog",
+          catalog: kernel.catalog(session),
         });
 
         for (const head of entry.state.heads.keys()) {

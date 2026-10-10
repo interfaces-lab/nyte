@@ -233,6 +233,11 @@ export function decodeCallRecord(object: Json | null): CallRecord | null {
   return decode(object, "call", isCallRecord);
 }
 
+/** Returns the value a stored `kv` object holds (a setting, a plugin's stored value, a sealed secret), or undefined when it holds another record. */
+export function decodeKvValue(object: Json | null): Json | undefined {
+  return isJsonObject(object) && object.kind === "kv" ? object.body : undefined;
+}
+
 function decode<T extends Json>(
   object: Json | null,
   kind: RecordKind,

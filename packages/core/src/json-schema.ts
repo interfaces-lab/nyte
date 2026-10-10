@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { Id, Json } from "@nyte-ai/schema";
+import type { Id, Json, Schema, ValidationIssue } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { TCodec, TCyclic, TSchema, TString } from "typebox";
 import { Compile } from "typebox/compile";
@@ -111,4 +111,29 @@ const json = Compile(withJson(JsonSchema));
 /** Returns whether a value is JSON: what a part's state and a stored record must be. */
 export function isJson(value: unknown): value is Json {
   return json.Check(value);
+}
+
+/** Returns a value a schema validated, or the issues it found. */
+export type Checked<T> =
+  | { readonly kind: "valid"; readonly value: T }
+  | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] };
+
+/** Validates a value with a Standard Schema, mapping its issues to `ValidationIssue`s. */
+export async function check<T>(schema: Schema<T>, value: unknown): Promise<Checked<T>> {
+  const result = await schema["~standard"].validate(value);
+
+  if (result.issues === undefined) return { kind: "valid", value: result.value };
+
+  return {
+    kind: "invalid",
+    issues: result.issues.map((found) => ({
+      severity: "error",
+      path: (found.path ?? []).map((segment) => {
+        const key = typeof segment === "object" ? segment.key : segment;
+
+        return typeof key === "symbol" ? String(key) : key;
+      }),
+      message: found.message,
+    })),
+  };
 }

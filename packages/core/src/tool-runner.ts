@@ -70,13 +70,6 @@ export type ToolIntent = {
   readonly principal: PrincipalId;
 };
 
-/** Returns what a call's `before_tool` step records: its decision, with the arguments a `modify` gave. */
-type Gate =
-  | { readonly action: "continue" }
-  | { readonly action: "modify"; readonly args: Json }
-  | { readonly action: "reject"; readonly reason: string }
-  | { readonly action: "error"; readonly message: string };
-
 /** Returns what a call does once its definition, `before_tool` and arguments are settled: execute the tool, or settle at once with an outcome decided before it ran. Either way the part shows the arguments and class given. */
 type Plan = { readonly args: Json; readonly class: ToolClass } & (
   | { readonly kind: "execute"; readonly definition: ToolDefinition; readonly input: unknown }
@@ -118,7 +111,7 @@ const STOPPED: ToolOutcome = { kind: "stopped" };
 
 const INTERRUPTED: ToolOutcome = { kind: "interrupted" };
 
-const CONTINUE: Gate = { action: "continue" };
+const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = Compile(withJson(ToolOutcomeSchema));
 
@@ -138,7 +131,7 @@ export function decodeToolIntent(value: Json): ToolIntent | null {
     : null;
 }
 
-/** Runs one tool call to its outcome, or parks it. Resolves the definition through `kernel.tools(session, run)` (unknown → `failed`); dispatches `kernel.beforeTool` as a durable step of kind `hook` with id `hook:before_tool:<call>` (`reject` → `rejected`, nothing runs); validates `args` (`failed`); writes the tool part (`id = call`, phase `calling`, placement transcript `step`) with `call intent` in one set; runs `definition.execute` as a durable step of kind `tool` under the definition's `replay`, its intent a `ToolIntent` `{ name, args, principal }`. An outcome decided before `execute` settles through the same step. `parked` returns the marker for the turn driver. `done` validates `output` against `definition.output` (`failed`), applies `kernel.afterTool`, diffs `kernel.snapshots(session)` into `changes` for a call that may write (null without snapshots; the run's first such call takes `before(run)`), and settles in one set: the call's result, the part's `settled { outcome, changes }` state, the head commit, events `[call settled, part settled, commit]`, plus `changes { files }` when the diff is non-empty; a part its run's stop fence failed takes only `call settled`. `interrupted` settles the same way with `{ kind: "interrupted" }`; an aborted `signal` (the run's, or the part's `stop`) settles `stopped`. `key` marks a nested `tools.execute` from the step `call`: the nested call and its part have the id `<call>:<key>`, its own step record lives at `calls/<call>:<key>`, and its outcome is recorded in and replays from the parent's `nested[key]`. */
+/** Runs one tool call to its outcome, or parks it. Resolves the definition through `kernel.tools(session, run)` (unknown → `failed`); dispatches `kernel.beforeTool`, which owns the durable hook step `hook:before_tool:<call>` (§35a) and may park it (`reject` → `rejected`, `error` → `failed`, nothing runs); validates `args` (`failed`); writes the tool part (`id = call`, phase `calling`, placement transcript `step`) with `call intent` in one set; runs `definition.execute` as a durable step of kind `tool` under the definition's `replay`, its intent a `ToolIntent` `{ name, args, principal }`. An outcome decided before `execute` settles through the same step. `parked` returns the marker for the turn driver. `done` validates `output` against `definition.output` (`failed`), applies `kernel.afterTool`, diffs `kernel.snapshots(session)` into `changes` for a call that may write (null without snapshots; the run's first such call takes `before(run)`), and settles in one set: the call's result, the part's `settled { outcome, changes }` state, the head commit, events `[call settled, part settled, commit]`, plus `changes { files }` when the diff is non-empty; a part its run's stop fence failed takes only `call settled`. `interrupted` settles the same way with `{ kind: "interrupted" }`; an aborted `signal` (the run's, or the part's `stop`) settles `stopped`. `key` marks a nested `tools.execute` from the step `call`: the nested call and its part have the id `<call>:<key>`, its own step record lives at `calls/<call>:<key>`, and its outcome is recorded in and replays from the parent's `nested[key]`. */
 export async function executeCall(
   kernel: Kernel,
   input: {
@@ -333,7 +326,7 @@ async function perform(
   );
 }
 
-/** Resolves the definition, runs `before_tool` as a durable hook step, and validates the arguments it leaves; parked when the hook parks. */
+/** Resolves the definition, runs `before_tool` through `kernel.beforeTool`, and validates the arguments it leaves; parked when the hook parks. */
 async function plan(
   kernel: Kernel,
   where: Where & { readonly args: Json },
@@ -358,38 +351,12 @@ async function plan(
     class: classOf(definition, where.args, call) ?? custom,
   };
 
-  const gated = await runStep<Gate>(kernel, {
+  const gated = await kernel.beforeTool(proposed, {
     session,
     head,
     run,
-    call: asId<"call">(`${HOOK}${call}`),
-    kind: "hook",
-    replay: "safe",
-    intent,
-    part: null,
+    principal: intent.principal,
     signal: where.signal,
-    async body(durable) {
-      try {
-        return gateOf(
-          await kernel.beforeTool(proposed, {
-            session,
-            head,
-            run,
-            principal: intent.principal,
-            durable,
-          }),
-        );
-      } catch (error) {
-        if (isParked(error)) throw error;
-
-        return { action: "error", message: messageOf(error) };
-      }
-    },
-    settle: async (ended) => ({
-      result: ended.kind === "done" ? ended.value : CONTINUE,
-      updates: [],
-    }),
-    decode: decodeGate,
   });
 
   if (gated.kind === "parked") return PARKED;
@@ -413,7 +380,7 @@ async function plan(
       args: where.args,
       class: proposed.class,
     };
-  const args = gate.action === "modify" ? gate.args : where.args;
+  const args = gate.action === "modify" ? gate.value.args : where.args;
   const checked = await definition.parameters["~standard"].validate(args);
 
   if (checked.issues !== undefined)
@@ -578,6 +545,7 @@ async function conclude(
     head,
     run,
     call,
+    principal: where.context.principal,
   });
 
   const snapshots = wrote && ended.kind === "done" ? await kernel.snapshots(session) : null;
@@ -771,38 +739,6 @@ function classOf(definition: ToolDefinition, args: unknown, call: CallId): ToolC
 /** Returns whether a call of this class may change files, so its changes are diffed. */
 function writes(klass: ToolClass): boolean {
   return klass.kind !== "read" && klass.kind !== "list";
-}
-
-/** Returns a `before_tool` decision as the hook step records it. */
-function gateOf(decision: Decision<ToolCall>): Gate {
-  switch (decision.action) {
-    case "continue":
-      return CONTINUE;
-    case "modify":
-      return { action: "modify", args: decision.value.args };
-    case "reject":
-      return { action: "reject", reason: decision.reason };
-    case "error":
-      return { action: "error", message: decision.message };
-  }
-}
-
-/** Returns the decision a hook step's result holds, or null when it holds another shape. */
-function decodeGate(value: Json): Gate | null {
-  if (!isJsonObject(value)) return null;
-
-  switch (value.action) {
-    case "continue":
-      return CONTINUE;
-    case "modify":
-      return "args" in value ? { action: "modify", args: value.args } : null;
-    case "reject":
-      return typeof value.reason === "string" ? { action: "reject", reason: value.reason } : null;
-    case "error":
-      return typeof value.message === "string" ? { action: "error", message: value.message } : null;
-    default:
-      return null;
-  }
 }
 
 /** Returns the outcome a tool step's result holds, or null when it holds another shape. */

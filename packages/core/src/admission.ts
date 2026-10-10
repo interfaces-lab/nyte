@@ -205,7 +205,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
   if (replayed !== null) return replayed;
 
-  const submission = await gate(sending, {
+  const submission = await gate(sending, asId<"message">(id), {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
@@ -263,7 +263,7 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
     return sendReceipt(kernel, session, id);
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
-  const submission = await gate(sending, {
+  const submission = await gate(sending, target, {
     content: sending.content,
     source: options.source ?? previous?.source ?? USER,
     delivery: options.delivery ?? previous?.delivery ?? "steer",
@@ -344,7 +344,7 @@ async function edit(sending: Sending, target: MessageId): Promise<SendReceipt> {
   if (replayed !== null) return replayed;
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
-  const submission = await gate(sending, {
+  const submission = await gate(sending, asId<"message">(id), {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
@@ -533,12 +533,17 @@ async function locate(
   });
 }
 
-async function gate(sending: Sending, submission: Submission): Promise<Submission> {
+async function gate(
+  sending: Sending,
+  message: MessageId,
+  submission: Submission,
+): Promise<Submission> {
   const decision = await sending.kernel.admit(submission, {
     session: sending.session,
     head: sending.head,
     principal: sending.context.principal,
     run: sending.context.origin?.run ?? null,
+    message,
   });
 
   switch (decision.action) {

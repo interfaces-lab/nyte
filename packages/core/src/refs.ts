@@ -65,11 +65,6 @@ export function hostIdentityRef(): string {
   return "host/identity";
 }
 
-/** Returns `host/settings`: the host-scope settings. */
-export function hostSettingsRef(): string {
-  return "host/settings";
-}
-
 /** Returns `host/principals`: the paired principals. */
 export function hostPrincipalsRef(): string {
   return "host/principals";

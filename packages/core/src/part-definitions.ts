@@ -18,17 +18,24 @@ export interface PartDefinitions {
   list(): readonly RegisteredDefinition[];
 }
 
+/** The built-in part kinds, reserved (§34b): registering any definition under one is a no-op, whatever the owner. */
+export const RESERVED_PART_KINDS: ReadonlySet<string> = new Set(
+  [text, thinking, tool, compaction, branchSummary].map((definition) => definition.kind),
+);
+
 /** Returns a definition registry holding the built-ins `text`, `thinking`, `tool` (or the given `tool`, its stop action wired), `compaction` and `branchSummary`, each with owner null; their kinds are reserved from then on. */
 export function createPartDefinitions(input?: { readonly tool?: typeof tool }): PartDefinitions {
   const builtIns = [text, thinking, input?.tool ?? tool, compaction, branchSummary];
-  const reserved = new Set(builtIns.map((definition) => definition.kind));
 
   const registered = new Map<string, RegisteredDefinition>(
     builtIns.map((definition) => [definition.kind, { definition, owner: null }]),
   );
 
   const register = (definition: PartDefinition, owner: string | null): Disposer => {
-    if (reserved.has(definition.kind) || registered.get(definition.kind)?.definition === definition)
+    if (
+      RESERVED_PART_KINDS.has(definition.kind) ||
+      registered.get(definition.kind)?.definition === definition
+    )
       return () => {};
 
     const entry: RegisteredDefinition = { definition, owner };

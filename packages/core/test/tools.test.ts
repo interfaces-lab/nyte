@@ -250,10 +250,13 @@ describe("tool calls", () => {
   it("fails an unknown tool and invalid arguments, and rejects at before_tool without running", async () => {
     const { kernel, host } = await setup({
       tools: source([echo]),
-      beforeTool: async (proposed) =>
-        JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
-          ? { action: "reject", reason: "Not that." }
-          : { action: "continue" },
+      beforeTool: async (proposed) => ({
+        kind: "done",
+        value:
+          JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
+            ? { action: "reject", reason: "Not that." }
+            : { action: "continue" },
+      }),
     });
 
     const session = await host.sessions.create();
@@ -279,10 +282,6 @@ describe("tool calls", () => {
     expect((await toolPart(session, "r1")).state).toMatchObject({
       phase: "settled",
       outcome: { kind: "rejected", reason: "Not that." },
-    });
-    expect((await readCall(kernel, session.id, "hook:before_tool:r1")).result).toEqual({
-      action: "reject",
-      reason: "Not that.",
     });
   });
 

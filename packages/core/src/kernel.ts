@@ -1,4 +1,4 @@
-import { asSeq } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
   CallId,
@@ -37,12 +37,15 @@ import type {
 } from "@nyte-ai/schema";
 import { createBus } from "./bus.ts";
 import type { SessionBus } from "./bus.ts";
+import { toolSource } from "./catalog.ts";
+import { runCommand } from "./commands.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import type { EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
 import { SdkError } from "./error.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
+import { gateSubmission } from "./hooks.ts";
 import type { Host } from "./host.ts";
 import type { HostState } from "./host-view.ts";
 import type { Job, Jobs } from "./jobs.ts";
@@ -51,9 +54,10 @@ import type { PartDefinitions } from "./part-definitions.ts";
 import { createPartsApi } from "./parts-api.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
-import { createPluginRuntime } from "./plugin-runtime.ts";
+import { checkPlugins, createPluginRuntime, replacePlugins } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { ConnectionContext } from "./principals.ts";
+import { createSettingsApi } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { stoppableTool } from "./tool-runner.ts";
 import type { ToolSource } from "./tool-runner.ts";
@@ -100,15 +104,15 @@ export interface Kernel {
   readonly compact: Compactor;
   /** Resolves a head's selection and a patch to a `Configuration`, or says why it cannot; core-f fills it. */
   readonly resolveConfiguration: ConfigurationResolver;
-  /** Dispatches `before_send` for a submission; core-f fills it. Default continue. */
+  /** Dispatches `before_send` for a submission. Default: the session's hook dispatch (`gateSubmission`). */
   readonly admit: AdmissionGate;
-  /** Runs a core command in a session; core-f fills it. Default `unknown`. */
+  /** Runs a core command in a session. Default `runCommand`. */
   readonly command: CommandRunner;
   /** The durable waits parked in this process, by what wakes them; core-e fills it. */
   readonly waits: WaitRegistry;
   /** Providers, credentials and the model catalog; core-f fills it. */
   readonly models: ModelsApi;
-  /** Host-scope settings; core-f fills it. */
+  /** Host-scope settings. Default `createSettingsApi`. */
   readonly settings: SettingsApi;
   /** The workspaces registered on this host; core-f fills it. */
   readonly workspaces: Workspaces;
@@ -120,11 +124,11 @@ export interface Kernel {
   readonly partDefinitions: PartDefinitions;
   /** Runs part actions as durable steps; core-e fills it. */
   readonly durable: DurableProvider;
-  /** Returns the tools a session can call, with deferred tools activated for `run` alone; core-f fills it from the registries. Default: none. */
+  /** Returns the tools a session can call, with deferred tools activated for `run` alone. Default `toolSource`, from the session's registries. */
   tools(session: SessionId, run: RunId | null): ToolSource;
-  /** Dispatches `before_tool` for a call; core-f fills it. Default continue. */
+  /** Dispatches `before_tool` for a call. Default: the session's hook dispatch, as the step `hook:before_tool:<call>`. */
   readonly beforeTool: ToolGate;
-  /** Dispatches `after_tool` over a call's outcome; core-f fills it. Default: the outcome as given. */
+  /** Dispatches `after_tool` over a call's outcome. Default: the session's hook dispatch. */
   readonly afterTool: ToolOutcomeRewriter;
   /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. core-f fills it. Default null. */
   snapshots(session: SessionId): Promise<RunSnapshots | null>;
@@ -140,15 +144,19 @@ export interface Kernel {
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
   /** The core plugins every session loads, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
   hostPlugins: readonly Plugin<"core">[];
-  /** Returns a session's plugin runtime, created empty on first use and kept for the kernel's life. */
+  /** Returns a session's plugin runtime, created empty on first use and kept until `closePlugins`. */
   pluginsFor(session: SessionId): PluginRuntime;
+  /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
+  runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
+  /** Deactivates a session's plugins and forgets its runtime: what removing the session does. */
+  closePlugins(session: SessionId): Promise<void>;
   /** Returns what a session's plugins contributed as last published, in memory; default the empty catalog. */
   catalog(session: SessionId): SessionCatalogView;
   /** Sets a session's catalog in memory and publishes a `catalog` event to it. */
   setCatalog(session: SessionId, catalog: SessionCatalogView): void;
-  /** Returns the api of the plugin that owns a part definition, in a session; core-f fills it. */
+  /** Returns the api of the plugin that owns a part definition, in a session: the active plugin's, or core's own for `core`; throws `unavailable` when no such plugin is active there. */
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
-  /** Hot plugin replacement and preflight; core-f fills it. */
+  /** Hot plugin replacement and preflight. */
   readonly plugins: Host["plugins"];
   /** Who may connect; core-f fills it. */
   readonly principals: Host["principals"];
@@ -230,7 +238,7 @@ export interface ConfigurationResolver {
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
 }
 
-/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch. `run` is the sending connection's origin run, null for a client. */
+/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch, waiting in process while a handler is parked. `run` is the sending connection's origin run, null for a client; `message` is the message gated, what its step is keyed by (§35a). */
 export interface AdmissionGate {
   (
     submission: Submission,
@@ -239,6 +247,7 @@ export interface AdmissionGate {
       readonly head: HeadName;
       readonly principal: PrincipalId;
       readonly run: RunId | null;
+      readonly message: MessageId;
     },
   ): Promise<Decision<Submission>>;
 }
@@ -274,7 +283,7 @@ export interface DurableProvider {
   }): Promise<StepOutcome<T>>;
 }
 
-/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch. It runs as a durable step, so a handler may park on `durable.wait`. */
+/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch. It owns the durable step `hook:before_tool:<call>` (§35a), so a handler may park on `wait`: `parked` returns the call to the turn driver; `signal` is the call's. */
 export interface ToolGate {
   (
     call: ToolCall,
@@ -283,9 +292,9 @@ export interface ToolGate {
       readonly head: HeadName;
       readonly run: RunId;
       readonly principal: PrincipalId;
-      readonly durable: Durable;
+      readonly signal: AbortSignal;
     },
-  ): Promise<Decision<ToolCall>>;
+  ): Promise<StepOutcome<Decision<ToolCall>>>;
 }
 
 /** Rewrites a tool call's outcome before it is recorded: the `after_tool` dispatch. */
@@ -297,6 +306,7 @@ export interface ToolOutcomeRewriter {
       readonly head: HeadName;
       readonly run: RunId;
       readonly call: CallId;
+      readonly principal: PrincipalId;
     },
   ): Promise<ToolOutcome>;
 }
@@ -324,8 +334,6 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-const NO_SETTINGS: SettingsApi = { apply: async () => unavailable("settings") };
-
 const NO_WORKSPACES: Workspaces = {
   list: async () => unavailable("workspaces"),
   inspect: async () => unavailable("workspaces"),
@@ -340,24 +348,13 @@ const NO_JOBS: Jobs = {
   watch: () => unavailableStream("workspace"),
 };
 
-const NO_TOOLS: ToolSource = {
-  get: () => undefined,
-  list: () => [],
-  activate: async () => undefined,
-};
-
-const NO_PLUGINS: Host["plugins"] = {
-  replace: async () => unavailable("plugins"),
-  check: async () => unavailable("plugins"),
-};
-
 const NO_PRINCIPALS: Host["principals"] = {
   list: async () => unavailable("principals"),
   pair: async () => unavailable("principals"),
   revoke: async () => unavailable("principals"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (continue), `command` (unknown), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (none), `beforeTool` (continue), `afterTool` (the outcome as given), `snapshots` (null), `secrets` (null), `hostPlugins` (none), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists) and `pluginsFor` (a `createPluginRuntime` per session over this kernel, built on first use). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `snapshots` (null), `secrets` (null), `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry` over this kernel, built on first use once the kernel object exists); `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use. */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -391,7 +388,6 @@ export function createKernel(
         | "request"
         | "secrets"
         | "hostPlugins"
-        | "pluginsFor"
         | "pluginApi"
         | "plugins"
         | "principals"
@@ -405,9 +401,14 @@ export function createKernel(
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
   const catalogs = new Map<SessionId, SessionCatalogView>();
+
+  const catalog = (session: SessionId): SessionCatalogView =>
+    catalogs.get(session) ?? EMPTY_CATALOG;
+
   const runtimes = new Map<SessionId, PluginRuntime>();
   let waits = input.waits ?? null;
   let definitions = input.partDefinitions ?? null;
+  let settings = input.settings ?? null;
 
   const kernel: Kernel = {
     hostId: input.hostId,
@@ -415,7 +416,7 @@ export function createKernel(
     description: input.description,
     bus,
     host: input.host,
-    folds: createFoldCache({ store: input.store, bus, revisions, activation }),
+    folds: createFoldCache({ store: input.store, bus, revisions, activation, catalog }),
     revisions,
     activation,
     setActivation(session, value) {
@@ -437,15 +438,19 @@ export function createKernel(
     compact: input.compact ?? (async () => unavailable("compact")),
     resolveConfiguration:
       input.resolveConfiguration ?? (async () => unavailable("resolveConfiguration")),
-    admit: input.admit ?? (async () => ({ action: "continue" })),
-    command: input.command ?? (async () => ({ kind: "unknown" })),
+    admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
+    command: input.command ?? ((session, name, args) => runCommand(kernel, session, name, args)),
     get waits() {
       waits ??= createWaitRegistry(kernel);
 
       return waits;
     },
     models: input.models ?? NO_MODELS,
-    settings: input.settings ?? NO_SETTINGS,
+    get settings() {
+      settings ??= createSettingsApi(kernel);
+
+      return settings;
+    },
     workspaces: input.workspaces ?? NO_WORKSPACES,
     workspace: input.workspace ?? unavailableWorkspace,
     parts: input.parts ?? {
@@ -459,9 +464,21 @@ export function createKernel(
       return definitions;
     },
     durable: input.durable ?? { run: (step) => runAction(kernel, step) },
-    tools: input.tools ?? (() => NO_TOOLS),
-    beforeTool: input.beforeTool ?? (async () => ({ action: "continue" })),
-    afterTool: input.afterTool ?? (async (outcome) => outcome),
+    tools: input.tools ?? ((session, run) => toolSource(kernel, session, run)),
+    beforeTool:
+      input.beforeTool ??
+      ((call, context) =>
+        kernel.pluginsFor(context.session).hooks.decide("before_tool", call, context, {
+          call: asId<"call">(`hook:before_tool:${call.call}`),
+          run: context.run,
+          head: context.head,
+          part: null,
+          signal: context.signal,
+        })),
+    afterTool:
+      input.afterTool ??
+      ((outcome, context) =>
+        kernel.pluginsFor(context.session).hooks.transform("after_tool", outcome, context)),
     snapshots: input.snapshots ?? (async () => null),
     env: input.env ?? (async () => unavailable("env")),
     wrapEnv: input.wrapEnv ?? (() => unavailable("wrapEnv")),
@@ -469,18 +486,25 @@ export function createKernel(
     request: input.request ?? (async () => unavailable("request")),
     secrets: input.secrets ?? null,
     hostPlugins: input.hostPlugins ?? [],
-    pluginsFor:
-      input.pluginsFor ??
-      ((session) => {
-        const known = runtimes.get(session);
+    pluginsFor(session) {
+      const known = runtimes.get(session);
 
-        if (known !== undefined) return known;
-        const created = createPluginRuntime(kernel, session);
-        runtimes.set(session, created);
+      if (known !== undefined) return known;
+      const created = createPluginRuntime(kernel, session);
+      runtimes.set(session, created);
 
-        return created;
-      }),
-    catalog: (session) => catalogs.get(session) ?? EMPTY_CATALOG,
+      return created;
+    },
+    runtimes: () => runtimes,
+    async closePlugins(session) {
+      const runtime = runtimes.get(session);
+
+      if (runtime === undefined) return;
+      await runtime.close();
+
+      if (runtimes.get(session) === runtime) runtimes.delete(session);
+    },
+    catalog,
     setCatalog(session, value) {
       catalogs.set(session, value);
       bus.publish(session, {
@@ -491,8 +515,15 @@ export function createKernel(
         catalog: value,
       });
     },
-    pluginApi: input.pluginApi ?? (() => unavailable("pluginApi")),
-    plugins: input.plugins ?? NO_PLUGINS,
+    pluginApi:
+      input.pluginApi ??
+      ((owner, session) =>
+        kernel.pluginsFor(session).api(owner) ??
+        unavailable(`plugin ${owner} in session ${session}`)),
+    plugins: input.plugins ?? {
+      replace: (plugins, scope) => replacePlugins(kernel, plugins, scope),
+      check: async (plugins) => checkPlugins(plugins),
+    },
     principals: input.principals ?? NO_PRINCIPALS,
     prune: input.prune ?? (async () => unavailable("prune")),
   };

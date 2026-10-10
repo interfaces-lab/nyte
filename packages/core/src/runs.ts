@@ -13,6 +13,7 @@ import type {
   StopOutcome,
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
+import { dropActivations } from "./catalog.ts";
 import { deliverChildReport } from "./child-report.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
@@ -173,7 +174,7 @@ export async function fenceUpdates(
   };
 }
 
-/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
+/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, forgets the deferred tools it activated (§35f), settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -222,6 +223,7 @@ export async function endRun(
   });
 
   kernel.runs.end(run);
+  dropActivations(kernel, run);
 
   if (ended === null) return;
   const landed = landedIn(kernel).get(run) ?? [];

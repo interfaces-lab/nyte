@@ -147,6 +147,8 @@ export async function setup(
       | "beforeTool"
       | "afterTool"
       | "snapshots"
+      | "secrets"
+      | "resolveConfiguration"
     >
   > & {
     readonly script?: Script;
@@ -166,7 +168,7 @@ export async function setup(
     host: createHostState({ catalog: asId("g1"), plugins: [], settings: [], operations: [] }),
     defaultWorkspace: workspace,
     turn: turns.driver,
-    resolveConfiguration: async () => configuration,
+    resolveConfiguration: options?.resolveConfiguration ?? (async () => configuration),
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
     execution: options?.execution,
     admit: options?.admit,
@@ -174,6 +176,7 @@ export async function setup(
     beforeTool: options?.beforeTool,
     afterTool: options?.afterTool,
     snapshots: options?.snapshots,
+    secrets: options?.secrets,
     env: async () => env,
   });
 

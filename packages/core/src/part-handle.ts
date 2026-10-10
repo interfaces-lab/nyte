@@ -13,7 +13,8 @@ import type {
 import { objectId } from "./content.ts";
 import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
-import { isJson } from "./json-schema.ts";
+import { check, isJson } from "./json-schema.ts";
+import type { Checked } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import type { RegisteredDefinition } from "./part-definitions.ts";
 import type {
@@ -57,11 +58,6 @@ interface PartTable {
   readonly waiters: Map<string, Set<(answer: Answered | null) => void>>;
   readonly acting: Map<string, Set<AbortController>>;
 }
-
-/** Returns a value a schema validated, or the issues it found. */
-type Checked<T> =
-  | { readonly kind: "valid"; readonly value: T }
-  | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] };
 
 /** Returns what an action handler ended with: its return value, what it threw, or the part closing first. */
 type Performed =
@@ -628,26 +624,6 @@ function accepts(schema: Schema<unknown>, value: unknown): boolean {
   const result = schema["~standard"].validate(value);
 
   return !(result instanceof Promise) && result.issues === undefined;
-}
-
-/** Validates a value with a Standard Schema, mapping its issues to `ValidationIssue`s. */
-async function check<T>(schema: Schema<T>, value: unknown): Promise<Checked<T>> {
-  const result = await schema["~standard"].validate(value);
-
-  if (result.issues === undefined) return { kind: "valid", value: result.value };
-
-  return {
-    kind: "invalid",
-    issues: result.issues.map((found) => ({
-      severity: "error",
-      path: (found.path ?? []).map((segment) => {
-        const key = typeof segment === "object" ? segment.key : segment;
-
-        return typeof key === "symbol" ? String(key) : key;
-      }),
-      message: found.message,
-    })),
-  };
 }
 
 /** Returns an error issue at the root. */
