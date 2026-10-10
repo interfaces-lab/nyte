@@ -1,0 +1,303 @@
+import { standard } from "@nyte-ai/schema";
+import type { HostView } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { assert, describe, expect, it } from "vitest";
+import {
+  SdkError,
+  composeHost,
+  hostIdentity,
+  hostIdentityRef,
+  isPart,
+  memoryStore,
+  runRef,
+  text,
+} from "../src/index.ts";
+import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
+import { chatOnly, fakeModels, open } from "./fake-models.ts";
+import { label, until } from "./harness.ts";
+
+const echo: ToolDefinition<{ readonly text: string }> = {
+  name: "echo",
+  description: "Echo the text.",
+  parameters: standard(Type.Object({ text: Type.String() })),
+  class: () => ({ kind: "custom", label: "Echoing" }),
+  replay: "safe",
+  execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
+};
+
+const echoing: Plugin<"core"> = { id: "echoing", contribute: { tools: [echo] } };
+
+describe("composeHost", () => {
+  it("runs a send end to end: create, send, settled", async () => {
+    const fake = fakeModels();
+    fake.reply({
+      content: [{ type: "text", text: "Hello there." }],
+      usage: { input: 12, output: 3 },
+    });
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const receipt = await session.send("Hi.");
+    const end = await receipt.settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage).toMatchObject({ input: 12, output: 3, total: 15 });
+    expect(end.usage.cost.total).toBeCloseTo((12 * 1 + 3 * 2) / 1_000_000);
+
+    const view = await session.view();
+
+    expect(view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
+    expect(view.messages[1]).toMatchObject({
+      kind: "part",
+      partKind: "text",
+      role: "answer",
+      state: { markdown: "Hello there.", signature: null },
+      status: { kind: "settled" },
+    });
+    expect(view.execution).toMatchObject({ kind: "idle", lastRun: { end: { kind: "completed" } } });
+    expect(view.context).toMatchObject({ tokens: 15, window: 100_000 });
+    expect(view.configuration.selected).toBeNull();
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0].options?.sessionId).toBe(session.id);
+  });
+
+  it("keeps host/identity across opens of one store", async () => {
+    const store = memoryStore();
+    const first = await open(fakeModels(), { store });
+    const id = first.hostId;
+    await first.close();
+    const second = await open(fakeModels(), { store });
+
+    expect(second.hostId).toBe(id);
+    await second.close();
+
+    const connection = await store.open();
+
+    expect(await hostIdentity(connection)).toMatchObject({ id });
+    expect(await connection.refs.list(hostIdentityRef())).toHaveLength(1);
+  });
+
+  it("loads the built-ins first, in decision 13's order, then the host's plugins", async () => {
+    await using host = await open(fakeModels(), { plugins: [{ id: "extra" }] });
+    const session = await host.sessions.create();
+
+    expect(
+      host.kernel
+        .pluginsFor(session.id)
+        .plugins()
+        .map((plugin) => plugin.id),
+    ).toEqual([
+      "system-prompt",
+      "environment",
+      "resources",
+      "delegation",
+      "parts",
+      "chat-only",
+      "extra",
+    ]);
+    expect(host.kernel.activation(session.id)).toEqual({ kind: "active" });
+  });
+
+  it("serves the host view: plugins, settings and operations", async () => {
+    const operations: HostView["operations"] = [];
+    await using host = await open(fakeModels(), { operations });
+    await host.sessions.create();
+    const iterator = host.watch()[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    await iterator.return?.();
+
+    assert(first.done !== true);
+    const view = first.value;
+
+    expect(view.id).toBe(host.hostId);
+    expect(view.operations).toBe(operations);
+    expect(view.settings.map((setting) => setting.id)).toContain("skills.paths");
+    expect(view.plugins.map((plugin) => [plugin.id, plugin.source])).toEqual(
+      expect.arrayContaining([
+        ["system-prompt", "builtin"],
+        ["delegation", "builtin"],
+        ["chat-only", "inline"],
+      ]),
+    );
+  });
+
+  it("seeds HostView.plugins at open and merges the runtimes' live issues later", async () => {
+    let api: PluginApi<"core"> | undefined;
+
+    const reporter: Plugin<"core"> = {
+      id: "reporter",
+      activate(given) {
+        api = given;
+      },
+    };
+
+    await using host = await open(fakeModels(), { plugins: [reporter] });
+    const views = host.watch()[Symbol.asyncIterator]();
+    const first = await views.next();
+    await views.return?.();
+
+    const seeded = [
+      ...["system-prompt", "environment", "resources", "delegation", "parts"].map((id) => ({
+        id,
+        source: "builtin",
+        path: null,
+        issues: [],
+      })),
+      { id: "chat-only", source: "inline", path: null, issues: [] },
+      { id: "reporter", source: "inline", path: null, issues: [] },
+    ];
+
+    assert(first.done !== true);
+    expect(first.value.plugins).toEqual(seeded);
+
+    await host.sessions.create();
+    assert(api !== undefined);
+    api.report({ severity: "warning", path: ["server"], message: "Server went away." });
+
+    const rows = host.kernel.host.current().plugins;
+
+    expect(rows.map((row) => [row.id, row.source])).toEqual(
+      seeded.map((row) => [row.id, row.source]),
+    );
+    expect(rows.find((row) => row.id === "reporter")?.issues).toEqual([
+      {
+        severity: "warning",
+        path: ["server"],
+        message: "Server went away.",
+        source: { plugin: "reporter" },
+      },
+    ]);
+  });
+
+  it("releases its leases and plugins on close", async () => {
+    const store = memoryStore();
+    const fake = fakeModels();
+    fake.reply({ content: [{ type: "text", text: "Done." }] });
+    const host = await open(fake, { store });
+    const session = await host.sessions.create();
+    await (await session.send("Go.")).settled();
+    const connection = await store.open();
+
+    expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(1);
+    await host.close();
+
+    expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(0);
+    expect(host.kernel.runtimes().size).toBe(0);
+    await host.close();
+  });
+
+  it("closes without waiting on a turn whose stream never ends; the next open resumes the run", async () => {
+    const store = memoryStore();
+    const first = fakeModels();
+
+    first.reply(
+      {
+        content: [{ type: "toolCall", id: "call-echo", name: "echo", arguments: { text: "x" } }],
+        usage: { input: 100, output: 10 },
+      },
+      { content: [{ type: "text", text: "Never finishes" }], stall: true },
+    );
+
+    const host = await open(first, { store, plugins: [echoing] });
+    const session = await host.sessions.create();
+    const receipt = await session.send("Go.");
+
+    const run = await until(async () => {
+      const execution = (await session.view()).execution;
+
+      return first.requests.length === 2 && execution.kind === "live"
+        ? execution.run.id
+        : undefined;
+    });
+
+    const closed = host.close().then(() => "closed");
+
+    expect(
+      await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 0, "late"))]),
+    ).toBe("closed");
+    expect(await (await store.open()).refs.get(runRef(session.id, run))).not.toBeNull();
+
+    const second = fakeModels();
+    second.reply({
+      content: [{ type: "text", text: "Done after all." }],
+      usage: { input: 50, output: 5 },
+    });
+    await using reopened = await open(second, { store, plugins: [echoing] });
+    const end = await reopened.session(session.id).run(run).settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage).toMatchObject({ input: 150, output: 15, total: 165 });
+    expect(await reopened.session(session.id).receipt(receipt.id).settled()).toEqual(end);
+    expect(second.requests).toHaveLength(1);
+
+    const view = await reopened.session(session.id).view();
+    const answer = view.messages.at(-1);
+
+    assert(answer !== undefined && isPart(answer, text));
+    expect(answer).toMatchObject({ id: `${run}:2:0`, state: { markdown: "Done after all." } });
+    expect(view.execution).toMatchObject({ kind: "idle", lastRun: { id: run } });
+  });
+
+  it("leaves a run its close aborted live in the store, ending nothing", async () => {
+    const store = memoryStore();
+    const fake = fakeModels();
+    fake.reply({ content: [{ type: "text", text: "Half an answer" }], hold: true });
+    const host = await open(fake, { store });
+    const session = await host.sessions.create();
+    const logged: string[] = [];
+
+    host.kernel.bus.subscribe(session.id, (event) => {
+      if (event.kind !== "patch") logged.push(label(event));
+    });
+
+    await session.send("Go.");
+
+    const run = await until(async () => {
+      const execution = (await session.view()).execution;
+
+      return fake.requests.length === 1 && execution.kind === "live" ? execution.run.id : undefined;
+    });
+
+    await host.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fake.requests[0].options?.signal?.aborted).toBe(true);
+    expect(logged).not.toContain("run:ended");
+    expect(logged).not.toContain("part:failed");
+    expect(await (await store.open()).refs.get(runRef(session.id, run))).not.toBeNull();
+  });
+
+  it("refuses plugins the preflight rejects and a workspace no provider serves", async () => {
+    const fake = fakeModels();
+
+    await expect(open(fake, { plugins: [{ id: "twin" }, { id: "twin" }] })).rejects.toMatchObject({
+      code: "invalid",
+    });
+
+    const refused = composeHost({
+      store: memoryStore(),
+      models: fake.models,
+      plugins: [chatOnly],
+      workspace: { kind: "elsewhere", locator: null },
+      home: null,
+      operations: [],
+      description: { name: "test", platform: "darwin", version: "0.1.0" },
+    });
+
+    await expect(refused).rejects.toBeInstanceOf(SdkError);
+    await expect(refused).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("registers the workspace once and makes it the default", async () => {
+    const store = memoryStore();
+    const first = await open(fakeModels(), { store });
+    const workspace = first.kernel.defaultWorkspace;
+    await first.close();
+    await using second = await open(fakeModels(), { store });
+
+    expect(workspace).not.toBeNull();
+    expect(second.kernel.defaultWorkspace).toBe(workspace);
+    expect(await second.workspaces.list()).toMatchObject([
+      { id: workspace, addedBy: "local", projectResources: true },
+    ]);
+  });
+});

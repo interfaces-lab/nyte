@@ -9,6 +9,7 @@ import type {
   ConfigurationPatch,
   ConfigureOutcome,
   Decision,
+  Delivery,
   DiffOptions,
   Disposer,
   HeadName,
@@ -214,7 +215,13 @@ export interface Wakes {
   subscribe(listener: (session: SessionId, head: HeadName) => void): Disposer;
 }
 
-/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs that joined since the last boundary and returns their ids. */
+/** Returns one input a boundary landed in a run: its message and how it was delivered. */
+export interface LandedInput {
+  readonly message: MessageId;
+  readonly delivery: Delivery;
+}
+
+/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs that joined since the last boundary, and every attached input waiting, and returns each with its delivery, so the turn can tell a steer that wants an answer from an attach that only rides along. */
 export interface TurnDriver {
   /** Runs the turn and returns how the run ended. */
   run(input: {
@@ -222,7 +229,7 @@ export interface TurnDriver {
     readonly head: HeadName;
     readonly run: RunView;
     readonly signal: AbortSignal;
-    boundary(): Promise<readonly MessageId[]>;
+    boundary(): Promise<readonly LandedInput[]>;
   }): Promise<RunEnd>;
 }
 

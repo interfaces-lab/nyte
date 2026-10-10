@@ -39,7 +39,7 @@ interface Layer {
 
 const buses = new WeakMap<Kernel, SettingsBus>();
 
-/** Returns the host's settings api. `apply(id, value)` finds the definition (§35c: the static host-scope `contribute.settings` of `kernel.hostPlugins` first, then what a live session's plugins contributed; `unknown` when none has the id), validates `value` against its schema (`invalid` with the issues), stores it at `kvRef("host", "settings", id)` as a `kv` envelope, announces it on the settings bus, and republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. What `kernel.settings` holds. */
+/** Returns the host's settings api. `apply(id, value)` finds the definition (§35c: the static host-scope `contribute.settings` of `kernel.builtins` and `kernel.hostPlugins` first, then what a live session's plugins contributed; `unknown` when none has the id), validates `value` against its schema (`invalid` with the issues), stores it at `kvRef("host", "settings", id)` as a `kv` envelope, announces it on the settings bus, and republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. What `kernel.settings` holds. */
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
     async apply(id, value) {
@@ -143,7 +143,7 @@ export function settingHandle<T>(
   };
 }
 
-/** Returns every setting with its owner, JSON Schema (`jsonSchemaOf`), choices, current value and the layer that set it; a setting whose schema has no JSON Schema is left out. With a session: the settings its plugins contributed, session layer included (`SessionCatalogView.settings`). With null: the host-scope settings (§35c: the static ones of `kernel.hostPlugins`, then those the live sessions' plugins added), the first owner per id (`HostView.settings`). */
+/** Returns every setting with its owner, JSON Schema (`jsonSchemaOf`), choices, current value and the layer that set it; a setting whose schema has no JSON Schema is left out. With a session: the settings its plugins contributed, session layer included (`SessionCatalogView.settings`). With null: the host-scope settings (§35c: the static ones of `kernel.builtins` and `kernel.hostPlugins`, then those the live sessions' plugins added), the first owner per id (`HostView.settings`). */
 export async function settingInfos(
   kernel: Kernel,
   session: SessionId | null,
@@ -249,7 +249,7 @@ function definitionOf(kernel: Kernel, id: string): Defined | undefined {
   );
 }
 
-/** Returns the host-scope settings, first owner per id: the static ones of `kernel.hostPlugins`, then those the live sessions' plugins added. */
+/** Returns the host-scope settings, first owner per id: the static ones of `kernel.builtins` and `kernel.hostPlugins`, then those the live sessions' plugins added. */
 function hostDefinitions(kernel: Kernel): readonly Defined[] {
   const seen = new Set<string>();
 
@@ -270,9 +270,9 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   });
 }
 
-/** Returns the static host-scope `contribute.settings` of `kernel.hostPlugins` with their owners (§35c). */
+/** Returns the static host-scope `contribute.settings` of `kernel.builtins` then `kernel.hostPlugins` with their owners (§35c). */
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
-  return kernel.hostPlugins.flatMap((plugin) =>
+  return [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
     (plugin.contribute?.settings ?? []).flatMap((definition) =>
       definition.scope === "host" ? [{ definition, owner: plugin.id }] : [],
     ),

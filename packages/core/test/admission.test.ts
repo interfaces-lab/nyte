@@ -112,7 +112,7 @@ describe("admission", () => {
     expect(await message(session, steer.message)).toMatchObject({
       status: { kind: "pending", schedule: { kind: "joined", run: turn.input.run.id } },
     });
-    expect(await turn.input.boundary()).toEqual([steer.message]);
+    expect(await turn.input.boundary()).toEqual([{ message: steer.message, delivery: "steer" }]);
     expect(await steer.landed()).toMatchObject({ kind: "landed", run: turn.input.run.id });
     expect(await turn.input.boundary()).toEqual([]);
 

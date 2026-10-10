@@ -480,17 +480,25 @@ export async function replacePlugins(
   return { generation: bumpGeneration(kernel), plugins: outcomes };
 }
 
-/** Republishes `HostView.plugins`: one row per plugin id, `kernel.hostPlugins` first, then those only some session loaded, each with the issues every session's runtime holds for it. */
-function publishPlugins(kernel: Kernel): void {
-  const merged = new Map<string, HostView["plugins"][number]>();
+/** Returns `HostView.plugins` before any session's issues: one row per plugin id, `kernel.builtins` (`builtin`) then `kernel.hostPlugins` (`inline`), each with a null path and no issues; what `composeHost` seeds at open (§38x). */
+export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
+  const rows = new Map<string, HostView["plugins"][number]>();
 
-  for (const plugin of kernel.hostPlugins)
-    merged.set(plugin.id, {
-      id: plugin.id,
-      source: BUILT_IN.has(plugin.id) ? "builtin" : "inline",
-      path: null,
-      issues: [],
-    });
+  for (const plugin of [...kernel.builtins, ...kernel.hostPlugins])
+    if (!rows.has(plugin.id))
+      rows.set(plugin.id, {
+        id: plugin.id,
+        source: BUILT_IN.has(plugin.id) ? "builtin" : "inline",
+        path: null,
+        issues: [],
+      });
+
+  return [...rows.values()];
+}
+
+/** Republishes `HostView.plugins`: `hostPluginRows` first, then the plugins only some session loaded, each with the issues every session's runtime holds for it. */
+function publishPlugins(kernel: Kernel): void {
+  const merged = new Map(hostPluginRows(kernel).map((row) => [row.id, row]));
 
   for (const runtime of pluginRuntimes(kernel)) {
     for (const row of runtime.issues()) {

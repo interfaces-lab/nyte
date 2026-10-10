@@ -1,0 +1,909 @@
+import { asId, standard } from "@nyte-ai/schema";
+import { contentText } from "@nyte-ai/schema/model";
+import type { DurableEvent, Infer, Message, RunId, SessionId } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import {
+  compaction,
+  decodePartRecord,
+  decodeRunRecord,
+  isPart,
+  partRef,
+  runRef,
+  text,
+  thinking,
+  tool,
+} from "../src/index.ts";
+import type { Kernel, Plugin, ToolDefinition } from "../src/index.ts";
+import { fakeModels, open, testModel } from "./fake-models.ts";
+import type { FakeModels, Reply } from "./fake-models.ts";
+import { label, until } from "./harness.ts";
+
+const nothing = standard(Type.Object({}));
+
+const echo: ToolDefinition<{ readonly text: string }> = {
+  name: "echo",
+  description: "Echo the text.",
+  parameters: standard(Type.Object({ text: Type.String() })),
+  class: () => ({ kind: "custom", label: "Echoing" }),
+  replay: "safe",
+  execute: async (args) => ({ content: [{ kind: "text", text: `echo: ${args.text}` }] }),
+};
+
+const nap: ToolDefinition<Infer<typeof nothing>> = {
+  name: "nap",
+  description: "Sleep a little.",
+  parameters: nothing,
+  class: () => ({ kind: "custom", label: "Napping" }),
+  replay: "safe",
+  async execute(_args, invocation) {
+    await invocation.wait({ kind: "timer", until: invocation.now() + 100 });
+
+    return { content: [{ kind: "text", text: "rested" }] };
+  },
+};
+
+/** Returns a plugin that records what its hooks saw, with the echo tool and an optional gated tool. */
+function recorder(gate?: Promise<void>) {
+  const seen: string[] = [];
+
+  const gated: ToolDefinition<Infer<typeof nothing>> = {
+    name: "wait",
+    description: "Wait for the gate.",
+    parameters: nothing,
+    class: () => ({ kind: "custom", label: "Waiting" }),
+    replay: "safe",
+    async execute() {
+      await gate;
+
+      return { content: [{ kind: "text", text: "waited" }] };
+    },
+  };
+
+  const plugin: Plugin<"core"> = {
+    id: "recorder",
+    contribute: { tools: [echo, gated] },
+    hooks: {
+      run_started: (view) => {
+        seen.push(`run_started:${view.attempt}`);
+      },
+      before_request: (request) => {
+        seen.push(`before_request:${request.step}:${request.attempt}`);
+
+        return request;
+      },
+      after_request: (event) => {
+        seen.push(`after_request:${event.step}:${event.usage.total}`);
+      },
+      before_compaction: (plan) => {
+        seen.push(`before_compaction:${plan.reason}:${plan.summarise.length}:${plan.keep.length}`);
+
+        return plan;
+      },
+      run_ended: (end) => {
+        seen.push(`run_ended:${end.kind}`);
+      },
+    },
+  };
+
+  return { plugin, seen };
+}
+
+/** Collects the session's durable events as labels, from now on. */
+function events(kernel: Kernel, session: SessionId): DurableEvent[] {
+  const logged: DurableEvent[] = [];
+
+  kernel.bus.subscribe(session, (event) => {
+    if (event.kind !== "patch") logged.push(event);
+  });
+
+  return logged;
+}
+
+/** Returns the text of every message a request sent, by role. */
+function sent(fake: FakeModels, index: number): readonly string[] {
+  return fake.requests[index].context.messages.map((message) => {
+    switch (message.role) {
+      case "system":
+        return "system";
+      case "user":
+        return `user:${typeof message.content === "string" ? message.content : message.content.map((block) => (block.type === "text" ? block.text : "[image]")).join("")}`;
+      case "assistant":
+        return `assistant:${message.content.map((block) => (block.type === "text" ? block.text : block.type === "thinking" ? `(${block.thinking})` : `${block.name}()`)).join("|")}`;
+      case "toolResult":
+        return `result:${message.content.map((block) => (block.type === "text" ? block.text : "")).join("")}`;
+    }
+  });
+}
+
+/** Returns the text of the last message a request sent. */
+function lastUserText(fake: FakeModels, index: number): string {
+  const message = fake.requests[index].context.messages.at(-1);
+
+  assert(message?.role === "user");
+
+  return contentText(message.content);
+}
+
+/** Returns the markdown of every settled text part, in order. */
+function settledText(messages: readonly Message[]): readonly string[] {
+  return messages.flatMap((message) =>
+    isPart(message, text) && message.status.kind === "settled" ? [message.state.markdown] : [],
+  );
+}
+
+/** Returns the run the first user message landed in. */
+function runOf(messages: readonly Message[]): RunId {
+  const message = messages.find((entry) => entry.kind === "user");
+  assert(
+    message?.kind === "user" && message.status.kind === "landed" && message.status.run !== null,
+  );
+
+  return message.status.run;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("turn", () => {
+  it("streams text, thinking and tool parts and settles the run with its usage", async () => {
+    const fake = fakeModels();
+    const { plugin, seen } = recorder();
+
+    fake.reply(
+      {
+        content: [
+          { type: "thinking", thinking: "Plan the call.", signature: "sig-1" },
+          { type: "thinking", thinking: "Check it.", signature: "sig-2" },
+          { type: "text", text: "Calling echo.", signature: "msg-1" },
+          { type: "toolCall", id: "call-1", name: "echo", arguments: { text: "hi" } },
+        ],
+        usage: { input: 100, output: 20 },
+      },
+      { content: [{ type: "text", text: "Done." }], usage: { input: 150, output: 5, cost: 0.5 } },
+    );
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+    const logged = events(host.kernel, session.id);
+    const end = await (await session.send("Go.")).settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage).toMatchObject({ input: 250, output: 25, total: 275 });
+    expect(end.usage.cost.total).toBeCloseTo((100 + 20 * 2) / 1_000_000 + 0.5);
+
+    const view = await session.view();
+    const run = runOf(view.messages);
+    const [user, thought, answer, call, done] = view.messages;
+
+    expect(user).toMatchObject({ kind: "user", content: "Go." });
+    assert(thought !== undefined && isPart(thought, thinking));
+    expect(thought.id).toBe(`${run}:1:0`);
+    expect(thought.state).toEqual({
+      markdown: "Plan the call.\n\nCheck it.",
+      merged: 2,
+      signature: [
+        { length: 14, signature: "sig-1", redacted: false },
+        { length: 9, signature: "sig-2", redacted: false },
+      ],
+    });
+    assert(answer !== undefined && isPart(answer, text));
+    expect(answer).toMatchObject({ id: `${run}:1:1`, role: "answer", status: { kind: "settled" } });
+    expect(answer.state).toEqual({ markdown: "Calling echo.", signature: "msg-1" });
+    assert(call !== undefined && isPart(call, tool));
+    expect(call.id).toBe(`${run}:1:call-1`);
+    expect(call.state).toMatchObject({
+      call: `${run}:1:call-1`,
+      phase: "settled",
+      outcome: { kind: "ok", content: [{ kind: "text", text: "echo: hi" }] },
+    });
+    assert(done !== undefined && isPart(done, text));
+    expect(done).toMatchObject({ id: `${run}:1:2`, state: { markdown: "Done." } });
+
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:Go.",
+      "assistant:(Plan the call.)|(Check it.)|Calling echo.|echo()",
+      "result:echo: hi",
+    ]);
+
+    const replayed = fake.requests[1].context.messages[2];
+    assert(replayed?.role === "assistant");
+    expect(replayed.content[0]).toMatchObject({ type: "thinking", thinkingSignature: "sig-1" });
+    expect(replayed.content[2]).toMatchObject({ type: "text", textSignature: "msg-1" });
+
+    const system = fake.requests[0].context.messages[0];
+    assert(system?.role === "system");
+    expect(system.toolsAdded?.map((entry) => entry.name)).toEqual(
+      expect.arrayContaining(["echo", "read", "task", "read_agent"]),
+    );
+    expect(contentText(system.content)).toMatch(/^<0000-system-prompt>\n/);
+    expect(contentText(system.content)).toContain("<0001-tools>");
+
+    await until(() => (seen.includes("run_ended:completed") ? true : undefined));
+    expect(seen).toEqual([
+      "run_started:1",
+      "before_request:assistant:1",
+      "after_request:assistant:120",
+      "before_request:assistant:1",
+      "after_request:assistant:155",
+      "run_ended:completed",
+    ]);
+
+    const requests = logged.filter((event) => event.kind === "request");
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({
+      step: "assistant",
+      context: { tokens: 155, window: 100_000 },
+    });
+    expect(logged.map(label)).toEqual(
+      expect.arrayContaining(["run:phase", "part:settled", "call:settled", "run:ended"]),
+    );
+  });
+
+  it("keeps the run's usage on its record, so a run parked and driven again totals every request", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [{ type: "toolCall", id: "call-nap", name: "nap", arguments: {} }],
+        usage: { input: 100, output: 10 },
+      },
+      { content: [{ type: "text", text: "Rested." }], usage: { input: 200, output: 20 } },
+    );
+
+    await using host = await open(fake, {
+      plugins: [{ id: "napper", contribute: { tools: [nap] } }],
+    });
+
+    const session = await host.sessions.create();
+    const receipt = await session.send("Rest.");
+
+    const parked = await until(async () => {
+      const execution = (await session.view()).execution;
+
+      return execution.kind === "waiting" ? execution.run.id : undefined;
+    });
+
+    const ref = await host.kernel.store.refs.get(runRef(session.id, parked));
+
+    assert(ref?.target);
+    const record = decodeRunRecord(await host.kernel.store.objects.get(ref.target));
+
+    expect(record?.usage).toMatchObject({ input: 100, output: 10, total: 110 });
+    expect(record?.requests).toBe(1);
+
+    const end = await receipt.settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage).toMatchObject({ input: 300, output: 30, total: 330 });
+    expect(settledText((await session.view()).messages)).toEqual(["Rested."]);
+  });
+
+  it("namespaces call ids by run and response, replays the provider's own ids, and leaves nested calls out", async () => {
+    const fake = fakeModels();
+    const gated: string[] = [];
+
+    const outer: ToolDefinition<Infer<typeof nothing>> = {
+      name: "outer",
+      description: "Call echo inside.",
+      parameters: nothing,
+      class: () => ({ kind: "custom", label: "Nesting" }),
+      replay: "safe",
+      async execute(_args, invocation) {
+        const inner = await invocation.tools.execute("echo", { text: "inner" });
+
+        return { content: [{ kind: "text", text: `outer saw ${inner.kind}` }] };
+      },
+    };
+
+    const plugin: Plugin<"core"> = {
+      id: "gate",
+      contribute: { tools: [echo, outer] },
+      hooks: {
+        before_tool: (call) => {
+          gated.push(call.call);
+
+          return { action: "continue" };
+        },
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "call_0", name: "echo", arguments: { text: "a" } }] },
+      { content: [{ type: "text", text: "First." }] },
+      { content: [{ type: "toolCall", id: "call_0", name: "echo", arguments: { text: "b" } }] },
+      { content: [{ type: "toolCall", id: "call_0", name: "echo", arguments: { text: "c" } }] },
+      { content: [{ type: "text", text: "Second." }] },
+      { content: [{ type: "toolCall", id: "call_1", name: "outer", arguments: {} }] },
+      { content: [{ type: "text", text: "Third." }] },
+    );
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+    await (await session.send("One.")).settled();
+    await (await session.send("Two.")).settled();
+    await (await session.send("Three.")).settled();
+
+    const view = await session.view();
+
+    const runs = view.messages.flatMap((message) =>
+      message.kind === "user" && message.status.kind === "landed" && message.status.run !== null
+        ? [message.status.run]
+        : [],
+    );
+
+    const calls = view.messages.flatMap((message) =>
+      isPart(message, tool) &&
+      message.state.phase === "settled" &&
+      message.state.outcome.kind === "ok"
+        ? [[message.id, message.state.call, message.state.outcome.content]]
+        : [],
+    );
+
+    expect(runs).toHaveLength(3);
+    expect(calls).toEqual([
+      [`${runs[0]}:1:call_0`, `${runs[0]}:1:call_0`, [{ kind: "text", text: "echo: a" }]],
+      [`${runs[1]}:1:call_0`, `${runs[1]}:1:call_0`, [{ kind: "text", text: "echo: b" }]],
+      [`${runs[1]}:2:call_0`, `${runs[1]}:2:call_0`, [{ kind: "text", text: "echo: c" }]],
+      [`${runs[2]}:1:call_1:0`, `${runs[2]}:1:call_1:0`, [{ kind: "text", text: "echo: inner" }]],
+      [`${runs[2]}:1:call_1`, `${runs[2]}:1:call_1`, [{ kind: "text", text: "outer saw ok" }]],
+    ]);
+    expect(gated).toEqual([
+      `${runs[0]}:1:call_0`,
+      `${runs[1]}:1:call_0`,
+      `${runs[1]}:2:call_0`,
+      `${runs[2]}:1:call_1`,
+      `${runs[2]}:1:call_1:0`,
+    ]);
+    expect(sent(fake, 4).slice(-4)).toEqual([
+      "assistant:echo()",
+      "result:echo: b",
+      "assistant:echo()",
+      "result:echo: c",
+    ]);
+
+    const replayed = fake.requests[6].context.messages.flatMap((message) =>
+      message.role === "assistant"
+        ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []))
+        : message.role === "toolResult"
+          ? [`result:${message.toolCallId}`]
+          : [],
+    );
+
+    expect(replayed).toEqual([
+      "call_0",
+      "result:call_0",
+      "call_0",
+      "result:call_0",
+      "call_0",
+      "result:call_0",
+      "call_1",
+      "result:call_1",
+    ]);
+    expect(sent(fake, 6).slice(-2)).toEqual(["assistant:outer()", "result:outer saw ok"]);
+  });
+
+  it("replays a response's calls in response order when the first parked and settled last", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [
+          { type: "toolCall", id: "call-nap", name: "nap", arguments: {} },
+          { type: "toolCall", id: "call-echo", name: "echo", arguments: { text: "hi" } },
+        ],
+      },
+      { content: [{ type: "text", text: "Both." }] },
+    );
+
+    await using host = await open(fake, {
+      plugins: [{ id: "tools", contribute: { tools: [nap, echo] } }],
+    });
+
+    const session = await host.sessions.create();
+    const end = await (await session.send("Go.")).settled();
+
+    expect(end.kind).toBe("completed");
+
+    const view = await session.view();
+    const run = runOf(view.messages);
+
+    expect(
+      view.messages.filter((message) => isPart(message, tool)).map((message) => message.id),
+    ).toEqual([`${run}:1:call-echo`, `${run}:1:call-nap`]);
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:Go.",
+      "assistant:nap()|echo()",
+      "result:rested",
+      "result:echo: hi",
+    ]);
+    expect(
+      fake.requests[1].context.messages.flatMap((message) =>
+        message.role === "assistant"
+          ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []))
+          : message.role === "toolResult"
+            ? [`result:${message.toolCallId}`]
+            : [],
+      ),
+    ).toEqual(["call-nap", "call-echo", "result:call-nap", "result:call-echo"]);
+  });
+
+  it("lands a steer at the boundary after the tool calls", async () => {
+    const fake = fakeModels();
+    let release = () => {};
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const { plugin } = recorder(gate);
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "call-wait", name: "wait", arguments: {} }] },
+      { content: [{ type: "text", text: "Seen both." }] },
+    );
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+    const first = await session.send("Start.");
+
+    await until(async () =>
+      (await session.view()).messages.some(
+        (message) => isPart(message, tool) && message.state.phase === "running",
+      )
+        ? true
+        : undefined,
+    );
+
+    const steer = await session.send("Also this.");
+
+    expect((await session.view()).messages.at(-1)).toMatchObject({
+      kind: "user",
+      status: { kind: "pending", schedule: { kind: "joined" } },
+    });
+
+    release();
+    const end = await first.settled();
+
+    expect(end.kind).toBe("completed");
+    expect(await steer.settled()).toEqual(end);
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:Start.",
+      "assistant:wait()",
+      "result:waited",
+      "user:Also this.",
+    ]);
+
+    const view = await session.view();
+    const run = runOf(view.messages);
+
+    expect(view.messages.filter((message) => message.kind === "user")).toMatchObject([
+      { status: { kind: "landed", run } },
+      { status: { kind: "landed", run } },
+    ]);
+  });
+
+  it("lands inputs sent while the final answer streams in its run: an attach rides along, a steer gets another pass", async () => {
+    const fake = fakeModels();
+    let release = () => {};
+
+    const held = (answer: string) => (): Reply => ({
+      content: [{ type: "text", text: answer }],
+      until: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    });
+
+    const streaming = () =>
+      until(async () =>
+        (await session.view()).messages.some(
+          (message) => isPart(message, text) && message.status.kind === "live",
+        )
+          ? true
+          : undefined,
+      );
+
+    fake.reply(held("First answer."), held("Second answer."), {
+      content: [{ type: "text", text: "Saw the steer." }],
+    });
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const first = await session.send("Start.");
+
+    await streaming();
+    const attach = await session.send("Context.", { delivery: "attach" });
+    release();
+    const attached = await first.settled();
+
+    expect(attached.kind).toBe("completed");
+    expect(await attach.settled()).toEqual(attached);
+    expect(fake.requests).toHaveLength(1);
+
+    const second = await session.send("Again.");
+
+    await streaming();
+    const steer = await session.send("Also this.");
+    const pending = (await session.view()).messages.at(-1);
+    release();
+    const steered = await second.settled();
+
+    expect(steered.kind).toBe("completed");
+    expect(await steer.settled()).toEqual(steered);
+    expect(fake.requests).toHaveLength(3);
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:Start.",
+      "assistant:First answer.",
+      "user:Context.",
+      "user:Again.",
+    ]);
+    expect(sent(fake, 2).slice(-3)).toEqual([
+      "user:Again.",
+      "assistant:Second answer.",
+      "user:Also this.",
+    ]);
+
+    const view = await session.view();
+
+    const runs = view.messages.flatMap((message) =>
+      message.kind === "user" && message.status.kind === "landed" ? [message.status.run] : [],
+    );
+
+    expect(runs).toHaveLength(4);
+    expect(runs[1]).toBe(runs[0]);
+    expect(runs[2]).not.toBe(runs[0]);
+    expect(runs[3]).toBe(runs[2]);
+    expect(pending).toMatchObject({
+      kind: "user",
+      status: { kind: "pending", schedule: { kind: "joined", run: runs[2] } },
+    });
+    expect(settledText(view.messages)).toEqual([
+      "First answer.",
+      "Second answer.",
+      "Saw the steer.",
+    ]);
+  });
+
+  it("compacts at the threshold and writes the part and its commit", async () => {
+    const fake = fakeModels();
+    const { plugin, seen } = recorder();
+
+    const policy: Plugin<"core"> = {
+      id: "policy",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+        ],
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      {
+        content: [{ type: "text", text: "They asked a first question." }],
+        usage: { input: 40, output: 8 },
+      },
+      { content: [{ type: "text", text: "Second answer." }] },
+    );
+
+    await using host = await open(fake, { plugins: [plugin, policy] });
+    const session = await host.sessions.create();
+    await (await session.send("First question?")).settled();
+    const logged = events(host.kernel, session.id);
+    const end = await (await session.send("Second question?")).settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage.input).toBe(10 + 40);
+    expect(fake.requests).toHaveLength(3);
+    expect(fake.requests[1].context.messages.at(-1)).toMatchObject({ role: "user" });
+    expect(sent(fake, 2)).toEqual([
+      "system",
+      "user:The earlier conversation was summarised to fit the context window. The summary:\n\nThey asked a first question.",
+      "user:Second question?",
+    ]);
+
+    const view = await session.view();
+    const note = view.messages.find((message) => isPart(message, compaction));
+    assert(note !== undefined && isPart(note, compaction));
+
+    expect(note).toMatchObject({ role: "note", status: { kind: "settled" } });
+    expect(note.state).toMatchObject({
+      summary: "They asked a first question.",
+      material: null,
+      usage: { input: 40, output: 8 },
+    });
+
+    const labels = logged.map(label);
+    const created = labels.indexOf("part:created");
+
+    expect(labels.slice(created, created + 4)).toEqual([
+      "part:created",
+      "part:settled",
+      "commit",
+      "request",
+    ]);
+
+    const committed = logged.find(
+      (event) => event.kind === "commit" && event.body.kind === "compaction",
+    );
+
+    assert(committed?.kind === "commit" && committed.body.kind === "compaction");
+    expect(committed.body.part).toBe(note.part);
+    expect(committed.body.replaces).toHaveLength(2);
+    expect(seen).toContain("before_compaction:threshold:2:1");
+    expect(seen).toContain("after_request:compaction:48");
+    expect(
+      logged
+        .filter((event) => event.kind === "request")
+        .map((event) => event.kind === "request" && event.step),
+    ).toEqual(["compaction", "assistant"]);
+  });
+
+  it("retries a retryable failure at the next attempt, then succeeds", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const fake = fakeModels();
+
+    fake.reply(
+      { content: [{ type: "text", text: "Half" }], error: "503 Service Unavailable" },
+      { content: [{ type: "text", text: "Recovered." }] },
+    );
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const logged = events(host.kernel, session.id);
+    const receipt = await session.send("Go.");
+
+    await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
+    await vi.advanceTimersByTimeAsync(2_000);
+    const end = await receipt.settled();
+
+    expect(end.kind).toBe("completed");
+    const retrying = logged.find((event) => event.kind === "run" && event.change === "retrying");
+
+    assert(retrying?.kind === "run" && retrying.change === "retrying");
+    expect(retrying).toMatchObject({ attempt: 2, reason: "503 Service Unavailable" });
+    expect(retrying.until).toBeGreaterThan(Date.now() - 5_000);
+
+    const view = await session.view();
+    const run = runOf(view.messages);
+    const parts = view.messages.filter((message) => message.kind === "part");
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({ id: `${run}:2:0`, state: { markdown: "Recovered." } });
+    expect(
+      await host.kernel.store.refs.get(partRef(session.id, asId(`${run}:1:0`))),
+    ).not.toBeNull();
+
+    const failed = logged.find((event) => event.kind === "part" && event.change === "failed");
+
+    expect(failed).toMatchObject({ part: `${run}:1:0`, failure: { class: "overloaded" } });
+    expect(fake.requests).toHaveLength(2);
+  });
+
+  it("settles a response's parts only once it is done, so a retried attempt's parts all fail and none of its text is replayed", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [
+          { type: "text", text: "First half." },
+          { type: "text", text: "Second" },
+        ],
+        error: "503 Service Unavailable",
+      },
+      { content: [{ type: "text", text: "Clean answer." }] },
+    );
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const logged = events(host.kernel, session.id);
+    const receipt = await session.send("Go.");
+
+    await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
+
+    const retrying = await session.view();
+    const run = runOf(retrying.messages);
+
+    expect(retrying.messages.filter((message) => message.kind === "part")).toMatchObject([
+      { id: `${run}:1:0`, status: { kind: "failed", failure: { class: "overloaded" } } },
+      { id: `${run}:1:1`, status: { kind: "failed", failure: { class: "overloaded" } } },
+    ]);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect((await receipt.settled()).kind).toBe("completed");
+
+    const view = await session.view();
+
+    expect(view.messages.filter((message) => message.kind === "part")).toMatchObject([
+      { id: `${run}:2:0`, state: { markdown: "Clean answer." }, status: { kind: "settled" } },
+    ]);
+
+    for (const id of [`${run}:1:0`, `${run}:1:1`]) {
+      const ref = await host.kernel.store.refs.get(partRef(session.id, asId(id)));
+
+      assert(ref?.target);
+      expect(decodePartRecord(await host.kernel.store.objects.get(ref.target))).toMatchObject({
+        status: { kind: "failed", failure: { class: "overloaded" } },
+      });
+    }
+
+    expect(
+      logged.flatMap((event) =>
+        event.kind === "part" && event.change === "settled" ? [event.part] : [],
+      ),
+    ).toEqual([`${run}:2:0`]);
+    expect(sent(fake, 1)).toEqual(["system", "user:Go."]);
+  });
+
+  it("compacts once on a context overflow and retries", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      { error: "prompt is too long: 213462 tokens > 200000 maximum" },
+      { content: [{ type: "text", text: "Summary of the first exchange." }] },
+      { content: [{ type: "text", text: "Second answer." }] },
+    );
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    const logged = events(host.kernel, session.id);
+    const end = await (await session.send("Second?")).settled();
+
+    expect(end.kind).toBe("completed");
+    expect(
+      logged.find((event) => event.kind === "run" && event.change === "retrying"),
+    ).toMatchObject({
+      attempt: 2,
+    });
+    expect(sent(fake, 3)).toEqual([
+      "system",
+      "user:The earlier conversation was summarised to fit the context window. The summary:\n\nSummary of the first exchange.",
+      "user:Second?",
+    ]);
+    expect((await session.view()).messages.some((message) => isPart(message, compaction))).toBe(
+      true,
+    );
+  });
+
+  it("fails the run when an overflow leaves nothing to compact", async () => {
+    const fake = fakeModels();
+    fake.reply({ error: "prompt is too long: 213462 tokens > 200000 maximum" });
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const end = await (await session.send("Only?")).settled();
+
+    expect(end).toMatchObject({ kind: "failed", failure: { class: "context_window" } });
+  });
+
+  it("compacts by hand: started at once, then settled in the background", async () => {
+    const fake = fakeModels();
+    const { plugin, seen } = recorder();
+
+    fake.reply(
+      { content: [{ type: "text", text: "One." }] },
+      { content: [{ type: "text", text: "Two." }] },
+      { content: [{ type: "text", text: "Earlier they counted to one." }] },
+      { content: [{ type: "text", text: "Three." }] },
+    );
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+
+    expect(await session.compact()).toEqual({ kind: "nothing-to-compact" });
+    await (await session.send("Count.")).settled();
+    await (await session.send("Again.")).settled();
+    const started = await session.compact({ instructions: "Keep the numbers." });
+
+    assert(started.kind === "started");
+
+    const note = await until(async () => {
+      const message = (await session.view()).messages.find((entry) => entry.id === started.message);
+
+      return message?.kind === "part" && message.status.kind === "settled" ? message : undefined;
+    });
+
+    expect(note).toMatchObject({
+      partKind: "compaction",
+      role: "note",
+      state: { summary: "Earlier they counted to one.", material: null },
+    });
+    expect(lastUserText(fake, 2)).toContain("Follow these instructions: Keep the numbers.");
+    expect(seen).toContain("before_compaction:manual:2:2");
+
+    await (await session.send("Once more.")).settled();
+
+    expect(sent(fake, 3)).toEqual([
+      "system",
+      "user:The earlier conversation was summarised to fit the context window. The summary:\n\nEarlier they counted to one.",
+      "user:Again.",
+      "assistant:Two.",
+      "user:Once more.",
+    ]);
+  });
+
+  it("summarises an abandoned path when moving back with summarize", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      { content: [{ type: "text", text: "First." }] },
+      { content: [{ type: "text", text: "Second." }] },
+      { content: [{ type: "text", text: "They asked a second time." }] },
+      { content: [{ type: "text", text: "Fresh." }] },
+    );
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    await (await session.send("One?")).settled();
+    await (await session.send("Two?")).settled();
+
+    const first = (await session.view()).messages.find(
+      (message) => isPart(message, text) && message.state.markdown === "First.",
+    );
+
+    assert(first?.kind === "part" && first.status.kind === "settled");
+
+    const moved = await (
+      await session.move(
+        { kind: "commit", id: first.status.commit },
+        { abandoned: { summarize: {} } },
+      )
+    ).settled();
+
+    expect(moved).toMatchObject({ kind: "moved" });
+    expect(lastUserText(fake, 2)).toContain("User: Two?\n\nAssistant: Second.");
+
+    await (await session.send("Three?")).settled();
+
+    expect(sent(fake, 3)).toEqual([
+      "system",
+      "user:One?",
+      "assistant:First.",
+      "user:The conversation moved back to an earlier point, abandoning a path. What that path did:\n\nThey asked a second time.",
+      "user:Three?",
+    ]);
+  });
+
+  it("ends stopped when stopped mid-stream, its live part failed", async () => {
+    const fake = fakeModels({ models: [testModel("model")] });
+    fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const watching = session.watch()[Symbol.asyncIterator]();
+    const receipt = await session.send("Go.");
+    let live: Message | undefined;
+
+    while (live === undefined) {
+      const next = await watching.next();
+
+      assert(next.done !== true);
+      live = next.value.messages.find(
+        (entry) => isPart(entry, text) && entry.state.markdown !== "",
+      );
+    }
+
+    await watching.return?.();
+
+    assert(live.kind === "part" && live.status.kind === "live" && live.status.run !== null);
+    expect(live.state).toMatchObject({ markdown: "A partia" });
+    expect(await session.run(live.status.run).stop()).toEqual({ kind: "requested" });
+    expect(await receipt.settled()).toEqual({ kind: "stopped" });
+
+    const view = await session.view();
+
+    expect(view.execution).toMatchObject({ kind: "idle", lastRun: { end: { kind: "stopped" } } });
+    expect(view.messages.find((message) => message.id === live?.id)).toMatchObject({
+      status: { kind: "failed", failure: { class: "aborted" } },
+    });
+    expect(fake.requests[0].options?.signal?.aborted).toBe(true);
+  });
+});

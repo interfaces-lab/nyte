@@ -1,8 +1,24 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { Infer } from "@nyte-ai/schema";
+import type {
+  Infer,
+  Message,
+  RunEnd,
+  RunId,
+  SessionView,
+  ToolResult,
+  WaitOutcome,
+} from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { isPart, text, tool } from "../parts.ts";
 import type { Plugin } from "../plugin.ts";
-import type { ToolDefinition } from "../tools.ts";
+import type { SendReceipt } from "../receipt.ts";
+import type { Session } from "../session.ts";
+import { textOf } from "../session-state.ts";
+import type { ToolDefinition, ToolInvocation } from "../tools.ts";
+
+const ANSWER_LIMIT = 16_000;
+
+const TRANSCRIPT_LIMIT = 16_000;
 
 const taskParameters = standard(
   Type.Object({
@@ -69,8 +85,23 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await invocation.sdk.sessions.create({
+      parent: invocation.session.id,
+      name: args.title,
+      configuration: args.agent === undefined ? undefined : { agent: args.agent },
+    });
+
+    const run = await invocation.memo("run", async () => {
+      const landing = await (await sendOnce(invocation, child, args.prompt)).landed();
+
+      return landing.kind === "landed" ? landing.run : null;
+    });
+
+    if (run === null) return reply(`Subagent ${child.id} did not start the task.`);
+    const outcome = await invocation.wait({ kind: "run", session: child.id, run });
+
+    return reply(await answerOf(child, run, outcome));
   },
 };
 
@@ -82,8 +113,15 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await invocation.sdk.sessions.create({
+      parent: invocation.session.id,
+      name: args.title,
+      configuration: args.agent === undefined ? undefined : { agent: args.agent },
+      prompt: args.role === undefined ? undefined : { kind: "layer", text: args.role },
+    });
+
+    return reply(`Created subagent ${child.id}.`);
   },
 };
 
@@ -100,8 +138,13 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
     title: null,
   }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await childOf(invocation, args.session);
+    const receipt = await sendOnce(invocation, child, args.prompt);
+    const view = await child.view();
+    const message = view.messages.find((entry) => entry.id === receipt.message);
+
+    return reply(`Sent to subagent ${child.id}; ${scheduled(message)}.`);
   },
 };
 
@@ -117,8 +160,38 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
     title: null,
   }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await childOf(invocation, args.session);
+    const run = await invocation.memo("run", async () => liveRunOf(await child.view()));
+
+    if (run === null) {
+      const execution = (await child.view()).execution;
+      const last = execution.kind === "idle" ? execution.lastRun : null;
+
+      if (last === null) return reply(`Subagent ${child.id} has not worked on anything yet.`);
+
+      return reply(
+        await answerOf(child, last.id, {
+          kind: "run",
+          session: child.id,
+          run: last.id,
+          end: last.end,
+        }),
+      );
+    }
+
+    const outcome = await invocation.wait(
+      args.timeout === undefined
+        ? { kind: "run", session: child.id, run }
+        : {
+            kind: "run",
+            session: child.id,
+            run,
+            deadline: invocation.now() + args.timeout * 1000,
+          },
+    );
+
+    return reply(await answerOf(child, run, outcome));
   },
 };
 
@@ -134,8 +207,20 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
     title: null,
   }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await childOf(invocation, args.session);
+    const view = await child.view();
+    const execution = view.execution.kind;
+
+    const state = execution === "idle" ? "idle" : execution === "waiting" ? "waiting" : "working";
+
+    const transcript = fromEnd(view.messages.flatMap(lineOf).join("\n\n"), TRANSCRIPT_LIMIT);
+
+    return reply(
+      transcript === ""
+        ? `Subagent ${child.id} is ${state} and has no messages yet.`
+        : `Subagent ${child.id} is ${state}.\n\n${transcript}`,
+    );
   },
 };
 
@@ -151,8 +236,13 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
     title: null,
   }),
   replay: "safe",
-  execute(args, invocation) {
-    throw new Error("not implemented");
+  async execute(args, invocation) {
+    const child = await childOf(invocation, args.session);
+    const { stopped, withdrawn } = await child.stop();
+
+    return reply(
+      `Stopped ${stopped.length} run${stopped.length === 1 ? "" : "s"} of subagent ${child.id} and withdrew ${withdrawn.length} pending message${withdrawn.length === 1 ? "" : "s"}.`,
+    );
   },
 };
 
@@ -161,3 +251,118 @@ export const delegationPlugin: Plugin<"core"> = {
   id: "delegation",
   contribute: { tools: [task, create, send, awaitChild, readAgent, stop] },
 };
+
+/** Returns a tool result of one text. */
+function reply(content: string): ToolResult<unknown> {
+  return { content: [{ kind: "text", text: content }] };
+}
+
+/** Returns a child of the calling session by id; a session that is not its child fails the call. */
+async function childOf(invocation: ToolInvocation, id: string): Promise<Session> {
+  const child = invocation.sdk.session(asId<"session">(id));
+
+  if ((await child.info()).parent !== invocation.session.id)
+    throw new Error(`Session ${id} is not a subagent of this session.`);
+
+  return child;
+}
+
+/** Sends a prompt to a child's main head under a receipt id keyed by the call, so a re-run of the step replays the send instead of sending again. */
+function sendOnce(
+  invocation: ToolInvocation,
+  child: Session,
+  prompt: string,
+): Promise<SendReceipt> {
+  return child.send(prompt, { id: asId<"receipt">(`${invocation.call}:${child.id}`) });
+}
+
+/** Returns the run a child's head is working in, or null when it is idle. */
+function liveRunOf(view: SessionView): RunId | null {
+  return view.execution.kind === "idle" ? null : view.execution.run.id;
+}
+
+/** Returns a child's answer from one run: how the wait ended, then the last text the run wrote, bounded. */
+async function answerOf(child: Session, run: RunId, outcome: WaitOutcome): Promise<string> {
+  const header = `Subagent ${child.id} ${endOf(outcome)}.`;
+  const view = await child.view();
+  const turn = view.turns.find((entry) => entry.run === run)?.id;
+
+  const answer =
+    view.messages
+      .flatMap((message) =>
+        message.turn === turn && isPart(message, text) && message.state.markdown !== ""
+          ? [message.state.markdown]
+          : [],
+      )
+      .at(-1) ?? "";
+
+  return answer === "" ? header : `${header}\n\n${fromStart(answer, ANSWER_LIMIT)}`;
+}
+
+/** Returns how a wait on a child's run ended, as words. */
+function endOf(outcome: WaitOutcome): string {
+  if (outcome.kind === "run") return endedAs(outcome.end);
+
+  return outcome.kind === "stopped"
+    ? "is still working; this call was stopped before it ended"
+    : "is still working";
+}
+
+/** Returns how a run ended, as words. */
+function endedAs(end: RunEnd): string {
+  switch (end.kind) {
+    case "completed":
+      return "finished";
+    case "stopped":
+      return "was stopped";
+    case "failed":
+      return `failed: ${end.failure.message}`;
+  }
+}
+
+/** Returns what admission did with a message sent to a child, as words. */
+function scheduled(message: Message | undefined): string {
+  if (message?.kind !== "user") return "it was admitted";
+
+  if (message.status.kind === "landed") return "it started working on it";
+
+  if (message.status.kind !== "pending") return "it was admitted";
+
+  switch (message.status.schedule.kind) {
+    case "joined":
+      return "it joins the work in progress";
+    case "next-turn":
+      return "it runs once its current work ends";
+    case "attached":
+      return "it rides with its next turn";
+  }
+}
+
+/** Returns one transcript message as text: user text, the assistant's text, a tool call in one line; nothing for the rest. */
+function lineOf(message: Message): readonly string[] {
+  if (message.kind === "user") return [`User: ${textOf(message.content)}`];
+
+  if (isPart(message, text))
+    return message.state.markdown === "" ? [] : [`Assistant: ${message.state.markdown}`];
+
+  if (isPart(message, tool)) {
+    const state = message.state;
+    const status = state.phase === "settled" ? state.outcome.kind : state.phase;
+
+    return [`Tool ${state.name}(${JSON.stringify(state.args)}): ${status}`];
+  }
+
+  return [];
+}
+
+/** Returns text cut to `limit` characters from its start, saying so. */
+function fromStart(content: string, limit: number): string {
+  return content.length > limit
+    ? `${content.slice(0, limit)}\n\n[… cut at ${limit} characters]`
+    : content;
+}
+
+/** Returns text cut to its last `limit` characters, saying so. */
+function fromEnd(content: string, limit: number): string {
+  return content.length > limit ? `[… earlier messages cut]\n\n${content.slice(-limit)}` : content;
+}

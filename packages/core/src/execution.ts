@@ -17,7 +17,7 @@ import type {
 import { landing } from "./admission.ts";
 import { listSessions } from "./directory.ts";
 import type { FoldInput } from "./fold.ts";
-import type { Kernel } from "./kernel.ts";
+import type { Kernel, LandedInput } from "./kernel.ts";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
 import { decodeRunRecord } from "./records.ts";
 import type { RunRecord } from "./records.ts";
@@ -60,6 +60,8 @@ interface LeaseTable {
 const tables = new WeakMap<Kernel, LeaseTable>();
 
 const driving = new WeakMap<Kernel, Set<RunId>>();
+
+const closings = new WeakMap<Kernel, AbortController>();
 
 /** Takes the execution lease on every head the coverage names into the kernel's lease table and renews every lease in the table every 10 s, and parks the durable waits the store records in `kernel.waits`; closing the last open coverage releases every lease in it. */
 export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promise<Owned> {
@@ -155,7 +157,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return next(kernel, session, head);
 }
 
-/** Returns one page of heads owed a step: a steer or queue input waiting and no live run, or a live run with a tool call to re-run (its wait completed, or its host died mid-call). */
+/** Returns one page of heads owed a step: a steer or queue input waiting and no live run; a live run with a tool call to re-run (its wait completed, or its host died mid-call); or a live run no turn drives here that waits on nothing, left mid-turn by a host that closed or died (§38y). */
 export async function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
@@ -171,7 +173,8 @@ export async function repair(
         live === null
           ? (await dueInputs(kernel, info.id, head.name)) !== null
           : !drivenBy(kernel).has(live.record.view.id) &&
-            (await owedCalls(kernel, info.id, live.record.view.id)).some((call) => !call.parked);
+            (live.record.waiting === null ||
+              (await owedCalls(kernel, info.id, live.record.view.id)).some((call) => !call.parked));
 
       if (owed) runnable.push({ session: info.id, head: head.name });
     }
@@ -180,12 +183,13 @@ export async function repair(
   return { runnable, next: page.next };
 }
 
-/** Drives covered heads in process: on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then. Closing the handle stops it. */
+/** Drives covered heads in process: on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then, and one reported `retry` is stepped again at its `until`. Closing the handle stops it without waiting on the turns in flight: it aborts them with the kernel's host-closing signal, so each returns at once and its drive leaves the run live in the store for the next open or another host to resume through `advance` (§38y), then releases the leases. */
 export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Owned {
   const covering = cover(kernel, coverage);
   const inflight = new Map<string, Promise<void>>();
   const again = new Set<string>();
   const due = new Set<number>();
+  const retries = new Set<ReturnType<typeof setTimeout>>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
 
@@ -232,6 +236,8 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
         if (report.kind === "waiting" && report.until !== null) schedule(report.until);
 
+        if (report.kind === "retry") stepAt(session, head, report.until);
+
         if (report.kind !== "continue") return;
       }
     })()
@@ -243,6 +249,20 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       });
 
     inflight.set(key, task);
+  };
+
+  const stepAt = (session: SessionId, head: HeadName, until: number): void => {
+    if (closed) return;
+
+    const retry = setTimeout(
+      () => {
+        retries.delete(retry);
+        step(session, head);
+      },
+      Math.max(0, until - Date.now()),
+    );
+
+    retries.add(retry);
   };
 
   const dispose = kernel.wakes.subscribe(step);
@@ -267,7 +287,12 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       dispose();
 
       if (timer !== null) clearTimeout(timer);
-      await Promise.all(inflight.values());
+
+      for (const retry of retries) clearTimeout(retry);
+      retries.clear();
+      const closing = closingOf(kernel);
+      closings.delete(kernel);
+      closing.abort();
       await covering.then(
         (owned) => owned.close(),
         () => undefined,
@@ -478,11 +503,19 @@ async function drive(
 ): Promise<void> {
   const driven = drivenBy(kernel);
   driven.add(run.id);
-  const signal = kernel.runs.signal(run.id) ?? kernel.runs.start(run.id).signal;
+  const closing = closingOf(kernel).signal;
+
+  const signal = AbortSignal.any([
+    kernel.runs.signal(run.id) ?? kernel.runs.start(run.id).signal,
+    closing,
+  ]);
 
   const renewal = setInterval(() => {
     claim(kernel, session, head).catch(() => undefined);
   }, RENEW_MS);
+
+  const unrenew = (): void => clearInterval(renewal);
+  closing.addEventListener("abort", unrenew, { once: true });
 
   const ended = await kernel.turn
     .run({
@@ -498,10 +531,13 @@ async function drive(
     )
     .finally(() => {
       clearInterval(renewal);
+      closing.removeEventListener("abort", unrenew);
       driven.delete(run.id);
     });
 
   const stopping = kernel.runs.isStopping(run.id);
+
+  if (closing.aborted && !stopping) return;
 
   if (ended.returned && !stopping && (await owedCalls(kernel, session, run.id)).length > 0) {
     kernel.wakes.notify(session, head);
@@ -517,26 +553,32 @@ async function boundary(
   session: SessionId,
   head: HeadName,
   run: RunId,
-): Promise<readonly MessageId[]> {
+): Promise<readonly LandedInput[]> {
   if (kernel.runs.isStopping(run)) return [];
   const inbox = await readInbox(kernel, session, head);
 
-  const ids = await withFold(kernel, session, (state) =>
-    inbox.messages.filter((id) => {
+  const due = await withFold(kernel, session, (state) =>
+    inbox.messages.flatMap((id): readonly LandedInput[] => {
       const input = state.inputs.get(id);
 
-      return (
-        input !== undefined &&
+      return input !== undefined &&
         (input.delivery === "attach" ||
           (input.schedule.kind === "joined" && input.schedule.run === run))
-      );
+        ? [{ message: id, delivery: input.delivery }]
+        : [];
     }),
   );
 
-  if (ids.length === 0) return [];
-  await landing(kernel, session, head, ids, run);
+  if (due.length === 0) return [];
+  await landing(
+    kernel,
+    session,
+    head,
+    due.map((input) => input.message),
+    run,
+  );
 
-  return ids;
+  return due;
 }
 
 async function dueInputs(
@@ -596,6 +638,14 @@ function leasesOf(kernel: Kernel): LeaseTable {
   tables.set(kernel, table);
 
   return table;
+}
+
+/** Returns the kernel's host-closing controller, created on first use: the driver's close aborts it and forgets it, so the drives in flight see it aborted and later ones take a fresh one. */
+function closingOf(kernel: Kernel): AbortController {
+  const known = closings.get(kernel) ?? new AbortController();
+  closings.set(kernel, known);
+
+  return known;
 }
 
 function drivenBy(kernel: Kernel): Set<RunId> {

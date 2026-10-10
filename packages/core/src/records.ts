@@ -24,6 +24,7 @@ import type {
   SessionId,
   SnapshotId,
   ToolOutcome,
+  Usage,
   UserContent,
   WaitOutcome,
   WaitTarget,
@@ -84,7 +85,7 @@ export type MessageRecord = {
   readonly position: number;
 };
 
-/** Returns what `sessions/<id>/runs/<run>` holds while the run is live: its metadata, phase, fence, wait, retry, and the snapshot taken before its first write-class call. */
+/** Returns what `sessions/<id>/runs/<run>` holds while the run is live: its metadata, phase, fence, wait, retry, the snapshot taken before its first write-class call, the usage every request it was charged adds up to (§38v: null before the first; the turn writes it with each `request` event, so `RunEnd.completed.usage` survives parks, re-drives and restarts), and how many `request` events it published (§38w: 0 at start, bumped in the same write as each; a response's calls are namespaced by the count its own write set). */
 export type RunRecord = {
   readonly view: RunView;
   readonly phase: "responding" | "executing";
@@ -96,6 +97,8 @@ export type RunRecord = {
     readonly reason: string;
   } | null;
   readonly snapshot: SnapshotId | null;
+  readonly usage: Usage | null;
+  readonly requests: number;
 };
 
 /** Returns what `sessions/<id>/parts/<part>` holds: the part's kind, placement, current state version and status. */
