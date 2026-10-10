@@ -10,7 +10,7 @@ import { FileEntryViewType, FileEventType } from "./files.ts";
 import { DiffOptionsType, GitCommitViewType, GitScopeType, GitWriteType } from "./git.ts";
 import { MoveOptionsType, MoveOutcomeType, SendOptionsType } from "./heads.ts";
 import { AuthorityType, PrincipalViewWireType } from "./host.ts";
-import { idSchema } from "./ids.ts";
+import { SeqType, idSchema } from "./ids.ts";
 import { JobEndType, JobViewType } from "./jobs.ts";
 import { JsonType, withJson } from "./json.ts";
 import { PositionType, UserContentType } from "./messages.ts";
@@ -38,7 +38,7 @@ const HEAD = { ...SESSION, head: idSchema<"head">() };
 
 const RUN = { ...SESSION, run: idSchema<"run">() };
 
-const RECEIPT = { ...SESSION, receipt: idSchema<"receipt">() };
+const RECEIPT = { session: nullable(idSchema<"session">()), receipt: idSchema<"receipt">() };
 
 const PART = { ...SESSION, part: idSchema<"part">() };
 
@@ -67,6 +67,8 @@ const GIT_PATHS = {
 const GIT_COMPARE = { ...WORKSPACE, scope: GitScopeType, options: Type.Optional(DiffOptionsType) };
 
 const QUERY = { ...WORKSPACE, query: Type.String(), limit: Type.Optional(Type.Number()) };
+
+const PLUGIN_FILE = Type.Object({ path: Type.String() });
 
 const JOB_HANDLE = Type.Object({ ...JobViewType.properties, key: nullable(idSchema<"job-key">()) });
 
@@ -99,8 +101,6 @@ const ON_PAGE = objectOf(PAGE);
 const ON_PATH = objectOf(PATH);
 
 const ON_PROVIDER = objectOf(PROVIDER);
-
-const VIEW = objectOf({ ...HEAD, options: Type.Optional(ViewOptionsType) });
 
 const GIT_PATHS_INPUT = objectOf(GIT_PATHS);
 
@@ -317,13 +317,27 @@ export const HeadSendOutputSchema = objectOf({
 export const HeadConfigureInputSchema = objectOf({ ...HEAD, patch: ConfigurationPatchType });
 
 /** Validates `head.view`'s input. */
-export const HeadViewInputSchema = VIEW;
+export const HeadViewInputSchema = objectOf({ ...HEAD, options: Type.Optional(ViewOptionsType) });
 
-/** Validates `head.watch`'s input. */
-export const HeadWatchInputSchema = VIEW;
+/** Validates `head.watch`'s input: `after` is the seq to resume after, filled from `Last-Event-ID`. */
+export const HeadWatchInputSchema = objectOf({
+  ...HEAD,
+  options: Type.Optional(ViewOptionsType),
+  after: Type.Optional(SeqType),
+});
 
-/** Validates one frame of `head.watch`'s output: a session event or a patch, which the sdk folds. */
-export const HeadWatchOutputSchema = schemaOf(Type.Union([SessionEventType, PatchEventType]));
+/** Validates one frame of `head.watch`'s output: a session event or a patch, which the sdk folds, or the wire-only revision a head's ref holds (§40s). */
+export const HeadWatchOutputSchema = schemaOf(
+  Type.Union([
+    SessionEventType,
+    PatchEventType,
+    Type.Object({
+      kind: Type.Literal("revision"),
+      head: idSchema<"head">(),
+      revision: idSchema<"revision">(),
+    }),
+  ]),
+);
 
 /** Validates `head.history`'s input. */
 export const HeadHistoryInputSchema = objectOf({
@@ -338,11 +352,12 @@ export const HeadHistoryOutputSchema = schemaOf(Type.Array(MessageType));
 /** Validates `head.tree`'s input. */
 export const HeadTreeInputSchema = ON_HEAD;
 
-/** Validates `head.move`'s input. */
+/** Validates `head.move`'s input: `id` is the receipt id the sdk mints, so a replay finds the same move. */
 export const HeadMoveInputSchema = objectOf({
   ...HEAD,
   position: PositionType,
   options: Type.Optional(MoveOptionsType),
+  id: Type.Optional(idSchema<"receipt">()),
 });
 
 /** Validates `head.move`'s output: the move's receipt. */
@@ -624,9 +639,10 @@ export const FilesRemoveInputSchema = objectOf({
   options: Type.Optional(Type.Object({ expect: Type.Optional(idSchema<"file-version">()) })),
 });
 
-/** Validates `files.batch`'s input: the plan's entries, each put carrying text or a stored blob's id. */
+/** Validates `files.batch`'s input: the plan's entries, each put carrying text or a stored blob's id, and the receipt id the sdk mints. */
 export const FilesBatchInputSchema = objectOf({
   ...WORKSPACE,
+  id: Type.Optional(idSchema<"receipt">()),
   entries: Type.Array(
     Type.Union([
       Type.Object({
@@ -745,8 +761,12 @@ export const GitPushInputSchema = objectOf({
   options: Type.Optional(GitWriteType),
 });
 
-/** Validates `browser.open`'s input. */
-export const BrowserOpenInputSchema = objectOf({ ...WORKSPACE, url: Type.String() });
+/** Validates `browser.open`'s input: `id` is the key the sdk mints, so a replay holds the same page. */
+export const BrowserOpenInputSchema = objectOf({
+  ...WORKSPACE,
+  url: Type.String(),
+  id: Type.Optional(Type.String()),
+});
 
 /** Validates `browser.adopt`'s input. */
 export const BrowserAdoptInputSchema = objectOf({ ...WORKSPACE, id: idSchema<"page">() });
@@ -868,14 +888,14 @@ export const PageCloseInputSchema = ON_PAGE;
 /** Validates `page.close`'s output: nothing. */
 export const PageCloseOutputSchema = NOTHING;
 
-/** Validates `plugins.replace`'s input; a plugin has no wire form yet, so each is an opaque JSON value. */
+/** Validates `plugins.replace`'s input: plugin files the host loads with its loader. */
 export const PluginsReplaceInputSchema = objectOf({
-  plugins: Type.Array(JsonType),
+  plugins: Type.Array(PLUGIN_FILE),
   scope: Type.Optional(Type.Object(SESSION)),
 });
 
-/** Validates `plugins.check`'s input; a plugin has no wire form yet, so each is an opaque JSON value. */
-export const PluginsCheckInputSchema = objectOf({ plugins: Type.Array(JsonType) });
+/** Validates `plugins.check`'s input: plugin files the host loads with its loader. */
+export const PluginsCheckInputSchema = objectOf({ plugins: Type.Array(PLUGIN_FILE) });
 
 /** Validates `principals.list`'s input. */
 export const PrincipalsListInputSchema = NO_INPUT;

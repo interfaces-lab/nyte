@@ -5,12 +5,14 @@ import type {
   MoveOptions,
   MoveOutcome,
   Position,
+  ReceiptId,
   RunId,
   SessionId,
   UserContent,
 } from "@nyte-ai/schema";
 import { summarize, summaryUpdates } from "./branch-summary.ts";
 import { objectId } from "./content.ts";
+import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
 import { isMoveOutcome, typedReceipt } from "./receipt-handles.ts";
@@ -28,6 +30,7 @@ import {
   objectOf,
   pathOf,
   positionOf,
+  readReceipt,
   readTip,
   requireSession,
   staleHead,
@@ -50,16 +53,16 @@ interface Summarizing {
   readonly instructions: string | null;
 }
 
-/** Moves a head to a position as a durable command and returns its receipt: guards, the stop fence and the move are decided before it returns, a fenced run's head move in the same set; only a branch summary settles later, as moved, `stale` or `summary-failed`. */
+/** Moves a head to a position as a durable command and returns its receipt: guards, the stop fence and the move are decided before it returns, a fenced run's head move in the same set; only a branch summary settles later, as moved, `stale` or `summary-failed`. `id` is the receipt's id (minted when absent): a move whose id the session already holds with the same digest replays that receipt and moves nothing, another digest throws `invalid` (§40e). */
 export async function move(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   position: Position,
-  options?: MoveOptions,
+  options?: MoveOptions & { readonly id?: ReceiptId },
 ): Promise<Receipt<MoveOutcome>> {
   await requireSession(kernel, session);
-  const id = asId<"receipt">(crypto.randomUUID());
+  const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
 
   const digest = await objectId({
     head,
@@ -68,6 +71,15 @@ export async function move(
     abandoned: options?.abandoned ?? null,
     expect: options?.expect ?? null,
   });
+
+  const known = await readReceipt(kernel, session, id);
+
+  if (known !== null) {
+    if (known.record.kind !== "move" || known.record.digest !== digest)
+      throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+    return typedReceipt(kernel, session, id, isMoveOutcome);
+  }
 
   const decided = await decide(kernel, session, head, position, options ?? {});
 

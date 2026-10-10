@@ -22,6 +22,7 @@ import {
   project,
   publishSet,
   seenRef,
+  sessionEvents,
   sessionInfo,
   sessionRef,
   watchHead,
@@ -393,5 +394,39 @@ describe("watch", () => {
 
     expect(after.value.catalog).toBe("g2");
     await host.return?.();
+  });
+
+  it("resumes a session's events after a seq: the log after it, the seeds, then live", async () => {
+    const kernel = await kernelOf();
+    await createSession(kernel, first, "One", 1);
+    const commit = await land(kernel, first, "m1", null);
+    const resume = await kernel.store.refs.tail(first);
+    await land(kernel, first, "m2", commit);
+    kernel.setActivation(first, { kind: "active" });
+    const iterator = sessionEvents(kernel, first, resume)[Symbol.asyncIterator]();
+    const kinds: string[] = [];
+
+    for (;;) {
+      const next = await iterator.next();
+
+      assert(next.done !== true);
+      kinds.push(next.value.kind === "patch" ? "patch" : `${next.value.kind}:${next.value.seq}`);
+
+      if (next.value.kind === "catalog") break;
+    }
+
+    await admit(kernel, first, "m3");
+    const live = await iterator.next();
+    await iterator.return?.();
+
+    expect(kinds).toEqual([
+      `input:${resume + 1}`,
+      `input:${resume + 2}`,
+      `commit:${resume + 3}`,
+      "activation:0",
+      "catalog:0",
+    ]);
+    assert(live.done !== true && live.value.kind === "input");
+    expect(live.value.seq).toBe(resume + 4);
   });
 });

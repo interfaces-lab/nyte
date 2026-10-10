@@ -241,7 +241,6 @@ import type {
   GitWrite,
   HeadName,
   HostViewWire,
-  Infer,
   JobEnd,
   JobId,
   JobKey,
@@ -271,11 +270,13 @@ import type {
   ReceiptId,
   RemoveHeadOutcome,
   RemoveSessionOutcome,
+  Revision,
   RunEnd,
   RunId,
   ScanFrame,
   SearchFrame,
   SendOptions,
+  Seq,
   SessionEvent,
   SessionId,
   SessionInfo,
@@ -314,6 +315,611 @@ import type {
   Workspaces,
 } from "@nyte-ai/core";
 
+/** Returns each operation's input and output as core's signatures type them: the table's schemas are checked against them both ways (§40r). */
+export type Signatures = {
+  "connection.watch": { readonly input: object; readonly output: HostViewWire };
+  "connection.blob": { readonly input: { readonly id: BlobId }; readonly output: Uint8Array };
+  "models.list": { readonly input: object; readonly output: ModelCatalogView };
+  "models.refresh": { readonly input: { readonly provider?: string }; readonly output: null };
+  "models.setDefault": {
+    readonly input: { readonly ref: ModelRef };
+    readonly output: Awaited<ReturnType<ModelsApi["setDefault"]>>;
+  };
+  "models.verify": {
+    readonly input: { readonly provider: string };
+    readonly output: Awaited<ReturnType<ModelsApi["verify"]>>;
+  };
+  "models.login": { readonly input: Parameters<ModelsApi["login"]>[0]; readonly output: null };
+  "models.logout": { readonly input: { readonly provider: string }; readonly output: null };
+  "login.steps": {
+    readonly input: { readonly provider: string };
+    readonly output: ReturnType<Login["steps"]> extends AsyncIterable<infer Step> ? Step : never;
+  };
+  "login.answer": {
+    readonly input: { readonly provider: string; readonly code: string };
+    readonly output: null;
+  };
+  "settings.apply": {
+    readonly input: { readonly id: string; readonly value: Json };
+    readonly output: SettingOutcome;
+  };
+  "workspaces.list": { readonly input: object; readonly output: readonly WorkspaceInfo[] };
+  "workspaces.inspect": {
+    readonly input: { readonly target: WorkspaceTarget };
+    readonly output: WorkspaceInspection;
+  };
+  "workspaces.add": {
+    readonly input: {
+      readonly target: WorkspaceTarget;
+      readonly options?: Parameters<Workspaces["add"]>[1];
+    };
+    readonly output: AddOutcome;
+  };
+  "workspaces.forget": {
+    readonly input: { readonly id: WorkspaceId };
+    readonly output: ForgetOutcome;
+  };
+  "sessions.watch": {
+    readonly input: NonNullable<Parameters<Sessions["watch"]>[0]>;
+    readonly output: readonly SessionInfo[];
+  };
+  "sessions.create": {
+    readonly input: NonNullable<Parameters<Sessions["create"]>[0]>;
+    readonly output: { readonly session: SessionId };
+  };
+  "sessions.list": {
+    readonly input: NonNullable<Parameters<Sessions["list"]>[0]>;
+    readonly output: Paged<SessionInfo>;
+  };
+  "session.info": { readonly input: { readonly session: SessionId }; readonly output: SessionInfo };
+  "session.update": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly patch: Parameters<Session["update"]>[0];
+    };
+    readonly output: UpdateOutcome;
+  };
+  "session.remove": {
+    readonly input: { readonly session: SessionId };
+    readonly output: RemoveSessionOutcome;
+  };
+  "session.stop": {
+    readonly input: { readonly session: SessionId };
+    readonly output: Awaited<ReturnType<Session["stop"]>>;
+  };
+  "session.command": {
+    readonly input: { readonly session: SessionId; readonly name: string; readonly args?: Json };
+    readonly output: CommandOutcome;
+  };
+  "head.send": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly content: UserContent;
+      readonly options?: SendOptions;
+    };
+    readonly output: { readonly receipt: ReceiptId; readonly message: MessageId };
+  };
+  "head.configure": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly patch: ConfigurationPatch;
+    };
+    readonly output: ConfigureOutcome;
+  };
+  "head.view": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly options?: ViewOptions;
+    };
+    readonly output: SessionView;
+  };
+  "head.watch": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly options?: ViewOptions;
+      readonly after?: Seq;
+    };
+    readonly output:
+      | SessionEvent
+      | PatchEvent
+      | { readonly kind: "revision"; readonly head: HeadName; readonly revision: Revision };
+  };
+  "head.history": {
+    readonly input: { readonly session: SessionId; readonly head: HeadName } & Parameters<
+      Head["history"]
+    >[0];
+    readonly output: readonly Message[];
+  };
+  "head.tree": {
+    readonly input: { readonly session: SessionId; readonly head: HeadName };
+    readonly output: TreeView;
+  };
+  "head.move": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+      readonly position: Position;
+      readonly options?: MoveOptions;
+      readonly id?: ReceiptId;
+    };
+    readonly output: { readonly receipt: ReceiptId };
+  };
+  "head.compact": {
+    readonly input: { readonly session: SessionId; readonly head: HeadName } & NonNullable<
+      Parameters<Head["compact"]>[0]
+    >;
+    readonly output: Awaited<ReturnType<Head["compact"]>>;
+  };
+  "heads.create": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly name: HeadName;
+      readonly input?: Parameters<Session["heads"]["create"]>[1];
+    };
+    readonly output: CreateHeadOutcome;
+  };
+  "heads.merge": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly name: HeadName;
+      readonly options?: Parameters<Session["heads"]["merge"]>[1];
+    };
+    readonly output: MergeOutcome;
+  };
+  "heads.remove": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly name: HeadName;
+      readonly options?: Parameters<Session["heads"]["remove"]>[1];
+    };
+    readonly output: RemoveHeadOutcome;
+  };
+  "run.stop": {
+    readonly input: { readonly session: SessionId; readonly run: RunId };
+    readonly output: StopOutcome<RunEnd>;
+  };
+  "run.settled": {
+    readonly input: { readonly session: SessionId; readonly run: RunId };
+    readonly output: RunEnd;
+  };
+  "receipt.status": {
+    readonly input: { readonly session: SessionId | null; readonly receipt: ReceiptId };
+    readonly output: Awaited<ReturnType<Receipt<Json>["status"]>>;
+  };
+  "receipt.settled": {
+    readonly input: { readonly session: SessionId | null; readonly receipt: ReceiptId };
+    readonly output: Json;
+  };
+  "receipt.stop": {
+    readonly input: { readonly session: SessionId | null; readonly receipt: ReceiptId };
+    readonly output: StopOutcome<Json>;
+  };
+  "receipt.landed": {
+    readonly input: { readonly session: SessionId | null; readonly receipt: ReceiptId };
+    readonly output: Awaited<ReturnType<SendReceipt["landed"]>>;
+  };
+  "parts.create": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly kind: PartDefinition["kind"];
+      readonly input: Omit<Parameters<Session["parts"]["create"]>[1], "state"> & {
+        readonly state: Json;
+      };
+    };
+    readonly output: { readonly part: PartId };
+  };
+  "part.update": {
+    readonly input: { readonly session: SessionId; readonly part: PartId; readonly next: Json };
+    readonly output: Awaited<ReturnType<Part<PartDefinition>["update"]>>;
+  };
+  "part.act": {
+    readonly input: {
+      readonly session: SessionId;
+      readonly part: PartId;
+      readonly action: string;
+      readonly input: Json;
+    };
+    readonly output: ActOutcome<Json>;
+  };
+  "part.answer": {
+    readonly input: { readonly session: SessionId; readonly part: PartId };
+    readonly output: { readonly action: string; readonly input: Json } | null;
+  };
+  "part.close": {
+    readonly input: { readonly session: SessionId; readonly part: PartId };
+    readonly output: null;
+  };
+  "workspace.info": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: WorkspaceInfo;
+  };
+  "workspace.watch": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: WorkspaceInfo;
+  };
+  "workspace.update": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly patch: Parameters<Workspace["update"]>[0];
+    };
+    readonly output: Awaited<ReturnType<Workspace["update"]>>;
+  };
+  "workspace.reload": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: Awaited<ReturnType<Workspace["reload"]>>;
+  };
+  "workspace.changes": {
+    readonly input: { readonly workspace: WorkspaceId; readonly run: RunId };
+    readonly output: ChangeSet;
+  };
+  "workspace.patches": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly run: RunId;
+      readonly paths: readonly string[];
+      readonly options?: DiffOptions;
+    };
+    readonly output: PatchSetWire;
+  };
+  "workspace.files": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: CapabilityWire;
+  };
+  "workspace.git": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: CapabilityWire;
+  };
+  "workspace.browser": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: CapabilityWire;
+  };
+  "jobs.start": {
+    readonly input: { readonly workspace: WorkspaceId } & Parameters<Jobs["start"]>[0];
+    readonly output: JobView & Pick<Job, "key">;
+  };
+  "jobs.recover": {
+    readonly input: { readonly workspace: WorkspaceId; readonly key: JobKey };
+    readonly output:
+      | (JobView & Pick<Job, "key">)
+      | Exclude<Awaited<ReturnType<Jobs["recover"]>>, Job>;
+  };
+  "jobs.list": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: readonly JobView[];
+  };
+  "jobs.watch": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: readonly JobView[];
+  };
+  "job.write": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: null;
+  };
+  "job.output": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: OutputFrame;
+  };
+  "job.resize": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly job: JobId;
+      readonly size: Parameters<Job["resize"]>[0];
+    };
+    readonly output: Awaited<ReturnType<Job["resize"]>>;
+  };
+  "job.idle": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: boolean;
+  };
+  "job.stop": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: StopOutcome<JobEnd>;
+  };
+  "job.settled": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: JobEnd;
+  };
+  "job.close": {
+    readonly input: { readonly workspace: WorkspaceId; readonly job: JobId };
+    readonly output: null;
+  };
+  "files.read": {
+    readonly input: { readonly workspace: WorkspaceId; readonly path: string };
+    readonly output: FileDocument;
+  };
+  "files.bytes": {
+    readonly input: { readonly workspace: WorkspaceId; readonly path: string };
+    readonly output: Uint8Array;
+  };
+  "files.stat": {
+    readonly input: { readonly workspace: WorkspaceId; readonly path: string };
+    readonly output: Awaited<ReturnType<FilesApi["stat"]>>;
+  };
+  "files.write": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly path: string;
+      readonly options?: Parameters<FilesApi["write"]>[2];
+    };
+    readonly output: WriteOutcome;
+  };
+  "files.remove": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly path: string;
+      readonly options?: Parameters<FilesApi["remove"]>[1];
+    };
+    readonly output: WriteOutcome;
+  };
+  "files.batch": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly id?: ReceiptId;
+      readonly entries: readonly (
+        | ({ readonly kind: "put"; readonly contents: string | BlobId } & Omit<
+            Parameters<FileBatch["put"]>[0],
+            "contents"
+          >)
+        | ({ readonly kind: "remove" } & Parameters<FileBatch["remove"]>[0])
+      )[];
+    };
+    readonly output: { readonly receipt: ReceiptId };
+  };
+  "files.format": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly path: string;
+      readonly contents: string;
+    };
+    readonly output: FormatOutcome;
+  };
+  "files.scan": {
+    readonly input: { readonly workspace: WorkspaceId } & NonNullable<
+      Parameters<FilesApi["scan"]>[0]
+    >;
+    readonly output: ScanFrame;
+  };
+  "files.find": {
+    readonly input: { readonly workspace: WorkspaceId } & Parameters<FilesApi["find"]>[0];
+    readonly output: readonly FileEntryView[];
+  };
+  "files.search": {
+    readonly input: { readonly workspace: WorkspaceId } & Parameters<FilesApi["search"]>[0];
+    readonly output: SearchFrame;
+  };
+  "files.watch": {
+    readonly input: { readonly workspace: WorkspaceId } & NonNullable<
+      Parameters<FilesApi["watch"]>[0]
+    >;
+    readonly output: readonly FileEvent[];
+  };
+  "files.upload": { readonly input: { readonly workspace: WorkspaceId }; readonly output: BlobId };
+  "git.status": { readonly input: { readonly workspace: WorkspaceId }; readonly output: GitStatus };
+  "git.watch": { readonly input: { readonly workspace: WorkspaceId }; readonly output: GitStatus };
+  "git.changes": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly scope: GitScope;
+      readonly options?: DiffOptions;
+    };
+    readonly output: ChangeSet;
+  };
+  "git.watchChanges": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly scope: GitScope;
+      readonly options?: DiffOptions;
+    };
+    readonly output: ChangeSet;
+  };
+  "git.patches": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly scope: GitScope;
+      readonly paths: readonly string[];
+      readonly options?: DiffOptions;
+    };
+    readonly output: PatchSetWire;
+  };
+  "git.contents": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly path: string;
+      readonly scope: GitScope;
+    };
+    readonly output: GitFileSides;
+  };
+  "git.log": {
+    readonly input: { readonly workspace: WorkspaceId } & NonNullable<Parameters<GitApi["log"]>[0]>;
+    readonly output: Paged<GitCommitView>;
+  };
+  "git.refs": { readonly input: { readonly workspace: WorkspaceId }; readonly output: GitRefsView };
+  "git.blame": {
+    readonly input: { readonly workspace: WorkspaceId; readonly path: string };
+    readonly output: BlameView;
+  };
+  "git.stage": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly paths: readonly string[];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "git.unstage": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly paths: readonly string[];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "git.discard": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly paths: readonly string[];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "git.commit": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly input: Parameters<GitApi["commit"]>[0];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "git.branch": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly input: Parameters<GitApi["branch"]>[0];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "git.push": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly input?: Parameters<GitApi["push"]>[0];
+      readonly options?: GitWrite;
+    };
+    readonly output: GitOutcome;
+  };
+  "browser.open": {
+    readonly input: { readonly workspace: WorkspaceId; readonly id?: string } & Parameters<
+      BrowserApi["open"]
+    >[0];
+    readonly output: PageInfo;
+  };
+  "browser.adopt": {
+    readonly input: { readonly workspace: WorkspaceId; readonly id: PageId };
+    readonly output: PageInfo;
+  };
+  "browser.list": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: readonly PageInfo[];
+  };
+  "browser.watch": {
+    readonly input: { readonly workspace: WorkspaceId };
+    readonly output: readonly PageInfo[];
+  };
+  "page.view": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageView;
+  };
+  "page.watch": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageView;
+  };
+  "page.snapshot": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & NonNullable<
+      Parameters<Page["snapshot"]>[0]
+    >;
+    readonly output: PageSnapshot;
+  };
+  "page.navigate": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly page: PageId;
+      readonly url: string;
+    };
+    readonly output: PageOutcome;
+  };
+  "page.back": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageOutcome;
+  };
+  "page.forward": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageOutcome;
+  };
+  "page.reload": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageOutcome;
+  };
+  "page.stopLoading": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: PageOutcome;
+  };
+  "page.click": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<
+      Page["click"]
+    >[0];
+    readonly output: PageOutcome;
+  };
+  "page.type": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<
+      Page["type"]
+    >[0];
+    readonly output: PageOutcome;
+  };
+  "page.press": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<
+      Page["press"]
+    >[0];
+    readonly output: PageOutcome;
+  };
+  "page.scroll": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<
+      Page["scroll"]
+    >[0];
+    readonly output: PageOutcome;
+  };
+  "page.wait": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly page: PageId;
+      readonly condition: Parameters<Page["wait"]>[0];
+    };
+    readonly output: PageOutcome;
+  };
+  "page.console": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId } & NonNullable<
+      Parameters<Page["console"]>[0]
+    >;
+    readonly output: readonly ConsoleEntry[];
+  };
+  "page.capture": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: Uint8Array;
+  };
+  "page.evaluate": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly page: PageId;
+      readonly expression: string;
+      readonly options?: Parameters<Page["evaluate"]>[1];
+    };
+    readonly output: Awaited<ReturnType<Page["evaluate"]>>;
+  };
+  "page.close": {
+    readonly input: { readonly workspace: WorkspaceId; readonly page: PageId };
+    readonly output: null;
+  };
+  "plugins.replace": {
+    readonly input: {
+      readonly plugins: readonly { readonly path: string }[];
+      readonly scope?: Parameters<Host["plugins"]["replace"]>[1];
+    };
+    readonly output: PluginReplacementReport;
+  };
+  "plugins.check": {
+    readonly input: { readonly plugins: readonly { readonly path: string }[] };
+    readonly output: PluginCheckReport;
+  };
+  "principals.list": { readonly input: object; readonly output: readonly PrincipalViewWire[] };
+  "principals.pair": {
+    readonly input: { readonly authority: readonly Authority[]; readonly label?: string };
+    readonly output: Awaited<ReturnType<Host["principals"]["pair"]>>;
+  };
+  "principals.revoke": { readonly input: { readonly id: PrincipalId }; readonly output: null };
+};
+
 /** The declaration table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability and recovery. */
 export const declarations = {
   "connection.watch": {
@@ -322,14 +928,14 @@ export const declarations = {
     kind: "watch",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<object, HostViewWire>,
+  },
   "connection.blob": {
     input: ConnectionBlobInputSchema,
     output: ConnectionBlobOutputSchema,
     kind: "stream",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<{ readonly id: BlobId }, Uint8Array>,
+  },
 
   "models.list": {
     input: ModelsListInputSchema,
@@ -337,42 +943,42 @@ export const declarations = {
     kind: "query",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<object, ModelCatalogView>,
+  },
   "models.refresh": {
     input: ModelsRefreshInputSchema,
     output: ModelsRefreshOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly provider?: string }, null>,
+  },
   "models.setDefault": {
     input: ModelsSetDefaultInputSchema,
     output: ModelsSetDefaultOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly ref: ModelRef }, Awaited<ReturnType<ModelsApi["setDefault"]>>>,
+  },
   "models.verify": {
     input: ModelsVerifyInputSchema,
     output: ModelsVerifyOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly provider: string }, Awaited<ReturnType<ModelsApi["verify"]>>>,
+  },
   "models.login": {
     input: ModelsLoginInputSchema,
     output: ModelsLoginOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<Parameters<ModelsApi["login"]>[0], null>,
+  },
   "models.logout": {
     input: ModelsLogoutInputSchema,
     output: ModelsLogoutOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly provider: string }, null>,
+  },
 
   "login.steps": {
     input: LoginStepsInputSchema,
@@ -380,17 +986,14 @@ export const declarations = {
     kind: "stream",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<
-    { readonly provider: string },
-    ReturnType<Login["steps"]> extends AsyncIterable<infer Step> ? Step : never
-  >,
+  },
   "login.answer": {
     input: LoginAnswerInputSchema,
     output: LoginAnswerOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly provider: string; readonly code: string }, null>,
+  },
 
   "settings.apply": {
     input: SettingsApplyInputSchema,
@@ -398,7 +1001,7 @@ export const declarations = {
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly id: string; readonly value: Json }, SettingOutcome>,
+  },
 
   "workspaces.list": {
     input: WorkspacesListInputSchema,
@@ -406,31 +1009,28 @@ export const declarations = {
     kind: "query",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<object, readonly WorkspaceInfo[]>,
+  },
   "workspaces.inspect": {
     input: WorkspacesInspectInputSchema,
     output: WorkspaceInspectionSchema,
     kind: "query",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly target: WorkspaceTarget }, WorkspaceInspection>,
+  },
   "workspaces.add": {
     input: WorkspacesAddInputSchema,
     output: AddOutcomeSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<
-    { readonly target: WorkspaceTarget; readonly options?: Parameters<Workspaces["add"]>[1] },
-    AddOutcome
-  >,
+  },
   "workspaces.forget": {
     input: WorkspacesForgetInputSchema,
     output: ForgetOutcomeSchema,
     kind: "command",
     authority: "owner",
     scope: "host",
-  } satisfies Declaration<{ readonly id: WorkspaceId }, ForgetOutcome>,
+  },
 
   "sessions.watch": {
     input: SessionsWatchInputSchema,
@@ -438,7 +1038,7 @@ export const declarations = {
     kind: "watch",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<NonNullable<Parameters<Sessions["watch"]>[0]>, readonly SessionInfo[]>,
+  },
   "sessions.create": {
     input: SessionsCreateInputSchema,
     output: SessionsCreateOutputSchema,
@@ -446,17 +1046,14 @@ export const declarations = {
     authority: "participant",
     scope: "host",
     recovery: "replay",
-  } satisfies Declaration<
-    NonNullable<Parameters<Sessions["create"]>[0]>,
-    { readonly session: SessionId }
-  >,
+  },
   "sessions.list": {
     input: SessionsListInputSchema,
     output: SessionsListOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "host",
-  } satisfies Declaration<NonNullable<Parameters<Sessions["list"]>[0]>, Paged<SessionInfo>>,
+  },
 
   "session.info": {
     input: SessionInfoInputSchema,
@@ -464,41 +1061,35 @@ export const declarations = {
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId }, SessionInfo>,
+  },
   "session.update": {
     input: SessionUpdateInputSchema,
     output: UpdateOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly patch: Parameters<Session["update"]>[0] },
-    UpdateOutcome
-  >,
+  },
   "session.remove": {
     input: SessionRemoveInputSchema,
     output: RemoveSessionOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId }, RemoveSessionOutcome>,
+  },
   "session.stop": {
     input: SessionStopInputSchema,
     output: SessionStopOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId }, Awaited<ReturnType<Session["stop"]>>>,
+  },
   "session.command": {
     input: SessionCommandInputSchema,
     output: CommandOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly name: string; readonly args?: Json },
-    CommandOutcome
-  >,
+  },
 
   "head.send": {
     input: HeadSendInputSchema,
@@ -507,62 +1098,42 @@ export const declarations = {
     authority: "participant",
     scope: "session",
     recovery: "replay",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly head: HeadName;
-      readonly content: UserContent;
-      readonly options?: SendOptions;
-    },
-    { readonly receipt: ReceiptId; readonly message: MessageId }
-  >,
+  },
   "head.configure": {
     input: HeadConfigureInputSchema,
     output: ConfigureOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly head: HeadName; readonly patch: ConfigurationPatch },
-    ConfigureOutcome
-  >,
+  },
   "head.view": {
     input: HeadViewInputSchema,
     output: SessionViewSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly head: HeadName; readonly options?: ViewOptions },
-    SessionView
-  >,
+  },
   "head.watch": {
     input: HeadWatchInputSchema,
     output: HeadWatchOutputSchema,
     kind: "watch",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly head: HeadName; readonly options?: ViewOptions },
-    SessionEvent | PatchEvent
-  >,
+  },
   "head.history": {
     input: HeadHistoryInputSchema,
     output: HeadHistoryOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly head: HeadName } & Parameters<Head["history"]>[0],
-    readonly Message[]
-  >,
+  },
   "head.tree": {
     input: HeadTreeInputSchema,
     output: TreeViewSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId; readonly head: HeadName }, TreeView>,
+  },
   "head.move": {
     input: HeadMoveInputSchema,
     output: HeadMoveOutputSchema,
@@ -570,27 +1141,14 @@ export const declarations = {
     authority: "participant",
     scope: "session",
     recovery: "replay",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly head: HeadName;
-      readonly position: Position;
-      readonly options?: MoveOptions;
-    },
-    { readonly receipt: ReceiptId }
-  >,
+  },
   "head.compact": {
     input: HeadCompactInputSchema,
     output: HeadCompactOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly head: HeadName } & NonNullable<
-      Parameters<Head["compact"]>[0]
-    >,
-    Awaited<ReturnType<Head["compact"]>>
-  >,
+  },
 
   "heads.create": {
     input: HeadsCreateInputSchema,
@@ -598,42 +1156,21 @@ export const declarations = {
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly name: HeadName;
-      readonly input?: Parameters<Session["heads"]["create"]>[1];
-    },
-    CreateHeadOutcome
-  >,
+  },
   "heads.merge": {
     input: HeadsMergeInputSchema,
     output: MergeOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly name: HeadName;
-      readonly options?: Parameters<Session["heads"]["merge"]>[1];
-    },
-    MergeOutcome
-  >,
+  },
   "heads.remove": {
     input: HeadsRemoveInputSchema,
     output: RemoveHeadOutcomeSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly name: HeadName;
-      readonly options?: Parameters<Session["heads"]["remove"]>[1];
-    },
-    RemoveHeadOutcome
-  >,
+  },
 
   "run.stop": {
     input: RunStopInputSchema,
@@ -641,17 +1178,14 @@ export const declarations = {
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly run: RunId },
-    StopOutcome<RunEnd>
-  >,
+  },
   "run.settled": {
     input: RunSettledInputSchema,
     output: RunEndSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId; readonly run: RunId }, RunEnd>,
+  },
 
   "receipt.status": {
     input: ReceiptStatusInputSchema,
@@ -659,37 +1193,28 @@ export const declarations = {
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly receipt: ReceiptId },
-    Awaited<ReturnType<Receipt<Json>["status"]>>
-  >,
+  },
   "receipt.settled": {
     input: ReceiptSettledInputSchema,
     output: JsonValueSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId; readonly receipt: ReceiptId }, Json>,
+  },
   "receipt.stop": {
     input: ReceiptStopInputSchema,
     output: ReceiptStopOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly receipt: ReceiptId },
-    StopOutcome<Json>
-  >,
+  },
   "receipt.landed": {
     input: ReceiptLandedInputSchema,
     output: ReceiptLandedOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly receipt: ReceiptId },
-    Awaited<ReturnType<SendReceipt["landed"]>>
-  >,
+  },
 
   "parts.create": {
     input: PartsCreateInputSchema,
@@ -698,14 +1223,7 @@ export const declarations = {
     authority: "participant",
     scope: "session",
     recovery: "replay",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly kind: PartDefinition["kind"];
-      readonly input: Parameters<Session["parts"]["create"]>[1];
-    },
-    { readonly part: PartId }
-  >,
+  },
 
   "part.update": {
     input: PartUpdateInputSchema,
@@ -713,42 +1231,28 @@ export const declarations = {
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly part: PartId; readonly next: Json },
-    Awaited<ReturnType<Part<PartDefinition>["update"]>>
-  >,
+  },
   "part.act": {
     input: PartActInputSchema,
     output: PartActOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    {
-      readonly session: SessionId;
-      readonly part: PartId;
-      readonly action: string;
-      readonly input: Json;
-    },
-    ActOutcome<Json>
-  >,
+  },
   "part.answer": {
     input: PartAnswerInputSchema,
     output: PartAnswerOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<
-    { readonly session: SessionId; readonly part: PartId },
-    Awaited<ReturnType<Part<PartDefinition>["answer"]>>
-  >,
+  },
   "part.close": {
     input: PartCloseInputSchema,
     output: PartCloseOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "session",
-  } satisfies Declaration<{ readonly session: SessionId; readonly part: PartId }, null>,
+  },
 
   "workspace.info": {
     input: WorkspaceInfoInputSchema,
@@ -756,77 +1260,63 @@ export const declarations = {
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, WorkspaceInfo>,
+  },
   "workspace.watch": {
     input: WorkspaceWatchInputSchema,
     output: WorkspaceInfoSchema,
     kind: "watch",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, WorkspaceInfo>,
+  },
   "workspace.update": {
     input: WorkspaceUpdateInputSchema,
     output: WorkspaceUpdateOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "workspace",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly patch: Parameters<Workspace["update"]>[0] },
-    Awaited<ReturnType<Workspace["update"]>>
-  >,
+  },
   "workspace.reload": {
     input: WorkspaceReloadInputSchema,
     output: WorkspaceReloadOutputSchema,
     kind: "command",
     authority: "owner",
     scope: "workspace",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId },
-    Awaited<ReturnType<Workspace["reload"]>>
-  >,
+  },
   "workspace.changes": {
     input: WorkspaceChangesInputSchema,
     output: ChangeSetSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly run: RunId }, ChangeSet>,
+  },
   "workspace.patches": {
     input: WorkspacePatchesInputSchema,
     output: PatchSetWireSchema,
     kind: "stream",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly run: RunId;
-      readonly paths: readonly string[];
-      readonly options?: DiffOptions;
-    },
-    PatchSetWire
-  >,
+  },
   "workspace.files": {
     input: WorkspaceFilesInputSchema,
     output: CapabilityWireSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, CapabilityWire>,
+  },
   "workspace.git": {
     input: WorkspaceGitInputSchema,
     output: CapabilityWireSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, CapabilityWire>,
+  },
   "workspace.browser": {
     input: WorkspaceBrowserInputSchema,
     output: CapabilityWireSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, CapabilityWire>,
+  },
 
   "jobs.start": {
     input: JobsStartInputSchema,
@@ -835,34 +1325,28 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     recovery: "replay",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & Parameters<Jobs["start"]>[0],
-    JobView & Pick<Job, "key">
-  >,
+  },
   "jobs.recover": {
     input: JobsRecoverInputSchema,
     output: JobsRecoverOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly key: JobKey },
-    (JobView & Pick<Job, "key">) | Exclude<Awaited<ReturnType<Jobs["recover"]>>, Job>
-  >,
+  },
   "jobs.list": {
     input: JobsListInputSchema,
     output: JobsListOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, readonly JobView[]>,
+  },
   "jobs.watch": {
     input: JobsWatchInputSchema,
     output: JobsWatchOutputSchema,
     kind: "watch",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, readonly JobView[]>,
+  },
 
   "job.write": {
     input: JobWriteInputSchema,
@@ -871,59 +1355,49 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     recovery: "never",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly job: JobId }, null>,
+  },
   "job.output": {
     input: JobOutputInputSchema,
     output: OutputFrameSchema,
     kind: "stream",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly job: JobId }, OutputFrame>,
+  },
   "job.resize": {
     input: JobResizeInputSchema,
     output: JobResizeOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly job: JobId;
-      readonly size: Parameters<Job["resize"]>[0];
-    },
-    Awaited<ReturnType<Job["resize"]>>
-  >,
+  },
   "job.idle": {
     input: JobIdleInputSchema,
     output: JobIdleOutputSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly job: JobId }, boolean>,
+  },
   "job.stop": {
     input: JobStopInputSchema,
     output: JobStopOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly job: JobId },
-    StopOutcome<JobEnd>
-  >,
+  },
   "job.settled": {
     input: JobSettledInputSchema,
     output: JobEndSchema,
     kind: "query",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly job: JobId }, JobEnd>,
+  },
   "job.close": {
     input: JobCloseInputSchema,
     output: JobCloseOutputSchema,
     kind: "command",
     authority: "participant",
     scope: "workspace",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly job: JobId }, null>,
+  },
 
   "files.read": {
     input: FilesReadInputSchema,
@@ -932,7 +1406,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly path: string }, FileDocument>,
+  },
   "files.bytes": {
     input: FilesBytesInputSchema,
     output: FilesBytesOutputSchema,
@@ -940,7 +1414,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly path: string }, Uint8Array>,
+  },
   "files.stat": {
     input: FilesStatInputSchema,
     output: FilesStatOutputSchema,
@@ -948,10 +1422,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly path: string },
-    Awaited<ReturnType<FilesApi["stat"]>>
-  >,
+  },
   "files.write": {
     input: FilesWriteInputSchema,
     output: WriteOutcomeSchema,
@@ -959,14 +1430,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly path: string;
-      readonly options?: Parameters<FilesApi["write"]>[2];
-    },
-    WriteOutcome
-  >,
+  },
   "files.remove": {
     input: FilesRemoveInputSchema,
     output: WriteOutcomeSchema,
@@ -974,14 +1438,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly path: string;
-      readonly options?: Parameters<FilesApi["remove"]>[1];
-    },
-    WriteOutcome
-  >,
+  },
   "files.batch": {
     input: FilesBatchInputSchema,
     output: FilesBatchOutputSchema,
@@ -990,16 +1447,7 @@ export const declarations = {
     scope: "workspace",
     capability: "files",
     recovery: "replay",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly entries: readonly (
-        | ({ readonly kind: "put" } & Parameters<FileBatch["put"]>[0])
-        | ({ readonly kind: "remove" } & Parameters<FileBatch["remove"]>[0])
-      )[];
-    },
-    { readonly receipt: ReceiptId }
-  >,
+  },
   "files.format": {
     input: FilesFormatInputSchema,
     output: FormatOutcomeSchema,
@@ -1007,10 +1455,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly path: string; readonly contents: string },
-    FormatOutcome
-  >,
+  },
   "files.scan": {
     input: FilesScanInputSchema,
     output: ScanFrameSchema,
@@ -1018,10 +1463,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & NonNullable<Parameters<FilesApi["scan"]>[0]>,
-    ScanFrame
-  >,
+  },
   "files.find": {
     input: FilesFindInputSchema,
     output: FilesFindOutputSchema,
@@ -1029,10 +1471,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & Parameters<FilesApi["find"]>[0],
-    readonly FileEntryView[]
-  >,
+  },
   "files.search": {
     input: FilesSearchInputSchema,
     output: SearchFrameSchema,
@@ -1040,10 +1479,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & Parameters<FilesApi["search"]>[0],
-    SearchFrame
-  >,
+  },
   "files.watch": {
     input: FilesWatchInputSchema,
     output: FilesWatchOutputSchema,
@@ -1051,10 +1487,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & NonNullable<Parameters<FilesApi["watch"]>[0]>,
-    readonly FileEvent[]
-  >,
+  },
   "files.upload": {
     input: FilesUploadInputSchema,
     output: BlobIdSchema,
@@ -1062,7 +1495,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "files",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, BlobId>,
+  },
 
   "git.status": {
     input: GitStatusInputSchema,
@@ -1071,7 +1504,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, GitStatus>,
+  },
   "git.watch": {
     input: GitWatchInputSchema,
     output: GitStatusSchema,
@@ -1079,7 +1512,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, GitStatus>,
+  },
   "git.changes": {
     input: GitChangesInputSchema,
     output: ChangeSetSchema,
@@ -1087,10 +1520,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly scope: GitScope; readonly options?: DiffOptions },
-    ChangeSet
-  >,
+  },
   "git.watchChanges": {
     input: GitWatchChangesInputSchema,
     output: ChangeSetSchema,
@@ -1098,10 +1528,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly scope: GitScope; readonly options?: DiffOptions },
-    ChangeSet
-  >,
+  },
   "git.patches": {
     input: GitPatchesInputSchema,
     output: PatchSetWireSchema,
@@ -1109,15 +1536,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly scope: GitScope;
-      readonly paths: readonly string[];
-      readonly options?: DiffOptions;
-    },
-    PatchSetWire
-  >,
+  },
   "git.contents": {
     input: GitContentsInputSchema,
     output: GitFileSidesSchema,
@@ -1125,10 +1544,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly path: string; readonly scope: GitScope },
-    GitFileSides
-  >,
+  },
   "git.log": {
     input: GitLogInputSchema,
     output: GitLogOutputSchema,
@@ -1136,10 +1552,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & NonNullable<Parameters<GitApi["log"]>[0]>,
-    Paged<GitCommitView>
-  >,
+  },
   "git.refs": {
     input: GitRefsInputSchema,
     output: GitRefsViewSchema,
@@ -1147,7 +1560,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, GitRefsView>,
+  },
   "git.blame": {
     input: GitBlameInputSchema,
     output: BlameViewSchema,
@@ -1155,7 +1568,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly path: string }, BlameView>,
+  },
   "git.stage": {
     input: GitStageInputSchema,
     output: GitOutcomeSchema,
@@ -1163,14 +1576,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly paths: readonly string[];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
   "git.unstage": {
     input: GitUnstageInputSchema,
     output: GitOutcomeSchema,
@@ -1178,14 +1584,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly paths: readonly string[];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
   "git.discard": {
     input: GitDiscardInputSchema,
     output: GitOutcomeSchema,
@@ -1193,14 +1592,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly paths: readonly string[];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
   "git.commit": {
     input: GitCommitInputSchema,
     output: GitOutcomeSchema,
@@ -1208,14 +1600,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly input: Parameters<GitApi["commit"]>[0];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
   "git.branch": {
     input: GitBranchInputSchema,
     output: GitOutcomeSchema,
@@ -1223,14 +1608,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly input: Parameters<GitApi["branch"]>[0];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
   "git.push": {
     input: GitPushInputSchema,
     output: GitOutcomeSchema,
@@ -1238,14 +1616,7 @@ export const declarations = {
     authority: "owner",
     scope: "workspace",
     capability: "git",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly input?: Parameters<GitApi["push"]>[0];
-      readonly options?: GitWrite;
-    },
-    GitOutcome
-  >,
+  },
 
   "browser.open": {
     input: BrowserOpenInputSchema,
@@ -1255,10 +1626,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "replay",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId } & Parameters<BrowserApi["open"]>[0],
-    PageInfo
-  >,
+  },
   "browser.adopt": {
     input: BrowserAdoptInputSchema,
     output: PageInfoSchema,
@@ -1266,7 +1634,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly id: PageId }, PageInfo>,
+  },
   "browser.list": {
     input: BrowserListInputSchema,
     output: BrowserListOutputSchema,
@@ -1274,7 +1642,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, readonly PageInfo[]>,
+  },
   "browser.watch": {
     input: BrowserWatchInputSchema,
     output: BrowserWatchOutputSchema,
@@ -1282,7 +1650,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId }, readonly PageInfo[]>,
+  },
 
   "page.view": {
     input: PageViewInputSchema,
@@ -1291,7 +1659,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageView>,
+  },
   "page.watch": {
     input: PageWatchInputSchema,
     output: PageViewSchema,
@@ -1299,7 +1667,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageView>,
+  },
   "page.snapshot": {
     input: PageSnapshotInputSchema,
     output: PageSnapshotSchema,
@@ -1307,12 +1675,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & NonNullable<
-      Parameters<Page["snapshot"]>[0]
-    >,
-    PageSnapshot
-  >,
+  },
   "page.navigate": {
     input: PageNavigateInputSchema,
     output: PageOutcomeSchema,
@@ -1320,10 +1683,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId; readonly url: string },
-    PageOutcome
-  >,
+  },
   "page.back": {
     input: PageBackInputSchema,
     output: PageOutcomeSchema,
@@ -1331,7 +1691,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageOutcome>,
+  },
   "page.forward": {
     input: PageForwardInputSchema,
     output: PageOutcomeSchema,
@@ -1339,7 +1699,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageOutcome>,
+  },
   "page.reload": {
     input: PageReloadInputSchema,
     output: PageOutcomeSchema,
@@ -1347,7 +1707,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageOutcome>,
+  },
   "page.stopLoading": {
     input: PageStopLoadingInputSchema,
     output: PageOutcomeSchema,
@@ -1355,7 +1715,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, PageOutcome>,
+  },
   "page.click": {
     input: PageClickInputSchema,
     output: PageOutcomeSchema,
@@ -1364,10 +1724,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "never",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<Page["click"]>[0],
-    PageOutcome
-  >,
+  },
   "page.type": {
     input: PageTypeInputSchema,
     output: PageOutcomeSchema,
@@ -1376,10 +1733,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "never",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<Page["type"]>[0],
-    PageOutcome
-  >,
+  },
   "page.press": {
     input: PagePressInputSchema,
     output: PageOutcomeSchema,
@@ -1388,10 +1742,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "never",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<Page["press"]>[0],
-    PageOutcome
-  >,
+  },
   "page.scroll": {
     input: PageScrollInputSchema,
     output: PageOutcomeSchema,
@@ -1400,10 +1751,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "never",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & Parameters<Page["scroll"]>[0],
-    PageOutcome
-  >,
+  },
   "page.wait": {
     input: PageWaitInputSchema,
     output: PageOutcomeSchema,
@@ -1411,14 +1759,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly page: PageId;
-      readonly condition: Parameters<Page["wait"]>[0];
-    },
-    PageOutcome
-  >,
+  },
   "page.console": {
     input: PageConsoleInputSchema,
     output: PageConsoleOutputSchema,
@@ -1426,12 +1767,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<
-    { readonly workspace: WorkspaceId; readonly page: PageId } & NonNullable<
-      Parameters<Page["console"]>[0]
-    >,
-    readonly ConsoleEntry[]
-  >,
+  },
   "page.capture": {
     input: PageCaptureInputSchema,
     output: PageCaptureOutputSchema,
@@ -1439,7 +1775,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, Uint8Array>,
+  },
   "page.evaluate": {
     input: PageEvaluateInputSchema,
     output: PageEvaluateOutputSchema,
@@ -1448,15 +1784,7 @@ export const declarations = {
     scope: "workspace",
     capability: "browser",
     recovery: "never",
-  } satisfies Declaration<
-    {
-      readonly workspace: WorkspaceId;
-      readonly page: PageId;
-      readonly expression: string;
-      readonly options?: Parameters<Page["evaluate"]>[1];
-    },
-    Awaited<ReturnType<Page["evaluate"]>>
-  >,
+  },
   "page.close": {
     input: PageCloseInputSchema,
     output: PageCloseOutputSchema,
@@ -1464,7 +1792,7 @@ export const declarations = {
     authority: "participant",
     scope: "workspace",
     capability: "browser",
-  } satisfies Declaration<{ readonly workspace: WorkspaceId; readonly page: PageId }, null>,
+  },
 
   "plugins.replace": {
     input: PluginsReplaceInputSchema,
@@ -1472,20 +1800,14 @@ export const declarations = {
     kind: "command",
     authority: "maintenance",
     scope: "host",
-  } satisfies Declaration<
-    {
-      readonly plugins: readonly Json[];
-      readonly scope?: Parameters<Host["plugins"]["replace"]>[1];
-    },
-    PluginReplacementReport
-  >,
+  },
   "plugins.check": {
     input: PluginsCheckInputSchema,
     output: PluginCheckReportSchema,
     kind: "query",
     authority: "maintenance",
     scope: "host",
-  } satisfies Declaration<{ readonly plugins: readonly Json[] }, PluginCheckReport>,
+  },
 
   "principals.list": {
     input: PrincipalsListInputSchema,
@@ -1493,25 +1815,24 @@ export const declarations = {
     kind: "query",
     authority: "maintenance",
     scope: "host",
-  } satisfies Declaration<object, readonly PrincipalViewWire[]>,
+  },
   "principals.pair": {
     input: PrincipalsPairInputSchema,
     output: PrincipalsPairOutputSchema,
     kind: "command",
     authority: "maintenance",
     scope: "host",
-  } satisfies Declaration<
-    { readonly authority: readonly Authority[]; readonly label?: string },
-    Awaited<ReturnType<Host["principals"]["pair"]>>
-  >,
+  },
   "principals.revoke": {
     input: PrincipalsRevokeInputSchema,
     output: PrincipalsRevokeOutputSchema,
     kind: "command",
     authority: "maintenance",
     scope: "host",
-  } satisfies Declaration<{ readonly id: PrincipalId }, null>,
-} satisfies { readonly [name: `${string}.${string}`]: Declaration<unknown, unknown> };
+  },
+} satisfies {
+  readonly [N in keyof Signatures]: Declaration<Signatures[N]["input"], Signatures[N]["output"]>;
+};
 
 /** Returns the declaration table's type: each row's literal kind, authority and scope, and its schemas. */
 export type Declarations = typeof declarations;
@@ -1519,8 +1840,8 @@ export type Declarations = typeof declarations;
 /** Names one served operation: a key of the table. */
 export type OperationName = keyof Declarations;
 
-/** Returns one operation's decoded input. */
-export type OperationInput<N extends OperationName> = Infer<Declarations[N]["input"]>;
+/** Returns one operation's decoded input, as its signature types it. */
+export type OperationInput<N extends OperationName> = Signatures[N]["input"];
 
-/** Returns one operation's decoded output: its value, or one frame of a `watch` or `stream` row. */
-export type OperationOutput<N extends OperationName> = Infer<Declarations[N]["output"]>;
+/** Returns one operation's decoded output, as its signature types it: its value, or one frame of a `watch` or `stream` row. */
+export type OperationOutput<N extends OperationName> = Signatures[N]["output"];

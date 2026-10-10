@@ -1,3 +1,4 @@
+import { asSeq } from "@nyte-ai/schema";
 import type {
   CommitId,
   Disposer,
@@ -5,6 +6,7 @@ import type {
   PatchEvent,
   PrincipalId,
   RefUpdate,
+  Seq,
   SessionEvent,
   SessionId,
   SessionView,
@@ -48,7 +50,7 @@ const LOG_PAGE = 512;
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a fold cache over the kernel's store and bus: one fold per session per principal, shared by every holder. A cold fold seeds the session's in-memory activation, catalog, and the background items of its jobs and held pages (`kernel.jobs.background`, `kernel.pages.background`) after its log; their seq-0 events pass at any seq (§35b, §37c). */
+/** Returns a fold cache over the kernel's store and bus: one fold per session per principal, shared by every holder, built from `sessionEvents`' feed (the log, then the seeds, then live; §40a). A cold fold's seeds are the session's in-memory activation, catalog, and the background items of its jobs and held pages; their seq-0 events pass at any seq (§35b, §37c). */
 export function createFoldCache(
   kernel: Pick<Kernel, "store" | "bus" | "revisions" | "activation" | "catalog" | "jobs" | "pages">,
 ): FoldCache {
@@ -63,18 +65,8 @@ export function createFoldCache(
       listeners: new Set(),
     };
 
-    const queue: (SessionEvent | PatchEvent)[] = [];
-    let building = true;
-
     const step = (state: FoldState, event: SessionEvent | PatchEvent): FoldState => {
-      if (
-        event.kind !== "patch" &&
-        event.kind !== "activation" &&
-        event.kind !== "catalog" &&
-        !(event.kind === "background" && event.seq === 0) &&
-        event.seq <= state.seq
-      )
-        return state;
+      if (event.kind !== "patch" && !isSeed(event) && event.seq <= state.seq) return state;
       const next = fold(state, event);
 
       if (event.kind === "patch") return next;
@@ -86,69 +78,26 @@ export function createFoldCache(
       }, next);
     };
 
-    const apply = (event: SessionEvent | PatchEvent): void => {
+    const feed = openFeed(kernel, session, asSeq(0), (event) => {
       const next = step(entry.state, event);
 
       if (next === entry.state) return;
       entry.state = next;
 
       for (const listener of entry.listeners) listener(next);
-    };
-
-    entry.dispose = kernel.bus.subscribe(session, (event) => {
-      if (building) queue.push(event);
-      else apply(event);
     });
 
-    entry.ready = (async () => {
-      try {
-        for (;;) {
-          const events = await kernel.store.refs.log(session, entry.state.seq, LOG_PAGE);
+    entry.dispose = feed.dispose;
 
-          for (const event of events) entry.state = step(entry.state, event);
+    entry.ready = feed.ready.then(async () => {
+      for (const head of entry.state.heads.keys()) {
+        const name = headRef(session, head);
+        const ref = await kernel.store.refs.get(name);
 
-          if (events.length < LOG_PAGE) break;
-        }
-
-        entry.state = fold(entry.state, {
-          seq: entry.state.seq,
-          at: Date.now(),
-          head: null,
-          kind: "activation",
-          activation: kernel.activation(session),
-        });
-
-        entry.state = fold(entry.state, {
-          seq: entry.state.seq,
-          at: Date.now(),
-          head: null,
-          kind: "catalog",
-          catalog: kernel.catalog(session),
-        });
-
-        for (const { head, item } of [
-          ...kernel.jobs.background(session),
-          ...kernel.pages.background(session),
-        ])
-          entry.state = fold(entry.state, {
-            seq: entry.state.seq,
-            at: Date.now(),
-            head,
-            kind: "background",
-            item,
-          });
-
-        for (const head of entry.state.heads.keys()) {
-          const ref = await kernel.store.refs.get(headRef(session, head));
-
-          if (ref !== null) entry.state = withRevision(entry.state, head, ref.revision);
-        }
-      } finally {
-        building = false;
-
-        for (const event of queue.splice(0)) apply(event);
+        if (ref !== null && !kernel.revisions.has(name))
+          entry.state = withRevision(entry.state, head, ref.revision);
       }
-    })();
+    });
 
     return entry;
   };
@@ -190,6 +139,147 @@ export function createFoldCache(
       };
     },
   };
+}
+
+/** Yields a session's events after `after`: its log, then the unlogged seq-0 seeds (activation, catalog, and the background items of its jobs and held pages), then every event as it is published, live events arriving during the build buffered and a logged one at or below the last seq yielded dropped. What the fold cache and the server's `head.watch` consume (§40a); `return()` unsubscribes at once. */
+export function sessionEvents(
+  kernel: Pick<Kernel, "store" | "bus" | "activation" | "catalog" | "jobs" | "pages">,
+  session: SessionId,
+  after: Seq,
+): AsyncIterable<SessionEvent | PatchEvent> {
+  return closable<SessionEvent | PatchEvent>(() => {
+    const queue: (SessionEvent | PatchEvent)[] = [];
+    let waiting: (() => void) | null = null;
+    let failure: { readonly error: unknown } | null = null;
+
+    const wake = (): void => {
+      const resolve = waiting;
+      waiting = null;
+      resolve?.();
+    };
+
+    const feed = openFeed(kernel, session, after, (event) => {
+      queue.push(event);
+      wake();
+    });
+
+    feed.ready.catch((error: unknown) => {
+      failure = { error };
+      wake();
+    });
+
+    return {
+      async pull() {
+        for (;;) {
+          const event = queue.shift();
+
+          if (event !== undefined) return { done: false, value: event };
+
+          if (failure !== null) throw failure.error;
+          await new Promise<void>((resolve) => {
+            waiting = resolve;
+          });
+        }
+      },
+      close() {
+        feed.dispose();
+        wake();
+      },
+    };
+  });
+}
+
+/** Writes a principal's seen mark for a head (`sessions/<id>/seen/<principal>/<head>`) and publishes its `seen` event: what a watch does for each tip it shows, and what the server does for each tip change it forwards to a watching principal (§40a). */
+export async function advanceSeen(
+  kernel: Kernel,
+  input: {
+    readonly session: SessionId;
+    readonly principal: PrincipalId;
+    readonly head: HeadName;
+    readonly commit: CommitId | null;
+  },
+): Promise<void> {
+  const record: SeenRecord = { commit: input.commit };
+  const target = await kernel.store.objects.put(envelope("seen", record, Date.now()));
+
+  const updates: readonly RefUpdate[] = [
+    {
+      name: seenRef(input.session, input.principal, input.head),
+      target,
+      event: {
+        head: input.head,
+        kind: "seen",
+        principal: input.principal,
+        commit: input.commit,
+      },
+    },
+  ];
+
+  await publishSet(kernel, updates, await kernel.store.refs.set(updates));
+}
+
+/** Returns whether an event is an unlogged seed that passes at any seq: activation, catalog, and a seq-0 background item. */
+function isSeed(event: SessionEvent): boolean {
+  return (
+    event.kind === "activation" ||
+    event.kind === "catalog" ||
+    (event.kind === "background" && event.seq === 0)
+  );
+}
+
+/** Subscribes to a session's bus, then pushes its log after `after`, its seeds, the events buffered meanwhile and every later one, each logged event once; `ready` settles when the buffer is drained. */
+function openFeed(
+  kernel: Pick<Kernel, "store" | "bus" | "activation" | "catalog" | "jobs" | "pages">,
+  session: SessionId,
+  after: Seq,
+  push: (event: SessionEvent | PatchEvent) => void,
+): { readonly ready: Promise<void>; readonly dispose: Disposer } {
+  const buffered: (SessionEvent | PatchEvent)[] = [];
+  let building = true;
+  let through: number = after;
+
+  const deliver = (event: SessionEvent | PatchEvent): void => {
+    if (event.kind !== "patch" && event.seq !== 0) {
+      if (event.seq <= through) return;
+      through = event.seq;
+    }
+
+    push(event);
+  };
+
+  const dispose = kernel.bus.subscribe(session, (event) => {
+    if (building) buffered.push(event);
+    else deliver(event);
+  });
+
+  const ready = (async () => {
+    try {
+      for (;;) {
+        const events = await kernel.store.refs.log(session, asSeq(through), LOG_PAGE);
+
+        for (const event of events) deliver(event);
+
+        if (events.length < LOG_PAGE) break;
+      }
+
+      const at = Date.now();
+      const seed = { seq: asSeq(0), at };
+      deliver({ ...seed, head: null, kind: "activation", activation: kernel.activation(session) });
+      deliver({ ...seed, head: null, kind: "catalog", catalog: kernel.catalog(session) });
+
+      for (const { head, item } of [
+        ...kernel.jobs.background(session),
+        ...kernel.pages.background(session),
+      ])
+        deliver({ ...seed, head, kind: "background", item });
+    } finally {
+      building = false;
+
+      for (const event of buffered.splice(0)) deliver(event);
+    }
+  })();
+
+  return { ready, dispose };
 }
 
 /** Yields `initial`, then the newest value pushed since the last pull; `return()` unsubscribes at once, even while a pull waits. */
@@ -432,7 +522,7 @@ export function watchHead(
 
           if (head !== undefined && tip !== head.seen && tip !== marked) {
             marked = tip;
-            seeing = see(kernel, input, tip);
+            seeing = advanceSeen(kernel, { ...input, commit: tip });
           }
 
           return { done: false, value: view };
@@ -468,23 +558,4 @@ export async function viewHead(
   } finally {
     hold.release();
   }
-}
-
-async function see(
-  kernel: Kernel,
-  input: { readonly session: SessionId; readonly head: HeadName; readonly principal: PrincipalId },
-  commit: CommitId | null,
-): Promise<void> {
-  const record: SeenRecord = { commit };
-  const target = await kernel.store.objects.put(envelope("seen", record, Date.now()));
-
-  const updates: readonly RefUpdate[] = [
-    {
-      name: seenRef(input.session, input.principal, input.head),
-      target,
-      event: { head: input.head, kind: "seen", principal: input.principal, commit },
-    },
-  ];
-
-  await publishSet(kernel, updates, await kernel.store.refs.set(updates));
 }

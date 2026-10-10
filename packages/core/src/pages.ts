@@ -3,12 +3,16 @@ import type {
   BackgroundItem,
   CallId,
   HeadName,
+  Json,
+  ObjectId,
   PageId,
   PageInfo,
   SessionId,
 } from "@nyte-ai/schema";
 import type { BrowserApi, Page } from "./browser.ts";
+import { objectId } from "./content.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
+import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 
 /** Names who takes a page hold: the session and head of the connection's origin, the step's call when it acts from one, and the counter its acquisitions key by (`acq:<n>`, §33a). Null for a client: its holds show on no head. */
@@ -23,6 +27,12 @@ export type PageHolder = {
 export interface PageTable {
   /** Takes one more hold on a provider page for a holder (recording the page on its first hold, titled `title`) and returns it: a `Page` that passes every member to the provider's page except `close()`, which releases this hold once. A holder's head shows the page as a `background` item (kind `page`, `working`) while it holds it, `done` once its last hold on the page is released; published unlogged (seq 0, §37c). */
   hold(page: Page, title: string, holder: PageHolder | null): Page;
+  /** Runs `open` once per `id` and returns the page it resolved: a later call with the same id and an `input` of the same content id (`objectId`), while that page is still held, returns the same page and opens nothing (a replayed `browser.open`, §40e); the same id with another input throws `SdkError("invalid")` (§40x); without an id it runs `open`. */
+  open(request: {
+    readonly id?: string;
+    readonly input: Json;
+    open(): Promise<Page>;
+  }): Promise<Page>;
   /** Returns the provider page the table holds under an id, or undefined. */
   page(id: PageId): Page | undefined;
   /** Returns how many holds a page has; 0 when the table does not hold it. */
@@ -41,9 +51,17 @@ interface Entry {
   readonly heads: Map<string, { readonly holder: PageHolder; count: number }>;
 }
 
+/** Returns one page opened under an id: the page it resolves to, the content id of the input it was opened with, and the page's id once resolved. */
+interface Opened {
+  readonly page: Promise<Page>;
+  readonly digest: Promise<ObjectId>;
+  id: PageId | null;
+}
+
 /** Returns an empty page table over a kernel: what `kernel.pages` holds, built on first use once the kernel object exists. */
 export function createPageTable(kernel: Kernel): PageTable {
   const entries = new Map<PageId, Entry>();
+  const opened = new Map<string, Opened>();
 
   const itemOf = (
     entry: Entry,
@@ -68,6 +86,35 @@ export function createPageTable(kernel: Kernel): PageTable {
   };
 
   return {
+    async open(request) {
+      const key = request.id;
+
+      if (key === undefined) return request.open();
+      const digest = objectId(request.input);
+      const known = opened.get(key);
+
+      if (known === undefined) {
+        const page = request.open();
+        const record: Opened = { page, digest, id: null };
+        opened.set(key, record);
+
+        page.then(
+          (resolved) => {
+            record.id = resolved.id;
+
+            if (!entries.has(resolved.id)) opened.delete(key);
+          },
+          () => opened.delete(key),
+        );
+
+        return page;
+      }
+
+      if ((await known.digest) !== (await digest))
+        throw new SdkError("invalid", `The id ${key} already opened another page.`);
+
+      return known.page;
+    },
     hold(page, title, holder) {
       const entry: Entry = entries.get(page.id) ?? { page, title, holds: 0, heads: new Map() };
       entries.set(page.id, entry);
@@ -101,6 +148,8 @@ export function createPageTable(kernel: Kernel): PageTable {
         if (entry.holds > 0) return;
 
         if (entries.get(entry.page.id) === entry) entries.delete(entry.page.id);
+
+        for (const [key, record] of opened) if (record.id === entry.page.id) opened.delete(key);
         await entry.page.close();
       };
 

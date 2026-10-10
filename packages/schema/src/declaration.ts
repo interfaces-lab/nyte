@@ -62,7 +62,10 @@ export type Declaration<Input, Output> = {
    * `query` reads once; `watch` yields coalesced views, latest wins;
    * `command` returns its outcome; `receipt` returns a ReceiptId and the
    * outcome is a later query; `stream` yields every frame in order (bytes,
-   * scan, search, patches).
+   * scan, search, patches). A `watch` or `stream` that fails after its first
+   * frame ends with an error frame carrying the encoded `SdkError` (an
+   * `event: error` server-sent event, or a `0x01 { kind: "error", error }`
+   * control frame on a framed byte stream), which the client rethrows.
    */
   readonly kind: "query" | "watch" | "command" | "receipt" | "stream";
   /** What the calling principal must hold. */

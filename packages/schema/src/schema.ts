@@ -67,7 +67,7 @@ export type Schema<T> = StandardSchemaV1<unknown, T> & StandardJSONSchemaV1<unkn
  */
 export type Infer<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
 
-/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself, compiled on first validation. */
+/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself, compiled on first validation. Validating is the compiled validator's `Check`; a value that passes is returned as its typed `Decode`, which runs TypeBox's codec pipeline only when the schema holds a codec and is otherwise its `Parse`, the same check (§39e, §40k). */
 export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> {
   let validator: Validator<{}, T> | undefined;
   const json: Record<string, unknown> = Object.fromEntries(Object.entries(schema));
@@ -79,14 +79,14 @@ export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> 
       validate: (value) => {
         validator ??= Compile(schema);
 
-        return validator.Check(value)
-          ? { value: validator.Decode(value) }
-          : {
-              issues: validator.Errors(value).map((error) => ({
-                message: error.message,
-                path: error.instancePath.split("/").filter(Boolean),
-              })),
-            };
+        if (validator.Check(value)) return { value: validator.Decode(value) };
+
+        return {
+          issues: validator.Errors(value).map((error) => ({
+            message: error.message,
+            path: error.instancePath.split("/").filter(Boolean),
+          })),
+        };
       },
       jsonSchema: { input: () => json, output: () => json },
       types: undefined,

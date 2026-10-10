@@ -1,6 +1,5 @@
 import { Type } from "typebox";
-import type { TCodec, TString } from "typebox";
-import { asId, asSeq } from "../ids.ts";
+import type { TUnsafe } from "typebox";
 import type {
   BlobId,
   CallId,
@@ -34,17 +33,13 @@ import { standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
 import type { EnvironmentIdentity } from "../workspaces.ts";
 
-/** Returns a string schema that decodes to an id of `Name` through `asId` and encodes back to the string. */
-export function idSchema<Name extends string>(): TCodec<TString, Id<Name>> {
-  return Type.Codec(Type.String())
-    .Decode((value) => asId<Name>(value))
-    .Encode((value) => value);
+/** Returns a string schema typed as an id of `Name`: no codec, so validating it is one compiled check (§40k). */
+export function idSchema<Name extends string>(): TUnsafe<Id<Name>> {
+  return Type.Unsafe<Id<Name>>(Type.String());
 }
 
-/** Validates a non-negative integer and decodes it to a `Seq` through `asSeq`. */
-export const SeqType = Type.Codec(Type.Integer({ minimum: 0 }))
-  .Decode((value) => asSeq(value))
-  .Encode((value) => value);
+/** Validates a non-negative integer typed as a `Seq`, with no codec (§40k). */
+export const SeqType = Type.Unsafe<Seq>(Type.Integer({ minimum: 0 }));
 
 /** Validates a `SessionId`. */
 export const SessionIdSchema: Schema<SessionId> = standard(idSchema<"session">());

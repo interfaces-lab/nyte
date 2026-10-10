@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { Validator } from "@cfworker/json-schema";
-import { Compile } from "typebox/compile";
+import { HasCodec } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   ActivationSchema,
@@ -13,6 +13,12 @@ import {
   BatchOutcomeSchema,
   BlameViewSchema,
   BlobIdSchema,
+  BrowserAdoptInputSchema,
+  BrowserListInputSchema,
+  BrowserListOutputSchema,
+  BrowserOpenInputSchema,
+  BrowserWatchInputSchema,
+  BrowserWatchOutputSchema,
   CallIdSchema,
   CapabilityWireSchema,
   CatalogGenerationSchema,
@@ -24,6 +30,9 @@ import {
   ConfigurationPatchSchema,
   ConfigurationSchema,
   ConfigureOutcomeSchema,
+  ConnectionBlobInputSchema,
+  ConnectionBlobOutputSchema,
+  ConnectionWatchInputSchema,
   ConsoleEntrySchema,
   ContextViewSchema,
   CreateHeadOutcomeSchema,
@@ -45,37 +54,110 @@ import {
   FileEventSchema,
   FileStatusSchema,
   FileVersionSchema,
+  FilesBatchInputSchema,
+  FilesBatchOutputSchema,
+  FilesBytesInputSchema,
+  FilesBytesOutputSchema,
+  FilesFindInputSchema,
+  FilesFindOutputSchema,
+  FilesFormatInputSchema,
+  FilesReadInputSchema,
+  FilesRemoveInputSchema,
+  FilesScanInputSchema,
+  FilesSearchInputSchema,
+  FilesStatInputSchema,
+  FilesStatOutputSchema,
+  FilesUploadInputSchema,
+  FilesWatchInputSchema,
+  FilesWatchOutputSchema,
+  FilesWriteInputSchema,
   ForgetOutcomeSchema,
   FormatOutcomeSchema,
+  GitBlameInputSchema,
+  GitBranchInputSchema,
+  GitChangesInputSchema,
   GitCommitIdSchema,
+  GitCommitInputSchema,
   GitCommitViewSchema,
+  GitContentsInputSchema,
+  GitDiscardInputSchema,
   GitFileSideSchema,
   GitFileSidesSchema,
+  GitLogInputSchema,
+  GitLogOutputSchema,
   GitOutcomeSchema,
+  GitPatchesInputSchema,
+  GitPushInputSchema,
+  GitRefsInputSchema,
   GitRefsViewSchema,
   GitRevisionSchema,
   GitScopeSchema,
+  GitStageInputSchema,
+  GitStatusInputSchema,
   GitStatusSchema,
+  GitUnstageInputSchema,
+  GitWatchChangesInputSchema,
+  GitWatchInputSchema,
   GitWriteSchema,
+  HeadCompactInputSchema,
+  HeadCompactOutputSchema,
+  HeadConfigureInputSchema,
+  HeadHistoryInputSchema,
+  HeadHistoryOutputSchema,
   HeadInfoSchema,
+  HeadMoveInputSchema,
+  HeadMoveOutputSchema,
   HeadNameSchema,
+  HeadSendInputSchema,
+  HeadSendOutputSchema,
+  HeadTreeInputSchema,
+  HeadViewInputSchema,
+  HeadWatchInputSchema,
+  HeadWatchOutputSchema,
+  HeadsCreateInputSchema,
+  HeadsMergeInputSchema,
+  HeadsRemoveInputSchema,
   HostDescriptionSchema,
   HostIdSchema,
   HostViewWireSchema,
   HunkSchema,
   IdentityChallengeSchema,
   IntegrityReportSchema,
+  JobCloseInputSchema,
+  JobCloseOutputSchema,
   JobEndSchema,
   JobIdSchema,
+  JobIdleInputSchema,
+  JobIdleOutputSchema,
   JobKeySchema,
+  JobOutputInputSchema,
+  JobResizeInputSchema,
+  JobResizeOutputSchema,
+  JobSettledInputSchema,
   JobStateSchema,
+  JobStopInputSchema,
+  JobStopOutputSchema,
   JobViewSchema,
+  JobWriteInputSchema,
+  JobWriteOutputSchema,
+  JobsListInputSchema,
+  JobsListOutputSchema,
+  JobsRecoverInputSchema,
+  JobsRecoverOutputSchema,
+  JobsStartInputSchema,
+  JobsStartOutputSchema,
+  JobsWatchInputSchema,
+  JobsWatchOutputSchema,
   JournalEntrySchema,
   JsonObjectSchema,
   JsonType,
   JsonValueSchema,
   LineStatSchema,
+  LoginAnswerInputSchema,
+  LoginAnswerOutputSchema,
   LoginMethodSchema,
+  LoginStepsInputSchema,
+  LoginStepsOutputSchema,
   MergeOutcomeSchema,
   MessageIdSchema,
   MessageSchema,
@@ -84,20 +166,62 @@ import {
   ModelInfoSchema,
   ModelRefSchema,
   ModelRequestSchema,
+  ModelsListInputSchema,
+  ModelsLoginInputSchema,
+  ModelsLoginOutputSchema,
+  ModelsLogoutInputSchema,
+  ModelsLogoutOutputSchema,
+  ModelsRefreshInputSchema,
+  ModelsRefreshOutputSchema,
+  ModelsSetDefaultInputSchema,
+  ModelsSetDefaultOutputSchema,
+  ModelsVerifyInputSchema,
+  ModelsVerifyOutputSchema,
   MoveOptionsSchema,
   MoveOutcomeSchema,
   ObjectIdSchema,
   OutputFrameSchema,
   OutputFrameType,
+  PageBackInputSchema,
+  PageCaptureInputSchema,
+  PageCaptureOutputSchema,
+  PageClickInputSchema,
+  PageCloseInputSchema,
+  PageCloseOutputSchema,
+  PageConsoleInputSchema,
+  PageConsoleOutputSchema,
+  PageEvaluateInputSchema,
+  PageEvaluateOutputSchema,
+  PageForwardInputSchema,
   PageIdSchema,
   PageInfoSchema,
+  PageNavigateInputSchema,
   PageOutcomeSchema,
+  PagePressInputSchema,
+  PageReloadInputSchema,
+  PageScrollInputSchema,
+  PageSnapshotInputSchema,
   PageSnapshotSchema,
+  PageStopLoadingInputSchema,
+  PageTypeInputSchema,
+  PageViewInputSchema,
   PageViewSchema,
+  PageWaitInputSchema,
+  PageWatchInputSchema,
   ParentFilterSchema,
+  PartActInputSchema,
+  PartActOutputSchema,
+  PartAnswerInputSchema,
+  PartAnswerOutputSchema,
+  PartCloseInputSchema,
+  PartCloseOutputSchema,
   PartIdSchema,
   PartStatusSchema,
+  PartUpdateInputSchema,
+  PartUpdateOutputSchema,
   PartViewSchema,
+  PartsCreateInputSchema,
+  PartsCreateOutputSchema,
   PatchEntrySchema,
   PatchEventSchema,
   PatchSetWireSchema,
@@ -105,11 +229,27 @@ import {
   PluginCheckReportSchema,
   PluginLoadOutcomeSchema,
   PluginReplacementReportSchema,
+  PluginsCheckInputSchema,
+  PluginsReplaceInputSchema,
   PositionSchema,
   PrincipalIdSchema,
   PrincipalViewWireSchema,
+  PrincipalsListInputSchema,
+  PrincipalsListOutputSchema,
+  PrincipalsPairInputSchema,
+  PrincipalsPairOutputSchema,
+  PrincipalsRevokeInputSchema,
+  PrincipalsRevokeOutputSchema,
+  PromptOverrideSchema,
   PruneReportSchema,
   ReceiptIdSchema,
+  ReceiptLandedInputSchema,
+  ReceiptLandedOutputSchema,
+  ReceiptSettledInputSchema,
+  ReceiptStatusInputSchema,
+  ReceiptStatusOutputSchema,
+  ReceiptStopInputSchema,
+  ReceiptStopOutputSchema,
   RefSchema,
   RefUpdateSchema,
   RemoveHeadOutcomeSchema,
@@ -119,6 +259,9 @@ import {
   RunEndSchema,
   RunEndType,
   RunIdSchema,
+  RunSettledInputSchema,
+  RunStopInputSchema,
+  RunStopOutputSchema,
   RunViewSchema,
   ScanFrameSchema,
   ScheduleSchema,
@@ -128,14 +271,27 @@ import {
   SeqSchema,
   SeqType,
   SessionCatalogViewSchema,
+  SessionCommandInputSchema,
   SessionEventSchema,
   SessionIdSchema,
+  SessionInfoInputSchema,
   SessionInfoSchema,
   SessionInfoType,
+  SessionRemoveInputSchema,
+  SessionStopInputSchema,
+  SessionStopOutputSchema,
+  SessionUpdateInputSchema,
   SessionViewSchema,
+  SessionsCreateInputSchema,
+  SessionsCreateOutputSchema,
+  SessionsListInputSchema,
+  SessionsListOutputSchema,
+  SessionsWatchInputSchema,
+  SessionsWatchOutputSchema,
   SetOutcomeSchema,
   SettingInfoSchema,
   SettingOutcomeSchema,
+  SettingsApplyInputSchema,
   SkillInfoSchema,
   SnapshotIdSchema,
   SubmissionSchema,
@@ -160,10 +316,26 @@ import {
   ViewOptionsSchema,
   WaitOutcomeSchema,
   WaitTargetSchema,
+  WorkspaceBrowserInputSchema,
+  WorkspaceChangesInputSchema,
+  WorkspaceFilesInputSchema,
+  WorkspaceGitInputSchema,
   WorkspaceIdSchema,
+  WorkspaceInfoInputSchema,
   WorkspaceInfoSchema,
   WorkspaceInspectionSchema,
+  WorkspacePatchesInputSchema,
+  WorkspaceReloadInputSchema,
+  WorkspaceReloadOutputSchema,
   WorkspaceTargetSchema,
+  WorkspaceUpdateInputSchema,
+  WorkspaceUpdateOutputSchema,
+  WorkspaceWatchInputSchema,
+  WorkspacesAddInputSchema,
+  WorkspacesForgetInputSchema,
+  WorkspacesInspectInputSchema,
+  WorkspacesListInputSchema,
+  WorkspacesListOutputSchema,
   WriteOutcomeSchema,
   actOutcomeSchema,
   asId,
@@ -210,10 +382,19 @@ import type {
 } from "../src/index.ts";
 import type { Failure } from "../src/model/index.ts";
 
-type Case = { readonly schema: Schema<unknown>; readonly good: unknown; readonly bad: unknown };
+type Case = {
+  readonly schema: Schema<unknown>;
+  readonly good: unknown;
+  readonly bad: unknown;
+  readonly decoded?: unknown;
+};
 
 function sample<T>(schema: Schema<T>, good: NoInfer<T>, bad: unknown): Case {
   return { schema, good, bad };
+}
+
+function operation(schema: Schema<unknown>, good: unknown, bad: unknown, decoded?: unknown): Case {
+  return { schema, good, bad, decoded };
 }
 
 function ids(value: unknown): readonly string[] {
@@ -667,7 +848,617 @@ const durableEvent: DurableEvent = {
   reason: "removed",
 };
 
+const sessionInput = { session };
+const headInput = { session, head };
+const workspaceInput = { workspace };
+const jobInput = { workspace, job };
+const pageInput = { workspace, page };
+const pathInput = { workspace, path: "a.ts" };
+const workspaceInfo = {
+  id: workspace,
+  target: { kind: "local", path: "/repo" },
+  identity,
+  availability: { kind: "available" },
+  projectResources: true,
+  projectSources: [],
+  addedBy: principal,
+  sessions: 0,
+  writers: [],
+};
+const jobView = {
+  id: job,
+  command: "npm test",
+  title: "Tests",
+  session: null,
+  pty: null,
+  state: { kind: "running" },
+  startedAt: 1,
+  endedAt: null,
+  tail: "",
+};
+const pageInfo = { id: page, url: "https://a.b", title: "A", holders: 1 };
+const fileEntry = { path: "a.ts", kind: "file", size: 3, version: fileVersion };
+const gitCompare = { workspace, scope: { kind: "worktree" }, options: { ignoreWhitespace: true } };
+const gitPaths = { workspace, paths: ["a.ts"], options: { expect: gitRevision } };
+const settled = { kind: "settled", outcome: runEnd };
+
+const operations = {
+  ConnectionWatchInputSchema: operation(ConnectionWatchInputSchema, {}, 1),
+  ConnectionBlobInputSchema: operation(ConnectionBlobInputSchema, { id: blob }, {}),
+  ConnectionBlobOutputSchema: operation(
+    ConnectionBlobOutputSchema,
+    "aGk=",
+    "not base64!",
+    Uint8Array.of(104, 105),
+  ),
+  ModelsListInputSchema: operation(ModelsListInputSchema, {}, 1),
+  ModelsRefreshInputSchema: operation(
+    ModelsRefreshInputSchema,
+    { provider: "test" },
+    { provider: 1 },
+  ),
+  ModelsRefreshOutputSchema: operation(ModelsRefreshOutputSchema, null, 0),
+  ModelsSetDefaultInputSchema: operation(
+    ModelsSetDefaultInputSchema,
+    { ref: modelRef },
+    { ref: { provider: "test" } },
+  ),
+  ModelsSetDefaultOutputSchema: operation(
+    ModelsSetDefaultOutputSchema,
+    { kind: "unknown-model" },
+    { kind: "unset" },
+  ),
+  ModelsVerifyInputSchema: operation(ModelsVerifyInputSchema, { provider: "test" }, {}),
+  ModelsVerifyOutputSchema: operation(
+    ModelsVerifyOutputSchema,
+    { kind: "failed", reason: "Expired." },
+    { kind: "failed" },
+  ),
+  ModelsLoginInputSchema: operation(
+    ModelsLoginInputSchema,
+    { provider: "test", method: { kind: "oauth" } },
+    { provider: "test", method: { kind: "device" } },
+  ),
+  ModelsLoginOutputSchema: operation(ModelsLoginOutputSchema, null, {}),
+  ModelsLogoutInputSchema: operation(
+    ModelsLogoutInputSchema,
+    { provider: "test" },
+    { provider: null },
+  ),
+  ModelsLogoutOutputSchema: operation(ModelsLogoutOutputSchema, null, false),
+  LoginStepsInputSchema: operation(LoginStepsInputSchema, { provider: "test" }, {}),
+  LoginStepsOutputSchema: operation(
+    LoginStepsOutputSchema,
+    { kind: "choose", message: "Pick.", options: [{ id: "a", label: "A" }] },
+    { kind: "choose", message: "Pick." },
+  ),
+  LoginAnswerInputSchema: operation(
+    LoginAnswerInputSchema,
+    { provider: "test", code: "123" },
+    { provider: "test" },
+  ),
+  LoginAnswerOutputSchema: operation(LoginAnswerOutputSchema, null, "done"),
+  SettingsApplyInputSchema: operation(
+    SettingsApplyInputSchema,
+    { id: "core/theme", value: { dark: [true] } },
+    { id: "core/theme" },
+  ),
+  WorkspacesListInputSchema: operation(WorkspacesListInputSchema, {}, 1),
+  WorkspacesListOutputSchema: operation(
+    WorkspacesListOutputSchema,
+    [workspaceInfo],
+    [{ id: workspace }],
+  ),
+  WorkspacesInspectInputSchema: operation(
+    WorkspacesInspectInputSchema,
+    { target: { kind: "local", path: "/repo" } },
+    { target: { kind: "local" } },
+  ),
+  WorkspacesAddInputSchema: operation(
+    WorkspacesAddInputSchema,
+    {
+      target: { kind: "local", path: "/repo" },
+      options: { projectResources: false, expect: { identity } },
+    },
+    { target: { kind: "local", path: "/repo" }, options: { expect: {} } },
+  ),
+  WorkspacesForgetInputSchema: operation(WorkspacesForgetInputSchema, { id: workspace }, { id: 1 }),
+  SessionsWatchInputSchema: operation(
+    SessionsWatchInputSchema,
+    { parents: { kind: "roots" }, limit: 50 },
+    { parents: { kind: "orphans" } },
+  ),
+  SessionsWatchOutputSchema: operation(SessionsWatchOutputSchema, [sessionInfo], [{ id: session }]),
+  SessionsCreateInputSchema: operation(
+    SessionsCreateInputSchema,
+    {
+      id: session,
+      name: "Parser",
+      workspace,
+      parent: session,
+      configuration: { thinking: "high" },
+      prompt: { kind: "layer", text: "Be brief.", order: 2 },
+    },
+    { prompt: { kind: "append", text: "x" } },
+  ),
+  SessionsCreateOutputSchema: operation(SessionsCreateOutputSchema, sessionInput, {}),
+  SessionsListInputSchema: operation(
+    SessionsListInputSchema,
+    { parents: { kind: "children", session }, cursor, limit: 10 },
+    { cursor: 1 },
+  ),
+  SessionsListOutputSchema: operation(
+    SessionsListOutputSchema,
+    { items: [sessionInfo], next: null },
+    { items: [] },
+  ),
+  SessionInfoInputSchema: operation(SessionInfoInputSchema, sessionInput, {}),
+  SessionUpdateInputSchema: operation(
+    SessionUpdateInputSchema,
+    { session, patch: { name: null, pinned: true, archived: false, workspace } },
+    { session, patch: { pinned: "yes" } },
+  ),
+  SessionRemoveInputSchema: operation(SessionRemoveInputSchema, sessionInput, { session: null }),
+  SessionStopInputSchema: operation(SessionStopInputSchema, sessionInput, {}),
+  SessionStopOutputSchema: operation(
+    SessionStopOutputSchema,
+    { stopped: [run], withdrawn: [message] },
+    { stopped: [run] },
+  ),
+  SessionCommandInputSchema: operation(
+    SessionCommandInputSchema,
+    { session, name: "core/compact", args: { focus: ["tests"] } },
+    { session, args: {} },
+  ),
+  HeadSendInputSchema: operation(
+    HeadSendInputSchema,
+    { ...headInput, content: userContent, options: sendOptions },
+    { ...headInput, content: 1 },
+  ),
+  HeadSendOutputSchema: operation(HeadSendOutputSchema, { receipt, message }, { receipt }),
+  HeadConfigureInputSchema: operation(
+    HeadConfigureInputSchema,
+    { ...headInput, patch: { thinking: null } },
+    { ...headInput, patch: { thinking: "huge" } },
+  ),
+  HeadViewInputSchema: operation(
+    HeadViewInputSchema,
+    { ...headInput, options: { tail: 20 } },
+    { session },
+  ),
+  HeadWatchInputSchema: operation(
+    HeadWatchInputSchema,
+    { ...headInput, options: { tail: 20 }, after: asSeq(12) },
+    { ...headInput, after: -1 },
+  ),
+  HeadWatchOutputSchema: operation(
+    HeadWatchOutputSchema,
+    { kind: "revision", head, revision },
+    { kind: "revision", head },
+  ),
+  HeadHistoryInputSchema: operation(
+    HeadHistoryInputSchema,
+    { ...headInput, before: message, limit: 20 },
+    { ...headInput, limit: 20 },
+  ),
+  HeadHistoryOutputSchema: operation(HeadHistoryOutputSchema, [userMessage], [{ id: message }]),
+  HeadTreeInputSchema: operation(HeadTreeInputSchema, headInput, { head }),
+  HeadMoveInputSchema: operation(
+    HeadMoveInputSchema,
+    {
+      ...headInput,
+      position: { kind: "commit", id: commit },
+      options: { running: "stop" },
+      id: receipt,
+    },
+    { ...headInput, position: { kind: "commit" } },
+  ),
+  HeadMoveOutputSchema: operation(HeadMoveOutputSchema, { receipt }, {}),
+  HeadCompactInputSchema: operation(
+    HeadCompactInputSchema,
+    { ...headInput, instructions: "Keep the plan." },
+    { ...headInput, instructions: 1 },
+  ),
+  HeadCompactOutputSchema: operation(
+    HeadCompactOutputSchema,
+    { kind: "busy", run },
+    { kind: "busy" },
+  ),
+  HeadsCreateInputSchema: operation(
+    HeadsCreateInputSchema,
+    { session, name: head, input: { from: { kind: "start" } } },
+    { session, input: {} },
+  ),
+  HeadsMergeInputSchema: operation(
+    HeadsMergeInputSchema,
+    { session, name: head, options: { expect: revision } },
+    { session, name: head, options: { expect: 1 } },
+  ),
+  HeadsRemoveInputSchema: operation(
+    HeadsRemoveInputSchema,
+    { session, name: head },
+    { name: head },
+  ),
+  RunStopInputSchema: operation(RunStopInputSchema, { session, run }, { session }),
+  RunStopOutputSchema: operation(RunStopOutputSchema, settled, { kind: "settled" }),
+  RunSettledInputSchema: operation(RunSettledInputSchema, { session, run }, { run }),
+  ReceiptStatusInputSchema: operation(
+    ReceiptStatusInputSchema,
+    { session: null, receipt },
+    { receipt },
+  ),
+  ReceiptStatusOutputSchema: operation(
+    ReceiptStatusOutputSchema,
+    { kind: "settled", outcome: { kind: "applied" } },
+    { kind: "settled" },
+  ),
+  ReceiptSettledInputSchema: operation(
+    ReceiptSettledInputSchema,
+    { session, receipt },
+    { session },
+  ),
+  ReceiptStopInputSchema: operation(
+    ReceiptStopInputSchema,
+    { session: null, receipt },
+    { session: 1, receipt },
+  ),
+  ReceiptStopOutputSchema: operation(
+    ReceiptStopOutputSchema,
+    { kind: "requested" },
+    { kind: "asked" },
+  ),
+  ReceiptLandedInputSchema: operation(
+    ReceiptLandedInputSchema,
+    { session, receipt },
+    { session, receipt: null },
+  ),
+  ReceiptLandedOutputSchema: operation(
+    ReceiptLandedOutputSchema,
+    { kind: "landed", commit, run, replaced: null },
+    { kind: "moved", revision },
+  ),
+  PartsCreateInputSchema: operation(
+    PartsCreateInputSchema,
+    {
+      session,
+      kind: "ask/question",
+      input: { state: { title: "Pick" }, placement: { kind: "modal" }, id: part },
+    },
+    { session, kind: "ask/question", input: { state: null } },
+  ),
+  PartsCreateOutputSchema: operation(PartsCreateOutputSchema, { part }, { part: 1 }),
+  PartUpdateInputSchema: operation(
+    PartUpdateInputSchema,
+    { session, part, next: { title: "B" } },
+    { session, part },
+  ),
+  PartUpdateOutputSchema: operation(
+    PartUpdateOutputSchema,
+    { kind: "invalid", issues: [issue] },
+    { kind: "invalid" },
+  ),
+  PartActInputSchema: operation(
+    PartActInputSchema,
+    { session, part, action: "pick", input: null },
+    { session, part, action: "pick" },
+  ),
+  PartActOutputSchema: operation(PartActOutputSchema, { kind: "ok", output: null }, { kind: "ok" }),
+  PartAnswerInputSchema: operation(PartAnswerInputSchema, { session, part }, { part }),
+  PartAnswerOutputSchema: operation(
+    PartAnswerOutputSchema,
+    { action: "pick", input: { choice: "a" } },
+    { input: 1 },
+  ),
+  PartCloseInputSchema: operation(PartCloseInputSchema, { session, part }, { session }),
+  PartCloseOutputSchema: operation(PartCloseOutputSchema, null, {}),
+  WorkspaceInfoInputSchema: operation(WorkspaceInfoInputSchema, workspaceInput, {}),
+  WorkspaceWatchInputSchema: operation(WorkspaceWatchInputSchema, workspaceInput, { workspace: 1 }),
+  WorkspaceUpdateInputSchema: operation(
+    WorkspaceUpdateInputSchema,
+    { workspace, patch: { projectResources: false } },
+    { workspace, patch: { projectResources: "no" } },
+  ),
+  WorkspaceUpdateOutputSchema: operation(
+    WorkspaceUpdateOutputSchema,
+    { kind: "missing" },
+    { kind: "gone" },
+  ),
+  WorkspaceReloadInputSchema: operation(WorkspaceReloadInputSchema, workspaceInput, {}),
+  WorkspaceReloadOutputSchema: operation(WorkspaceReloadOutputSchema, { kind: "updated" }, {}),
+  WorkspaceChangesInputSchema: operation(
+    WorkspaceChangesInputSchema,
+    { workspace, run },
+    { workspace },
+  ),
+  WorkspacePatchesInputSchema: operation(
+    WorkspacePatchesInputSchema,
+    { workspace, run, paths: ["a.ts"], options: { ignoreWhitespace: false } },
+    { workspace, run, paths: "a.ts" },
+  ),
+  WorkspaceFilesInputSchema: operation(WorkspaceFilesInputSchema, workspaceInput, {}),
+  WorkspaceGitInputSchema: operation(WorkspaceGitInputSchema, workspaceInput, {}),
+  WorkspaceBrowserInputSchema: operation(WorkspaceBrowserInputSchema, workspaceInput, {}),
+  JobsStartInputSchema: operation(
+    JobsStartInputSchema,
+    {
+      workspace,
+      command: "npm test",
+      session,
+      title: "Tests",
+      pty: { columns: 80, rows: 24 },
+      id: job,
+    },
+    { workspace, pty: { columns: 80 } },
+  ),
+  JobsStartOutputSchema: operation(
+    JobsStartOutputSchema,
+    { ...jobView, key: asId<"job-key">("jk1") },
+    jobView,
+  ),
+  JobsRecoverInputSchema: operation(
+    JobsRecoverInputSchema,
+    { workspace, key: asId<"job-key">("jk1") },
+    { workspace },
+  ),
+  JobsRecoverOutputSchema: operation(
+    JobsRecoverOutputSchema,
+    { kind: "ended", end: { kind: "lost" } },
+    { kind: "ended" },
+  ),
+  JobsListInputSchema: operation(JobsListInputSchema, workspaceInput, {}),
+  JobsListOutputSchema: operation(JobsListOutputSchema, [jobView], [{ id: job }]),
+  JobsWatchInputSchema: operation(JobsWatchInputSchema, workspaceInput, {}),
+  JobsWatchOutputSchema: operation(JobsWatchOutputSchema, [], [1]),
+  JobWriteInputSchema: operation(JobWriteInputSchema, jobInput, { workspace }),
+  JobWriteOutputSchema: operation(JobWriteOutputSchema, null, 1),
+  JobOutputInputSchema: operation(JobOutputInputSchema, jobInput, { job }),
+  JobResizeInputSchema: operation(
+    JobResizeInputSchema,
+    { ...jobInput, size: { columns: 120, rows: 40 } },
+    { ...jobInput, size: { columns: 120 } },
+  ),
+  JobResizeOutputSchema: operation(JobResizeOutputSchema, { kind: "not-pty" }, { kind: "shrunk" }),
+  JobIdleInputSchema: operation(JobIdleInputSchema, jobInput, {}),
+  JobIdleOutputSchema: operation(JobIdleOutputSchema, true, "yes"),
+  JobStopInputSchema: operation(JobStopInputSchema, jobInput, {}),
+  JobStopOutputSchema: operation(
+    JobStopOutputSchema,
+    { kind: "settled", outcome: { kind: "lost" } },
+    { kind: "settled" },
+  ),
+  JobSettledInputSchema: operation(JobSettledInputSchema, jobInput, {}),
+  JobCloseInputSchema: operation(JobCloseInputSchema, jobInput, {}),
+  JobCloseOutputSchema: operation(JobCloseOutputSchema, null, []),
+  FilesReadInputSchema: operation(FilesReadInputSchema, pathInput, { workspace }),
+  FilesBytesInputSchema: operation(FilesBytesInputSchema, pathInput, { path: "a.ts" }),
+  FilesBytesOutputSchema: operation(FilesBytesOutputSchema, "", "%%", new Uint8Array()),
+  FilesStatInputSchema: operation(FilesStatInputSchema, pathInput, {}),
+  FilesStatOutputSchema: operation(
+    FilesStatOutputSchema,
+    { kind: "symlink", size: 4, version: fileVersion, target: "b.ts" },
+    { kind: "socket", size: 4, version: fileVersion },
+  ),
+  FilesWriteInputSchema: operation(
+    FilesWriteInputSchema,
+    { ...pathInput, options: { expect: "absent", parents: true } },
+    { ...pathInput, options: { expect: 1 } },
+  ),
+  FilesRemoveInputSchema: operation(
+    FilesRemoveInputSchema,
+    { ...pathInput, options: { expect: fileVersion } },
+    { ...pathInput, options: { expect: null } },
+  ),
+  FilesBatchInputSchema: operation(
+    FilesBatchInputSchema,
+    {
+      workspace,
+      id: receipt,
+      entries: [
+        { kind: "put", path: "a.ts", contents: "x", expect: "absent" },
+        { kind: "remove", path: "b.ts", expect: fileVersion },
+      ],
+    },
+    { workspace, entries: [{ kind: "move", path: "a.ts" }] },
+  ),
+  FilesBatchOutputSchema: operation(FilesBatchOutputSchema, { receipt }, { receipt: null }),
+  FilesFormatInputSchema: operation(
+    FilesFormatInputSchema,
+    { ...pathInput, contents: "x" },
+    pathInput,
+  ),
+  FilesScanInputSchema: operation(
+    FilesScanInputSchema,
+    { workspace, directory: "src", ignored: "include" },
+    { workspace, ignored: "all" },
+  ),
+  FilesFindInputSchema: operation(
+    FilesFindInputSchema,
+    { workspace, query: "parser", limit: 5 },
+    { workspace },
+  ),
+  FilesFindOutputSchema: operation(FilesFindOutputSchema, [fileEntry], [{ path: "a.ts" }]),
+  FilesSearchInputSchema: operation(
+    FilesSearchInputSchema,
+    { workspace, query: "TODO" },
+    { query: "TODO" },
+  ),
+  FilesWatchInputSchema: operation(
+    FilesWatchInputSchema,
+    { workspace, paths: ["src"] },
+    { workspace, paths: "src" },
+  ),
+  FilesWatchOutputSchema: operation(
+    FilesWatchOutputSchema,
+    [{ path: "a.ts", version: null, kind: "removed" }],
+    [{ path: "a.ts", kind: "removed" }],
+  ),
+  FilesUploadInputSchema: operation(FilesUploadInputSchema, workspaceInput, {}),
+  GitStatusInputSchema: operation(GitStatusInputSchema, workspaceInput, {}),
+  GitWatchInputSchema: operation(GitWatchInputSchema, workspaceInput, {}),
+  GitChangesInputSchema: operation(GitChangesInputSchema, gitCompare, { workspace }),
+  GitWatchChangesInputSchema: operation(GitWatchChangesInputSchema, gitCompare, {
+    workspace,
+    scope: {},
+  }),
+  GitPatchesInputSchema: operation(
+    GitPatchesInputSchema,
+    { ...gitCompare, paths: ["a.ts"] },
+    gitCompare,
+  ),
+  GitContentsInputSchema: operation(
+    GitContentsInputSchema,
+    { ...pathInput, scope: { kind: "staged" } },
+    pathInput,
+  ),
+  GitLogInputSchema: operation(
+    GitLogInputSchema,
+    { workspace, cursor, limit: 20 },
+    { workspace, limit: "20" },
+  ),
+  GitLogOutputSchema: operation(
+    GitLogOutputSchema,
+    {
+      items: [{ id: gitCommit, subject: "Fix", author: "A", committedAt: 1, parents: [] }],
+      next: cursor,
+    },
+    { items: [], next: 1 },
+  ),
+  GitRefsInputSchema: operation(GitRefsInputSchema, workspaceInput, {}),
+  GitBlameInputSchema: operation(GitBlameInputSchema, pathInput, { workspace }),
+  GitStageInputSchema: operation(GitStageInputSchema, gitPaths, { workspace }),
+  GitUnstageInputSchema: operation(GitUnstageInputSchema, gitPaths, { workspace, paths: [1] }),
+  GitDiscardInputSchema: operation(GitDiscardInputSchema, gitPaths, { paths: [] }),
+  GitCommitInputSchema: operation(
+    GitCommitInputSchema,
+    {
+      workspace,
+      input: { message: "Fix the parser.", files: ["a.ts"] },
+      options: { expect: gitRevision },
+    },
+    { workspace, input: { message: "Fix.", files: "some" } },
+  ),
+  GitBranchInputSchema: operation(
+    GitBranchInputSchema,
+    { workspace, input: { name: "fix", checkout: true } },
+    { workspace, input: { name: "fix" } },
+  ),
+  GitPushInputSchema: operation(
+    GitPushInputSchema,
+    { workspace, input: { setUpstream: true } },
+    { workspace, input: { setUpstream: "yes" } },
+  ),
+  BrowserOpenInputSchema: operation(
+    BrowserOpenInputSchema,
+    { workspace, url: "https://a.b", id: "open-1" },
+    { workspace, url: 1 },
+  ),
+  BrowserAdoptInputSchema: operation(
+    BrowserAdoptInputSchema,
+    { workspace, id: page },
+    { workspace },
+  ),
+  BrowserListInputSchema: operation(BrowserListInputSchema, workspaceInput, {}),
+  BrowserListOutputSchema: operation(BrowserListOutputSchema, [pageInfo], [{ id: page }]),
+  BrowserWatchInputSchema: operation(BrowserWatchInputSchema, workspaceInput, {}),
+  BrowserWatchOutputSchema: operation(BrowserWatchOutputSchema, [], {}),
+  PageViewInputSchema: operation(PageViewInputSchema, pageInput, { page }),
+  PageWatchInputSchema: operation(PageWatchInputSchema, pageInput, { workspace }),
+  PageSnapshotInputSchema: operation(
+    PageSnapshotInputSchema,
+    { ...pageInput, ref: "e1" },
+    { ...pageInput, ref: 1 },
+  ),
+  PageNavigateInputSchema: operation(
+    PageNavigateInputSchema,
+    { ...pageInput, url: "https://a.b" },
+    pageInput,
+  ),
+  PageBackInputSchema: operation(PageBackInputSchema, pageInput, {}),
+  PageForwardInputSchema: operation(PageForwardInputSchema, pageInput, {}),
+  PageReloadInputSchema: operation(PageReloadInputSchema, pageInput, {}),
+  PageStopLoadingInputSchema: operation(PageStopLoadingInputSchema, pageInput, {}),
+  PageClickInputSchema: operation(
+    PageClickInputSchema,
+    { ...pageInput, ref: "e1", button: "middle", double: true, expect: documentRevision },
+    { ...pageInput, ref: "e1", button: "side" },
+  ),
+  PageTypeInputSchema: operation(
+    PageTypeInputSchema,
+    { ...pageInput, ref: "e1", text: "hi", clear: true, submit: false },
+    { ...pageInput, ref: "e1" },
+  ),
+  PagePressInputSchema: operation(PagePressInputSchema, { ...pageInput, key: "Enter" }, pageInput),
+  PageScrollInputSchema: operation(
+    PageScrollInputSchema,
+    { ...pageInput, direction: "bottom", pages: 2 },
+    { ...pageInput, direction: "left" },
+  ),
+  PageWaitInputSchema: operation(
+    PageWaitInputSchema,
+    { ...pageInput, condition: { kind: "text", text: "Done", present: true } },
+    { ...pageInput, condition: { kind: "idle" } },
+  ),
+  PageConsoleInputSchema: operation(
+    PageConsoleInputSchema,
+    { ...pageInput, limit: 10, clear: true },
+    { ...pageInput, clear: "yes" },
+  ),
+  PageConsoleOutputSchema: operation(
+    PageConsoleOutputSchema,
+    [{ level: "error", text: "Boom.", at: 1 }],
+    [{ level: "fatal", text: "Boom.", at: 1 }],
+  ),
+  PageCaptureInputSchema: operation(PageCaptureInputSchema, pageInput, {}),
+  PageCaptureOutputSchema: operation(PageCaptureOutputSchema, "aGk=", 1, Uint8Array.of(104, 105)),
+  PageEvaluateInputSchema: operation(
+    PageEvaluateInputSchema,
+    { ...pageInput, expression: "document.title", options: { ref: "e1" } },
+    pageInput,
+  ),
+  PageEvaluateOutputSchema: operation(
+    PageEvaluateOutputSchema,
+    { kind: "value", value: { title: "A" } },
+    { kind: "threw" },
+  ),
+  PageCloseInputSchema: operation(PageCloseInputSchema, pageInput, {}),
+  PageCloseOutputSchema: operation(PageCloseOutputSchema, null, "closed"),
+  PluginsReplaceInputSchema: operation(
+    PluginsReplaceInputSchema,
+    { plugins: [{ path: "/plugins/maps.ts" }], scope: { session } },
+    { plugins: [{ id: "maps" }] },
+  ),
+  PluginsCheckInputSchema: operation(
+    PluginsCheckInputSchema,
+    { plugins: [{ path: "/plugins/maps.ts" }] },
+    { plugins: ["/plugins/maps.ts"] },
+  ),
+  PrincipalsListInputSchema: operation(PrincipalsListInputSchema, {}, 1),
+  PrincipalsListOutputSchema: operation(
+    PrincipalsListOutputSchema,
+    [{ id: principal, label: "Phone", authority: ["participant"], pairedAt: 1, lastSeenAt: 2 }],
+    [{ id: principal, label: "Phone", authority: "participant", pairedAt: 1, lastSeenAt: 2 }],
+  ),
+  PrincipalsPairInputSchema: operation(
+    PrincipalsPairInputSchema,
+    { authority: ["participant", "owner"], label: "Phone" },
+    { authority: ["root"] },
+  ),
+  PrincipalsPairOutputSchema: operation(
+    PrincipalsPairOutputSchema,
+    { code: "123-456", expiresAt: 1 },
+    { code: "123-456" },
+  ),
+  PrincipalsRevokeInputSchema: operation(PrincipalsRevokeInputSchema, { id: principal }, {}),
+  PrincipalsRevokeOutputSchema: operation(PrincipalsRevokeOutputSchema, null, true),
+} satisfies Record<string, Case>;
+
 const cases = {
+  ...operations,
+  PromptOverrideSchema: sample(
+    PromptOverrideSchema,
+    { kind: "replace", text: "You are terse." },
+    { kind: "layer" },
+  ),
   SessionIdSchema: sample(SessionIdSchema, session, 42),
   HeadNameSchema: sample(HeadNameSchema, head, null),
   RunIdSchema: sample(RunIdSchema, run, 1),
@@ -1371,25 +2162,23 @@ const wire = new URL("../src/wire/", import.meta.url);
 
 describe("wire schemas", () => {
   it("covers every exported schema", () => {
-    const exported = readdirSync(wire)
-      .filter((file) => file !== "operations.ts")
-      .flatMap((file) =>
-        [
-          ...readFileSync(new URL(file, wire), "utf8").matchAll(/^export const (\w+Schema)\b/gm),
-        ].map((match) => match[1]),
-      );
+    const exported = readdirSync(wire).flatMap((file) =>
+      [...readFileSync(new URL(file, wire), "utf8").matchAll(/^export const (\w+Schema)\b/gm)].map(
+        (match) => match[1],
+      ),
+    );
 
     expect(Object.keys(cases).toSorted()).toEqual(exported.toSorted());
   });
 
   it.each(Object.entries({ ...cases, ...factories }))(
     "%s validates, rejects and emits loadable JSON Schema",
-    async (_name, { schema, good, bad }) => {
+    async (_name, { schema, good, bad, decoded }) => {
       const json = schema["~standard"].jsonSchema.input({ target: "draft-2020-12" });
       const validator = new Validator(structuredClone(json), "2020-12");
       const found = ids(json);
 
-      expect(await schema["~standard"].validate(good)).toEqual({ value: good });
+      expect(await schema["~standard"].validate(good)).toEqual({ value: decoded ?? good });
       expect((await schema["~standard"].validate(bad)).issues?.length).toBeGreaterThan(0);
       expect(validator.validate(good).valid).toBe(true);
       if (isJson(bad)) expect(validator.validate(bad).valid).toBe(false);
@@ -1397,27 +2186,31 @@ describe("wire schemas", () => {
     },
   );
 
-  it("round-trips a branded id and a seq through their codecs", async () => {
-    const codec = Compile(idSchema<"session">());
-    const decoded: SessionId = codec.Decode("s9");
-    const seqs = Compile(SeqType);
+  it("types ids and seqs without codecs, so validating them runs no codec", async () => {
+    const valid = await SessionIdSchema["~standard"].validate("s9");
+    const decoded: SessionId | undefined = valid.issues === undefined ? valid.value : undefined;
 
+    expect(HasCodec(idSchema<"session">())).toBe(false);
+    expect(HasCodec(SeqType)).toBe(false);
+    expect(HasCodec(OutputFrameType)).toBe(true);
     expect(decoded).toBe("s9");
-    expect(codec.Encode(decoded)).toBe("s9");
-    expect(seqs.Encode(seqs.Decode(12))).toBe(12);
-    expect(seqs.Check(1.5)).toBe(false);
-    expect(await SessionIdSchema["~standard"].validate("s9")).toEqual({ value: "s9" });
+    expect((await SeqSchema["~standard"].validate(1.5)).issues?.length).toBeGreaterThan(0);
+  });
+
+  it("returns what passes the check as TypeBox's typed Decode: the value itself without a codec", async () => {
+    const [commit] = events.commit;
+    const valid = await SessionEventSchema["~standard"].validate(commit);
+
+    const kind: SessionEvent["kind"] | undefined =
+      valid.issues === undefined ? valid.value.kind : undefined;
+
+    expect(valid.issues === undefined ? valid.value : undefined).toBe(commit);
+    expect(kind).toBe("commit");
   });
 
   it("carries output bytes as base64", async () => {
-    const frames = Compile(OutputFrameType);
-
     expect(await OutputFrameSchema["~standard"].validate({ kind: "bytes", data: "aGk=" })).toEqual({
       value: { kind: "bytes", data: Uint8Array.of(104, 105) },
-    });
-    expect(frames.Encode({ kind: "bytes", data: Uint8Array.of(104, 105) })).toEqual({
-      kind: "bytes",
-      data: "aGk=",
     });
   });
 

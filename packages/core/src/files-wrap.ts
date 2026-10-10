@@ -16,14 +16,15 @@ import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
 import { typedReceipt } from "./receipt-handles.ts";
 import { settleReceipt } from "./receipts.ts";
-import { isJsonObject, writeReceipt } from "./session-state.ts";
+import { SdkError } from "./error.ts";
+import { isJsonObject, readReceipt, writeReceipt } from "./session-state.ts";
 import { waitFor } from "./waits.ts";
 
 /** Names where a batch receipt lives: a session's store (durable, `session.receipt(id)` finds it), or the host's memory for a workspace reached outside a session (§37b). */
 export type FileScope = { readonly session: SessionId } | { readonly workspace: WorkspaceId };
 
 /** Returns one planned write or removal. */
-type BatchEntry =
+export type BatchEntry =
   | {
       readonly kind: "put";
       readonly path: string;
@@ -39,7 +40,18 @@ const BLOB_ID = /^[0-9a-f]{64}$/;
 
 const BATCH_OUTCOMES: ReadonlySet<string> = new Set(["applied", "stale", "partial", "stopped"]);
 
+const HELD_RECEIPTS = 256;
+
+/** Returns a workspace-scope batch receipt held in memory with what a replay by its id must match: the workspace and the plan's digest. */
+type HeldBatch = {
+  readonly receipt: Receipt<BatchOutcome>;
+  readonly workspace: WorkspaceId;
+  readonly digest: string;
+};
+
 const running = new WeakMap<Kernel, Map<ReceiptId, AbortController>>();
+
+const held = new WeakMap<Kernel, Map<ReceiptId, HeldBatch>>();
 
 /** Returns a provider's files with core's two members laid over them; every other member passes through. `upload(source)` stores the stream with `objects.putBlob` and returns its `BlobId`. `batch()` returns an empty plan; `put` and `remove` return a new plan with the entry appended, leaving the receiver unchanged. `apply()` returns a receipt at once (`Receipt<BatchOutcome>`) and the work then settles it: in a session scope the receipt is a `ReceiptRecord { kind: "batch", digest }` (`digest` the plan's content hash), also reachable as `session.receipt(id)`; in a workspace scope it is held in this process's memory (§37b). Every `expect` is checked first and any moved path settles `stale { paths }` with nothing written; then each entry is applied in plan order (a put creating missing directories; a string naming a stored blob puts that blob's bytes), and a write that answers anything but `saved`, or throws, stops the batch as `partial { applied, remaining, reason }`; all written settles `applied { snapshot, paths }`, `snapshot` the scope's run snapshots `after` keyed by the receipt id, or `EMPTY_SNAPSHOT` when the environment takes none. `stop()` on the receipt before it settles ends it before the next entry as `stopped { applied }`. */
 export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi {
@@ -65,6 +77,11 @@ export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): Fi
   };
 }
 
+/** Returns a batch receipt this process holds in memory for a workspace scope (§37b), by id: what `receipt.*` with a null session reads (§40d); the latest 256 are held. */
+export function heldReceipt(kernel: Kernel, id: ReceiptId): Receipt<BatchOutcome> | undefined {
+  return held.get(kernel)?.get(id)?.receipt;
+}
+
 /** Stops a batch this process is applying, before its next entry; returns whether one was running. What a batch receipt's `stop()` does. */
 export function stopBatch(kernel: Kernel, id: ReceiptId): boolean {
   const controller = running.get(kernel)?.get(id);
@@ -78,25 +95,33 @@ export function isBatchOutcome(value: Json): value is BatchOutcome {
   return isJsonObject(value) && typeof value.kind === "string" && BATCH_OUTCOMES.has(value.kind);
 }
 
-async function applyBatch(
+/** Applies a batch plan over a scope's files and returns its receipt at once, as `FileBatch.apply()` does (see `wrapFiles`). `id` is the receipt's id (minted when absent): an id the scope already holds replays that receipt and applies nothing when the plan's digest matches (and, in a workspace scope, the workspace), else throws `invalid` (§40e, §40x). */
+export async function applyBatch(
   kernel: Kernel,
   scope: FileScope,
   files: FilesApi,
   entries: readonly BatchEntry[],
+  options?: { readonly id?: ReceiptId },
 ): Promise<Receipt<BatchOutcome>> {
-  const id = asId<"receipt">(crypto.randomUUID());
+  const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
   const controller = new AbortController();
   const table = running.get(kernel) ?? new Map<ReceiptId, AbortController>();
   running.set(kernel, table);
 
+  const digest = await digestOf(entries);
+
   if ("session" in scope) {
     const { session } = scope;
-    await writeReceipt(kernel, session, {
-      id,
-      kind: "batch",
-      digest: await digestOf(entries),
-      outcome: null,
-    });
+    const known = await readReceipt(kernel, session, id);
+
+    if (known !== null) {
+      if (known.record.kind !== "batch" || known.record.digest !== digest)
+        throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+      return typedReceipt(kernel, session, id, isBatchOutcome);
+    }
+
+    await writeReceipt(kernel, session, { id, kind: "batch", digest, outcome: null });
     table.set(id, controller);
 
     void execute(kernel, scope, files, entries, id, controller.signal)
@@ -104,6 +129,17 @@ async function applyBatch(
       .finally(() => table.delete(id));
 
     return typedReceipt(kernel, session, id, isBatchOutcome);
+  }
+
+  const receipts = held.get(kernel) ?? new Map<ReceiptId, HeldBatch>();
+  held.set(kernel, receipts);
+  const replayed = receipts.get(id);
+
+  if (replayed !== undefined) {
+    if (replayed.workspace !== scope.workspace || replayed.digest !== digest)
+      throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+    return replayed.receipt;
   }
 
   let outcome: BatchOutcome | null = null;
@@ -118,7 +154,7 @@ async function applyBatch(
     })
     .finally(() => table.delete(id));
 
-  return {
+  const receipt: Receipt<BatchOutcome> = {
     id,
     status: async () => (outcome === null ? { kind: "pending" } : { kind: "settled", outcome }),
     settled: (options) =>
@@ -140,6 +176,15 @@ async function applyBatch(
       return { kind: "requested" };
     },
   };
+
+  receipts.set(id, { receipt, workspace: scope.workspace, digest });
+
+  for (const oldest of receipts.keys()) {
+    if (receipts.size <= HELD_RECEIPTS) break;
+    receipts.delete(oldest);
+  }
+
+  return receipt;
 }
 
 /** Applies a plan and returns its outcome: every `expect` checked first, then each entry in order until one fails or the signal stops the batch. */

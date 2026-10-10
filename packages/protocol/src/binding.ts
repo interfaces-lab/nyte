@@ -1,34 +1,743 @@
-import type { ByteReader } from "@nyte-ai/schema";
-import type { Connection, Host, Kernel } from "@nyte-ai/core";
+import { asId, asSeq, isJson } from "@nyte-ai/schema";
+import type {
+  ByteReader,
+  Capability,
+  CapabilityWire,
+  CommitId,
+  HeadName,
+  HostView,
+  HostViewWire,
+  Json,
+  OutputFrame,
+  PageId,
+  PageInfo,
+  PatchEvent,
+  PatchSet,
+  PatchSetWire,
+  PrincipalId,
+  ReceiptId,
+  SessionEvent,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/schema";
+import {
+  SdkError,
+  advanceSeen,
+  applyBatch,
+  headRef,
+  heldReceipt,
+  move,
+  sendReceipt,
+  sessionEvents,
+} from "@nyte-ai/core";
+import type {
+  BrowserApi,
+  Connection,
+  FilesApi,
+  GitApi,
+  Host,
+  Job,
+  Kernel,
+  Login,
+  Page,
+  Plugin,
+  Receipt,
+} from "@nyte-ai/core";
 import type {
   Declarations,
   OperationInput,
   OperationName,
   OperationOutput,
 } from "./declarations.ts";
+import { mapped } from "./streams.ts";
 
-/** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, a stream of frames for a `watch` or `stream` row, or a byte reader for a row whose frames are bytes. */
-export type Binding = {
-  readonly [N in OperationName]: (
-    input: OperationInput<N>,
-    request: { readonly body: ReadableStream<Uint8Array> | null; readonly signal: AbortSignal },
-  ) => Declarations[N]["kind"] extends "watch" | "stream"
-    ? OperationOutput<N> extends Uint8Array
-      ? Promise<ByteReader>
-      : AsyncIterable<OperationOutput<N>>
-    : Promise<OperationOutput<N>>;
+/** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
+export type BindingRequest = {
+  readonly body: ReadableStream<Uint8Array> | null;
+  readonly signal: AbortSignal;
 };
 
-/** Returns each row bound to the handle call it names on a connection: ids bind handles, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.watch` streams the session's events from the kernel after `Last-Event-ID`, `parts.create` resolves the kind through the kernel's part definitions, and `plugins.*` and `principals.*` go to `host` (absent, `unavailable`). */
-export function bindConnection(
-  connection: Connection,
-  served: {
-    readonly kernel: Pick<
-      Kernel,
-      "store" | "bus" | "activation" | "catalog" | "jobs" | "pages" | "partDefinitions"
-    >;
-    readonly host?: Pick<Host, "plugins" | "principals">;
-  },
-): Binding {
-  throw new Error("not implemented");
+/** Returns a byte row's answer: the reader and the headers the response adds (`X-Nyte-Version` for `files.bytes`, §40p). */
+export type ByteBody = {
+  readonly reader: ByteReader;
+  readonly headers?: Readonly<Record<string, string>>;
+};
+
+/** Names the rows answered once with JSON: queries, commands and receipts. */
+export type CallName = {
+  [N in OperationName]: Declarations[N]["kind"] extends "query" | "command" | "receipt" ? N : never;
+}[OperationName];
+
+/** Names the stream rows whose frames are bytes, answered as a raw octet stream. */
+export type ByteName = {
+  [N in OperationName]: Declarations[N]["kind"] extends "stream"
+    ? OperationOutput<N> extends Uint8Array
+      ? N
+      : never
+    : never;
+}[OperationName];
+
+/** Names the rows answered with JSON frames over server-sent events: every watch and the JSON streams. */
+export type FrameName = Exclude<
+  {
+    [N in OperationName]: Declarations[N]["kind"] extends "watch" | "stream" ? N : never;
+  }[OperationName],
+  ByteName | "job.output"
+>;
+
+/** Returns the bindings of the rows answered once. */
+export type CallBinding = {
+  readonly [N in CallName]: (
+    input: OperationInput<N>,
+    request: BindingRequest,
+  ) => Promise<OperationOutput<N>>;
+};
+
+/** Returns the bindings of the rows answered with JSON frames. */
+export type FrameBinding = {
+  readonly [N in FrameName]: (
+    input: OperationInput<N>,
+    request: BindingRequest,
+  ) => Promise<AsyncIterable<OperationOutput<N>>>;
+};
+
+/** Returns the bindings of the rows answered with bytes. */
+export type ByteBinding = {
+  readonly [N in ByteName]: (
+    input: OperationInput<N>,
+    request: BindingRequest,
+  ) => Promise<ByteBody>;
+};
+
+/** Returns the binding of `job.output`, whose frames are framed bytes and control frames (§40h). */
+export type OutputBinding = {
+  readonly "job.output": (
+    input: OperationInput<"job.output">,
+    request: BindingRequest,
+  ) => Promise<AsyncIterable<OutputFrame>>;
+};
+
+/** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
+export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
+
+/** Describes what a binding needs beyond the connection: the kernel (for the rows that carry a wire-only id, §40o, `head.watch` and `parts.create`), the maintenance surface, and the host's plugin loader. */
+export type BindingOptions = {
+  readonly kernel: Kernel;
+  readonly host?: Pick<Host, "plugins" | "principals">;
+  readonly plugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
+};
+
+const LOGIN_LIFETIME = 10 * 60 * 1000;
+
+const SEEN_DELAY = 16;
+
+type Attempt = {
+  readonly login: Login;
+  readonly timer: ReturnType<typeof setTimeout>;
+  steps: AsyncIterator<OperationOutput<"login.steps">> | null;
+};
+
+const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
+
+const holds = new WeakMap<Kernel, Map<string, Page[]>>();
+
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions (§40c); `plugins.*` load paths through `plugins` and go to `host`, `principals.*` to `host` (absent, `unavailable`); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
+export function bindConnection(connection: Connection, options: BindingOptions): Binding {
+  const { kernel } = options;
+  const { principal } = connection;
+  const logins = attempts.get(kernel) ?? new Map<string, Attempt>();
+  attempts.set(kernel, logins);
+  const pages = holds.get(kernel) ?? new Map<string, Page[]>();
+  holds.set(kernel, pages);
+
+  const session = (id: SessionId) => connection.session(id);
+  const workspace = (id: WorkspaceId) => connection.workspace(id);
+
+  const files = async (id: WorkspaceId): Promise<FilesApi> =>
+    available(await workspace(id).files(), "files");
+
+  const git = async (id: WorkspaceId): Promise<GitApi> =>
+    available(await workspace(id).git(), "git");
+
+  const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
+    available(await workspace(id).browser(), "browser");
+
+  const host = (): Pick<Host, "plugins" | "principals"> =>
+    options.host ?? unavailable("This host serves no maintenance surface.");
+
+  const load = (paths: readonly { readonly path: string }[]) =>
+    (options.plugins ?? unavailable("This host loads no plugin files."))(
+      paths.map((plugin) => plugin.path),
+    );
+
+  const attemptOf = (provider: string): Attempt =>
+    logins.get(keyOf(principal, provider)) ??
+    fail("unknown", `No login for ${provider} is in progress.`);
+
+  const endLogin = (provider: string, attempt: Attempt): void => {
+    clearTimeout(attempt.timer);
+    const key = keyOf(principal, provider);
+
+    if (logins.get(key) === attempt) logins.delete(key);
+    void attempt.steps?.return?.();
+  };
+
+  const hold = (page: Page): Page => {
+    const key = keyOf(principal, page.id);
+    const known = pages.get(key) ?? [];
+    pages.set(key, known.includes(page) ? known : [...known, page]);
+
+    return page;
+  };
+
+  const release = async (page: PageId): Promise<void> => {
+    const key = keyOf(principal, page);
+    const [last, ...rest] = [...(pages.get(key) ?? [])].reverse();
+
+    if (rest.length === 0) pages.delete(key);
+    else pages.set(key, rest.reverse());
+    await last?.close();
+  };
+
+  const pageOf = async (at: WorkspaceId, id: PageId): Promise<Page> =>
+    pages.get(keyOf(principal, id))?.[0] ??
+    kernel.pages.page(id) ??
+    hold(await (await browser(at)).adopt(id));
+
+  const infoOf = async (page: Page): Promise<PageInfo> => {
+    const view = await page.view();
+
+    return {
+      id: page.id,
+      url: view.url,
+      title: view.title,
+      holders: kernel.pages.holders(page.id),
+    };
+  };
+
+  const receiptOf = (at: SessionId | null, id: ReceiptId): Receipt<unknown> | undefined =>
+    at === null ? heldReceipt(kernel, id) : session(at).receipt(id);
+
+  const jobOf = (job: Job): OperationOutput<"jobs.start"> => ({
+    ...(kernel.jobs.get(job.id)?.view ?? fail("unknown", `Job ${job.id} is gone.`)),
+    key: job.key,
+  });
+
+  return {
+    "connection.watch": async () => mapped(connection.watch(), hostWire),
+    "connection.blob": async ({ id }) => ({ reader: await connection.blob(id) }),
+
+    "models.list": () => connection.models.list(),
+    "models.refresh": async ({ provider }) => {
+      await connection.models.refresh(provider);
+
+      return null;
+    },
+    "models.setDefault": ({ ref }) => connection.models.setDefault(ref),
+    "models.verify": ({ provider }) => connection.models.verify(provider),
+    "models.login": async ({ provider, method }) => {
+      const login = connection.models.login({ provider, method });
+      const key = keyOf(principal, provider);
+      const previous = logins.get(key);
+
+      if (previous !== undefined) endLogin(provider, previous);
+
+      const attempt: Attempt = {
+        login,
+        steps: null,
+        timer: setTimeout(() => endLogin(provider, attempt), LOGIN_LIFETIME),
+      };
+
+      logins.set(key, attempt);
+
+      return null;
+    },
+    "models.logout": async ({ provider }) => {
+      await connection.models.logout(provider);
+
+      return null;
+    },
+    "login.steps": async ({ provider }) => {
+      const attempt = attemptOf(provider);
+
+      if (attempt.steps !== null)
+        fail("invalid", `The login for ${provider} is already streaming.`);
+      const steps = attempt.login.steps()[Symbol.asyncIterator]();
+      attempt.steps = steps;
+
+      return {
+        [Symbol.asyncIterator]: () => ({
+          async next() {
+            const next = await steps.next();
+
+            if (next.done === true || next.value.kind === "done" || next.value.kind === "failed")
+              endLogin(provider, attempt);
+
+            return next;
+          },
+          async return() {
+            endLogin(provider, attempt);
+
+            return { done: true, value: undefined };
+          },
+        }),
+      };
+    },
+    "login.answer": async ({ provider, code }) => {
+      await attemptOf(provider).login.answer(code);
+
+      return null;
+    },
+
+    "settings.apply": ({ id, value }) => connection.settings.apply(id, value),
+
+    "workspaces.list": () => connection.workspaces.list(),
+    "workspaces.inspect": ({ target }) => connection.workspaces.inspect(target),
+    "workspaces.add": ({ target, options }) => connection.workspaces.add(target, options),
+    "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
+
+    "sessions.watch": async (input) => connection.sessions.watch(input),
+    "sessions.create": async (input) => ({ session: (await connection.sessions.create(input)).id }),
+    "sessions.list": (input) => connection.sessions.list(input),
+
+    "session.info": ({ session: id }) => session(id).info(),
+    "session.update": ({ session: id, patch }) => session(id).update(patch),
+    "session.remove": ({ session: id }) => session(id).remove(),
+    "session.stop": ({ session: id }) => session(id).stop(),
+    "session.command": ({ session: id, name, args }) => session(id).command(name, args),
+
+    "head.send": async ({ session: id, head, content, options }) => {
+      const receipt = await session(id).head(head).send(content, options);
+
+      return { receipt: receipt.id, message: receipt.message };
+    },
+    "head.configure": ({ session: id, head, patch }) => session(id).head(head).configure(patch),
+    "head.view": ({ session: id, head, options }) => session(id).head(head).view(options),
+    "head.watch": async ({ session: id, head, after }) => {
+      const info = await session(id).info();
+      const events = sessionEvents(kernel, id, after ?? asSeq(0));
+
+      return revisions(
+        kernel,
+        id,
+        info.heads.map((entry) => entry.name),
+        seeing(kernel, principal, id, head, events),
+      );
+    },
+    "head.history": ({ session: id, head, before, limit }) =>
+      session(id).head(head).history({ before, limit }),
+    "head.tree": ({ session: id, head }) => session(id).head(head).tree(),
+    "head.move": async ({ session: id, head, position, options, id: receipt }) => ({
+      receipt: (await move(kernel, id, head, position, { ...options, id: receipt })).id,
+    }),
+    "head.compact": ({ session: id, head, instructions }) =>
+      session(id).head(head).compact({ instructions }),
+
+    "heads.create": ({ session: id, name, input }) => session(id).heads.create(name, input),
+    "heads.merge": ({ session: id, name, options }) => session(id).heads.merge(name, options),
+    "heads.remove": ({ session: id, name, options }) => session(id).heads.remove(name, options),
+
+    "run.stop": ({ session: id, run }) => session(id).run(run).stop(),
+    "run.settled": ({ session: id, run }, { signal }) => session(id).run(run).settled({ signal }),
+
+    "receipt.status": async ({ session: id, receipt }) => {
+      const status = (await receiptOf(id, receipt)?.status()) ?? { kind: "missing" };
+
+      return status.kind === "settled"
+        ? { kind: "settled", outcome: jsonOf(status.outcome) }
+        : status;
+    },
+    "receipt.settled": async ({ session: id, receipt }, { signal }) => {
+      const handle = receiptOf(id, receipt) ?? fail("unknown", `No receipt has the id ${receipt}.`);
+
+      return jsonOf(await handle.settled({ signal }));
+    },
+    "receipt.stop": async ({ session: id, receipt }) => {
+      const stopped = (await receiptOf(id, receipt)?.stop()) ?? { kind: "missing" };
+
+      return stopped.kind === "settled"
+        ? { kind: "settled", outcome: jsonOf(stopped.outcome) }
+        : stopped;
+    },
+    "receipt.landed": async ({ session: id, receipt }) =>
+      sendReceipt(
+        kernel,
+        id ?? fail("invalid", "Only a send's receipt has landed."),
+        receipt,
+      ).landed(),
+
+    "parts.create": async ({ session: id, kind, input }) => {
+      const registered = kernel.partDefinitions.get(kind);
+
+      if (registered === undefined) fail("unknown", `No part definition has the kind ${kind}.`);
+
+      return { part: (await session(id).parts.create(registered.definition, input)).id };
+    },
+    "part.update": ({ session: id, part, next }) => session(id).part(part).update(next),
+    "part.act": async ({ session: id, part, action, input }) => {
+      const outcome = await session(id).part(part).act(action, input);
+
+      return outcome.kind === "ok" ? { kind: "ok", output: jsonOf(outcome.output) } : outcome;
+    },
+    "part.answer": async ({ session: id, part }) => {
+      const answer = await session(id).part(part).answer();
+
+      return answer === null
+        ? null
+        : { action: String(answer.action), input: jsonOf(answer.input) };
+    },
+    "part.close": async ({ session: id, part }) => {
+      await session(id).part(part).close();
+
+      return null;
+    },
+
+    "workspace.info": ({ workspace: id }) => workspace(id).info(),
+    "workspace.watch": async ({ workspace: id }) => workspace(id).watch(),
+    "workspace.update": ({ workspace: id, patch }) => workspace(id).update(patch),
+    "workspace.reload": ({ workspace: id }) => workspace(id).reload(),
+    "workspace.changes": ({ workspace: id, run }) => workspace(id).changes(run),
+    "workspace.patches": async ({ workspace: id, run, paths, options }) =>
+      mapped(workspace(id).patches(run, paths, options), patchesWire),
+    "workspace.files": async ({ workspace: id }) => capabilityWire(await workspace(id).files()),
+    "workspace.git": async ({ workspace: id }) => capabilityWire(await workspace(id).git()),
+    "workspace.browser": async ({ workspace: id }) => capabilityWire(await workspace(id).browser()),
+
+    "jobs.start": async ({ workspace: id, command, session, title, pty, id: job }) =>
+      jobOf(await workspace(id).jobs.start({ command, session, title, pty, id: job })),
+    "jobs.recover": async ({ workspace: id, key }) => {
+      const recovered = await workspace(id).jobs.recover(key);
+
+      return "id" in recovered ? jobOf(recovered) : recovered;
+    },
+    "jobs.list": ({ workspace: id }) => workspace(id).jobs.list(),
+    "jobs.watch": async ({ workspace: id }) => workspace(id).jobs.watch(),
+
+    "job.write": async ({ workspace: id, job }, { body }) => {
+      await workspace(id)
+        .job(job)
+        .write(await bytesOf(body));
+
+      return null;
+    },
+    "job.output": async ({ workspace: id, job }) => workspace(id).job(job).output(),
+    "job.resize": ({ workspace: id, job, size }) => workspace(id).job(job).resize(size),
+    "job.idle": ({ workspace: id, job }) => workspace(id).job(job).idle(),
+    "job.stop": ({ workspace: id, job }) => workspace(id).job(job).stop(),
+    "job.settled": ({ workspace: id, job }, { signal }) =>
+      workspace(id).job(job).settled({ signal }),
+    "job.close": async ({ workspace: id, job }) => {
+      await workspace(id).job(job).close();
+
+      return null;
+    },
+
+    "files.read": async ({ workspace: id, path }) => (await files(id)).read(path),
+    "files.bytes": async ({ workspace: id, path }) => {
+      const reader = await (await files(id)).bytes(path);
+
+      const version =
+        "version" in reader && typeof reader.version === "string" ? reader.version : null;
+
+      return version === null ? { reader } : { reader, headers: { "X-Nyte-Version": version } };
+    },
+    "files.stat": async ({ workspace: id, path }) => (await files(id)).stat(path),
+    "files.write": async ({ workspace: id, path, options }, { body }) =>
+      (await files(id)).write(path, await bytesOf(body), options),
+    "files.remove": async ({ workspace: id, path, options }) =>
+      (await files(id)).remove(path, options),
+    "files.batch": async ({ workspace: id, entries, id: receipt }) => ({
+      receipt: (
+        await applyBatch(kernel, { workspace: id }, await files(id), entries, { id: receipt })
+      ).id,
+    }),
+    "files.format": async ({ workspace: id, path, contents }) =>
+      (await files(id)).format(path, contents),
+    "files.scan": async ({ workspace: id, directory, ignored }) =>
+      (await files(id)).scan({ directory, ignored }),
+    "files.find": async ({ workspace: id, query, limit }) =>
+      (await files(id)).find({ query, limit }),
+    "files.search": async ({ workspace: id, query, limit }) =>
+      (await files(id)).search({ query, limit }),
+    "files.watch": async ({ workspace: id, paths }) => (await files(id)).watch({ paths }),
+    "files.upload": async ({ workspace: id }, { body }) => (await files(id)).upload(chunksOf(body)),
+
+    "git.status": async ({ workspace: id }) => (await git(id)).status(),
+    "git.watch": async ({ workspace: id }) => (await git(id)).watch(),
+    "git.changes": async ({ workspace: id, scope, options }) =>
+      (await git(id)).changes(scope, options),
+    "git.watchChanges": async ({ workspace: id, scope, options }) =>
+      (await git(id)).watchChanges(scope, options),
+    "git.patches": async ({ workspace: id, scope, paths, options }) =>
+      mapped((await git(id)).patches(scope, paths, options), patchesWire),
+    "git.contents": async ({ workspace: id, path, scope }) => (await git(id)).contents(path, scope),
+    "git.log": async ({ workspace: id, cursor, limit }) => (await git(id)).log({ cursor, limit }),
+    "git.refs": async ({ workspace: id }) => (await git(id)).refs(),
+    "git.blame": async ({ workspace: id, path }) => (await git(id)).blame(path),
+    "git.stage": async ({ workspace: id, paths, options }) => (await git(id)).stage(paths, options),
+    "git.unstage": async ({ workspace: id, paths, options }) =>
+      (await git(id)).unstage(paths, options),
+    "git.discard": async ({ workspace: id, paths, options }) =>
+      (await git(id)).discard(paths, options),
+    "git.commit": async ({ workspace: id, input, options }) =>
+      (await git(id)).commit(input, options),
+    "git.branch": async ({ workspace: id, input, options }) =>
+      (await git(id)).branch(input, options),
+    "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
+
+    "browser.open": async ({ workspace: id, url, id: key }) => {
+      const api = await browser(id);
+
+      return infoOf(
+        hold(
+          await kernel.pages.open({
+            id: key,
+            input: { workspace: id, url },
+            open: () => api.open({ url }),
+          }),
+        ),
+      );
+    },
+    "browser.adopt": async ({ workspace: id, id: page }) =>
+      infoOf(hold(await (await browser(id)).adopt(page))),
+    "browser.list": async ({ workspace: id }) => (await browser(id)).list(),
+    "browser.watch": async ({ workspace: id }) => (await browser(id)).watch(),
+
+    "page.view": async ({ workspace: id, page }) => (await pageOf(id, page)).view(),
+    "page.watch": async ({ workspace: id, page }) => (await pageOf(id, page)).watch(),
+    "page.snapshot": async ({ workspace: id, page, ref }) =>
+      (await pageOf(id, page)).snapshot({ ref }),
+    "page.navigate": async ({ workspace: id, page, url }) => (await pageOf(id, page)).navigate(url),
+    "page.back": async ({ workspace: id, page }) => (await pageOf(id, page)).back(),
+    "page.forward": async ({ workspace: id, page }) => (await pageOf(id, page)).forward(),
+    "page.reload": async ({ workspace: id, page }) => (await pageOf(id, page)).reload(),
+    "page.stopLoading": async ({ workspace: id, page }) => (await pageOf(id, page)).stopLoading(),
+    "page.click": async ({ workspace: id, page, ref, button, double, expect }) =>
+      (await pageOf(id, page)).click({ ref, button, double, expect }),
+    "page.type": async ({ workspace: id, page, ref, text, clear, submit, expect }) =>
+      (await pageOf(id, page)).type({ ref, text, clear, submit, expect }),
+    "page.press": async ({ workspace: id, page, key, ref }) =>
+      (await pageOf(id, page)).press({ key, ref }),
+    "page.scroll": async ({ workspace: id, page, direction, ref, pages: count }) =>
+      (await pageOf(id, page)).scroll({ direction, ref, pages: count }),
+    "page.wait": async ({ workspace: id, page, condition }) =>
+      (await pageOf(id, page)).wait(condition),
+    "page.console": async ({ workspace: id, page, limit, clear }) =>
+      (await pageOf(id, page)).console({ limit, clear }),
+    "page.capture": async ({ workspace: id, page }) => ({
+      reader: await (await pageOf(id, page)).capture(),
+    }),
+    "page.evaluate": async ({ workspace: id, page, expression, options }) =>
+      (await pageOf(id, page)).evaluate(expression, options),
+    "page.close": async ({ page }) => {
+      await release(page);
+
+      return null;
+    },
+
+    "plugins.replace": async ({ plugins, scope }) =>
+      host().plugins.replace(await load(plugins), scope),
+    "plugins.check": async ({ plugins }) => host().plugins.check(await load(plugins)),
+
+    "principals.list": async () =>
+      (await host().principals.list()).map((view) => ({ ...view, authority: [...view.authority] })),
+    "principals.pair": ({ authority, label }) =>
+      host().principals.pair({ authority: new Set(authority), label }),
+    "principals.revoke": async ({ id }) => {
+      await host().principals.revoke(id);
+
+      return null;
+    },
+  };
+}
+
+/** Forwards a session's events and writes the principal's seen mark for the head's tip only once the feed is live (§40x): replayed history (the log before the first seed or patch) moves the tracked tip and writes nothing, so a watch closed mid-replay leaves the mark where it was. On the first live frame the tip the history reached is written one frame later, and after that each tip change one frame after it lands, or when the stream closes first, unless the principal's own seen event already names it (§40a). */
+function seeing(
+  kernel: Kernel,
+  principal: PrincipalId,
+  session: SessionId,
+  head: HeadName,
+  source: AsyncIterable<SessionEvent | PatchEvent>,
+): AsyncIterable<SessionEvent | PatchEvent> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = source[Symbol.asyncIterator]();
+      let live = false;
+      let tip: CommitId | null | undefined;
+      let seen: CommitId | null | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let writing: Promise<void> = Promise.resolve();
+
+      const write = (): Promise<void> => {
+        clearTimeout(timer);
+        timer = undefined;
+        const commit = tip;
+
+        if (!live || commit === undefined || commit === seen) return writing;
+        seen = commit;
+
+        writing = writing
+          .then(() => advanceSeen(kernel, { session, principal, head, commit }))
+          .catch(() => undefined);
+
+        return writing;
+      };
+
+      const schedule = (): void => {
+        clearTimeout(timer);
+        timer = setTimeout(() => void write(), SEEN_DELAY);
+      };
+
+      return {
+        async next() {
+          const next = await iterator.next();
+
+          if (next.done === true) {
+            await write();
+
+            return next;
+          }
+
+          const event = next.value;
+
+          if (event.kind === "seen" && event.head === head && event.principal === principal)
+            seen = event.commit;
+          else if ((event.kind === "commit" || event.kind === "head") && event.head === head) {
+            tip = event.kind === "commit" ? event.id : event.to;
+
+            if (live) schedule();
+          }
+
+          if (!live && (event.kind === "patch" || event.seq === 0)) {
+            live = true;
+            schedule();
+          }
+
+          return next;
+        },
+        async return() {
+          await iterator.return?.();
+          await write();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+/** Yields the revision every head of the session holds first, then the session's events, each `commit` or `head` event followed by its head's revision: `kernel.revisions`, else the head ref's, else the empty revision (§40s). */
+function revisions(
+  kernel: Kernel,
+  session: SessionId,
+  heads: readonly HeadName[],
+  source: AsyncIterable<SessionEvent | PatchEvent>,
+): AsyncIterable<OperationOutput<"head.watch">> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = source[Symbol.asyncIterator]();
+      const pending = [...heads];
+
+      return {
+        async next(): Promise<IteratorResult<OperationOutput<"head.watch">>> {
+          const head = pending.shift();
+
+          if (head !== undefined) {
+            const name = headRef(session, head);
+
+            const revision =
+              kernel.revisions.get(name) ??
+              (await kernel.store.refs.get(name))?.revision ??
+              asId<"revision">("");
+
+            return { done: false, value: { kind: "revision", head, revision } };
+          }
+
+          const next = await iterator.next();
+
+          if (next.done === true) return next;
+          const event = next.value;
+
+          if ((event.kind === "commit" || event.kind === "head") && event.head !== null)
+            pending.push(event.head);
+
+          return next;
+        },
+        async return() {
+          await iterator.return?.();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
+  if (body === null) return;
+  const reader = body.getReader();
+
+  try {
+    for (;;) {
+      const read = await reader.read();
+
+      if (read.done) return;
+      yield read.value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function bytesOf(body: ReadableStream<Uint8Array> | null): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+
+  for await (const chunk of chunksOf(body)) chunks.push(chunk);
+  const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return bytes;
+}
+
+function hostWire(view: HostView): HostViewWire {
+  return { ...view, authority: [...view.authority] };
+}
+
+function patchesWire(set: PatchSet): PatchSetWire {
+  return { revision: set.revision, entries: Object.fromEntries(set.entries) };
+}
+
+function capabilityWire<T>(capability: Capability<T>): CapabilityWire {
+  if (capability.kind !== "available") return capability;
+
+  return { kind: "available" };
+}
+
+function available<T>(capability: Capability<T>, what: string): T {
+  if (capability.kind === "available") return capability.api;
+
+  if (capability.kind === "denied") fail("denied", `${what}: ${capability.reason}`);
+
+  return fail("unavailable", `${what}: ${capability.reason}`);
+}
+
+function jsonOf(value: unknown): Json {
+  return isJson(value) ? value : null;
+}
+
+function keyOf(principal: PrincipalId, name: string): string {
+  return JSON.stringify([principal, name]);
+}
+
+function unavailable(message: string): never {
+  throw new SdkError("unavailable", message);
+}
+
+function fail(code: "unknown" | "invalid" | "denied" | "unavailable", message: string): never {
+  throw new SdkError(code, message);
 }
