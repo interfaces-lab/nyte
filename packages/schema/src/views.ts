@@ -86,7 +86,9 @@ export type SessionView = {
  * - user: the submission key. `send()` mints it before the network, the
  *   journal stores it, admission echoes it, the commit carries it.
  * - part: the part id. For text and thinking `${run}:${attempt}:${index}`,
- *   for tool the call id, for compaction and branchSummary the commit id.
+ *   for tool the call id, for compaction and branchSummary the part id,
+ *   minted when the part is created; a commit's id is its object's content
+ *   hash, so it cannot be the id of a part its body names.
  *   The same id live and committed.
  *
  * A withdrawn user message leaves the list. A failed attempt's parts stay

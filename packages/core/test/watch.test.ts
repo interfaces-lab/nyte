@@ -148,11 +148,9 @@ async function land(
   kernel: Kernel,
   session: SessionId,
   message: string,
-  commit: string,
   parent: CommitId | null,
-): Promise<void> {
+): Promise<CommitId> {
   const record: CommitRecord = {
-    id: asId(commit),
     parent,
     at: 0,
     run: null,
@@ -166,6 +164,7 @@ async function land(
     },
   };
 
+  const id: CommitId = asId(await kernel.store.objects.put(envelope("commit", record, 0, parent)));
   await admit(kernel, session, message);
   await write(kernel, [
     {
@@ -176,16 +175,18 @@ async function land(
         kind: "input",
         message: asId(message),
         change: "landed",
-        commit: record.id,
+        commit: id,
         run: null,
       },
     },
     {
       name: headRef(session, main),
       object: envelope("commit", record, 0, parent),
-      event: { head: main, kind: "commit", id: record.id, parent, run: null, body: record.body },
+      event: { head: main, kind: "commit", id, parent, run: null, body: record.body },
     },
   ]);
+
+  return id;
 }
 
 async function seenCommit(
@@ -224,19 +225,19 @@ describe("watch", () => {
   it("advances the principal's seen mark to each tip it yields", async () => {
     const kernel = await kernelOf();
     await createSession(kernel, first, "triage", 1);
-    await land(kernel, first, "m1", "c1", null);
+    const c1 = await land(kernel, first, "m1", null);
 
     for await (const view of watchHead(kernel, { session: first, head: main, principal: ada })) {
-      expect(view.heads[0]).toMatchObject({ tip: { kind: "commit", id: "c1" }, unread: true });
+      expect(view.heads[0]).toMatchObject({ tip: { kind: "commit", id: c1 }, unread: true });
       break;
     }
 
-    expect(await seenCommit(kernel, first, ada)).toBe("c1");
+    expect(await seenCommit(kernel, first, ada)).toBe(c1);
     expect(await seenCommit(kernel, first, bob)).toBeUndefined();
     expect((await sessionInfo(kernel, first, ada))?.heads[0]?.unread).toBe(false);
     expect((await sessionInfo(kernel, first, bob))?.heads[0]?.unread).toBe(true);
 
-    await land(kernel, first, "m2", "c2", asId("c1"));
+    const c2 = await land(kernel, first, "m2", c1);
 
     for await (const view of watchHead(kernel, { session: first, head: main, principal: ada })) {
       expect(view.messages.map((message) => message.id)).toEqual(["m1", "m2"]);
@@ -244,7 +245,7 @@ describe("watch", () => {
       break;
     }
 
-    expect(await seenCommit(kernel, first, ada)).toBe("c2");
+    expect(await seenCommit(kernel, first, ada)).toBe(c2);
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {
@@ -277,7 +278,7 @@ describe("watch", () => {
     expect(project(hold.state(), main)).toBe(one.value);
     expect(other.state()).not.toBe(hold.state());
 
-    await land(kernel, first, "m2", "c1", null);
+    await land(kernel, first, "m2", null);
 
     expect(notified).toBe(3);
     expect(

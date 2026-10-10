@@ -108,8 +108,10 @@ export interface RunTable {
   get(run: RunId): { readonly controller: AbortController; readonly stopping: boolean } | undefined;
   /** Records the run as live and returns its controller; a run already live keeps the one it has. */
   start(run: RunId): AbortController;
-  /** Passes the run's stop fence and aborts its controller, recording it first when it is not live here. */
-  stop(run: RunId): void;
+  /** Marks the run stopping, recording it first when it is not live here, so its patches drop from now on; its signal is not aborted. */
+  markStopping(run: RunId): void;
+  /** Aborts the run's signal: a stop's cleanup, called only once its fence is logged. */
+  abort(run: RunId): void;
   /** Returns whether the run's stop fence is passed. */
   isStopping(run: RunId): boolean;
   /** Returns the run's abort signal, or null when it is not live here. */
@@ -350,10 +352,11 @@ function createRunTable(): RunTable {
   return {
     get: (run) => live.get(run),
     start: (run) => enter(run).controller,
-    stop(run) {
-      const entry = enter(run);
-      entry.stopping = true;
-      entry.controller.abort();
+    markStopping(run) {
+      enter(run).stopping = true;
+    },
+    abort(run) {
+      live.get(run)?.controller.abort();
     },
     isStopping: (run) => live.get(run)?.stopping ?? false,
     signal: (run) => live.get(run)?.controller.signal ?? null,

@@ -1,3 +1,4 @@
+import { asId } from "@nyte-ai/schema";
 import type {
   Execution,
   HeadInfo,
@@ -12,7 +13,6 @@ import type {
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import {
-  decodeCommitRecord,
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
@@ -62,19 +62,20 @@ async function headInfo(
 ): Promise<HeadInfo> {
   const { refs } = kernel.store;
 
-  const [commit, seen] = await Promise.all([
-    refs.get(headRef(id, head.name)).then((ref) => load(kernel, ref, decodeCommitRecord)),
+  const [ref, seen] = await Promise.all([
+    refs.get(headRef(id, head.name)),
     refs.get(seenRef(id, principal, head.name)).then((ref) => load(kernel, ref, decodeSeenRecord)),
   ]);
 
-  const tip: Position = commit === null ? { kind: "start" } : { kind: "commit", id: commit.id };
+  const commit = ref === null || ref.target === null ? null : asId<"commit">(ref.target);
+  const tip: Position = commit === null ? { kind: "start" } : { kind: "commit", id: commit };
 
   return {
     name: head.name,
     tip,
     stack: head.stack,
     execution: run === undefined ? { kind: "idle", lastRun: head.lastRun } : execution(run),
-    unread: (commit?.id ?? null) !== (seen?.commit ?? null),
+    unread: commit !== (seen?.commit ?? null),
   };
 }
 

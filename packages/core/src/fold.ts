@@ -4,6 +4,7 @@ import type {
   BackgroundItem,
   CallId,
   CommitId,
+  Configuration,
   ContextView,
   Delivery,
   Execution,
@@ -111,6 +112,8 @@ export interface FoldInput {
   readonly delivery: Delivery;
   readonly schedule: Schedule;
   readonly covered: boolean;
+  /** The selection admission resolved for this input. */
+  readonly configuration: Configuration;
   readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
   /** Set when it lands. */
   readonly landed: { readonly commit: CommitId; readonly run: RunId | null } | null;
@@ -233,7 +236,7 @@ interface Draft extends Index {
   /** Heads whose tip left the end of their path. */
   readonly walk: Set<HeadName>;
   /** The commit a head's tip moved to. */
-  readonly appended: Map<HeadName, CommitRecord>;
+  readonly appended: Map<HeadName, CommitId>;
   /** Heads whose live parts or pending inputs changed. */
   readonly rebuild: Set<HeadName>;
   readonly swapped: Set<MessageId>;
@@ -436,7 +439,6 @@ function applyCommit(draft: Draft, event: Logged<"commit">): void {
   const name = event.head;
 
   const record: CommitRecord = {
-    id: event.id,
     parent: event.parent,
     at: event.at,
     run: event.run,
@@ -471,7 +473,7 @@ function applyCommit(draft: Draft, event: Logged<"commit">): void {
     ...head,
     info: { ...head.info, tip: { kind: "commit", id: event.id } },
   }));
-  draft.appended.set(name, record);
+  draft.appended.set(name, event.id);
 
   if (tipOf(tip) !== event.parent) draft.walk.add(name);
 
@@ -536,11 +538,7 @@ function addSibling(
   if (added.length === 0) return;
   draft.siblings.set(parent, [...prior, ...added]);
 
-  for (const sibling of prior) {
-    const commit = draft.commits.get(sibling);
-
-    if (commit !== undefined) committed(draft, commit);
-  }
+  for (const sibling of prior) committed(draft, sibling);
 }
 
 function applyHead(draft: Draft, event: Logged<"head">): void {
@@ -670,6 +668,7 @@ function admit(
     delivery: event.delivery,
     schedule: event.schedule,
     covered: event.covered,
+    configuration: event.configuration,
     replaced: event.replaced,
     landed: null,
   });
@@ -1330,8 +1329,8 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
   return touched;
 }
 
-function lineage(draft: Draft, head: FoldHead): readonly CommitRecord[] {
-  const commits: CommitRecord[] = [];
+function lineage(draft: Draft, head: FoldHead): readonly CommitId[] {
+  const commits: CommitId[] = [];
   const visited = new Set<CommitId>();
   let cursor = tipOf(head.info.tip);
 
@@ -1340,7 +1339,7 @@ function lineage(draft: Draft, head: FoldHead): readonly CommitRecord[] {
     const commit = draft.commits.get(cursor);
 
     if (commit === undefined) break;
-    commits.push(commit);
+    commits.push(cursor);
     cursor = commit.parent;
   }
 
@@ -1395,15 +1394,18 @@ function reflowTurns(draft: Draft, path: Path, from: number): void {
   stale(path.turns);
 }
 
-function committed(draft: Draft, commit: CommitRecord): Message | undefined {
+function committed(draft: Draft, id: CommitId): Message | undefined {
+  const commit = draft.commits.get(id);
+
+  if (commit === undefined) return undefined;
   const body = commit.body;
 
   if (body.kind !== "user") return draft.messages.get(messageOf(body.part));
   const message = draft.messages.get(body.message);
 
   if (message?.kind !== "user") return message;
-  const ids = draft.siblings.get(commit.parent) ?? [commit.id];
-  const index = Math.max(0, ids.indexOf(commit.id));
+  const ids = draft.siblings.get(commit.parent) ?? [id];
+  const index = Math.max(0, ids.indexOf(id));
 
   if (
     message.siblings.ids === ids &&

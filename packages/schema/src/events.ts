@@ -144,7 +144,7 @@ export type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & ({ 
  * @since 0.1.0
  */
 export type CommitBody =
-  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly siblings: readonly CommitId[] }
+  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; /** The parent's earlier user commits, in creation order; the fold appends this commit, whose id is its own content hash. */ readonly siblings: readonly CommitId[] }
   | { readonly kind: "part"; readonly part: PartId }
   | { readonly kind: "compaction"; readonly part: PartId; readonly replaces: readonly CommitId[] }
   | { readonly kind: "branchSummary"; readonly part: PartId; readonly replaces: readonly CommitId[] };

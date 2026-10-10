@@ -1,5 +1,6 @@
 import type { Models } from "@nyte-ai/ai";
 import type {
+  Authority,
   BlobId,
   ByteReader,
   CredentialSource,
@@ -18,11 +19,19 @@ import type {
   WorkspaceId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
+import { SdkError } from "./error.ts";
+import { advance, cover, repair } from "./execution.ts";
+import type { Head } from "./head.ts";
 import type { Host } from "./host.ts";
+import { watchHost } from "./host-view.ts";
+import { inspect } from "./inspect.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Plugin } from "./plugin.ts";
+import { ALL_AUTHORITY, LOCAL, requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
+import { sessionHandle } from "./session.ts";
 import type { Session } from "./session.ts";
+import { createSessions } from "./sessions.ts";
 import type { Sessions } from "./sessions.ts";
 import type { Store } from "./store.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
@@ -355,7 +364,146 @@ export interface SettingsApi {
 
 /** Returns a connection bound to the kernel's host as one principal: every member checks its `@authority` tag against the context's authority. */
 export function createConnection(kernel: Kernel, context: ConnectionContext): Connection {
-  throw new Error("not implemented");
+  const need = (needed: Authority, operation: string): void =>
+    requireAuthority(context.authority, needed, operation);
+
+  const streams = new Set<() => void>();
+  const sessions = createSessions(kernel, context);
+
+  const track = <T>(source: AsyncIterable<T>): AsyncIterable<T> => ({
+    [Symbol.asyncIterator]() {
+      const iterator = source[Symbol.asyncIterator]();
+
+      const stop = (): void => {
+        void iterator.return?.();
+      };
+
+      streams.add(stop);
+
+      return {
+        async next() {
+          const result = await iterator.next();
+
+          if (result.done === true) streams.delete(stop);
+
+          return result;
+        },
+        async return() {
+          streams.delete(stop);
+          await iterator.return?.();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  });
+
+  const head = (handle: Head): Head => ({
+    ...handle,
+    watch: (options) => track(handle.watch(options)),
+  });
+
+  const session = (handle: Session): Session => ({
+    ...handle,
+    watch: (options) => track(handle.watch(options)),
+    head: (name) => head(handle.head(name)),
+  });
+
+  const close = async (): Promise<void> => {
+    for (const stop of streams) stop();
+    streams.clear();
+  };
+
+  return {
+    hostId: kernel.hostId,
+    principal: context.principal,
+    credential: context.credential,
+    sessions: {
+      watch: (input) => track(sessions.watch(input)),
+      create: async (input) => session(await sessions.create(input)),
+      list: (input) => sessions.list(input),
+    },
+    workspaces: {
+      async list() {
+        need("participant", "workspaces.list");
+
+        return kernel.workspaces.list();
+      },
+      async inspect(target) {
+        need("owner", "workspaces.inspect");
+
+        return kernel.workspaces.inspect(target);
+      },
+      async add(target, options) {
+        need("owner", "workspaces.add");
+
+        return kernel.workspaces.add(target, options);
+      },
+      async forget(id) {
+        need("owner", "workspaces.forget");
+
+        return kernel.workspaces.forget(id);
+      },
+    },
+    session: (id) => session(sessionHandle(kernel, context, id)),
+    workspace: (id) => kernel.workspace(id),
+    watch() {
+      need("participant", "watch");
+
+      return track(
+        watchHost(kernel, { principal: context.principal, authority: context.authority }),
+      );
+    },
+    async blob(id) {
+      need("participant", "blob");
+      const reader = await kernel.store.objects.blob(id);
+
+      if (reader === null) throw new SdkError("unknown", `No blob has the id ${id}.`);
+
+      return reader;
+    },
+    models: {
+      async list() {
+        need("participant", "models.list");
+
+        return kernel.models.list();
+      },
+      async refresh(provider) {
+        need("owner", "models.refresh");
+
+        return kernel.models.refresh(provider);
+      },
+      async setDefault(ref) {
+        need("owner", "models.setDefault");
+
+        return kernel.models.setDefault(ref);
+      },
+      async verify(provider) {
+        need("owner", "models.verify");
+
+        return kernel.models.verify(provider);
+      },
+      login(input) {
+        need("owner", "models.login");
+
+        return kernel.models.login(input);
+      },
+      async logout(provider) {
+        need("owner", "models.logout");
+
+        return kernel.models.logout(provider);
+      },
+    },
+    settings: {
+      async apply(id, value) {
+        need("owner", "settings.apply");
+
+        return kernel.settings.apply(id, value);
+      },
+    },
+    close,
+    [Symbol.asyncDispose]: close,
+  };
 }
 
 /** Returns the in-process host: a connection as `LOCAL` with every authority, plus plugins, principals, prune, inspect and execution. */
@@ -363,5 +511,53 @@ export function createHost(
   kernel: Kernel,
   input: { readonly credential: CredentialSource },
 ): Omit<Host, "listen"> {
-  throw new Error("not implemented");
+  const context: ConnectionContext = {
+    principal: LOCAL,
+    authority: ALL_AUTHORITY,
+    credential: input.credential,
+    origin: null,
+  };
+
+  const need = (operation: string): void =>
+    requireAuthority(context.authority, "maintenance", operation);
+
+  return {
+    ...createConnection(kernel, context),
+    plugins: {
+      async replace(plugins, scope) {
+        need("plugins.replace");
+
+        return kernel.plugins.replace(plugins, scope);
+      },
+      async check(plugins) {
+        need("plugins.check");
+
+        return kernel.plugins.check(plugins);
+      },
+    },
+    prune: () => kernel.prune(),
+    principals: {
+      async list() {
+        need("principals.list");
+
+        return kernel.principals.list();
+      },
+      async pair(request) {
+        need("principals.pair");
+
+        return kernel.principals.pair(request);
+      },
+      async revoke(id) {
+        need("principals.revoke");
+
+        return kernel.principals.revoke(id);
+      },
+    },
+    inspect: (session) => inspect(kernel, session),
+    execution: {
+      cover: (coverage) => cover(kernel, coverage),
+      advance: (step) => advance(kernel, step),
+      repair: (page) => repair(kernel, page),
+    },
+  };
 }

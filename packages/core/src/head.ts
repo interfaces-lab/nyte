@@ -15,9 +15,26 @@ import type {
   UserContent,
   ViewOptions,
 } from "@nyte-ai/schema";
+import { send } from "./admission.ts";
+import { SdkError } from "./error.ts";
+import { historyHead } from "./history.ts";
 import type { Kernel } from "./kernel.ts";
+import { move } from "./move.ts";
+import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
+import { headRef, sessionRef } from "./refs.ts";
+import {
+  EMPTY_REVISION,
+  STALE,
+  attempt,
+  commit,
+  liveRun,
+  put,
+  requireSession,
+} from "./session-state.ts";
+import { tree } from "./tree.ts";
+import { viewHead, watchHead } from "./watch.ts";
 
 /**
  * Returns one head of a session: a ref into the commit DAG you can send to,
@@ -239,5 +256,109 @@ export function headHandle(
   session: SessionId,
   head: HeadName,
 ): Head {
-  throw new Error("not implemented");
+  const need = (operation: string): void =>
+    requireAuthority(context.authority, "participant", `head.${operation}`);
+
+  const { principal } = context;
+
+  return {
+    sessionId: session,
+    name: head,
+    async send(content, options) {
+      need("send");
+
+      return send(kernel, { session, head, context, content, options });
+    },
+    async configure(patch) {
+      need("configure");
+
+      return configure(kernel, session, head, patch);
+    },
+    async view(options) {
+      need("view");
+
+      return viewHead(kernel, { session, head, principal, options });
+    },
+    watch(options) {
+      need("watch");
+
+      return watchHead(kernel, { session, head, principal, options });
+    },
+    async history(input) {
+      need("history");
+
+      return historyHead(kernel, {
+        session,
+        head,
+        principal,
+        before: input.before,
+        limit: input.limit,
+      });
+    },
+    async tree() {
+      need("tree");
+
+      return tree(kernel, session, head);
+    },
+    async move(position, options) {
+      need("move");
+
+      return move(kernel, session, head, position, options);
+    },
+    async compact(input) {
+      need("compact");
+      const run = await liveRun(kernel, session, head);
+
+      if (run !== null) return { kind: "busy", run: run.record.view.id };
+
+      return kernel.compact({ session, head, instructions: input?.instructions ?? null });
+    },
+  };
+}
+
+async function configure(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  patch: ConfigurationPatch,
+): Promise<ConfigureOutcome> {
+  const found = await requireSession(kernel, session);
+  const entry = found.record.heads.find((current) => current.name === head);
+
+  if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+
+  const selected = await kernel.resolveConfiguration({
+    session,
+    head,
+    selected: entry.selected,
+    patch,
+  });
+
+  if (selected.kind !== "exact") return selected;
+
+  await attempt(`Configuring ${head}`, async () => {
+    const current = await requireSession(kernel, session);
+
+    const record = {
+      ...current.record,
+      heads: current.record.heads.map((other) =>
+        other.name === head ? { ...other, selected } : other,
+      ),
+    };
+
+    const outcome = await commit(kernel, [
+      {
+        name: sessionRef(session),
+        target: await put(kernel, "session", record),
+        expect: current.ref.revision,
+        event: { head, kind: "configured", selected, effective: selected },
+      },
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
+
+  const ref = await kernel.store.refs.get(headRef(session, head));
+
+  return { kind: "configured", selected, revision: ref?.revision ?? EMPTY_REVISION };
 }

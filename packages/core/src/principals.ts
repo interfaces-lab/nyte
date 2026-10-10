@@ -7,6 +7,7 @@ import type {
   PrincipalId,
   RunId,
 } from "@nyte-ai/schema";
+import { SdkError } from "./error.ts";
 
 /** Returns who a connection acts as, what it may do, the credential it reconnects with, and the run it acts from; every handle closes over one. */
 export interface ConnectionContext {
@@ -43,5 +44,6 @@ export function requireAuthority(
   needed: Authority,
   operation: string,
 ): void {
-  throw new Error("not implemented");
+  if (!authority.has(needed))
+    throw new SdkError("denied", `${operation} needs ${needed} authority.`);
 }

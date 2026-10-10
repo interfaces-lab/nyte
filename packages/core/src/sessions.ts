@@ -1,7 +1,15 @@
-import type { Configuration, ConfigurationPatch, Cursor, Paged, ParentFilter, PromptOverride, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
+import type { Configuration, ConfigurationPatch, Cursor, Paged, ParentFilter, PromptOverride, RefUpdate, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/schema";
+import { listSessions, watchSessions } from "./directory.ts";
+import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
+import type { SessionRecord } from "./records.ts";
+import { sessionRef, workspaceRef } from "./refs.ts";
+import { sessionHandle } from "./session.ts";
 import type { Session } from "./session.ts";
+import { MAIN, commit, put, readSession, requireSession, sessionEvent } from "./session-state.ts";
 
 /**
  * Creates, lists and watches the session directory.
@@ -67,5 +75,102 @@ export interface Sessions {
 
 /** Returns the session directory for a connection; every session it creates records `context.origin`, the run, head and call a tool invocation creates children from. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
-  throw new Error("not implemented");
+  const need = (operation: string): void =>
+    requireAuthority(context.authority, "participant", `sessions.${operation}`);
+
+  return {
+    watch(input) {
+      need("watch");
+
+      return watchSessions(kernel, context.principal, input);
+    },
+    async create(input) {
+      need("create");
+
+      return sessionHandle(kernel, context, await create(kernel, context, input ?? {}));
+    },
+    async list(input) {
+      need("list");
+
+      return listSessions(kernel, context.principal, input);
+    },
+  };
+}
+
+async function create(
+  kernel: Kernel,
+  context: ConnectionContext,
+  input: NonNullable<Parameters<Sessions["create"]>[0]>,
+): Promise<SessionId> {
+  const id = input.id ?? asId<"session">(crypto.randomUUID());
+
+  if ((await readSession(kernel, id)) !== null) return id;
+  const parent = input.parent === undefined ? null : await requireSession(kernel, input.parent);
+  const workspace = input.workspace ?? parent?.record.workspace ?? kernel.defaultWorkspace;
+
+  if (workspace === null)
+    throw new SdkError("unknown", "No workspace was named and the host has none by default.");
+
+  if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
+    throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
+
+  const selected = await selectedOf(kernel, id, input.configuration);
+  const at = Date.now();
+
+  const record: SessionRecord = {
+    id,
+    name: input.name ?? null,
+    parent: input.parent ?? null,
+    origin: context.origin,
+    workspace,
+    pinned: false,
+    archived: false,
+    createdAt: at,
+    lastActivityAt: at,
+    heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
+    prompt: input.prompt ?? null,
+  };
+
+  const target = await put(kernel, "session", record, at);
+
+  const configured: readonly RefUpdate[] =
+    selected === null
+      ? []
+      : [
+          {
+            name: sessionRef(id),
+            target,
+            event: { head: MAIN, kind: "configured", selected, effective: selected },
+          },
+        ];
+
+  await commit(kernel, [
+    { name: sessionRef(id), target, expect: "absent", event: await sessionEvent(kernel, record) },
+    ...configured,
+  ]);
+
+  return id;
+}
+
+async function selectedOf(
+  kernel: Kernel,
+  session: SessionId,
+  configuration: Configuration | ConfigurationPatch | undefined,
+): Promise<Configuration | null> {
+  if (configuration === undefined) return null;
+
+  if ("kind" in configuration) return configuration;
+
+  const result = await kernel.resolveConfiguration({
+    session,
+    head: MAIN,
+    selected: null,
+    patch: configuration,
+  });
+
+  if (result.kind === "exact") return result;
+
+  throw new SdkError("invalid", `The configuration is ${result.kind}.`, {
+    issues: result.kind === "invalid" ? result.issues : [],
+  });
 }

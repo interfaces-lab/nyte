@@ -55,9 +55,8 @@ export type HeadRecord = {
   readonly lastRun: { readonly id: RunId; readonly end: RunEnd; readonly endedAt: number } | null;
 };
 
-/** Returns what a head ref targets: one commit in the session's DAG. */
+/** Returns what a head ref targets: one commit in the session's DAG. A commit's id is its object id. */
 export type CommitRecord = {
-  readonly id: CommitId;
   readonly parent: CommitId | null;
   readonly at: number;
   readonly run: RunId | null;
@@ -138,7 +137,8 @@ export type RecordKind =
   | "part"
   | "receipt"
   | "seen"
-  | "workspace";
+  | "workspace"
+  | "lease";
 
 /** Returns a record in the stored-object envelope `{ kind, parent, at, body }`; `parent` is a commit's parent and null for every other record. */
 export function envelope(
@@ -168,6 +168,31 @@ export function decodeRunRecord(object: Json | null): RunRecord | null {
 /** Returns the seen record a stored object holds, or null when it holds another record. */
 export function decodeSeenRecord(object: Json | null): SeenRecord | null {
   return decode(object, "seen", isSeenRecord);
+}
+
+/** Returns the inbox record a stored object holds, or null when it holds another record. */
+export function decodeInboxRecord(object: Json | null): InboxRecord | null {
+  return decode(object, "inbox", isInboxRecord);
+}
+
+/** Returns the message record a stored object holds, or null when it holds another record. */
+export function decodeMessageRecord(object: Json | null): MessageRecord | null {
+  return decode(object, "message", isMessageRecord);
+}
+
+/** Returns the part record a stored object holds, or null when it holds another record. */
+export function decodePartRecord(object: Json | null): PartRecord | null {
+  return decode(object, "part", isPartRecord);
+}
+
+/** Returns the receipt record a stored object holds, or null when it holds another record. */
+export function decodeReceiptRecord(object: Json | null): ReceiptRecord | null {
+  return decode(object, "receipt", isReceiptRecord);
+}
+
+/** Returns the workspace record a stored object holds, or null when it holds another record. */
+export function decodeWorkspaceRecord(object: Json | null): WorkspaceRecord | null {
+  return decode(object, "workspace", isWorkspaceRecord);
 }
 
 function decode<T extends Json>(
@@ -201,7 +226,7 @@ function isSessionRecord(value: Json | undefined): value is SessionRecord {
 function isCommitRecord(value: Json | undefined): value is CommitRecord {
   return (
     isJsonObject(value) &&
-    typeof value.id === "string" &&
+    (value.parent === null || typeof value.parent === "string") &&
     typeof value.at === "number" &&
     isJsonObject(value.body)
   );
@@ -218,4 +243,55 @@ function isRunRecord(value: Json | undefined): value is RunRecord {
 
 function isSeenRecord(value: Json | undefined): value is SeenRecord {
   return isJsonObject(value) && (value.commit === null || typeof value.commit === "string");
+}
+
+function isInboxRecord(value: Json | undefined): value is InboxRecord {
+  return (
+    isJsonObject(value) &&
+    Array.isArray(value.messages) &&
+    value.messages.every((message) => typeof message === "string")
+  );
+}
+
+function isMessageRecord(value: Json | undefined): value is MessageRecord {
+  return (
+    isJsonObject(value) &&
+    typeof value.id === "string" &&
+    typeof value.at === "number" &&
+    typeof value.delivery === "string" &&
+    isJsonObject(value.schedule) &&
+    isJsonObject(value.configuration) &&
+    typeof value.position === "number"
+  );
+}
+
+function isPartRecord(value: Json | undefined): value is PartRecord {
+  return (
+    isJsonObject(value) &&
+    typeof value.id === "string" &&
+    typeof value.partKind === "string" &&
+    isJsonObject(value.placement) &&
+    typeof value.version === "number" &&
+    isJsonObject(value.status)
+  );
+}
+
+function isReceiptRecord(value: Json | undefined): value is ReceiptRecord {
+  return (
+    isJsonObject(value) &&
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    typeof value.digest === "string" &&
+    value.outcome !== undefined
+  );
+}
+
+function isWorkspaceRecord(value: Json | undefined): value is WorkspaceRecord {
+  return (
+    isJsonObject(value) &&
+    typeof value.id === "string" &&
+    isJsonObject(value.target) &&
+    typeof value.identity === "string" &&
+    typeof value.projectResources === "boolean"
+  );
 }

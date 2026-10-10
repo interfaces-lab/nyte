@@ -2554,7 +2554,9 @@ interface SessionView {
  * - user: the submission key. `send()` mints it before the network, the
  *   journal stores it, admission echoes it, the commit carries it.
  * - part: the part id. For text and thinking `${run}:${attempt}:${index}`,
- *   for tool the call id, for compaction and branchSummary the commit id.
+ *   for tool the call id, for compaction and branchSummary the part id,
+ *   minted when the part is created; a commit's id is its object's content
+ *   hash, so it cannot be the id of a part its body names.
  *   The same id live and committed.
  *
  * A withdrawn user message leaves the list. A failed attempt's parts stay
@@ -5553,7 +5555,7 @@ type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & ({ readonl
  * @since 0.1.0
  */
 type CommitBody =
-  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; readonly siblings: readonly CommitId[] }
+  | { readonly kind: "user"; readonly message: MessageId; readonly content: UserContent; readonly source: MessageSource; readonly delivery: Delivery; /** The parent's earlier user commits, in creation order; the fold appends this commit, whose id is its own content hash. */ readonly siblings: readonly CommitId[] }
   | { readonly kind: "part"; readonly part: PartId }
   | { readonly kind: "compaction"; readonly part: PartId; readonly replaces: readonly CommitId[] }
   | { readonly kind: "branchSummary"; readonly part: PartId; readonly replaces: readonly CommitId[] };
