@@ -73,7 +73,8 @@ describe("account configuration", () => {
     expect(policy).toContain("frame-ancestors 'none'");
     expect(policy).not.toContain("'unsafe-eval'");
     expect(policy).not.toContain("telemetry");
-    expect(policy).not.toContain("127.0.0.1");
+    expect(policy).not.toContain("ws://");
+    expect(policy).toContain(" http://127.0.0.1:*");
   });
 
   test("the development policy adds the dev server's socket and eval", () => {

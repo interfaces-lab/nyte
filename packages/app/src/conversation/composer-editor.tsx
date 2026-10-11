@@ -34,7 +34,7 @@ import {
   SKIP_DOM_SELECTION_TAG,
   SKIP_SCROLL_INTO_VIEW_TAG,
 } from "lexical";
-import type { MentionFile } from "@nyte-ai/client";
+import type { MentionFile } from "./message-references.ts";
 import {
   $composerCompletion,
   $composerReferences,

@@ -11,21 +11,19 @@ import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
-import type { RunId, TurnRun } from "@nyte-ai/protocol";
-import { turnPartId } from "@nyte-ai/client";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
-import { livePartKey } from "../live.ts";
-import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
+import { isToolMessage } from "../view-helpers.ts";
 import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import type { StepTurnPart } from "./transcript-presentation.ts";
+import { isThinkingMessage } from "./transcript-presentation.ts";
+import type { StepMessage } from "./transcript-presentation.ts";
 import {
   FOLLOW_INPUT_MS,
   FOLLOW_RESUME_MS,
@@ -43,327 +41,128 @@ const STEP_LIMIT = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
-type StepEntry =
-  | { readonly key: string; readonly kind: "part"; readonly part: StepTurnPart }
-  | { readonly key: string; readonly kind: "live-thinking"; readonly text: string };
-
-function stepEntryKey(part: StepTurnPart): string {
-  return part.kind === "tool" ? part.callId : turnPartId(part);
-}
-
-type ThinkingPart = Extract<StepTurnPart, { readonly kind: "thinking" }>;
-
-type ThinkingKeyInput =
-  | {
-      readonly kind: "live";
-      readonly runId: RunId;
-      readonly attempt: number;
-      readonly contentIndex: number;
-    }
-  | {
-      readonly kind: "settled";
-      readonly run: TurnRun;
-      readonly part: ThinkingPart;
-    };
-
-function createThinkingKey(parts: readonly StepTurnPart[]): (input: ThinkingKeyInput) => string {
-  const settled = new Map<string, string>();
-
-  for (const part of parts) {
-    if (part.kind !== "thinking") continue;
-    const key = stepEntryKey(part);
-    settled.set(key, key);
-  }
-
-  const pending = new Map<
-    string,
-    {
-      readonly runId: RunId;
-      readonly attempt: number;
-      readonly contentIndex: number;
-      readonly key: string;
-    }
-  >();
-
-  return (input): string => {
-    switch (input.kind) {
-      case "live": {
-        const identity = livePartKey(input.runId, input.attempt, input.contentIndex);
-        const key = `thinking:${identity}`;
-        pending.set(identity, { ...input, key });
-
-        return key;
-      }
-
-      case "settled": {
-        const durable = stepEntryKey(input.part);
-        const existing = settled.get(durable);
-
-        if (existing !== undefined) return existing;
-        let runId: RunId | undefined;
-
-        switch (input.run.kind) {
-          case "none":
-            runId = undefined;
-            break;
-          case "run":
-            runId = input.run.id;
-            break;
-          default: {
-            const _exhaustive: never = input.run;
-
-            return _exhaustive;
-          }
-        }
-
-        if (runId === undefined) {
-          settled.set(durable, durable);
-
-          return durable;
-        }
-
-        const matches = [...pending].filter(
-          ([, candidate]) =>
-            candidate.runId === runId && candidate.contentIndex === input.part.contentIndex,
-        );
-
-        const match = matches.length === 1 ? matches[0] : undefined;
-
-        if (match === undefined) {
-          settled.set(durable, durable);
-
-          return durable;
-        }
-
-        const [identity, candidate] = match;
-        pending.delete(identity);
-        settled.set(durable, candidate.key);
-
-        return candidate.key;
-      }
-
-      default: {
-        const _exhaustive: never = input;
-
-        return _exhaustive;
-      }
-    }
-  };
+/** One row of the list: a message, and for reasoning the text of the thoughts it stands for. */
+interface StepEntry {
+  readonly key: string;
+  readonly message: StepMessage;
+  readonly markdown: string;
 }
 
 function StepEntryView({
   entry,
-  liveTools,
   cwd,
   density,
   thinkingOnly,
   titled,
 }: {
   entry: StepEntry;
-  liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
   density: ToolCallDensity;
   thinkingOnly: boolean;
   /** The group header already carries this lone thought's heading. */
   titled: boolean;
 }): ReactElement | null {
-  if (entry.kind === "live-thinking") {
-    return thinkingOnly ? (
+  const { message } = entry;
+
+  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+  const streaming = message.status.kind === "live";
+
+  if (thinkingOnly) {
+    return (
       <div {...props(stepGroupStyles.thinking)}>
         <span {...props(srOnly)}>Reasoning</span>
-        <Prose markdown={entry.text} streaming />
+        <Prose
+          markdown={titled && !streaming ? reasoningHeading(entry.markdown).body : entry.markdown}
+          streaming={streaming}
+        />
       </div>
-    ) : (
-      <ThinkingLine text={entry.text} streaming />
     );
   }
 
-  const { part } = entry;
-
-  switch (part.kind) {
-    case "thinking":
-      return thinkingOnly ? (
-        <div {...props(stepGroupStyles.thinking)}>
-          <span {...props(srOnly)}>Reasoning</span>
-          <Prose markdown={titled ? reasoningHeading(part.text).body : part.text} />
-        </div>
-      ) : (
-        <ThinkingLine text={part.text} streaming={false} />
-      );
-    case "tool":
-      return (
-        <ToolCallView
-          part={part}
-          progress={liveTools.get(part.callId)?.progress}
-          cwd={cwd}
-          density={density}
-        />
-      );
-    default: {
-      const _exhaustive: never = part;
-
-      return _exhaustive;
-    }
-  }
+  return <ThinkingLine text={entry.markdown} streaming={streaming} />;
 }
 
 export function StepGroupView({
-  parts,
-  run,
-  live,
-  liveTools,
+  messages,
   cwd,
   added,
   removed,
   running,
   density,
 }: {
-  parts: readonly StepTurnPart[];
-  run: TurnRun;
-  live?: LiveSnapshot;
-  liveTools: ReadonlyMap<string, LiveToolProgress>;
+  messages: readonly StepMessage[];
   cwd: string | undefined;
   added: number;
   removed: number;
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const liveOrder = live?.order;
-  const liveThoughts = live?.thinking;
-  const presentationTools = live?.tools;
-
-  const presentationLive = useMemo(
-    () =>
-      liveOrder === undefined || presentationTools === undefined
-        ? undefined
-        : { order: liveOrder, tools: presentationTools },
-    [liveOrder, presentationTools],
-  );
-
   const [now] = useState(() => Date.now());
-  const firstPart = parts[0];
+  const first = messages[0];
+  const last = messages.at(-1);
+  const lastAt = last?.status.kind === "settled" ? last.status.endedAt : last?.at;
 
   const durationMs =
-    firstPart === undefined
-      ? 0
-      : Math.max(0, (running ? now : (parts.at(-1)?.at ?? firstPart.at)) - firstPart.at);
+    first === undefined ? 0 : Math.max(0, (running ? now : (lastAt ?? first.at)) - first.at);
 
   const durablePresentation = useMemo(
-    () => durableStepGroupPresentation({ parts, durationMs, added, removed, running }),
-    [added, durationMs, parts, removed, running],
+    () => durableStepGroupPresentation({ messages, durationMs, added, removed, running }),
+    [added, durationMs, messages, removed, running],
   );
 
   const presentation = useMemo(
-    () =>
-      liveStepGroupPresentation({
-        durable: durablePresentation,
-        live: presentationLive,
-      }),
-    [durablePresentation, presentationLive],
+    () => liveStepGroupPresentation({ durable: durablePresentation, messages }),
+    [durablePresentation, messages],
   );
 
   const { active, summary } = presentation;
 
-  const [thinkingKey] = useState(() => createThinkingKey(parts));
+  const thinkingOnly = messages.every(isThinkingMessage);
 
-  const thinkingOnly = parts.every((part) => part.kind === "thinking");
-
-  const liveThinking = useMemo(() => {
-    const merged: StepEntry[] = [];
-    let adjacent = false;
-
-    for (const ref of liveOrder ?? []) {
-      if (ref.kind !== "thinking") {
-        adjacent = false;
-        continue;
-      }
-
-      const liveKey = livePartKey(ref.runId, ref.attempt, ref.index);
-
-      const key = thinkingKey({
-        kind: "live",
-        runId: ref.runId,
-        attempt: ref.attempt,
-        contentIndex: ref.index,
-      });
-
-      const text = liveThoughts?.get(liveKey) ?? "";
-
-      if (text === "") continue;
-      const previous = merged.at(-1);
-
-      if (!thinkingOnly && adjacent && previous?.kind === "live-thinking")
-        merged[merged.length - 1] = { ...previous, text: `${previous.text}\n\n${text}` };
-      else merged.push({ key, kind: "live-thinking", text });
-      adjacent = true;
-    }
-
-    return merged;
-  }, [liveOrder, liveThoughts, thinkingKey, thinkingOnly]);
-
-  const settledEntries = useMemo(
+  const entries = useMemo(
     () =>
-      parts.reduce<StepEntry[]>((merged, part) => {
+      messages.reduce<StepEntry[]>((merged, message) => {
         const previous = merged.at(-1);
 
-        // Consecutive reasoning between tool calls reads as one thought.
         if (
           !thinkingOnly &&
-          part.kind === "thinking" &&
-          previous?.kind === "part" &&
-          previous.part.kind === "thinking"
+          isThinkingMessage(message) &&
+          previous !== undefined &&
+          isThinkingMessage(previous.message)
         ) {
           merged[merged.length - 1] = {
             ...previous,
-            part: { ...previous.part, text: `${previous.part.text}\n\n${part.text}` },
+            message,
+            markdown: `${previous.markdown}\n\n${message.state.markdown}`,
           };
 
           return merged;
         }
 
         merged.push({
-          key:
-            part.kind === "thinking"
-              ? thinkingKey({ kind: "settled", run, part })
-              : stepEntryKey(part),
-          kind: "part",
-          part,
+          key: message.id,
+          message,
+          markdown: isThinkingMessage(message) ? message.state.markdown : "",
         });
 
         return merged;
       }, []),
-    [parts, run, thinkingKey, thinkingOnly],
+    [messages, thinkingOnly],
   );
 
-  const entries = useMemo(
-    () => [...settledEntries, ...liveThinking],
-    [settledEntries, liveThinking],
-  );
-
-  const firstLive = liveOrder?.find((ref) => ref.kind === "thinking");
-
-  const [open, setOpen] = useStepGroupOpen(
-    firstPart !== undefined
-      ? stepEntryKey(firstPart)
-      : firstLive === undefined
-        ? undefined
-        : `live:${firstLive.runId}:${String(firstLive.index)}`,
-    firstPart?.kind === "thinking" && run.kind === "run"
-      ? `live:${run.id}:${String(firstPart.contentIndex)}`
-      : undefined,
-  );
+  const [open, setOpen] = useStepGroupOpen(first?.id, undefined);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);
-  const [onlyThought] = parts;
-  const titled = !active && thinkingOnly && parts.length === 1 && onlyThought !== undefined;
+  const [onlyThought] = messages;
+  const titled = !active && thinkingOnly && messages.length === 1 && onlyThought !== undefined;
 
   const hasContent =
     entries.length > 0 &&
     !(
       titled &&
-      onlyThought.kind === "thinking" &&
-      reasoningHeading(onlyThought.text).body.trim() === ""
+      isThinkingMessage(onlyThought) &&
+      reasoningHeading(onlyThought.state.markdown).body.trim() === ""
     );
 
   const content = stepGroupContent({
@@ -548,7 +347,6 @@ export function StepGroupView({
               <StepEntryView
                 key={entry.key}
                 entry={entry}
-                liveTools={liveTools}
                 cwd={cwd}
                 density={density}
                 thinkingOnly={thinkingOnly}

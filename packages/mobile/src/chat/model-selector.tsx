@@ -1,5 +1,4 @@
-import type { NyteClient } from "@nyte-ai/client";
-import type { ModelInfo, ModelRef } from "@nyte-ai/protocol";
+import type { Connection, ModelInfo, ModelRef } from "@nyte-ai/sdk";
 import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
 import { useRef, useState } from "react";
@@ -21,7 +20,7 @@ export function ModelPickerSheet({
   modelError,
   onSelect,
 }: {
-  client: NyteClient;
+  client: Connection;
   open: boolean;
   onClose: () => void;
   selectedModel: ModelRef | undefined;
@@ -77,24 +76,25 @@ function SheetBody({
   }
 
   const { catalog, refresh } = useModelCatalog(client, open);
-  const current = selectedModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
+
+  const current =
+    selectedModel ?? (catalog.kind === "ready" ? catalog.defaultModel?.ref : undefined);
+
   const models = catalog.kind === "ready" ? catalog.models : [];
 
   const selected = models.find(
-    (model) =>
-      model.id === current?.id &&
-      (current?.provider === undefined || model.provider === current.provider),
+    (model) => model.ref.id === current?.id && model.ref.provider === current.provider,
   );
 
   const search = query.trim().toLocaleLowerCase();
 
   const matches = models.filter((model) =>
-    `${model.name} ${model.provider} ${model.id}`.toLocaleLowerCase().includes(search),
+    `${model.name} ${model.ref.provider} ${model.ref.id}`.toLocaleLowerCase().includes(search),
   );
 
   async function choose(model: ModelInfo) {
     // Re-choosing the session's explicit model would only queue a no-op configure.
-    if (selectedModel?.provider === model.provider && selectedModel.id === model.id) {
+    if (selectedModel?.provider === model.ref.provider && selectedModel.id === model.ref.id) {
       onClose();
 
       return;
@@ -177,7 +177,7 @@ function SheetBody({
           ) : (
             <LegendList
               data={matches}
-              keyExtractor={(model) => JSON.stringify([model.provider, model.id])}
+              keyExtractor={(model) => JSON.stringify([model.ref.provider, model.ref.id])}
               style={{ flex: 1 }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -186,7 +186,7 @@ function SheetBody({
 
                 return (
                   <html.button
-                    aria-label={`${item.name}, ${item.provider}`}
+                    aria-label={`${item.name}, ${item.ref.provider}`}
                     aria-pressed={chosen}
                     disabled={selectingModel}
                     onClick={() => void choose(item)}
@@ -195,7 +195,7 @@ function SheetBody({
                     <html.div style={styles.rowText}>
                       <html.span style={textStyles.body}>{item.name}</html.span>
                       <html.span style={[textStyles.caption, styles.modelName]}>
-                        {item.provider} / {item.id}
+                        {item.ref.provider} / {item.ref.id}
                       </html.span>
                     </html.div>
                   </html.button>

@@ -1,12 +1,29 @@
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
-import { describe, expect, it } from "vitest";
-import { identitySigner } from "../src/identity.ts";
+import { afterEach, describe, expect, it } from "vitest";
+import { seedSigner } from "../src/identity.ts";
+import { identitySigner } from "../src/identity-key.ts";
 
-const secrets = { key: async () => new Uint8Array(32).fill(7) };
+const seed = new Uint8Array(32).fill(7);
 
-describe("identitySigner", () => {
+const folders: string[] = [];
+
+afterEach(async () => {
+  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+});
+
+async function folder(): Promise<string> {
+  const made = await realpath(await mkdtemp(join(tmpdir(), "nyte-identity-")));
+  folders.push(made);
+
+  return made;
+}
+
+describe("seedSigner", () => {
   it("signs nyte/identity, the host id and the nonce with a key the public key verifies", async () => {
-    const signer = await identitySigner(asId("host-1"), secrets);
+    const signer = await seedSigner(asId("host-1"), seed);
     const challenge = await signer.sign("n1");
 
     expect(signer.id).toBe("host-1");
@@ -43,18 +60,43 @@ describe("identitySigner", () => {
     ).toBe(false);
   });
 
-  it("derives one key pair from one secrets key, another from another, and refuses a short key", async () => {
+  it("keeps one key pair per seed, another for another, and refuses a short seed", async () => {
     const [one, two] = await Promise.all([
-      identitySigner(asId("a"), secrets),
-      identitySigner(asId("b"), secrets),
+      seedSigner(asId("a"), seed),
+      seedSigner(asId("b"), seed),
     ]);
 
-    const other = await identitySigner(asId("a"), { key: async () => new Uint8Array(32).fill(8) });
+    const other = await seedSigner(asId("a"), new Uint8Array(32).fill(8));
 
     expect((await one.sign("x")).publicKey).toBe((await two.sign("x")).publicKey);
     expect((await other.sign("x")).publicKey).not.toBe((await one.sign("x")).publicKey);
-    await expect(
-      identitySigner(asId("a"), { key: async () => new Uint8Array(10) }),
-    ).rejects.toMatchObject({ code: "invalid" });
+    await expect(seedSigner(asId("a"), new Uint8Array(10))).rejects.toMatchObject({
+      code: "invalid",
+    });
+  });
+});
+
+describe("identitySigner", () => {
+  it("mints <home>/.nyte/identity.key 0600 once and signs with it on every later open", async () => {
+    const home = await folder();
+    const first = await identitySigner(asId("a"), home);
+    const path = join(home, ".nyte", "identity.key");
+    const stored = new Uint8Array(await readFile(path));
+
+    expect(stored).toHaveLength(32);
+    expect((await first.sign("x")).publicKey).toBe(
+      (await (await seedSigner(asId("a"), stored)).sign("x")).publicKey,
+    );
+    expect((await (await identitySigner(asId("a"), home)).sign("x")).publicKey).toBe(
+      (await first.sign("x")).publicKey,
+    );
+
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
+
+    const short = await folder();
+    await mkdir(join(short, ".nyte"));
+    await writeFile(join(short, ".nyte", "identity.key"), new Uint8Array(10));
+
+    await expect(identitySigner(asId("a"), short)).rejects.toMatchObject({ code: "invalid" });
   });
 });

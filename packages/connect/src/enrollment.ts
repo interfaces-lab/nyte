@@ -1,4 +1,5 @@
-import { createNyteClient, NyteWireError } from "@nyte-ai/client";
+import { SdkError } from "@nyte-ai/core";
+import { createTransport } from "@nyte-ai/protocol";
 import { base64ToBase64Url, base64Url } from "./encoding.ts";
 import { DESKTOP_ROUTES, DEVICE_TOKEN_BYTES, ENROLLMENT_READINESS_SECONDS } from "./schemas.ts";
 
@@ -41,10 +42,10 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * `/v1/info` with the new bearer until the Mac accepts it. The desktop may
- * refuse a just-enrolled device while its lease catches up, so a refusal here
- * is retried with the same bearer for a bounded window. Nothing here enrolls
- * again.
+ * `sessions.list` with the new bearer until the Mac accepts it. The desktop
+ * may refuse a just-enrolled device while its lease catches up, so a refusal
+ * here is retried with the same bearer for a bounded window. Nothing here
+ * enrolls again.
  */
 export async function awaitAcceptance(input: {
   readonly connection: { readonly url: string; readonly token: string };
@@ -65,21 +66,20 @@ export async function awaitAcceptance(input: {
     const timer = setTimeout(stop, remaining);
     input.signal.addEventListener("abort", stop);
 
-    const client = createNyteClient({
-      baseUrl: input.connection.url,
-      token: input.connection.token,
+    const transport = createTransport({
+      url: input.connection.url,
+      headers: async () => ({ Authorization: `Bearer ${input.connection.token}` }),
       fetch: (resource, init) =>
         fetch(resource, { ...init, credentials: "omit", signal: attempt.signal }),
     });
 
     try {
-      await client.info();
+      await transport.invoke("sessions.list", {});
 
       return "accepted";
     } catch (cause) {
       last =
-        cause instanceof NyteWireError &&
-        (cause.code === "unauthorized" || cause.code === "forbidden")
+        cause instanceof SdkError && (cause.code === "unauthenticated" || cause.code === "denied")
           ? "notAccepted"
           : "silent";
     } finally {

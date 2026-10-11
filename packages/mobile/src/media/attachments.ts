@@ -1,4 +1,4 @@
-import type { OperationInput } from "@nyte-ai/protocol";
+import type { UserContent, Workspace } from "@nyte-ai/sdk";
 import { randomUUID } from "expo-crypto";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Image } from "react-native";
@@ -8,13 +8,57 @@ export const MAX_ATTACHMENTS = 3;
 // Three images leave room in the server's 1 MiB JSON body for text and the envelope.
 const MAX_IMAGE_BASE64_LENGTH = 230 * 1024;
 
-type MessagePart = Exclude<OperationInput<"messages.send">["content"], string>[number];
+/** One piece of what the composer sends, before its photos become blobs: text, or JPEG bytes as base64. */
+export type DraftPart =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "image"; readonly mime: string; readonly data: string };
+
+/** What the composer sends: a string, or text and photos in order. */
+export type DraftContent = string | readonly DraftPart[];
 
 export type StagedImage = {
   readonly id: string;
   readonly uri: string;
-  readonly image: Extract<MessagePart, { type: "image" }>;
+  readonly image: Extract<DraftPart, { kind: "image" }>;
 };
+
+/**
+ * Returns a draft as `UserContent`: each photo uploaded to the workspace's
+ * files as a blob, text as it is. Blobs are content-addressed, so sending the
+ * same draft again names the same blob.
+ *
+ * @throws {Error} when the workspace serves no files to upload a photo to.
+ */
+export async function uploadDraft(
+  workspace: Workspace,
+  content: DraftContent,
+): Promise<UserContent> {
+  if (typeof content === "string" || content.every((part) => part.kind === "text"))
+    return typeof content === "string"
+      ? content
+      : content.flatMap((part) => (part.kind === "text" ? [part] : []));
+  const files = await workspace.files();
+
+  if (files.kind !== "available") throw new Error(`Photos can't be sent here: ${files.reason}`);
+
+  return Promise.all(
+    content.map(async (part, index) =>
+      part.kind === "text"
+        ? part
+        : {
+            kind: "file" as const,
+            blob: await files.api.upload(bytesOf(part.data)),
+            mime: part.mime,
+            name: `photo-${String(index + 1)}.jpg`,
+          },
+    ),
+  );
+}
+
+/** Yields base64 as one chunk of bytes. */
+async function* bytesOf(data: string): AsyncIterable<Uint8Array> {
+  yield Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+}
 
 /** Decode locally and re-encode once. Send retries reuse these exact JPEG bytes. */
 export async function prepareImage(source: string): Promise<StagedImage> {
@@ -47,7 +91,7 @@ export async function prepareImage(source: string): Promise<StagedImage> {
           return {
             id: randomUUID(),
             uri: result.uri,
-            image: { type: "image", mimeType: "image/jpeg", data: result.base64 },
+            image: { kind: "image", mime: "image/jpeg", data: result.base64 },
           };
         }
       } finally {

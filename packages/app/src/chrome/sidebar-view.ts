@@ -1,7 +1,6 @@
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { sessionActivityMark } from "../session-activity.ts";
-import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read-state.ts";
-import type { ReadSessions } from "../session-read-state.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -67,17 +66,13 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-/** Untitled chats with no preview are drafts; a name or preview is a finished row. */
+/** Untitled chats with nothing committed on any head are drafts; a name or a message is a finished row. */
 export function sessionIsDraft(session: SessionInfo): boolean {
-  return session.name === undefined && session.preview === undefined;
+  return session.name === null && session.heads.every((head) => head.tip.kind === "start");
 }
 
-export function statusOf(
-  session: SessionInfo,
-  read: ReadSessions,
-  working: ReadonlySet<SessionId>,
-): SessionStatus {
-  const mark = sessionActivityMark(session, working.has(session.sessionId));
+export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
+  const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
     // `sessionMark` reports `waiting` only for a run parked on a reply; one
@@ -89,7 +84,7 @@ export function statusOf(
     case "working":
       return "working";
     case "idle":
-      if (sessionHasUnreadCompletion(session, read)) return "unread";
+      if (sessionHasUnreadCompletion(session)) return "unread";
 
       if (sessionIsDraft(session)) return "draft";
 
@@ -111,17 +106,16 @@ export interface ShelfHold {
 /** Archiving beats the hold, and so does restoring: the row leaves or returns at once. */
 export function shelfOf(
   session: SessionInfo,
-  read: ReadSessions,
   working: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
 ): SessionShelf {
   if (session.archived) return "archived";
 
-  if (hold?.sessionId === session.sessionId && hold.shelf !== "archived") return hold.shelf;
+  if (hold?.sessionId === session.id && hold.shelf !== "archived") return hold.shelf;
 
   if (session.pinned) return "inbox";
 
-  const status = statusOf(session, read, working);
+  const status = statusOf(session, working);
 
   switch (status) {
     case "needs-attention":
@@ -144,7 +138,7 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
   return (
     Number(right.pinned) - Number(left.pinned) ||
     right.lastActivityAt - left.lastActivityAt ||
-    left.sessionId.localeCompare(right.sessionId)
+    left.id.localeCompare(right.id)
   );
 }
 
@@ -154,7 +148,7 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
  * leaves the ranking only when it is archived.
  */
 function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
-  const mark = sessionActivityMark(session, working.has(session.sessionId));
+  const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
     case "waiting":
@@ -191,7 +185,6 @@ function groupSessions(
   grouping: SessionGrouping,
   environment: SessionEnvironment,
   now: number,
-  read: ReadSessions,
   working: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
@@ -213,7 +206,7 @@ function groupSessions(
       };
 
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session, read, working) === status);
+        const members = sessions.filter((session) => statusOf(session, working) === status);
 
         return members.length === 0
           ? []
@@ -254,7 +247,7 @@ export function sessionsForNavigation(
   includeArchived = false,
 ): readonly SessionInfo[] {
   return sessions.filter(
-    (session) => session.parent === undefined && (includeArchived || !session.archived),
+    (session) => session.parent === null && (includeArchived || !session.archived),
   );
 }
 
@@ -264,7 +257,6 @@ export function sessionsForView(
   settings: SessionViewSettings,
   environment: SessionEnvironment = "local",
   now = Date.now(),
-  read: ReadSessions = EMPTY_READ_SESSIONS,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): readonly SessionViewGroup[] {
   if (
@@ -275,13 +267,12 @@ export function sessionsForView(
 
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.length === 0 ||
-      settings.statuses.includes(statusOf(session, read, working)),
+      settings.statuses.length === 0 || settings.statuses.includes(statusOf(session, working)),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));
 
-  return groupSessions(ordered, settings.grouping, environment, now, read, working);
+  return groupSessions(ordered, settings.grouping, environment, now, working);
 }
 
 export function hasSessionFilters(settings: SessionViewSettings): boolean {

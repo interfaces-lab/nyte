@@ -1,31 +1,36 @@
 import { useCallback, useMemo } from "react";
 import { router } from "expo-router";
 import { css, html } from "react-strict-dom";
-import type { ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai/protocol";
-import { waitingCall } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
+import type { ActOutcome, PartId, SessionId, SessionView } from "@nyte-ai/sdk";
 import { spacing } from "../theme.ts";
+import { openQuestion } from "../view-helpers.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import type { ConversationLayout } from "./conversation-layout.ts";
 import { MessageRow } from "./messages.tsx";
 import { MessageScroller } from "./message-scroller.tsx";
-import { conversationRows, transcriptRows } from "./transcript-rows.ts";
+import { conversationRows } from "./transcript-rows.ts";
 import { WaitingSelection } from "./waiting-selection.tsx";
 import { ToolActivitySheet, useActivitySheet } from "./tool-activity-sheet.tsx";
 
 type TimelineProps = {
-  state: SessionState;
+  state: SessionView;
+  sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
-  onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
+  onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
   layout: ConversationLayout;
   headerHeight: number;
 };
 
-export function Timeline({ state, delegateNames, onReply, layout, headerHeight }: TimelineProps) {
-  const waiting = waitingCall(state);
-  const committed = useMemo(() => transcriptRows(state.transcript.items), [state.transcript.items]);
-
-  const transcript = useMemo(() => conversationRows(committed, state), [committed, state]);
+export function Timeline({
+  state,
+  sessionId,
+  delegateNames,
+  onReply,
+  layout,
+  headerHeight,
+}: TimelineProps) {
+  const question = openQuestion(state);
+  const transcript = useMemo(() => conversationRows(state), [state]);
   const activity = useActivitySheet(transcript);
 
   const rows = useMemo(
@@ -40,9 +45,9 @@ export function Timeline({ state, delegateNames, onReply, layout, headerHeight }
 
   const openFile = useCallback(
     (path: string) => {
-      router.push(`/changes/${state.info.sessionId}?path=${encodeURIComponent(path)}`);
+      router.push(`/changes/${sessionId}?path=${encodeURIComponent(path)}`);
     },
-    [state.info.sessionId],
+    [sessionId],
   );
 
   return (
@@ -67,7 +72,12 @@ export function Timeline({ state, delegateNames, onReply, layout, headerHeight }
         }
         ListFooterComponent={
           <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
-            {waiting ? <WaitingSelection waiting={waiting} onReply={onReply} /> : null}
+            {question === undefined ? null : (
+              <WaitingSelection
+                question={question}
+                onReply={(choice) => onReply(question.id, choice)}
+              />
+            )}
           </html.div>
         }
       />

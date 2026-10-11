@@ -146,13 +146,13 @@ export const USER_CODE_LENGTH = 8;
 
 /**
  * Where phones reach a desktop: `<CONNECT_ORIGIN>/r/<environmentId>`, under
- * which the Nyte HTTP client appends `/v1/...` and the phone appends
+ * which a protocol transport appends `/<operation>` and the phone appends
  * `DESKTOP_ROUTES.device`. The broker forwards nothing else under it.
  */
 export const RELAY_PREFIX = "/r/";
 
 /**
- * Desktop routes, outside the Nyte server's `/v1`, reached only through the
+ * Desktop routes, outside the host's operations, reached only through the
  * relay. They run before the server's own auth and grant nothing on their
  * own: enrollment needs a broker signature, and `DELETE device` removes only
  * the device whose bearer token it presents. The public relay never forwards

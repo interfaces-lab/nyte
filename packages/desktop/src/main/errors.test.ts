@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
-import { NyteClosed, UnknownSession } from "@nyte-ai/core";
-import { CursorExpired } from "@nyte-ai/protocol";
-import { WorkspaceFileError, WorkspaceTrustRequired } from "@nyte-ai/host";
+import { SdkError } from "@nyte-ai/sdk";
 import { bridgeError, errorMessage } from "@nyte-ai/app/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
@@ -24,56 +22,37 @@ test("request envelope rejection is redacted before a host is constructed", asyn
   );
 
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "invalid_input");
+  assert.equal(result.error.code, "invalid");
   assert.equal(ipcDiagnostics.size, 0);
   assert.doesNotMatch(JSON.stringify(result), /secret-key|credential/);
 });
 
-test("operation validation retains bounded issues without input values or property names", async () => {
+test("operation validation names no input values or property names", async () => {
   const result = await ipcResult(() =>
-    CALL_INPUT_SCHEMAS["host.login"].Parse({
-      provider: "provider-secret",
-      method: { kind: "api_key", key: "", "secret-property": "secret-value" },
+    CALL_INPUT_SCHEMAS["host.server.connect"].Parse({
+      url: "https://server-secret.example",
+      token: "",
+      "secret-property": "secret-value",
     }),
   );
 
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "invalid_input");
-  assert.ok(result.error.issues.length > 0);
-  assert.ok(result.error.issues.length <= 20);
-  assert.doesNotMatch(JSON.stringify(result), /provider-secret|secret-property|secret-value/);
+  assert.equal(result.error.code, "invalid");
+  assert.doesNotMatch(JSON.stringify(result), /server-secret|secret-property|secret-value/);
   assert.equal(ipcDiagnostics.size, 0);
 });
 
-test("expected failures preserve category and cursor but redact local identifiers", async () => {
-  for (const [cause, code] of [
-    [new CursorExpired(17), "cursor_expired"],
-    [new UnknownSession("secret-session"), "unknown_session"],
-    [new NyteClosed(), "closed"],
-    [new WorkspaceTrustRequired("/secret-project"), "forbidden"],
-  ] as const) {
+test("an sdk failure keeps its code and message and leaves no diagnostic", async () => {
+  for (const code of ["unknown", "stale", "unavailable", "denied"] as const) {
     const result = await ipcResult(() => {
-      throw cause;
+      throw new SdkError(code, "The host answered.");
     });
 
     assert.equal(result.ok, false);
     assert.equal(result.error.code, code);
-
-    if (result.error.code === "cursor_expired") assert.equal(result.error.floor, 17);
-    assert.doesNotMatch(JSON.stringify(result), /secret-session|secret-project/);
+    assert.equal(result.error.message, "The host answered.");
   }
 
-  assert.equal(ipcDiagnostics.size, 0);
-});
-
-test("a file identity race keeps its retry guidance instead of becoming an opaque diagnostic", async () => {
-  const result = await ipcResult(() => {
-    throw new WorkspaceFileError("changed");
-  });
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, "invalid_input");
-  assert.match(result.error.message, /retry the operation/);
   assert.equal(ipcDiagnostics.size, 0);
 });
 
@@ -118,7 +97,7 @@ test("unexpected TypeError is captured once with its original cause and opaque r
 
 test("safe bridge failure is plain cloneable data with a wire cause, not a local exception", async () => {
   const result = await ipcResult(() => {
-    throw new CursorExpired(23);
+    throw new SdkError("stale", "The host moved on.");
   });
 
   assert.equal(result.ok, false);

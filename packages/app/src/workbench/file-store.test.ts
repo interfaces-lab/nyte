@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { asId } from "@nyte-ai/schema";
 import { describe, test } from "vitest";
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import { createFileTabStore } from "./file-store.ts";
@@ -52,14 +53,14 @@ describe("file runtime store", () => {
     store.actions.setDraft(key, first.path, {
       contents: "unsaved",
       savedContents: "disk",
-      version: "v1",
+      version: asId<"file-version">("v1"),
     });
     store.actions.open(key, second);
     store.actions.open(other, first);
     store.actions.setDraft(other, first.path, {
       contents: "other draft",
       savedContents: "disk",
-      version: "v1",
+      version: asId<"file-version">("v1"),
     });
 
     assert.equal(store.getView(key).tabs[0]?.draft?.contents, "unsaved");
@@ -74,7 +75,7 @@ describe("file runtime store", () => {
     store.actions.setDraft(key, first.path, {
       contents: "unsaved",
       savedContents: "disk",
-      version: "v1",
+      version: asId<"file-version">("v1"),
     });
 
     assert.equal(store.actions.close(key, first.path), false);

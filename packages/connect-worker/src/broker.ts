@@ -193,7 +193,9 @@ export function createBroker(dependencies: Dependencies) {
       const publicRelay = url.pathname.startsWith(RELAY_PREFIX);
       const methods = browserMethods(url);
       const origins = parseWebOrigins(env.CONNECT_WEB_ORIGINS) ?? [];
-      const cors = (response: Response) => withBrowserCors({ response, request, origins, methods });
+      const cors = (response: Response) =>
+        withBrowserCors({ response, request, origins, methods, publicRelay });
+
       const browser = browserResponse({ request, origins, methods, publicRelay });
 
       if (browser !== undefined) return cors(browser);

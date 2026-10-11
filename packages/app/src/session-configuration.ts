@@ -1,91 +1,55 @@
 import { mutationOptions } from "@tanstack/react-query";
-import type { MutationState, QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
-import type { SessionsBridge } from "./bridge.ts";
-import { keys } from "./query-keys.ts";
+import type { MutationState } from "@tanstack/react-query";
+import type { ConfigurationPatch, ModelRef, SessionId, SessionView, Thinking } from "@nyte-ai/sdk";
+import { connection, sessionWatch } from "./sdk.tsx";
 
-export type ConfigureSessionPatch = Pick<
-  Parameters<SessionsBridge["configure"]>[0],
-  "model" | "thinkingLevel"
->;
+/** The part of a head's selection the pickers change. */
+export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
 
-/** One sequence for every configure request in the app, so order survives any observer. */
-let nextConfigureStamp = 0;
+/** A configure request still in flight, painted over the view until the next view arrives. */
+export type PendingConfiguration = MutationState<void, Error, ConfigureSessionPatch>;
 
-/** A request's own record: its place in that sequence. */
-interface ConfigureRequest {
-  readonly stamp: number;
-}
-
-export type PendingConfiguration = MutationState<
-  void,
-  Error,
-  ConfigureSessionPatch,
-  ConfigureRequest
->;
-
-export interface SessionSelection {
-  /** Resolves once a read that started after core's reply has landed in the cache; rejects when that read fails. */
-  acknowledge(): Promise<void>;
-}
-
-/** The newest stamp whose acknowledged read the cache holds; nothing yet when the entry is gone. */
-export function acknowledgedThrough(client: QueryClient, sessionId: SessionId): number {
-  return client.getQueryData<number>(keys.sessionAcknowledged(sessionId)) ?? 0;
+/** The model and thinking level a session's pickers show. */
+export interface SessionChoice {
+  readonly model: ModelRef | undefined;
+  readonly thinking: Thinking | undefined;
 }
 
 /**
- * A choice paints from the moment it is made until its acknowledged read lands,
- * newest last. Core admits requests in call order and answers after admitting,
- * so a request stamped before one that has since been acknowledged is already
- * in that acknowledgement's read and stops painting.
+ * The view's selection, else what admission would resolve, with every
+ * pending choice painted over it in call order. A choice stops painting once
+ * the session's next view arrives after the host answered it.
  */
-export function projectSessionConfiguration(
-  session: SessionInfo,
+export function projectSessionChoice(
+  view: SessionView,
   pending: readonly PendingConfiguration[],
-  acknowledged: number,
-): SessionInfo {
-  return pending
-    .filter((mutation) => (mutation.context?.stamp ?? Infinity) > acknowledged)
-    .reduce(
-      (current, mutation) => ({
-        ...current,
-        config: { ...current.config, ...mutation.variables },
-      }),
-      session,
-    );
+): SessionChoice {
+  const stored = view.configuration.selected ?? view.configuration.effective;
+
+  return pending.reduce<SessionChoice>(
+    (current, mutation) => ({
+      model: mutation.variables?.model ?? current.model,
+      thinking:
+        mutation.variables?.thinking === undefined
+          ? current.thinking
+          : (mutation.variables.thinking ?? undefined),
+    }),
+    { model: stored?.model, thinking: stored?.thinking },
+  );
 }
 
-export function sessionConfigurationOptions({
-  client,
-  sessions,
-  sessionId,
-  selection,
-}: {
-  readonly client: QueryClient;
-  readonly sessions: Pick<SessionsBridge, "configure">;
-  readonly sessionId: SessionId;
-  readonly selection: SessionSelection;
-}) {
+/** Configures the session's main head and resolves once the view that follows the answer has arrived. */
+export function sessionConfigurationOptions({ sessionId }: { readonly sessionId: SessionId }) {
   return mutationOptions({
     mutationKey: ["session", sessionId, "configure"],
-    // Desktop IPC never waits for the network; a paused mutation would leave a
-    // choice painted but unsent while the outbox still sends.
     networkMode: "always",
-    onMutate: (): ConfigureRequest => ({ stamp: ++nextConfigureStamp }),
     mutationFn: async (patch: ConfigureSessionPatch) => {
-      const outcome = await sessions.configure({ sessionId, ...patch });
+      const next = sessionWatch(sessionId).next();
+      const outcome = await connection().session(sessionId).configure(patch);
 
-      if (outcome.kind !== "queued") throw new Error("That model setting is no longer available");
-    },
-    // The request stays pending, so its choice keeps painting, until a read made
-    // after core's reply is in the cache. Nothing replays the patch.
-    onSuccess: async (_outcome, _patch, request) => {
-      await client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true });
-      await selection.acknowledge();
-      client.setQueryData<number>(keys.sessionAcknowledged(sessionId), (through) =>
-        Math.max(through ?? 0, request.stamp),
-      );
+      if (outcome.kind !== "configured")
+        throw new Error("That model setting is no longer available");
+      await next;
     },
   });
 }

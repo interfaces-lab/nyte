@@ -28,12 +28,8 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
-import type { Oid } from "@nyte-ai/core";
-import type { SessionTree, SessionTreeNode } from "@nyte-ai/client";
-import type { JsonValue } from "@nyte-ai/schema";
+import type { CommitId, TreeNode, TreeView } from "@nyte-ai/sdk";
 import { GLYPHS, keycap } from "./constants.ts";
-import { userText } from "./format.ts";
-import { isJsonObject, isJsonString } from "./json.ts";
 import type { CliTheme } from "./theme.ts";
 import { PanelLayout } from "./panel-layout.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
@@ -46,12 +42,24 @@ export type TreeFilter = "default" | "no-tools" | "users" | "all";
 
 const FILTER_CYCLE: readonly TreeFilter[] = ["default", "no-tools", "users", "all"];
 
-type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary" | "config";
+type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
+
+/** One commit of the tree with the rows under it, built from the view's flat nodes. */
+interface TreeItem {
+  readonly node: TreeNode;
+  readonly children: TreeItem[];
+}
+
+/** The tree as the selector lays it out: its roots and the head's tip. */
+interface SessionTree {
+  readonly tip: CommitId | null;
+  readonly roots: readonly TreeItem[];
+}
 
 /** One drawn row of the tree. */
 interface TreeRow {
-  readonly oid: Oid;
-  readonly node: SessionTreeNode;
+  readonly oid: CommitId;
+  readonly node: TreeItem;
   /** Gutters, connectors, and the fold glyph, three cells per level. */
   readonly prefix: string;
   /** Drawn with a connector: the first row of a branch. */
@@ -75,7 +83,7 @@ interface Gutter {
 }
 
 interface VisibleNode {
-  readonly node: SessionTreeNode;
+  readonly node: TreeItem;
   readonly children: VisibleNode[];
 }
 
@@ -85,138 +93,41 @@ interface Described {
   readonly text: string;
 }
 
-/** The call a tool result answers, so its row can say what was asked. */
-interface ToolCallSummary {
-  readonly name: string;
-  readonly args: JsonValue;
-}
-
 const MAX_TEXT_CHARS = 200;
-
-const MAX_CALL_CHARS = 50;
 
 function oneLine(text: string): string {
   return text.replace(/\s+/gu, " ").trim().slice(0, MAX_TEXT_CHARS);
 }
 
-function assistantText(node: SessionTreeNode): string {
-  const { body } = node.commit;
+/** Returns the row a commit draws as, from its kind, its part kind and core's one-line preview. */
+function describe(item: TreeItem): Described | undefined {
+  const { node } = item;
+  const text = oneLine(node.preview);
 
-  if (body.kind !== "message" || body.message.role !== "assistant") return "";
+  switch (node.kind) {
+    case "user":
+      return { role: "user", label: "user:", text };
+    case "compaction":
+      return { role: "checkpoint", label: "[compaction]", text };
+    case "branchSummary":
+      return { role: "summary", label: "[branch summary]:", text };
+    case "part":
+      if (node.partKind === "text")
+        return {
+          role: "assistant",
+          label: "assistant:",
+          text: text === "" ? "(no content)" : text,
+        };
 
-  return body.message.content
-    .flatMap((part) => (part.type === "text" ? [part.text] : []))
-    .join(" ");
-}
+      if (node.partKind === "thinking") return { role: "assistant", label: "thinking:", text };
 
-/** The argument worth showing for a call: a path, a command, a pattern, a query, a prompt, else the first string. */
-function callSummary(call: ToolCallSummary): string {
-  const args = call.args;
-
-  if (!isJsonObject(args)) return "";
-  const preferred = ["path", "file_path", "command", "pattern", "query", "prompt", "url"];
-
-  const value =
-    preferred.map((key) => args[key]).find(isJsonString) ?? Object.values(args).find(isJsonString);
-
-  return value === undefined ? "" : oneLine(value).slice(0, MAX_CALL_CHARS);
-}
-
-/** Every tool call in the tree by id, from the assistant messages that made them. */
-function toolCalls(tree: SessionTree): ReadonlyMap<string, ToolCallSummary> {
-  const calls = new Map<string, ToolCallSummary>();
-
-  const visit = (node: SessionTreeNode): void => {
-    const { body } = node.commit;
-
-    if (body.kind === "message" && body.message.role === "assistant") {
-      for (const part of body.message.content) {
-        if (part.type === "toolCall") calls.set(part.id, { name: part.name, args: part.arguments });
-      }
-    }
-
-    for (const child of node.children) visit(child);
-  };
-
-  for (const root of tree.roots) visit(root);
-
-  return calls;
-}
-
-function describe(
-  node: SessionTreeNode,
-  calls: ReadonlyMap<string, ToolCallSummary>,
-): Described | undefined {
-  const { body } = node.commit;
-
-  switch (body.kind) {
-    case "message": {
-      const { message } = body;
-
-      switch (message.role) {
-        case "system":
-          return undefined;
-        case "user":
-          return { role: "user", label: "user:", text: oneLine(userText(message.content)) };
-        case "assistant": {
-          const text = oneLine(assistantText(node));
-
-          if (text !== "") return { role: "assistant", label: "assistant:", text };
-
-          if (message.stopReason === "aborted") {
-            return { role: "assistant", label: "assistant:", text: "(aborted)" };
-          }
-
-          if (message.errorMessage !== undefined) {
-            return { role: "assistant", label: "assistant:", text: oneLine(message.errorMessage) };
-          }
-
-          return { role: "assistant", label: "assistant:", text: "(no content)" };
-        }
-
-        case "toolResult": {
-          const call = calls.get(message.toolCallId);
-          const summary = call === undefined ? "" : callSummary(call);
-
-          return {
-            role: "tool",
-            label: summary === "" ? `[${message.toolName}]` : `[${message.toolName}: ${summary}]`,
-            text: "",
-          };
-        }
-
-        default: {
-          const _exhaustive: never = message;
-
-          return _exhaustive;
-        }
-      }
-    }
-
-    case "usage":
-      return undefined;
-    case "completion":
       return {
         role: "tool",
-        label: `[${body.job.kind === "command" ? "command" : "agent"}: ${body.job.end.kind}]`,
-        text: oneLine(body.job.kind === "command" ? body.job.command : body.job.title),
-      };
-    case "checkpoint":
-      return {
-        role: "checkpoint",
-        label: `[compaction: ${String(Math.round(body.tokensBefore / 1000))}k tokens]`,
-        text: "",
-      };
-    case "summary":
-      return { role: "summary", label: "[branch summary]:", text: oneLine(body.text) };
-    case "config":
-      return {
-        role: "config",
-        label: `[config: ${body.model?.id ?? body.thinkingLevel ?? body.agent ?? ""}]`,
+        label: `[${node.partKind ?? "part"}${text === "" ? "" : `: ${text}`}]`,
         text: "",
       };
     default: {
-      const _exhaustive: never = body;
+      const _exhaustive: never = node.kind;
 
       return _exhaustive;
     }
@@ -224,29 +135,19 @@ function describe(
 }
 
 /** Whether a node shows under a filter; the head's tip always does. */
-function passes(node: SessionTreeNode, filter: TreeFilter, tip: Oid | null): boolean {
-  if (node.oid === tip) return true;
-  const { body } = node.commit;
+function passes(item: TreeItem, filter: TreeFilter, tip: CommitId | null): boolean {
+  const { node } = item;
 
-  if (filter === "all") return true;
-
-  if (body.kind === "message" && body.message.role === "assistant") {
-    // A step that only called tools is its tool rows; it earns no row of its own.
-    const { message } = body;
-    const failed = message.stopReason === "aborted" || message.errorMessage !== undefined;
-
-    if (assistantText(node).trim() === "" && !failed) return false;
-  }
+  if (node.id === tip || filter === "all") return true;
+  const tool = node.kind === "part" && node.partKind !== "text" && node.partKind !== "thinking";
 
   switch (filter) {
     case "users":
-      return body.kind === "message" && body.message.role === "user";
+      return node.kind === "user";
     case "no-tools":
-      return body.kind === "message"
-        ? body.message.role !== "toolResult"
-        : body.kind === "checkpoint" || body.kind === "summary";
+      return !tool && node.partKind !== "thinking";
     case "default":
-      return body.kind === "message" || body.kind === "checkpoint" || body.kind === "summary";
+      return node.partKind !== "thinking";
     default: {
       const _exhaustive: never = filter;
 
@@ -266,10 +167,10 @@ function matches(described: Described, query: string): boolean {
 
 /** Hidden nodes drop out and their children attach to the nearest visible ancestor. */
 function visibleForest(
-  roots: readonly SessionTreeNode[],
-  keep: (node: SessionTreeNode) => boolean,
+  roots: readonly TreeItem[],
+  keep: (node: TreeItem) => boolean,
 ): VisibleNode[] {
-  const collect = (node: SessionTreeNode): VisibleNode[] => {
+  const collect = (node: TreeItem): VisibleNode[] => {
     const children = node.children.flatMap(collect);
 
     return keep(node) ? [{ node, children }] : children;
@@ -279,14 +180,14 @@ function visibleForest(
 }
 
 function containsActive(node: VisibleNode): boolean {
-  return node.node.active || node.children.some(containsActive);
+  return node.node.node.active || node.children.some(containsActive);
 }
 
 interface TreeLayoutOptions {
   readonly filter?: TreeFilter;
   readonly query?: string;
   /** Rows whose descendants are hidden. */
-  readonly folded?: ReadonlySet<Oid>;
+  readonly folded?: ReadonlySet<CommitId>;
 }
 
 /**
@@ -298,16 +199,15 @@ interface TreeLayoutOptions {
 function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow[] {
   const filter = options.filter ?? "default";
   const query = options.query ?? "";
-  const folded = options.folded ?? new Set<Oid>();
-  const calls = toolCalls(tree);
-  const described = new Map<Oid, Described>();
+  const folded = options.folded ?? new Set<CommitId>();
+  const described = new Map<CommitId, Described>();
 
-  const describeOnce = (node: SessionTreeNode): Described | undefined => {
-    const found = described.get(node.oid);
+  const describeOnce = (node: TreeItem): Described | undefined => {
+    const found = described.get(node.node.id);
 
     if (found !== undefined) return found;
-    const value = describe(node, calls);
-    if (value !== undefined) described.set(node.oid, value);
+    const value = describe(node);
+    if (value !== undefined) described.set(node.node.id, value);
 
     return value;
   };
@@ -337,7 +237,7 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
     const connector = showConnector && !isRoot;
     const connectorPosition = connector ? displayIndent - 1 : -1;
     const foldable = connector && item.children.length > 0;
-    const isFolded = foldable && folded.has(item.node.oid);
+    const isFolded = foldable && folded.has(item.node.node.id);
     const cells: string[] = [];
 
     for (let cell = 0; cell < displayIndent * 3; cell++) {
@@ -357,15 +257,15 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
     }
 
     rows.push({
-      oid: item.node.oid,
+      oid: item.node.node.id,
       node: item.node,
       prefix: cells.join(""),
       connector,
       foldable,
       folded: isFolded,
-      active: item.node.active,
+      active: item.node.node.active,
       // The current head sits at the tip, which the marker already says.
-      heads: item.node.oid === tree.tip ? [] : item.node.heads,
+      heads: item.node.node.id === tree.tip ? [] : item.node.node.heads,
       ...description,
     });
 
@@ -423,12 +323,12 @@ function foldGlyph(foldable: boolean, folded: boolean): string {
 /** Index of `oid`, else of its nearest ancestor with a row, else the last row. */
 function nearestRowIndex(
   rows: readonly TreeRow[],
-  parents: ReadonlyMap<Oid, Oid | null>,
-  oid: Oid | null,
+  parents: ReadonlyMap<CommitId, CommitId | null>,
+  oid: CommitId | null,
 ): number {
   const index = new Map(rows.map((row, position) => [row.oid, position]));
   let current = oid;
-  const seen = new Set<Oid>();
+  const seen = new Set<CommitId>();
 
   while (current !== null && !seen.has(current)) {
     seen.add(current);
@@ -526,7 +426,6 @@ class TreeRows extends Renderable {
       case "checkpoint":
         return this.theme.warning;
       case "tool":
-      case "config":
         return this.theme.muted;
       default: {
         const _exhaustive: never = row.role;
@@ -601,10 +500,10 @@ class TreeRows extends Renderable {
 }
 
 interface TreeSelectorOptions {
-  readonly tree?: SessionTree;
-  readonly load?: () => Promise<SessionTree>;
+  readonly tree?: TreeView;
+  readonly load?: () => Promise<TreeView>;
   /** Initial highlight; defaults to the head's tip. */
-  readonly selectedOid?: Oid | null;
+  readonly selectedOid?: CommitId | null;
   /** Rows to show first. */
   readonly filter?: TreeFilter;
 }
@@ -614,7 +513,7 @@ interface TreeSelectorShell {
   readonly theme: CliTheme;
   readonly nextId: (prefix?: string) => string;
   readonly onRows: (rows: number) => void;
-  readonly onSelect: (oid: Oid) => void;
+  readonly onSelect: (oid: CommitId) => void;
   readonly onCancel: () => void;
   readonly onError: (cause: unknown) => void;
 }
@@ -631,29 +530,28 @@ export class TreeSelector {
 
   private readonly renderer: CliRenderer;
   private tree: SessionTree | undefined;
-  private readonly parents = new Map<Oid, Oid | null>();
+  private readonly parents = new Map<CommitId, CommitId | null>();
   private readonly panel: PanelLayout;
   private loading = false;
   private readonly footer: TextRenderable;
   private readonly empty: TextRenderable;
   private readonly scroll: ScrollBoxRenderable;
   private readonly list: TreeRows;
-  private readonly onSelect: (oid: Oid) => void;
+  private readonly onSelect: (oid: CommitId) => void;
   private readonly onCancel: () => void;
   private readonly onRows: (rows: number) => void;
   private readonly theme: CliTheme;
-  private readonly folded = new Set<Oid>();
+  private readonly folded = new Set<CommitId>();
   private layout: TreeRow[] = [];
   private filter: TreeFilter;
   private query = "";
   private filtering = true;
   private maxVisible = MAX_ROWS;
-  private lastSelected: Oid | null | undefined;
+  private lastSelected: CommitId | null | undefined;
   private destroyed = false;
 
   constructor(shell: TreeSelectorShell, options: TreeSelectorOptions) {
     this.renderer = shell.renderer;
-    this.tree = options.tree;
     this.onSelect = shell.onSelect;
     this.onCancel = shell.onCancel;
     this.onRows = shell.onRows;
@@ -744,18 +642,29 @@ export class TreeSelector {
     }
   }
 
-  update(tree: SessionTree): void {
+  /** Lays out a tree view: its flat nodes, parents first, become rows under their parents. */
+  update(view: TreeView): void {
     if (this.destroyed) return;
     this.panel.cancelLoad();
-    this.tree = tree;
-    if (this.lastSelected === undefined) this.lastSelected = tree.tip;
-    this.loading = false;
+    const tip = view.tip.kind === "commit" ? view.tip.id : null;
+    const items = new Map<CommitId, TreeItem>();
+    const roots: TreeItem[] = [];
     this.parents.clear();
-    const index = (node: SessionTreeNode): void => {
-      this.parents.set(node.oid, node.commit.parent);
-      for (const child of node.children) index(child);
-    };
-    for (const root of tree.roots) index(root);
+
+    for (const node of view.nodes) {
+      const item: TreeItem = { node, children: [] };
+      items.set(node.id, item);
+      this.parents.set(node.id, node.parent);
+      const parent = node.parent === null ? undefined : items.get(node.parent);
+
+      if (parent === undefined) roots.push(item);
+      else parent.children.push(item);
+    }
+
+    this.tree = { tip, roots };
+
+    if (this.lastSelected === undefined) this.lastSelected = tip;
+    this.loading = false;
     this.relayout();
   }
 
@@ -767,7 +676,7 @@ export class TreeSelector {
     return this.panel.rows + BODY_CHROME_ROWS + Math.max(1, Math.min(this.layout.length, MAX_ROWS));
   }
 
-  get selectedOid(): Oid | undefined {
+  get selectedOid(): CommitId | undefined {
     return this.layout[this.list.getSelectedIndex()]?.oid;
   }
 

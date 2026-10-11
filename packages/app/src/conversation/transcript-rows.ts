@@ -3,18 +3,14 @@
  * one element the thread screen used to render in flow; keys match the ones
  * those elements carried so React state (edits, folds) survives the move.
  */
-import type { Delivery, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
-import { changesFromTurns, isTerminalPhase } from "@nyte-ai/client";
-import type { OutboxRow } from "@nyte-ai/client";
+import type { SessionView } from "@nyte-ai/sdk";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
+import { conversationTurns, isBusy, isToolMessage } from "../view-helpers.ts";
+import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
+import { isTextMessage } from "./transcript-presentation.ts";
 
-interface LandingMessage {
-  readonly key: string;
-  readonly content: UserTurnPart["content"];
-  /** Held behind a live run: drawn muted until the message lands. */
-  readonly pending: boolean;
-}
+export type { ConversationTurn } from "../view-helpers.ts";
 
 export type TranscriptRow =
   | { readonly kind: "skeleton"; readonly messageId: "row:skeleton"; readonly scrollAnchor: false }
@@ -23,12 +19,11 @@ export type TranscriptRow =
       readonly kind: "turn";
       readonly messageId: string;
       readonly scrollAnchor: boolean;
-      readonly turn: RenderedTurn;
+      readonly turn: ConversationTurn;
       /**
-       * Turns opened under this one without a request. A background report
+       * Turns opened under this one without a prompt. A background report
        * opens its own turn, but the prompt it answers is this row's; drawing
-       * them here keeps that prompt stuck above the work they hold instead of
-       * pushing it out at the turn boundary.
+       * them here keeps that prompt stuck above the work they hold.
        */
       readonly continuations: readonly ConversationTurn[];
       readonly trailing: boolean;
@@ -37,7 +32,7 @@ export type TranscriptRow =
       readonly kind: "landing";
       readonly messageId: string;
       readonly scrollAnchor: true;
-      readonly content: UserTurnPart["content"];
+      readonly message: UserMessage;
       readonly pending: boolean;
     }
   | {
@@ -54,102 +49,51 @@ export type TranscriptRow =
     };
 
 /**
- * A landing prompt and the turn it commits into are the same row. The outbox
- * mints a submission key, the landed change carries it back, and reusing it
- * here means the commit re-measures an existing row instead of replacing it —
- * which is what makes the transcript hold still mid-stream. A request opens
- * its turn, so the key is on the first part or the turn never carried one.
+ * A landing prompt and the turn it opens are the same row: the message id is
+ * minted before the network and kept until the commit, so the turn re-measures
+ * the landing row instead of replacing it.
  */
-function turnMessageId(turn: Turn): string {
-  if (turn.kind !== "turn") return `turn:${turn.kind}:${turn.commit}`;
-  const opening = turn.parts[0];
-
-  return opening?.kind === "user" && opening.key !== undefined
-    ? `landing:${opening.key}`
-    : `turn:${turn.id}`;
-}
-
-/** A turn the transcript draws. A config turn can never reach a row. */
-export type RenderedTurn = Exclude<Turn, { readonly kind: "config" }>;
-
-export type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
-
-/** A request opens every turn but the one a background report opens. */
-function continuesTurn(turn: RenderedTurn): turn is ConversationTurn {
-  return turn.kind === "turn" && turn.parts[0]?.kind !== "user";
+function turnMessageId(turn: ConversationTurn): string {
+  return turn.info.prompt === null ? `turn:${turn.info.id}` : `landing:${turn.info.prompt}`;
 }
 
 /**
- * Config turns draw nothing: every turn already shows the model it ran with,
- * so a row for one reserved its estimated height and painted an empty band.
- * This is the transcript's single answer to which turns it renders; the thread
- * screen reads it too, so the run indicator agrees with the last drawn turn.
+ * Where each user message the view lists outside a turn draws: under the
+ * transcript while it lands (muted behind a live run when it joined it), in
+ * the tray while it waits for the next turn, or as an unsent row while its
+ * journal entry retries.
  */
-export function rendersInTranscript(turn: Turn): turn is RenderedTurn {
-  return turn.kind !== "config";
-}
+export function conversationMessages(view: SessionView | undefined) {
+  const running = view !== undefined && isBusy(view.execution);
+  const loose = view === undefined ? [] : conversationTurns(view).loose;
+  const users = loose.filter((message): message is UserMessage => message.kind === "user");
 
-export function conversationMessages({
-  snapshot,
-  unsent,
-  steerDelivery,
-}: {
-  readonly snapshot: SessionSnapshot | undefined;
-  readonly unsent: readonly OutboxRow[];
-  readonly steerDelivery: Delivery;
-}) {
-  const running = snapshot?.run !== undefined && !isTerminalPhase(snapshot.run.phase);
-  const represented = new Set<string>();
+  const landing = users.filter((message) => {
+    switch (message.status.kind) {
+      case "unsent":
+        return message.status.retrying === null && !running;
+      case "pending":
+        return !running || message.status.schedule.kind === "joined";
+      case "landed":
+        return true;
+      default: {
+        const _exhaustive: never = message.status;
 
-  for (const turn of snapshot?.transcript ?? []) {
-    if (turn.kind !== "turn") continue;
-
-    for (const part of turn.parts) {
-      if (part.kind === "user" && part.key !== undefined) represented.add(part.key);
+        return _exhaustive;
+      }
     }
-  }
-
-  const pending = snapshot?.pending ?? [];
-
-  for (const item of pending) {
-    if (item.key !== undefined) represented.add(item.key);
-  }
-
-  // The durable item arrives before its outbox row leaves; one key, one row.
-  const local = unsent.filter((row) => !represented.has(row.key));
-
-  // Whether a submitted message steers a live run or opens the next turn is
-  // read from the snapshot alone, so one coherent read moves each message from
-  // the outbox to `pending` to the transcript without a detour through the
-  // composer strip. While a run is live only the boundary delivery draws here —
-  // muted until it lands; the deliverys that wait for an idle head keep the tray.
-  const landing: LandingMessage[] = [
-    ...pending
-      .filter((item) => !running || item.delivery === steerDelivery)
-      .map((item) => ({
-        // The receipt names the change; the key it carried keeps the same row.
-        key: item.key ?? item.change,
-        content: item.source?.label ?? item.content,
-        pending: running,
-      })),
-    ...local
-      .filter(
-        (row) =>
-          row.state.kind !== "retrying" && (!running || row.input.delivery === steerDelivery),
-      )
-      .map((row) => ({
-        key: row.key,
-        content: row.input.source?.label ?? row.input.content,
-        pending: running,
-      })),
-  ];
+  });
 
   return {
     running,
     submitted: landing,
-    queued: running ? pending.filter((item) => item.delivery !== steerDelivery) : [],
-    unsent: local.filter(
-      (row) => row.state.kind === "retrying" || (running && row.input.delivery !== steerDelivery),
+    queued: users.filter(
+      (message) =>
+        running && message.status.kind === "pending" && message.status.schedule.kind !== "joined",
+    ),
+    unsent: users.filter(
+      (message) =>
+        message.status.kind === "unsent" && (message.status.retrying !== null || running),
     ),
   };
 }
@@ -161,28 +105,29 @@ export function transcriptRows({
   landing,
   retrying,
   working,
+  running,
 }: {
   readonly loading: boolean;
   readonly failed: boolean;
-  readonly turns: readonly Turn[];
-  readonly landing: readonly LandingMessage[];
+  readonly turns: readonly ConversationTurn[];
+  readonly landing: readonly UserMessage[];
   /** The retry status's title; absent while the run is not retrying. */
   readonly retrying: string | undefined;
   readonly working: boolean;
+  readonly running: boolean;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
-  const rendered = turns.filter(rendersInTranscript);
 
-  if (loading && rendered.length === 0 && landing.length === 0) {
+  if (loading && turns.length === 0 && landing.length === 0) {
     rows.push({ kind: "skeleton", messageId: "row:skeleton", scrollAnchor: false });
   }
 
   if (failed) rows.push({ kind: "error", messageId: "row:error", scrollAnchor: false });
 
-  for (const turn of rendered) {
+  for (const turn of turns) {
     const previous = rows.at(-1);
 
-    if (previous?.kind === "turn" && previous.turn.kind === "turn" && continuesTurn(turn)) {
+    if (previous?.kind === "turn" && turn.info.prompt === null) {
       rows[rows.length - 1] = { ...previous, continuations: [...previous.continuations, turn] };
       continue;
     }
@@ -190,7 +135,7 @@ export function transcriptRows({
     rows.push({
       kind: "turn",
       messageId: turnMessageId(turn),
-      scrollAnchor: turn.kind === "turn" && turn.parts.some((part) => part.kind === "user"),
+      scrollAnchor: turn.info.prompt !== null,
       turn,
       continuations: [],
       trailing: false,
@@ -204,10 +149,10 @@ export function transcriptRows({
   for (const message of landing) {
     rows.push({
       kind: "landing",
-      messageId: `landing:${message.key}`,
+      messageId: `landing:${message.id}`,
       scrollAnchor: true,
-      content: message.content,
-      pending: message.pending,
+      message,
+      pending: running,
     });
   }
 
@@ -243,8 +188,6 @@ const PROSE_CHARS_PER_LINE = 90;
 const CHANGES_CARD_BASE_ESTIMATE = 50;
 
 const CHANGES_CARD_ROW_ESTIMATE = 30;
-
-const RECORD_ROW_ESTIMATE = 40;
 
 const LIVE_ROW_ESTIMATE = 60;
 
@@ -299,39 +242,35 @@ function rowEstimate(
   }
 }
 
-function estimateTurnSize(turn: Turn, density: ToolCallDensity, scale: number): number {
-  if (turn.kind !== "turn") return RECORD_ROW_ESTIMATE;
+function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scale: number): number {
   let size = 0;
   let prose = 0;
   let step = false;
+  const files = new Set<string>();
 
-  for (const part of turn.parts) {
-    switch (part.kind) {
-      case "user":
-        size += USER_ROW_ESTIMATE;
-        break;
-      case "assistant":
-        prose += part.text.length;
-        break;
-      case "thinking":
-      case "tool":
-        step = true;
-        break;
-      default: {
-        const _exhaustive: never = part;
-
-        return _exhaustive;
-      }
+  for (const message of turn.messages) {
+    if (message.kind === "user") {
+      size += USER_ROW_ESTIMATE;
+      continue;
     }
+
+    if (isTextMessage(message)) {
+      prose += message.state.markdown.length;
+      continue;
+    }
+
+    if (message.role === "step") step = true;
+
+    if (isToolMessage(message) && message.state.phase === "settled")
+      for (const path of message.state.changes?.paths ?? []) files.add(path);
   }
 
   if (step) size += STEP_GROUP_ESTIMATE[density];
-  const files = changesFromTurns([turn]).length;
 
-  if (files > 0) {
+  if (files.size > 0) {
     size +=
       CHANGES_CARD_BASE_ESTIMATE +
-      CHANGES_CARD_ROW_ESTIMATE * Math.min(files, CHANGES_VISIBLE_FILES);
+      CHANGES_CARD_ROW_ESTIMATE * Math.min(files.size, CHANGES_VISIBLE_FILES);
   }
 
   if (prose > 0) {

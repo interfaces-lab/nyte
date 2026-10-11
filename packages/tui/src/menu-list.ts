@@ -8,7 +8,6 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
-import type { Choice } from "@nyte-ai/core";
 import { GLYPHS } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
@@ -21,6 +20,13 @@ function truncate(text: string, width: number): string {
 interface MenuStatus {
   readonly text: string;
   readonly tone: "dim" | "ok" | "running" | "warning" | "error" | "muted";
+}
+
+/** One thing a participant can pick. */
+export interface Choice {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
 }
 
 export interface MenuItem extends Choice {

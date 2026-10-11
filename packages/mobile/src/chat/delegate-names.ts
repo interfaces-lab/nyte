@@ -1,16 +1,12 @@
-import type { ToolTense } from "@nyte-ai/client";
-import type { SessionId, SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, ToolClass } from "@nyte-ai/sdk";
+import type { ToolTense } from "../view-helpers.ts";
 
-type ChildSessionName = Pick<SessionInfo, "sessionId" | "name" | "preview">;
-
-type DelegateClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
+type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 export function indexDelegateNames(
-  children: readonly ChildSessionName[],
+  children: readonly Pick<SessionInfo, "id" | "name">[],
 ): ReadonlyMap<SessionId, string> {
-  return new Map(
-    children.map((child) => [child.sessionId, child.name ?? child.preview ?? "Subagent"]),
-  );
+  return new Map(children.map((child) => [child.id, child.name ?? "Subagent"]));
 }
 
 /** Verbs for the tenses that assert one, and the noun that follows the agent's name when none does. */
@@ -22,10 +18,13 @@ interface DelegateWords {
 
 function delegateWords(role: DelegateClass["role"]): DelegateWords {
   switch (role) {
+    case "task":
     case "create":
       return { running: "Agent", past: "Agent", noun: undefined };
     case "send":
       return { running: "Sending to", past: "Sent to", noun: "message" };
+    case "await":
+      return { running: "Waiting for", past: "Waited for", noun: undefined };
     case "read":
       return { running: "Reading", past: "Read", noun: "transcript" };
     case "stop":
@@ -43,7 +42,12 @@ export function delegateTitle(
   tense: ToolTense,
   names: ReadonlyMap<SessionId, string>,
 ): string {
-  const name = names.get(toolClass.target.session) ?? toolClass.target.session;
+  const name =
+    (toolClass.child === null ? undefined : names.get(toolClass.child)) ??
+    toolClass.title ??
+    toolClass.child ??
+    "Subagent";
+
   const words = delegateWords(toolClass.role);
 
   if (tense !== "none") return `${words[tense]} ${name}`;

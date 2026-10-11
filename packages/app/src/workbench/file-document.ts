@@ -1,12 +1,14 @@
-import type {
-  WorkspaceFileDocument,
-  WorkspaceFileSaveOutcome,
-  WorkspaceFormatInput,
-  WorkspaceFormatResult,
-} from "@nyte-ai/protocol";
+import type { FileDocument, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
 import { errorMessage } from "../errors.ts";
 
-type TextFile = Extract<WorkspaceFileDocument, { readonly kind: "text" }>;
+type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+
+/** What a save hands its write and format steps: the path, the text, and the version it was read at. */
+export interface FileSaveInput {
+  readonly path: string;
+  readonly contents: string;
+  readonly version: FileVersion;
+}
 
 type FileSaveState =
   | { readonly kind: "idle" }
@@ -18,7 +20,7 @@ type FileSaveState =
 export interface FileDocumentSnapshot {
   readonly contents: string;
   readonly savedContents: string;
-  readonly version: string;
+  readonly version: FileVersion;
   readonly revision: number;
   readonly status: FileSaveState;
 }
@@ -83,8 +85,8 @@ export function createFileDocument(document: TextFile, draft?: string) {
       });
     },
     async save(operations: {
-      readonly write: (input: WorkspaceFormatInput) => Promise<WorkspaceFileSaveOutcome>;
-      readonly format?: (input: WorkspaceFormatInput) => Promise<WorkspaceFormatResult>;
+      readonly write: (input: FileSaveInput) => Promise<WriteOutcome>;
+      readonly format?: (input: FileSaveInput) => Promise<FormatOutcome>;
     }): Promise<void> {
       if (snapshot.status.kind === "saving") return;
       const captured = snapshot;
@@ -99,14 +101,8 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
         const formatted = await operations.format?.(input);
 
-        if (formatted !== undefined && formatted.kind !== "formatted") {
-          publish({
-            ...snapshot,
-            status:
-              formatted.kind === "conflict"
-                ? { kind: "conflict" }
-                : { kind: "error", message: formatted.message },
-          });
+        if (formatted?.kind === "unavailable") {
+          publish({ ...snapshot, status: { kind: "error", message: formatted.reason } });
 
           return;
         }
@@ -118,7 +114,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
           return;
         }
 
-        const contents = formatted?.contents ?? captured.contents;
+        const contents = formatted?.kind === "formatted" ? formatted.contents : captured.contents;
 
         if (contents !== snapshot.contents) {
           publish({ ...snapshot, contents, revision: snapshot.revision + 1 });
@@ -126,8 +122,17 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
         const outcome = await operations.write({ ...input, contents });
 
-        if (outcome.kind === "conflict") {
+        if (outcome.kind === "stale") {
           publish({ ...snapshot, status: { kind: "conflict" } });
+
+          return;
+        }
+
+        if (outcome.kind === "missing-parent") {
+          publish({
+            ...snapshot,
+            status: { kind: "error", message: "The file's folder is gone." },
+          });
 
           return;
         }

@@ -1,4 +1,3 @@
-import type { AuthPrompt } from "@nyte-ai/ai";
 import {
   BoxRenderable,
   InputRenderable,
@@ -68,11 +67,9 @@ class SecretInput extends InputRenderable {
 /** Reads auth input without borrowing the composer's draft, history, or submission handlers. */
 export function readAuthPrompt(
   shell: Shell,
-  prompt: Exclude<AuthPrompt, { type: "select" }>,
-  signal: AbortSignal,
+  prompt: { readonly message: string; readonly secret: boolean },
+  abort: AbortSignal,
 ): Promise<string> {
-  const abort = prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
-
   if (abort.aborted || shell.renderer.isDestroyed) return Promise.reject(new PickerCancelled());
   shell.dismissInfoPanel?.();
 
@@ -101,13 +98,13 @@ export function readAuthPrompt(
       truncate: true,
     }),
   );
-  const Input = prompt.type === "secret" ? SecretInput : InputRenderable;
+  const Input = prompt.secret ? SecretInput : InputRenderable;
 
   const input = new Input(shell.renderer, {
     id: shell.nextId("auth-input"),
     width: "100%",
     maxLength: Number.MAX_SAFE_INTEGER,
-    placeholder: prompt.placeholder ?? "",
+    placeholder: "",
     placeholderColor: shell.theme.dim,
     backgroundColor: shell.theme.transparent,
     focusedBackgroundColor: shell.theme.transparent,

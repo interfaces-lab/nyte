@@ -12,8 +12,8 @@ import type { Connection, Head, Login, PluginFile, RequestJournal, Session } fro
 import type { OperationOutput, Transport } from "@nyte-ai/protocol";
 import { createFolds, watchHead, watchHost, withUnsent } from "./fold.ts";
 import type { Folds } from "./fold.ts";
-import { createOutbox } from "./outbox.ts";
-import type { Outbox } from "./outbox.ts";
+import { journalLoop } from "./journal.ts";
+import type { JournalLoop } from "./journal.ts";
 import { partHandle } from "./part.ts";
 import { moveOutcome, receiptHandle, runHandle, sendReceipt } from "./receipts.ts";
 import { createLink, createRows } from "./rows.ts";
@@ -30,7 +30,7 @@ export type ClientContext = {
 
 type Bound = {
   readonly rows: Rows;
-  readonly outbox: Outbox;
+  readonly journal: JournalLoop;
   readonly folds: Folds;
 };
 
@@ -39,7 +39,7 @@ const MAIN = asId<"head">("main");
 /**
  * Returns a connection over a transport: the handle tree, each handle bound
  * synchronously with no I/O to the rows it names, ids spread into each row's
- * input. Sends go through the journal and the outbox; watches resume across
+ * input. Sends go through the journal's retry loop; watches resume across
  * link loss and fold on the client.
  *
  * `close()` closes the link as `client`: every open request and stream ends,
@@ -53,7 +53,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
 
   const bound: Bound = {
     rows,
-    outbox: createOutbox(rows, context.journal),
+    journal: journalLoop(rows, context.journal),
     folds: createFolds(rows, context.principal),
   };
 
@@ -152,14 +152,14 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
 
 /**
  * Returns a handle on a head over the `head.*` rows. `send` mints the
- * receipt id (or takes `options.id`), journals the send and goes through the
- * outbox; a `replace` aimed at a send still unsent rewrites it instead
+ * receipt id (or takes `options.id`) and sends through the journal's retry
+ * loop; a `replace` aimed at a send still unsent rewrites it instead
  * (§47g). `view` and `watch` merge this client's unsent sends, `watch`
  * through the connection's shared fold; `move` mints its wire-only id
  * (§40o). Binds synchronously.
  */
 function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
-  const { rows, outbox } = bound;
+  const { rows, journal } = bound;
 
   return {
     sessionId: session,
@@ -169,7 +169,7 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
 
       if (rest.replace !== undefined) {
         const { replace, ...plain } = rest;
-        const rewritten = outbox.rewrite(replace, content, plain);
+        const rewritten = journal.rewrite(replace, content, plain);
 
         if (rewritten !== null) {
           const sent = await rewritten;
@@ -181,7 +181,7 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       const receipt = id ?? asId<"receipt">(crypto.randomUUID());
       dev("sdk", "send", { session, head, receipt });
 
-      const sent = await outbox.send({
+      const sent = await journal.send({
         id: receipt,
         session,
         head,
@@ -196,12 +196,12 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     view: async (options) =>
       withUnsent(
         await rows.call("head.view", { session, head, options }),
-        outbox,
+        journal,
         session,
         head,
         null,
       ),
-    watch: (options) => watchHead(bound.folds, outbox, { session, head, options }),
+    watch: (options) => watchHead(bound.folds, journal, { session, head, options }),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {

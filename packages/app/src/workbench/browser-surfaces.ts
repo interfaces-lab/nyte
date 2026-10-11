@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import type { BrowserDownload, BrowserKey, BrowserSurfaceState, HostEvent } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";

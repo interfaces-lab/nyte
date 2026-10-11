@@ -9,7 +9,7 @@ import { Settings } from "typebox/system";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { durableObjectStore } from "@nyte-ai/host/durable-object";
 import type { DurableObjectSql, SqlValue } from "@nyte-ai/host/durable-object";
-import { identitySigner } from "@nyte-ai/host/identity";
+import { seedSigner } from "@nyte-ai/host/identity";
 import { listenFetch } from "@nyte-ai/host/listen-fetch";
 import { chatOnlyProvider } from "@nyte-ai/host/providers";
 import manifest from "../../../package.json" with { type: "json" };
@@ -26,11 +26,12 @@ export type WorkerState = {
   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
 };
 
-/** Returns the Worker's bindings: the `NyteHost` namespace `wrangler.jsonc` binds, the listener token it requires as a secret (`secrets.required`, set with `wrangler secret put NYTE_TOKEN`, at least 16 characters; §42l), and the optional base64 secrets key (decision 10; absent, see `secretsFrom`). */
+/** Returns the Worker's bindings: the `NyteHost` namespace `wrangler.jsonc` binds, the listener token it requires as a secret (`secrets.required`, set with `wrangler secret put NYTE_TOKEN`, at least 16 characters; §42l), the optional base64 secrets key (decision 10; absent, see `secretsFrom`), and the optional base64 identity seed (§50a; absent, the host answers no identity challenge). */
 export type WorkerEnv = {
   readonly NYTE_HOST: { getByName(name: string): { fetch(request: Request): Promise<Response> } };
   readonly NYTE_TOKEN: string;
   readonly NYTE_SECRET_KEY?: string;
+  readonly NYTE_IDENTITY_KEY?: string;
 };
 
 /** Returns how much one alarm pass may do: at most `heads` advances, none started once `ms` has elapsed, and whether it also pages `repair` (§42i: 32 heads, 10 s, repair on a cold start and every 60th pass). */
@@ -132,7 +133,7 @@ export class NyteHost {
   #served: Promise<Served> | null = null;
   #passes = 0;
 
-  /** Composes the host once inside `blockConcurrencyWhile`: `composeHost` with `durableObjectStore(state.storage)`, the plugin `{ id: "chat-only", environment: chatOnlyProvider() }` and workspace `{ kind: "chat-only", locator: null }`, `execution: { kind: "admit-only" }`, no `poll` (one instance, §42h), `home: null` (decision 9: no `Resources.user`), protocol's `operations()`, description `{ name: "nyte-host", platform: "cloudflare", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the object's own store, so its model logins persist (§42e, §43j); then takes `host.execution.cover({ kind: "all" })` for the object's life (§42i), which claims no lease (each is claimed when a pass advances its head, §42t), parks the store's waits and counts every session as covered (§42a), so admission wakes heads and activation attaches the workspace; serves `listenFetch` with `auth: { kind: "token", token: env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, and, when `NYTE_SECRET_KEY` is set, `identity: identitySigner(host.hostId, secrets)` (without it `/.nyte/identity` answers `unknown`); creates `nyte_schedule(session TEXT, head TEXT, at INTEGER, PRIMARY KEY (session, head))` beside the store's tables; subscribes to `kernel.wakes`, each wake writing its head's row at now and setting the alarm now; and sets the alarm now whatever alarm is pending (§42y: the schedule table keeps the timers, so the first pass repairs what a lost wake left and re-arms the rest). `options.models` replaces that catalog, for a deployment that configures its providers itself and for tests. TypeBox acceleration is off for the whole module, because workerd refuses code generation inside a request. */
+  /** Composes the host once inside `blockConcurrencyWhile`: `composeHost` with `durableObjectStore(state.storage)`, the plugin `{ id: "chat-only", environment: chatOnlyProvider() }` and workspace `{ kind: "chat-only", locator: null }`, `execution: { kind: "admit-only" }`, no `poll` (one instance, §42h), `home: null` (decision 9: no `Resources.user`), protocol's `operations()`, description `{ name: "nyte-host", platform: "cloudflare", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the object's own store, so its model logins persist (§42e, §43j); then takes `host.execution.cover({ kind: "all" })` for the object's life (§42i), which claims no lease (each is claimed when a pass advances its head, §42t), parks the store's waits and counts every session as covered (§42a), so admission wakes heads and activation attaches the workspace; serves `listenFetch` with `auth: { kind: "token", token: env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, and, when `NYTE_IDENTITY_KEY` is set (a base64 32-byte Ed25519 seed, §50a), `identity: seedSigner(host.hostId, seed)` (without it `/.nyte/identity` answers `unknown`); creates `nyte_schedule(session TEXT, head TEXT, at INTEGER, PRIMARY KEY (session, head))` beside the store's tables; subscribes to `kernel.wakes`, each wake writing its head's row at now and setting the alarm now; and sets the alarm now whatever alarm is pending (§42y: the schedule table keeps the timers, so the first pass repairs what a lost wake left and re-arms the rest). `options.models` replaces that catalog, for a deployment that configures its providers itself and for tests. TypeBox acceleration is off for the whole module, because workerd refuses code generation inside a request. */
   constructor(state: WorkerState, env: WorkerEnv, options?: { readonly models?: Models }) {
     this.#state = state;
     this.#env = env;
@@ -238,9 +239,11 @@ async function compose(
       auth: { kind: "token", token: env.NYTE_TOKEN },
       execution: { kind: "admit-only" },
       describe: () => description,
-      ...(env.NYTE_SECRET_KEY === undefined || env.NYTE_SECRET_KEY === ""
+      ...(env.NYTE_IDENTITY_KEY === undefined || env.NYTE_IDENTITY_KEY === ""
         ? {}
-        : { identity: await identitySigner(host.hostId, secrets) }),
+        : {
+            identity: await seedSigner(host.hostId, Uint8Array.fromBase64(env.NYTE_IDENTITY_KEY)),
+          }),
     });
 
     await storage.setAlarm(Date.now());
@@ -259,8 +262,8 @@ async function compose(
  *
  * Without the binding, `key()` rejects `SdkError("unavailable")`: `secrets.set`
  * and model logins answer `unavailable`, stored logins read as absent while
- * provider keys from the environment still work, and the listener answers no
- * identity challenge.
+ * provider keys from the environment still work. The identity has its own
+ * binding (§50a).
  */
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
   if (key === undefined || key === "")

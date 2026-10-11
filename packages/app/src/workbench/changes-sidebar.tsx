@@ -22,7 +22,7 @@ import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
-import type { VcsLineStat } from "@nyte-ai/protocol";
+import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
@@ -31,7 +31,7 @@ import { WorkbenchRail } from "./workbench-rail.tsx";
 export interface ChangesSidebarFile {
   readonly path: string;
   readonly status?: ChangeStatus;
-  readonly stat: VcsLineStat;
+  readonly stat: LineStat;
   readonly viewed: ViewedState;
 }
 

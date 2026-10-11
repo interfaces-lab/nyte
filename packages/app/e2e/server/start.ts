@@ -1,26 +1,25 @@
 /**
- * The web project's server: `@nyte-ai/serve` over an in-memory SDK whose
- * provider answers "Echo: <last user text>" without a network, serving the
- * built app from the same origin.
+ * The web project's server: a host opened with `sdk.open` over an in-memory
+ * store, whose provider answers "Echo: <last user text>" without a network,
+ * listening on the e2e port and serving the built app from the same origin.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join, normalize } from "node:path";
 import process from "node:process";
-import { createAssistantMessageEventStream } from "@nyte-ai/ai";
-import { createNyte } from "@nyte-ai/core";
-import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
-import { SqliteStore } from "@nyte-ai/core/store";
-import { createWorkspaceBackend, WorkspaceStore } from "@nyte-ai/host";
-import type { SessionId } from "@nyte-ai/core";
-import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
-// Relative: a package dependency on serve, which depends on this app, is a turbo task cycle.
-import { appDistRoot, startServe } from "../../../serve/src/index.ts";
+import {
+  createAssistantMessageEventStream,
+  createModels,
+  InMemoryCredentialStore,
+  InMemoryModelsStore,
+} from "@nyte-ai/ai";
+import type { Provider } from "@nyte-ai/ai";
+import { localProvider, sqliteStore } from "@nyte-ai/host";
+import type { Api, AssistantMessage, Model } from "@nyte-ai/schema/model";
+import { sdk } from "@nyte-ai/sdk";
 import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN } from "./address.ts";
-
-const ENVIRONMENT_ID = "e2e";
 
 const model: Model<Api> = {
   id: "echo",
@@ -35,24 +34,24 @@ const model: Model<Api> = {
   maxTokens: 1_000,
 };
 
-function lastUserText(context: Context): string {
+/** Answers `Echo: <last user text>`. */
+const echo: Provider["stream"] = (selected, context) => {
   const message = context.messages.findLast((candidate) => candidate.role === "user");
 
-  if (message?.role !== "user") return "";
+  const said =
+    message?.role !== "user"
+      ? ""
+      : Array.isArray(message.content)
+        ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+        : message.content;
 
-  if (!Array.isArray(message.content)) return message.content;
-
-  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-}
-
-function echo(_model: Model<Api>, context: Context) {
-  const text = `Echo: ${lastUserText(context)}`;
+  const text = `Echo: ${said}`;
 
   const answer: AssistantMessage = {
     role: "assistant",
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
+    api: selected.api,
+    provider: selected.provider,
+    model: selected.id,
     content: [{ type: "text", text }],
     stopReason: "stop",
     timestamp: Date.now(),
@@ -66,87 +65,99 @@ function echo(_model: Model<Api>, context: Context) {
     },
   };
 
-  const stream = createAssistantMessageEventStream();
-  stream.push({ type: "start", partial: { ...answer, content: [] } });
-  stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: answer });
-  stream.push({ type: "done", reason: "stop", message: answer });
+  const events = createAssistantMessageEventStream();
+  events.push({ type: "start", partial: { ...answer, content: [] } });
+  events.push({ type: "text_delta", contentIndex: 0, delta: text, partial: answer });
+  events.push({ type: "done", reason: "stop", message: answer });
 
-  return stream;
-}
+  return events;
+};
 
-const appRoot = appDistRoot();
+const models = createModels({
+  credentials: new InMemoryCredentialStore(),
+  modelsStore: new InMemoryModelsStore(),
+});
+
+models.setProvider({
+  id: model.provider,
+  name: "Echo",
+  auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "fixture" } }) } },
+  getModels: () => [model],
+  stream: echo,
+  streamSimple: echo,
+});
+
+const appRoot = join(import.meta.dirname, "../../dist");
 
 if (!existsSync(join(appRoot, "index.html"))) {
   process.stderr.write("Run pnpm --dir packages/app build first\n");
   process.exit(1);
 }
 
-const cwd = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-web-")));
+const TYPES: Readonly<Record<string, string>> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".json": "application/json",
+};
 
-await writeFile(join(cwd, "README.md"), "# E2E workspace\n\nworkspace.read reached the browser.\n");
+/** The built app: a file under `dist`, else the shell for any route. */
+async function serveApp(request: Request): Promise<Response | undefined> {
+  const { pathname } = new URL(request.url);
 
-execFileSync("git", ["init", "-q"], { cwd });
+  if (pathname.startsWith("/.nyte") || request.method !== "GET") return undefined;
+  const path = normalize(join(appRoot, pathname));
+  const file =
+    path.startsWith(appRoot) && extname(path) !== "" ? path : join(appRoot, "index.html");
 
-execFileSync("git", ["config", "user.name", "E2E Author"], { cwd });
-
-execFileSync("git", ["config", "user.email", "e2e@example.test"], { cwd });
-
-execFileSync("git", ["add", "--", "README.md"], { cwd });
-
-execFileSync("git", ["commit", "-qm", "Seed workspace"], { cwd });
-
-const workspaces = new WorkspaceStore(join(cwd, ".workspaces.json"));
-
-// Listed as an opened folder, so the sidebar shows the chats seeded below before any test runs.
-await workspaces.touch(cwd);
-
-const workspaceBackend = createWorkspaceBackend(workspaces);
-
-const store = new SqliteStore(":memory:");
-
-const sdk = await createNyte({
-  store,
-  streamFn: echo,
-  models: {
-    getModels: () => [model],
-    getModel: (provider, id) =>
-      provider === model.provider && id === model.id ? model : undefined,
-    getAvailable: async () => [model],
-  },
-  model,
-  workspace: { ...workspaceBackend, vcs: undefined },
-  plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID })],
-  defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd },
-});
-
-const attached = new Set<SessionId>();
-
-// The sidebar folds archived chats in pages. No test archives, so this shelf holds exactly these.
-for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
-  const session = await sdk.sessions.create({ name: `Archived chat ${String(index)}` });
-  await sdk.sessions.setArchived({ sessionId: session.sessionId, archived: true });
+  try {
+    return new Response(await readFile(file), {
+      headers: { "Content-Type": TYPES[extname(file)] ?? "application/octet-stream" },
+    });
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
 }
 
-const serving = await startServe({
-  sdk,
-  attach: (sessionId) => {
-    if (attached.has(sessionId)) return;
-    attached.add(sessionId);
-    sdk.attach({ sessions: [sessionId] });
-  },
-  version: "e2e",
-  describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
-  host: "127.0.0.1",
-  port: E2E_PORT,
+const cwd = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-web-")));
+
+await writeFile(join(cwd, "README.md"), "# E2E workspace\n\nThe workspace reached the browser.\n");
+
+for (const args of [
+  ["init", "-q"],
+  ["config", "user.name", "E2E Author"],
+  ["config", "user.email", "e2e@example.test"],
+  ["add", "--", "README.md"],
+  ["commit", "-qm", "Seed workspace"],
+])
+  execFileSync("git", args, { cwd });
+
+const host = await sdk.open({
+  store: sqliteStore({ memory: true }),
+  models,
+  plugins: [{ id: "local", environment: localProvider({ home: cwd }) }],
+  workspace: { kind: "local", path: cwd },
+  home: cwd,
+});
+
+for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
+  const session = await host.sessions.create({ name: `Archived chat ${String(index)}` });
+  await session.update({ archived: true });
+}
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: E2E_PORT },
   auth: { kind: "token", token: E2E_TOKEN },
-  appRoot,
+  before: serveApp,
 });
 
 const stop = (): void => {
-  void serving
+  void listener
     .close()
-    .then(() => sdk.close())
-    .then(() => store.close())
+    .then(() => host.close())
     .then(() => rm(cwd, { recursive: true, force: true }))
     .finally(() => process.exit(0));
 };
@@ -155,4 +166,4 @@ process.once("SIGINT", stop);
 
 process.once("SIGTERM", stop);
 
-process.stdout.write(`Serving the e2e app at ${serving.address}\n`);
+process.stdout.write(`Serving the e2e app at http://127.0.0.1:${String(E2E_PORT)}\n`);

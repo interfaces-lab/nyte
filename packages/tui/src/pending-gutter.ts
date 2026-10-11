@@ -1,8 +1,7 @@
 /**
- * Follow-ups core is still holding, drawn between the transcript and the
- * composer: the store's pending changes in the queue delivery, and the outbox's
- * rows on their way to it. Steer messages take the other shape, in
- * `pending-tail.ts`.
+ * Follow-ups not yet answered, drawn between the transcript and the composer:
+ * the view's user messages still unsent or pending in the queue delivery.
+ * Steer messages take the other shape, in `pending-tail.ts`.
  *
  * These messages have not been answered, so they do not belong in the record.
  * One row per item: the glyph and one word say when it goes, and the row
@@ -14,44 +13,18 @@
  */
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import type { Delivery, PendingItem } from "@nyte-ai/core";
-import type { UserMessage } from "@nyte-ai/schema";
+import type { Delivery, UserContent } from "@nyte-ai/sdk";
 import { GLYPHS, pendingHint } from "./constants.ts";
 import { extractFileAttachments } from "./composer.ts";
 import { basename } from "node:path";
 import { userText } from "./format.ts";
 import type { DeliveryChoices } from "./lanes.ts";
-import type { OutboxRow } from "@nyte-ai/client";
 import type { CliTheme } from "./theme.ts";
+import type { UserMessage } from "./view-helpers.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
-/**
- * One row: a durable pending change, or a message the outbox is still sending.
- * A pending item carries the submission key that named it while sending, so
- * what draws it can keep the same block across the receipt.
- */
-export type GutterRow =
-  | { readonly kind: "pending"; readonly item: PendingItem }
-  | { readonly kind: "sending"; readonly row: OutboxRow };
-
-/** Durable first, oldest first; then what is still on its way. */
-export function gutterRows(
-  pending: readonly PendingItem[],
-  sending: readonly OutboxRow[],
-): GutterRow[] {
-  return [
-    ...pending.map((item): GutterRow => ({ kind: "pending", item })),
-    ...sending.map((row): GutterRow => ({ kind: "sending", row })),
-  ];
-}
-
-export function rowDelivery(row: GutterRow): Delivery | undefined {
-  return row.kind === "pending" ? row.item.delivery : row.row.input.delivery;
-}
-
-export function rowContent(row: GutterRow): UserMessage["content"] {
-  return row.kind === "pending" ? row.item.content : row.row.input.content;
-}
+/** One row: a user message the view holds as unsent or pending; its id stays the same through both. */
+export type GutterRow = UserMessage;
 
 /** The gutter never takes more than this share of the terminal. */
 const MAX_ROW_SHARE = 0.3;
@@ -70,7 +43,7 @@ const LEAD_COLUMNS = 3;
 
 const GAP_COLUMNS = 2;
 
-export function queuedPromptText(content: UserMessage["content"]): string {
+export function queuedPromptText(content: UserContent): string {
   const text = userText(content);
   const attachments = extractFileAttachments(text);
 
@@ -79,9 +52,10 @@ export function queuedPromptText(content: UserMessage["content"]): string {
     text,
   );
 
-  const images = Array.isArray(content)
-    ? content.filter((part) => part.type === "image").length
-    : 0;
+  const images =
+    typeof content === "string"
+      ? 0
+      : content.filter((part) => part.kind === "file" && part.mime.startsWith("image/")).length;
 
   return `${compact.replaceAll(/\s+/gu, " ").trim()}${images === 0 ? "" : ` · ${images} ${images === 1 ? "image" : "images"}`}`;
 }
@@ -100,26 +74,14 @@ export function deliveryMark(delivery: Delivery, roles: DeliveryChoices, theme: 
 }
 
 export function rowMark(row: GutterRow, roles: DeliveryChoices, theme: CliTheme): RowMark {
-  switch (row.kind) {
-    case "pending":
-      return deliveryMark(row.item.delivery, roles, theme);
-    case "sending": {
-      const { state } = row.row;
-      const attempts = "attempts" in state ? state.attempts : 1;
+  if (row.status.kind !== "unsent") return deliveryMark(row.delivery, roles, theme);
+  const { attempts } = row.status;
 
-      return {
-        glyph: GLYPHS.sending,
-        label: attempts > 1 ? `sending (retry ${String(attempts - 1)})` : "sending",
-        tone: theme.dim,
-      };
-    }
-
-    default: {
-      const _exhaustive: never = row;
-
-      return _exhaustive;
-    }
-  }
+  return {
+    glyph: GLYPHS.sending,
+    label: attempts > 1 ? `sending (retry ${String(attempts - 1)})` : "sending",
+    tone: theme.dim,
+  };
 }
 
 /**
@@ -174,14 +136,14 @@ function pendingRow(
 export class PendingGutter {
   readonly container: BoxRenderable;
   onOpen: ((row: GutterRow) => void) | undefined;
-  onReorder: ((item: PendingItem, before: PendingItem | null) => void) | undefined;
+  onReorder: ((item: GutterRow, before: GutterRow | null) => void) | undefined;
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
   private readonly nextId: (prefix?: string) => string;
   private roles: DeliveryChoices;
   private items: readonly GutterRow[] = [];
   private readonly rows: TextRenderable[] = [];
-  private drag: { readonly item: PendingItem; readonly index: number; moving: boolean } | undefined;
+  private drag: { readonly item: GutterRow; readonly index: number; moving: boolean } | undefined;
 
   constructor(
     renderer: CliRenderer,
@@ -264,8 +226,8 @@ export class PendingGutter {
         event.preventDefault();
         event.stopPropagation();
 
-        if (item.kind === "pending" && event.x < row.x + LEAD_COLUMNS) {
-          this.drag = { item: item.item, index, moving: false };
+        if (item.status.kind === "pending" && event.x < row.x + LEAD_COLUMNS) {
+          this.drag = { item, index, moving: false };
 
           return;
         }
@@ -284,7 +246,7 @@ export class PendingGutter {
         const drag = this.drag;
         this.drag = undefined;
 
-        if (drag !== undefined && !drag.moving) this.onOpen?.({ kind: "pending", item: drag.item });
+        if (drag !== undefined && !drag.moving) this.onOpen?.(drag.item);
       };
 
       row.onMouseDragEnd = (event) => {
@@ -299,10 +261,10 @@ export class PendingGutter {
 
         const target = this.items[index];
 
-        if (target?.kind === "pending" && target.item.delivery !== drag.item.delivery) return;
+        if (target?.status.kind === "pending" && target.delivery !== drag.item.delivery) return;
 
         if (index === drag.index) return;
-        this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
+        this.onReorder?.(drag.item, target?.status.kind === "pending" ? target : null);
         event.preventDefault();
         event.stopPropagation();
       };
@@ -323,7 +285,7 @@ export class PendingGutter {
 
       if (item === undefined) continue;
       const last = index === shown - 1;
-      const text = queuedPromptText(rowContent(item));
+      const text = queuedPromptText(item.content);
       row.content = pendingRow(
         text,
         rowMark(item, this.roles, this.theme),

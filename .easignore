@@ -45,7 +45,6 @@ packages/lab/reports/
 # packages/desktop
 packages/desktop/out/
 packages/desktop/resources/adblock.bin
-packages/desktop/benchmark/results/
 *.log*
 
 # packages/docs

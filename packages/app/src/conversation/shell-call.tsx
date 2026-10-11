@@ -1,7 +1,7 @@
-import { formatToolDuration, toolStatus } from "@nyte-ai/client";
-import type { ShellFacts } from "@nyte-ai/client";
 import { create, props } from "@stylexjs/stylex";
-import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
+import type { ToolClass } from "@nyte-ai/sdk";
+import { formatToolDuration, toolOutput, toolStatus } from "../view-helpers.ts";
+import type { ToolMessage } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -232,8 +232,8 @@ function outputTail(text: string) {
 }
 
 /** How long core measured the command took; a cut output already says so in its own last line. */
-function Facts({ facts }: { readonly facts: ShellFacts }): ReactElement {
-  return <span {...props(styles.facts)}>{formatToolDuration(facts.durationMs)}</span>;
+function Facts({ durationMs }: { readonly durationMs: number }): ReactElement {
+  return <span {...props(styles.facts)}>{formatToolDuration(durationMs)}</span>;
 }
 
 function CommandCode({
@@ -366,22 +366,27 @@ function OutputPreview({ output }: { readonly output: string }): ReactElement {
  * body is the output's last five lines.
  */
 export const ShellCallView = memo(function ShellCallView({
-  part,
+  message,
   toolClass,
-  progress,
   cwd,
   density,
 }: {
-  readonly part: ToolTurnPart;
+  readonly message: ToolMessage;
   readonly toolClass: ShellToolClass;
-  readonly progress: ToolProgress | undefined;
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
-  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
+  const { state } = message;
+  const raw = running
+    ? state.phase === "running"
+      ? (state.progress?.text ?? "")
+      : ""
+    : toolOutput(state);
+  const durationMs =
+    message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
   const output = useMemo(() => terminalText(raw).trim(), [raw]);
   const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
   const description = toolClass.description?.trim() ?? "";
@@ -399,7 +404,7 @@ export const ShellCallView = memo(function ShellCallView({
     <>
       <CommandCode tokens={tokens} withMenu={withMenu} />
       {output !== "" && <pre {...props(styles.output)}>{output}</pre>}
-      {toolClass.facts !== undefined && <Facts facts={toolClass.facts} />}
+      {durationMs !== undefined && <Facts durationMs={durationMs} />}
     </>
   );
 

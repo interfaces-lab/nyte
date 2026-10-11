@@ -1,17 +1,12 @@
-import {
-  createNyteClient,
-  NyteTransportError,
-  NyteWireError,
-  type NyteClient,
-} from "@nyte-ai/client";
-import { base64ToBase64Url } from "@nyte-ai/connect";
-import type { HostIdentity, ServerInfo } from "@nyte-ai/protocol";
+import { sdk, SdkError } from "@nyte-ai/sdk";
+import type { Connection as HostConnection, CredentialSource } from "@nyte-ai/sdk";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
+import { createMMKV } from "react-native-mmkv";
 import { displayAddress, type Connection, type SavedConnection } from "./connection.ts";
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
-import { proveHost } from "./identity.ts";
+import { createJournal } from "./journal.ts";
 import { createPinStore, routeOf } from "./pins.ts";
 import { readAccountConfig } from "../account/account-config.ts";
 import { deviceCrypto } from "../account/device.ts";
@@ -33,28 +28,26 @@ export const connectionStore = createConnectionStore(
 
 const pins = createPinStore({ read: getItemAsync, write: setItemAsync }, deviceCrypto);
 
-/**
- * An account connection shares its origin with the broker, so it sends no
- * cookies. An address-and-token connection keeps the platform default.
- */
-export function createHostClient(saved: SavedConnection, signal?: AbortSignal): NyteClient {
-  const { url, token } = saved.connection;
+const journals = createMMKV({ id: "nyte.journal" });
 
-  return createNyteClient({
-    baseUrl: url,
-    token,
-    fetch:
-      saved.kind === "managed"
-        ? (input, init) =>
-            fetch(input, { ...init, credentials: "omit", signal: signal ?? init?.signal })
-        : (input, init) => fetch(input, { ...init, signal: signal ?? init?.signal }),
-  });
+/**
+ * Returns the fetch a host's requests go through: Expo's, which streams
+ * bodies on Hermes. An account connection shares its origin with the broker,
+ * so it sends no cookies; an address-and-token connection keeps the platform
+ * default.
+ */
+function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
+  return saved.kind === "managed"
+    ? (input, init) => fetch(input, { ...init, credentials: "omit" })
+    : (input, init) => fetch(input, init);
 }
 
 /** What a verification admitted. Screens mount only under one of these. */
 export interface VerifiedHost {
-  /** `info.identity` is present only when the host just signed for it. */
-  readonly info: ServerInfo;
+  /** The sdk connection the screens use; closed when another check replaces it. */
+  readonly connection: HostConnection;
+  /** The connection to save: the device token a pairing yielded in place of its code. */
+  readonly saved: SavedConnection;
   /** The host and principal stored state belongs to. Never holds a bearer. */
   readonly scope: string;
   /** New on every adoption, so a new credential or host remounts the connected tree. */
@@ -70,42 +63,31 @@ const verified = new WeakMap<SavedConnection, VerifiedHost>();
 
 let adoptions = 0;
 
-/**
- * A proven host is its identity. A cursor host without one is the address and
- * this exact credential's digest, so a new token at a reused address never
- * inherits the old one's drafts or queued intent.
- */
-async function scopeOf(
-  saved: SavedConnection,
-  identity: HostIdentity | undefined,
-): Promise<string> {
-  const principal =
-    saved.kind === "managed"
-      ? ["device", saved.binding.ownerId, saved.binding.deviceId]
-      : ["bearer"];
+/** Returns the saved connection with the device token the sdk kept, or as it was when the token did not change. */
+function withCredential(saved: SavedConnection, credential: CredentialSource): SavedConnection {
+  if (credential.kind !== "token" || credential.token === saved.connection.token) return saved;
 
-  if (identity !== undefined) return JSON.stringify(["host", identity.hostId, ...principal]);
-  const credential = base64ToBase64Url(await deviceCrypto.sha256Base64(saved.connection.token));
-
-  return JSON.stringify(["address", saved.connection.url, credential, ...principal]);
+  return { ...saved, connection: { ...saved.connection, token: credential.token } };
 }
 
 /**
- * `/v1/info` and, for a host that names an identity or a route that pinned
- * one, a signed nonce, all bound to `signal`. Nothing is saved or adopted
- * here; a newly proven identity is pinned before the result is returned.
- * This is the only place a client error is read, so nothing downstream holds
- * an `unknown` it could flatten into "No answer".
+ * `sdk.connect` to the saved address with `credentials` (the saved token, or
+ * a pairing code on the way in), then the route's pinned host id, all under
+ * `signal`. `expect` stays off: its signature check needs WebCrypto Ed25519,
+ * which Hermes lacks, so the pin is the id the host answers with. A first
+ * id, or an explicit `repair`, is pinned before the result is returned.
+ * This is the only place a connect error is read.
  */
 export async function verifyHost(input: {
   readonly saved: SavedConnection;
+  readonly credentials?: CredentialSource;
   readonly repair: boolean;
   readonly signal: AbortSignal;
 }): Promise<HostVerification> {
   const { saved, signal } = input;
   const route = routeOf(saved);
   const address = displayAddress(saved.connection);
-  let pinned: HostIdentity | undefined;
+  let pinned: string | undefined;
 
   try {
     pinned = await pins.read(route);
@@ -114,48 +96,59 @@ export async function verifyHost(input: {
   }
 
   if (signal.aborted) return { kind: "cancelled" };
-  let proof: Awaited<ReturnType<typeof proveHost>>;
+  let connection: HostConnection;
 
   try {
-    proof = await proveHost({
-      client: createHostClient(saved, signal),
-      pinned,
-      repair: input.repair,
-      crypto: deviceCrypto,
+    connection = await sdk.connect({
+      url: saved.connection.url,
+      credentials: input.credentials ?? { kind: "token", token: saved.connection.token },
+      journal: createJournal(journals, JSON.stringify(route)),
+      fetch: hostFetch(saved),
     });
   } catch (cause) {
     if (signal.aborted) return { kind: "cancelled" };
 
-    if (cause instanceof NyteWireError || cause instanceof NyteTransportError)
-      return classifyConnectFailure(cause, address);
+    if (cause instanceof SdkError) return classifyConnectFailure(cause, address);
 
-    // The client raises only those two, so anything else is a bug in this app.
     return { kind: "unexpected", detail: cause instanceof Error ? cause.message : String(cause) };
   }
 
-  if (signal.aborted) return { kind: "cancelled" };
+  const refuse = (failure: ConnectFailure): ConnectFailure => {
+    void connection.close();
 
-  if (proof.kind === "identityChanged")
-    return { kind: "identityChanged", address, url: saved.connection.url };
+    return failure;
+  };
 
-  if (proof.kind === "unverified") return { kind: "unverified", address };
-  const identity = proof.kind === "proven" ? proof.info.identity : undefined;
+  if (signal.aborted) return refuse({ kind: "cancelled" });
 
-  if (identity !== undefined && identity.publicKey.x !== pinned?.publicKey.x) {
+  if (pinned !== undefined && pinned !== connection.hostId && !input.repair)
+    return refuse({ kind: "identityChanged", address, url: saved.connection.url });
+
+  if (pinned !== connection.hostId) {
     try {
-      await pins.write(route, identity);
+      await pins.write(route, connection.hostId);
     } catch {
-      return { kind: "keychain" };
+      return refuse({ kind: "keychain" });
     }
   }
 
-  const scope = await scopeOf(saved, identity);
+  if (signal.aborted) return refuse({ kind: "cancelled" });
 
-  // A timeout or a newer connection during the Keychain or digest work adopts nothing.
-  if (signal.aborted) return { kind: "cancelled" };
+  const principal =
+    saved.kind === "managed"
+      ? ["device", saved.binding.ownerId, saved.binding.deviceId]
+      : ["bearer"];
+
   adoptions += 1;
-  const host: VerifiedHost = { info: proof.info, scope, key: String(adoptions) };
-  verified.set(saved, host);
+
+  const host: VerifiedHost = {
+    connection,
+    saved: withCredential(saved, connection.credential),
+    scope: JSON.stringify(["host", connection.hostId, ...principal]),
+    key: String(adoptions),
+  };
+
+  verified.set(host.saved, host);
 
   return { kind: "verified", host };
 }
@@ -163,18 +156,34 @@ export async function verifyHost(input: {
 /** How one attempt ended. Only `connected` may open a session. */
 export type ConnectResult = { readonly kind: "connected" } | ConnectFailure;
 
-/** Verify the address and token, then the Keychain write, all under `signal`. */
+/**
+ * Pair with the address and the code the user entered, then save the device
+ * token the host returned in the Keychain, all under `signal`. The token
+ * already saved, left as it was in the form, is that device token and is
+ * sent as one.
+ */
 export async function connectHost(input: {
   readonly connection: Connection;
   readonly repair: boolean;
   readonly signal: AbortSignal;
 }): Promise<ConnectResult> {
   const { signal } = input;
-  const next: SavedConnection = { kind: "manual", connection: input.connection };
-  const result = await verifyHost({ saved: next, repair: input.repair, signal });
+  const { token } = input.connection;
+  const current = connectionStore.getSnapshot();
+  const kept = current.kind === "saved" && current.saved.connection.token === token;
+
+  const result = await verifyHost({
+    saved: { kind: "manual", connection: input.connection },
+    credentials: kept ? { kind: "token", token } : { kind: "pairing", code: token },
+    repair: input.repair,
+    signal,
+  });
 
   if (result.kind !== "verified") return result;
+  const { saved: next, connection } = result.host;
   const saved = await connectionStore.save(next, signal);
+
+  if (saved.kind !== "saved") void connection.close();
 
   if (saved.kind === "failed") return { kind: "notSaved" };
 
@@ -207,6 +216,11 @@ function createHostVerifier() {
   const listeners = new Set<() => void>();
 
   const publish = (next: HostCheck) => {
+    if (
+      check.kind === "verified" &&
+      (next.kind !== "verified" || next.host.connection !== check.host.connection)
+    )
+      void check.host.connection.close();
     check = next;
 
     for (const listener of listeners) listener();
@@ -236,10 +250,17 @@ function createHostVerifier() {
       .then((result) => {
         clearTimeout(timer);
 
-        if (running !== controller) return;
+        if (running !== controller) {
+          if (result.kind === "verified") void result.host.connection.close();
+
+          return;
+        }
+
         running = undefined;
         // Only the timer aborts the current attempt, so an abort here is silence.
         const timedOut = controller.signal.aborted || result.kind === "cancelled";
+
+        if (timedOut && result.kind === "verified") void result.host.connection.close();
         publish(
           timedOut
             ? {
@@ -281,7 +302,7 @@ function createHostVerifier() {
 
       return () => listeners.delete(listener);
     },
-    /** Ask the saved host again; `repair` replaces its pin after a fresh signature. */
+    /** Ask the saved host again; `repair` replaces its pin with the id it answers. */
     retry: (repair: boolean) => {
       if (check.kind === "failed") start(check.saved, repair);
     },

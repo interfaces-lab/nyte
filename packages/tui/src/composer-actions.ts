@@ -1,4 +1,4 @@
-import type { Delivery } from "@nyte-ai/core";
+import type { Delivery } from "@nyte-ai/sdk";
 import { commandBindings, formatCommandBindings } from "@opentui/keymap/extras";
 import { Type } from "typebox";
 import { Value } from "typebox/value";

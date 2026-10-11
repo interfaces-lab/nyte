@@ -1,15 +1,14 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import type { SessionId, VcsHead } from "@nyte-ai/protocol";
-import type { Usage } from "@nyte-ai/schema";
+import type { GitStatus, SessionId, Usage } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
-import { useSessionSnapshot } from "../queries.ts";
+import { useSessionView } from "../queries.ts";
 import { isSettingsSection } from "../settings/index.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
@@ -49,7 +48,7 @@ function StatusRow({
 
 function usageBreakdown(usage: Usage): string {
   const lines = [
-    usage.cost.total > 0 ? "Estimated at API prices" : `${formatTokens(usage.totalTokens)} tokens`,
+    usage.cost.total > 0 ? "Estimated at API prices" : `${formatTokens(usage.total)} tokens`,
     `Input ${formatTokens(usage.input)} · Output ${formatTokens(usage.output)}`,
   ];
 
@@ -70,14 +69,12 @@ function CostRow({
 }): ReactElement {
   const navigate = useNavigate();
 
-  if (usage === undefined || usage.totalTokens === 0)
+  if (usage === undefined || usage.total === 0)
     return <StatusRow icon="speed-low" label="No usage yet" quiet actions={actions} />;
 
   // A model without a price records tokens and a zero cost.
   const label =
-    usage.cost.total > 0
-      ? formatUsd(usage.cost.total)
-      : `${formatTokens(usage.totalTokens)} tokens`;
+    usage.cost.total > 0 ? formatUsd(usage.cost.total) : `${formatTokens(usage.total)} tokens`;
 
   return (
     <Tooltip>
@@ -106,7 +103,7 @@ function CostRow({
   );
 }
 
-/** What the chat has spent and how full its context is. */
+/** What the chat's last run spent and how full its context is, as its view carries them. */
 export function SessionStatusRows({
   sessionId,
   actions,
@@ -114,19 +111,25 @@ export function SessionStatusRows({
   readonly sessionId: SessionId;
   readonly actions: ReactNode;
 }): ReactElement {
-  const snapshot = useSessionSnapshot(sessionId);
-  const context = snapshot.data?.context;
-  const percent = context?.percent === undefined ? undefined : Math.round(context.percent);
+  const view = useSessionView(sessionId);
+  const context = view?.context;
+  const execution = view?.execution;
+  const lastRun = execution?.kind === "idle" ? execution.lastRun : null;
+  const usage = lastRun?.end.kind === "completed" ? lastRun.end.usage : undefined;
+  const percent =
+    context === undefined || context.window === 0
+      ? undefined
+      : Math.round((context.tokens / context.window) * 100);
 
   return (
     <>
-      <CostRow usage={snapshot.data?.usage} actions={actions} />
+      <CostRow usage={usage} actions={actions} />
       {context !== undefined && percent !== undefined && (
         <div {...props(percent >= CONTEXT_WARNING_PERCENT && intent.warning)}>
           <StatusRow
             icon="ruler"
             label={`${String(percent)}% used`}
-            detail={`${formatTokens(context.estimatedTokens)} / ${formatTokens(context.contextWindow)}`}
+            detail={`${formatTokens(context.tokens)} / ${formatTokens(context.window)}`}
           />
         </div>
       )}
@@ -134,45 +137,31 @@ export function SessionStatusRows({
   );
 }
 
-function headStatus(head: VcsHead) {
-  switch (head.kind) {
-    case "unborn":
-      return { label: head.branch, detail: "No commits" };
+type Repository = Extract<GitStatus, { readonly kind: "repository" }>;
 
-    case "detached":
-      return { label: "Detached", detail: head.oid.slice(0, 7) };
+function headStatus(head: Repository) {
+  if (head.branch === null) return { label: "Detached", detail: head.head?.slice(0, 7) };
 
-    case "attached": {
-      const upstream = head.upstream;
+  if (head.head === null) return { label: head.branch, detail: "No commits" };
+  const { upstream } = head;
 
-      if (upstream !== null && (upstream.ahead > 0 || upstream.behind > 0)) {
-        const drift = [
-          upstream.ahead > 0 ? `↑${String(upstream.ahead)}` : undefined,
-          upstream.behind > 0 ? `↓${String(upstream.behind)}` : undefined,
-        ];
+  if (upstream !== null && (upstream.ahead > 0 || upstream.behind > 0)) {
+    const drift = [
+      upstream.ahead > 0 ? `↑${String(upstream.ahead)}` : undefined,
+      upstream.behind > 0 ? `↓${String(upstream.behind)}` : undefined,
+    ];
 
-        return { label: head.branch, detail: drift.filter((part) => part !== undefined).join(" ") };
-      }
-
-      if (head.base !== null && head.base.name !== head.branch)
-        return { label: head.branch, detail: `Based on ${head.base.name}` };
-
-      return { label: head.branch, detail: undefined };
-    }
-
-    default: {
-      const _exhaustive: never = head;
-
-      return _exhaustive;
-    }
+    return { label: head.branch, detail: drift.filter((part) => part !== undefined).join(" ") };
   }
+
+  return { label: head.branch, detail: undefined };
 }
 
 export function BranchRow({
   head,
   actions,
 }: {
-  readonly head: VcsHead;
+  readonly head: Repository;
   readonly actions?: ReactNode;
 }): ReactElement {
   const status = headStatus(head);
@@ -182,7 +171,7 @@ export function BranchRow({
       icon="git-branch"
       label={status.label}
       detail={status.detail}
-      quiet={head.kind === "detached"}
+      quiet={head.branch === null}
       actions={actions}
     />
   );

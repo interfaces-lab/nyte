@@ -1,5 +1,5 @@
-import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
 import { relayAddress, Uuid } from "@nyte-ai/connect";
+import { SdkError } from "@nyte-ai/sdk";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -173,40 +173,27 @@ export function parseConnectionPayload(text: string): Connection {
   return parseConnection({ name: link.searchParams.get("name") ?? "My Mac", url, token });
 }
 
+/** Returns what a failed host request means for the user, by the sdk's error code. */
 export function describeHostError(cause: unknown): string {
-  if (cause instanceof NyteWireError) {
-    if (cause.code === "unauthorized" || cause.code === "forbidden")
+  if (!(cause instanceof SdkError)) return "Couldn't reach the host. Check that Nyte is running.";
+
+  switch (cause.code) {
+    case "unauthenticated":
+    case "denied":
       return `The host refused the token. Scan a new code from ${SHARE_LOCATION}, or use the current token from nyte serve.`;
+    case "unknown":
+      return "This conversation is no longer available.";
+    case "unavailable":
+      return "Couldn't reach the host. Check the address and that sharing is on.";
+    case "stale":
+      return "Another device changed this first. Try again.";
+    case "invalid":
+    case "internal":
+      return "The host couldn't complete the request.";
+    default: {
+      const exhaustive: never = cause.code;
 
-    if (cause.code === "unknown_session") return "This conversation is no longer available.";
-
-    if (cause.code === "closed") return "Nyte is closed on the host.";
-
-    // The one error a version difference produces: the app asked for something
-    // this host's Nyte does not serve yet.
-    if (cause.code === "unknown_operation")
-      return "The host is running an older Nyte than this app. Update it there.";
-
-    return "The host couldn't complete the request.";
-  }
-
-  if (cause instanceof NyteTransportError) {
-    switch (cause.failure.kind) {
-      case "network":
-        return "Couldn't reach the host. Check the address and that sharing is on.";
-      case "disconnected":
-        return "The connection to the host dropped.";
-      case "bad_status":
-      case "bad_content_type":
-      case "bad_body":
-        return "That address answered, but not as a Nyte server.";
-      default: {
-        const exhaustive: never = cause.failure;
-
-        return exhaustive;
-      }
+      return exhaustive;
     }
   }
-
-  return "Couldn't reach the host. Check that Nyte is running.";
 }

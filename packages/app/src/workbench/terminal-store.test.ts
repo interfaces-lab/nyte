@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { JobView } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   applyTerminalEvent,
@@ -13,12 +13,11 @@ import {
 } from "./terminal-store.ts";
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
-import type { NyteBridge, TerminalBridge } from "../bridge.ts";
+import type { TerminalBridge } from "../bridge.ts";
 import { installBridge } from "../nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
 
 const ipc = {
-  jobsCancel: vi.fn<NyteBridge["jobs"]["cancel"]>(async () => ({ kind: "applied" })),
   terminalCreate: vi.fn<TerminalBridge["create"]>(async (input) => ({
     id: input.id,
     title: "zsh",
@@ -34,7 +33,6 @@ const web = createWebBridge().bridge;
 
 installBridge({
   ...web,
-  jobs: { ...web.jobs, cancel: ipc.jobsCancel },
   host: {
     ...web.host,
     terminal: {
@@ -56,19 +54,19 @@ function tabId(): string {
   return `terminal-tab-${String(index)}`;
 }
 
-const firstSession = sessionId("terminal-session-1");
+const firstSession = asId<"session">("terminal-session-1");
 
-function command(id: string, change: Partial<JobInfo> = {}): JobInfo {
+function command(id: string, change: Partial<JobView> = {}): JobView {
   return {
-    id,
-    origin: { kind: "run", runId: "run-1", callId: "call-1" },
-    head: "main",
+    id: asId<"job">(id),
     command: "Run tests",
-    isBackgrounded: true,
-    phase: { kind: "running" },
+    title: "Run tests",
+    session: firstSession,
+    pty: null,
+    state: { kind: "running" },
     startedAt: 1,
-    updatedAt: 1,
-    output: "starting\n",
+    endedAt: null,
+    tail: "starting\n",
     ...change,
   };
 }
@@ -92,7 +90,6 @@ function sink() {
 }
 
 beforeEach(() => {
-  ipc.jobsCancel.mockClear();
   ipc.terminalAcknowledge.mockClear();
   ipc.terminalClose.mockClear();
   ipc.terminalCreate.mockClear();
@@ -138,7 +135,7 @@ describe("job-backed terminal runtime", () => {
     const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
     const view = workbenchViewKey("/workspace/displayed");
     const otherView = workbenchViewKey("/workspace/other");
-    const childSession = sessionId("tray-child");
+    const childSession = asId<"session">("tray-child");
     const job = command(`job-${tabId()}`);
 
     const id = openJobTerminal({
@@ -166,7 +163,7 @@ describe("job-backed terminal runtime", () => {
     attachTerminalOutput(id, output);
 
     terminalActions.syncJobs(firstSession, [
-      { ...job, command: "Updated title", output: "starting\nrunning\n" },
+      { ...job, command: "Updated title", tail: "starting\nrunning\n" },
     ]);
 
     const terminal = getTerminal(id);
@@ -182,8 +179,6 @@ describe("job-backed terminal runtime", () => {
     terminalActions.openJob({ id, sessionId: firstSession, job });
 
     await terminalActions.close(id);
-
-    expect(ipc.jobsCancel).not.toHaveBeenCalled();
     expect(ipc.terminalClose).not.toHaveBeenCalled();
     assert.equal(getTerminal(id), undefined);
   });
@@ -201,7 +196,6 @@ describe("job-backed terminal runtime", () => {
       kind: "failed",
       message: "Canvas rendering is unavailable",
     });
-    expect(ipc.jobsCancel).not.toHaveBeenCalled();
   });
 });
 
@@ -228,7 +222,6 @@ describe("shell terminal runtime", () => {
 
     await terminalActions.close(id);
     expect(ipc.terminalClose).toHaveBeenCalledWith({ id });
-    expect(ipc.jobsCancel).not.toHaveBeenCalled();
     assert.equal(getTerminal(id), undefined);
   });
 });

@@ -5,8 +5,7 @@
  * redirected output stays unstyled, so scripts keep parsing bare text.
  */
 import process from "node:process";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
-import { GLYPHS } from "./constants.ts";
+import { GLYPHS, THINKING_LEVELS } from "./constants.ts";
 import type { UpdateOutcome } from "./update.ts";
 import { VERSION } from "./version.ts";
 
@@ -110,11 +109,6 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte login [<provider>]", detail: "sign in; choose a provider when omitted" },
   { label: "nyte logout [<provider>]", detail: "remove stored credentials; choose when omitted" },
   { label: "nyte status", detail: "list stored credentials" },
-  { label: "nyte serve [--workspace <path>]", detail: "run a headless host for other clients" },
-  {
-    label: "nyte account <login|status|unlink>",
-    detail: "link a host profile to your Nyte account",
-  },
   {
     label: "nyte update [version|--check|--models]",
     detail: "install nyte, check for an update, or refresh models",
@@ -127,7 +121,7 @@ const HELP_FLAGS: readonly AlignedRow[] = [
   { label: "--provider <id>", detail: "override the saved provider" },
   { label: "--model <id>", detail: "override the saved model" },
   { label: "--session <session-id>", detail: "target a session; mutually exclusive with --resume" },
-  { label: "--effort <level>", detail: `set thinking level: ${MODEL_THINKING_LEVELS.join(", ")}` },
+  { label: "--effort <level>", detail: `set thinking level: ${THINKING_LEVELS.join(", ")}` },
 ];
 
 /** The `--help` screen. Colored on a TTY, plain otherwise. */

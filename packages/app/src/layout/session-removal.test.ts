@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { PaneController } from "./pane-controller.ts";
 import { activeSelection, paneForSession, visibleSessionIds } from "./pane-layout.ts";
 
-const first = sessionId("first");
+const first = asId<"session">("first");
 
-const second = sessionId("second");
+const second = asId<"session">("second");
 
 test("Undo restores both archived panes and their original focus", () => {
   const controller = new PaneController({ storageKey: "test" });

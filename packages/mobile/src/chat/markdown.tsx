@@ -1,11 +1,47 @@
 import { useState } from "react";
 import { Linking, View, useColorScheme } from "react-native";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
+import { router } from "expo-router";
 import remend from "remend";
 import { setStringAsync } from "expo-clipboard";
-import { markdownStyle, useTheme } from "../theme.ts";
+import { FILE_LINK, markdownStyle, useTheme } from "../theme.ts";
 import { useTranscriptFont } from "../settings/preferences.ts";
 import { toast } from "../ui/toast.tsx";
+import { sessionIdOf } from "../view-helpers.ts";
+
+const linkContextMenuItems = {
+  [FILE_LINK]: [
+    {
+      text: "Copy Path",
+      icon: "doc.on.doc",
+      onPress: ({ url }: { url: string }) => void setStringAsync(filePath(url)),
+    },
+  ],
+};
+
+function filePath(url: string): string {
+  const path = url.replace(/^file:\/\//u, "");
+
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
+
+function openLink(url: string): void {
+  if (url.startsWith("agent:")) {
+    const session = sessionIdOf(url.slice("agent:".length));
+
+    if (session !== undefined) router.push(`/chat/${session}`);
+
+    return;
+  }
+
+  if (!/^https?:\/\//i.test(url)) return;
+
+  void Linking.openURL(url).catch(() => toast.error("Couldn't open link", url));
+}
 
 export function Markdown({
   text,
@@ -49,10 +85,8 @@ export function Markdown({
               : undefined
           }
           containerStyle={{ width: measuredWidth }}
-          onLinkPress={({ url }) => {
-            if (!/^https?:\/\//i.test(url)) return;
-            void Linking.openURL(url).catch(() => toast.error("Couldn't open link", url));
-          }}
+          linkContextMenuItems={linkContextMenuItems}
+          onLinkPress={({ url }) => openLink(url)}
         />
       ) : null}
     </View>

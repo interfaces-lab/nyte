@@ -1,69 +1,42 @@
-import type { WaitingCall } from "@nyte-ai/client";
-import { acceptsSelectionReply, type ReplyOutcome, type SelectionReply } from "@nyte-ai/protocol";
+import type { ActOutcome } from "@nyte-ai/sdk";
 import { SymbolView } from "expo-symbols";
-// oxlint-disable-next-line no-restricted-imports -- the expiry timer follows the deadline prop
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { TextInput } from "react-native";
 import { css, html } from "react-strict-dom";
 import { GlassButton } from "../ui/glass-button.tsx";
+import type { OpenQuestion } from "../view-helpers.ts";
 import { controls, useTheme, radii, spacing, textStyles, tokens, typography } from "../theme.ts";
 
 type WaitingSelectionProps = {
-  waiting: WaitingCall;
-  onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
+  question: OpenQuestion;
+  onReply: (choice: string) => Promise<ActOutcome<unknown> | undefined>;
 };
 
 type AnswerState =
   | { kind: "editing" }
   | { kind: "sending" }
   | { kind: "failed" }
-  | { kind: "settled"; outcome: ReplyOutcome };
+  | { kind: "settled"; outcome: ActOutcome<unknown> };
 
-export function WaitingSelection({ waiting, onReply }: WaitingSelectionProps): ReactElement {
-  return (
-    <SelectionForm
-      key={JSON.stringify([waiting.sessionId, waiting.runId, waiting.callId, waiting.waitId])}
-      waiting={waiting}
-      onReply={onReply}
-    />
-  );
+export function WaitingSelection({ question, onReply }: WaitingSelectionProps): ReactElement {
+  return <SelectionForm key={question.id} question={question} onReply={onReply} />;
 }
 
-function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElement {
+/** One choice of the question's options, or the user's own words. */
+function SelectionForm({ question, onReply }: WaitingSelectionProps): ReactElement {
   const theme = useTheme();
   const titleId = useId();
-  const [selected, setSelected] = useState<readonly string[]>([]);
+  const [selected, setSelected] = useState<string>();
   const [other, setOther] = useState("");
   const [answerState, setAnswerState] = useState<AnswerState>({ kind: "editing" });
   const sending = useRef(false);
-  const [now, setNow] = useState(Date.now);
-  const { selection, until } = waiting;
-  const expired = until !== undefined && until <= now;
-  const multiple = selection.multiple === true;
-
-  // One wake per deadline; the target time arrives as a prop.
-  useEffect(() => {
-    if (until === undefined || until <= now) return;
-
-    // Long-lived waits exceed the timer's signed 32-bit delay; recheck on each wake.
-    const timer = setTimeout(
-      () => setNow(Date.now()),
-      Math.min(2_147_483_647, Math.max(0, until - Date.now())),
-    );
-
-    return () => clearTimeout(timer);
-  }, [now, until]);
-
-  const blocked = expired || answerState.kind === "sending" || answerState.kind === "settled";
-
-  const answer: SelectionReply =
-    other.trim() === "" ? { choices: selected } : { choices: selected, other: other.trim() };
-
-  const canSubmit = acceptsSelectionReply(selection, answer);
+  const blocked = answerState.kind === "sending" || answerState.kind === "settled";
+  const answer = other.trim() === "" ? selected : other.trim();
+  const canSubmit = answer !== undefined;
 
   const submit = async (): Promise<void> => {
-    if (blocked || sending.current || !canSubmit) return;
+    if (blocked || sending.current || answer === undefined) return;
     sending.current = true;
     setAnswerState({ kind: "sending" });
 
@@ -82,46 +55,33 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
       <html.span style={textStyles.secondary}>Needs your answer</html.span>
       <html.div aria-labelledby={titleId} style={styles.card}>
         <html.h2 id={titleId} style={[textStyles.headline, styles.title]}>
-          {selection.title}
+          {question.prompt}
         </html.h2>
-        <html.p style={textStyles.secondary}>
-          {multiple ? "Choose one or more answers." : "Choose one answer."}
-        </html.p>
+        <html.p style={textStyles.secondary}>Choose one answer.</html.p>
         <html.div
-          role={multiple ? "group" : "radiogroup"}
+          role="radiogroup"
           aria-labelledby={titleId}
           aria-busy={answerState.kind === "sending"}
           style={styles.choices}
         >
-          {selection.choices.map((choice, index) => {
-            const chosen = selected.includes(choice.id);
+          {question.options.map((choice, index) => {
+            const chosen = selected === choice;
 
             return (
               <html.button
-                key={choice.id}
-                role={multiple ? "checkbox" : "radio"}
-                aria-label={
-                  choice.description === undefined
-                    ? choice.label
-                    : `${choice.label}. ${choice.description}`
-                }
+                key={choice}
+                role="radio"
+                aria-label={choice}
                 aria-checked={chosen}
                 disabled={blocked}
                 onClick={() => {
                   if (blocked) return;
-                  setSelected((current) =>
-                    multiple
-                      ? current.includes(choice.id)
-                        ? current.filter((id) => id !== choice.id)
-                        : [...current, choice.id]
-                      : [choice.id],
-                  );
-
-                  if (!multiple) setOther("");
+                  setSelected(choice);
+                  setOther("");
                 }}
                 style={[
                   styles.choice,
-                  index < selection.choices.length - 1 && styles.choiceSeparator,
+                  index < question.options.length - 1 && styles.choiceSeparator,
                   blocked && styles.disabled,
                 ]}
               >
@@ -131,42 +91,37 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
                   tintColor={chosen ? theme.accent : theme.interactiveTertiary}
                 />
                 <html.div style={styles.choiceText}>
-                  <html.span style={textStyles.body}>{choice.label}</html.span>
-                  {choice.description === undefined ? null : (
-                    <html.span style={textStyles.secondary}>{choice.description}</html.span>
-                  )}
+                  <html.span style={textStyles.body}>{choice}</html.span>
                 </html.div>
               </html.button>
             );
           })}
         </html.div>
-        {selection.other === undefined ? null : (
-          <TextInput
-            accessibilityLabel={selection.other}
-            placeholder={selection.other}
-            placeholderTextColor={theme.muted}
-            selectionColor={theme.accent}
-            value={other}
-            editable={!blocked}
-            onChangeText={(text) => {
-              setOther(text);
+        <TextInput
+          accessibilityLabel="Answer in your own words"
+          placeholder="Answer in your own words"
+          placeholderTextColor={theme.muted}
+          selectionColor={theme.accent}
+          value={other}
+          editable={!blocked}
+          onChangeText={(text) => {
+            setOther(text);
 
-              if (!multiple && text.trim() !== "") setSelected([]);
-            }}
-            returnKeyType="send"
-            onSubmitEditing={() => {
-              void submit();
-            }}
-            style={{
-              ...typography.body,
-              color: theme.foreground,
-              backgroundColor: theme.raised,
-              minHeight: controls.touchTarget,
-              padding: spacing.md,
-              borderRadius: radii.control,
-            }}
-          />
-        )}
+            if (text.trim() !== "") setSelected(undefined);
+          }}
+          returnKeyType="send"
+          onSubmitEditing={() => {
+            void submit();
+          }}
+          style={{
+            ...typography.body,
+            color: theme.foreground,
+            backgroundColor: theme.raised,
+            minHeight: controls.touchTarget,
+            padding: spacing.md,
+            borderRadius: radii.control,
+          }}
+        />
         <GlassButton
           label={answerState.kind === "sending" ? "Sending answer…" : "Send answer"}
           disabled={blocked || !canSubmit}
@@ -178,13 +133,9 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
         />
         {answerState.kind === "settled" ? (
           <html.p role="status" style={textStyles.secondary}>
-            {answerState.outcome.kind === "signalled"
+            {answerState.outcome.kind === "ok"
               ? "Answer sent."
               : "This question is no longer waiting for an answer."}
-          </html.p>
-        ) : expired ? (
-          <html.p role="status" style={textStyles.secondary}>
-            This question has expired.
           </html.p>
         ) : answerState.kind === "failed" ? (
           <html.p role="alert" style={textStyles.error}>

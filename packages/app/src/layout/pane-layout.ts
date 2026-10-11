@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sessionId } from "../schemas.ts";

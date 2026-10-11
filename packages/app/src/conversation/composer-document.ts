@@ -33,8 +33,9 @@ import type {
   PointType,
   SerializedLexicalNode,
 } from "lexical";
-import { completionTrigger } from "@nyte-ai/client";
-import type { CompletionTrigger, MentionFile } from "@nyte-ai/client";
+import { completionTrigger } from "../view-helpers.ts";
+import type { CompletionTrigger } from "../view-helpers.ts";
+import type { MentionFile } from "./message-references.ts";
 import { messageParts, referencePromptText, referenceText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 

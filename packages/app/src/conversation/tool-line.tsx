@@ -1,7 +1,7 @@
-import { toolStatus } from "@nyte-ai/client";
-import type { ToolStatus, ToolTense } from "@nyte-ai/client";
 import { create, props } from "@stylexjs/stylex";
-import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
+import type { ToolClass } from "@nyte-ai/sdk";
+import { toolOutput, toolStatus } from "../view-helpers.ts";
+import type { ToolMessage, ToolStatus, ToolTense } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -18,7 +18,7 @@ import { terminalText } from "./terminal-text.ts";
 import { customTool, placeName, toolNoun, toolVerbs } from "./tool-copy.ts";
 import type { CustomTool } from "./tool-copy.ts";
 
-export type LineToolClass = Extract<ToolClass, { readonly kind: "file_read" | "list" | "custom" }>;
+export type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 
 const COLOR_TRANSITION = {
   transitionProperty: "color",
@@ -149,7 +149,7 @@ export const toolLineStyles = create({
 /** Without a verb the subject names the tool itself: "x.ts read", or a custom tool's own name. */
 function lineCopy(toolClass: LineToolClass, cwd: string | undefined, tense: ToolTense): CustomTool {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
     case "list": {
       const place = placeName(toolClass.path, cwd);
 
@@ -205,27 +205,30 @@ function fileUrl(path: string, cwd: string | undefined): string | undefined {
 }
 
 export const ToolLineView = memo(function ToolLineView({
-  part,
+  message,
   toolClass,
-  progress,
   cwd,
 }: {
-  part: ToolTurnPart;
+  message: ToolMessage;
   toolClass: LineToolClass;
-  progress: ToolProgress | undefined;
   cwd: string | undefined;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
   const opener = useReferenceOpener();
-  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
+  const { state } = message;
+  const raw = running
+    ? state.phase === "running"
+      ? (state.progress?.text ?? "")
+      : ""
+    : toolOutput(state);
   const output = useMemo(() => terminalText(raw).trimEnd(), [raw]);
   const copy = lineCopy(toolClass, cwd, status.tense);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
 
   const file =
-    toolClass.kind === "file_read" && status.tone === "success"
+    toolClass.kind === "read" && status.tone === "success"
       ? fileFromUrl(fileUrl(toolClass.path, cwd) ?? "")
       : undefined;
 

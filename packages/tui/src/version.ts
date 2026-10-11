@@ -1,9 +1,8 @@
 /** Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/utils/version-check.ts */
 import process from "node:process";
 import { gt, valid } from "semver";
-import { toJsonValue } from "@nyte-ai/core/store";
 import packageMetadata from "../package.json" with { type: "json" };
-import { isJsonObject, isJsonString } from "./json.ts";
+import { isJsonObject, isJsonString, toJson } from "./json.ts";
 
 export const REPO = "interfaces-lab/nyte";
 
@@ -47,7 +46,7 @@ export async function fetchLatestRelease(
     });
 
     if (!response.ok) return undefined;
-    const data = toJsonValue(await response.json());
+    const data = toJson(await response.json());
 
     if (!isJsonObject(data)) return undefined;
     const tag = data["tag_name"];

@@ -1,6 +1,7 @@
 /**
- * New chats on a registry host. The host exposes folders by opaque id and
- * starts a root with its first message durably under the caller's request id.
+ * New chats. The host exposes registered folders by id; a chat is
+ * `sessions.create` under the caller's request id, then its first message
+ * sent under the same id, so asking twice is one chat and one message.
  * Which folder this phone works in is the phone's own state, kept per host
  * and principal; nothing here moves a cursor another client could see.
  *
@@ -15,9 +16,10 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { StartInputSchema, StartReceiptSchema } from "@nyte-ai/protocol";
-import type { RegisteredWorkspace, SessionId, StartInput, StartReceipt } from "@nyte-ai/protocol";
-import type { NyteClient } from "@nyte-ai/client";
+import { asId } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/sdk";
+import type { Connection, SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
+import { uploadDraft } from "../media/attachments.ts";
 
 export interface KeyValueStorage {
   getString(key: string): string | undefined;
@@ -34,15 +36,15 @@ export function startKey(scope: string): string {
 }
 
 /** A folder the host serves right now; the rest wait on the owner. */
-export function isReady(row: RegisteredWorkspace): boolean {
-  return row.trust.kind === "granted" || row.trust.kind === "policy";
+export function isReady(row: WorkspaceInfo): boolean {
+  return row.availability.kind === "available";
 }
 
 /** The folder new chats go to: the one chosen here while it is ready, else the only ready one. */
 export function selectedFolder(
-  rows: readonly RegisteredWorkspace[],
+  rows: readonly WorkspaceInfo[],
   chosenId: string | undefined,
-): RegisteredWorkspace | undefined {
+): WorkspaceInfo | undefined {
   const ready = rows.filter(isReady);
   const chosen = ready.find((row) => row.id === chosenId);
 
@@ -50,6 +52,42 @@ export function selectedFolder(
 
   return ready.length === 1 ? ready[0] : undefined;
 }
+
+const DraftPartSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("text"), text: Type.String() }),
+  Type.Object({ kind: Type.Literal("image"), mime: Type.String(), data: Type.String() }),
+]);
+
+const StartInputSchema = Type.Object(
+  {
+    requestId: Type.String({ minLength: 1 }),
+    workspace: Type.String({ minLength: 1 }),
+    name: Type.String(),
+    content: Type.Array(DraftPartSchema),
+    model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })),
+    thinking: Type.Optional(
+      Type.Union([
+        Type.Literal("off"),
+        Type.Literal("minimal"),
+        Type.Literal("low"),
+        Type.Literal("medium"),
+        Type.Literal("high"),
+        Type.Literal("xhigh"),
+        Type.Literal("max"),
+      ]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export type StartInput = Static<typeof StartInputSchema>;
+
+const StartReceiptSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("accepted"), sessionId: Type.String() }),
+  Type.Object({ kind: Type.Literal("refused"), message: Type.String() }),
+]);
+
+type StartReceipt = Static<typeof StartReceiptSchema>;
 
 const PendingStartSchema = Type.Object(
   {
@@ -141,6 +179,44 @@ export function isAsking(scope: string, requestId: string): boolean {
 }
 
 /**
+ * Returns the host's answer to a recorded start: the session created under
+ * the request id and the message sent under it, or why the host refused.
+ * An unregistered folder and an invalid choice are refusals; anything else
+ * is thrown, unanswered.
+ */
+async function start(client: Connection, input: StartInput): Promise<StartReceipt> {
+  const workspace = (await client.workspaces.list()).find((row) => row.id === input.workspace);
+
+  if (workspace === undefined)
+    return { kind: "refused", message: "This folder is no longer on the host." };
+
+  const sessionId = asId<"session">(input.requestId);
+
+  try {
+    const session = await client.sessions.create({
+      id: sessionId,
+      workspace: workspace.id,
+      name: input.name,
+      configuration: { model: input.model, thinking: input.thinking },
+    });
+
+    await session.send(await uploadDraft(client.workspace(workspace.id), input.content), {
+      id: asId<"receipt">(input.requestId),
+    });
+  } catch (cause) {
+    if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid"))
+      throw cause;
+
+    return {
+      kind: "refused",
+      message: cause.code === "unknown" ? "This folder is no longer on the host." : cause.message,
+    };
+  }
+
+  return { kind: "accepted", sessionId };
+}
+
+/**
  * Ask the host about the recorded start, exactly as recorded. The answer goes
  * on the record and stays there until the screen that shows it acts on it:
  * an accepted chat until it is opened, a refusal until it is edited.
@@ -151,7 +227,7 @@ export async function askStart({
   scope,
   input,
 }: {
-  client: Pick<NyteClient, "environment">;
+  client: Connection;
   storage: KeyValueStorage;
   scope: string;
   input: StartInput;
@@ -165,7 +241,7 @@ export async function askStart({
     let receipt: StartReceipt;
 
     try {
-      receipt = await client.environment("environment.start", input);
+      receipt = await start(client, input);
     } catch (cause: unknown) {
       return { kind: "unanswered", cause };
     }
@@ -176,8 +252,8 @@ export async function askStart({
       storage.set(startKey(scope), JSON.stringify({ ...stored, receipt }));
 
     return receipt.kind === "accepted"
-      ? { kind: "accepted", sessionId: receipt.sessionId }
-      : { kind: "refused", message: refusalMessage(receipt) };
+      ? { kind: "accepted", sessionId: asId<"session">(receipt.sessionId) }
+      : { kind: "refused", message: receipt.message };
   } finally {
     setAsking(flight, false);
   }
@@ -185,11 +261,7 @@ export async function askStart({
 
 /** Whether asking the same request again can change the answer. */
 export function canRetry(pending: PendingStart): boolean {
-  const receipt = pending.receipt;
-
-  if (receipt === undefined) return true;
-
-  return receipt.kind === "refused" && receipt.reason !== "deleted";
+  return pending.receipt?.kind !== "accepted";
 }
 
 /** Whether Edit can give the message back without risking a second chat. */
@@ -197,40 +269,16 @@ export function canEdit(pending: PendingStart): boolean {
   return pending.receipt?.kind !== "accepted";
 }
 
-export function refusalMessage(receipt: Exclude<StartReceipt, { kind: "accepted" }>): string {
-  if (receipt.kind === "conflict") return "This message was already sent with other content.";
-
-  switch (receipt.reason) {
-    case "workspace_unknown":
-      return "This folder is no longer on the host.";
-    case "workspace_untrusted":
-      return "The host owner needs to trust this folder.";
-    case "workspace_unavailable":
-      return "This folder isn't available on the host right now.";
-    case "model_unknown":
-      return "The host doesn't offer that model.";
-    case "deleted":
-      return "This chat was deleted.";
-    default: {
-      const exhaustive: never = receipt.reason;
-
-      return exhaustive;
-    }
-  }
-}
-
-/** The message's parts; a plain string is one text part. */
-export function startParts(input: StartInput) {
-  const content = input.message.content;
-
-  return Array.isArray(content) ? content : [{ type: "text" as const, text: content }];
+/** Returns why the host refused a start. */
+export function refusalMessage(receipt: Extract<StartReceipt, { kind: "refused" }>): string {
+  return receipt.message;
 }
 
 /** The typed text a start leads with: the composer puts it first, before photos and notes. */
 export function startText(input: StartInput): string {
-  const first = startParts(input)[0];
+  const first = input.content[0];
 
-  return first?.type === "text" ? first.text : "";
+  return first?.kind === "text" ? first.text : "";
 }
 
 /** The message's first line, short enough for one caption. */
@@ -239,5 +287,5 @@ export function startPreview(input: StartInput): string {
 
   if (line !== "") return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 
-  return startParts(input).some((part) => part.type === "image") ? "Photo" : "Message";
+  return input.content.some((part) => part.kind === "image") ? "Photo" : "Message";
 }

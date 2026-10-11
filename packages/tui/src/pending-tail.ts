@@ -6,31 +6,19 @@
  * Admission then changes that row in place and moves nothing, so the message
  * is never seen in two places.
  *
- * A message keeps one block from sending through pending: the submission key
- * that named it while sending stays an alias of the block once the receipt
- * names its change, and core returns that key on the pending item itself. Follow-ups queued with ctrl+enter take the compact rows in
- * `pending-gutter.ts` instead.
+ * A message keeps one block from unsent through pending: its id is minted
+ * before the network and stays the same once admitted. Follow-ups queued with
+ * ctrl+enter take the compact rows in `pending-gutter.ts` instead.
  */
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
-import type { PendingItem } from "@nyte-ai/core";
 import { pendingHint, SPACING } from "./constants.ts";
 import type { DeliveryChoices } from "./lanes.ts";
 import { appendMessage } from "./message.ts";
-import { rowContent, rowMark } from "./pending-gutter.ts";
+import { rowMark } from "./pending-gutter.ts";
 import type { GutterRow, RowMark } from "./pending-gutter.ts";
 import { repaintTree } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
 import type { CliTheme } from "./theme.ts";
-
-/** Every name a row answers to; a pending item also answers to the key it was submitted under. */
-function rowIds(row: GutterRow): readonly string[] {
-  if (row.kind === "sending") return [`key:${row.row.key}`];
-  const ids = [`change:${row.item.change}`];
-
-  if (row.item.key !== undefined) ids.push(`key:${row.item.key}`);
-
-  return ids;
-}
 
 /** `<glyph> <word> · <key>` where the turn's status row will be. */
 function statusLine(mark: RowMark, theme: CliTheme, hint: string | undefined): StyledText {
@@ -43,7 +31,7 @@ function statusLine(mark: RowMark, theme: CliTheme, hint: string | undefined): S
 
 /** A message drawn in the shape of the turn it becomes. */
 interface PendingBlock {
-  ids: readonly string[];
+  readonly id: string;
   readonly root: BoxRenderable;
   readonly status: TextRenderable;
 }
@@ -52,13 +40,13 @@ interface PendingBlock {
 export class PendingTail {
   readonly container: BoxRenderable;
   onOpen: ((row: GutterRow) => void) | undefined;
-  onReorder: ((item: PendingItem, before: PendingItem | null) => void) | undefined;
+  onReorder: ((item: GutterRow, before: GutterRow | null) => void) | undefined;
   private readonly transcript: Transcript;
   private roles: DeliveryChoices;
   private items: readonly GutterRow[] = [];
   private hint = true;
   private readonly blocks: PendingBlock[] = [];
-  private drag: { readonly item: PendingItem; readonly index: number; moving: boolean } | undefined;
+  private drag: { readonly item: GutterRow; readonly index: number; moving: boolean } | undefined;
 
   constructor(transcript: Transcript, roles: DeliveryChoices) {
     this.transcript = transcript;
@@ -91,18 +79,12 @@ export class PendingTail {
     this.hint = options.hint;
 
     for (const [index, item] of items.entries()) {
-      const ids = rowIds(item);
       const current = this.blocks[index];
-
-      const block =
-        current !== undefined && current.ids.some((id) => ids.includes(id))
-          ? current
-          : this.mount(item, current?.root);
+      const block = current?.id === item.id ? current : this.mount(item, current?.root);
 
       if (current !== undefined && current !== block) this.unmount(current);
-      block.ids = ids;
       block.status.visible =
-        options.running || (item.kind === "sending" && item.row.state.kind === "retrying");
+        options.running || (item.status.kind === "unsent" && item.status.retrying !== null);
       this.blocks[index] = block;
     }
 
@@ -124,7 +106,7 @@ export class PendingTail {
 
     if (before === undefined) this.container.add(root);
     else this.container.insertBefore(root, before);
-    appendMessage(this.transcript, { align: "end", content: rowContent(item) }, root);
+    appendMessage(this.transcript, { align: "end", content: item.content }, root);
 
     const statusRow = new BoxRenderable(renderer, {
       id: nextId("pending-status"),
@@ -164,8 +146,8 @@ export class PendingTail {
       event.preventDefault();
       event.stopPropagation();
 
-      if (row.kind === "pending") {
-        this.drag = { item: row.item, index, moving: false };
+      if (row.status.kind === "pending") {
+        this.drag = { item: row, index, moving: false };
 
         return;
       }
@@ -184,7 +166,7 @@ export class PendingTail {
       const drag = this.drag;
       this.drag = undefined;
 
-      if (drag !== undefined && !drag.moving) this.onOpen?.({ kind: "pending", item: drag.item });
+      if (drag !== undefined && !drag.moving) this.onOpen?.(drag.item);
     };
 
     root.onMouseDragEnd = (event) => {
@@ -199,15 +181,15 @@ export class PendingTail {
 
       const target = this.items[index];
 
-      if (target?.kind === "pending" && target.item.delivery !== drag.item.delivery) return;
+      if (target?.status.kind === "pending" && target.delivery !== drag.item.delivery) return;
 
       if (index === drag.index) return;
-      this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
+      this.onReorder?.(drag.item, target?.status.kind === "pending" ? target : null);
       event.preventDefault();
       event.stopPropagation();
     };
 
-    return { ids: rowIds(item), root, status };
+    return { id: item.id, root, status };
   }
 
   private unmount(block: PendingBlock): void {

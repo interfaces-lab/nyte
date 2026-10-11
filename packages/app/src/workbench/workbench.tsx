@@ -2,7 +2,7 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -169,7 +169,7 @@ function FloatingWorkbenchPanel({
   const snapshot = project ? vcs.data : undefined;
   const repository = changesRepository(snapshot);
   const tools = workbenchTabs(scope, capabilities);
-  const head = snapshot?.kind === "repository" ? snapshot.head : undefined;
+  const head = snapshot?.kind === "repository" ? snapshot : undefined;
   const changesShown = repository !== undefined && tools.includes("changes");
   const statusShown = sessionId !== undefined || head !== undefined;
 

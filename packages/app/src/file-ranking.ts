@@ -1,4 +1,4 @@
-import type { MentionFile } from "@nyte-ai/client";
+import type { MentionFile } from "./conversation/message-references.ts";
 
 interface SearchableFile {
   readonly file: MentionFile;
@@ -7,8 +7,9 @@ interface SearchableFile {
 }
 
 /**
- * Ranks name prefixes, then name substrings, then path substrings.
- * One catalog owns one lazy index, not a growing cache of queries or catalogs.
+ * Ranks name prefixes, then name substrings, then path substrings over the
+ * scanned entries `@` names. One catalog owns one lazy index, not a growing
+ * cache of queries or catalogs.
  */
 export function createFileRanking(files: readonly MentionFile[], limit: number) {
   let searchable: readonly SearchableFile[] | undefined;
@@ -34,7 +35,6 @@ export function createFileRanking(files: readonly MentionFile[], limit: number) 
 
       if (bucket !== undefined && bucket.length < limit) bucket.push(entry.file);
 
-      // Later entries cannot outrank or precede these prefix matches.
       if (prefixes.length === limit) break;
     }
 

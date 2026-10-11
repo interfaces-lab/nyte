@@ -1,6 +1,8 @@
 import { create, props } from "@stylexjs/stylex";
-import { parsePatchFacts, toolStatus } from "@nyte-ai/client";
-import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
+import type { ToolClass } from "@nyte-ai/sdk";
+import { toolStatus } from "../view-helpers.ts";
+import type { ToolMessage } from "../view-helpers.ts";
+import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -20,10 +22,7 @@ import { activityStyles } from "./styles.stylex.ts";
 import { tidyPath, toolNoun, toolVerbs } from "./tool-copy.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
-export type EditToolClass = Extract<
-  ToolClass,
-  { readonly kind: "file_patch" | "file_edit" | "file_write" }
->;
+export type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 
@@ -230,37 +229,26 @@ function Stats({
  * and whose body previews four rows of the diff.
  */
 export const EditCallView = memo(function EditCallView({
-  part,
+  message,
   toolClass,
   cwd,
   density,
 }: {
-  readonly part: ToolTurnPart;
+  readonly message: ToolMessage;
   readonly toolClass: EditToolClass;
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
   const opener = useReferenceOpener();
   const [open, setOpen] = useState(false);
-
-  const facts = useMemo(
-    () => (toolClass.kind === "file_patch" ? parsePatchFacts(toolClass.patch) : undefined),
-    [toolClass],
-  );
-
+  const facts = useMemo(() => editPatch(message), [message]);
   const path = tidyPath(toolClass.path, cwd);
   const name = basename(path);
   const added = facts?.added ?? 0;
   const removed = facts?.removed ?? 0;
-
-  const created =
-    toolClass.kind === "file_patch" &&
-    toolClass.op === "write" &&
-    facts !== undefined &&
-    facts.removed === 0 &&
-    facts.files.every((file) => file.hunks.every((hunk) => hunk.oldLines === 0));
+  const created = message.state.name === "write" && removed === 0;
 
   const verb =
     status.tense === "none"
@@ -277,10 +265,7 @@ export const EditCallView = memo(function EditCallView({
       ? undefined
       : { patch: facts.patch, added, removed };
 
-  const rows = facts?.files.reduce(
-    (total, entry) => total + entry.hunks.reduce((sum, hunk) => sum + hunk.lines.length + 1, 0),
-    0,
-  );
+  const rows = facts?.patch.split("\n").length;
 
   if (density === "detailed" && diff !== undefined) {
     const expandable = (rows ?? 0) > CARD_PREVIEW_ROWS;

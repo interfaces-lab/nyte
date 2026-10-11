@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { launchDesktop } from "../../../desktop/benchmark/desktop.ts";
+import { launchDesktop } from "./launch.ts";
 import { collectErrors } from "../utils/errors.ts";
 
 const APP_ROOT = resolve(import.meta.dirname, "../..");
@@ -214,7 +214,6 @@ test("integrated browser desktop journey", async () => {
   const desktop = await launchDesktop({
     parentDirectory: parent,
     downloadsDirectory,
-    sessionCount: 0,
   });
 
   cleanup.defer(() => desktop.close());

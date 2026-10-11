@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { watch } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -11,74 +12,111 @@ import type {
   HostDescription,
   HostView,
   Json,
+  PluginReplacementReport,
   ValidationIssue,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
 import { composeHost, dev } from "@nyte-ai/core";
-import type {
-  ComposeOptions,
-  Host,
-  ListenOptions,
-  Listener,
-  OpenOptions,
-  Plugin,
-  Store,
-} from "@nyte-ai/core";
+import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import { operations } from "@nyte-ai/protocol";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
-import { identitySigner } from "./identity.ts";
+import { identitySigner } from "./identity-key.ts";
 import { codeOf } from "./local/tree.ts";
+import { localProvider } from "./local/provider.ts";
 import { listen } from "./listen.ts";
 import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
+import { sqliteStore } from "./sqlite.ts";
+
+const RELOAD_DEBOUNCE_MS = 250;
 
 /**
- * Describes what `openHost` takes: `OpenOptions` with `models` and `plugins`
- * optional, `secrets` defaulting to this machine's key, and the home directory
- * holding `.nyte`. Every `OpenOptions` is one, so the sdk's Node `open` passes
- * its options straight through.
+ * Describes what `openHost` takes: `OpenOptions` with `store`, `workspace`,
+ * `models` and `plugins` optional, `secrets` defaulting to this machine's key,
+ * and the home directory holding `.nyte`. Every `OpenOptions` is one, so the
+ * sdk's Node `open` passes its options straight through.
  */
-export type OpenHostOptions = Omit<OpenOptions, "models" | "plugins"> & {
+export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models" | "plugins"> & {
+  /** The host's store; absent, `sqliteStore` at `<home>/.nyte/nyte.db`, which the host then closes with itself (§51c). */
+  readonly store?: Store;
+  /** Where a root session acts when `create` names none; default the local folder `process.cwd()` (§51c). */
+  readonly workspace?: WorkspaceTarget;
   /** The `@nyte-ai/ai` catalog; absent, `nyteModels` over this host's encrypted credential store (§42e). */
   readonly models?: Models;
-  /** Core plugins loaded after the built-ins and before the plugin files; default none. */
+  /** Core plugins loaded after the built-ins and before the plugin files; default none. A `local` environment provider among them replaces the default one. */
   readonly plugins?: readonly Plugin<"core">[];
-  /** The directory whose `.nyte` holds the settings, plugins and secrets key; default `os.homedir()`. */
+  /** The directory whose `.nyte` holds the store, settings, plugins, secrets key and identity key; default `os.homedir()`. */
   readonly home?: string;
 };
 
 /**
- * Opens the Node host the sdk's Node `open` calls: `composeHost` with what
- * this machine supplies, and `listen` attached.
- *
- * `home` defaults to `os.homedir()`, `secrets` to `defaultSecrets(home)` and
- * `models` to `nyteModels`. The host plugins are `plugins`, then
- * `filePlugins`' files; there is no preflight here, since `composeHost` drops
- * and reports a rejected plugin that came from a file (§43j). `composeHost`
- * also gets `settingsSeed`'s seed, protocol's `operations()` and
- * `hostDescription()`, and each file that did not load becomes a
- * `kernel.host.report` row. `listen(options)` is h1's `listen` with `identity`
- * defaulting to `identitySigner(host.hostId, secrets)` (derived on the first
- * `listen`) and `describe` to the same description; the kernel's
- * `loadPlugins` is `pluginLoader` over the plugin directories (§47l, §47m); `close()` closes this host's open listeners, then the
- * host.
+ * Opens the Node host the sdk's Node `open` calls: `composeHost` with
+ * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`),
+ * `workspace` (default the local folder `process.cwd()`), `secrets` (default
+ * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
+ * unless a plugin provides the `local` environment, then `plugins` and
+ * `filePlugins`' files, `settingsSeed`'s seed, protocol's `operations()` and
+ * `hostDescription()`; each file that did not load becomes a
+ * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
+ * the plugin directories (§47l), which `watchPlugins` watches for hot reload
+ * (§49a). `listen` defaults `identity` to `identitySigner(host.hostId, home)`
+ * and `describe` to the description; nothing here reads the secrets key
+ * unless a credential is stored (§50d). `close()` stops the watch, closes the
+ * open listeners, the host, then a store it opened.
  */
 export async function openHost(options: OpenHostOptions): Promise<Host> {
   const home = options.home ?? homedir();
+  const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
+
+  if (options.store !== undefined)
+    return composeOpen(options, { home, workspace, store: options.store, owned: null });
+  const owned = await defaultStore(home);
+
+  try {
+    return await composeOpen(options, { home, workspace, store: owned, owned });
+  } catch (cause) {
+    await owned.close().catch(() => undefined);
+    throw cause;
+  }
+}
+
+/** Returns the store a host opens when given none: `sqliteStore` at `<home>/.nyte/nyte.db`, the directory made 0700 first (§51c). */
+async function defaultStore(home: string): Promise<Store> {
+  await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
+
+  return sqliteStore({ path: join(home, ".nyte", "nyte.db") });
+}
+
+/** Composes the host over a resolved home, workspace and store, and returns it with `listen` and `close` bound; `owned` is the store `close` closes last, null when the caller owns it. */
+async function composeOpen(
+  options: OpenHostOptions,
+  input: {
+    readonly home: string;
+    readonly workspace: WorkspaceTarget;
+    readonly store: Store;
+    readonly owned: Store | null;
+  },
+): Promise<Host> {
+  const { home, workspace, store, owned } = input;
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
-  const [files, settings] = await Promise.all([
-    filePlugins(home, options.workspace),
-    settingsSeed(home),
-  ]);
+  const given = options.plugins ?? [];
+
+  const plugins = given.some((plugin) => plugin.environment?.kind === "local")
+    ? given
+    : [{ id: "local", environment: localProvider({ home }) }, ...given];
+
+  const [files, settings] = await Promise.all([filePlugins(home, workspace), settingsSeed(home)]);
 
   const host = await composeHost({
     ...options,
+    store,
+    workspace,
     loadPlugins: pluginLoader(files.dirs),
-    models: options.models ?? nyteModels({ store: options.store, secrets, home }),
-    plugins: [...(options.plugins ?? []), ...files.plugins],
+    models: options.models ?? (await nyteModels({ store, secrets, home })),
+    plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,
     home,
@@ -104,6 +142,38 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
     failedFiles: files.failed.length,
   });
 
+  const reported = new Map(
+    host.kernel.host
+      .current()
+      .plugins.filter((row) => row.path !== null && row.id === row.path)
+      .map((row) => [row.id, row]),
+  );
+
+  const reload = async (): Promise<void> => {
+    const next = await filePlugins(home, workspace);
+
+    for (const [plugin, source] of next.sources) files.sources.set(plugin, source);
+    const report = await host.plugins.replace([...plugins, ...next.plugins]);
+    const failed = [...next.failed, ...refused(next, report)];
+
+    for (const [id, row] of reported)
+      if (!failed.some((row) => row.id === id)) host.kernel.host.report({ ...row, issues: [] });
+
+    for (const row of failed) host.kernel.host.report(row);
+    reported.clear();
+
+    for (const row of failed) reported.set(row.id, row);
+
+    for (const plugin of files.sources.keys())
+      if (!host.kernel.hostPlugins.includes(plugin)) files.sources.delete(plugin);
+    dev("open", "plugins reloaded", {
+      generation: report.generation,
+      pluginFiles: next.plugins.length,
+      failedFiles: failed.length,
+    });
+  };
+
+  const unwatch = watchPlugins(files.dirs, reload);
   const listeners = new Set<Listener>();
   let identity: ReturnType<typeof identitySigner> | null = null;
 
@@ -111,8 +181,7 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
     const listener = await listen(host, {
       describe: () => description,
       ...listenOptions,
-      identity:
-        listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, secrets))),
+      identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });
 
     listeners.add(listener);
@@ -125,8 +194,11 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      await unwatch();
+
       for (const listener of listeners) await listener.close();
       await host.close();
+      await owned?.close();
     })();
 
     return closing;
@@ -143,23 +215,35 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
  * `catalog.url` from `NYTE_MODELS_URL`.
  *
  * Its providers are ai's `nyteProviders()`, the list `createNyteModels()`
- * registers, in its order, with no second `Models` built (§43k). Nothing is imported from
- * `~/.nyte/auth.json`: this is a rewrite, not a migration, so users log in
- * again (§43j).
+ * registers, in its order, with no second `Models` built (§43k). Each
+ * provider with a stored credential is then refreshed, which restores its
+ * saved catalog and fetches one only when that is stale, so a relaunch lists
+ * its models (§51d); a provider whose refresh fails opens with no models.
+ * Nothing is imported from `~/.nyte/auth.json`: this is a rewrite, not a
+ * migration, so users log in again (§43j).
  */
-function nyteModels(input: {
+async function nyteModels(input: {
   readonly store: Store;
   readonly secrets: SecretsSource;
   readonly home: string;
-}): Models {
+}): Promise<Models> {
+  const credentials = credentialStore(input.store, input.secrets);
+
   const models = createModels({
-    credentials: credentialStore(input.store, input.secrets),
+    credentials,
     modelsStore: new FileModelsStore(join(input.home, ".nyte", "models-store.json")),
     authContext: defaultProviderAuthContext(),
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
   for (const provider of nyteProviders()) models.setProvider(provider);
+  const stored = await credentials.list();
+  const refreshed = await models.refresh({ providers: stored.map((row) => row.providerId) });
+
+  dev("open", "models restored", {
+    providers: stored.length,
+    failed: [...refreshed.errors.keys()],
+  });
 
   return models;
 }
@@ -179,7 +263,10 @@ async function filePlugins(
   workspace: WorkspaceTarget,
 ): Promise<{
   readonly plugins: readonly Plugin<"core">[];
-  readonly sources: NonNullable<ComposeOptions["pluginSources"]>;
+  readonly sources: Map<
+    Plugin<"core">,
+    { readonly source: "user" | "project"; readonly path: string }
+  >;
   readonly dirs: readonly string[];
   readonly failed: readonly HostView["plugins"][number][];
 }> {
@@ -207,6 +294,78 @@ async function filePlugins(
   }
 
   return { plugins, sources, dirs: scopes.map((scope) => scope.dir), failed };
+}
+
+/**
+ * Returns the report rows for the plugin files a replace did not activate:
+ * `{ id: <its path>, source, path, issues }` per `rejected` or
+ * `kept-previous` outcome whose plugin `files` loaded from a file, as
+ * `composeHost` reports a file it drops at open.
+ */
+function refused(
+  files: Awaited<ReturnType<typeof filePlugins>>,
+  report: PluginReplacementReport,
+): readonly HostView["plugins"][number][] {
+  return report.plugins.flatMap((outcome) => {
+    const plugin = files.plugins.find((candidate) => candidate.id === outcome.id);
+    const file = plugin === undefined ? undefined : files.sources.get(plugin);
+
+    return outcome.kind === "activated" || file === undefined
+      ? []
+      : [{ id: file.path, source: file.source, path: file.path, issues: outcome.issues }];
+  });
+}
+
+/**
+ * Calls `reload` 250 ms after the last change under any of `dirs` (§49a), one
+ * reload at a time, through a recursive, non-persistent `fs.watch` per
+ * directory; a directory that does not exist at open is not watched. A failed
+ * reload is logged and the next change tries again. The returned stop closes
+ * the watchers, drops a pending reload and waits for a running one.
+ */
+function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () => Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let running = Promise.resolve();
+
+  const run = (): void => {
+    timer = null;
+    running = running.then(reload).catch((error: unknown) =>
+      dev("open", "plugin reload failed", {
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  };
+
+  const changed = (): void => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(run, RELOAD_DEBOUNCE_MS);
+    timer.unref();
+  };
+
+  const watchers = dirs.flatMap((dir) => {
+    try {
+      const watcher = watch(dir, { recursive: true, persistent: false }, changed);
+
+      watcher.on("error", (error) => {
+        dev("open", "plugin watch failed", { dir, message: error.message });
+        watcher.close();
+      });
+      dev("open", "plugins watched", { dir });
+
+      return [watcher];
+    } catch (error) {
+      dev("open", "plugins unwatched", { dir, code: codeOf(error) });
+
+      return [];
+    }
+  });
+
+  return async () => {
+    for (const watcher of watchers) watcher.close();
+
+    if (timer !== null) clearTimeout(timer);
+    await running;
+  };
 }
 
 /**

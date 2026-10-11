@@ -100,7 +100,6 @@ function Gate() {
                   client: host.client,
                   connection: host.connection,
                   saved: host.saved,
-                  info: host.info,
                   scope: host.scope,
                   edit,
                   disconnect,

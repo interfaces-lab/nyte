@@ -19,9 +19,8 @@
  * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/prompt/autocomplete.tsx
  */
 import fuzzysort from "fuzzysort";
-import { completionTrigger } from "@nyte-ai/client";
-import { formatSkillInvocation } from "@nyte-ai/core/plugins";
-import type { Skill } from "@nyte-ai/schema";
+import type { SkillInfo } from "@nyte-ai/sdk";
+import { completionTrigger } from "./view-helpers.ts";
 
 export interface ParsedSlashCommand {
   readonly name: string;
@@ -160,7 +159,7 @@ export interface SlashSetting {
 export function availableSlashCommands(
   pluginCommands: ReadonlyMap<string, { readonly description: string }>,
   settings: readonly SlashSetting[],
-  skills: ReadonlyMap<string, Skill>,
+  skills: ReadonlyMap<string, SkillInfo>,
 ): SlashCommand[] {
   const builtins: readonly SlashCommand[] = SLASH_COMMANDS;
   const reserved = new Set(builtins.flatMap((command) => [command.name, ...aliasesFor(command)]));
@@ -305,10 +304,10 @@ const INLINE_SKILL_PATTERN = /(?<=^|\s)\/([A-Za-z][A-Za-z0-9-]*)/g;
 interface SkillToken {
   readonly start: number;
   readonly end: number;
-  readonly skill: Skill;
+  readonly skill: SkillInfo;
 }
 
-function skillTokens(text: string, skills: ReadonlyMap<string, Skill>): SkillToken[] {
+function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
   const tokens: SkillToken[] = [];
 
   for (const match of text.matchAll(INLINE_SKILL_PATTERN)) {
@@ -322,7 +321,7 @@ function skillTokens(text: string, skills: ReadonlyMap<string, Skill>): SkillTok
 }
 
 /** Whether a draft invokes a skill from inside the prompt rather than at its head. */
-export function hasInlineSkills(text: string, skills: ReadonlyMap<string, Skill>): boolean {
+export function hasInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): boolean {
   return skillTokens(text, skills).some((token) => !opensDraft(text, token.start));
 }
 
@@ -331,7 +330,7 @@ export function hasInlineSkills(text: string, skills: ReadonlyMap<string, Skill>
  * can invoke several. The composer, the history, and the transcript keep the
  * short token.
  */
-export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Skill>): string {
+export function expandInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): string {
   let expanded = "";
   let cursor = 0;
 
@@ -343,6 +342,30 @@ export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Ski
   return expanded + text.slice(cursor);
 }
 
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+/**
+ * Writes a skill invocation as one `<skill>` block naming the skill and where
+ * its instructions live; the model reads the file from there. Extra
+ * instructions follow the block.
+ */
+export function formatSkillInvocation(skill: SkillInfo, additionalInstructions?: string): string {
+  const block =
+    `<skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.location)}">\n` +
+    `Read the skill's file at its location and follow it.\n</skill>`;
+
+  return additionalInstructions === undefined || additionalInstructions === ""
+    ? block
+    : `${block}\n\n${additionalInstructions}`;
+}
+
 interface SkillInvocation {
   readonly source: string;
   readonly name: string;
@@ -350,8 +373,8 @@ interface SkillInvocation {
 }
 
 /**
- * Core writes a skill invocation as one `<skill>` block, so a client can find
- * the instructions again and show the short token the user typed instead.
+ * A skill invocation is one `<skill>` block, so a client can find it again and
+ * show the short token the user typed instead.
  */
 const SKILL_INVOCATION_PATTERN =
   /<skill name="([^"\n]*)" location="([^"\n]*)">\n[\s\S]*?\n<\/skill>/g;

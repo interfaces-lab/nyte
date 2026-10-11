@@ -1,4 +1,5 @@
-import type { JobInfo, SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { JobView } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "../errors.ts";
@@ -12,7 +13,7 @@ type ShellTerminalState =
   | { readonly kind: "exited"; readonly exitCode: number }
   | { readonly kind: "failed"; readonly message: string };
 
-type JobTerminalState = { readonly kind: JobInfo["phase"]["kind"] };
+type JobTerminalState = JobView["state"];
 
 type TerminalRenderingState =
   | { readonly kind: "ready" }
@@ -33,7 +34,7 @@ interface JobTerminalTab extends TerminalTabFields {
   readonly source: {
     readonly kind: "job";
     readonly sessionId: SessionId;
-    readonly jobId: JobInfo["id"];
+    readonly jobId: JobView["id"];
     readonly output: string;
   };
   readonly state: JobTerminalState;
@@ -128,7 +129,7 @@ export function getTerminal(id: WorkbenchTabId): TerminalTab | undefined {
   return snapshot.tabs.get(id);
 }
 
-export function getJobTerminal(jobId: JobInfo["id"]): JobTerminalTab | undefined {
+export function getJobTerminal(jobId: JobView["id"]): JobTerminalTab | undefined {
   return [...snapshot.tabs.values()].find(
     (tab): tab is JobTerminalTab => isJobTerminal(tab) && tab.source.jobId === jobId,
   );
@@ -190,7 +191,7 @@ function writeJobOutput(id: WorkbenchTabId, previous: string, next: string): voi
   sink.replace(next);
 }
 
-function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
+function syncJobs(sessionId: SessionId, jobs: readonly JobView[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);
   let changed = false;
@@ -203,8 +204,8 @@ function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
 
     if (
       tab.title === job.command &&
-      tab.state.kind === job.phase.kind &&
-      tab.source.output === job.output
+      tab.state.kind === job.state.kind &&
+      tab.source.output === job.tail
     ) {
       continue;
     }
@@ -214,13 +215,13 @@ function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
     const next: JobTerminalTab = {
       ...tab,
       title: job.command,
-      source: { ...tab.source, output: job.output },
-      state: { kind: job.phase.kind },
+      source: { ...tab.source, output: job.tail },
+      state: job.state,
     };
 
     tabs.set(tab.id, next);
     output.get(tab.id)?.update(next);
-    writeJobOutput(tab.id, tab.source.output, job.output);
+    writeJobOutput(tab.id, tab.source.output, job.tail);
   }
 
   if (changed) publish(tabs);
@@ -288,7 +289,7 @@ export const terminalActions = {
   }: {
     readonly id: WorkbenchTabId;
     readonly sessionId: SessionId;
-    readonly job: JobInfo;
+    readonly job: JobView;
   }): void {
     const existing = snapshot.tabs.get(id);
 
@@ -303,8 +304,8 @@ export const terminalActions = {
         id,
         title: job.command,
         cwd: "",
-        source: { kind: "job", sessionId, jobId: job.id, output: job.output },
-        state: { kind: job.phase.kind },
+        source: { kind: "job", sessionId, jobId: job.id, output: job.tail },
+        state: job.state,
         rendering: { kind: "ready" },
       }),
     );
@@ -382,7 +383,7 @@ export function openJobTerminal({
   readonly controller: Pick<WorkbenchController, "actions">;
   readonly view: WorkbenchViewKey;
   readonly sessionId: SessionId;
-  readonly job: JobInfo;
+  readonly job: JobView;
   readonly activate: boolean;
 }): WorkbenchTabId {
   const id = controller.actions.openTab({

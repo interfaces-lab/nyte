@@ -1,11 +1,10 @@
-import { createContext, use, useMemo, useState, useSyncExternalStore } from "react";
+import { createContext, use, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import type { NyteClient } from "@nyte-ai/client";
-import type { ServerInfo } from "@nyte-ai/protocol";
+import type { Connection as HostConnection } from "@nyte-ai/sdk";
 import { fetch } from "expo/fetch";
 import type { Connection, SavedConnection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
-import { connectHost, connectionStore, createHostClient, hostVerifier } from "./host.ts";
+import { connectHost, connectionStore, hostVerifier } from "./host.ts";
 import { releaseCopy } from "../account/account-copy.ts";
 import { useAccount } from "../account/account-provider.tsx";
 import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
@@ -15,8 +14,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 type HostTarget = {
   saved: SavedConnection;
   connection: Connection;
-  client: NyteClient;
-  info: ServerInfo;
+  client: HostConnection;
   scope: string;
   /** Changes on every verified adoption: a new credential, host, or re-pair remounts. */
   key: string;
@@ -27,7 +25,7 @@ export type HostRecovery = {
   readonly saved: SavedConnection;
   readonly failure: Exclude<ConnectFailure, { kind: "cancelled" }>;
   readonly retry: () => void;
-  /** Present when the host's identity changed: replace the pin after a fresh signature. */
+  /** Present when the host's id changed: replace the pin with the id it answers. */
   readonly repair: (() => void) | undefined;
   readonly disconnect: () => Promise<void>;
 };
@@ -40,20 +38,14 @@ type HostConnectionState =
   | ({ kind: "connected" } & HostTarget);
 
 export type HostSession = {
-  readonly client: NyteClient;
+  /** The sdk connection the verification that admitted this mount opened. */
+  readonly client: HostConnection;
   readonly connection: Connection;
   readonly saved: SavedConnection;
   /**
-   * `/v1/info` from the verification that admitted this mount. `info.identity`
-   * is present only when the host signed a fresh nonce for this route's pin;
-   * a cursor host without identity has none.
-   */
-  readonly info: ServerInfo;
-  /**
    * The host and principal stored state belongs to, as a JSON tuple without
-   * any bearer: `["host", hostId, …principal]` when proven, otherwise
-   * `["address", url, bearerDigest, …principal]`. The principal is
-   * `["bearer"]` or `["device", ownerId, deviceId]`.
+   * any bearer: `["host", hostId, …principal]`. The principal is `["bearer"]`
+   * or `["device", ownerId, deviceId]`.
    */
   readonly scope: string;
   readonly edit: () => void;
@@ -96,22 +88,17 @@ export function useHostConnection() {
   const foreign =
     stored?.kind === "managed" && ownerId !== undefined && ownerId !== stored.binding.ownerId;
   const saved = foreign ? undefined : stored;
-  const client = useMemo(
-    () => (saved === undefined ? undefined : createHostClient(saved)),
-    [saved],
-  );
 
   // The verifier follows the same store, so a check for another connection is not this one's.
   const current = check.kind !== "idle" && check.saved === saved ? check : undefined;
 
   const target: HostTarget | undefined =
-    saved === undefined || client === undefined || current?.kind !== "verified"
+    saved === undefined || current?.kind !== "verified"
       ? undefined
       : {
           saved,
           connection: saved.connection,
-          client,
-          info: current.host.info,
+          client: current.host.connection,
           scope: current.host.scope,
           key: current.host.key,
         };

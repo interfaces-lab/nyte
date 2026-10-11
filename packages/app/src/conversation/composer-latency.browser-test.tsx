@@ -86,7 +86,7 @@ function Harness({ streaming }: { streaming: boolean }): ReactElement {
         placeholder="Type"
         suggestionCatalog={{
           status: "ready",
-          data: { plugins: [], commands: [], skills: [], settings: [] },
+          data: { commands: [], skills: [] },
         }}
         mentionFiles={{ status: "ready", data: [] }}
       />

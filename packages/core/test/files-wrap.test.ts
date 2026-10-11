@@ -292,6 +292,25 @@ describe("environment tools", () => {
     expect(textOf(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
   });
 
+  it("publishes a running shell call's output tail as its part's progress", async () => {
+    const { kernel, session, provider } = await sessionFiles({ plugins: [environmentPlugin] });
+    const call = await tools(kernel, session.id);
+    const progress: (string | undefined)[] = [];
+
+    kernel.bus.subscribe(session.id, (event) => {
+      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
+        progress.push(event.progress.text);
+    });
+    provider.script = (process) => {
+      process.emit("one\n");
+      process.emit("two\n");
+      process.exit(0);
+    };
+
+    expect(textOf(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
+    expect(progress).toEqual(["one", "one\ntwo"]);
+  });
+
   it("names the workspace root in the cwd prompt section", async () => {
     const { kernel, session } = await sessionFiles({ plugins: [environmentPlugin] });
 

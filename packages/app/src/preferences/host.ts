@@ -5,7 +5,7 @@
  * appears made.
  */
 import { hashKey } from "@tanstack/react-query";
-import type { HostSettingKey, HostSettings, HostSettingsPatch } from "@nyte-ai/host/settings";
+import type { HostSettingKey, HostSettings, HostSettingsPatch } from "../bridge.ts";
 import { toast } from "@nyte-ai/ui/toast";
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";

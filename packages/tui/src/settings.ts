@@ -1,49 +1,21 @@
 /**
- * Global and project settings. Project values override global values, including
- * individual compaction fields, after the workspace has been trusted.
+ * The terminal's own preferences, global and project: theme, keys, editor and
+ * updates. Project values override global values. Model, thinking and
+ * compaction are the host's: head configuration and host settings.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/settings-manager.ts
  */
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
-import type { Transport } from "@nyte-ai/ai";
-import { DEFAULT_COMPACTION_SETTINGS, isThinkingLevel } from "@nyte-ai/core";
-import type { CacheWarmingMode, CompactionSettings, ThinkingLevel } from "@nyte-ai/core";
-import { cacheWarmingMode } from "@nyte-ai/host";
-import { settingsFileObject, updateSettingsFile } from "@nyte-ai/host/settings";
-import { toJsonValue } from "@nyte-ai/core/store";
-import type { JsonValue } from "@nyte-ai/schema";
-import { isJsonObject, type JsonObject } from "./json.ts";
+import type { Json } from "@nyte-ai/sdk";
+import { isJsonObject, toJson, type JsonObject } from "./json.ts";
 import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 
-const TRANSPORTS = [
-  "sse",
-  "websocket",
-  "websocket-cached",
-  "auto",
-] as const satisfies readonly Transport[];
-
-function isTransport(value: string): value is Transport {
-  return TRANSPORTS.some((candidate) => candidate === value);
-}
-
-interface CompactionSettingsFile {
-  readonly enabled?: boolean;
-  readonly reserveTokens?: number;
-  readonly keepRecentTokens?: number;
-}
-
 interface SettingsFile {
-  readonly defaultProvider?: string;
-  readonly defaultModel?: string;
-  readonly defaultThinkingLevel?: ThinkingLevel;
-  readonly transport?: Transport;
-  readonly cacheWarming?: CacheWarmingMode;
   readonly externalEditor?: string;
-  readonly compaction?: CompactionSettingsFile;
   /** Install a newer release when the TUI starts, instead of only saying one exists. */
   readonly autoUpdate?: boolean;
   /** A pinned mode, or `auto` to follow the terminal. */
@@ -55,12 +27,7 @@ interface SettingsFile {
 }
 
 export interface ResolvedSettings {
-  readonly defaultProvider?: string;
-  readonly defaultModel?: string;
-  readonly defaultThinkingLevel?: ThinkingLevel;
-  readonly transport: Transport;
   readonly externalEditor?: string;
-  readonly compaction: CompactionSettings;
   readonly autoUpdate: boolean;
   readonly theme: ThemeChoice;
   readonly copyOnSelect: boolean;
@@ -69,8 +36,6 @@ export interface ResolvedSettings {
 }
 
 export type SettingsPatch = SettingsFile;
-
-const COMPACTION_KEYS = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
 
 function defaultSettingsPath(): string {
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
@@ -82,22 +47,12 @@ function projectSettingsPath(cwd: string): string {
   return join(cwd, ".nyte", "settings.json");
 }
 
-function isNonEmptyString(value: JsonValue | undefined): value is string {
+function isNonEmptyString(value: Json | undefined): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
-function isBoolean(value: JsonValue | undefined): value is boolean {
+function isBoolean(value: Json | undefined): value is boolean {
   return typeof value === "boolean";
-}
-
-function isTokenCount(value: JsonValue | undefined): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function rejectUnknownKeys(object: JsonObject, allowed: ReadonlySet<string>, path: string): void {
-  const unknown = Object.keys(object).find((key) => !allowed.has(key));
-
-  if (unknown !== undefined) throw new Error(`${path} has unknown property "${unknown}"`);
 }
 
 function optionalString(object: JsonObject, key: string, path: string): string | undefined {
@@ -120,85 +75,15 @@ function optionalBoolean(object: JsonObject, key: string, path: string): boolean
   return field;
 }
 
-function optionalTokenCount(object: JsonObject, key: string, path: string): number | undefined {
-  const field = object[key];
-
-  if (field === undefined) return undefined;
-
-  if (!isTokenCount(field)) throw new Error(`${path}.${key} must be a non-negative safe integer`);
-
-  return field;
-}
-
-function parseCompaction(
-  value: JsonValue | undefined,
-  path: string,
-): CompactionSettingsFile | undefined {
-  if (value === undefined) return undefined;
-
-  if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
-  rejectUnknownKeys(value, COMPACTION_KEYS, path);
-  let compaction: CompactionSettingsFile = {};
-  const enabled = optionalBoolean(value, "enabled", path);
-
-  if (enabled !== undefined) compaction = { ...compaction, enabled };
-  const reserveTokens = optionalTokenCount(value, "reserveTokens", path);
-
-  if (reserveTokens !== undefined) compaction = { ...compaction, reserveTokens };
-  const keepRecentTokens = optionalTokenCount(value, "keepRecentTokens", path);
-
-  if (keepRecentTokens !== undefined) compaction = { ...compaction, keepRecentTokens };
-
-  return compaction;
-}
-
 /** Parse the complete settings file before any of it is trusted. */
-export function parseSettingsFile(value: JsonValue, path = "settings"): SettingsFile {
-  // Other frontends keep their own keys in the same file; only the compaction object is closed.
+export function parseSettingsFile(value: Json, path = "settings"): SettingsFile {
+  // The host and other frontends keep their own keys in the same file.
   if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
 
   let settings: SettingsFile = {};
-  const defaultProvider = optionalString(value, "defaultProvider", path);
-  const defaultModel = optionalString(value, "defaultModel", path);
-
-  if (defaultModel !== undefined && defaultProvider === undefined) {
-    throw new Error(`${path}.defaultModel requires ${path}.defaultProvider`);
-  }
-
-  if (defaultProvider !== undefined) settings = { ...settings, defaultProvider };
-
-  if (defaultModel !== undefined) settings = { ...settings, defaultModel };
-
-  const thinking = value["defaultThinkingLevel"];
-
-  if (thinking !== undefined) {
-    if (!isNonEmptyString(thinking) || !isThinkingLevel(thinking)) {
-      throw new Error(`${path}.defaultThinkingLevel is not a thinking level`);
-    }
-
-    settings = { ...settings, defaultThinkingLevel: thinking };
-  }
-
-  const transport = value["transport"];
-
-  if (transport !== undefined) {
-    if (!isNonEmptyString(transport) || !isTransport(transport)) {
-      throw new Error(`${path}.transport must be ${TRANSPORTS.join(", ")}`);
-    }
-
-    settings = { ...settings, transport };
-  }
-
-  if (value.cacheWarming !== undefined)
-    settings = { ...settings, cacheWarming: cacheWarmingMode(value.cacheWarming) };
-
   const externalEditor = optionalString(value, "externalEditor", path);
 
   if (externalEditor !== undefined) settings = { ...settings, externalEditor };
-
-  const compaction = parseCompaction(value["compaction"], `${path}.compaction`);
-
-  if (compaction !== undefined) settings = { ...settings, compaction };
 
   const autoUpdate = optionalBoolean(value, "autoUpdate", path);
 
@@ -234,10 +119,10 @@ async function readSettings(path: string): Promise<SettingsFile> {
   if (!existsSync(path)) return {};
   const text = await readFile(path, "utf8");
 
-  let parsed: JsonValue;
+  let parsed: Json;
 
   try {
-    parsed = toJsonValue(JSON.parse(text));
+    parsed = toJson(JSON.parse(text));
   } catch (cause) {
     throw new Error(`Invalid JSON in ${path}`, { cause });
   }
@@ -246,18 +131,7 @@ async function readSettings(path: string): Promise<SettingsFile> {
 }
 
 function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSettings {
-  const model =
-    project.defaultProvider === undefined
-      ? { provider: global.defaultProvider, model: global.defaultModel }
-      : { provider: project.defaultProvider, model: project.defaultModel };
-
-  let resolved: ResolvedSettings = {
-    transport: project.transport ?? global.transport ?? "auto",
-    compaction: {
-      ...DEFAULT_COMPACTION_SETTINGS,
-      ...global.compaction,
-      ...project.compaction,
-    },
+  const resolved: ResolvedSettings = {
     autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
     theme: project.theme ?? global.theme ?? "auto",
     copyOnSelect: project.copyOnSelect ?? global.copyOnSelect ?? process.platform !== "win32",
@@ -265,31 +139,23 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
     followUp: project.followUp ?? global.followUp ?? "steer",
   };
 
-  if (model.provider !== undefined) resolved = { ...resolved, defaultProvider: model.provider };
-
-  if (model.model !== undefined) resolved = { ...resolved, defaultModel: model.model };
-  const thinking = project.defaultThinkingLevel ?? global.defaultThinkingLevel;
-
-  if (thinking !== undefined) resolved = { ...resolved, defaultThinkingLevel: thinking };
   const editor = project.externalEditor ?? global.externalEditor;
 
-  if (editor !== undefined) resolved = { ...resolved, externalEditor: editor };
-
-  return resolved;
+  return editor === undefined ? resolved : { ...resolved, externalEditor: editor };
 }
 
-/** Merges the patch into the file as stored, so keys this UI doesn't parse survive the write. */
-function applySettingsPatch(
-  current: Readonly<Record<string, unknown>>,
-  patch: SettingsPatch,
-): Readonly<Record<string, unknown>> {
-  const merged: Record<string, unknown> = { ...current, ...patch };
-
-  if (patch.compaction !== undefined) {
-    merged["compaction"] = { ...settingsFileObject(current["compaction"]), ...patch.compaction };
-  }
-
-  return merged;
+/**
+ * Merges the patch into the file as stored, so keys this UI doesn't parse
+ * survive, and replaces the file whole through a temporary sibling.
+ */
+async function writeSettingsPatch(path: string, patch: SettingsPatch): Promise<void> {
+  const text = existsSync(path) ? await readFile(path, "utf8") : "{}";
+  const current = toJson(JSON.parse(text));
+  const merged = { ...(isJsonObject(current) ? current : {}), ...patch };
+  const temporary = `${path}.${String(process.pid)}.tmp`;
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(temporary, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporary, path);
 }
 
 /** Reads trusted project settings over user settings and serializes global updates. */
@@ -299,14 +165,6 @@ export class FileSettingsStore {
 
   constructor(globalPath: string = defaultSettingsPath()) {
     this.globalPath = globalPath;
-  }
-
-  watchTargets(cwd: string) {
-    return [this.globalPath, projectSettingsPath(cwd)].map((path) => ({
-      path: dirname(path),
-      recursive: false,
-      names: [basename(path)],
-    }));
   }
 
   async read(cwd: string): Promise<ResolvedSettings> {
@@ -320,18 +178,11 @@ export class FileSettingsStore {
     return mergeSettings(global, project);
   }
 
-  /** The user's settings alone: for a host that serves many folders and trusts none of them yet. */
-  async readGlobal(): Promise<ResolvedSettings> {
-    await this.writes;
-
-    return mergeSettings(await readSettings(this.globalPath), {});
-  }
-
   updateGlobal(patch: SettingsPatch): Promise<void> {
     const next = this.writes.then(async () => {
       // Parse first so a broken file still fails loudly instead of being written around.
       await readSettings(this.globalPath);
-      await updateSettingsFile(this.globalPath, (current) => applySettingsPatch(current, patch));
+      await writeSettingsPatch(this.globalPath, patch);
     });
 
     this.writes = next.catch(() => undefined);

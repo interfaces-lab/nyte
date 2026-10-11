@@ -3,9 +3,9 @@ type Sink = (line: string) => void;
 
 const NOOP: Sink = () => undefined;
 
-const CONSOLE: Sink = (line) => console.debug(line);
+const CONSOLE: Sink = (line) => console.error(line);
 
-/** Writes one DEV log line, `DEV:<area> <message> <json>`, to `dev.sink` (§46; temporary, stripped after the refactor): ids and sizes only, never secrets, tokens or message bodies. Nothing reads it and nothing branches on it; a value it cannot serialise drops the line. `dev.off()` silences it, `dev.on(sink?)` restores it (default `console.debug`). */
+/** Writes one DEV log line, `DEV:<area> <message> <json>`, to `dev.sink` (§46; temporary, stripped after the refactor): ids and sizes only, never secrets, tokens or message bodies. Nothing reads it and nothing branches on it; a value it cannot serialise drops the line. `dev.off()` silences it, `dev.on(sink?)` restores it (default `console.error`, stderr, so `-p` and `--json` output on stdout stays clean, §51e). */
 export function dev(area: string, message: string, data?: Record<string, unknown>): void {
   try {
     dev.sink(

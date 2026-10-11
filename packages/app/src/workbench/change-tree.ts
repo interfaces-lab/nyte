@@ -1,4 +1,4 @@
-import type { VcsFileKind } from "@nyte-ai/protocol";
+import type { FileStatus } from "@nyte-ai/sdk";
 
 export const CHANGES_VISIBLE_FILES = 5;
 
@@ -7,7 +7,7 @@ export function filesChangedLabel(count: number): string {
 }
 
 /** The working-tree change kinds the rail renders. */
-export type ChangeStatus = VcsFileKind;
+export type ChangeStatus = FileStatus;
 
 /**
  * Viewed state lives in the panel's store, so the caller passes the lookup in

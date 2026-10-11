@@ -1,12 +1,30 @@
 /** Guards over parsed JSON, so a file's contents are typed before they are trusted. */
-import type { JsonValue } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/sdk";
 
-export type JsonObject = { readonly [key: string]: JsonValue };
+export type JsonObject = { readonly [key: string]: Json };
 
-export function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+export function isJsonObject(value: Json | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isJsonString(value: JsonValue | undefined): value is string {
+export function isJsonString(value: Json | undefined): value is string {
   return typeof value === "string";
+}
+
+/** Returns a parsed value as `Json`, or throws when it holds something JSON cannot carry. */
+export function toJson(value: unknown): Json {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  )
+    return value;
+
+  if (Array.isArray(value)) return value.map(toJson);
+
+  if (typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toJson(item)]));
+
+  throw new TypeError(`${typeof value} is not JSON`);
 }

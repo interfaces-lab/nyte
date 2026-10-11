@@ -1,30 +1,31 @@
 import assert from "node:assert/strict";
 import { QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
-import { sessionId } from "@nyte-ai/protocol";
+import { SdkError } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { test } from "vitest";
 import { readRouteSession } from "./route-session.ts";
 import { keys } from "./query-keys.ts";
 
 function session(id: SessionId): SessionInfo {
   return {
-    sessionId: id,
-    activation: { kind: "active" },
-    workspace: { kind: "local", id: "fixture", cwd: "/" },
+    id,
     name: id,
-    createdAt: 1,
-    lastActivityAt: 1,
+    parent: null,
+    workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,
+    activation: { kind: "active" },
     heads: [],
-    config: {},
+    createdAt: 1,
+    lastActivityAt: 1,
   };
 }
 
 test("overlapping intent and navigation share one SDK read and cache its result", async () => {
-  const id = sessionId("preloaded-chat");
+  const id = asId<"session">("preloaded-chat");
   const info = session(id);
-  const response = Promise.withResolvers<SessionInfo | undefined>();
+  const response = Promise.withResolvers<SessionInfo>();
   let reads = 0;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -50,13 +51,28 @@ test("overlapping intent and navigation share one SDK read and cache its result"
 });
 
 test("a missing session remains distinct from an SDK failure", async () => {
-  const id = sessionId("missing-chat");
+  const id = asId<"session">("missing-chat");
   const client = new QueryClient();
 
   try {
     assert.equal(
-      await readRouteSession({ client, sessionId: id, read: async () => undefined }),
+      await readRouteSession({
+        client,
+        sessionId: id,
+        read: async () => {
+          throw new SdkError("unknown", "No such session.");
+        },
+      }),
       null,
+    );
+    await assert.rejects(
+      readRouteSession({
+        client: new QueryClient(),
+        sessionId: id,
+        read: async () => {
+          throw new SdkError("unavailable", "Host down.");
+        },
+      }),
     );
   } finally {
     client.clear();

@@ -1,8 +1,11 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
-import type { VcsDiff } from "@nyte-ai/protocol";
+import type { PatchEntry as HostPatch } from "@nyte-ai/sdk";
 import { patchDigest } from "./changes-viewed.ts";
 import { parsePatch } from "./patch-parse.ts";
+import { formatPatch } from "./patch-text.ts";
+
+/** Paths one explicit read names at most. */
+export const PATCH_READ_MAX = 50;
 
 /** What one file's patch became once it was read and parsed. */
 export type PatchEntry =
@@ -30,7 +33,7 @@ export interface PatchSource {
   readonly key: string;
   readonly lineage: string;
   readonly paths: readonly string[];
-  readonly read: (paths: readonly string[]) => Promise<readonly VcsDiff[]>;
+  readonly read: (paths: readonly string[]) => Promise<readonly HostPatch[]>;
 }
 
 export interface PatchSnapshot {
@@ -59,7 +62,7 @@ export type EnsuredPatches =
 const READ_BATCH = 8;
 
 /** Paths one explicit request (mark all viewed) sends per read: as many as a read may name. */
-const PINNED_BATCH = VCS_DIFF_PATHS_MAX;
+const PINNED_BATCH = PATCH_READ_MAX;
 
 const EMPTY_ENTRIES: ReadonlyMap<string, PatchEntry> = new Map();
 
@@ -76,27 +79,28 @@ const EMPTY: PatchEntry = { kind: "empty" };
 
 const FAILED: PatchEntry = { kind: "failed" };
 
-/** A patch's text with nothing in it reads as no patch, as the host omits empty ones. */
-async function entryOf(diff: VcsDiff, earlier: PatchEntry | undefined): Promise<PatchEntry> {
+/** One host patch as the stack draws it; an unchanged patch keeps what was already parsed. */
+async function entryOf(diff: HostPatch, earlier: PatchEntry | undefined): Promise<PatchEntry> {
   switch (diff.kind) {
-    case "too_large":
+    case "too-large":
       return { kind: "too_large", limit: diff.limit };
     case "failed":
       return FAILED;
     case "binary":
-      return { kind: "binary", text: diff.patch, digest: patchDigest(diff.patch) };
+      return { kind: "binary", text: `Binary file ${diff.path}`, digest: diff.digest };
+    case "empty":
+      return EMPTY;
     case "text": {
-      if (diff.patch.trim() === "") return EMPTY;
+      if (diff.hunks.length === 0) return EMPTY;
 
-      // A refresh that leaves the file's patch unchanged keeps what was already parsed.
-      if (earlier?.kind === "ready" && earlier.patch === diff.patch) return earlier;
-      const digest = patchDigest(diff.patch);
+      if (earlier?.kind === "ready" && earlier.digest === diff.digest) return earlier;
+      const patch = formatPatch(diff);
 
       return {
         kind: "ready",
-        patch: diff.patch,
-        digest,
-        files: await parsePatch(diff.patch, digest),
+        patch,
+        digest: diff.digest,
+        files: await parsePatch(patch, patchDigest(patch)),
         added: diff.added,
         removed: diff.removed,
       };

@@ -11,7 +11,7 @@ export interface HostState {
   current(): HostViewFields;
   /** Replaces the given fields and notifies every subscriber. */
   update(patch: Partial<HostViewFields>): void;
-  /** Adds a host-level row of issues no plugin runtime owns (§43e: decision 12's unknown or invalid seeded settings under `settings`, a plugin file that did not load or was dropped, §41j): merged by id into `plugins` (a known id gains the issues, a new id is appended after the plugin rows), kept for the state's life so every later `update` that replaces `plugins` merges it again, and every subscriber notified. A second report with the same id replaces the first. */
+  /** Adds a host-level row of issues no plugin runtime owns (§43e: decision 12's unknown or invalid seeded settings under `settings`, a plugin file that did not load or was dropped, §41j): merged by id into `plugins` (a known id gains the issues, a new id is appended after the plugin rows), kept for the state's life so every later `update` that replaces `plugins` merges it again, and every subscriber notified. A second report with the same id replaces the first; one with no issues withdraws it (a plugin file that loads again, §49a). */
   report(row: HostViewFields["plugins"][number]): void;
   /** Calls the listener after every update; the disposer stops it. */
   subscribe(listener: (fields: HostViewFields) => void): Disposer;
@@ -42,7 +42,8 @@ export function createHostState(initial: HostViewFields): HostState {
       };
     },
     report(row) {
-      reports.set(row.id, row);
+      if (row.issues.length === 0) reports.delete(row.id);
+      else reports.set(row.id, row);
       publish({});
     },
   };

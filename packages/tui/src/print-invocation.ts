@@ -1,10 +1,9 @@
 import process from "node:process";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/sdk";
 import { reportPrintOutcome } from "./print.ts";
 import type { PrintOutcome, PrintOutput } from "./print.ts";
-import type { HostCloseOutcome } from "./host.ts";
 
-type Cleanup = () => void | HostCloseOutcome | Promise<void | HostCloseOutcome>;
+type Cleanup = () => void | Promise<void>;
 
 interface PrintFailure {
   readonly phase: "cleanup" | "diagnostic" | "terminal";
@@ -66,13 +65,7 @@ export class PrintInvocation {
 
     for (const cleanup of this.cleanups.toReversed()) {
       try {
-        const closed = await cleanup();
-
-        if (closed?.kind === "failed") {
-          for (const failure of closed.failures) {
-            this.recordedFailures.push({ phase: "cleanup", cause: failure.cause });
-          }
-        }
+        await cleanup();
       } catch (cause) {
         this.recordedFailures.push({ phase: "cleanup", cause });
       }

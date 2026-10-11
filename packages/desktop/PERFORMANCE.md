@@ -26,18 +26,7 @@ the loading moon for 5–18 s depending on page cache and a second process polli
 Bounding that read and landing it in pages put the composer on screen in 2.3 s on three launches,
 with the rest of the rows arriving behind the mounted screen over the next 10 s. Keeping each
 row in the store's listing cache then made the walk a one-time cost: the next launch read all 137
-rows in ~200 ms and showed the composer at 1.0–1.3 s. The repaired benchmark records these
-medians for its fixtures (`--repeat-each=2`, `usefulScreenMs`):
-
-| Scenario | Useful screen |
-| --- | ---: |
-| Loopback server that never answers | 773 ms |
-| Remembered project, two-second login shell | 811 ms |
-| Restored 160-turn transcript | 1,030 ms |
-| Empty Home | 1,315 ms |
-| Home with 50 saved workspaces | 2,381 ms |
-
-The 50-workspace case meets the directory budget: its closed stores finish listing just past it.
+rows in ~200 ms and showed the composer at 1.0–1.3 s.
 
 The build guard budgets these entries:
 
@@ -107,9 +96,9 @@ window therefore does not open a workspace, compose plugins, initialize the SDK,
 validation.
 
 The renderer is served over the app's own privileged scheme from the build's `out/renderer`,
-resolved beside the main bundle so a launcher with another app path, such as the benchmark, finds
-it. The scheme opts into Chromium's code cache, which `file:` URLs had by default, so a repeat
-launch does not compile the 4.4 MiB startup graph again.
+resolved beside the main bundle so a launcher with another app path finds it. The scheme opts
+into Chromium's code cache, which `file:` URLs had by default, so a repeat launch does not compile
+the 4.4 MiB startup graph again.
 
 The preload exposes the typed SDK bridge and writes the platform marker used by first-frame chrome.
 Startup profiling, measurement events, and benchmark-only environment switches are not shipped.

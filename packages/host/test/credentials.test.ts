@@ -119,6 +119,25 @@ describe("credentialStore", () => {
     });
   });
 
+  it("calls key() only once a record exists: not for read or list of an empty store (§50b)", async () => {
+    let reads = 0;
+
+    const credentials = credentialStore(memoryStore(), {
+      key: async () => {
+        reads += 1;
+
+        return new Uint8Array(32).fill(5);
+      },
+    });
+
+    expect(await credentials.read("p")).toBeUndefined();
+    expect(await credentials.list()).toEqual([]);
+    expect(reads).toBe(0);
+    await credentials.modify("p", async () => ({ type: "api_key", key: "k" }));
+
+    expect(reads).toBe(1);
+  });
+
   it("reads the key again after a rejection instead of keeping it", async () => {
     let ready = false;
 

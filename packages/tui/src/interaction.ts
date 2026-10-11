@@ -1,7 +1,7 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import type { AuthInteraction, AuthPrompt } from "@nyte-ai/ai";
+import type { LoginDriver } from "./auth.ts";
 import { ansiEnabled, bold, cyan, dim } from "./cli-style.ts";
 
 async function ask(
@@ -58,68 +58,52 @@ async function ask(
   }
 }
 
-/** CLI driver for the login funnel: prompts over readline, events to stderr. */
-export function cliInteraction(signal: AbortSignal, onInterrupt?: () => void): AuthInteraction {
+/** CLI driver for a host login: prompts over readline, steps to stderr. */
+export function cliLoginDriver(signal: AbortSignal, onInterrupt?: () => void): LoginDriver {
+  const interactive = (): void => {
+    signal.throwIfAborted();
+
+    if (!process.stdin.isTTY || !process.stderr.isTTY)
+      throw new Error(
+        "Authentication requires input. Run `nyte login <provider>` in an interactive terminal; use --method oauth or --method api_key to choose a login method.",
+      );
+  };
+
   return {
     signal,
-    async prompt(prompt: AuthPrompt): Promise<string> {
-      const promptSignal =
-        prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
+    open(url, code) {
+      const color = ansiEnabled(process.stderr);
 
-      promptSignal.throwIfAborted();
-
-      if (!process.stdin.isTTY || !process.stderr.isTTY) {
-        throw new Error(
-          "Authentication requires input. Run `nyte login <provider>` in an interactive terminal; use --method oauth or --method api_key to choose a login method.",
-        );
-      }
-
-      if (prompt.type === "select") {
-        if (prompt.options.length === 0) throw new Error("No authentication choices available.");
-
-        for (const [index, option] of prompt.options.entries()) {
-          const description =
-            option.description === undefined
-              ? ""
-              : ` ${dim(option.description, ansiEnabled(process.stderr))}`;
-
-          console.error(
-            `  ${dim(`${String(index + 1)}.`, ansiEnabled(process.stderr))} ${option.label}${description}`,
-          );
-        }
-
-        const answer = await ask(`${prompt.message} [1] `, promptSignal, false, onInterrupt);
-        const choice = prompt.options[Number(answer.trim() || "1") - 1];
-
-        if (choice === undefined) throw new Error(`Invalid choice: ${answer}`);
-
-        return choice.id;
-      }
-
-      const hint = prompt.placeholder === undefined ? "" : ` (${prompt.placeholder})`;
-
-      return ask(`${prompt.message}${hint} `, promptSignal, prompt.type === "secret", onInterrupt);
+      console.error(
+        code === undefined
+          ? `\nOpen this URL to continue:\n\n  ${cyan(url, color)}\n`
+          : `\nVisit ${url} and enter code: ${bold(code, color)}\n`,
+      );
     },
-    notify(event) {
-      switch (event.type) {
-        case "auth_url":
-          console.error(
-            `\n${event.instructions ?? "Open this URL to continue:"}\n\n  ${cyan(event.url, ansiEnabled(process.stderr))}\n`,
-          );
-          break;
-        case "device_code": {
-          const lead = event.instructions === undefined ? "" : `${event.instructions}\n`;
-          console.error(
-            `\n${lead}Visit ${event.verificationUri} and enter code: ${bold(event.userCode, ansiEnabled(process.stderr))}\n`,
-          );
-          break;
-        }
+    async paste(message, secret) {
+      interactive();
 
-        case "info":
-        case "progress":
-          console.error(event.message);
-          break;
-      }
+      return ask(`${message} `, signal, secret, onInterrupt);
+    },
+    async choose(message, options) {
+      interactive();
+
+      if (options.length === 0) throw new Error("No authentication choices available.");
+
+      for (const [index, option] of options.entries())
+        console.error(
+          `  ${dim(`${String(index + 1)}.`, ansiEnabled(process.stderr))} ${option.label}`,
+        );
+
+      const answer = await ask(`${message} [1] `, signal, false, onInterrupt);
+      const choice = options[Number(answer.trim() || "1") - 1];
+
+      if (choice === undefined) throw new Error(`Invalid choice: ${answer}`);
+
+      return choice.id;
+    },
+    progress(message) {
+      console.error(message);
     },
   };
 }

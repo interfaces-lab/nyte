@@ -1,15 +1,39 @@
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { css, html } from "react-strict-dom";
-import type { SessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { SessionId, ToolClass, ToolOutcome } from "@nyte-ai/sdk";
 import { conversationLayout } from "../chat/conversation-layout.ts";
 import { MessageRow } from "../chat/messages.tsx";
-import type { ChatRow } from "../chat/transcript-rows.ts";
+import type { ActivityPart, ChatRow } from "../chat/transcript-rows.ts";
 import { ToolActivitySheet, useActivitySheet } from "../chat/tool-activity-sheet.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { spacing, textStyles, tokens, useTheme } from "../theme.ts";
 
 const delegateNames = new Map<SessionId, string>();
+
+/** Returns a settled tool step for the preview. */
+function settledTool(id: string, toolClass: ToolClass, outcome: ToolOutcome): ActivityPart {
+  return {
+    kind: "tool",
+    id,
+    state: {
+      call: asId<"call">(id),
+      name: toolClass.kind,
+      args: {},
+      class: toolClass,
+      phase: "settled",
+      outcome,
+      changes: null,
+    },
+    status: { kind: "settled", commit: asId<"commit">(id), endedAt: 0 },
+  };
+}
+
+/** Returns an ok outcome that said `text`. */
+function ok(text: string): ToolOutcome {
+  return { kind: "ok", content: [{ kind: "text", text }], output: null, parts: [] };
+}
 
 const rows: readonly ChatRow[] = [
   { kind: "marker", id: "preview-date", text: "Today" },
@@ -29,30 +53,16 @@ const rows: readonly ChatRow[] = [
     kind: "activity",
     id: "preview-reading",
     parts: [
-      {
-        kind: "tool",
-        progress: undefined,
-        tool: {
-          kind: "tool",
-          callId: "preview-read-list",
-          at: 0,
-          class: { kind: "file_read", path: "src/inbox/conversation-row.tsx" },
-          state: { kind: "success", commit: "preview-read-list-result" },
-          output: "The conversation row shows the title, preview, and last activity time.",
-        },
-      },
-      {
-        kind: "tool",
-        progress: undefined,
-        tool: {
-          kind: "tool",
-          callId: "preview-read-theme",
-          at: 0,
-          class: { kind: "file_read", path: "src/theme.ts" },
-          state: { kind: "success", commit: "preview-read-theme-result" },
-          output: "Body text is 17 points. Conversation rows use 16 points of vertical padding.",
-        },
-      },
+      settledTool(
+        "preview-read-list",
+        { kind: "read", path: "src/inbox/conversation-row.tsx" },
+        ok("The conversation row shows the title, preview, and last activity time."),
+      ),
+      settledTool(
+        "preview-read-theme",
+        { kind: "read", path: "src/theme.ts" },
+        ok("Body text is 17 points. Conversation rows use 16 points of vertical padding."),
+      ),
     ],
   },
   {
@@ -71,27 +81,14 @@ const rows: readonly ChatRow[] = [
     kind: "activity",
     id: "preview-failed-check",
     parts: [
-      {
-        kind: "tool",
-        progress: undefined,
-        tool: {
-          kind: "tool",
-          callId: "preview-typecheck-failed",
-          at: 0,
-          class: {
-            kind: "shell",
-            command: "pnpm typecheck",
-            description: "Check TypeScript",
-            facts: { durationMs: 1420, truncated: false },
-          },
-          state: {
-            kind: "error",
-            reason: { kind: "exit", code: 1 },
-            commit: "preview-typecheck-error",
-          },
-          output: "src/inbox/conversation-row.tsx: Cannot find name 'formatTime'.",
+      settledTool(
+        "preview-typecheck-failed",
+        { kind: "shell", command: "pnpm typecheck", description: "Check TypeScript" },
+        {
+          kind: "failed",
+          message: "src/inbox/conversation-row.tsx: Cannot find name 'formatTime'.",
         },
-      },
+      ),
     ],
   },
   {
@@ -104,23 +101,11 @@ const rows: readonly ChatRow[] = [
     kind: "activity",
     id: "preview-passed-check",
     parts: [
-      {
-        kind: "tool",
-        progress: undefined,
-        tool: {
-          kind: "tool",
-          callId: "preview-typecheck-passed",
-          at: 0,
-          class: {
-            kind: "shell",
-            command: "pnpm typecheck",
-            description: "Check TypeScript",
-            facts: { durationMs: 1180, truncated: false },
-          },
-          state: { kind: "success", commit: "preview-typecheck-result" },
-          output: "TypeScript check passed with no errors.",
-        },
-      },
+      settledTool(
+        "preview-typecheck-passed",
+        { kind: "shell", command: "pnpm typecheck", description: "Check TypeScript" },
+        ok("TypeScript check passed with no errors."),
+      ),
     ],
   },
   {

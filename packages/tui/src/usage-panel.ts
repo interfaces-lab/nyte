@@ -12,9 +12,8 @@ import { GLYPHS, keycap } from "./constants.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
 import type { CliTheme } from "./theme.ts";
-import type { UsageCard, UsageCardRow } from "./usage.ts";
+import type { UsageCard } from "./usage.ts";
 import { PanelLayout } from "./panel-layout.ts";
-import { displayWidth, padDisplay } from "./width.ts";
 
 const BAR_CELLS = 20;
 
@@ -186,108 +185,37 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
     chunks.push(fg(color)("━".repeat(fill)), fg(theme.muted)(GLYPHS.rule.repeat(cells - fill)));
   };
 
-  const rows = (items: readonly UsageCardRow[]): void => {
-    const labelCells = Math.max(0, ...items.map((row) => displayWidth(row.label)));
-
-    for (const row of items) {
-      const amounts = `${row.cost} · ${row.tokens} tokens`;
-      const color = row.system ? theme.muted : theme.accent;
-
-      if (labelCells + BAR_CELLS + displayWidth(amounts) + 4 <= width) {
-        chunks.push(fg(theme.foreground)(`${padDisplay(row.label, labelCells)}  `));
-        bar(row.share, color);
-        line(`  ${amounts}`);
-        continue;
-      }
-
-      line(row.label);
-      line(amounts.trim());
-      bar(row.share, color);
-      line("");
-    }
-  };
-
   for (const account of card.accounts) {
-    heading(`${account.provider === "anthropic" ? "Claude" : "Codex"} · account limits`);
+    heading(`${account.name} · account limits`);
 
-    switch (account.kind) {
-      case "unavailable":
-        line("Limits unavailable · requires a Nyte subscription login");
-        break;
-      case "failed":
-        line(account.message);
-        break;
-      case "ready":
-        for (const window of account.limits.windows) {
-          const label =
-            window.id === "five_hour"
-              ? "5 hours"
-              : window.id === "seven_day"
-                ? "Weekly"
-                : window.id.startsWith("seven_day_")
-                  ? `Weekly ${window.id.slice("seven_day_".length)}`
-                  : window.id;
+    for (const window of account.limits) {
+      const used = window.limit <= 0 ? 0 : Math.round((window.used / window.limit) * 100);
 
-          const used = Math.round(window.usedPercent);
+      const reset =
+        window.resetsAt === null
+          ? "reset unknown"
+          : `resets ${new Date(window.resetsAt).toLocaleString(undefined, {
+              weekday: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`;
 
-          const reset =
-            window.resetsAt === undefined
-              ? "reset unknown"
-              : `resets ${new Date(window.resetsAt).toLocaleString(undefined, {
-                  weekday: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}`;
-
-          line(`${label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`);
-          bar(used / 100, used >= 95 ? theme.error : used >= 85 ? theme.warning : theme.accent);
-          line("");
-        }
-
-        break;
-      default: {
-        const exhaustive: never = account;
-
-        return exhaustive;
-      }
-    }
-
-    line("");
-  }
-
-  const workspace = card.workspace;
-
-  if (workspace.kind === "message") {
-    heading(`${workspace.title} · ${workspace.message}`);
-  } else {
-    heading(`${workspace.title} · ${workspace.total}`);
-    rows(workspace.rows);
-    line("");
-
-    for (const breakdown of workspace.breakdown) line(breakdown);
-
-    if (workspace.thisChat !== undefined) line(workspace.thisChat);
-  }
-
-  for (const [name, history] of [
-    ["Claude Code", card.claudeCode],
-    ["Codex", card.codex],
-  ] as const) {
-    line("");
-    heading(`${name} · all local projects`);
-    line("All-time local history · separate from this workspace");
-
-    if (history.kind === "message") {
-      line(history.message);
-    } else {
-      line(history.total);
-      rows(history.rows);
+      line(`${window.label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`);
+      bar(used / 100, used >= 95 ? theme.error : used >= 85 ? theme.warning : theme.accent);
       line("");
-
-      for (const breakdown of history.breakdown) line(breakdown);
-
-      for (const note of history.notes) line(note);
     }
+
+    line("");
+  }
+
+  const { chat } = card;
+
+  if (chat.kind === "message") {
+    heading(`this chat · ${chat.message}`);
+  } else {
+    heading(`this chat · ${chat.total}`);
+
+    for (const breakdown of chat.breakdown) line(breakdown);
   }
 
   return new StyledText(chunks);

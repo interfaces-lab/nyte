@@ -1,9 +1,9 @@
 /** Wording for tool cards and turn notices: lowercase, terse, the glyph carries the state. */
-import type { ToolTense } from "@nyte-ai/client";
-import type { Failure, TurnToolClass } from "@nyte-ai/protocol";
+import type { Failure, ToolClass } from "@nyte-ai/sdk";
 import { ACTIVITY_FAILED_LABEL, ACTIVITY_STOPPED_LABEL, GLYPHS } from "./constants.ts";
+import type { ToolTense } from "./view-helpers.ts";
 
-type DelegateClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
+type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 type Verbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
 
@@ -11,22 +11,16 @@ const READ: Verbs = { running: "reading", past: "read" };
 
 const EDIT: Verbs = { running: "editing", past: "edited" };
 
-const WRITE: Verbs = { running: "writing", past: "wrote" };
-
-function toolVerbs(toolClass: TurnToolClass): Verbs {
+function toolVerbs(toolClass: ToolClass): Verbs {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
       return READ;
     case "list":
       return { running: "listing", past: "listed" };
     case "shell":
       return { running: "running", past: "ran" };
-    case "file_edit":
+    case "edit":
       return EDIT;
-    case "file_write":
-      return WRITE;
-    case "file_patch":
-      return toolClass.op === "edit" ? EDIT : WRITE;
     case "delegate":
       return delegateVerbs(toolClass.role);
     case "custom":
@@ -40,7 +34,7 @@ function toolVerbs(toolClass: TurnToolClass): Verbs {
 }
 
 /** The verb for a tense that asserts one; a call that did not finish has none. */
-export function toolLabel(toolClass: TurnToolClass, tense: ToolTense): string | undefined {
+export function toolLabel(toolClass: ToolClass, tense: ToolTense): string | undefined {
   return tense === "none" ? undefined : toolVerbs(toolClass)[tense];
 }
 
@@ -49,18 +43,14 @@ export function toolLabel(toolClass: TurnToolClass, tense: ToolTense): string | 
  * path alone does not say read from edit. A command or a tool's name needs
  * nothing; a custom call's label is already its name.
  */
-export function toolNoun(toolClass: TurnToolClass): string | undefined {
+export function toolNoun(toolClass: ToolClass): string | undefined {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
       return "read";
     case "list":
       return "list";
-    case "file_edit":
+    case "edit":
       return "edit";
-    case "file_write":
-      return "write";
-    case "file_patch":
-      return toolClass.op;
     case "delegate":
       return delegateNoun(toolClass.role);
     case "shell":
@@ -75,7 +65,7 @@ export function toolNoun(toolClass: TurnToolClass): string | undefined {
 }
 
 /** The words of a heading before its outcome: verb then subject, or subject then noun. */
-export function toolTitle(toolClass: TurnToolClass, tense: ToolTense): string {
+export function toolTitle(toolClass: ToolClass, tense: ToolTense): string {
   const subject = toolSubject(toolClass);
   const verb = toolLabel(toolClass, tense);
 
@@ -86,10 +76,13 @@ export function toolTitle(toolClass: TurnToolClass, tense: ToolTense): string {
 
 function delegateNoun(role: DelegateClass["role"]): string | undefined {
   switch (role) {
+    case "task":
     case "create":
       return undefined;
     case "send":
       return "message";
+    case "await":
+      return "wait";
     case "read":
       return "transcript";
     case "stop":
@@ -104,10 +97,13 @@ function delegateNoun(role: DelegateClass["role"]): string | undefined {
 
 function delegateVerbs(role: DelegateClass["role"]): Verbs {
   switch (role) {
+    case "task":
     case "create":
       return { running: "agent", past: "agent" };
     case "send":
       return { running: "sending to", past: "sent to" };
+    case "await":
+      return { running: "waiting on", past: "waited on" };
     case "read":
       return READ;
     case "stop":
@@ -121,13 +117,11 @@ function delegateVerbs(role: DelegateClass["role"]): Verbs {
 }
 
 /** What the call is about: the path, the command, the task. A custom call has only its label. */
-export function toolSubject(toolClass: TurnToolClass): string | undefined {
+export function toolSubject(toolClass: ToolClass): string | undefined {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
     case "list":
-    case "file_edit":
-    case "file_write":
-    case "file_patch":
+    case "edit":
       return toolClass.path;
     case "shell":
       return toolClass.command;
@@ -145,53 +139,9 @@ export function toolSubject(toolClass: TurnToolClass): string | undefined {
 
 /** A child is named by its card; a call on it only says what kind of target it has. */
 export function delegateSubject(toolClass: DelegateClass): string {
-  return toolClass.role === "create" ? toolClass.title : "subagent";
-}
-
-function delegateActivity(toolClass: DelegateClass): string {
-  switch (toolClass.role) {
-    case "create":
-      return "Creating subagent";
-    case "send":
-      return "Messaging subagent";
-    case "read":
-      return "Reading subagent";
-    case "stop":
-      return "Stopping subagent";
-    default: {
-      const _exhaustive: never = toolClass;
-
-      return _exhaustive;
-    }
-  }
-}
-
-/** The status row for the tools still running: the newest call. */
-export function runningActivityLabel(running: readonly TurnToolClass[]): string | undefined {
-  const newest = running.at(-1);
-
-  if (newest === undefined) return undefined;
-
-  switch (newest.kind) {
-    case "file_read":
-    case "list":
-      return "Reading files";
-    case "shell":
-      return "Running shell command";
-    case "file_edit":
-    case "file_write":
-    case "file_patch":
-      return "Editing files";
-    case "delegate":
-      return delegateActivity(newest);
-    case "custom":
-      return undefined;
-    default: {
-      const _exhaustive: never = newest;
-
-      return _exhaustive;
-    }
-  }
+  return (toolClass.role === "create" || toolClass.role === "task") && toolClass.title !== null
+    ? toolClass.title
+    : "subagent";
 }
 
 const NOTICE_LIMIT = 120;

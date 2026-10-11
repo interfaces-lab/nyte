@@ -1,14 +1,15 @@
 /**
- * Host identities this phone pinned, by route: an address entered by hand or
- * scanned, or an account environment. A route pins the identity its host
- * proved by signing on first pairing, and every later connect, resume
- * included, must prove that same key. A pin outlives the saved token, device
+ * Host ids this phone pinned, by route: an address entered by hand or
+ * scanned, or an account environment. A route pins the id its host answered
+ * on first pairing, and every later connect, resume included, must answer the
+ * same one. The id is not signed: the sdk's `expect` check needs WebCrypto
+ * Ed25519, which Hermes lacks. A pin outlives the saved token, device
  * enrollments, disconnects and sign-outs; only an explicit re-pair replaces it.
  */
 import { base64ToBase64Url } from "@nyte-ai/connect";
 import type { DeviceCrypto } from "@nyte-ai/connect/enrollment";
-import { HostIdentitySchema } from "@nyte-ai/protocol";
-import type { HostIdentity } from "@nyte-ai/protocol";
+import type { HostId } from "@nyte-ai/sdk";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { SavedConnection } from "./connection.ts";
 
@@ -41,9 +42,11 @@ export interface PinStorage {
 
 export interface PinStore {
   /** Undefined when the route never pinned. Unreadable or malformed storage throws. */
-  readonly read: (route: PinRoute) => Promise<HostIdentity | undefined>;
-  readonly write: (route: PinRoute, identity: HostIdentity) => Promise<void>;
+  readonly read: (route: PinRoute) => Promise<string | undefined>;
+  readonly write: (route: PinRoute, hostId: HostId) => Promise<void>;
 }
+
+const PinSchema = Type.Object({ hostId: Type.String({ minLength: 1 }) });
 
 export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinStore {
   // Keychain keys allow only letters, digits, `.`, `-` and `_`.
@@ -63,15 +66,10 @@ export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinSt
       if (text === null) return undefined;
       const value: unknown = JSON.parse(text);
 
-      if (!Value.Check(HostIdentitySchema, value))
-        throw new Error("The saved host pin is unreadable.");
+      if (!Value.Check(PinSchema, value)) throw new Error("The saved host pin is unreadable.");
 
-      return value;
+      return value.hostId;
     },
-    write: async (route, identity) =>
-      storage.write(
-        await keyOf(route),
-        JSON.stringify({ hostId: identity.hostId, publicKey: identity.publicKey }),
-      ),
+    write: async (route, hostId) => storage.write(await keyOf(route), JSON.stringify({ hostId })),
   };
 }

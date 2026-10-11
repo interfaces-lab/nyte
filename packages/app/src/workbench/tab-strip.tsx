@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -197,7 +197,7 @@ function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void
 function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactElement {
   const session = useSession(sessionId);
 
-  return <>{session.data?.name ?? session.data?.preview ?? "New chat"}</>;
+  return <>{session.data?.name ?? "New chat"}</>;
 }
 
 export function WorkbenchTabStrip({

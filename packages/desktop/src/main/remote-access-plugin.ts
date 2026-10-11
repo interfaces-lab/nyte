@@ -7,7 +7,7 @@
  * listener. A plugin owns its settings, the credentials that listener accepts,
  * and the connector that carries outside traffic to it.
  */
-import type { ServerAuth } from "@nyte-ai/server";
+import type { ListenOptions } from "@nyte-ai/sdk";
 import type {
   CloudflareTunnelSettings,
   CloudflareTunnelView,
@@ -38,9 +38,9 @@ export interface RemoteExposure {
   /** The loopback listener the host binds for this exposure. */
   readonly listen: {
     readonly port: number;
-    readonly auth: ServerAuth;
+    readonly auth: ListenOptions["auth"];
     readonly browserOrigins: readonly string[];
-    /** Routes this exposure answers itself, before the Nyte server and its auth. */
+    /** Routes this exposure answers itself, before the listener and its auth. */
     readonly handle?: (request: Request) => Promise<Response | undefined>;
   };
   /** Start carrying outside traffic. The host calls it only after the listener is bound. */

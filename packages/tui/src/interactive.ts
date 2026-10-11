@@ -1,11 +1,13 @@
 /**
  * The interactive shell: one host, one followed session, one composer. Every
- * durable fact on screen comes from `SessionState`; every submission goes
- * through the outbox. Local `!` commands never enter the job or model loop.
+ * durable fact on screen comes from the head's `SessionView`; every
+ * submission goes through `send`, whose journal holds what is still unsent.
+ * Local `!` commands never enter the job or model loop.
  */
 import process from "node:process";
 import { basename, resolve } from "node:path";
 import { homedir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import open from "open";
 import {
@@ -16,47 +18,34 @@ import {
   SyntaxStyle,
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
-import { formatSkillInvocation } from "@nyte-ai/core/plugins";
-import {
-  createWorkspaceStore,
-  discoverMentionFiles,
-  environmentId,
-  nyteHome,
-  pluginWatchTargets,
-} from "@nyte-ai/host";
-import type { TrustedWorkspace } from "@nyte-ai/host";
-import { createOtelExport } from "@nyte-ai/host/otel";
-import { catalogForUsage } from "@nyte-ai/host/store-usage";
-import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
-import { observedAccountUsage, readAccountUsage } from "@nyte-ai/host/usage";
-import type { AccountUsage } from "@nyte-ai/host/usage";
-import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
-import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
-import { collectAbandoned, projectTree, emptyUsageSummary } from "@nyte-ai/client";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import { MAIN, sessionId } from "@nyte-ai/core";
-import { notifyPluginSources, watchPluginDirectories } from "@nyte-ai/host/plugins";
 import type {
+  BlobId,
   CommandInfo,
+  CommitId,
   Delivery,
-  Oid,
-  PluginInfo,
-  RunInfo,
-  SelectionReply,
+  Host,
+  HostView,
+  Json,
+  MessageId,
+  ModelCatalogView,
+  ModelInfo,
+  RunEnd,
+  SendReceipt,
+  Session,
   SessionId,
   SessionInfo,
+  SessionView,
   SettingInfo,
-  ThinkingLevel,
-} from "@nyte-ai/core";
-import type { JsonValue, Skill } from "@nyte-ai/schema";
+  SkillInfo,
+  Thinking,
+  TreeView,
+  UserContent,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { authProviderChoices, loginProvider, logoutProvider } from "./auth.ts";
+import type { LoginDriver } from "./auth.ts";
 import { readAuthPrompt } from "./auth-prompt.ts";
-import {
-  cachedAuthenticatedModels,
-  defaultModel,
-  loadAuthenticatedModels,
-  requireProvider,
-} from "./catalog.ts";
+import { availableModels, clampThinking, findModel, modelId } from "./catalog.ts";
 import {
   DialogImagePreview,
   ComposerParts,
@@ -68,8 +57,7 @@ import {
   resolveComposerPaste,
   SessionDrafts,
 } from "./composer.ts";
-import type { ComposerDraft } from "./composer.ts";
-import type { MentionFile } from "@nyte-ai/protocol";
+import type { ComposerDraft, MentionFile } from "./composer.ts";
 import { ComposerDocument } from "./composer-document.ts";
 import { startLocalShell } from "./local-shell.ts";
 import type { ShellExecution, ShellProcess } from "./local-shell.ts";
@@ -94,7 +82,7 @@ import {
   userText,
 } from "./format.ts";
 import type { PowerlineState } from "./format.ts";
-import type { Host } from "./host.ts";
+import { openTerminalHost } from "./host.ts";
 import {
   ctrlCAction,
   DoubleEscape,
@@ -108,31 +96,18 @@ import { deliveryChoices, nextToSteer } from "./lanes.ts";
 import type { DeliveryChoices } from "./lanes.ts";
 import { ModelPicker } from "./model-picker.ts";
 import type { ModelSelection } from "./model-picker.ts";
-import {
-  gutterRows,
-  deliveryMark,
-  queuedPromptText,
-  rowContent,
-  rowDelivery,
-} from "./pending-gutter.ts";
+import { deliveryMark, queuedPromptText } from "./pending-gutter.ts";
+import type { GutterRow } from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
-import { PluginProvider } from "./plugins.ts";
+import { mountClientPlugins } from "./plugins.ts";
+import type { ClientPlugins } from "./plugins.ts";
 import { browseHistory, PromptHistory } from "./prompt-history.ts";
-import {
-  hostFallbacks,
-  openWorkspaceHost,
-  resolveRuntime,
-  signedOutRuntime,
-  targetSession,
-} from "./run.ts";
-import type { Runtime } from "./run.ts";
+import { flagConfiguration, targetSession, tuiPlugins } from "./run.ts";
 import { TUI_RENDERER_CONFIG } from "./rendering.ts";
 import { SessionConfigurator } from "./session-config.ts";
 import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
-import { createOutbox, SessionObserver, waitingCall } from "@nyte-ai/client";
 import { TaskBrowser } from "./task-browser.ts";
-import type { Outbox, SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/client";
 import { FileSettingsStore } from "./settings.ts";
 import type { ResolvedSettings, SettingsPatch } from "./settings.ts";
 import { mountShell } from "./app/App.tsx";
@@ -155,6 +130,7 @@ import type { SelectChoiceOptions, Shell } from "./app/ui.ts";
 import {
   availableSlashCommands,
   expandInlineSkills,
+  formatSkillInvocation,
   hasInlineSkills,
   parseComposerSubmission,
   promptDraft,
@@ -177,10 +153,10 @@ import type { UpdateProgress } from "./update.ts";
 import { updateSeverity } from "./cli-style.ts";
 import { UsagePanel } from "./usage-panel.ts";
 import { usageCard } from "./usage.ts";
-import type { UsageHistory } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
+import { follow, openQuestions, queuedMessages } from "./view-helpers.ts";
+import type { OpenQuestion, UserMessage } from "./view-helpers.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
-import { requestWorkspaceTrust } from "./trust-dialog.ts";
 import { reportProgramStatus } from "./program-status.ts";
 
 type TuiExit =
@@ -189,29 +165,6 @@ type TuiExit =
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
-
-function scheduleAt(until: number, onDeadline: () => void): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  const check = (): void => {
-    const remaining = until - Date.now();
-
-    if (remaining > 0) {
-      timer = setTimeout(check, Math.min(remaining, MAX_TIMER_DELAY_MS));
-
-      return;
-    }
-
-    timer = undefined;
-    onDeadline();
-  };
-
-  timer = setTimeout(check, Math.min(Math.max(0, until - Date.now()), MAX_TIMER_DELAY_MS));
-
-  return () => clearTimeout(timer);
 }
 
 const THEME_CHOICES: readonly Choice[] = [
@@ -261,64 +214,52 @@ function matchChoice(choices: readonly Choice[], argument: string): Choice | und
   );
 }
 
-/** Resolve core's projected model in the catalog for client controls. */
-function selectedConfig(state: SessionState, runtime: Runtime, fallback: RunChoice): RunChoice {
-  // Selected inputs may omit defaults that core recorded on a previous run.
-  const model = state.info.config.model ?? state.config.model;
+/** The view's selected configuration, else what admission would resolve, else the fallback. */
+function selectedConfig(view: SessionView | undefined, fallback: RunChoice): RunChoice {
+  const configuration = view?.configuration.selected ?? view?.configuration.effective ?? null;
 
-  return {
-    model:
-      model?.provider === undefined
-        ? fallback.model
-        : (runtime.models.getModel(model.provider, model.id) ?? fallback.model),
-    thinkingLevel:
-      state.info.config.thinkingLevel ?? state.config.thinkingLevel ?? fallback.thinkingLevel,
-  };
+  return configuration === null
+    ? fallback
+    : { model: configuration.model, thinkingLevel: configuration.thinking };
 }
 
-function userPrompts(state: SessionState): string[] {
-  return state.transcript.items.flatMap((item) =>
-    item.kind === "turn"
-      ? item.parts.flatMap((part) => {
-          if (part.kind !== "user") return [];
-          const text = userText(part.content);
+function userPrompts(view: SessionView): string[] {
+  return view.messages.flatMap((message) => {
+    if (message.kind !== "user" || message.status.kind !== "landed") return [];
+    const text = userText(message.content);
 
-          return text.trim() === "" ? [] : [promptDraft(text)];
-        })
-      : [],
-  );
+    return text.trim() === "" ? [] : [promptDraft(text)];
+  });
 }
 
-/** The last user message of the branch, when nothing answered it. */
 /**
- * The turn an aborted run hands back to the composer: a lone user request.
- * A completion's continuation turn has no user part, so a stop after a
+ * The request a stopped run hands back to the composer: the last turn's lone
+ * landed prompt. A continuation turn has no prompt, so a stop after a
  * background result landed retracts nothing and keeps the result in context.
  */
-function unansweredRequest(
-  state: SessionState,
-): Extract<SessionState["transcript"]["items"][number], { kind: "turn" }> | undefined {
-  const last = state.transcript.items.at(-1);
+function unansweredRequest(view: SessionView): CommitId | undefined {
+  const turn = view.turns.at(-1);
 
-  if (last?.kind !== "turn") return undefined;
-  const parts = last.parts;
+  if (turn === undefined || turn.prompt === null) return undefined;
+  const messages = view.messages.filter((message) => message.turn === turn.id);
+  const only = messages[0];
 
-  return parts.length === 1 && parts[0]?.kind === "user" ? last : undefined;
+  return messages.length === 1 && only?.kind === "user" && only.status.kind === "landed"
+    ? only.status.commit
+    : undefined;
 }
 
-function modelChoiceId(model: Model<Api>): string {
-  return `${model.provider}/${model.id}`;
-}
-
-function modelChoices(runtime: Runtime, available: readonly Model<Api>[]): Choice[] {
-  return available.map((model) => ({
-    id: modelChoiceId(model),
-    label: model.name === "" ? model.id : model.name,
-    description:
-      model.name === model.id
-        ? requireProvider(runtime.models, model.provider).name
-        : `${requireProvider(runtime.models, model.provider).name} · ${model.id}`,
-  }));
+function modelChoices(catalog: ModelCatalogView | undefined): Choice[] {
+  return (catalog?.providers ?? []).flatMap((provider) =>
+    provider.credential === "configured" || provider.credential === "verified"
+      ? provider.models.map((model) => ({
+          id: modelId(model.ref),
+          label: model.name === "" ? model.ref.id : model.name,
+          description:
+            model.name === model.ref.id ? provider.name : `${provider.name} · ${model.ref.id}`,
+        }))
+      : [],
+  );
 }
 
 function createTuiRenderer(): Promise<CliRenderer> {
@@ -337,38 +278,42 @@ function createTuiRenderer(): Promise<CliRenderer> {
 
 /**
  * A message on its way back into the composer: one a move retracted, or one
- * whose configuration never reached core. It lands only into an empty
+ * whose configuration never reached the head. It lands only into an empty
  * composer, so a draft typed meanwhile is never overwritten, and it survives
  * a session switch until then.
  */
 type Handback = (
-  | { readonly content: SessionState["pending"][number]["content"]; readonly draft?: never }
+  | { readonly content: UserContent; readonly draft?: never }
   | { readonly draft: ComposerDraft; readonly content?: never }
 ) & {
   /** The retracted commit, when a move produced this; absent for an unsent message. */
-  readonly commit?: Oid;
+  readonly commit?: CommitId;
   readonly notice: string;
 };
 
 /**
- * Everything the shell knows about the followed session, rebuilt on a switch.
- * The observer publishes state; the outbox publishes what is still sending and
- * hears the observer to reconcile the two by identity.
+ * Everything the shell knows about the followed session, rebuilt on a switch:
+ * its handle, its directory row and its head's latest view.
  */
 interface FollowedSession {
   readonly sessionId: SessionId;
-  readonly observer: SessionObserver;
-  readonly outbox: Outbox;
-  /** What the user asked the next run to use, ahead of core's acknowledgement. */
+  readonly session: Session;
+  info: SessionInfo;
+  view: SessionView | undefined;
+  /** What the user asked the next run to use, ahead of the head's acknowledgement. */
   readonly config: SessionConfigurator;
-  state: SessionState;
-  commands: ReadonlyMap<string, CommandInfo>;
-  skills: ReadonlyMap<string, Skill>;
-  settings: readonly SettingInfo[];
   completionCommands: ReturnType<typeof availableSlashCommands>;
-  /** The plugin status items, as last listed or as `status_changed` said. */
-  statusItems: readonly string[];
   stop(): void;
+}
+
+/** The commands a view's catalog offers, by name. */
+function commandsOf(session: FollowedSession): ReadonlyMap<string, CommandInfo> {
+  return new Map((session.view?.catalog.commands ?? []).map((command) => [command.name, command]));
+}
+
+/** The skills a view's catalog offers, by name. */
+function skillsOf(session: FollowedSession): ReadonlyMap<string, SkillInfo> {
+  return new Map((session.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]));
 }
 
 export async function runTui(
@@ -391,7 +336,7 @@ export async function runTui(
   });
 
   patchStatus(shell, { workspace: basename(process.cwd()) });
-  shell.setUi("loading", "Checking workspace…");
+  shell.setUi("loading", "Opening workspace…");
   shell.input.onSubmit = () => notice(shell, "Still starting. Your draft is saved here.");
   let exit: TuiExit = { kind: "quit" };
   let resumeId: SessionId | undefined;
@@ -451,7 +396,6 @@ export async function runTui(
   renderer.keyInput.on("keypress", takeNoticeBack);
   renderer.on(CliRenderEvents.THEME_MODE, onStartupTheme);
   let host: Host | undefined;
-  let otel: ReturnType<typeof createOtelExport> | undefined;
   let app: Interactive | undefined;
   const disposers: (() => void)[] = [];
 
@@ -460,45 +404,10 @@ export async function runTui(
     await renderer.idle();
 
     if (startupAbort.signal.aborted) return;
-    otel = createOtelExport({ serviceName: "nyte-tui" });
-    const trustStore = createWorkspaceStore();
-    const resolution = await trustStore.resolve(process.cwd());
-
-    if (startupAbort.signal.aborted) return;
-    let workspace: TrustedWorkspace;
-
-    if (resolution.kind === "trusted") {
-      workspace = resolution.workspace;
-    } else {
-      shell.input.blur();
-      shell.input.focusable = false;
-
-      const decision = await requestWorkspaceTrust({
-        renderer,
-        theme: shell.theme,
-        cwd: resolution.cwd,
-        signal: startupAbort.signal,
-        nextId: shell.nextId,
-      });
-
-      if (startupAbort.signal.aborted) return;
-
-      if (decision !== "trust") {
-        requestShutdown();
-
-        return;
-      }
-
-      workspace = await trustStore.trust(resolution.cwd);
-
-      if (startupAbort.signal.aborted) return;
-      shell.input.focusable = true;
-      shell.focus.reset();
-    }
-
+    const cwd = process.cwd();
     shell.setUi("loading", "Loading settings…");
     const settingsStore = new FileSettingsStore();
-    const settings = await settingsStore.read(workspace.cwd);
+    const settings = await settingsStore.read(cwd);
 
     if (startupAbort.signal.aborted) return;
     shell.setScrollAcceleration(settings.scrollAcceleration);
@@ -511,57 +420,46 @@ export async function runTui(
     updateTheme();
     renderer.on(CliRenderEvents.THEME_MODE, updateTheme);
     disposers.push(() => renderer.off(CliRenderEvents.THEME_MODE, updateTheme));
+    shell.setUi("loading", "Opening workspace…");
+    // Keep ownership even if startup was cancelled while the host was opening.
+    host = await openTerminalHost();
+
+    if (startupAbort.signal.aborted) return;
     shell.setUi("loading", "Loading providers…");
+    const catalog = await host.models.list();
+
+    if (startupAbort.signal.aborted) return;
     const bootNotices: string[] = [];
-    const signedIn = await resolveRuntime(flags, settings, startupAbort.signal);
+    const available = availableModels(catalog);
 
-    if (startupAbort.signal.aborted) return;
-    const runtime = signedIn ?? (await signedOutRuntime(flags, settings, startupAbort.signal));
+    if (available.length === 0) bootNotices.push("Not signed in. /login connects a provider.");
 
-    if (startupAbort.signal.aborted) return;
+    const model =
+      catalog.default ??
+      available[0]?.ref ??
+      catalog.providers.flatMap((provider) => provider.models)[0]?.ref;
 
-    if (signedIn === undefined) bootNotices.push("Not signed in. /login connects a provider.");
-
-    if (
-      signedIn === undefined &&
-      flags.provider !== undefined &&
-      runtime.provider.id !== flags.provider
-    )
-      bootNotices.push(
-        `${flags.provider} has no models until you sign in; opened on ${runtime.provider.id} instead. /login ${flags.provider} connects it.`,
+    if (model === undefined)
+      throw new Error(
+        "No models are available. Check your connection, then run `nyte update --models`.",
       );
-    const fallback = hostFallbacks(runtime, settings, flags);
+    const fallback: RunChoice = { model, thinkingLevel: flags.effort ?? "medium" };
     patchStatus(shell, {
       provider: fallback.model.provider,
       model: fallback.model.id,
       effort: fallback.thinkingLevel,
     });
-    shell.setUi("loading", "Loading workspace plugins…");
 
-    const opened = await openWorkspaceHost({
-      workspace,
-      settings,
-      runtime,
-      model: fallback.model,
-      thinkingLevel: fallback.thinkingLevel,
-      telemetry: otel.telemetry,
-      report: (message) => bootNotices.push(message),
-    });
-
-    // Keep ownership even if startup was cancelled while plugins were loading.
-    host = opened;
-
-    if (startupAbort.signal.aborted) return;
     renderer.off(CliRenderEvents.THEME_MODE, updateTheme);
     app = new Interactive({
       renderer,
       shell,
       host,
-      runtime,
+      catalog,
       roles,
       settings,
       settingsStore,
-      workspace,
+      cwd,
       fallback,
       themeMode: resolveThemeMode(settings.theme, renderer.themeMode),
       requestShutdown,
@@ -598,16 +496,7 @@ export async function runTui(
     renderer.keyInput.off("keypress", onStartupKey);
     renderer.keyInput.off("keypress", takeNoticeBack);
     await cleanup("Terminal", () => renderer.destroy());
-    await cleanup("Host", async () => {
-      const outcome = await host?.close();
-
-      if (outcome?.kind === "failed") {
-        for (const failure of outcome.failures) {
-          failures.push(`${failure.resource} cleanup failed: ${errorMessage(failure.cause)}`);
-        }
-      }
-    });
-    await cleanup("Telemetry", () => otel?.shutdown());
+    await cleanup("Host", () => host?.close());
     process.off("SIGINT", onSigint);
     process.off("SIGTERM", onSigterm);
   }
@@ -631,11 +520,12 @@ interface InteractiveOptions {
   readonly renderer: CliRenderer;
   readonly shell: Shell;
   readonly host: Host;
-  readonly runtime: Runtime;
+  /** The catalog as read at startup; re-read when the host's catalog generation moves. */
+  readonly catalog: ModelCatalogView;
   readonly roles: DeliveryChoices;
   readonly settings: ResolvedSettings;
   readonly settingsStore: FileSettingsStore;
-  readonly workspace: TrustedWorkspace;
+  readonly cwd: string;
   readonly fallback: RunChoice;
   readonly themeMode: ThemeMode;
   readonly requestShutdown: () => void;
@@ -643,26 +533,19 @@ interface InteractiveOptions {
 }
 
 class Interactive {
-  private readonly usageScanner = new UsageScanWorker(
-    nyteHome(),
-    import.meta.url.startsWith("file:///$bunfs/")
-      ? new URL("file:///$bunfs/root/host/src/usage-worker.js")
-      : new URL("../../host/src/usage-worker.ts", import.meta.url),
-  );
-  private usageHistory: UsageHistory = { kind: "loading" };
-  private scanningUsage: Promise<void> | undefined;
   private readonly tasks: TaskBrowser;
-  private tuiPlugins: PluginProvider;
+  private plugins: ClientPlugins | undefined;
   private readonly renderer: CliRenderer;
   private readonly shell: Shell;
   private readonly host: Host;
-  private readonly runtime: Runtime;
+  /** The model catalog, read again whenever the host view's catalog generation moves. */
+  private catalog: ModelCatalogView;
+  /** The host as last watched: its plugin rows, settings and catalog generation. */
+  private hostView: HostView | undefined;
   private readonly roles: DeliveryChoices;
   private readonly settingsStore: FileSettingsStore;
-  private workspace: TrustedWorkspace;
-  private stopPluginWatch: (() => void) | undefined;
-  /** Settled by the next inventory the session publishes; `/reload` reports through it. */
-  private reloaded: PromiseWithResolvers<readonly PluginInfo[]> | undefined;
+  /** The folder the followed session's workspace serves. */
+  private cwd: string;
   private changingDirectory = false;
   private readonly fallback: RunChoice;
   private readonly options: InteractiveOptions;
@@ -675,14 +558,19 @@ class Interactive {
   private pasting: Promise<void> | undefined;
   private queueMenu: InlineMenu | undefined;
   private queueSelection: string | undefined;
+  /** A queued message being edited in the composer: the message and the draft it replaced. */
   private readonly queueEdits = new Map<
     SessionId,
-    { readonly delivery: Delivery; readonly draft: ComposerDraft } & (
-      | { readonly kind: "pending"; readonly change: Oid }
-      | { readonly kind: "sending"; readonly content: SessionState["pending"][number]["content"] }
-    )
+    {
+      readonly message: MessageId;
+      readonly delivery: Delivery;
+      readonly content: UserContent;
+      readonly draft: ComposerDraft;
+    }
   >();
   private readonly drafts = new SessionDrafts();
+  /** The receipts of this terminal's sends by message id: a queued message is withdrawn through its receipt. */
+  private readonly receipts = new Map<MessageId, SendReceipt>();
   /** Recovery belongs to the session, independently of which one the shell follows. */
   private readonly handbacks = new Map<SessionId, Handback[]>();
   private readonly promptHistory = new PromptHistory();
@@ -694,15 +582,12 @@ class Interactive {
   private mentionFiles: readonly MentionFile[] = [];
   private mentionController: AbortController | undefined;
   private readonly disposers: (() => void | Promise<void>)[] = [];
-  /** Sessions this process drives; a run started here keeps going after switching away. */
-  private readonly attachments = new Map<SessionId, () => void>();
   private submitting = false;
   private pasteSubmission: SubmissionSlot | undefined;
   private pasteFailures = 0;
-  /** The open question menu, so a wait that ends elsewhere can close it. */
+  /** The open question menu, so a question answered elsewhere can close it. */
   private asking: AbortController | undefined;
-  private waiting: WaitingCall | undefined;
-  private compaction: AbortController | undefined;
+  private waiting: { readonly session: SessionId; readonly question: OpenQuestion } | undefined;
   private authenticating: AbortController | undefined;
   private authenticationLink: { readonly url: string; readonly copy: string } | undefined;
   /** Local commands belong to this TUI, never to a core run or task. */
@@ -710,7 +595,6 @@ class Interactive {
     string,
     {
       readonly sessionId: SessionId;
-      readonly head: string;
       readonly process: ShellProcess;
       retention: "pending" | "attached" | "exclude" | "discarded";
     }
@@ -718,14 +602,13 @@ class Interactive {
   private activeShell: ShellProcess | undefined;
   private editingExternally = false;
   private switchingSession = false;
-  private lastPluginSignature: string | undefined;
   private readonly stopped = new AbortController();
   private disposed = false;
   private closing: Promise<void> | undefined;
   private pendingVisual:
     | {
         readonly session: FollowedSession;
-        readonly previous: SessionState | undefined;
+        readonly previous: SessionView | undefined;
         readonly reset: boolean;
       }
     | undefined;
@@ -735,10 +618,10 @@ class Interactive {
     this.renderer = options.renderer;
     this.shell = options.shell;
     this.host = options.host;
-    this.runtime = options.runtime;
+    this.catalog = options.catalog;
     this.roles = options.roles;
     this.settingsStore = options.settingsStore;
-    this.workspace = options.workspace;
+    this.cwd = options.cwd;
     this.fallback = options.fallback;
     this.settings = options.settings;
     this.themeMode = options.themeMode;
@@ -747,8 +630,8 @@ class Interactive {
     this.disposers.push(() => this.renderer.removeFrameCallback(this.flushVisual));
     reportProgramStatus(this.renderer, () => ({
       busy: this.busy,
-      run: this.state?.run,
-      question: this.waiting?.selection.title,
+      execution: this.view?.execution,
+      question: this.waiting?.question.prompt,
     }));
     this.clipboard =
       options.clipboard === undefined
@@ -763,7 +646,7 @@ class Interactive {
     });
     this.tasks = new TaskBrowser({
       shell: options.shell,
-      nyte: options.host.nyte,
+      connection: options.host,
       onClose: () => this.refreshHints(),
       onChange: () => {
         this.refreshQuestion();
@@ -772,21 +655,25 @@ class Interactive {
         if (this.session === undefined) return;
         this.pendingVisual ??= {
           session: this.session,
-          previous: this.session.state,
+          previous: this.session.view,
           reset: false,
         };
         this.renderer.requestRender();
       },
       onError: (cause) => this.reportError(cause),
     });
-    this.tuiPlugins = new PluginProvider({
-      shell: options.shell,
-      workspace: options.workspace,
-      client: options.host.nyte,
-      sessionID: () => this.sessionId,
-    });
+    options.shell.transcript.blob = async (id: BlobId) => {
+      const reader = await options.host.blob(id);
+      const chunks: Uint8Array[] = [];
+
+      for await (const chunk of reader.chunks()) chunks.push(chunk);
+
+      return Buffer.concat(chunks);
+    };
+
+    options.shell.transcript.drawPart = (message) => this.plugins?.draw(message);
     options.shell.pendingGutter.onOpen = (row) => {
-      void this.openQueue(rowId(row)).catch(this.reportError);
+      void this.openQueue(row.id).catch(this.reportError);
     };
 
     options.shell.pendingGutter.onReorder = (item, before) => {
@@ -798,9 +685,7 @@ class Interactive {
         this.queueEdits.has(session.sessionId)
       )
         return;
-      void this.reorder(session, item.change, item.delivery, before?.change ?? null).catch(
-        this.reportError,
-      );
+      void this.reorder(session, item, before?.id ?? null).catch(this.reportError);
     };
 
     options.shell.pendingTail.onOpen = options.shell.pendingGutter.onOpen;
@@ -829,16 +714,37 @@ class Interactive {
     this.disposers.push(() => {
       this.renderer.off(CliRenderEvents.THEME_MODE, onTerminalTheme);
     });
-    const info = await targetSession(this.host.nyte, flags.resume);
+    this.disposers.push(
+      follow(this.host.watch(), (view) => this.onHostView(view), this.reportError),
+      follow(
+        this.host.sessions.watch({ parents: { kind: "all" } }),
+        (sessions) => this.onDirectory(sessions),
+        this.reportError,
+      ),
+    );
+    this.plugins = await mountClientPlugins({
+      connection: this.host,
+      plugins: tuiPlugins(),
+      session: () => this.session?.session ?? null,
+      notify: (input) => {
+        this.renderer.triggerNotification(input.message, input.title ?? "Nyte");
+
+        if (input.sound === true && process.stdout.isTTY) process.stdout.write("\u0007");
+      },
+      report: (plugin, message) =>
+        notice(this.shell, `plugin ${plugin}: ${message}`, this.shell.theme.error),
+    });
+
+    const session = await targetSession(
+      this.host,
+      flags.resume,
+      await flagConfiguration(this.host, flags),
+    );
 
     if (this.disposed) return;
-    await this.follow(info);
+    await this.follow(session);
 
     if (this.disposed) return;
-    this.noticeUnavailable(info);
-    this.watchWorkspacePlugins();
-    void loadAuthenticatedModels(this.runtime.models).catch(() => undefined);
-    void this.refreshMentionFiles();
     void this.checkUpdate();
     this.renderer.requestRender();
   }
@@ -852,16 +758,11 @@ class Interactive {
     this.stopped.abort();
     this.shell.dismissInfoPanel?.();
     this.tasks.dispose();
-    const plugins = this.tuiPlugins.dispose();
+    const plugins = this.plugins?.dispose();
     this.closeQueue();
     this.asking?.abort();
-    this.compaction?.abort();
-    this.stopPluginWatch?.();
     this.session?.stop();
     this.session = undefined;
-
-    for (const detach of this.attachments.values()) detach();
-    this.attachments.clear();
 
     const disposed = this.disposers
       .splice(0)
@@ -871,7 +772,6 @@ class Interactive {
     this.renderer.setTerminalTitle(TERMINAL_TITLE_BASE);
     this.closing = Promise.allSettled([
       plugins,
-      this.usageScanner.close(),
       ...disposed,
       ...[...this.shellCommands.values()].map((entry) => entry.process.done),
     ]).then((outcomes) => {
@@ -896,48 +796,66 @@ class Interactive {
     return this.session;
   }
 
-  private get state(): SessionState | undefined {
-    return this.session?.state;
+  private get view(): SessionView | undefined {
+    return this.session?.view;
   }
 
+  /** A run is live, waiting or retrying, or a compaction is being written. */
   private get busy(): boolean {
+    const view = this.view;
+
     return (
-      this.compaction !== undefined ||
-      this.state?.compaction !== undefined ||
-      (this.state?.run !== undefined && !isTerminalPhase(this.state.run.phase))
+      view !== undefined &&
+      (view.execution.kind !== "idle" ||
+        view.messages.some(
+          (message) =>
+            message.kind === "part" &&
+            message.partKind === "compaction" &&
+            message.status.kind === "live",
+        ))
     );
   }
 
-  /** The configuration the user selected, reconciled with core's selected inputs. */
+  /** The configuration the user selected, reconciled with the head's selection. */
   private get config(): RunChoice {
     return this.session?.config.selected ?? this.fallback;
   }
 
-  /** Point the shell at a session: stop following the old one, snapshot the new one. */
-  private async follow(info: SessionInfo): Promise<void> {
-    const { activation } = info;
+  /** The catalog moved: read it again. Plugin and setting rows are read from the view as they come. */
+  private onHostView(view: HostView): void {
+    const previous = this.hostView;
+    this.hostView = view;
 
-    // A session waiting on trust names its folder; any other has one only while active here.
-    const cwd =
-      activation.kind === "requires" && activation.requirement.kind === "workspace_trust"
-        ? activation.requirement.cwd
-        : await this.host.nyte.sessionCwd({ sessionId: info.sessionId });
+    if (previous === undefined || previous.catalog === view.catalog) return;
+    void this.host.models
+      .list()
+      .then((catalog) => {
+        this.catalog = catalog;
+      })
+      .catch(this.reportError);
+  }
 
-    if (cwd !== undefined) {
-      const workspace =
-        cwd === this.workspace.cwd
-          ? this.workspace
-          : cwd === this.options.workspace.cwd
-            ? this.options.workspace
-            : await this.trustDirectory(cwd);
+  /** The directory moved: keep the followed session's row, its name in the title. */
+  private onDirectory(sessions: readonly SessionInfo[]): void {
+    const session = this.session;
+    const info = sessions.find((candidate) => candidate.id === session?.sessionId);
 
-      if (this.disposed) return;
+    if (session === undefined || info === undefined || info === session.info) return;
+    const renamed = info.name !== session.info.name;
+    session.info = info;
 
-      if (activation.kind !== "active" && cwd !== this.host.cwd)
-        await this.relocateSession(info.sessionId, workspace);
+    if (renamed) this.renderer.setTerminalTitle(terminalTitle(info.name ?? undefined));
+  }
 
-      await this.useWorkspace(workspace);
-    }
+  /** Point the shell at a session: stop following the old one, watch the new one's head. */
+  private async follow(handle: Session): Promise<void> {
+    const info = await handle.info();
+    const workspace = await this.host.workspace(info.workspace).info();
+
+    if (this.disposed) return;
+
+    if (workspace.target.kind === "local" && "path" in workspace.target)
+      this.useWorkspace(workspace.target.path, info.workspace);
 
     if (this.disposed) return;
     this.shell.dismissInfoPanel?.();
@@ -946,74 +864,27 @@ class Interactive {
     this.asking?.abort();
     this.asking = undefined;
     this.waiting = undefined;
-    this.compaction?.abort();
-    this.compaction = undefined;
-    const switching = this.session !== undefined;
+    const previous = this.session;
+    const switching = previous !== undefined;
     this.cancelPasteSubmission();
     this.pasting = undefined;
     this.saveDraft();
-    this.session?.stop();
+    previous?.stop();
     this.session = undefined;
     this.pendingVisual = undefined;
     this.shell.view.clear();
     this.shell.setUi("loading", "Loading session…");
 
-    if (switching) this.restoreDraft(info.sessionId);
-
-    if (!this.attachments.has(info.sessionId)) {
-      this.attachments.set(info.sessionId, this.host.attach(info.sessionId));
-    }
-
+    if (switching) this.restoreDraft(info.id);
     let current: FollowedSession | undefined;
-    const outbox = createOutbox({ send: (input) => this.host.nyte.messages.send(input) });
-    outbox.subscribe(() => {
-      if (current !== undefined && this.session === current) this.syncGutter(current);
-    });
-
-    const observer = new SessionObserver(this.host.nyte, {
-      sessionId: info.sessionId,
-      head: MAIN,
-      selectionVersion: () => current?.config.version ?? 0,
-      onError: (error) => {
-        if (this.session === current)
-          notice(this.shell, `Session watch failed: ${error.message}`, this.shell.theme.error);
-      },
-      retryMs: 500,
-    });
-
-    observer.subscribe((update) => {
-      outbox.observe(update);
-      const { state, selectedVersion } = update;
-
-      if (current === undefined || this.session !== current) return;
-      const previous = current.state;
-      current.state = state;
-
-      if (selectedVersion !== undefined) current.config.observeSelected(selectedVersion);
-
-      if (update.kind === "metadata") this.refreshStatus(current);
-      else this.render(current, previous, update);
-    });
 
     const config = new SessionConfigurator({
-      configure: (patch) => {
-        const input = { sessionId: info.sessionId };
-
-        const withModel =
-          patch.model === undefined
-            ? input
-            : { ...input, model: { provider: patch.model.provider, id: patch.model.id } };
-
-        return this.host.nyte.sessions.configure(
-          patch.thinkingLevel === undefined
-            ? withModel
-            : { ...withModel, thinkingLevel: patch.thinkingLevel },
-        );
-      },
-      readSelected: () =>
-        current === undefined
-          ? this.fallback
-          : selectedConfig(current.state, this.runtime, this.fallback),
+      configure: (patch) =>
+        handle.configure({
+          ...(patch.model === undefined ? {} : { model: patch.model }),
+          ...(patch.thinkingLevel === undefined ? {} : { thinking: patch.thinkingLevel }),
+        }),
+      readSelected: () => selectedConfig(current?.view, this.fallback),
       onChange: (selected) => {
         if (current === undefined || this.session !== current) return;
         patchStatus(this.shell, {
@@ -1025,63 +896,55 @@ class Interactive {
       onAcknowledged: (choice, patch) => {
         if (current === undefined || this.session !== current) return;
         this.persistChoice(choice, patch);
-        observer.refresh();
       },
     });
 
+    const first = Promise.withResolvers<void>();
+
     const followed: FollowedSession = {
-      sessionId: info.sessionId,
-      observer,
-      outbox,
+      sessionId: info.id,
+      session: handle,
+      info,
+      view: undefined,
       config,
-      state: {
-        sessionId: info.sessionId,
-        head: MAIN,
-        seq: 0,
-        info,
-        config: info.config,
-        transcript: { items: [], tip: null },
-        pending: [],
-        run: undefined,
-        compaction: undefined,
-        overlay: [],
-        settledToolCalls: new Set(),
-        parked: [],
-        context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
-        usage: emptyUsageSummary().total,
-        expectedTip: undefined,
-      },
-      commands: new Map(),
-      skills: new Map(),
-      settings: [],
       completionCommands: [],
-      statusItems: [],
       stop: () => {
-        observer.close();
+        stopWatch();
         config.dispose();
       },
     };
 
+    const stopWatch = follow(
+      handle.watch(),
+      (view) => {
+        if (this.session !== followed) return;
+        const previousView = followed.view;
+        followed.view = view;
+        config.observeSelected(selectedConfig(view, this.fallback));
+        this.render(followed, previousView);
+        first.resolve();
+      },
+      (cause) => {
+        if (this.session === followed)
+          notice(
+            this.shell,
+            `Session watch failed: ${errorMessage(cause)}`,
+            this.shell.theme.error,
+          );
+        first.resolve();
+      },
+    );
+
     current = followed;
     this.session = followed;
+    this.tasks.follow(info);
     this.refreshHints();
-
-    try {
-      await observer.start();
-    } catch (cause) {
-      // The observer retries a failed read itself; its start rejects only once
-      // `stop` closed it, which a switch or shutdown does before the read lands.
-      if (this.session === followed) throw cause;
-
-      return;
-    }
+    await first.promise;
 
     if (this.session !== followed) return;
-    this.promptHistory.replace(userPrompts(followed.state));
-    this.tuiPlugins.refresh();
-    this.renderer.setTerminalTitle(terminalTitle(followed.state.info.name));
-    await this.refreshContributions(followed);
-    await this.tuiPlugins.reconcile();
+    await this.plugins?.switched(previous?.session ?? null, handle);
+    this.renderer.setTerminalTitle(terminalTitle(info.name ?? undefined));
+    this.noticeUnavailable(info);
 
     if (!this.disposed && this.session === followed) this.shell.setUi("loading", undefined);
   }
@@ -1089,203 +952,96 @@ class Interactive {
   private noticeUnavailable(info: SessionInfo): void {
     const { activation } = info;
 
-    if (
-      this.session?.sessionId !== info.sessionId ||
-      activation.kind !== "requires" ||
-      activation.requirement.kind !== "workspace_unavailable"
-    )
-      return;
+    if (this.session?.sessionId !== info.id) return;
 
-    let message: string;
+    switch (activation.kind) {
+      case "active":
+      case "inactive":
+        return;
+      case "unavailable":
+        notice(
+          this.shell,
+          activation.reason === "unreachable"
+            ? "Couldn't reach this session's workspace"
+            : "Can't open this session's workspace",
+          this.shell.theme.warning,
+        );
 
-    switch (activation.requirement.reason) {
-      case "unreachable":
-        message = "Couldn't reach this session's workspace";
-        break;
-      case "unsupported":
-        message = "Can't open this session's workspace";
-        break;
+        return;
+      case "failed":
+        notice(
+          this.shell,
+          `Workspace failed to activate: ${activation.message}`,
+          this.shell.theme.error,
+        );
+
+        return;
       default: {
-        const _exhaustive: never = activation.requirement.reason;
-        message = _exhaustive;
+        const _exhaustive: never = activation;
+
+        return _exhaustive;
       }
     }
-
-    notice(this.shell, message, this.shell.theme.warning);
   }
 
-  private async refreshContributions(session: FollowedSession): Promise<void> {
-    const [commands, skills, settings, statusItems] = await Promise.all([
-      this.host.nyte.plugins.commands.list({ sessionId: session.sessionId }),
-      this.host.nyte.plugins.resources.list({ sessionId: session.sessionId }),
-      this.host.nyte.plugins.settings.list({ sessionId: session.sessionId }),
-      this.host.nyte.plugins.status.list({ sessionId: session.sessionId }),
-    ]);
-
-    if (this.disposed || this.session !== session) return;
-    session.commands = new Map(commands.map((command) => [command.name, command]));
-    session.skills = new Map(skills.map((skill) => [skill.name, skill]));
-    session.statusItems = statusItems;
-    this.applySettingsList(session, settings);
-    this.refreshAutocomplete();
-  }
-
-  /** The plugin settings as last listed; badges from their current choices lead the status items. */
-  private applySettingsList(session: FollowedSession, listed: readonly SettingInfo[]): void {
-    session.settings = listed;
-
+  /** The catalog's commands, settings and skills as the slash namespace; badges of current choices lead the status items. */
+  private applyCatalog(session: FollowedSession): void {
     const commands = availableSlashCommands(
-      session.commands,
+      commandsOf(session),
       this.slashSettings(session),
-      session.skills,
+      skillsOf(session),
     );
 
     // Badge-only refreshes must not reset the completion the user selected.
     if (!isDeepStrictEqual(commands, session.completionCommands))
       session.completionCommands = commands;
 
-    const badges = listed.flatMap((setting) => {
-      const status = setting.choices.find((choice) => choice.id === setting.current)?.status;
+    const badges = (session.view?.catalog.settings ?? []).flatMap((setting) => {
+      const badge = setting.choices?.find((choice) =>
+        isDeepStrictEqual(choice.value, setting.value),
+      )?.badge;
 
-      return status === undefined ? [] : [status];
+      return badge === undefined ? [] : [badge];
     });
 
-    patchStatus(this.shell, { statuses: [...badges, ...session.statusItems] });
+    patchStatus(this.shell, { statuses: badges });
+    this.refreshAutocomplete();
   }
 
-  /** Draw one published state, and react to the event that produced it. Only a snapshot replaces the transcript. */
-  private render(
-    session: FollowedSession,
-    previous: SessionState | undefined,
-    update: Exclude<SessionUpdate, { kind: "metadata" }>,
-  ): void {
-    const { state } = session;
-    const event = update.kind === "event" ? update.event : undefined;
-    const snapshot = update.kind === "snapshot";
-    // Fold and react to every event, but reconcile only the latest visual state
-    // before a frame. A resnapshot must still reset even if deltas follow it.
+  /**
+   * Draw one view, and react to what moved since the last: a run that ended
+   * or is retrying, a catalog that reloaded, a prompt that landed.
+   */
+  private render(session: FollowedSession, previous: SessionView | undefined): void {
+    const view = session.view;
+
+    if (view === undefined) return;
+    // Reconcile only the latest visual state before a frame.
     this.pendingVisual = {
       session,
-      previous: snapshot
-        ? undefined
-        : this.pendingVisual === undefined
-          ? previous
-          : this.pendingVisual.previous,
-      reset: snapshot || this.pendingVisual?.reset === true,
+      previous: this.pendingVisual === undefined ? previous : this.pendingVisual.previous,
+      reset: previous === undefined || this.pendingVisual?.reset === true,
     };
     this.renderer.requestRender();
-    this.tasks.update(state, event);
+    this.refreshQuestion();
 
-    if (event === undefined) return;
-    this.tuiPlugins.emit(event);
+    if (view.catalog !== previous?.catalog) this.applyCatalog(session);
 
-    switch (event.kind) {
-      case "activation_changed":
-        return;
-      case "job":
-        return;
-      case "run":
-        if (event.head !== state.head) return;
+    if (view.messages !== previous?.messages) this.promptHistory.replace(userPrompts(view));
+    const { execution } = view;
 
-        if (
-          isTerminalPhase(event.run.phase) &&
-          previous?.run !== undefined &&
-          !isTerminalPhase(previous.run.phase)
-        ) {
-          this.onRunEnded(session, event.run);
-        }
+    if (previous !== undefined && previous.execution.kind !== "idle" && execution.kind === "idle")
+      this.onRunEnded(session, execution.lastRun?.end);
 
-        if (event.run.phase.kind === "retry") {
-          notice(
-            this.shell,
-            `${retryCause(event.run.phase.failure.message)} Retrying in ${clockDuration(Math.max(0, event.run.phase.at - Date.now()))} (attempt ${String(event.run.attempts)})`,
-            this.shell.theme.warning,
-          );
-        }
-
-        return;
-      case "compaction":
-        return;
-      case "effect":
-        return;
-      case "commit":
-        if (event.head !== state.head) return;
-
-        if (event.item.commit.body.kind === "message") {
-          if (event.item.commit.body.message.role === "user") {
-            this.promptHistory.replace(userPrompts(state));
-          }
-        }
-
-        return;
-      case "plugins_changed": {
-        this.reloaded?.resolve(event.plugins);
-        this.reloaded = undefined;
-        void this.refreshContributions(session).catch(() => undefined);
-        const failed = event.plugins.filter((plugin) => plugin.status === "failed");
-
-        const signature = event.plugins
-          .map((plugin) =>
-            plugin.status === "failed" ? `${plugin.id}!${plugin.error}` : plugin.id,
-          )
-          .join(" ");
-
-        if (signature === this.lastPluginSignature) return;
-        this.lastPluginSignature = signature;
-
-        if (failed.length > 0) {
-          notice(
-            this.shell,
-            failed.map((plugin) => `plugin ${plugin.id} failed: ${plugin.error}`),
-            this.shell.theme.error,
-          );
-        }
-
-        return;
-      }
-
-      case "diagnostic":
-        notice(
-          this.shell,
-          `${event.owner}: ${event.message}`,
-          event.level === "error" ? this.shell.theme.error : undefined,
-        );
-
-        return;
-      case "deleted":
-        notice(this.shell, "This chat was deleted. /new starts another.", this.shell.theme.warning);
-
-        return;
-      case "notification":
-        // The plugin said what; the terminal's own notification channel says it.
-        this.renderer.triggerNotification(event.message, event.title ?? "Nyte");
-
-        if (event.sound && process.stdout.isTTY) process.stdout.write("\u0007");
-
-        return;
-      case "status_changed":
-        session.statusItems = event.items;
-        this.applySettingsList(session, session.settings);
-
-        return;
-      case "landed":
-      case "queue_cancelled":
-      case "queued":
-      case "config_queued":
-      case "head_moved":
-      case "stack":
-      case "fact":
-      case "synced":
-      case "text_delta":
-      case "reasoning_delta":
-      case "tool_progress":
-        return;
-      default: {
-        const _exhaustive: never = event;
-
-        return _exhaustive;
-      }
-    }
+    if (
+      execution.kind === "retrying" &&
+      (previous?.execution.kind !== "retrying" || previous.execution.until !== execution.until)
+    )
+      notice(
+        this.shell,
+        `${retryCause(execution.reason)} Retrying in ${clockDuration(Math.max(0, execution.until - Date.now()))} (attempt ${String(execution.run.attempt)})`,
+        this.shell.theme.warning,
+      );
   }
 
   private readonly flushVisual = async (): Promise<void> => {
@@ -1293,8 +1049,10 @@ class Interactive {
     this.pendingVisual = undefined;
 
     if (this.disposed || pending === undefined || this.session !== pending.session) return;
-    const { state } = pending.session;
-    this.shell.view.sync(state, { reset: pending.reset });
+    const { view } = pending.session;
+
+    if (view === undefined) return;
+    this.shell.view.sync(view, { key: pending.session.sessionId, reset: pending.reset });
 
     if (pending.reset) this.restoreShellCards(pending.session);
     const handbacks = this.handbacks.get(pending.session.sessionId);
@@ -1303,11 +1061,11 @@ class Interactive {
     if (
       handbacks !== undefined &&
       handback !== undefined &&
-      state.expectedTip === undefined &&
-      !state.transcript.items.some(
-        (item) =>
-          item.kind === "turn" &&
-          item.parts.some((part) => part.kind === "user" && part.commit === handback.commit),
+      !view.messages.some(
+        (message) =>
+          message.kind === "user" &&
+          message.status.kind === "landed" &&
+          message.status.commit === handback.commit,
       )
     ) {
       // The watcher, not the move reply, determines which transcript is painted.
@@ -1330,54 +1088,50 @@ class Interactive {
       }
     }
 
-    if (state.pending !== pending.previous?.pending || state.run !== pending.previous?.run)
+    if (
+      view.messages !== pending.previous?.messages ||
+      view.execution !== pending.previous?.execution
+    )
       this.syncGutter(pending.session);
 
     if (
-      state.info.config !== pending.previous?.info.config ||
-      state.config !== pending.previous?.config ||
-      state.context !== pending.previous?.context
+      view.configuration !== pending.previous?.configuration ||
+      view.context !== pending.previous?.context
     )
       this.refreshStatus(pending.session);
 
-    if (!this.shell.ui.prompting) this.shell.input.placeholder = this.composerPlaceholder(state);
+    if (!this.shell.ui.prompting) this.shell.input.placeholder = this.composerPlaceholder(view);
 
     if (!this.shell.ui.selecting && !this.shell.ui.prompting) this.refreshHints();
-
-    if (state.info.name !== pending.previous?.info.name)
-      this.renderer.setTerminalTitle(terminalTitle(state.info.name));
   };
 
-  private onRunEnded(session: FollowedSession, run: RunInfo): void {
-    if (run.phase.kind === "failed")
-      notice(this.shell, `Error: ${run.phase.failure.message}`, this.shell.theme.error);
+  private onRunEnded(session: FollowedSession, end: RunEnd | undefined): void {
+    if (end?.kind === "failed")
+      notice(this.shell, `Error: ${end.failure.message}`, this.shell.theme.error);
     this.refreshWorkspace();
 
     // A run stopped before it answered hands its message back to the composer,
     // the same round trip double-escape makes, minus the picker.
     if (
-      run.phase.kind === "aborted" &&
+      end?.kind === "stopped" &&
       this.shell.input.plainText.trim() === "" &&
-      !this.queueEdits.has(session.sessionId)
+      !this.queueEdits.has(session.sessionId) &&
+      session.view !== undefined
     ) {
-      const request = unansweredRequest(session.state);
-      const sent = request?.parts[0];
+      const commit = unansweredRequest(session.view);
 
-      if (sent?.kind === "user") void this.retract(session, sent.commit).catch(this.reportError);
+      if (commit !== undefined) void this.retract(session, commit).catch(this.reportError);
     }
   }
 
-  private async retract(session: FollowedSession, commit: Oid): Promise<void> {
-    const outcome = await this.host.nyte.heads.move({
-      sessionId: session.sessionId,
-      to: commit,
-      expect: session.state.transcript.tip,
-    });
+  private async retract(session: FollowedSession, commit: CommitId): Promise<void> {
+    const receipt = await session.session.move({ kind: "commit", id: commit });
+    const outcome = await receipt.settled();
 
-    if (outcome.kind !== "moved" || outcome.restored === undefined) return;
+    if (outcome.kind !== "moved" || outcome.handback === null) return;
     this.stageHandback(session.sessionId, {
-      content: outcome.restored.content,
-      commit: outcome.restored.commit,
+      content: outcome.handback,
+      commit,
       notice: "Stopped. Message is back in the composer.",
     });
   }
@@ -1392,11 +1146,11 @@ class Interactive {
 
     if (session?.sessionId !== id) return;
     // The watcher may have delivered the move before its request resolved.
-    this.pendingVisual ??= { session, previous: session.state, reset: false };
+    this.pendingVisual ??= { session, previous: session.view, reset: false };
     this.renderer.requestRender();
   }
 
-  private handBack(content: SessionState["pending"][number]["content"], told: string): void {
+  private handBack(content: UserContent, told: string): void {
     setInputText(this.shell.input, this.composerParts.load(content));
     this.promptHistory.resetBrowse();
 
@@ -1404,77 +1158,75 @@ class Interactive {
     notice(this.shell, told, this.shell.theme.ok);
   }
 
+  /** The question in front of the user: the followed head's, else a child's. */
   private refreshQuestion(): void {
     const session = this.session;
 
     if (this.disposed || session === undefined) return;
-    const waiting = waitingCall(session.state) ?? this.tasks.waiting;
+    const own = session.view === undefined ? undefined : openQuestions(session.view)[0];
 
-    if (waiting?.sessionId === this.waiting?.sessionId && waiting?.waitId === this.waiting?.waitId)
-      return;
+    const waiting =
+      own === undefined ? this.tasks.waiting : { session: session.sessionId, question: own };
+
+    if (waiting?.question.part === this.waiting?.question.part) return;
     this.waiting = waiting;
     this.asking?.abort();
 
-    // The cancelled picker's finally opens the next call after it releases focus.
+    // The cancelled picker's finally opens the next question after it releases focus.
     if (waiting !== undefined) this.askQuestion(session, waiting);
   }
 
   /** The open question menu takes the answer itself, so the composer asks for nothing meanwhile. */
-  private composerPlaceholder(state: SessionState): string {
+  private composerPlaceholder(view: SessionView): string {
     if (this.asking !== undefined) return "";
 
-    if (waitingCall(state)?.selection.other !== undefined) return ANSWER_COMPOSER_PLACEHOLDER;
+    if (openQuestions(view).length > 0) return ANSWER_COMPOSER_PLACEHOLDER;
 
     return this.busy ? BUSY_COMPOSER_PLACEHOLDER : COMPOSER_PLACEHOLDER;
   }
 
   /**
-   * Parked selections accept one row, several rows, or typed text according to
-   * their protocol data. Escape leaves the call parked; its durable deadline
-   * closes the panel without sending a reply.
+   * A question accepts one of its options or the user's own words. Escape
+   * leaves it open; answering it elsewhere closes the menu.
    */
-  private askQuestion(session: FollowedSession, waiting: WaitingCall): void {
+  private askQuestion(
+    session: FollowedSession,
+    waiting: { readonly session: SessionId; readonly question: OpenQuestion },
+  ): void {
     if (this.asking !== undefined || this.authenticating !== undefined) return;
     this.shell.dismissInfoPanel?.();
 
     if (this.shell.ui.selecting || this.shell.ui.prompting) return;
     const asking = new AbortController();
-
-    const cancelDeadline =
-      waiting.until === undefined ? undefined : scheduleAt(waiting.until, () => asking.abort());
-
     this.asking = asking;
     this.shell.input.placeholder = "";
     void (async () => {
       try {
-        const { selection } = waiting;
+        const { question } = waiting;
 
         const title =
-          waiting.sessionId === session.sessionId
-            ? selection.title
-            : `Subagent ${shortId(waiting.sessionId)}: ${selection.title}`;
+          waiting.session === session.sessionId
+            ? question.prompt
+            : `Subagent ${shortId(waiting.session)}: ${question.prompt}`;
 
         const reply = await selectSelection(
           this.shell,
-          { ...selection, title },
           {
-            signal: asking.signal,
-            cancelLabel: "later",
+            title,
+            choices: question.options.map((option) => ({ id: option, label: option })),
+            other: "Type an answer",
           },
+          { signal: asking.signal, cancelLabel: "later" },
         );
 
-        await this.answer(waiting, reply);
-        // A reply may change a setting, as consent does; the badges read settings.
-        await this.refreshBadges();
+        await this.answer(waiting, reply.other ?? reply.choices[0] ?? "");
       } catch (cause) {
         if (!(cause instanceof PickerCancelled)) throw cause;
       } finally {
-        cancelDeadline?.();
-
         if (this.asking === asking) this.asking = undefined;
 
-        if (this.session !== undefined && !this.shell.ui.prompting)
-          this.shell.input.placeholder = this.composerPlaceholder(this.session.state);
+        if (this.session?.view !== undefined && !this.shell.ui.prompting)
+          this.shell.input.placeholder = this.composerPlaceholder(this.session.view);
 
         if (
           !this.disposed &&
@@ -1491,31 +1243,25 @@ class Interactive {
     })().catch(this.reportError);
   }
 
-  /** Replies to the parked call. A wait that already ended is reported, never re-sent as a message. */
-  private async answer(waiting: WaitingCall, reply: SelectionReply): Promise<void> {
-    const durableReply: JsonValue =
-      reply.other === undefined
-        ? { choices: [...reply.choices] }
-        : { choices: [...reply.choices], other: reply.other };
+  /** Answers the question's part. A question already answered or closed is reported, never re-sent as a message. */
+  private async answer(
+    waiting: { readonly session: SessionId; readonly question: OpenQuestion },
+    choice: string,
+  ): Promise<void> {
+    const outcome = await this.host
+      .session(waiting.session)
+      .part(waiting.question.part)
+      .act("answer", { choice });
 
-    const outcome = await this.host.nyte.runs.reply({
-      sessionId: waiting.sessionId,
-      runId: waiting.runId,
-      callId: waiting.callId,
-      waitId: waiting.waitId,
-      reply: durableReply,
-    });
-
-    if (outcome.kind !== "signalled") {
+    if (outcome.kind !== "ok")
       notice(this.shell, "That question is no longer waiting", this.shell.theme.warning);
-    }
   }
 
   private syncGutter(session: FollowedSession): void {
-    const rows = sessionRows(session);
-    const running = session.state.run !== undefined && !isTerminalPhase(session.state.run.phase);
-    const steering = rows.filter((row) => !running || rowDelivery(row) === this.roles.steer);
-    const queued = rows.filter((row) => running && rowDelivery(row) !== this.roles.steer);
+    const rows = session.view === undefined ? [] : queuedMessages(session.view);
+    const running = session.view !== undefined && session.view.execution.kind !== "idle";
+    const steering = rows.filter((row) => !running || row.delivery === this.roles.steer);
+    const queued = rows.filter((row) => running && row.delivery !== this.roles.steer);
     this.shell.pendingTail.sync(steering, { hint: queued.length === 0, running });
     this.shell.pendingGutter.sync(queued);
 
@@ -1538,7 +1284,7 @@ class Interactive {
     const config = this.config;
 
     return {
-      workspace: basename(this.workspace.cwd),
+      workspace: basename(this.cwd),
       provider: config.model.provider,
       model: config.model.id,
       effort: config.thinkingLevel,
@@ -1548,41 +1294,26 @@ class Interactive {
   }
 
   private refreshStatus(session: FollowedSession): void {
-    const { state } = session;
+    const context = session.view?.context;
     const config = session.config.selected;
     patchStatus(this.shell, {
       provider: config.model.provider,
       model: config.model.id,
       effort: config.thinkingLevel,
-      tokens: state.context.usageTokens,
-      window: state.context.contextWindow,
-      pct: state.context.percent ?? 0,
+      tokens: context?.tokens ?? 0,
+      window: context?.window ?? 0,
+      pct:
+        context === undefined || context.window <= 0
+          ? 0
+          : Math.round((context.tokens / context.window) * 100),
     });
-    void this.refreshBadges();
   }
 
   private refreshWorkspace(): void {
-    const cwd = this.workspace.cwd;
+    const { cwd } = this;
     void readWorkspaceStatus(cwd).then((workspace) => {
-      if (!this.disposed && this.workspace.cwd === cwd) patchStatus(this.shell, workspace);
+      if (!this.disposed && this.cwd === cwd) patchStatus(this.shell, workspace);
     });
-  }
-
-  /** Re-list the plugin settings: a command or an apply may have changed a current choice. */
-  private async refreshBadges(): Promise<void> {
-    const session = this.session;
-
-    if (session === undefined) return;
-
-    try {
-      const listed = await this.host.nyte.plugins.settings.list({ sessionId: session.sessionId });
-
-      if (this.session !== session) return;
-      this.applySettingsList(session, listed);
-      this.refreshAutocomplete();
-    } catch {
-      return;
-    }
   }
 
   private composerBlocked(): string | undefined {
@@ -1718,7 +1449,7 @@ class Interactive {
         ) {
           this.pendingVisual ??= {
             session: this.session,
-            previous: this.session.state,
+            previous: this.session.view,
             reset: false,
           };
           this.renderer.requestRender();
@@ -1771,21 +1502,45 @@ class Interactive {
       value,
       this.session?.completionCommands ?? [],
       this.mentionFiles,
-      this.workspace.cwd,
+      this.cwd,
       cursor,
     );
   }
 
-  private async refreshMentionFiles(): Promise<void> {
+  /** Lists the workspace's files for `@` mentions through its files capability, ignored files left out. */
+  private async refreshMentionFiles(workspace: WorkspaceId): Promise<void> {
     this.mentionController?.abort();
     const controller = new AbortController();
     this.mentionController = controller;
+    const { cwd } = this;
 
     try {
-      const files = await discoverMentionFiles(this.workspace.cwd, controller.signal);
+      const files = await this.host.workspace(workspace).files();
+
+      if (files.kind !== "available") return;
+      const found: MentionFile[] = [];
+
+      for await (const frame of files.api.scan({ ignored: "exclude" })) {
+        if (controller.signal.aborted || this.disposed) return;
+
+        if (frame.kind !== "entries") continue;
+
+        for (const entry of frame.entries) {
+          if (entry.kind === "symlink") continue;
+          const folder = entry.kind === "directory" ? "/" : "";
+          const path = resolve(cwd, entry.path);
+
+          found.push({
+            path: `${path}${folder}`,
+            url: pathToFileURL(path).href,
+            displayPath: `${entry.path}${folder}`,
+            label: `${basename(entry.path)}${folder}`,
+          });
+        }
+      }
 
       if (controller.signal.aborted || this.disposed) return;
-      this.mentionFiles = files;
+      this.mentionFiles = found;
       this.refreshAutocomplete();
     } catch (error) {
       if (!controller.signal.aborted) this.reportError(error);
@@ -1852,12 +1607,12 @@ class Interactive {
 
   private async pasteInputText(text: string): Promise<void> {
     const session = this.session;
-    const workspace = this.workspace;
-    const paste = await resolveComposerPaste(text, workspace.cwd);
+    const { cwd } = this;
+    const paste = await resolveComposerPaste(text, cwd);
 
     if (
       this.disposed ||
-      this.workspace !== workspace ||
+      this.cwd !== cwd ||
       this.session !== session ||
       this.shell.ui.selecting ||
       this.shell.ui.prompting
@@ -2125,7 +1880,7 @@ class Interactive {
       return;
     }
 
-    const { skills } = session;
+    const skills = skillsOf(session);
 
     const commandTarget =
       submission.kind === "command"
@@ -2149,34 +1904,26 @@ class Interactive {
       return;
     }
 
-    // A selection without an "other" answer cannot be answered from the composer; reopen its menu.
-    if (
-      prompting &&
-      delivery === this.roles.steer &&
-      this.waiting !== undefined &&
-      this.waiting.selection.other === undefined
-    ) {
-      this.askQuestion(session, this.waiting);
-
-      return;
-    }
-
     const captured: ComposerDraft = { text: draft, parts: [...this.composerParts.current] };
     let leading = true;
 
     const preparing = prompting
-      ? this.composerParts.prepare(draft, (text) => {
-          if (commandTarget?.kind !== "skill" || inlineSkills)
-            return expandInlineSkills(text, skills);
+      ? this.composerParts.prepare(
+          draft,
+          (text) => {
+            if (commandTarget?.kind !== "skill" || inlineSkills)
+              return expandInlineSkills(text, skills);
 
-          // Images split the draft into text segments. Only the first contains
-          // the command; subsequent segments keep their arguments verbatim.
-          if (!leading) return text;
-          leading = false;
-          const argument = text.slice(commandTarget.skill.name.length + 1).trimStart();
+            // Images split the draft into text segments. Only the first contains
+            // the command; subsequent segments keep their arguments verbatim.
+            if (!leading) return text;
+            leading = false;
+            const argument = text.slice(commandTarget.skill.name.length + 1).trimStart();
 
-          return formatSkillInvocation(commandTarget.skill, argument || undefined);
-        })
+            return formatSkillInvocation(commandTarget.skill, argument || undefined);
+          },
+          (bytes) => this.upload(session, bytes),
+        )
       : undefined;
 
     // Reserve this message's place behind the configuration it was pressed
@@ -2208,7 +1955,7 @@ class Interactive {
 
         if (result !== undefined && result.kind !== "acknowledged") {
           // The configuration this message was pressed under never reached
-          // core, so the message stays unsent, with every part it carried.
+          // the head, so the message stays unsent, with every part it carried.
           const reason = result.kind === "failed" ? result.message : "configuration changed";
           this.stageHandback(session.sessionId, {
             draft: { text: captured.text, parts: prepared.parts },
@@ -2241,14 +1988,13 @@ class Interactive {
   ): void {
     const command = startLocalShell({
       command: submission.command,
-      cwd: this.workspace.cwd,
+      cwd: this.cwd,
       signal: this.stopped.signal,
       onUpdate: (execution) => this.syncShell(execution),
     });
 
     this.shellCommands.set(command.snapshot.id, {
       sessionId: session.sessionId,
-      head: session.state.head,
       process: command,
       retention: submission.retain ? "pending" : "exclude",
     });
@@ -2271,12 +2017,7 @@ class Interactive {
     if (this.disposed) return;
     const entry = this.shellCommands.get(execution.id);
 
-    if (
-      entry === undefined ||
-      this.session?.sessionId !== entry.sessionId ||
-      this.state?.head !== entry.head
-    )
-      return;
+    if (entry === undefined || this.session?.sessionId !== entry.sessionId) return;
     this.shell.view.syncShell(
       execution,
       entry.retention === "exclude" ? "not sent to model" : undefined,
@@ -2295,12 +2036,7 @@ class Interactive {
       return;
 
     for (const entry of this.shellCommands.values()) {
-      if (
-        entry.retention !== "pending" ||
-        entry.sessionId !== this.session?.sessionId ||
-        entry.head !== this.state?.head
-      )
-        continue;
+      if (entry.retention !== "pending" || entry.sessionId !== this.session?.sessionId) continue;
       const execution = entry.process.snapshot;
 
       // Cancellation, signals and launch failures have no exit code to fabricate.
@@ -2328,23 +2064,35 @@ class Interactive {
 
   private restoreShellCards(session: FollowedSession): void {
     for (const entry of this.shellCommands.values()) {
-      if (entry.sessionId === session.sessionId && entry.head === session.state.head)
-        this.syncShell(entry.process.snapshot);
+      if (entry.sessionId === session.sessionId) this.syncShell(entry.process.snapshot);
     }
 
     this.flushShellMarkers();
   }
 
-  /** A plain line answers a parked question through the reply channel; anything else is admitted. */
+  /** Uploads pasted image bytes through the session's workspace files, for a message to carry. */
+  private async upload(session: FollowedSession, bytes: Uint8Array): Promise<BlobId> {
+    const files = await this.host.workspace(session.info.workspace).files();
+
+    if (files.kind !== "available") throw new Error(`Can't attach images here: ${files.reason}`);
+
+    return files.api.upload(
+      (async function* () {
+        yield bytes;
+      })(),
+    );
+  }
+
+  /** A plain line answers an open question in its own words; anything else is sent. */
   private async send(
     session: FollowedSession,
-    content: SessionState["pending"][number]["content"],
+    content: UserContent,
     delivery: Delivery,
   ): Promise<void> {
-    const waiting = waitingCall(session.state);
+    const waiting = this.waiting;
 
-    if (waiting?.selection.other !== undefined && delivery === this.roles.steer) {
-      if (!Array.isArray(content)) return this.answer(waiting, { choices: [], other: content });
+    if (waiting !== undefined && delivery === this.roles.steer) {
+      if (typeof content === "string") return this.answer(waiting, content);
       notice(
         this.shell,
         "Attachments can't answer a question; sent as a message",
@@ -2352,8 +2100,37 @@ class Interactive {
       );
     }
 
+    const decision = await this.plugins?.beforeSubmit({
+      content,
+      delivery,
+      session: session.sessionId,
+    });
+
+    if (decision?.action === "reject" || decision?.action === "error") {
+      notice(
+        this.shell,
+        decision.action === "reject" ? decision.reason : decision.message,
+        this.shell.theme.warning,
+      );
+
+      return;
+    }
+
     if (this.session === session) this.scrollToEnd();
-    await session.outbox.submit({ sessionId: session.sessionId, content, delivery });
+    this.remember(
+      await session.session.send(decision?.action === "modify" ? decision.value.content : content, {
+        delivery: decision?.action === "modify" ? decision.value.delivery : delivery,
+      }),
+    );
+  }
+
+  /** Keeps a send's receipt until it settles, so its message can be withdrawn while queued. */
+  private remember(receipt: SendReceipt): void {
+    this.receipts.set(receipt.message, receipt);
+    void receipt
+      .settled()
+      .catch(() => undefined)
+      .finally(() => this.receipts.delete(receipt.message));
   }
 
   private scrollToEnd(): void {
@@ -2361,40 +2138,38 @@ class Interactive {
   }
 
   private steerFirstQueued(session: FollowedSession): void {
-    const next = nextToSteer(session.state.pending, this.roles);
+    const next =
+      session.view === undefined
+        ? undefined
+        : nextToSteer(queuedMessages(session.view), this.roles);
 
     if (next === undefined) return;
-    void this.redeliver(session, next.change).catch(this.reportError);
+    void this.redeliver(session, next).catch(this.reportError);
   }
 
-  private async redeliver(session: FollowedSession, change: Oid): Promise<void> {
-    const outcome = await this.host.nyte.messages.redeliver({
-      sessionId: session.sessionId,
-      change,
-      delivery: this.roles.steer,
-    });
+  /** Sends a queued message now: the same message, revised in place to steer. */
+  private async redeliver(session: FollowedSession, message: UserMessage): Promise<void> {
+    this.remember(
+      await session.session.send(message.content, {
+        replace: message.id,
+        delivery: this.roles.steer,
+      }),
+    );
+  }
 
-    switch (outcome.kind) {
-      case "redelivered":
-      case "unchanged":
-        return;
-      case "landed":
-      case "not_found":
-        notice(this.shell, "That message was already sent", this.shell.theme.warning);
+  /** Withdraws a message not yet placed, through the receipt of the send that made it. */
+  private async cancelPending(message: MessageId): Promise<boolean> {
+    const receipt = this.receipts.get(message);
 
-        return;
-      default: {
-        const _exhaustive: never = outcome;
+    if (receipt === undefined) {
+      notice(this.shell, "That message was queued elsewhere; it can't be removed here.");
 
-        return _exhaustive;
-      }
+      return false;
     }
-  }
 
-  private async cancelPending(session: FollowedSession, change: Oid): Promise<boolean> {
-    const outcome = await this.host.nyte.messages.cancel({ sessionId: session.sessionId, change });
+    const outcome = await receipt.stop();
 
-    if (outcome.kind === "cancelled") return true;
+    if (outcome.kind === "requested") return true;
     notice(this.shell, "That message was already sent", this.shell.theme.warning);
 
     return false;
@@ -2403,12 +2178,12 @@ class Interactive {
   private queueChoices(): Choice[] {
     const session = this.session;
 
-    if (session === undefined) return [];
+    if (session?.view === undefined) return [];
 
-    return sessionRows(session).map((row, index) => ({
-      id: rowId(row),
-      label: queuedPromptText(rowContent(row)),
-      description: `${String(index + 1)} · ${row.kind === "pending" ? deliveryMark(row.item.delivery, this.roles, this.shell.theme).label : "sending"}`,
+    return queuedMessages(session.view).map((row, index) => ({
+      id: row.id,
+      label: queuedPromptText(row.content),
+      description: `${String(index + 1)} · ${row.status.kind === "pending" ? deliveryMark(row.delivery, this.roles, this.shell.theme).label : "sending"}`,
     }));
   }
 
@@ -2421,12 +2196,14 @@ class Interactive {
     this.refreshHints();
   }
 
-  /** The live queue shares the composer's rich parts and core's atomic redelivery. */
+  /** The live queue shares the composer's rich parts; edits revise the message in place. */
   private async openQueue(selectedId?: string): Promise<void> {
     const session = this.requireSession();
 
     if (this.queueMenu !== undefined || this.shell.ui.selecting || this.shell.ui.prompting) return;
-    const rows = () => sessionRows(session);
+
+    const rows = (): readonly GutterRow[] =>
+      session.view === undefined ? [] : queuedMessages(session.view);
 
     if (rows().length === 0) {
       notice(this.shell, "Nothing is queued");
@@ -2435,7 +2212,7 @@ class Interactive {
     }
 
     const edit = async (id: string): Promise<void> => {
-      const row = rows().find((candidate) => rowId(candidate) === id);
+      const row = rows().find((candidate) => candidate.id === id);
 
       if (row === undefined) return;
 
@@ -2445,68 +2222,35 @@ class Interactive {
         return;
       }
 
-      if (row.kind === "sending") {
-        const outcome = await session.outbox.withdraw(row.row.key);
-
-        if (outcome === undefined || this.disposed || this.session !== session) return;
-
-        const stash = {
-          delivery: row.row.input.delivery ?? this.roles.queue,
-          draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
-        };
-
-        this.queueEdits.set(
-          session.sessionId,
-          outcome.kind === "durable"
-            ? { ...stash, kind: "pending", change: outcome.change }
-            : { ...stash, kind: "sending", content: row.row.input.content },
-        );
-        this.handBack(row.row.input.content, "Back in the composer.");
-
-        return;
-      }
-
       this.queueEdits.set(session.sessionId, {
-        kind: "pending",
-        change: row.item.change,
-        delivery: row.item.delivery,
+        message: row.id,
+        delivery: row.delivery,
+        content: row.content,
         draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
       });
-      this.handBack(row.item.content, "Editing queued message. Enter saves; Esc cancels.");
+      this.handBack(row.content, "Editing queued message. Enter saves; Esc cancels.");
     };
 
     const drop = async (id: string): Promise<void> => {
-      const row = rows().find((candidate) => rowId(candidate) === id);
+      const row = rows().find((candidate) => candidate.id === id);
 
-      if (row === undefined) return;
-
-      const withdrawn =
-        row.kind === "sending" ? await session.outbox.withdraw(row.row.key) : undefined;
-
-      const removed =
-        row.kind === "pending"
-          ? await this.cancelPending(session, row.item.change)
-          : withdrawn?.kind === "durable"
-            ? await this.cancelPending(session, withdrawn.change)
-            : withdrawn?.kind === "withdrawn";
-
-      if (removed) notice(this.shell, "Removed from the queue");
+      if (row !== undefined && (await this.cancelPending(row.id)))
+        notice(this.shell, "Removed from the queue");
     };
 
     const move = async (id: string, delta: -1 | 1): Promise<void> => {
-      const row = rows().find((candidate) => rowId(candidate) === id);
+      const row = rows().find((candidate) => candidate.id === id);
 
-      if (row?.kind !== "pending") return;
-      const delivery = session.state.pending.filter((item) => item.delivery === row.item.delivery);
-      const index = delivery.findIndex((item) => item.change === row.item.change);
+      if (row?.status.kind !== "pending") return;
+
+      const delivery = rows().filter(
+        (item) => item.status.kind === "pending" && item.delivery === row.delivery,
+      );
+
+      const index = delivery.findIndex((item) => item.id === row.id);
 
       if (index + delta < 0 || index + delta >= delivery.length) return;
-      await this.reorder(
-        session,
-        row.item.change,
-        row.item.delivery,
-        delivery[index + (delta === -1 ? -1 : 2)]?.change ?? null,
-      );
+      await this.reorder(session, row, delivery[index + (delta === -1 ? -1 : 2)]?.id ?? null);
     };
 
     this.queueMenu = openInlineMenu(
@@ -2523,11 +2267,11 @@ class Interactive {
           { command: "chat.queue.down", label: "later", keepOpen: true, run: (id) => move(id, 1) },
         ],
         onSelect: (id) => {
-          const row = rows().find((candidate) => rowId(candidate) === id);
+          const row = rows().find((candidate) => candidate.id === id);
           this.closeQueue();
 
-          if (row?.kind === "pending")
-            void this.redeliver(session, row.item.change).catch(this.reportError);
+          if (row?.status.kind === "pending")
+            void this.redeliver(session, row).catch(this.reportError);
         },
         onCancel: () => this.closeQueue(),
       },
@@ -2535,43 +2279,30 @@ class Interactive {
     );
   }
 
+  /** Moves a pending message before another, or to the end of its delivery. */
   private async reorder(
     session: FollowedSession,
-    change: Oid,
-    delivery: Delivery,
-    before: Oid | null,
+    message: UserMessage,
+    before: MessageId | null,
   ): Promise<void> {
-    const outcome = await this.host.nyte.messages.redeliver({
-      sessionId: session.sessionId,
-      change,
-      delivery,
-      before,
-    });
-
-    if (outcome.kind === "redelivered") {
-      this.queueSelection = `pending:${outcome.change}`;
-      this.syncGutter(session);
-    } else if (outcome.kind !== "unchanged") {
-      notice(this.shell, "The queue changed. Try again.");
-    }
+    this.remember(
+      await session.session.send(message.content, {
+        replace: message.id,
+        delivery: message.delivery,
+        position: before === null ? { kind: "last" } : { kind: "before", message: before },
+      }),
+    );
+    this.queueSelection = message.id;
+    this.syncGutter(session);
   }
 
-  private cancelEdit(
-    options: { readonly session?: FollowedSession; readonly restoreSending?: boolean } = {},
-  ): void {
+  private cancelEdit(options: { readonly session?: FollowedSession } = {}): void {
     const session = options.session ?? this.session;
 
     if (session === undefined) return;
     const editing = this.queueEdits.get(session.sessionId);
 
     if (editing === undefined) return;
-
-    if (options.restoreSending !== false && editing.kind === "sending")
-      void session.outbox.submit({
-        sessionId: session.sessionId,
-        content: editing.content,
-        delivery: editing.delivery,
-      });
     this.queueEdits.delete(session.sessionId);
 
     if (this.session !== session) {
@@ -2601,49 +2332,26 @@ class Interactive {
     this.shell.input.blur();
 
     try {
-      const prepared = await this.composerParts.prepare(text, (value) =>
-        expandInlineSkills(value, session.skills),
+      const prepared = await this.composerParts.prepare(
+        text,
+        (value) => expandInlineSkills(value, skillsOf(session)),
+        (bytes) => this.upload(session, bytes),
       );
 
-      if (editing.kind === "sending") {
-        void session.outbox.submit({
-          sessionId: session.sessionId,
-          content: prepared.content,
-          delivery,
-        });
-        this.cancelEdit({ session, restoreSending: false });
-
-        return;
-      }
-
-      const original = session.state.pending.find((item) => item.change === editing.change);
-
       if (
-        original !== undefined &&
-        delivery === original.delivery &&
-        JSON.stringify(original.content) === JSON.stringify(prepared.content)
+        delivery === editing.delivery &&
+        JSON.stringify(editing.content) === JSON.stringify(prepared.content)
       ) {
         this.cancelEdit({ session });
 
         return;
       }
 
-      const outcome = await this.host.nyte.messages.redeliver({
-        sessionId: session.sessionId,
-        change: editing.change,
-        delivery,
-        content: prepared.content,
-      });
-
-      if (outcome.kind === "redelivered" || outcome.kind === "unchanged") {
-        this.cancelEdit({ session });
-        notice(this.shell, "Queued message saved.");
-      } else {
-        notice(
-          this.shell,
-          "That message was already sent or changed. Your edit is still here; Esc restores your draft.",
-        );
-      }
+      this.remember(
+        await session.session.send(prepared.content, { replace: editing.message, delivery }),
+      );
+      this.cancelEdit({ session });
+      notice(this.shell, "Queued message saved.");
     } finally {
       this.submitting = false;
 
@@ -2669,14 +2377,14 @@ class Interactive {
         const blocked = this.composerBlocked();
         const draft = blocked === undefined ? this.document.read() : this.document.latest;
         const input = draft === undefined ? undefined : parseComposerSubmission(draft.text);
-        const asked = this.state === undefined ? undefined : waitingCall(this.state);
+        const asked = this.view === undefined ? undefined : openQuestions(this.view)[0];
 
         return {
           busy: this.busy,
           shell: this.activeShell !== undefined,
           shellInput: input?.kind === "shell" ? (input.retain ? "include" : "exclude") : undefined,
           waiting: this.waiting !== undefined || asked !== undefined,
-          question: asked?.selection.other !== undefined,
+          question: asked !== undefined,
           draft: draft?.kind ?? "empty",
           editingDelivery:
             this.session === undefined
@@ -2708,12 +2416,7 @@ class Interactive {
               break;
             }
 
-            if (this.compaction !== undefined) {
-              this.compaction.abort();
-              break;
-            }
-
-            if (this.state?.run !== undefined && !isTerminalPhase(this.state.run.phase)) {
+            if (this.view !== undefined && this.view.execution.kind !== "idle") {
               void this.stopRun(this.requireSession());
             }
 
@@ -2795,22 +2498,6 @@ class Interactive {
         enabled: () => this.composerBlocked() === undefined && this.autocomplete?.visible !== true,
         onRun,
         commands: {
-          "chat.job.background": {
-            title: "Move agent work to background",
-            unavailable: () =>
-              this.activeShell === undefined
-                ? undefined
-                : "Local commands run in the foreground. Esc stops the command.",
-            hint: "background",
-            get placement() {
-              return tasks.hasForegroundWork ? ("secondary" as const) : undefined;
-            },
-            run: () => {
-              void this.tasks.backgroundForeground().catch(this.reportError);
-
-              return true;
-            },
-          },
           "chat.scroll.page.up": {
             title: "Scroll the transcript up",
             run: () => {
@@ -3009,9 +2696,10 @@ class Interactive {
   }
 
   private async stopRun(session: FollowedSession): Promise<void> {
-    const run = session.state.run;
+    const execution = session.view?.execution;
 
-    if (run === undefined) return;
+    if (execution === undefined || execution.kind === "idle") return;
+    const { run } = execution;
     let untouched = true;
 
     const remove = this.shell.keymap.intercept("key", () => {
@@ -3022,24 +2710,25 @@ class Interactive {
       untouched &&
       !this.disposed &&
       this.session === session &&
-      session.state.run?.runId === run.runId &&
-      !isTerminalPhase(session.state.run.phase) &&
+      session.view?.execution.kind !== "idle" &&
       !this.shell.ui.selecting &&
       !this.shell.ui.prompting;
 
     try {
-      const outcome = await this.host.nyte.runs.abort({
-        sessionId: session.sessionId,
-        runId: run.runId,
-      });
+      const outcome = await session.session.run(run.id).stop();
 
-      if (active() && outcome.kind === "not_running") notice(this.shell, "No active run to stop.");
+      if (active() && outcome.kind === "missing") notice(this.shell, "No active run to stop.");
       // Only the watcher can report a stopped run or retract its unanswered message.
     } catch (cause) {
       if (active()) this.reportError(cause);
     } finally {
       remove();
     }
+  }
+
+  /** The models signed-in providers serve, from the catalog as last read. */
+  private get models(): readonly ModelInfo[] {
+    return availableModels(this.catalog);
   }
 
   /** Each press steps from the selected level, so a burst of presses steps that many times. */
@@ -3049,7 +2738,10 @@ class Interactive {
     if (session === undefined) return;
     void session.config
       .prepareSelection(({ model, thinkingLevel }) => {
-        const next = nextThinkingLevel(thinkingLevel, getSupportedThinkingLevels(model));
+        const info = findModel(this.models, model);
+
+        const next =
+          info === undefined ? undefined : nextThinkingLevel(thinkingLevel, info.thinking);
 
         return next === undefined ? undefined : { thinkingLevel: next };
       })
@@ -3066,27 +2758,21 @@ class Interactive {
     let cycled: RunChoice | undefined;
     void session.config
       .prepareSelection((selected) => {
-        const choose = (available: readonly Model<Api>[]): ConfigPatch | undefined => {
-          if (available.length < 2) return undefined;
+        const available = this.models;
 
-          const index = available.findIndex(
-            (model) => model.provider === selected.model.provider && model.id === selected.model.id,
-          );
+        if (available.length < 2) return undefined;
 
-          const model =
-            available[index === -1 ? 0 : (index + delta + available.length) % available.length] ??
-            selected.model;
+        const index = available.findIndex(
+          (model) => modelId(model.ref) === modelId(selected.model),
+        );
 
-          cycled = { model, thinkingLevel: clampThinkingLevel(model, selected.thinkingLevel) };
+        const model =
+          available[index === -1 ? 0 : (index + delta + available.length) % available.length];
 
-          return cycled;
-        };
+        if (model === undefined) return undefined;
+        cycled = { model: model.ref, thinkingLevel: clampThinking(model, selected.thinkingLevel) };
 
-        const cached = cachedAuthenticatedModels(this.runtime.models);
-
-        return cached === undefined
-          ? loadAuthenticatedModels(this.runtime.models).then(choose)
-          : choose(cached);
+        return cycled;
       })
       .then((result) => {
         if (result.kind === "failed") throw new Error(result.message);
@@ -3095,7 +2781,7 @@ class Interactive {
           return;
         notice(
           this.shell,
-          `Model: ${cycled.model.provider}/${cycled.model.id} · ${cycled.thinkingLevel}`,
+          `Model: ${modelId(cycled.model)} · ${cycled.thinkingLevel}`,
           this.shell.theme.ok,
         );
       })
@@ -3126,24 +2812,23 @@ class Interactive {
   // Configuration
   // -------------------------------------------------------------------------
 
-  private async changeModel(model: Model<Api>, thinkingLevel?: ThinkingLevel): Promise<void> {
+  private async changeModel(model: ModelInfo, thinkingLevel?: Thinking): Promise<void> {
     const session = this.requireSession();
     const selected = session.config.selected;
 
     if (
       !session.config.preparingSelection &&
-      selected.model.provider === model.provider &&
-      selected.model.id === model.id &&
-      clampThinkingLevel(model, thinkingLevel ?? selected.thinkingLevel) === selected.thinkingLevel
+      modelId(selected.model) === modelId(model.ref) &&
+      clampThinking(model, thinkingLevel ?? selected.thinkingLevel) === selected.thinkingLevel
     ) {
-      notice(this.shell, `Already using ${model.id}`);
+      notice(this.shell, `Already using ${model.ref.id}`);
 
       return;
     }
 
     const result = await session.config.prepareSelection((choice) => ({
-      model,
-      thinkingLevel: clampThinkingLevel(model, thinkingLevel ?? choice.thinkingLevel),
+      model: model.ref,
+      thinkingLevel: clampThinking(model, thinkingLevel ?? choice.thinkingLevel),
     }));
 
     if (result.kind === "failed") throw new Error(result.message);
@@ -3151,12 +2836,12 @@ class Interactive {
     if (result.kind === "superseded" || this.session !== session) return;
     notice(
       this.shell,
-      `Model: ${model.provider}/${model.id} · ${session.config.selected.thinkingLevel}`,
+      `Model: ${modelId(model.ref)} · ${session.config.selected.thinkingLevel}`,
       this.shell.theme.ok,
     );
   }
 
-  private async changeThinkingLevel(level: ThinkingLevel, announce: boolean): Promise<void> {
+  private async changeThinkingLevel(level: Thinking, announce: boolean): Promise<void> {
     const session = this.requireSession();
 
     if (!session.config.preparingSelection && session.config.selected.thinkingLevel === level) {
@@ -3174,24 +2859,13 @@ class Interactive {
     if (announce) notice(this.shell, `Thinking level: ${level}`, this.shell.theme.ok);
   }
 
-  /** Core queued the choice; it becomes the default for the next chat the same way it did before. */
+  /** The head stored a model: it becomes the host's default for the next chat. */
   private persistChoice(choice: RunChoice, patch: ConfigPatch): void {
-    if (patch.model !== undefined) {
-      this.updateSettings({
-        defaultProvider: choice.model.provider,
-        defaultModel: choice.model.id,
-        defaultThinkingLevel: choice.thinkingLevel,
-      });
-
-      return;
-    }
-
-    this.updateSettings(
-      patch.thinkingLevel === undefined ? {} : { defaultThinkingLevel: choice.thinkingLevel },
-    );
+    if (patch.model === undefined) return;
+    void this.host.models.setDefault(choice.model).catch(this.reportError);
   }
 
-  private updateSettings(patch: Omit<SettingsPatch, "compaction">): void {
+  private updateSettings(patch: SettingsPatch): void {
     this.settings = { ...this.settings, ...patch };
     void this.settingsStore.updateGlobal(patch).catch(this.reportError);
   }
@@ -3200,7 +2874,6 @@ class Interactive {
     this.themeMode = mode;
     this.shell.setTheme(themeForMode(mode));
     this.autocomplete?.retheme(this.shell.theme);
-    this.tuiPlugins.refresh();
     notice(this.shell, `Theme: ${mode}`, this.shell.theme.ok);
   }
 
@@ -3219,56 +2892,10 @@ class Interactive {
     await this.changeTheme(mode);
   }
 
-  private async trustDirectory(cwd: string): Promise<TrustedWorkspace> {
-    const trustStore = createWorkspaceStore();
-    const resolution = await trustStore.resolve(cwd);
-    this.stopped.signal.throwIfAborted();
-
-    if (resolution.kind === "trusted") return resolution.workspace;
-    this.shell.setUi("selecting", true);
-    this.shell.input.blur();
-    this.shell.input.focusable = false;
-    this.autocomplete?.close();
-
-    try {
-      const decision = await requestWorkspaceTrust({
-        renderer: this.renderer,
-        theme: this.shell.theme,
-        cwd: resolution.cwd,
-        decline: "cancel",
-        signal: this.stopped.signal,
-        nextId: this.shell.nextId,
-      });
-
-      this.stopped.signal.throwIfAborted();
-
-      if (decision !== "trust") throw new PickerCancelled();
-
-      return await trustStore.trust(resolution.cwd);
-    } finally {
-      if (!this.disposed) {
-        this.shell.setUi("selecting", false);
-        this.shell.input.focusable = true;
-        this.focusComposer();
-      }
-    }
-  }
-
-  private async relocateSession(id: SessionId, workspace: TrustedWorkspace): Promise<void> {
-    const outcome = await this.host.nyte.relocate({
-      sessionId: id,
-      workspace: { kind: "local", id: await environmentId(), cwd: workspace.cwd },
-    });
-
-    if (outcome.kind === "busy")
-      throw new Error("Wait for active runs and jobs to finish before changing directories.");
-
-    if (outcome.kind === "failed") throw new Error(outcome.error);
-
-    if (outcome.kind !== "relocated")
-      throw new Error(`Couldn't open ${workspace.cwd} for this session.`);
-  }
-
+  /**
+   * Moves the session to another folder: registers it as a workspace, as the
+   * owner adding it is the consent, then relocates the idle session there.
+   */
   private async changeDirectory(argument: string): Promise<void> {
     if (argument === "") throw new Error("Directory is required. Use /cd <path>.");
 
@@ -3276,7 +2903,7 @@ class Interactive {
       throw new Error("A chat switch is already in progress.");
     const session = this.requireSession();
 
-    if (session.outbox.rows().length > 0 || session.state.pending.length > 0)
+    if (session.view !== undefined && queuedMessages(session.view).length > 0)
       throw new Error("Wait for queued messages before changing directories.");
     this.changingDirectory = true;
 
@@ -3286,95 +2913,65 @@ class Interactive {
           ? homedir()
           : argument.startsWith("~/")
             ? resolve(homedir(), argument.slice(2))
-            : resolve(this.workspace.cwd, argument);
+            : resolve(this.cwd, argument);
 
-      const workspace = await this.trustDirectory(path);
-
-      if (workspace.cwd === this.workspace.cwd) {
-        notice(this.shell, `Already in ${workspace.cwd}`);
+      if (path === this.cwd) {
+        notice(this.shell, `Already in ${path}`);
 
         return;
       }
 
-      await this.relocateSession(session.sessionId, workspace);
+      const seen = await this.host.workspaces.inspect({ kind: "local", path });
+
+      const added = await this.host.workspaces.add(seen.target, {
+        expect: { identity: seen.identity },
+      });
+
+      if (added.kind === "stale")
+        throw new Error(`${path} changed while it was opened; try again.`);
+
+      if (added.kind === "unavailable") throw new Error(`Couldn't open ${path}: ${added.reason}`);
+      const outcome = await session.session.update({ workspace: added.workspace });
+
+      if (outcome.kind === "busy")
+        throw new Error("Wait for active runs and jobs to finish before changing directories.");
+
+      if (outcome.kind !== "updated") throw new Error(`Couldn't open ${path} for this session.`);
 
       if (this.disposed || this.session !== session) return;
-      await this.useWorkspace(workspace);
-      await this.refreshContributions(session);
-      await this.tuiPlugins.reconcile();
-      notice(this.shell, `Working directory: ${workspace.cwd}`, this.shell.theme.ok);
+      session.info = await session.session.info();
+      this.useWorkspace(path, added.workspace);
+      notice(this.shell, `Working directory: ${path}`, this.shell.theme.ok);
     } finally {
       this.changingDirectory = false;
     }
   }
 
-  private watchWorkspacePlugins(): void {
-    this.stopPluginWatch?.();
-    this.stopPluginWatch = watchPluginDirectories({
-      directories: [
-        ...pluginWatchTargets({ kind: "project", workspace: this.workspace }),
-        ...this.settingsStore.watchTargets(this.workspace.cwd),
-      ],
-      onChange: async () => {
-        await this.reloadPlugins();
-      },
-      onError: (error) => this.reportError(error),
-    });
-  }
-
-  private async useWorkspace(workspace: TrustedWorkspace): Promise<void> {
-    if (workspace.cwd === this.workspace.cwd) return;
+  /** Points the footer, the `!` commands and the `@` index at a session's folder. */
+  private useWorkspace(cwd: string, workspace: WorkspaceId): void {
+    if (this.disposed || (cwd === this.cwd && this.mentionFiles.length > 0)) return;
     this.mentionController?.abort();
-    this.stopPluginWatch?.();
-    await this.tuiPlugins.dispose();
-
-    if (this.disposed) return;
-    this.workspace = workspace;
-    this.tuiPlugins = new PluginProvider({
-      shell: this.shell,
-      workspace,
-      client: this.host.nyte,
-      sessionID: () => this.sessionId,
-    });
-    this.watchWorkspacePlugins();
-    patchStatus(this.shell, {
-      workspace: basename(workspace.cwd),
-      branch: undefined,
-      dirty: false,
-    });
+    this.cwd = cwd;
+    patchStatus(this.shell, { workspace: basename(cwd), branch: undefined, dirty: false });
     this.refreshWorkspace();
     this.mentionFiles = [];
     this.autocomplete?.close();
-    await this.refreshMentionFiles();
+    void this.refreshMentionFiles(workspace);
   }
 
-  private async reloadPlugins(options: { readonly retry?: boolean } = {}): Promise<void> {
+  /** Re-reads the workspace's project resources and this terminal's own settings. */
+  private async reloadWorkspace(): Promise<void> {
     if (this.changingDirectory || this.switchingSession) return;
-    const workspace = this.workspace;
-    const session = this.session;
+    const session = this.requireSession();
+    const outcome = await this.host.workspace(session.info.workspace).reload();
 
-    if (options.retry === true) {
-      this.host.pluginSources.invalidate();
-      notifyPluginSources();
-    }
+    if (outcome.kind === "missing")
+      throw new Error("This chat's workspace is no longer registered.");
+    const { cwd } = this;
+    const settings = await this.settingsStore.read(cwd);
 
-    await this.tuiPlugins.reconcile(options);
-    const settings = await this.settingsStore.read(workspace.cwd);
-
-    if (
-      this.disposed ||
-      this.changingDirectory ||
-      this.switchingSession ||
-      this.workspace !== workspace ||
-      this.session !== session
-    )
-      return;
-
-    this.settings = {
-      ...settings,
-      transport: this.settings.transport,
-      compaction: this.settings.compaction,
-    };
+    if (this.disposed || this.cwd !== cwd || this.session !== session) return;
+    this.settings = settings;
     this.shell.setScrollAcceleration(settings.scrollAcceleration);
     const mode = resolveThemeMode(settings.theme, this.renderer.themeMode);
 
@@ -3382,7 +2979,6 @@ class Interactive {
       this.themeMode = mode;
       this.shell.setTheme(themeForMode(mode));
       this.autocomplete?.retheme(this.shell.theme);
-      this.tuiPlugins.refresh();
     }
 
     this.refreshHints();
@@ -3415,7 +3011,7 @@ class Interactive {
   // Sessions
   // -------------------------------------------------------------------------
 
-  private async switchSession(load: () => Promise<SessionInfo>, announce: boolean): Promise<void> {
+  private async switchSession(load: () => Promise<Session>, announce: boolean): Promise<void> {
     if (this.switchingSession || this.changingDirectory)
       throw new Error("A chat switch is already in progress");
     this.switchingSession = true;
@@ -3425,9 +3021,10 @@ class Interactive {
     try {
       await this.renderer.idle();
       if (this.disposed) return;
-      const info = await load();
+      const handle = await load();
+
       if (this.disposed) return;
-      await this.follow(info);
+      await this.follow(handle);
 
       if (this.disposed) return;
       if (!this.shell.ui.selecting) this.focusComposer();
@@ -3436,11 +3033,9 @@ class Interactive {
         const session = this.requireSession();
         notice(
           this.shell,
-          `Resumed ${shortId(info.sessionId)} · ${String(session.state.transcript.items.length)} items`,
+          `Resumed ${shortId(handle.id)} · ${String(session.view?.turns.length ?? 0)} turns`,
         );
       }
-
-      this.noticeUnavailable(info);
     } finally {
       this.switchingSession = false;
       if (!this.disposed) this.shell.setUi("loading", undefined);
@@ -3449,24 +3044,27 @@ class Interactive {
 
   private async resumeSession(): Promise<void> {
     const current = this.requireSession();
+    let listed: readonly SessionInfo[] = [];
+
     const chosen = await selectChoice(this.shell, "Resume chat", [], {
       selectedId: current.sessionId,
       emptyLabel: "No saved chats",
       load: async () => {
-        const { items } = await this.host.nyte.sessions.list({ parent: null });
+        const { items } = await this.host.sessions.list({ parents: { kind: "roots" } });
+        listed = items;
 
         return items
-          .filter((session) => session.heads.some((head) => head.tip !== null))
+          .filter((session) => session.heads.some((head) => head.tip.kind !== "start"))
           .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
           .map((session) => {
-            const title = session.name ?? session.preview ?? shortId(session.sessionId);
-            const currentLabel = session.sessionId === current.sessionId ? " (current)" : "";
+            const title = session.name ?? shortId(session.id);
+            const currentLabel = session.id === current.sessionId ? " (current)" : "";
             const savedAt = new Date(session.lastActivityAt).toLocaleString();
 
             return {
-              id: session.sessionId,
+              id: session.id,
               label: `${title}${currentLabel}`,
-              description: `${savedAt} · ${shortId(session.sessionId)}`,
+              description: `${savedAt} · ${shortId(session.id)}`,
             };
           });
       },
@@ -3478,22 +3076,22 @@ class Interactive {
       return;
     }
 
-    await this.switchSession(async () => {
-      const info = await this.host.nyte.sessions.get({ sessionId: sessionId(chosen) });
+    const info = listed.find((session) => session.id === chosen);
 
-      if (info === undefined) throw new Error(`Session not found: ${chosen}`);
-      return info;
-    }, true);
+    if (info === undefined) throw new Error(`Session not found: ${chosen}`);
+    await this.switchSession(async () => this.host.session(info.id), true);
   }
 
   // -------------------------------------------------------------------------
   // Tree navigation
   // -------------------------------------------------------------------------
 
-  private selectTreeCommit(options: ConstructorParameters<typeof TreeSelector>[1]): Promise<Oid> {
+  private selectTreeCommit(
+    options: ConstructorParameters<typeof TreeSelector>[1],
+  ): Promise<CommitId> {
     const restoredHints = this.shell.ui.hints;
 
-    return new Promise<Oid>((resolveSelection, reject) => {
+    return new Promise<CommitId>((resolveSelection, reject) => {
       let selector: TreeSelector | undefined;
       let settled = false;
 
@@ -3528,7 +3126,7 @@ class Interactive {
 
   /** pi's "Summarize branch?" question. Escape hands the tree back. */
   private async askSummary(): Promise<
-    | { readonly kind: "chosen"; readonly summary?: { readonly customInstructions?: string } }
+    | { readonly kind: "chosen"; readonly summary?: { readonly instructions?: string } }
     | { readonly kind: "back" }
   > {
     for (;;) {
@@ -3557,7 +3155,7 @@ class Interactive {
 
         return {
           kind: "chosen",
-          summary: focus.trim() === "" ? {} : { customInstructions: focus.trim() },
+          summary: focus.trim() === "" ? {} : { instructions: focus.trim() },
         };
       } catch (cause) {
         if (!(cause instanceof PickerCancelled)) throw cause;
@@ -3623,34 +3221,35 @@ class Interactive {
    */
   private async openTree(options: {
     readonly filter?: TreeFilter;
-    readonly selectedOid?: Oid;
+    readonly selectedOid?: CommitId;
   }): Promise<void> {
     const session = this.requireSession();
 
     if (this.busy) throw new Error("Wait for the current run before changing the session branch");
-    let commits: Awaited<ReturnType<Host["sessionCommits"]>> = [];
-    const tip = session.state.transcript.tip;
-    let picked: Oid;
+    let tree: TreeView | undefined;
+    let picked: CommitId;
 
     try {
       picked = await this.selectTreeCommit({
         load: async () => {
-          commits = await this.host.sessionCommits(session.sessionId);
+          tree = await session.session.tree();
 
-          return projectTree(commits, { tip, heads: session.state.info.heads });
+          return tree;
         },
-        selectedOid: options.selectedOid ?? tip,
         filter: options.filter ?? "default",
+        ...(options.selectedOid === undefined ? {} : { selectedOid: options.selectedOid }),
       });
     } catch (cause) {
       if (cause instanceof PickerCancelled) return;
       throw cause;
     }
 
-    const byOid = new Map(commits.map((item) => [item.oid, item.commit]));
-    const selected = byOid.get(picked);
+    const nodes = new Map((tree?.nodes ?? []).map((node) => [node.id, node]));
+    const selected = nodes.get(picked);
+    const tip = tree?.tip.kind === "commit" ? tree.tip.id : null;
 
-    if (selected === undefined) throw new Error(`Commit not found: ${picked}`);
+    if (tree === undefined || selected === undefined)
+      throw new Error(`Commit not found: ${picked}`);
 
     if (picked === tip) {
       notice(this.shell, "Already at that point in the chat");
@@ -3658,36 +3257,40 @@ class Interactive {
       return;
     }
 
-    const takesBack = selected.body.kind === "message" && selected.body.message.role === "user";
-
-    if (takesBack && this.shell.input.plainText.trim() !== "") {
+    if (selected.kind === "user" && this.shell.input.plainText.trim() !== "") {
       throw new Error("Clear the composer before editing a message");
     }
 
     const again = (): Promise<void> => this.openTree({ ...options, selectedOid: picked });
-    let summary: { readonly customInstructions?: string } | undefined;
+    let summary: { readonly instructions?: string } | undefined;
+    let ancestor: CommitId | null = picked;
 
-    if (collectAbandoned(byOid, { from: tip, selected: picked }).commits.length > 0) {
+    while (ancestor !== null && ancestor !== tip) ancestor = nodes.get(ancestor)?.parent ?? null;
+
+    if (tip !== null && ancestor !== tip) {
       const answer = await this.askSummary();
 
       if (answer.kind === "back") return again();
       summary = answer.summary;
     }
 
-    if (this.compaction !== undefined)
-      throw new Error("Wait for the current run before changing the session branch");
-    const move = { sessionId: session.sessionId, to: picked, expect: tip };
-
-    const outcome = await this.host.nyte.heads.move(
-      summary === undefined ? move : { ...move, summary },
+    const receipt = await session.session.move(
+      { kind: "commit", id: picked },
+      {
+        running: "refuse",
+        abandoned: summary === undefined ? "keep" : { summarize: summary },
+        expect: tree.revision,
+      },
     );
+
+    const outcome = await receipt.settled();
 
     switch (outcome.kind) {
       case "moved":
-        if (outcome.restored !== undefined) {
+        if (outcome.handback !== null) {
           this.stageHandback(session.sessionId, {
-            content: outcome.restored.content,
-            commit: outcome.restored.commit,
+            content: outcome.handback,
+            commit: picked,
             notice: "Message moved back to the composer. Enter sends it again.",
           });
 
@@ -3700,12 +3303,14 @@ class Interactive {
         return;
       case "busy":
         throw new Error("Wait for the current run");
-      case "moved_since":
+      case "pending-input":
+        throw new Error("Send or remove the queued messages first");
+      case "stale":
         throw new Error("The chat moved on while the tree was open; try again");
-      case "not_found":
+      case "missing-target":
         throw new Error(`Commit not found: ${picked}`);
-      case "failed":
-        throw new Error(outcome.message);
+      case "summary-failed":
+        throw new Error(outcome.reason);
       default: {
         const _exhaustive: never = outcome;
 
@@ -3727,7 +3332,7 @@ class Interactive {
     const session = this.requireSession();
 
     const commands = availableSlashCommands(
-      session.commands,
+      commandsOf(session),
       this.slashSettings(session),
       new Map(),
     );
@@ -3763,40 +3368,23 @@ class Interactive {
   }
 
   private settingRows(session: FollowedSession): readonly SettingRow[] {
-    const pluginRows = session.settings.map((setting): SettingRow => ({
-      id: setting.id,
-      label: setting.label,
-      current: () => setting.current,
-      choices: () =>
-        setting.choices.map((choice) =>
-          choice.description === undefined
-            ? { id: choice.id, label: choice.label }
-            : { id: choice.id, label: choice.label, description: choice.description },
-        ),
-      apply: async (choiceId) => {
-        const outcome = await this.host.nyte.plugins.settings.apply({
-          sessionId: session.sessionId,
-          id: setting.id,
-          choiceId,
-        });
+    const pluginRows = (session.view?.catalog.settings ?? []).flatMap((setting): SettingRow[] =>
+      setting.choices === null ? [] : [this.pluginSettingRow(session, setting, setting.choices)],
+    );
 
-        if (outcome.kind !== "applied") throw new Error(`Could not set ${setting.label}`);
-        await this.refreshBadges();
-      },
-    }));
+    const effortModel = (): ModelInfo | undefined => findModel(this.models, this.config.model);
 
     return [
       {
         id: "model",
         label: "Model",
-        current: () => modelChoiceId(this.config.model),
-        choices: () =>
-          modelChoices(this.runtime, cachedAuthenticatedModels(this.runtime.models) ?? []),
-        load: async () =>
-          modelChoices(
-            this.runtime,
-            await loadAuthenticatedModels(this.runtime.models, { force: true }),
-          ),
+        current: () => modelId(this.config.model),
+        choices: () => modelChoices(this.catalog),
+        load: async () => {
+          this.catalog = await this.host.models.list();
+
+          return modelChoices(this.catalog);
+        },
         open: () => this.pickModel(),
         apply: (choiceId) => this.changeModelChoice(choiceId),
       },
@@ -3805,14 +3393,9 @@ class Interactive {
         label: "Thinking level",
         current: () => this.config.thinkingLevel,
         choices: () =>
-          getSupportedThinkingLevels(this.config.model).map((level) => ({
-            id: level,
-            label: level,
-          })),
+          (effortModel()?.thinking ?? []).map((level) => ({ id: level, label: level })),
         apply: async (choiceId) => {
-          const level = getSupportedThinkingLevels(this.config.model).find(
-            (candidate) => candidate === choiceId,
-          );
+          const level = effortModel()?.thinking.find((candidate) => candidate === choiceId);
 
           if (level === undefined) throw new Error(`Unsupported thinking level: ${choiceId}`);
           await this.changeThinkingLevel(level, true);
@@ -3884,6 +3467,44 @@ class Interactive {
     ];
   }
 
+  /**
+   * A plugin setting with labelled choices as a row: each choice's id is its
+   * value as JSON. A session setting configures the head; a host setting is
+   * applied on the host.
+   */
+  private pluginSettingRow(
+    session: FollowedSession,
+    setting: SettingInfo,
+    choices: NonNullable<SettingInfo["choices"]>,
+  ): SettingRow {
+    return {
+      id: setting.id,
+      label: setting.label,
+      current: () => JSON.stringify(setting.value),
+      choices: () =>
+        choices.map((choice) => ({ id: JSON.stringify(choice.value), label: choice.label })),
+      apply: async (choiceId) => {
+        const value: Json | undefined = choices.find(
+          (choice) => JSON.stringify(choice.value) === choiceId,
+        )?.value;
+
+        if (value === undefined) throw new Error(`Unknown ${setting.label}: ${choiceId}`);
+
+        if (setting.scope === "session") {
+          const outcome = await session.session.configure({ settings: { [setting.id]: value } });
+
+          if (outcome.kind !== "configured") throw new Error(`Could not set ${setting.label}`);
+
+          return;
+        }
+
+        const outcome = await this.host.settings.apply(setting.id, value);
+
+        if (outcome.kind !== "applied") throw new Error(`Could not set ${setting.label}`);
+      },
+    };
+  }
+
   /** `/<setting>` picks from the choices; `/<setting> <choice>` applies one. */
   private async applySetting(
     row: SettingRow,
@@ -3934,7 +3555,7 @@ class Interactive {
   private async openSkillPalette(): Promise<void> {
     const session = this.requireSession();
 
-    const items = [...session.skills.values()]
+    const items = [...skillsOf(session).values()]
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((skill) => ({ id: skill.name, label: skill.name, description: skill.description }));
 
@@ -3963,10 +3584,14 @@ class Interactive {
         renderer: this.renderer,
         theme: this.shell.theme,
         nextId: this.shell.nextId,
-        models: cachedAuthenticatedModels(this.runtime.models) ?? [],
+        models: this.models,
         current: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
-        load: () => loadAuthenticatedModels(this.runtime.models),
+        load: async () => {
+          this.catalog = await this.host.models.list();
+
+          return this.models;
+        },
         onRows: (rows) => setSlotRows(this.shell, rows),
         onHints: (hints) => setHints(this.shell, hints),
         onError: this.reportError,
@@ -3993,14 +3618,10 @@ class Interactive {
     let unchanged = false;
 
     const result = await session.config.prepareSelection((selected) => {
-      const choice = {
-        model: selection.model,
-        thinkingLevel: clampThinkingLevel(selection.model, selection.thinkingLevel),
-      };
+      const choice = { model: selection.model, thinkingLevel: selection.thinkingLevel };
 
       unchanged =
-        selected.model.provider === choice.model.provider &&
-        selected.model.id === choice.model.id &&
+        modelId(selected.model) === modelId(choice.model) &&
         selected.thinkingLevel === choice.thinkingLevel;
 
       return unchanged ? undefined : choice;
@@ -4014,7 +3635,7 @@ class Interactive {
 
     notice(
       this.shell,
-      `Model: ${modelChoiceId(selection.model)} · ${selection.thinkingLevel}`,
+      `Model: ${modelId(selection.model)} · ${selection.thinkingLevel}`,
       this.shell.theme.ok,
     );
   }
@@ -4050,70 +3671,39 @@ class Interactive {
   }
 
   private async changeModelChoice(choiceId: string): Promise<void> {
-    const slash = choiceId.indexOf("/");
-    const model = this.runtime.models.getModel(choiceId.slice(0, slash), choiceId.slice(slash + 1));
+    const model = this.models.find((candidate) => modelId(candidate.ref) === choiceId);
 
     if (model === undefined) throw new Error(`Model is no longer available: ${choiceId}`);
     await this.changeModel(model);
   }
 
-  /** The login funnel over the shell: pickers for choices, the composer for keys and codes. */
-  private authInteraction(signal: AbortSignal): AuthInteraction {
+  /** The login driver over the shell: pickers for choices, a masked field for keys and codes. */
+  private loginDriver(signal: AbortSignal): LoginDriver {
     return {
       signal,
-      prompt: (prompt) => {
-        const promptSignal =
-          prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
-
-        switch (prompt.type) {
-          case "select":
-            return selectChoice(this.shell, prompt.message, prompt.options, {
-              signal: promptSignal,
-              selectedId: this.config.model.provider,
-            });
-          case "text":
-          case "secret":
-          case "manual_code":
-            return readAuthPrompt(this.shell, prompt, promptSignal);
-          default: {
-            const _exhaustive: never = prompt;
-
-            return _exhaustive;
-          }
-        }
-      },
-      notify: (event) => {
+      open: (url, code) => {
         if (signal.aborted || this.disposed) return;
-
-        switch (event.type) {
-          case "auth_url":
-            this.authenticationLink = { url: event.url, copy: event.url };
-            this.refreshHints();
-            notice(this.shell, [event.instructions ?? "Open this URL to continue:", event.url]);
-            void open(event.url).catch(() => undefined);
-
-            return;
-          case "device_code":
-            this.authenticationLink = { url: event.verificationUri, copy: event.userCode };
-            this.refreshHints();
-            notice(this.shell, [
-              ...(event.instructions === undefined ? [] : [event.instructions]),
-              `Visit ${event.verificationUri} and enter the code ${event.userCode}`,
-            ]);
-
-            return;
-          case "info":
-          case "progress":
-            this.authenticationLink = undefined;
-            this.refreshHints();
-            notice(this.shell, event.message);
-
-            return;
-          default: {
-            const _exhaustive: never = event;
-            throw new Error(_exhaustive);
-          }
-        }
+        this.authenticationLink = { url, copy: code ?? url };
+        this.refreshHints();
+        notice(
+          this.shell,
+          code === undefined
+            ? ["Open this URL to continue:", url]
+            : [`Visit ${url} and enter the code ${code}`],
+        );
+        void open(url).catch(() => undefined);
+      },
+      paste: (message, secret) => readAuthPrompt(this.shell, { message, secret }, signal),
+      choose: (message, options) =>
+        selectChoice(this.shell, message, options, {
+          signal,
+          selectedId: this.config.model.provider,
+        }),
+      progress: (message) => {
+        if (signal.aborted || this.disposed) return;
+        this.authenticationLink = undefined;
+        this.refreshHints();
+        notice(this.shell, message);
       },
     };
   }
@@ -4127,9 +3717,8 @@ class Interactive {
     this.authenticating = controller;
     this.refreshHints();
     const signal = AbortSignal.any([controller.signal, this.stopped.signal]);
-    const models = this.runtime.models;
     const current = this.config.model;
-    const interaction = this.authInteraction(signal);
+    const driver = this.loginDriver(signal);
 
     try {
       const providerId =
@@ -4137,19 +3726,17 @@ class Interactive {
           ? await selectChoice(
               this.shell,
               action === "login" ? "Sign in to a provider" : "Remove a stored credential",
-              [],
+              authProviderChoices(this.catalog, action),
               {
                 signal,
-                load: () => authProviderChoices({ action, models, signal }),
                 emptyLabel:
                   action === "login" ? "No providers support login" : "No stored credentials",
               },
             )
           : argument;
-      const wasSignedOut =
-        action === "login" && (await models.checkAuth(current.provider, { signal })) === undefined;
 
-      const input = { models, interaction, providerId };
+      const wasSignedOut = findModel(this.models, current) === undefined;
+      const input = { connection: this.host, driver, providerId };
 
       const result =
         action === "login"
@@ -4163,46 +3750,22 @@ class Interactive {
       notice(this.shell, result.message, this.shell.theme.ok);
 
       try {
-        // Discovery is separate from credential persistence and never runs on logout.
-        if (action === "login") {
-          const refreshed = await models.refresh({
-            providers: [result.provider.id],
-            force: true,
-            signal,
-          });
-
-          for (const error of refreshed.errors.values())
-            notice(
-              this.shell,
-              `Signed in, but model discovery failed: ${error.message}. Use /model to retry.`,
-              this.shell.theme.warning,
-            );
-        }
-
-        const available = await loadAuthenticatedModels(models, {
-          force: true,
-          allowNetwork: false,
-          signal,
-        });
+        if (action === "login") await this.host.models.refresh(result.provider.id);
+        this.catalog = await this.host.models.list();
 
         if (signal.aborted || this.disposed || this.session !== session) return;
 
-        if (this.config.model.provider !== current.provider || this.config.model.id !== current.id)
-          return;
+        if (modelId(this.config.model) !== modelId(current)) return;
 
-        if (
-          action === "login"
-            ? !wasSignedOut
-            : (await models.checkAuth(current.provider, { signal })) !== undefined
-        )
+        if (action === "login" ? !wasSignedOut : findModel(this.models, current) !== undefined)
           return;
 
         if (action === "logout" && result.provider.id !== current.provider) return;
 
         const candidates =
           action === "login"
-            ? available.filter((model) => model.provider === result.provider.id)
-            : available;
+            ? this.models.filter((model) => model.ref.provider === result.provider.id)
+            : this.models;
 
         const first = candidates[0];
 
@@ -4211,7 +3774,7 @@ class Interactive {
             this.shell,
             [
               result.message,
-              available.length === 0
+              this.models.length === 0
                 ? "No authenticated models available. /login connects a provider; /model refreshes the catalog."
                 : "No models available for this provider. /model selects another.",
             ],
@@ -4221,13 +3784,8 @@ class Interactive {
           return;
         }
 
-        const selected = defaultModel(candidates, first.provider);
-        await this.changeModel(selected);
-        notice(
-          this.shell,
-          [result.message, `Model: ${modelChoiceId(selected)}`],
-          this.shell.theme.ok,
-        );
+        await this.changeModel(first);
+        notice(this.shell, [result.message, `Model: ${modelId(first.ref)}`], this.shell.theme.ok);
       } catch (cause) {
         if (signal.aborted) return;
         notice(
@@ -4265,14 +3823,12 @@ class Interactive {
   }
 
   private openUsage(): void {
-    const session = this.requireSession();
+    const { view } = this.requireSession();
 
-    if (this.disposed || this.shell.ui.selecting || this.shell.ui.prompting) return;
-    const controller = new AbortController();
+    if (view === undefined || this.disposed || this.shell.ui.selecting || this.shell.ui.prompting)
+      return;
 
     const close = (): void => {
-      controller.abort();
-
       if (this.shell.dismissInfoPanel !== close) return;
       this.shell.dismissInfoPanel = undefined;
 
@@ -4281,79 +3837,14 @@ class Interactive {
       this.refreshHints();
     };
 
-    const models = this.runtime.models;
-    const providers = ["anthropic", "openai-codex"] as const;
-    const accounts = new Map<AccountUsage["provider"], AccountUsage>();
-
-    for (const provider of providers) {
-      const observed = observedAccountUsage(models, provider);
-
-      if (observed !== undefined) accounts.set(provider, observed);
-    }
-
-    const readCard = () =>
-      usageCard({
-        history: this.usageHistory,
-        sessionId: session.sessionId,
-        accounts: providers.flatMap((provider) => accounts.get(provider) ?? []),
-      });
-
-    let card = readCard();
-
     const panel = openPanel(
       this.shell,
-      new UsagePanel(this.shell, card, close, (rows) => setSlotRows(this.shell, rows)),
+      new UsagePanel(this.shell, usageCard(view, this.catalog), close, (rows) =>
+        setSlotRows(this.shell, rows),
+      ),
     );
 
     this.shell.dismissInfoPanel = close;
-
-    const active = (): boolean =>
-      this.session === session &&
-      !this.disposed &&
-      !controller.signal.aborted &&
-      this.shell.dismissInfoPanel === close;
-
-    const paint = (): void => {
-      if (active())
-        panel.update({
-          ...card,
-          accounts: providers.flatMap((provider) => accounts.get(provider) ?? []),
-        });
-    };
-
-    const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
-
-    for (const provider of providers) {
-      void readAccountUsage({ models, provider, signal: accountSignal }).then(
-        (account) => {
-          accounts.set(provider, account);
-          paint();
-        },
-        () => undefined,
-      );
-    }
-
-    this.scanningUsage ??= this.usageScanner
-      .scan({
-        stores: [{ workspacePath: this.host.cwd, path: this.host.storePath }],
-        catalog: catalogForUsage(models),
-      })
-      .then(
-        (scan) => {
-          this.usageHistory = { kind: "ready", scan };
-        },
-        (cause: unknown) => {
-          this.usageHistory = { kind: "failed", message: errorMessage(cause) };
-        },
-      )
-      .finally(() => {
-        this.scanningUsage = undefined;
-      });
-    void this.scanningUsage.then(() => {
-      if (!active()) return;
-      card = readCard();
-      paint();
-    });
   }
 
   // -------------------------------------------------------------------------
@@ -4369,8 +3860,8 @@ class Interactive {
 
     if (row !== undefined) return { kind: "setting", row };
 
-    if (session.commands.has(name)) return { kind: "plugin" };
-    const skill = session.skills.get(name);
+    if (commandsOf(session).get(name)?.side === "core") return { kind: "plugin" };
+    const skill = skillsOf(session).get(name);
 
     return skill === undefined ? { kind: "message" } : { kind: "skill", skill };
   }
@@ -4398,27 +3889,24 @@ class Interactive {
 
     switch (target.kind) {
       case "plugin": {
-        const outcome = await this.host.nyte.plugins.commands.run({
-          sessionId: session.sessionId,
-          name: parsed.name,
-          argument: parsed.argument,
-        });
-
-        void this.refreshBadges();
+        const outcome = await session.session.command(
+          parsed.name,
+          parsed.argument === "" ? undefined : parsed.argument,
+        );
 
         switch (outcome.kind) {
           case "ran":
-            if (outcome.output !== undefined) notice(this.shell, outcome.output);
+            if (outcome.output !== null) notice(this.shell, outcome.output);
 
             return;
-          case "prompt":
-            await this.send(session, outcome.prompt, delivery);
-
+          case "sent":
             return;
-          case "not_found":
+          case "unknown":
             await asMessage();
 
             return;
+          case "invalid":
+            throw new Error(outcome.issues.map((issue) => issue.message).join("; "));
           case "failed":
             throw new Error(outcome.message);
           default: {
@@ -4488,10 +3976,7 @@ class Interactive {
       case "new": {
         noArgument();
         await this.switchSession(
-          async () =>
-            this.host.nyte.sessions.create({
-              workspace: { kind: "local", id: await environmentId(), cwd: this.workspace.cwd },
-            }),
+          () => this.host.sessions.create({ workspace: session.info.workspace }),
           false,
         );
 
@@ -4515,45 +4000,26 @@ class Interactive {
         return;
       case "compact": {
         whenIdle("compacting");
-        const controller = new AbortController();
-        this.compaction = controller;
-        this.refreshHints();
 
-        try {
-          const request = { sessionId: session.sessionId, signal: controller.signal };
+        const outcome = await session.session.compact(
+          argument === "" ? undefined : { instructions: argument },
+        );
 
-          const outcome = await this.host.nyte.runs.compact(
-            argument === "" ? request : { ...request, customInstructions: argument },
-          );
+        if (this.disposed || this.session !== session) return;
 
-          if (this.disposed || this.session !== session) return;
+        switch (outcome.kind) {
+          case "started":
+            return;
+          case "nothing-to-compact":
+            notice(this.shell, "Nothing to compact");
 
-          switch (outcome.kind) {
-            case "compacted":
-              return;
-            case "nothing_to_compact":
-              notice(this.shell, "Nothing to compact");
+            return;
+          case "busy":
+            throw new Error("Wait for the current run before compacting");
+          default: {
+            const _exhaustive: never = outcome;
 
-              return;
-            case "aborted":
-              notice(this.shell, "Compaction cancelled");
-
-              return;
-            case "busy":
-              throw new Error("Wait for the current run before compacting");
-            case "failed":
-              throw new Error(outcome.message);
-            default: {
-              const _exhaustive: never = outcome;
-
-              return _exhaustive;
-            }
-          }
-        } finally {
-          if (this.compaction === controller) {
-            this.compaction = undefined;
-
-            if (!this.disposed && this.session === session) this.refreshHints();
+            return _exhaustive;
           }
         }
       }
@@ -4580,35 +4046,27 @@ class Interactive {
         return;
       case "plugins": {
         noArgument();
+        const rows = this.hostView?.plugins ?? [];
 
-        const panel = openDiagnosticReport(this.shell, "Plugins", ["Loading plugins…"], () =>
-          this.refreshHints(),
-        );
+        const lines = [
+          ...(this.plugins?.ids ?? []).map((id) => `${id} client`),
+          ...rows.map((plugin) => {
+            const where = plugin.path === null ? plugin.source : `${plugin.source} ${plugin.path}`;
+            const issues = plugin.issues.map((issue) => issue.message).join("; ");
 
-        if (panel === undefined) return;
+            return issues === "" ? `${plugin.id} ${where}` : `${plugin.id} ${where}: ${issues}`;
+          }),
+        ];
 
-        panel.layout.load(
-          () => this.host.nyte.plugins.list({ sessionId: session.sessionId }),
-          (plugins) => {
-            if (this.disposed || this.session !== session) return;
-            const lines = plugins.map((plugin) => {
-              const where =
-                plugin.path === undefined ? plugin.source : `${plugin.source} ${plugin.path}`;
+        const commands = [...commandsOf(session).keys()];
 
-              return plugin.status === "failed"
-                ? `${plugin.id} ${where} failed: ${plugin.error}`
-                : `${plugin.id} ${where}`;
-            });
-            lines.unshift(
-              ...this.tuiPlugins.registered().map((plugin) => `${plugin.id} TUI ${plugin.target}`),
-            );
-            const commands = [...session.commands.keys()];
-
-            if (commands.length > 0)
-              lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
-            panel.update(lines.length === 0 ? ["No plugins"] : lines);
-          },
-          (cause) => panel.update([`Failed to list plugins: ${errorMessage(cause)}`]),
+        if (commands.length > 0)
+          lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
+        openDiagnosticReport(
+          this.shell,
+          "Plugins",
+          lines.length === 0 ? ["No plugins"] : lines,
+          () => this.refreshHints(),
         );
 
         return;
@@ -4619,25 +4077,12 @@ class Interactive {
         notice(this.shell, "Reloading…");
         this.renderer.requestRender();
         await this.renderer.idle();
-        this.reloaded ??= Promise.withResolvers();
-        const published = this.reloaded.promise;
-        await this.reloadPlugins({ retry: true });
-        const plugins = await Promise.race([
-          published,
-          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5_000)),
-        ]);
-
-        if (plugins === undefined) {
-          notice(this.shell, "Reload queued until active calls finish.");
-
-          return;
-        }
-
-        const failed = plugins.filter((plugin) => plugin.status === "failed").length;
+        await this.reloadWorkspace();
+        const skills = skillsOf(session).size;
         notice(
           this.shell,
-          `Reloaded ${String(plugins.length)} ${plugins.length === 1 ? "plugin" : "plugins"} and ${String(session.skills.size)} ${session.skills.size === 1 ? "skill" : "skills"}${failed === 0 ? "" : `, ${String(failed)} failed`}`,
-          failed === 0 ? this.shell.theme.ok : this.shell.theme.warning,
+          `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
+          this.shell.theme.ok,
         );
 
         return;
@@ -4690,14 +4135,5 @@ type SlashTarget =
   | { readonly kind: "builtin"; readonly name: BuiltinSlashName }
   | { readonly kind: "setting"; readonly row: SettingRow }
   | { readonly kind: "plugin" }
-  | { readonly kind: "skill"; readonly skill: Skill }
+  | { readonly kind: "skill"; readonly skill: SkillInfo }
   | { readonly kind: "message" };
-
-function rowId(row: ReturnType<typeof gutterRows>[number]): string {
-  return row.kind === "pending" ? `pending:${row.item.change}` : `sending:${row.row.key}`;
-}
-
-/** The fold's pending items, then what the outbox still holds. */
-function sessionRows(session: FollowedSession): ReturnType<typeof gutterRows> {
-  return gutterRows(session.state.pending, session.outbox.rows());
-}

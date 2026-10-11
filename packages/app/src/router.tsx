@@ -29,18 +29,17 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider, usePaneActions, useCanSplitPane } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { warmThread } from "./live.ts";
-import { keys, queryClient, useHostState } from "./queries.ts";
+import { queryClient, readSession, useHostState, warmSession } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
-import type { SessionPage } from "./session-directory.ts";
+import { directoryWatch } from "./sdk.tsx";
 import { preferences } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { shell } from "./theme/schema.stylex.ts";
-import { sessionId } from "@nyte-ai/protocol";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
@@ -379,8 +378,9 @@ const indexRoute = createRoute({
     if (preferences.startupDestination.get() === "new-chat") return;
 
     // The directory is newest-first, so its first open item is the last chat.
-    const sessions = queryClient.getQueryData<SessionPage>(keys.sessionPreview);
-    const sessionId = sessions?.items.find((session) => !session.archived)?.sessionId;
+    const sessionId = directoryWatch("all").value?.find(
+      (session) => session.parent === null && !session.archived,
+    )?.id;
 
     if (sessionId !== undefined) {
       throw redirect({
@@ -422,14 +422,14 @@ const threadRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/session/$sessionId",
   params: {
-    parse: (params) => ({ sessionId: sessionId(params.sessionId) }),
+    parse: (params) => ({ sessionId: asId<"session">(params.sessionId) }),
     stringify: ({ sessionId }) => ({ sessionId }),
   },
   beforeLoad: async ({ params }) => {
     const session = await readRouteSession({
       client: queryClient,
       sessionId: params.sessionId,
-      read: () => nyte.sessions.get({ sessionId: params.sessionId }),
+      read: () => readSession(params.sessionId),
     });
 
     if (session === null) throw redirect({ to: indexRoute.to, replace: true });
@@ -437,7 +437,7 @@ const threadRoute = createRoute({
   errorComponent: RouteError,
   // Route intent starts this before navigation. Direct navigation keeps the
   // current screen until the complete thread frame is ready.
-  loader: ({ params }) => warmThread(params.sessionId),
+  loader: ({ params }) => warmSession(params.sessionId),
 });
 
 export const settingsRoute = createRoute({

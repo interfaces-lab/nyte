@@ -1,21 +1,39 @@
-import type { TurnPart } from "@nyte-ai/protocol";
+import type { Message } from "@nyte-ai/sdk";
+import { isPart, text, thinking } from "@nyte-ai/plugin/client";
+import { isToolMessage } from "../view-helpers.ts";
+import type { PartMessage, ToolMessage } from "../view-helpers.ts";
 import { messageParts } from "./message-references.ts";
 
-type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
+/** A text part: the model's prose. */
+export type TextMessage = PartMessage & { readonly state: { readonly markdown: string } };
 
-export type StepTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
+/** A thinking part: the model's reasoning, adjacent thoughts already one part. */
+export type ThinkingMessage = PartMessage & {
+  readonly state: { readonly markdown: string; readonly merged: number };
+};
+
+export type StepMessage = ThinkingMessage | ToolMessage;
 
 type TranscriptDisplayPart =
-  | { readonly kind: "part"; readonly part: TurnPart }
-  | { readonly kind: "step"; readonly parts: readonly StepTurnPart[] }
-  | { readonly kind: "response"; readonly parts: readonly AssistantTurnPart[] };
+  | { readonly kind: "part"; readonly message: Message }
+  | { readonly kind: "step"; readonly messages: readonly StepMessage[] }
+  | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
-function isStepPart(part: TurnPart): part is StepTurnPart {
-  // A create owns a child session and outlives the call, so it is not a step
-  // inside someone else's episode; the bookkeeping on that child is.
-  if (part.kind === "tool") return part.class.kind !== "delegate" || part.class.role !== "create";
+/** Narrows a message to a text part. */
+export function isTextMessage(message: Message): message is TextMessage {
+  return isPart(message, text);
+}
 
-  return part.kind === "thinking";
+/** Narrows a message to a thinking part. */
+export function isThinkingMessage(message: Message): message is ThinkingMessage {
+  return isPart(message, thinking);
+}
+
+function isStepMessage(message: Message): message is StepMessage {
+  if (isToolMessage(message))
+    return message.state.class.kind !== "delegate" || message.state.class.role !== "create";
+
+  return isThinkingMessage(message);
 }
 
 /**
@@ -23,45 +41,42 @@ function isStepPart(part: TurnPart): part is StepTurnPart {
  * on its own row instead, splitting the episode around it: it is a delegation
  * with its own session and status, not a step inside someone else's work.
  *
- * Assistant text is never part of an episode. It is the only content the reader
- * is actually reading, and a turn streams, so any rule that placed it by length,
- * markdown, position, or run state would move it under the reader when the next
- * part arrived. Placement follows `kind` alone, which never changes, so a part
- * drawn as prose stays prose. Text closes the open episode; work that follows
- * opens the next one.
+ * Assistant text is never part of an episode. Placement follows the part's
+ * kind alone, which never changes, so a part drawn as prose stays prose.
+ * Text closes the open episode; work that follows opens the next one.
  */
-export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
+export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
-  let step: StepTurnPart[] = [];
-  let response: AssistantTurnPart[] = [];
+  let step: StepMessage[] = [];
+  let response: TextMessage[] = [];
 
   const flushStep = (): void => {
-    if (step.length > 0) display.push({ kind: "step", parts: step });
+    if (step.length > 0) display.push({ kind: "step", messages: step });
     step = [];
   };
 
   const flushResponse = (): void => {
-    if (response.length > 0) display.push({ kind: "response", parts: response });
+    if (response.length > 0) display.push({ kind: "response", messages: response });
     response = [];
   };
 
-  for (const part of parts) {
-    if (part.kind === "assistant") {
-      if (part.text.trim() === "") continue;
+  for (const message of messages) {
+    if (isTextMessage(message)) {
+      if (message.state.markdown.trim() === "") continue;
       flushStep();
-      response.push(part);
+      response.push(message);
       continue;
     }
 
-    if (isStepPart(part)) {
+    if (isStepMessage(message)) {
       flushResponse();
-      step.push(part);
+      step.push(message);
       continue;
     }
 
     flushStep();
     flushResponse();
-    display.push({ kind: "part", part });
+    display.push({ kind: "part", message });
   }
 
   flushStep();

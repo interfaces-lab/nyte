@@ -1,37 +1,66 @@
 /**
- * From an editor read to the provider message. The contract stays text and
- * images: skill chips become instruction sentences in place, file chips stay
- * as their `@file://` spelling, and the conversation mention is context the
- * host already has.
+ * From an editor read to the message the head admits. Text stays text, file
+ * chips stay as their `@` spelling, and images are uploaded as blobs to the
+ * selected workspace at send time.
  */
-import type { CommandInfo, Delivery, SendInput, SessionId } from "@nyte-ai/protocol";
-import type { ImageContent, TextContent, UserMessage } from "@nyte-ai/schema";
+import type { CommandInfo, Delivery, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { ImageContent } from "@nyte-ai/schema/model";
+import { workspaceFiles } from "../queries.ts";
+import { connection } from "../sdk.tsx";
 import type { ComposerSubmission } from "./composer-document.ts";
+import type { MessageFile } from "./message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
 
+/** A message before its images are uploaded: its text, images read in the composer, and files the host already holds. */
+export interface ComposerContent {
+  readonly text: string;
+  readonly images: readonly ImageContent[];
+  readonly files: readonly MessageFile[];
+}
+
+/** A draft's text, its images read in the composer, and the files the message already carries. */
 export function composerMessageContent(
   text: string,
   attachments: readonly { readonly content: ImageContent }[],
-): UserMessage["content"] {
-  if (attachments.length === 0) return text;
-  const parts: (TextContent | ImageContent)[] = [];
+  files: readonly MessageFile[] = [],
+): ComposerContent {
+  return { text, images: attachments.map((attachment) => attachment.content), files };
+}
 
-  if (text !== "") parts.push({ type: "text", text });
+/** Whether a draft carries nothing to send. */
+export function composerContentEmpty(content: ComposerContent): boolean {
+  return content.text.trim() === "" && content.images.length === 0 && content.files.length === 0;
+}
 
-  for (const attachment of attachments) parts.push(attachment.content);
+/** Uploads a draft's images to the selected workspace and returns the content the head admits. */
+export async function uploadComposerContent(content: ComposerContent): Promise<UserContent> {
+  if (content.images.length === 0 && content.files.length === 0) return content.text;
+  const text = content.text === "" ? [] : [{ kind: "text" as const, text: content.text }];
 
-  return parts;
+  if (content.images.length === 0) return [...text, ...content.files];
+  const files = await workspaceFiles();
+
+  const uploaded = await Promise.all(
+    content.images.map(async (image, index): Promise<MessageFile> => {
+      const bytes = Uint8Array.fromBase64(image.data);
+      const blob = await files.upload(
+        (async function* () {
+          yield bytes;
+        })(),
+      );
+
+      return { kind: "file", blob, mime: image.mimeType, name: `Image ${String(index + 1)}` };
+    }),
+  );
+
+  return [...text, ...content.files, ...uploaded];
 }
 
 type ComposerSendPlan =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
-  | {
-      readonly kind: "message";
-      readonly content: UserMessage["content"];
-      readonly delivery: Delivery;
-    };
+  | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };
 
 /**
  * What one submit does. A draft that is only a plugin command's line runs the
@@ -62,10 +91,11 @@ export function composerSendPlan(input: {
   };
 }
 
-/** The outbox submission for a planned message: the delivery rides with the content to the receipt. */
-export function composerSendInput(
+/** Sends a planned message: images uploaded, then admitted with the delivery Enter chose. */
+export async function sendComposerMessage(
   sessionId: SessionId,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
-): Omit<SendInput, "key"> {
-  return { sessionId, content: plan.content, delivery: plan.delivery };
+): Promise<void> {
+  const content = await uploadComposerContent(plan.content);
+  await connection().session(sessionId).send(content, { delivery: plan.delivery });
 }

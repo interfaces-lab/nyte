@@ -1,15 +1,27 @@
 /** Task rows: the session's child agents with their full transcripts, and its command jobs. */
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { JobInfo, Nyte, RunInfo, SessionEvent, SessionId } from "@nyte-ai/core";
+import type {
+  Connection,
+  Execution,
+  JobView,
+  SessionId,
+  SessionInfo,
+  SessionView,
+} from "@nyte-ai/sdk";
 import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
-import { SessionObserver, toolStatus } from "@nyte-ai/client";
-import type { SessionState, ToolTone } from "@nyte-ai/client";
 import { toolTitle } from "./tool-copy.ts";
+import { follow, isTextMessage, isToolMessage, toolStatus } from "./view-helpers.ts";
+import type { ToolTone } from "./view-helpers.ts";
 
 export type Task =
-  | { readonly kind: "agent"; readonly id: string; readonly state: SessionState }
-  | { readonly kind: "job"; readonly id: string; readonly job: JobInfo };
+  | {
+      readonly kind: "agent";
+      readonly id: SessionId;
+      readonly info: SessionInfo;
+      /** The child's main head, once its watch has yielded. */
+      readonly view: SessionView | undefined;
+    }
+  | { readonly kind: "job"; readonly id: string; readonly job: JobView };
 
 type TaskStatus =
   | "queued"
@@ -56,21 +68,24 @@ export function statusMark(status: TaskStatus): StatusMark {
   }
 }
 
-export function taskStatus(task: Task): TaskStatus {
-  if (task.kind === "agent") return runStatus(task.state.run);
+/** The child's main head execution: the view's when it has one, else the directory row's. */
+function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | undefined {
+  return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
+}
 
-  switch (task.job.phase.kind) {
+export function taskStatus(task: Task): TaskStatus {
+  if (task.kind === "agent") return executionStatus(agentExecution(task));
+  const { state } = task.job;
+
+  switch (state.kind) {
     case "running":
       return "running";
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "cancelled":
-    case "interrupted":
+    case "exited":
+      return state.reason === "exited" ? (state.code === 0 ? "done" : "failed") : "stopped";
+    case "lost":
       return "stopped";
     default: {
-      const _exhaustive: never = task.job.phase;
+      const _exhaustive: never = state;
 
       return _exhaustive;
     }
@@ -98,25 +113,26 @@ export function toneStatus(tone: ToolTone): TaskStatus {
   }
 }
 
-export function runStatus(run: RunInfo | undefined): TaskStatus {
-  if (run === undefined) return "queued";
+function executionStatus(execution: Execution | undefined): TaskStatus {
+  if (execution === undefined) return "queued";
 
-  switch (run.phase.kind) {
-    case "respond":
-    case "tools":
-      return run.abortRequested ? "stopping" : "running";
+  switch (execution.kind) {
+    case "idle": {
+      const end = execution.lastRun?.end;
+
+      if (end === undefined) return "queued";
+
+      return end.kind === "completed" ? "done" : end.kind === "stopped" ? "stopped" : "failed";
+    }
+
+    case "live":
+      return execution.stopping ? "stopping" : "running";
     case "waiting":
-      return run.abortRequested ? "stopping" : "waiting";
-    case "retry":
-      return run.abortRequested ? "stopping" : "retrying";
-    case "done":
-      return "done";
-    case "aborted":
-      return "stopped";
-    case "failed":
-      return "failed";
+      return "waiting";
+    case "retrying":
+      return "retrying";
     default: {
-      const _exhaustive: never = run.phase;
+      const _exhaustive: never = execution;
 
       return _exhaustive;
     }
@@ -124,13 +140,12 @@ export function runStatus(run: RunInfo | undefined): TaskStatus {
 }
 
 export function canStopTask(task: Task): boolean {
-  if (task.kind === "job") return task.job.phase.kind === "running";
+  if (task.kind === "job") return task.job.state.kind === "running";
+  const execution = agentExecution(task);
 
-  return (
-    task.state.run !== undefined &&
-    !isTerminalPhase(task.state.run.phase) &&
-    task.state.run.abortRequested !== true
-  );
+  if (execution === undefined || execution.kind === "idle") return false;
+
+  return execution.kind !== "live" || !execution.stopping;
 }
 
 /** Whether the task runs a child session or a command. */
@@ -139,22 +154,25 @@ export function taskAgent(task: Task): string {
 }
 
 export function taskLabel(task: Task): string {
-  if (task.kind === "job") return task.job.command;
-  const info = task.state.info;
+  if (task.kind === "job") return task.job.title === "" ? task.job.command : task.job.title;
 
-  return info.name ?? taskPrompt(task.state) ?? info.preview ?? info.sessionId;
+  return task.info.name ?? (task.view === undefined ? undefined : taskPrompt(task.view)) ?? task.id;
+}
+
+/** The model and thinking level a child resolves to, for its card and row. */
+export function taskConfiguration(task: Extract<Task, { kind: "agent" }>): string {
+  const effective = task.view?.configuration.effective;
+
+  return effective === null || effective === undefined
+    ? ""
+    : `${effective.model.id} · ${effective.thinking}`;
 }
 
 /** What a child was asked to do: its first user message. */
-export function taskPrompt(state: SessionState): string | undefined {
-  for (const item of state.transcript.items) {
-    if (item.kind !== "turn") continue;
-    const user = item.parts.find((part) => part.kind === "user");
+export function taskPrompt(view: SessionView): string | undefined {
+  const user = view.messages.find((message) => message.kind === "user");
 
-    if (user !== undefined) return oneLine(userText(user.content));
-  }
-
-  return undefined;
+  return user?.kind === "user" ? oneLine(userText(user.content)) : undefined;
 }
 
 function oneLine(text: string): string {
@@ -162,12 +180,15 @@ function oneLine(text: string): string {
 }
 
 export function taskActivity(task: Task): string {
-  if (task.kind === "job") return oneLine(task.job.output);
-  const phase = task.state.run?.phase;
+  if (task.kind === "job") return oneLine(task.job.tail.trimEnd().split("\n").at(-1) ?? "");
+  const execution = agentExecution(task);
 
-  if (phase?.kind === "failed" || phase?.kind === "retry") return phase.failure.message;
+  if (execution?.kind === "retrying") return execution.reason;
 
-  return taskSteps(task.state).at(-1)?.text ?? "";
+  if (execution?.kind === "idle" && execution.lastRun?.end.kind === "failed")
+    return execution.lastRun.end.failure.message;
+
+  return task.view === undefined ? "" : (taskSteps(task.view).at(-1)?.text ?? "");
 }
 
 interface TaskStep {
@@ -176,47 +197,35 @@ interface TaskStep {
 }
 
 /**
- * What a child did, oldest first: each tool call and each assistant message.
- * Thinking is not a step. Live progress for a call replaces that call's row,
- * so a running call is never listed twice.
+ * What a child did, oldest first: each tool call and each answer. Thinking
+ * is not a step; a running call shows its progress line.
  */
-export function taskSteps(state: SessionState): TaskStep[] {
+export function taskSteps(view: SessionView): TaskStep[] {
   const steps: TaskStep[] = [];
-  const calls = new Map<string, number>();
 
-  for (const item of state.transcript.items) {
-    if (item.kind !== "turn") continue;
+  for (const message of view.messages) {
+    if (message.kind !== "part") continue;
 
-    for (const part of item.parts) {
-      if (part.kind === "tool") {
-        calls.set(part.callId, steps.length);
-        const status = toolStatus(part.state);
-        const title = toolTitle(part.class, status.tense);
-        steps.push({
-          status: toneStatus(status.tone),
-          text: oneLine(
-            status.word === undefined ? title : `${title} · ${status.word.toLowerCase()}`,
-          ),
-        });
-      } else if (part.kind === "assistant") {
-        steps.push({ status: "done", text: oneLine(part.text) });
-      }
-    }
-  }
+    if (isToolMessage(message)) {
+      const status = toolStatus(message.state, message.status);
+      const progress = message.state.phase === "running" ? message.state.progress?.text : undefined;
+      const title = toolTitle(message.state.class, status.tense);
 
-  for (const part of state.overlay) {
-    if (part.kind === "thinking") continue;
-
-    const text = oneLine(
-      part.kind === "text" ? part.text : (part.progress.title ?? part.progress.text),
-    );
-
-    const index = part.kind === "tool" ? calls.get(part.callId) : undefined;
-
-    if (index !== undefined) {
-      if (text !== "") steps[index] = { status: "running", text };
-    } else if (text !== "") {
-      steps.push({ status: "running", text });
+      steps.push({
+        status: toneStatus(status.tone),
+        text: oneLine(
+          progress !== undefined && progress !== ""
+            ? progress
+            : status.word === undefined
+              ? title
+              : `${title} · ${status.word.toLowerCase()}`,
+        ),
+      });
+    } else if (isTextMessage(message) && message.state.markdown !== "") {
+      steps.push({
+        status: message.status.kind === "settled" ? "done" : "running",
+        text: oneLine(message.state.markdown),
+      });
     }
   }
 
@@ -225,195 +234,114 @@ export function taskSteps(state: SessionState): TaskStep[] {
 
 /** Time on the task so far, or the time it took. */
 export function taskElapsedMs(task: Task, now: number): number | undefined {
-  if (task.kind === "job")
-    return (unfinishedTask(task) ? now : task.job.updatedAt) - task.job.startedAt;
+  if (task.kind === "job") return (task.job.endedAt ?? now) - task.job.startedAt;
+  const execution = agentExecution(task);
 
-  if (unfinishedTask(task) && task.state.run !== undefined) return now - task.state.run.startedAt;
+  if (execution !== undefined && execution.kind !== "idle") return now - execution.run.startedAt;
+  const last = task.view?.turns.at(-1);
 
-  return task.state.transcript.items.findLast((item) => item.kind === "turn")?.durationMs;
+  return last?.endedAt === null || last === undefined ? undefined : last.endedAt - last.startedAt;
 }
 
 export function unfinishedTask(task: Task): boolean {
-  return task.kind === "agent"
-    ? !["done", "failed", "stopped"].includes(taskStatus(task))
-    : task.job.phase.kind === "running";
+  return !["done", "failed", "stopped"].includes(taskStatus(task));
 }
 
-export function projectTasks(
-  children: readonly SessionState[],
-  jobs: readonly JobInfo[] = [],
-): Task[] {
-  return [
-    ...children.map((state): Task => ({ kind: "agent", id: state.sessionId, state })),
-    ...jobs
-      .filter((job) => job.isBackgrounded)
-      .map((job): Task => ({ kind: "job", id: job.id, job })),
-  ];
+/** One child the index follows: its directory row, its latest view, and how to stop following it. */
+interface Child {
+  info: SessionInfo;
+  view: SessionView | undefined;
+  stop: () => void;
 }
 
 interface TaskIndexOptions {
-  readonly nyte: Nyte;
+  readonly connection: Connection;
   readonly onChange: () => void;
-  readonly onError: (error: Error) => void;
+  readonly onError: (error: unknown) => void;
 }
 
 /**
- * One observer per child. A settled create names its child, so that signal
- * follows it directly; a task that parks has created its child by then, so its
- * wait lists. The session listing otherwise runs only at deliberate boundaries
- * (initial load, reconnect, opening Tasks).
+ * The tasks of one session: its children from the directory, each followed by
+ * its own view, and the jobs of its workspace that report to it.
  */
 export class TaskIndex {
-  private parent: SessionState | undefined;
-  private readonly followers = new Map<SessionId, SessionObserver>();
-  private readonly children = new Map<SessionId, SessionState>();
-  private closed = false;
-  private listing = false;
-  private dirty = false;
-
   private readonly options: TaskIndexOptions;
+  private readonly children = new Map<SessionId, Child>();
+  private jobs: readonly JobView[] = [];
+  private readonly stops: (() => void)[] = [];
 
-  constructor(options: TaskIndexOptions) {
+  constructor(session: SessionInfo, options: TaskIndexOptions) {
     this.options = options;
-  }
+    const { connection } = options;
 
-  get states(): readonly SessionState[] {
-    if (this.parent === undefined) return [];
-
-    return [...this.children.values()].toSorted(
-      (a, b) => a.info.createdAt - b.info.createdAt || a.sessionId.localeCompare(b.sessionId),
+    this.stops.push(
+      follow(
+        connection.sessions.watch({ parents: { kind: "children", session: session.id } }),
+        (children) => this.syncChildren(children),
+        options.onError,
+      ),
+      follow(
+        connection.workspace(session.workspace).jobs.watch(),
+        (jobs) => {
+          this.jobs = jobs.filter((job) => job.session === session.id);
+          options.onChange();
+        },
+        options.onError,
+      ),
     );
   }
 
-  update(state: SessionState, event?: SessionEvent): void {
-    if (this.closed) return;
-    // TaskBrowser handles parent changes; this index notifies when children change.
-    this.parent = state;
-
-    if (event?.kind === "commit") {
-      const { commit } = event.item;
-
-      if ("call" in commit && commit.call.kind === "delegate" && commit.call.role === "create")
-        void this.follow(commit.call.target.session);
-
-      return;
-    }
-
-    if (
-      event === undefined ||
-      event.kind === "synced" ||
-      (event.kind === "effect" && event.state === "waiting")
-    )
-      this.discover();
-  }
-
-  /** Look for children the parent links but no job names. A store scan, so boundaries only. */
-  discover(): void {
-    if (this.closed) return;
-    this.dirty = true;
-    void this.list();
+  get tasks(): readonly Task[] {
+    return [
+      ...[...this.children.values()]
+        .toSorted((left, right) => left.info.createdAt - right.info.createdAt)
+        .map((child): Task => ({
+          kind: "agent",
+          id: child.info.id,
+          info: child.info,
+          view: child.view,
+        })),
+      ...this.jobs.map((job): Task => ({ kind: "job", id: job.id, job })),
+    ];
   }
 
   close(): void {
-    this.closed = true;
+    for (const stop of this.stops.splice(0)) stop();
 
-    for (const follower of this.followers.values()) follower.close();
-    this.followers.clear();
+    for (const child of this.children.values()) child.stop();
     this.children.clear();
   }
 
-  private async follow(id: SessionId): Promise<void> {
-    if (this.closed || this.followers.has(id)) return;
+  private syncChildren(children: readonly SessionInfo[]): void {
+    const listed = new Set(children.map((info) => info.id));
 
-    try {
-      // A replayed commit may name a deleted child: only a session linked to this parent counts.
-      const info = await this.options.nyte.sessions.get({ sessionId: id });
-
-      if (info?.parent?.sessionId !== this.parent?.sessionId) return;
-
-      if (this.closed || this.followers.has(id)) return;
-      await this.start(id);
-    } catch (error) {
-      if (!this.closed)
-        this.options.onError(error instanceof Error ? error : new Error(String(error)));
+    for (const [id, child] of this.children) {
+      if (listed.has(id)) continue;
+      child.stop();
+      this.children.delete(id);
     }
-  }
 
-  private async start(id: SessionId): Promise<void> {
-    const observer = new SessionObserver(this.options.nyte, {
-      sessionId: id,
-      onError: this.options.onError,
-    });
+    for (const info of children) {
+      const known = this.children.get(info.id);
 
-    observer.subscribe(({ state }) => {
-      if (this.closed || this.followers.get(id) !== observer) return;
-      this.children.set(id, state);
-      this.options.onChange();
-    });
-    this.followers.set(id, observer);
-
-    try {
-      // Rejects only when the index closed before the first read landed; the caller ignores a closed index.
-      await observer.start();
-    } catch (error) {
-      observer.close();
-      this.followers.delete(id);
-      throw error;
-    }
-  }
-
-  private async list(): Promise<void> {
-    if (this.listing || this.closed || this.parent === undefined) return;
-    this.listing = true;
-
-    try {
-      while (this.dirty && !this.closed) {
-        this.dirty = false;
-        // A follower that joins mid-listing is newer than this listing's
-        // pages; only followers that predate it may be pruned by its result.
-        const eligible = new Set(this.followers.keys());
-        let cursor: string | undefined;
-        const found = new Set<SessionId>();
-
-        do {
-          const parent = this.parent.sessionId;
-
-          const page = await this.options.nyte.sessions.list(
-            cursor === undefined ? { parent } : { parent, cursor },
-          );
-
-          if (this.closed) return;
-
-          for (const info of page.items) {
-            found.add(info.sessionId);
-
-            if (this.followers.has(info.sessionId)) continue;
-
-            try {
-              await this.start(info.sessionId);
-            } catch (error) {
-              if (!this.closed)
-                this.options.onError(error instanceof Error ? error : new Error(String(error)));
-            }
-          }
-
-          cursor = page.next;
-        } while (cursor !== undefined && !this.closed);
-
-        for (const [id, follower] of this.followers) {
-          if (found.has(id) || !eligible.has(id)) continue;
-          follower.close();
-          this.followers.delete(id);
-          this.children.delete(id);
-        }
-
-        if (!this.closed) this.options.onChange();
+      if (known !== undefined) {
+        known.info = info;
+        continue;
       }
-    } catch (error) {
-      if (!this.closed)
-        this.options.onError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      this.listing = false;
+
+      const entry: Child = { info, view: undefined, stop: () => undefined };
+
+      this.children.set(info.id, entry);
+      entry.stop = follow(
+        this.options.connection.session(info.id).watch(),
+        (view) => {
+          entry.view = view;
+          this.options.onChange();
+        },
+        this.options.onError,
+      );
     }
+
+    this.options.onChange();
   }
 }

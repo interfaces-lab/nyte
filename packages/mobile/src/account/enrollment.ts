@@ -15,7 +15,6 @@ import type {
 import type { ManagedConnection, SavedConnection } from "../connection/connection.ts";
 import type { ConnectFailure } from "../connection/connect-copy.ts";
 import type { SaveResult } from "../connection/connection-store.ts";
-import type { HostVerification } from "../connection/host.ts";
 import { RELEASE_TIMEOUT_MS, releaseOnHost, releaseReplaced } from "./revocation.ts";
 
 type Fetch = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
@@ -60,7 +59,10 @@ export async function connectEnvironment(input: {
   readonly clientName: string;
   readonly crypto: DeviceCrypto;
   readonly fetch: Fetch;
-  readonly verify: (saved: ManagedConnection, signal: AbortSignal) => Promise<HostVerification>;
+  readonly verify: (
+    saved: ManagedConnection,
+    signal: AbortSignal,
+  ) => Promise<{ readonly kind: "verified" } | ConnectFailure>;
   readonly save: (saved: SavedConnection, signal: AbortSignal) => Promise<SaveResult>;
   readonly signal: AbortSignal;
   readonly readiness?: typeof READINESS;

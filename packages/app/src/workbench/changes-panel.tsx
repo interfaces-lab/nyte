@@ -8,22 +8,26 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ReactElement } from "react";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { RunId, SessionId, Turn, VcsFileKind, VcsLineStat } from "@nyte-ai/protocol";
+import type { FileStatus, LineStat, RunId, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
-import { nyte } from "../nyte.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { macPlatform } from "../platform.ts";
 import {
+  readGitPatches,
+  readRunPatches,
   refreshVcs,
-  useRunDiff,
-  useSessionSnapshot,
+  useRunChanges,
+  useSession,
+  useSessionView,
   useVcsChanges,
   useVcsSnapshot,
-  vcsReadKey,
+  workspaceGit,
 } from "../queries.ts";
+import { conversationTurns } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   branchReadout,
@@ -54,27 +58,26 @@ import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
 interface VcsChangeRow {
   readonly source: "working" | "commit";
   readonly path: string;
-  readonly status: VcsFileKind;
+  readonly status: FileStatus;
 }
 
-/** A file whose patch is the record: one turn's edit. */
+/** A file one turn's run changed, as its recorded snapshots say. */
 interface RecordedChangeRow {
   readonly source: "recorded";
   readonly path: string;
-  readonly patch: string;
   readonly added: number;
   readonly removed: number;
 }
 
 type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
-const EMPTY_TURNS: readonly Turn[] = [];
+const EMPTY_TURNS: readonly ConversationTurn[] = [];
 
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
 const EMPTY_RECORDED: readonly RecordedChangeRow[] = [];
 
-const UNKNOWN_STAT: VcsLineStat = { kind: "unknown" };
+const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 
 /**
  * Each set of a turn's recorded rows is one state of that turn's patches, so a
@@ -113,7 +116,7 @@ function viewedDigest(entry: PatchEntry): string | undefined {
   }
 }
 
-function entryStat(entry: PatchEntry): VcsLineStat | undefined {
+function entryStat(entry: PatchEntry): LineStat | undefined {
   switch (entry.kind) {
     case "ready":
       return { kind: "text", added: entry.added, removed: entry.removed };
@@ -254,14 +257,15 @@ interface ChangesPanelProps {
 }
 
 interface ChangesPanelViewProps extends ChangesPanelProps {
-  readonly turns: readonly Turn[];
+  readonly turns: readonly ConversationTurn[];
   readonly turnsError: Error | null;
   readonly liveRun: RunId | undefined;
+  /** The workspace the session's runs recorded their snapshots in. */
+  readonly workspace: WorkspaceId | undefined;
 }
 
 function ChangesPanelView({
   visible = true,
-  sessionId,
   scope,
   selectedPath,
   revealPathRevision,
@@ -276,6 +280,7 @@ function ChangesPanelView({
   turns,
   turnsError,
   liveRun,
+  workspace,
 }: ChangesPanelViewProps): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
@@ -346,69 +351,53 @@ function ChangesPanelView({
     [statusFiles],
   );
 
-  const vcsRequest = vcsRequestForScope(activeScope, {
-    ignoreWhitespace: options.ignoreWhitespace,
-  });
-
-  const vcsRead =
-    repository === undefined || vcsRequest === undefined
-      ? undefined
-      : { ...repository, request: vcsRequest };
+  const vcsRequest = vcsRequestForScope(activeScope);
 
   // The manifest names a commit's files and counts every file's lines, without a patch.
-  const manifest = useVcsChanges(vcsRead, visible && (!workingScope || workingRows.length > 0));
+  const manifest = useVcsChanges(
+    repository === undefined ? undefined : vcsRequest,
+    options.ignoreWhitespace,
+    revision,
+    visible && (!workingScope || workingRows.length > 0),
+  );
 
   const statByPath = useMemo(
-    () => new Map((manifest.data ?? []).map((change) => [change.path, change.stat])),
+    () => new Map((manifest.data?.files ?? []).map((change) => [change.path, change.stat])),
     [manifest.data],
   );
 
   const commitRows = useMemo(
     (): readonly VcsChangeRow[] =>
       activeScope.kind === "commit"
-        ? (manifest.data ?? []).map((change) => ({
+        ? (manifest.data?.files ?? []).map((change) => ({
             source: "commit",
             path: change.path,
-            status: change.kind,
+            status: change.status,
           }))
         : EMPTY_ROWS,
     [activeScope.kind, manifest.data],
   );
 
-  const selectedRun = selectedTurn?.run.kind === "run" ? selectedTurn.run.id : undefined;
+  const selectedRun = selectedTurn?.run ?? undefined;
 
-  const runDiff = useRunDiff({
-    sessionId,
+  const runChanges = useRunChanges({
+    workspace,
     runId: selectedRun,
     live: selectedRun !== undefined && selectedRun === liveRun,
     enabled: visible,
   });
 
-  const runFiles =
-    runDiff.data === undefined || runDiff.data.kind === "not_found"
-      ? undefined
-      : runDiff.data.files;
-
   const recordedRows = useMemo(
     (): readonly RecordedChangeRow[] =>
       selectedTurn === undefined
         ? EMPTY_RECORDED
-        : runFiles !== undefined
-          ? runFiles.map((file): RecordedChangeRow => ({
-              source: "recorded",
-              path: file.path,
-              patch: file.patch,
-              added: file.added,
-              removed: file.removed,
-            }))
-          : selectedTurn.files.map(({ change, patch }): RecordedChangeRow => ({
-              source: "recorded",
-              path: change.path,
-              patch,
-              added: change.added,
-              removed: change.removed,
-            })),
-    [selectedTurn, runFiles],
+        : (runChanges.data?.files ?? []).map((file): RecordedChangeRow => ({
+            source: "recorded",
+            path: file.path,
+            added: file.stat.kind === "text" ? file.stat.added : 0,
+            removed: file.stat.kind === "text" ? file.stat.removed : 0,
+          })),
+    [selectedTurn, runChanges.data],
   );
 
   const rows: readonly ChangeRow[] = workingScope
@@ -453,41 +442,32 @@ function ChangesPanelView({
   // key that names the comparison and its state. A turn's patches are already
   // in hand; they take the same path so parsing stays off the main thread.
   const selectedTurnId = selectedTurn?.scope.turnId;
-  const patchKey = vcsRead === undefined ? undefined : vcsReadKey(vcsRead);
   const { ignoreWhitespace } = options;
+
+  const patchKey =
+    repository === undefined || vcsRequest === undefined
+      ? undefined
+      : [
+          repository.root,
+          activeScope.kind === "commit" ? activeScope.oid : repository.revision,
+          activeScopeValue,
+          ignoreWhitespace ? "ignore-whitespace" : "",
+        ].join("\u0000");
   const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${ignoreWhitespace ? "w" : ""}`;
 
   const patchSource = useMemo((): PatchSource | undefined => {
     if (selectedTurnId !== undefined) {
-      const byPath = new Map(recordedRows.map((row) => [row.path, row]));
+      if (workspace === undefined || selectedRun === undefined) return undefined;
 
       return {
         key: `turn\u0000${selectedTurnId}\u0000${String(recordedVersion(recordedRows))}`,
         lineage: `turn\u0000${selectedTurnId}`,
         paths: stackOrder,
-        read: async (paths) =>
-          paths.flatMap((path) => {
-            const row = byPath.get(path);
-
-            return row === undefined || row.patch.trim() === ""
-              ? []
-              : [
-                  {
-                    path,
-                    status: "modified" as const,
-                    kind: "text" as const,
-                    added: row.added,
-                    removed: row.removed,
-                    patch: row.patch,
-                  },
-                ];
-          }),
+        read: (paths) => readRunPatches(workspace, selectedRun, paths, ignoreWhitespace),
       };
     }
 
-    // The key names the revision; the request names only the comparison, which the
-    // host reads at whatever state the repository is in when the read lands.
-    const request = vcsRequestForScope(activeScope, { ignoreWhitespace });
+    const request = vcsRequestForScope(activeScope);
 
     if (patchKey === undefined || request === undefined) return undefined;
 
@@ -495,10 +475,12 @@ function ChangesPanelView({
       key: patchKey,
       lineage: vcsLineage,
       paths: stackOrder,
-      read: (paths) => nyte.workspace.vcs.diff({ ...request, paths: [...paths] }),
+      read: (paths) => readGitPatches(request, paths, ignoreWhitespace),
     };
   }, [
     selectedTurnId,
+    selectedRun,
+    workspace,
     recordedRows,
     patchKey,
     vcsLineage,
@@ -552,7 +534,7 @@ function ChangesPanelView({
         const found = patchFor(row.path);
         const section = patchStackSection({ path: row.path, entry: found?.entry });
 
-        const stat: VcsLineStat =
+        const stat: LineStat =
           row.source === "recorded"
             ? { kind: "text", added: row.added, removed: row.removed }
             : ((found?.fresh === true ? entryStat(found.entry) : undefined) ??
@@ -579,19 +561,11 @@ function ChangesPanelView({
     return digests;
   }, [rows, patchFor]);
 
-  const vcsError = queryError(snapshot.error);
   const transcriptError = queryError(turnsError);
-
-  // Each scope blames its own source first and falls back to the other, so no
-  // failure is ever dropped. Turn options depend on the transcript; working-tree
-  // rows depend on Git status.
   const vcsFailure =
-    vcsError === undefined
-      ? undefined
-      : {
-          text: "Couldn't read changes. Check that this folder is a Git repository.",
-          detail: vcsError,
-        };
+    snapshot.data?.kind === "none"
+      ? { text: "Couldn't read changes. Check that this folder is a Git repository." }
+      : undefined;
 
   const transcriptFailure =
     transcriptError === undefined
@@ -614,7 +588,7 @@ function ChangesPanelView({
       ? { text: "This turn made no file changes" }
       : (readFailure ?? {
           text:
-            snapshot.isLoading || manifest.isLoading
+            snapshot.data === undefined || manifest.isLoading
               ? "Loading changes…"
               : emptyScopeText(activeScope),
         });
@@ -715,8 +689,7 @@ function ChangesPanelView({
     () =>
       expandable && root !== undefined
         ? createDiffFilesLoader({
-            readContents: (input) =>
-              nyte.workspace.vcs.contents({ ...input, target: { kind: "workspace" } }),
+            readContents: async (input) => (await workspaceGit()).contents(input.path, input.scope),
             root,
             scope: { kind: "worktree" },
           })
@@ -785,10 +758,10 @@ function ChangesPanelView({
         return;
       }
 
-      const result = await nyte.workspace.vcs.discard({
-        target: { kind: "workspace" },
-        paths: [target.path],
-        expect: { revision },
+      const result = await (
+        await workspaceGit()
+      ).discard([target.path], {
+        expect: asId<"git-revision">(revision),
       });
 
       if (result.kind === "stale") {
@@ -798,18 +771,14 @@ function ChangesPanelView({
         return;
       }
 
-      if (result.kind !== "applied") {
-        setRevertError(
-          result.kind === "failed" ? result.reason : "A run is still writing to this workspace.",
-        );
+      if (result.kind === "rejected") {
+        setRevertError(result.reason);
 
         return;
       }
 
-      const skipped = result.skipped.find((entry) => entry.path === target.path);
-
-      if (skipped !== undefined) {
-        setRevertError(skipped.reason);
+      if (result.kind === "busy") {
+        setRevertError("A run is still writing to this workspace.");
 
         return;
       }
@@ -972,22 +941,34 @@ function ChangesPanelView({
 function SessionChangesPanel(
   props: ChangesPanelProps & { readonly sessionId: SessionId },
 ): ReactElement {
-  const snapshot = useSessionSnapshot(props.sessionId);
-  const run = snapshot.data?.run;
+  const view = useSessionView(props.sessionId);
+  const session = useSession(props.sessionId);
+  const turns = useMemo(
+    () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
+    [view],
+  );
+  const execution = view?.execution;
 
   return (
     <ChangesPanelView
       {...props}
-      turns={snapshot.data?.transcript ?? EMPTY_TURNS}
-      turnsError={snapshot.error}
-      liveRun={run !== undefined && !isTerminalPhase(run.phase) ? run.runId : undefined}
+      turns={turns}
+      turnsError={null}
+      liveRun={execution === undefined || execution.kind === "idle" ? undefined : execution.run.id}
+      workspace={session.data?.workspace ?? undefined}
     />
   );
 }
 
 export function ChangesPanel(props: ChangesPanelProps): ReactElement {
   return props.sessionId === undefined ? (
-    <ChangesPanelView {...props} turns={EMPTY_TURNS} turnsError={null} liveRun={undefined} />
+    <ChangesPanelView
+      {...props}
+      turns={EMPTY_TURNS}
+      turnsError={null}
+      liveRun={undefined}
+      workspace={undefined}
+    />
   ) : (
     <SessionChangesPanel {...props} sessionId={props.sessionId} />
   );

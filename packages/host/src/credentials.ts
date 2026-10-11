@@ -33,7 +33,8 @@ const RETRIES = 5;
  * the caller's. `read` is `unsealCredential` over the record, `list` answers
  * `{ providerId, type }` per ref under `kv/secret/models/`, `modify` is
  * `modifyCredential`, and `delete` sets the ref to null, serialised as
- * `modify` is. Building it touches nothing; the imported key is kept once
+ * `modify` is. Building it touches nothing, and `read` and `list` call no
+ * `key()` while no record exists (§50b); the imported key is kept once
  * `key()` resolves, a rejection is not (§43k). While `key()` rejects (a deploy
  * without `NYTE_SECRET_KEY`), `read` answers undefined, `list` and `delete`
  * work (they need no key) and `modify` rejects that error, so provider keys

@@ -1,8 +1,8 @@
 /**
  * OpenTUI blocks for transcript entries: one block per turn keyed by the
- * turn's id, one part block per settled part keyed by `turnPartId`, and live
- * blocks for the streaming overlay keyed by `livePartKey`. `Timeline`
- * reconciles restored and live session state into these blocks.
+ * turn's id, and one block per message keyed by the message's id, which is
+ * the same while it streams and once committed. `Timeline` reconciles each
+ * view's turns into these blocks.
  */
 import {
   BoxRenderable,
@@ -21,6 +21,7 @@ import {
   TextBufferRenderable,
   TextTableRenderable,
   RGBA,
+  maybeMakeRenderable,
 } from "@opentui/core";
 import type {
   CliRenderer,
@@ -31,10 +32,7 @@ import type {
   TextChunk,
   OptimizedBuffer,
 } from "@opentui/core";
-import { formatToolDuration, parsePatchFacts, toolStatus, turnPartId } from "@nyte-ai/client";
-import type { ToolStatus } from "@nyte-ai/client";
-import type { Failure, ToolProgress, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
-import type { RunInfo, Turn } from "@nyte-ai/core";
+import type { Failure, Message, ToolClass } from "@nyte-ai/sdk";
 import { diffWordsWithSpace } from "diff";
 import { SpinnerRenderable } from "opentui-spinner";
 import type { ShellExecution } from "./local-shell.ts";
@@ -65,16 +63,17 @@ import {
   resultSummary,
   unchangedLinesLabel,
 } from "./format.ts";
-import {
-  diffFromOutput,
-  patchSections,
-  type ChangedLinePair,
-  type OutputDiff,
-} from "./output-diff.ts";
+import { diffFromOutput, type ChangedLinePair, type OutputDiff } from "./output-diff.ts";
 import { appendMessage } from "./message.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
-import { livePartKey, type LivePart } from "@nyte-ai/client";
-import { statusMark, taskActivity, taskLabel, taskStatus, toneStatus } from "./tasks.ts";
+import {
+  statusMark,
+  taskActivity,
+  taskConfiguration,
+  taskLabel,
+  taskStatus,
+  toneStatus,
+} from "./tasks.ts";
 import {
   bufferWidths,
   repaints,
@@ -83,14 +82,15 @@ import {
 } from "./surface.ts";
 import type { ExpandableToolOutput, Transcript } from "./surface.ts";
 import type { CliTheme } from "./theme.ts";
+import { delegateSubject, failureNotice, toolLabel, toolNoun, toolSubject } from "./tool-copy.ts";
 import {
-  delegateSubject,
-  failureNotice,
-  runningActivityLabel,
-  toolLabel,
-  toolNoun,
-  toolSubject,
-} from "./tool-copy.ts";
+  isTextMessage,
+  isThinkingMessage,
+  isToolMessage,
+  toolOutput,
+  toolStatus,
+} from "./view-helpers.ts";
+import type { PartMessage, ToolMessage, ToolStatus } from "./view-helpers.ts";
 import { displayWidth } from "./width.ts";
 
 /** The callback leaves chunks untouched, including OpenTUI's link metadata. */
@@ -460,7 +460,7 @@ function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   code.onHighlight = (highlights, context) => [...highlights, ...wordSpans(context.content, pair)];
 }
 
-function previewCut(toolClass: ToolTurnPart["class"] | undefined): PreviewCut {
+function previewCut(toolClass: ToolClass | undefined): PreviewCut {
   return toolClass?.kind === "shell"
     ? { kind: "tail", max: RESULT_TAIL_ONLY_LINES }
     : { kind: "head-tail", head: RESULT_PREVIEW_LINES, tail: RESULT_TAIL_LINES };
@@ -940,7 +940,7 @@ class ActivityBlock {
  * settled result. A settled patch renders with DiffRenderable, as does a
  * unified diff inside shell output; everything else shows a capped preview.
  */
-type DelegationClass = Extract<ToolTurnPart["class"], { kind: "delegate" }>;
+type DelegationClass = Extract<ToolClass, { kind: "delegate" }>;
 
 export class ToolCard {
   readonly container: BoxRenderable;
@@ -949,8 +949,7 @@ export class ToolCard {
   private readonly detail: BoxRenderable;
   private readonly heading: TextRenderable;
   private readonly structuredBodies: Renderable[] = [];
-  private current: ToolTurnPart | ShellExecution;
-  private live: ToolProgress | undefined;
+  private current: ToolMessage | ShellExecution;
   private expanded = false;
   private destroyed = false;
   private textBody: CodeRenderable | undefined;
@@ -966,15 +965,13 @@ export class ToolCard {
 
   constructor(
     transcript: Transcript,
-    part: ToolTurnPart | ShellExecution,
+    part: ToolMessage | ShellExecution,
     parent: Renderable,
     before: Renderable | undefined,
-    live: ToolProgress | undefined,
     note?: string,
   ) {
     this.transcript = transcript;
     this.current = part;
-    this.live = live;
     this.note = note;
     this.container = section(transcript, "tool", parent, before);
     this.heading = new TranscriptTextRenderable(transcript.renderer, {
@@ -1004,18 +1001,22 @@ export class ToolCard {
     if (!this.expanded) this.render();
   }
 
-  /** The part as last synced: the call, and its result once settled. */
-  get part(): ToolTurnPart | undefined {
-    return this.current.kind === "tool" ? this.current : undefined;
+  private get toolClass(): ToolClass | undefined {
+    return this.current.kind === "part" ? this.current.state.class : undefined;
   }
 
-  private get toolClass(): ToolTurnPart["class"] | undefined {
-    return this.current.kind === "tool" ? this.current.class : undefined;
-  }
-
-  /** The settled part's output; a running call's text is its progress. */
+  /** The settled call's text; undefined while it runs. */
   private get output(): string | undefined {
-    return this.current.kind === "tool" ? this.current.output : undefined;
+    return this.current.kind === "part" && this.current.state.phase === "settled"
+      ? toolOutput(this.current.state)
+      : undefined;
+  }
+
+  /** A running call's progress line. */
+  private get progress(): string | undefined {
+    return this.current.kind === "part" && this.current.state.phase === "running"
+      ? this.current.state.progress?.text
+      : undefined;
   }
 
   get completed(): boolean {
@@ -1030,23 +1031,27 @@ export class ToolCard {
     this.render();
   }
 
+  /** Redraws a delegation card, whose child changes without its call. */
+  refresh(): void {
+    if (this.toolClass?.kind === "delegate") this.render();
+  }
+
   setNote(note: string | undefined): void {
     if (note === this.note) return;
     this.note = note;
     this.refreshHeading();
   }
 
-  /** The settled part, or a fresh progress report while the call runs. */
-  sync(part: ToolTurnPart | ShellExecution, live: ToolProgress | undefined): void {
-    const changed = part !== this.current || live !== this.live;
+  /** The call as last synced, or a local command's latest state. */
+  sync(part: ToolMessage | ShellExecution): void {
+    const changed = part !== this.current;
     this.current = part;
-    this.live = live;
 
     // A delegation follows the child, which changes without this part.
     if (changed || this.toolClass?.kind === "delegate") this.render();
   }
 
-  /** A local command's clock, or how long core measured a settled shell call took. */
+  /** A local command's clock, or how long a settled shell call took. */
   private clock(): string | undefined {
     if (this.current.kind === "shell") {
       const until = this.current.state === "running" ? Date.now() : this.current.finishedAt;
@@ -1054,9 +1059,11 @@ export class ToolCard {
       return formatDuration(Math.max(0, until - this.current.startedAt));
     }
 
-    const facts = this.current.class.kind === "shell" ? this.current.class.facts : undefined;
+    const { status } = this.current;
 
-    return facts === undefined ? undefined : formatToolDuration(facts.durationMs);
+    return this.current.state.class.kind === "shell" && status.kind === "settled"
+      ? formatDuration(Math.max(0, status.endedAt - this.current.at))
+      : undefined;
   }
 
   private retheme(): void {
@@ -1069,13 +1076,13 @@ export class ToolCard {
       return;
     }
 
-    if (this.current.class.kind === "delegate") {
-      this.renderDelegation(this.current.class);
+    if (this.current.state.class.kind === "delegate") {
+      this.renderDelegation(this.current.state.class);
 
       return;
     }
 
-    const output = this.live?.text ?? "";
+    const output = this.progress ?? "";
     const { tone } = this.status();
     this.headingState[1] =
       tone === "running" && output !== "" ? theme.user : theme[statusMark(toneStatus(tone)).tone];
@@ -1123,7 +1130,7 @@ export class ToolCard {
     const { theme } = this.transcript;
     const chunks = [fg(color)(icon), ...this.headingTitle()];
 
-    const word = this.current.kind === "tool" ? this.status().word?.toLowerCase() : undefined;
+    const word = this.current.kind === "part" ? this.status().word?.toLowerCase() : undefined;
 
     const tail = [result, word, this.clock(), this.note]
       .filter((value) => value !== undefined)
@@ -1148,14 +1155,16 @@ export class ToolCard {
         ? this.note === undefined
           ? "!"
           : "!!"
-        : toolLabel(this.current.class, this.status().tense);
+        : toolLabel(this.current.state.class, this.status().tense);
 
     const noun =
-      this.current.kind === "tool" && name === undefined ? toolNoun(this.current.class) : undefined;
+      this.current.kind === "part" && name === undefined
+        ? toolNoun(this.current.state.class)
+        : undefined;
 
     const words = name === undefined ? [title, noun] : [name, title];
     const plain = fg(theme.foreground)(` ${words.filter((word) => word !== undefined).join(" ")}`);
-    const command = this.current.kind === "shell" || this.current.class.kind === "shell";
+    const command = this.current.kind === "shell" || this.current.state.class.kind === "shell";
 
     if (!command || title === undefined) return [plain];
 
@@ -1172,15 +1181,15 @@ export class ToolCard {
   }
 
   private status(): ToolStatus {
-    return this.current.kind === "tool"
-      ? toolStatus(this.current.state)
+    return this.current.kind === "part"
+      ? toolStatus(this.current.state, this.current.status)
       : { tense: "running", tone: "running", word: undefined };
   }
 
   private title(): string | undefined {
     if (this.current.kind === "shell") return this.current.command;
 
-    return toolSubject(this.current.class);
+    return toolSubject(this.current.state.class);
   }
 
   private render(): void {
@@ -1192,8 +1201,8 @@ export class ToolCard {
 
     const { theme } = this.transcript;
 
-    if (this.current.class.kind === "delegate") {
-      this.renderDelegation(this.current.class);
+    if (this.current.state.class.kind === "delegate") {
+      this.renderDelegation(this.current.state.class);
 
       return;
     }
@@ -1204,7 +1213,7 @@ export class ToolCard {
       case "running":
       case "attention":
       case "stopped": {
-        const text = this.output ?? this.live?.text ?? "";
+        const text = this.output ?? this.progress ?? "";
         const inline = inlineToolPreview(text);
         const mark = statusMark(toneStatus(tone));
         this.heading.content = this.headingContent(
@@ -1275,15 +1284,13 @@ export class ToolCard {
 
     const task = this.transcript
       .tasks()
-      .find(
-        (candidate) => candidate.kind === "agent" && candidate.id === delegation.target.session,
-      );
+      .find((candidate) => candidate.kind === "agent" && candidate.id === delegation.child);
 
     const status = this.status();
     const word = status.word?.toLowerCase();
 
     // A call on a child is its own call: the child's state says nothing about it.
-    if (delegation.role !== "create") {
+    if (delegation.role !== "create" && delegation.role !== "task") {
       const own = statusMark(toneStatus(status.tone));
       const name = task === undefined ? delegateSubject(delegation) : taskLabel(task);
       const verb = toolLabel(delegation, status.tense);
@@ -1303,18 +1310,13 @@ export class ToolCard {
     // A listed child speaks for itself; until then its create call does.
     const mark = statusMark(task === undefined ? toneStatus(status.tone) : taskStatus(task));
 
-    const config =
-      task?.kind === "agent"
-        ? [task.state.config.model?.id, task.state.config.thinkingLevel]
-            .filter((value) => value !== undefined)
-            .join(" · ")
-        : "";
+    const config = task?.kind === "agent" ? taskConfiguration(task) : "";
 
     const tail = task === undefined ? word : config === "" ? undefined : config;
 
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
-      fg(theme.foreground)(delegation.title),
+      fg(theme.foreground)(delegateSubject(delegation)),
       ...(tail === undefined ? [] : [fg(theme.dim)(`  ${tail}`)]),
     ]);
 
@@ -1338,28 +1340,25 @@ export class ToolCard {
     const { theme } = this.transcript;
     const output = this.output ?? "";
     const toolClass = this.toolClass;
+    const outputDiff = isError ? undefined : diffFromOutput(output);
 
-    if (toolClass?.kind === "file_patch" && !isError) {
-      const { patch, path, added, removed } = toolClass;
+    const changes =
+      this.current.kind === "part" && this.current.state.phase === "settled"
+        ? this.current.state.changes
+        : null;
+
+    if (toolClass?.kind === "edit" && !isError && changes !== null) {
       this.heading.content = this.headingContent(
         GLYPHS.check,
         theme.ok,
-        `+${String(added)} -${String(removed)}`,
+        `+${String(changes.added)} -${String(changes.removed)}`,
       );
-      const facts = parsePatchFacts(patch);
 
-      if (facts === undefined) this.showPreview(patch, theme.dim);
-      else
-        this.showDiff({
-          files: facts.files.map((file) => ({ path, sections: patchSections(file, patch) })),
-          before: undefined,
-          after: undefined,
-        });
+      if (outputDiff === undefined) this.showPreview(output, theme.dim);
+      else this.showDiff(outputDiff);
 
       return;
     }
-
-    const outputDiff = isError ? undefined : diffFromOutput(output);
 
     if (outputDiff !== undefined) {
       const hunks = outputDiff.files.reduce((count, file) => count + file.sections.length, 0);
@@ -1378,7 +1377,7 @@ export class ToolCard {
 
     // A collapsed read names the file and its size without repeating its body.
     const collapsedRead =
-      toolClass?.kind === "file_read" && !isError && !this.expanded && inline === undefined;
+      toolClass?.kind === "read" && !isError && !this.expanded && inline === undefined;
 
     const headingResult = collapsedRead
       ? [summary, `${keycap("chat.tools.toggle")} expand`]
@@ -1415,7 +1414,7 @@ export class ToolCard {
     this.detail.paddingLeft = 2;
 
     const filetype =
-      this.completed && this.toolClass?.kind === "file_read"
+      this.completed && this.toolClass?.kind === "read"
         ? pathToFiletype(this.toolClass.path)
         : undefined;
 
@@ -1556,39 +1555,42 @@ export class ToolCard {
 // ---------------------------------------------------------------------------
 
 /**
- * What the status row shows: the run's phase while it is live, the record's
- * outcome after. A request nothing has answered yet keeps the row blank: the
- * commit lands one event before its run starts, and "Worked" in that gap is a
- * lie the block could never take back, while dropping the row would move the
- * message the run is about to answer.
+ * What the status row shows: the run's activity while it is live, the end
+ * after. A request nothing has answered yet keeps the row blank: "Worked" in
+ * that gap is a lie the block could never take back, while dropping the row
+ * would move the message the run is about to answer.
  */
 export type TurnStatus =
   | {
       readonly kind: "open";
-      readonly phase: RunInfo["phase"];
-      readonly live: readonly LivePart[];
-      readonly waitingForUser: boolean;
+      readonly mode: Exclude<ActivityMode, "unanswered" | "compacting">;
+      /** What the newest live tool is doing, as the turn names it. */
+      readonly activity: string | null;
     }
   | { readonly kind: "unanswered" }
   | { readonly kind: "compacting" }
   | { readonly kind: "settled"; readonly failure: Failure | undefined };
 
 type PartBlock =
-  | { readonly kind: "text"; readonly block: AssistantPartBlock; readonly contentIndex: number }
-  | { readonly kind: "thinking"; readonly block: ReasoningBlock; readonly contentIndex: number };
+  | { readonly kind: "text"; readonly block: AssistantPartBlock }
+  | { readonly kind: "thinking"; readonly block: ReasoningBlock };
 
-/** One visual owner for a user request and every assistant step it drives. */
+/** One visual owner for a user request and every message its run writes. */
 export class TurnBlock {
   private readonly transcript: Transcript;
   readonly root: TurnSection;
-  private readonly settled = new Set<string>();
+  /** The message object each id was last drawn from; the fold keeps an unchanged message's identity. */
+  private readonly drawn = new Map<string, Message>();
+  private readonly users = new Set<string>();
   private readonly tools = new Map<string, ToolCard>();
-  /** Streaming parts by `livePartKey`, until their commit lands or the run drops them. */
-  private readonly live = new Map<string, PartBlock>();
+  /** Text and thinking by message id: the same block while it streams and once committed. */
+  private readonly prose = new Map<string, PartBlock>();
+  /** Parts of other kinds, drawn by a plugin's renderer or named by their kind. */
+  private readonly others = new Map<string, { version: number; root: Renderable }>();
   private activity: ActivityBlock | undefined;
-  private durationMs: number;
+  private readonly durationMs: number;
   private closed = false;
-  private lastTurn: Extract<Turn, { kind: "turn" }> | undefined;
+  private lastMessages: readonly Message[] | undefined;
 
   constructor(transcript: Transcript, id: string, durationMs: number) {
     this.transcript = transcript;
@@ -1599,54 +1601,31 @@ export class TurnBlock {
 
   /** True when the turn has drawn no answer yet: nothing but the request and the spinner. */
   get unanswered(): boolean {
-    return this.settled.size <= 1 && this.tools.size === 0 && this.live.size === 0;
+    return this.users.size <= 1 && this.tools.size === 0 && this.prose.size === 0;
   }
 
-  sync(turn: Extract<Turn, { kind: "turn" }> | undefined, status: TurnStatus): void {
-    const progress = new Map<string, ToolProgress>();
-
-    if (status.kind === "open") {
-      for (const part of status.live) {
-        if (part.kind === "tool") progress.set(part.callId, part.progress);
-      }
+  sync(messages: readonly Message[], status: TurnStatus): void {
+    if (messages !== this.lastMessages) {
+      for (const message of messages) this.syncMessage(message);
+      this.lastMessages = messages;
     }
 
-    if (turn !== undefined && turn !== this.lastTurn) {
-      this.durationMs = turn.durationMs;
-
-      for (const part of turn.parts)
-        this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined);
-      this.lastTurn = turn;
-    }
-
-    for (const [callId, card] of this.tools) {
-      const part = card.part;
-
-      if (part !== undefined) card.sync(part, progress.get(callId));
-    }
+    for (const card of this.tools.values()) card.refresh();
 
     switch (status.kind) {
-      case "open": {
-        this.syncLive(status.live);
-        this.ensureActivity().setMode(activityMode(status), this.runningActivity());
+      case "open":
+        this.ensureActivity().setMode(status.mode, status.activity ?? undefined);
 
         return;
-      }
-
       case "unanswered":
-        this.syncLive([]);
         this.ensureActivity("unanswered").setMode("unanswered");
 
         return;
-      case "compacting": {
-        this.syncLive([]);
+      case "compacting":
         this.ensureActivity().setMode("compacting");
 
         return;
-      }
-
       case "settled":
-        this.syncLive([]);
         this.settle(status.failure);
 
         return;
@@ -1664,157 +1643,113 @@ export class TurnBlock {
     this.root.destroyRecursively();
   }
 
-  private syncPart(part: TurnPart, progress: ToolProgress | undefined): void {
-    const id = turnPartId(part);
+  private syncMessage(message: Message): void {
+    if (this.drawn.get(message.id) === message) return;
+    this.drawn.set(message.id, message);
 
-    switch (part.kind) {
-      case "user":
-        if (this.settled.has(id)) return;
-        this.settled.add(id);
-        appendMessage(
-          this.transcript,
-          { align: "end", content: part.content },
-          this.root,
-          this.contentAnchor(),
-        );
+    if (message.kind === "user") {
+      if (this.users.has(message.id)) return;
+      this.users.add(message.id);
+      appendMessage(
+        this.transcript,
+        { align: "end", content: message.content },
+        this.root,
+        this.contentAnchor(),
+      );
 
-        return;
-      case "assistant": {
-        if (this.settled.has(id)) return;
-        this.settled.add(id);
-        const adopted = this.adoptLive("text", part.contentIndex);
-
-        if (adopted?.kind === "text") {
-          adopted.block.finish(part.text, id);
-
-          return;
-        }
-
-        void new AssistantPartBlock(
-          this.transcript,
-          this.root,
-          this.contentAnchor(),
-          id,
-          part.text,
-        );
-
-        return;
-      }
-
-      case "thinking": {
-        if (this.settled.has(id)) return;
-        this.settled.add(id);
-        const adopted = this.adoptLive("thinking", part.contentIndex);
-
-        if (adopted?.kind === "thinking") {
-          adopted.block.finish(part.text, id);
-
-          return;
-        }
-
-        void new ReasoningBlock(this.transcript, this.root, this.contentAnchor(), id, part.text);
-
-        return;
-      }
-
-      case "tool": {
-        const card = this.tools.get(part.callId);
-
-        if (card === undefined) {
-          this.tools.set(
-            part.callId,
-            new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress),
-          );
-
-          return;
-        }
-
-        card.sync(part, progress);
-
-        return;
-      }
-
-      default: {
-        const _exhaustive: never = part;
-
-        return _exhaustive;
-      }
+      return;
     }
+
+    if (isToolMessage(message)) {
+      const card = this.tools.get(message.id);
+
+      if (card === undefined)
+        this.tools.set(
+          message.id,
+          new ToolCard(this.transcript, message, this.root, this.contentAnchor()),
+        );
+      else card.sync(message);
+
+      return;
+    }
+
+    const settled = message.status.kind === "settled";
+
+    if (isTextMessage(message)) {
+      const existing = this.prose.get(message.id);
+
+      if (existing?.kind === "text") {
+        if (settled) existing.block.finish(message.state.markdown);
+        else existing.block.set(message.state.markdown);
+
+        return;
+      }
+
+      const block = new AssistantPartBlock(
+        this.transcript,
+        this.root,
+        this.contentAnchor(),
+        message.id,
+        settled ? message.state.markdown : undefined,
+      );
+
+      if (!settled) block.set(message.state.markdown);
+      this.prose.set(message.id, { kind: "text", block });
+
+      return;
+    }
+
+    if (isThinkingMessage(message)) {
+      const existing = this.prose.get(message.id);
+
+      if (existing?.kind === "thinking") {
+        if (settled) existing.block.finish(message.state.markdown);
+        else existing.block.set(message.state.markdown);
+
+        return;
+      }
+
+      const block = new ReasoningBlock(
+        this.transcript,
+        this.root,
+        this.contentAnchor(),
+        message.id,
+        settled ? message.state.markdown : undefined,
+      );
+
+      if (!settled) block.set(message.state.markdown);
+      this.prose.set(message.id, { kind: "thinking", block });
+
+      return;
+    }
+
+    this.syncOther(message);
   }
 
-  /**
-   * A settled part at `contentIndex` takes over the live block that streamed
-   * it, so the text does not jump from one box to another. The overlay for
-   * the run was dropped in the same fold, which is why the block is free.
-   */
-  private adoptLive(kind: "text" | "thinking", contentIndex: number): PartBlock | undefined {
-    for (const [key, entry] of this.live) {
-      if (entry.kind !== kind || entry.contentIndex !== contentIndex) continue;
-      this.live.delete(key);
+  /** A part kind the terminal has no block for: a client plugin's renderer, else its kind as a note. */
+  private syncOther(message: PartMessage): void {
+    const existing = this.others.get(message.id);
 
-      return entry;
+    if (existing?.version === message.version) return;
+    const drawn = maybeMakeRenderable(this.transcript.renderer, this.transcript.drawPart(message));
+
+    const root =
+      drawn ??
+      new TranscriptTextRenderable(this.transcript.renderer, {
+        id: this.transcript.nextId("part"),
+        content: `[${message.partKind}]`,
+        fg: this.transcript.theme.dim,
+        wrapMode: "word",
+      });
+
+    if (existing === undefined) this.root.insertBefore(root, this.contentAnchor());
+    else {
+      this.root.insertBefore(root, existing.root);
+      existing.root.parent?.remove(existing.root);
+      existing.root.destroyRecursively();
     }
 
-    return undefined;
-  }
-
-  private syncLive(parts: readonly LivePart[]): void {
-    const keep = new Set<string>();
-
-    for (const part of parts) {
-      const key = livePartKey(part);
-      keep.add(key);
-
-      switch (part.kind) {
-        case "text": {
-          const existing = this.live.get(key);
-
-          if (existing?.kind === "text") {
-            existing.block.set(part.text);
-            break;
-          }
-
-          const block = new AssistantPartBlock(
-            this.transcript,
-            this.root,
-            this.contentAnchor(),
-            key,
-          );
-
-          block.set(part.text);
-          this.live.set(key, { kind: "text", block, contentIndex: part.index });
-          break;
-        }
-
-        case "thinking": {
-          const existing = this.live.get(key);
-
-          if (existing?.kind === "thinking") {
-            existing.block.set(part.text);
-            break;
-          }
-
-          const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor(), key);
-          block.set(part.text);
-          this.live.set(key, { kind: "thinking", block, contentIndex: part.index });
-          break;
-        }
-
-        case "tool":
-          break;
-        default: {
-          const _exhaustive: never = part;
-
-          return _exhaustive;
-        }
-      }
-    }
-
-    for (const [key, entry] of this.live) {
-      if (keep.has(key)) continue;
-      this.live.delete(key);
-      entry.block.remove();
-    }
+    this.others.set(message.id, { version: message.version, root });
   }
 
   private settle(failure: Failure | undefined): void {
@@ -1829,44 +1764,8 @@ export class TurnBlock {
     return this.activity;
   }
 
-  /** Tool calls still going, in call order. */
-  private runningActivity(): string | undefined {
-    const running: ToolTurnPart["class"][] = [];
-
-    for (const card of this.tools.values()) {
-      const part = card.part;
-
-      if (part !== undefined && toolStatus(part.state).tense === "running") {
-        running.push(part.class);
-      }
-    }
-
-    return runningActivityLabel(running);
-  }
-
   /** A turn with a status row keeps it last, so content lands above it. */
   private contentAnchor(): Renderable | undefined {
     return this.closed ? undefined : this.activity?.anchor;
-  }
-}
-
-function activityMode(status: Extract<TurnStatus, { kind: "open" }>): ActivityMode {
-  switch (status.phase.kind) {
-    case "waiting":
-      return status.waitingForUser ? "waiting" : "working";
-    case "retry":
-      return "retrying";
-    case "respond":
-      return status.live.at(-1)?.kind === "thinking" ? "thinking" : "working";
-    case "tools":
-    case "done":
-    case "aborted":
-    case "failed":
-      return "working";
-    default: {
-      const _exhaustive: never = status.phase;
-
-      return _exhaustive;
-    }
   }
 }

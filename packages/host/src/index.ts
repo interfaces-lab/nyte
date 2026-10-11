@@ -1,5 +1,6 @@
 export * from "./credentials.ts";
 export * from "./identity.ts";
+export { identitySigner } from "./identity-key.ts";
 export * from "./listen.ts";
 export * from "./listen-fetch.ts";
 export * from "./local/files.ts";

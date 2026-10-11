@@ -1,11 +1,5 @@
 import { matchesKey, matchesKeyName } from "./keymap.ts";
-import {
-  clampThinkingLevel,
-  getFastModeCostMultiplier,
-  getSupportedThinkingLevels,
-} from "@nyte-ai/ai";
-import type { Api, Model } from "@nyte-ai/ai";
-import type { ThinkingLevel } from "@nyte-ai/core";
+import type { ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 import {
   bold,
   BoxRenderable,
@@ -17,6 +11,7 @@ import {
 } from "@opentui/core";
 import type { CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
 import type { EphemeralPanel } from "./app/ui.ts";
+import { clampThinking, modelId } from "./catalog.ts";
 import { GLYPHS, keycap } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { padDisplay, truncateDisplay } from "./width.ts";
@@ -24,16 +19,16 @@ import { PanelLayout } from "./panel-layout.ts";
 
 /** The model is the row's fast sibling when fast mode was turned on. */
 export interface ModelSelection {
-  readonly model: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
+  readonly model: ModelRef;
+  readonly thinkingLevel: Thinking;
 }
 
 interface ModelPickerBaseOptions {
   readonly renderer: CliRenderer;
   readonly theme: CliTheme;
   readonly nextId: (prefix?: string) => string;
-  readonly models: readonly Model<Api>[];
-  readonly load: () => Promise<readonly Model<Api>[]>;
+  readonly models: readonly ModelInfo[];
+  readonly load: () => Promise<readonly ModelInfo[]>;
   readonly onCancel: () => void;
   readonly onRows: (rows: number) => void;
   readonly onHints: (hints: string) => void;
@@ -42,23 +37,14 @@ interface ModelPickerBaseOptions {
 
 interface ModelPickerOptions extends ModelPickerBaseOptions {
   readonly kind: "session";
-  readonly current: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
+  readonly current: ModelRef;
+  readonly thinkingLevel: Thinking;
   readonly onSelect: (selection: ModelSelection) => void;
 }
 
 type Field = "effort" | "fast";
 
-function identity(model: Pick<Model<Api>, "provider" | "id">): string {
-  return `${model.provider}/${model.id}`;
-}
-
-/** Fast siblings ride on their base's row. */
-function rowsOf(models: readonly Model<Api>[]): readonly Model<Api>[] {
-  return models.filter((model) => model.variant === undefined);
-}
-
-function effortLabel(level: ThinkingLevel): string {
+function effortLabel(level: Thinking): string {
   return level === "xhigh" ? "XHigh" : level[0].toUpperCase() + level.slice(1);
 }
 
@@ -86,14 +72,13 @@ export class ModelPicker implements EphemeralPanel {
   private readonly details: TextRenderable;
   private readonly count: TextRenderable;
   private readonly rowViews: TextRenderable[] = [];
-  private readonly efforts = new Map<string, ThinkingLevel>();
+  private readonly efforts = new Map<string, Thinking>();
   /** Rows whose fast sibling is the draft. */
   private readonly fast = new Set<string>();
-  /** Every entry, fast siblings included; rows list only the bases. */
-  private catalog: readonly Model<Api>[];
-  private models: readonly Model<Api>[];
+  /** Base models; a fast sibling rides on its base's row. */
+  private models: readonly ModelInfo[];
   private costCeiling: number | undefined;
-  private matches: readonly Model<Api>[];
+  private matches: readonly ModelInfo[];
   private selected = 0;
   private offset = 0;
   private field: Field = "effort";
@@ -102,15 +87,14 @@ export class ModelPicker implements EphemeralPanel {
 
   constructor(options: ModelPickerOptions) {
     this.options = options;
-    this.catalog = options.models;
-    this.models = rowsOf(options.models);
+    this.models = options.models;
     this.matches = this.models;
-    const current = identity(this.currentRow);
+    const current = modelId(this.currentRow);
 
-    if (options.current.variant !== undefined) this.fast.add(current);
+    if (current !== modelId(options.current)) this.fast.add(current);
     this.selected = Math.max(
       0,
-      this.matches.findIndex((model) => identity(model) === current),
+      this.matches.findIndex((model) => modelId(model.ref) === current),
     );
     const { renderer, theme, nextId } = options;
     this.layout = new PanelLayout({ renderer, theme, nextId, title: "Models" });
@@ -164,8 +148,7 @@ export class ModelPicker implements EphemeralPanel {
       options.load,
       (models) => {
         this.catalogStatus = "ready";
-        this.catalog = models;
-        this.models = rowsOf(models);
+        this.models = models;
         this.costCeiling = undefined;
         this.filter();
       },
@@ -177,7 +160,7 @@ export class ModelPicker implements EphemeralPanel {
     );
   }
 
-  private get selectedModel(): Model<Api> | undefined {
+  private get selectedModel(): ModelInfo | undefined {
     return this.matches[this.selected];
   }
 
@@ -200,17 +183,17 @@ export class ModelPicker implements EphemeralPanel {
     return this.layout.rows + 8 + Math.max(1, Math.min(10, this.matches.length));
   }
 
-  private fields(model: Model<Api>): readonly Field[] {
+  private fields(model: ModelInfo): readonly Field[] {
     const fields: Field[] = [];
 
-    if (getSupportedThinkingLevels(model).length > 1) fields.push("effort");
+    if (model.thinking.length > 1) fields.push("effort");
 
-    if (this.fastOf(model) !== undefined) fields.push("fast");
+    if (model.fast !== null) fields.push("fast");
 
     return fields;
   }
 
-  private activeField(model: Model<Api>): Field | undefined {
+  private activeField(model: ModelInfo): Field | undefined {
     const fields = this.fields(model);
 
     return fields.includes(this.field) ? this.field : fields[0];
@@ -270,44 +253,36 @@ export class ModelPicker implements EphemeralPanel {
     this.container.destroyRecursively();
   }
 
-  private effort(model: Model<Api>): ThinkingLevel {
-    return clampThinkingLevel(
-      model,
-      this.efforts.get(identity(model)) ?? this.options.thinkingLevel,
-    );
+  private effort(model: ModelInfo): Thinking {
+    return clampThinking(model, this.efforts.get(modelId(model.ref)) ?? this.options.thinkingLevel);
   }
 
   /** The row the current selection sits on: a fast sibling's base, else itself. */
-  private get currentRow(): Pick<Model<Api>, "provider" | "id"> {
+  private get currentRow(): ModelRef {
     const { current } = this.options;
 
-    return current.variant === undefined
-      ? current
-      : { provider: current.provider, id: current.variant.base };
-  }
-
-  private fastOf(model: Model<Api>): Model<Api> | undefined {
-    return this.catalog.find(
-      (candidate) => candidate.provider === model.provider && candidate.variant?.base === model.id,
+    return (
+      this.models.find((model) => model.fast !== null && modelId(model.fast) === modelId(current))
+        ?.ref ?? current
     );
   }
 
-  private fastEnabled(model: Model<Api>): boolean {
-    return this.fastOf(model) !== undefined && this.fast.has(identity(model));
+  private fastEnabled(model: ModelInfo): boolean {
+    return model.fast !== null && this.fast.has(modelId(model.ref));
   }
 
   private readonly filter = (): void => {
     const previous = this.selectedModel;
     const terms = this.queryInput.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
     this.matches = this.models.filter((model) => {
-      const text = `${model.name} ${identity(model)}`.toLocaleLowerCase();
+      const text = `${model.name} ${modelId(model.ref)}`.toLocaleLowerCase();
 
       return terms.every((term) => text.includes(term));
     });
-    const current = identity(previous ?? this.currentRow);
+    const current = modelId(previous?.ref ?? this.currentRow);
     this.selected = Math.max(
       0,
-      this.matches.findIndex((model) => identity(model) === current),
+      this.matches.findIndex((model) => modelId(model.ref) === current),
     );
     this.offset = 0;
     this.repaint();
@@ -326,17 +301,17 @@ export class ModelPicker implements EphemeralPanel {
     if (model === undefined) return;
 
     if (this.activeField(model) === "fast") {
-      if (delta === 1) this.fast.add(identity(model));
-      else this.fast.delete(identity(model));
+      if (delta === 1) this.fast.add(modelId(model.ref));
+      else this.fast.delete(modelId(model.ref));
     } else {
-      const levels = getSupportedThinkingLevels(model);
+      const levels = model.thinking;
 
       const next =
         levels[
           Math.max(0, Math.min(levels.length - 1, levels.indexOf(this.effort(model)) + delta))
         ];
 
-      if (next !== undefined) this.efforts.set(identity(model), next);
+      if (next !== undefined) this.efforts.set(modelId(model.ref), next);
     }
   }
 
@@ -345,7 +320,7 @@ export class ModelPicker implements EphemeralPanel {
 
     if (model === undefined) return;
     this.options.onSelect({
-      model: (this.fastEnabled(model) ? this.fastOf(model) : undefined) ?? model,
+      model: (this.fastEnabled(model) ? model.fast : null) ?? model.ref,
       thinkingLevel: this.effort(model),
     });
   }
@@ -372,15 +347,15 @@ export class ModelPicker implements EphemeralPanel {
     if (!this.destroyed) this.repaint();
   };
 
-  private row(model: Model<Api>, selected: boolean, width: number): StyledText {
+  private row(model: ModelInfo, selected: boolean, width: number): StyledText {
     const { theme } = this.options;
     const color = selected ? theme.accent : theme.foreground;
     const field = selected ? this.activeField(model) : undefined;
     const level = this.effort(model);
     const wide = width >= 62;
     const labelWidth = Math.max(1, wide ? Math.min(34, width - 45) : width - 16);
-    const label = padDisplay(truncate(model.name || model.id, labelWidth), labelWidth);
-    const levels = getSupportedThinkingLevels(model);
+    const label = padDisplay(truncate(model.name || model.ref.id, labelWidth), labelWidth);
+    const levels = model.thinking;
     const bars = "■".repeat(level === "off" ? 0 : Math.max(0, levels.indexOf(level) + 1));
     const emptyBars = "□".repeat(Math.max(0, levels.length - bars.length));
 
@@ -388,14 +363,13 @@ export class ModelPicker implements EphemeralPanel {
       ? `${padDisplay(bars + emptyBars, 7)} ${padDisplay(effortLabel(level), 7)}`
       : effortLabel(level);
 
-    const fast =
-      this.fastOf(model) === undefined ? "" : `Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
+    const fast = model.fast === null ? "" : `Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
 
     return new StyledText([
       fg(color)(
         selected
           ? `${GLYPHS.prompt} `
-          : identity(model) === identity(this.currentRow)
+          : modelId(model.ref) === modelId(this.currentRow)
             ? "· "
             : "  ",
       ),
@@ -409,35 +383,28 @@ export class ModelPicker implements EphemeralPanel {
     ]);
   }
 
-  private isCurrent(model: Model<Api>): boolean {
-    return identity(model) === identity(this.currentRow);
+  private isCurrent(model: ModelInfo): boolean {
+    return modelId(model.ref) === modelId(this.currentRow);
   }
 
-  private detail(model: Model<Api>, width: number): StyledText {
+  private detail(model: ModelInfo, width: number): StyledText {
     const { theme } = this.options;
     const level = effortLabel(this.effort(model));
 
     const fast =
-      this.fastOf(model) === undefined
-        ? ""
-        : ` · Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
+      model.fast === null ? "" : ` · Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
 
-    const info = `${identity(model)} · ${level}${fast}`;
+    const info = `${modelId(model.ref)} · ${level}${fast}`;
 
     if (this.detailRows === 1)
       return new StyledText([
-        fg(theme.dim)(truncate(`${level}${fast} · ${model.provider}`, width)),
+        fg(theme.dim)(truncate(`${level}${fast} · ${model.ref.provider}`, width)),
       ]);
     const meterWidth = Math.min(34, width);
-    const multiplier = this.fastEnabled(model) ? getFastModeCostMultiplier(model) : 1;
+    const multiplier = this.fastEnabled(model) ? undefined : 1;
 
     const ceiling = (this.costCeiling ??= this.models.reduce(
-      (maximum, candidate) =>
-        Math.max(
-          maximum,
-          (candidate.cost.input + candidate.cost.output) *
-            (getFastModeCostMultiplier(candidate) ?? 1),
-        ),
+      (maximum, candidate) => Math.max(maximum, candidate.cost.input + candidate.cost.output),
       0,
     ));
 

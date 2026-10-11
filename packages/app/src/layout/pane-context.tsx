@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { useRouter } from "@tanstack/react-router";
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";

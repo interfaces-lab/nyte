@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import type { VcsContents } from "@nyte-ai/protocol";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { createDiffFilesLoader } from "./diff-expansion.ts";
+import type { DiffContents } from "./diff-expansion.ts";
 import { testRenderer } from "../../test/renderer.ts";
 
-const BOTH_SIDES: VcsContents = {
+const BOTH_SIDES: DiffContents = {
   path: "app.ts",
   old: { kind: "text", text: "one\ntwo\n" },
   new: { kind: "text", text: "one\nTWO\n" },
@@ -66,7 +66,7 @@ test("rejects absent previous contents instead of treating them as empty", async
 test("a renamed edit reads its original path without losing either side", async () => {
   const loader = createDiffFilesLoader({
     ...source,
-    readContents: async ({ path }): Promise<VcsContents> =>
+    readContents: async ({ path }): Promise<DiffContents> =>
       path === "before.ts"
         ? { ...BOTH_SIDES, path, new: { kind: "absent" } }
         : { ...BOTH_SIDES, old: { kind: "absent" } },

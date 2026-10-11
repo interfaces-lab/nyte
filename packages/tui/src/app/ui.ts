@@ -5,7 +5,6 @@
  * imperative renderables and are mounted by the app where the store says they
  * belong.
  */
-import type { Selection, SelectionReply } from "@nyte-ai/core";
 import type {
   BoxRenderable,
   CliRenderer,
@@ -472,6 +471,25 @@ export function selectChoice(
     menu = openInlineMenu(shell, screen, (cause) => settle(() => reject(cause)));
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/**
+ * A pick from a list, with an optional way to answer in the participant's own
+ * words: what `selectSelection` draws.
+ */
+export interface Selection {
+  readonly title: string;
+  readonly choices: readonly Choice[];
+  /** Any number of choices may be picked. Absent, exactly one. */
+  readonly multiple?: true;
+  /** Placeholder for an answer of the participant's own. Absent, only choices are accepted. */
+  readonly other?: string;
+}
+
+/** The picked choice ids and the participant's own words, kept apart so typed text is never an id. */
+export interface SelectionReply {
+  readonly choices: readonly string[];
+  readonly other?: string;
 }
 
 interface SelectSelectionOptions {

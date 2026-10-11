@@ -2,8 +2,7 @@
  * Pure formatting helpers shared by the TUI and print mode. Nothing here
  * touches a renderer.
  */
-import type { ThinkingLevel } from "@nyte-ai/core";
-import type { UserMessage } from "@nyte-ai/schema";
+import type { Thinking, UserContent } from "@nyte-ai/sdk";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
@@ -89,17 +88,19 @@ export function unchangedLinesLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
-/** Flatten user content parts to display text; images become a marker. */
-export function userText(content: UserMessage["content"]): string {
-  if (!Array.isArray(content)) return content;
+/** Flatten user content parts to display text; a file becomes a marker and a reference its `@path`. */
+export function userText(content: UserContent): string {
+  if (typeof content === "string") return content;
 
   return content
     .map((part) => {
-      switch (part.type) {
+      switch (part.kind) {
         case "text":
           return part.text;
-        case "image":
-          return "[image]";
+        case "file":
+          return part.mime.startsWith("image/") ? "[image]" : `[${part.name}]`;
+        case "reference":
+          return `@${part.path}`;
         default: {
           const _exhaustive: never = part;
 
@@ -138,20 +139,16 @@ export interface PowerlineState {
   readonly dirty: boolean;
   readonly provider: string;
   readonly model: string;
-  readonly effort?: ThinkingLevel;
+  readonly effort?: Thinking;
   /** Status badges from plugin settings (e.g. "fast"), beside the thinking level. */
   /** Badges from plugin settings and the plugin status items, in that order. */
   readonly statuses: readonly string[];
   readonly queued: number;
-  /** Tokens reported by the last settled assistant turn; 0 until one settles. */
+  /** What the next request would send, as the view estimates it; 0 until known. */
   readonly tokens: number;
   /** The model's context window; 0 until the model is known. */
   readonly window: number;
-  /**
-   * Core's whole-percent estimate of the window in use. It counts the
-   * measured tokens plus the estimated tail after them, so it is not derivable
-   * from `tokens / window` here. Meaningful only when `window > 0`.
-   */
+  /** Whole percent of the window `tokens` fills. Meaningful only when `window > 0`. */
   readonly pct: number;
 }
 

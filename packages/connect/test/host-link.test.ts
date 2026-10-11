@@ -14,7 +14,7 @@ import { startWorkerdBroker } from "../../connect-worker/test/workerd.ts";
 import type { WorkerdBroker } from "../../connect-worker/test/workerd.ts";
 import { LinkTransactionLookup, keyFingerprint } from "../src/index.ts";
 import type { ConnectLinking, ConnectView } from "../src/index.ts";
-import { ConnectRuntime } from "../src/host/index.ts";
+import { ConnectError, ConnectRuntime } from "../src/host/index.ts";
 import type { ConnectFile, LinkAuthorizer } from "../src/host/index.ts";
 import { createProof, keyThumbprint, publicKeyOf } from "../src/signing.ts";
 import type { PrivateJwk } from "../src/signing.ts";
@@ -479,7 +479,7 @@ test("a link or pending intent made with another broker is unavailable here, nev
   const intent = JSON.stringify((await file()).linkKey);
   const elsewhere = start(undefined, "https://other.connect.example");
   assert.deepEqual(await elsewhere.view(), { kind: "unavailable", reason: "origin_changed" });
-  await assert.rejects(elsewhere.link(), { name: "ConnectError" });
+  await assert.rejects(elsewhere.link(), ConnectError);
   assert.equal(JSON.stringify((await file()).linkKey), intent);
   await elsewhere.close();
 
@@ -511,9 +511,7 @@ test("a link or pending intent made with another broker is unavailable here, nev
   await resumed.close();
   const other = start(undefined, "https://other.connect.example");
   const sentBefore = faults.sent.length;
-  await assert.rejects(other.revokeDevice({ deviceId: link.environment.id }), {
-    name: "ConnectError",
-  });
+  await assert.rejects(other.revokeDevice({ deviceId: link.environment.id }), ConnectError);
   assert.deepEqual(await other.view(), { kind: "unavailable", reason: "origin_changed" });
   assert.equal(faults.sent.length, sentBefore);
   assert.equal((await file()).link?.origin, workerd.origin);

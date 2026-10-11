@@ -1,4 +1,4 @@
-import type { MentionFile } from "@nyte-ai/client";
+import type { MentionFile } from "./message-references.ts";
 
 interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;

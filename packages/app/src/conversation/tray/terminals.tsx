@@ -1,14 +1,15 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { JobActionOutcome, JobInfo, SessionId } from "@nyte-ai/protocol";
+import { useMutation } from "@tanstack/react-query";
+import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 // oxlint-disable-next-line no-restricted-imports -- each live terminal job opens once as it appears
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { nyte } from "../../nyte.ts";
 import { usePaneControllerSnapshot } from "../../layout/pane-context.tsx";
 import { activeSelection } from "../../layout/pane-layout.ts";
-import { backgroundJobsOptions, keys } from "../../queries.ts";
+import { useSession, useWorkspaceJobs } from "../../queries.ts";
+import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
@@ -21,13 +22,13 @@ const styles = create({
   row: { paddingInlineEnd: 4 },
 });
 
-function jobActionMessage(outcome: JobActionOutcome): string {
+function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
   switch (outcome.kind) {
-    case "applied":
+    case "requested":
       return "Cancellation requested.";
-    case "not_found":
+    case "missing":
       return "This task is no longer available.";
-    case "finished":
+    case "settled":
       return "This task has already finished. Its output is still available.";
     default: {
       const exhaustive: never = outcome;
@@ -41,7 +42,7 @@ interface BackgroundWorkProps {
   readonly sessionId: SessionId;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onOpenTerminal: (job: JobInfo, activate: boolean) => string;
+  readonly onOpenTerminal: (job: JobView, activate: boolean) => string;
   readonly viewport: HTMLElement | null;
 }
 
@@ -52,38 +53,34 @@ function AvailableBackgroundWork({
   onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
-  const client = useQueryClient();
   const { layout } = usePaneControllerSnapshot();
   const focusedSelection = activeSelection(layout);
   const focused = focusedSelection.kind === "session" && focusedSelection.sessionId === sessionId;
-  const hasTerminalObserver = useJobTerminals(sessionId).length > 0;
-
-  const jobs = useQuery({
-    ...backgroundJobsOptions(sessionId),
-    // An adopted terminal keeps this query polling when the conversation unmounts.
-    refetchInterval: hasTerminalObserver ? false : 2_000,
-  });
+  useJobTerminals(sessionId);
+  const workspace = useSession(sessionId).data?.workspace;
+  const jobs = useWorkspaceJobs(workspace);
 
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const pillRef = useRef<HTMLButtonElement>(null);
-  const openedJobIds = useRef(new Set<JobInfo["id"]>());
+  const openedJobIds = useRef(new Set<JobView["id"]>());
   const trayId = useId();
-  const [stopCandidates, setStopCandidates] = useState<readonly JobInfo["id"][]>();
+  const [stopCandidates, setStopCandidates] = useState<readonly JobView["id"][]>();
 
-  const cancel = useMutation({
-    mutationFn: (jobId: JobInfo["id"]) => nyte.jobs.cancel({ sessionId, jobId }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.jobs(sessionId) }),
-  });
+  const stopJob = (jobId: JobView["id"]): Promise<StopOutcome<JobEnd>> => {
+    if (workspace === undefined) return Promise.resolve({ kind: "missing" });
+
+    return connection().workspace(workspace).job(jobId).stop();
+  };
+
+  const cancel = useMutation({ mutationFn: stopJob });
 
   const stopAll = useMutation({
-    mutationFn: (jobIds: readonly JobInfo["id"][]) =>
-      Promise.all(jobIds.map((jobId) => nyte.jobs.cancel({ sessionId, jobId }))),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.jobs(sessionId) }),
+    mutationFn: (jobIds: readonly JobView["id"][]) => Promise.all(jobIds.map(stopJob)),
   });
 
-  const liveTerminals = (jobs.data ?? [])
-    .filter((job) => job.isBackgrounded && job.phase.kind === "running")
-    .toSorted((left, right) => right.updatedAt - left.updatedAt);
+  const liveTerminals = (jobs ?? [])
+    .filter((job) => job.session === sessionId && job.state.kind === "running")
+    .toSorted((left, right) => right.startedAt - left.startedAt);
 
   const hasTerminals = liveTerminals.length > 0;
   const trayOpen = open && hasTerminals;
@@ -112,16 +109,10 @@ function AvailableBackgroundWork({
 
   // Until the list lands there is nothing to say: most chats have no jobs, and
   // a placeholder here would sit under a transcript that already painted.
-  if (!jobs.isError && !hasTerminals) return null;
+  if (!hasTerminals) return null;
 
   return (
     <div ref={ref} {...props(trayParts.root)}>
-      {jobs.isError && (
-        <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
-          Couldn’t load background work.
-          <Button onClick={() => void jobs.refetch()}>Try Again</Button>
-        </div>
-      )}
       {!trayOpen && hasTerminals && (
         <TrayPill
           ref={pillRef}
@@ -222,7 +213,7 @@ function AvailableBackgroundWork({
         )}
         {stopAll.isSuccess && (
           <div role="status" {...props(trayParts.notice)}>
-            {stopAll.data.every((outcome) => outcome.kind === "applied")
+            {stopAll.data.every((outcome) => outcome.kind === "requested")
               ? "Cancellation requested."
               : "Some work has already finished or is no longer available."}
           </div>

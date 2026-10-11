@@ -9,8 +9,8 @@ import { closeSettings } from "../settings/index.ts";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import type { SessionId } from "@nyte-ai/sdk";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -23,7 +23,7 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
-import { useHostState, useSession, useSessionLocation, useWorkspaces } from "../queries.ts";
+import { useHostState, useSession, useWorkspaces } from "../queries.ts";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
@@ -56,31 +56,16 @@ import { windowTabs } from "../tabs/window-tabs.ts";
  * this one, then the folder. A Home chat on this machine names nothing.
  */
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
-  const location = useSessionLocation(sessionId);
+  const session = useSession(sessionId);
   const workspaces = useWorkspaces();
+  const workspace = workspaces.data?.find((candidate) => candidate.id === session.data?.workspace);
 
-  if (location === undefined) return null;
-
-  if (location.environment === "cloud")
-    return (
-      <>
-        <span {...props(titlebarStyles.sessionCrumb)}>
-          <Icon name="cloud" size={12} />
-          {location.available ? "Cloud" : "Cloud · unavailable"}
-        </span>
-        <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
-      </>
-    );
-
-  const path = location.workspacePath;
-
-  if (path === null) return null;
+  if (workspace === undefined) return null;
 
   return (
     <>
-      <span title={path} {...props(titlebarStyles.sessionCrumb)}>
-        {workspaces.data?.find((workspace) => workspace.path === path)?.name ??
-          path.split("/").at(-1)}
+      <span title={workspace.path} {...props(titlebarStyles.sessionCrumb)}>
+        {workspace.name}
       </span>
       <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
     </>
@@ -92,8 +77,8 @@ const SessionLink = createLink(ButtonLink);
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const session = useSession(sessionId);
   const panes = usePaneActions();
-  const parentSessionId = session.data?.parent?.sessionId;
-  const title = session.data?.name ?? session.data?.preview ?? "New chat";
+  const parentSessionId = session.data?.parent ?? undefined;
+  const title = session.data?.name ?? "New chat";
 
   return (
     <span {...props(titlebarStyles.sessionTitleGroup)}>

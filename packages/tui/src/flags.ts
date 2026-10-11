@@ -1,7 +1,7 @@
 import process from "node:process";
 import { parseArgs } from "node:util";
-import type { SessionId, ThinkingLevel } from "@nyte-ai/core";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
+import type { SessionId, Thinking } from "@nyte-ai/sdk";
+import { THINKING_LEVELS } from "./constants.ts";
 
 export type ResumeTarget =
   | { readonly kind: "new" }
@@ -15,7 +15,7 @@ export interface RunFlags {
   readonly quiet: boolean;
   readonly provider?: string;
   readonly model?: string;
-  readonly effort?: ThinkingLevel;
+  readonly effort?: Thinking;
   readonly rest: readonly string[];
 }
 
@@ -51,10 +51,10 @@ export function parseFlags(args: readonly string[]): RunFlags {
   }
 
   if (values.session === "") throw new Error("--session requires a non-empty session ID.");
-  const effort = MODEL_THINKING_LEVELS.find((level) => level === values.effort);
+  const effort = THINKING_LEVELS.find((level) => level === values.effort);
 
   if (values.effort !== undefined && effort === undefined) {
-    throw new Error(`--effort must be one of: ${MODEL_THINKING_LEVELS.join(", ")}.`);
+    throw new Error(`--effort must be one of: ${THINKING_LEVELS.join(", ")}.`);
   }
 
   let flags: RunFlags = {

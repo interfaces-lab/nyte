@@ -13,7 +13,6 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import {
   App,
-  connectSessionDirectory,
   loadLocalResources,
   createAppRouter,
   startRendererStartup,
@@ -34,9 +33,6 @@ export const router = createAppRouter({
 const container = document.getElementById("root");
 
 if (container === null) throw new Error("Missing #root");
-
-// Directory changes are pushed; listen before the first snapshot is read so none slips between.
-connectSessionDirectory();
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {

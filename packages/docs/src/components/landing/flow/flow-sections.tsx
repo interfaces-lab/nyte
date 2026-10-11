@@ -46,9 +46,9 @@ function FlowSection({ id, topic, title, body, scene }: FlowSectionProps) {
   );
 }
 
-/*
+/**
  * How work flows through one session at once: the inbox, the lease, and
- * delegation. Each claim traces to packages/core/src/kernel/README.md.
+ * delegation. Each claim traces to the JSDoc in packages/core/src.
  */
 export function FlowSections() {
   return (

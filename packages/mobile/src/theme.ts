@@ -268,6 +268,12 @@ export const textStyles = css.create({
 /** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
+/** A link the model writes to name an agent it created: `[title](agent:<session>)`. */
+export const AGENT_LINK = "^agent:.";
+
+/** A `file:` URL, or a link with no scheme, which names a workspace path. */
+export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
+
 export function markdownStyle(
   theme: Theme,
   transcriptFont: TranscriptFont,
@@ -279,6 +285,15 @@ export function markdownStyle(
     transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
 
   const scopes = platformScopes[scheme];
+
+  // Pills stay within the 23pt body line so a link that completes mid-stream
+  // does not move the text around it.
+  const citation = {
+    color: theme.accent,
+    backgroundColor: theme.fill,
+    underline: false,
+    pill: { borderRadius: radii.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  };
 
   return {
     paragraph: {
@@ -320,6 +335,10 @@ export function markdownStyle(
     strong: { color: theme.foreground },
     em: { color: theme.foreground },
     link: { color: theme.accent, underline: false },
+    linkVariants: {
+      [AGENT_LINK]: citation,
+      [FILE_LINK]: citation,
+    },
     list: {
       ...typography.body,
       ...prose,

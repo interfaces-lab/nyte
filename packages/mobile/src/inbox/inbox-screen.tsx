@@ -6,7 +6,7 @@ import type { SearchBarCommands } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { css, html } from "react-strict-dom";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { SessionRow } from "../chat/session-row.tsx";
 import { Composer } from "../chat/composer.tsx";
@@ -73,7 +73,7 @@ function SessionSection({
       {title === undefined ? null : <SectionHeader label={title} first={first} />}
       {sessions.map((session, index) => (
         <SessionRow
-          key={session.sessionId}
+          key={session.id}
           session={session}
           now={now}
           last={index === sessions.length - 1}
@@ -92,11 +92,10 @@ export function InboxScreen() {
   const [searchActive, setSearchActive] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const searchBar = useRef<SearchBarCommands>(null);
-  const workspacePending = useRef<Promise<void> | undefined>(undefined);
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [creating, setCreating] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { list, busy, error, refresh, reload, more } = useSessionList(client, search);
+  const { list, busy, error, refresh, more } = useSessionList(client, search);
   // A pull is the only load that blanks the rows, so the spinner belongs to it
   // alone; returning to the app reloads in place and never sets loading.
   const [pulled, setPulled] = useState(false);
@@ -152,15 +151,12 @@ export function InboxScreen() {
 
   useWorkLiveActivitySync(working, attention);
 
-  // Returning to the list rechecks the host without blanking the rows.
   useFocusEffect(
     useCallback(() => {
-      reload();
       setNow(Date.now());
-    }, [reload]),
+    }, []),
   );
 
-  // Relative times age on their own; the query polls for data changes itself.
   useMountEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
 
@@ -184,21 +180,11 @@ export function InboxScreen() {
         <Stack.Toolbar.View>
           <View style={{ width: controls.touchTarget, height: controls.touchTarget }}>
             <WorkspacePicker
-              client={client}
               toolbar
               busy={creating}
               onSettings={() => router.navigate("/settings")}
-              onSelecting={(pending) => {
-                workspacePending.current = pending;
-                void pending
-                  .finally(() => {
-                    if (workspacePending.current === pending) workspacePending.current = undefined;
-                  })
-                  .catch(() => undefined);
-              }}
               onWorkspaceChange={() => {
                 setWorkspaceEpoch((epoch) => epoch + 1);
-                reload();
               }}
             />
           </View>
@@ -364,7 +350,6 @@ export function InboxScreen() {
           target={{ kind: "new" }}
           placeholder="Ask anything"
           gutters={{ left: insets.left + spacing.gutter, right: insets.right + spacing.gutter }}
-          workspacePending={workspacePending}
           workspaceEpoch={workspaceEpoch}
           onBusyChange={setCreating}
         />

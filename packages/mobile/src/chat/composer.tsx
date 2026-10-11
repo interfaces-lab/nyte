@@ -42,15 +42,24 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controls, media, useTheme, radii, spacing, textStyles, tokens } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
-import {
-  type Delivery,
-  type ModelInfo,
-  type ModelRef,
-  type RunConfig,
-  type SessionId,
-} from "@nyte-ai/protocol";
+import type {
+  Configuration,
+  Delivery,
+  Head,
+  HeadName,
+  ModelInfo,
+  ModelRef,
+  SessionCatalogView,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
-import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
+import {
+  MAX_ATTACHMENTS,
+  type DraftContent,
+  type DraftPart,
+  type StagedImage,
+} from "../media/attachments.ts";
 import {
   chooseSharedPhotos,
   readRecentPhotos,
@@ -69,12 +78,10 @@ import type { CommandLine, Suggestion } from "./completions.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
 import { ContextRow } from "./context-row.tsx";
-import { usesWorkspaceCursor } from "./workspace-menu.ts";
 import {
   readPendingStart,
   recordStart,
   removeStart,
-  startParts,
   startText,
   type PendingStart,
 } from "./workspace-start.ts";
@@ -85,21 +92,12 @@ import {
   useStartSender,
   workspaceStorage,
 } from "./workspace-start.tsx";
-import type { UserContent } from "./remote-chat.ts";
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
 import { AnimatedGlass } from "./composer-glass.tsx";
 import { COMPOSER, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { GaugeIcon } from "./gauge-icon.tsx";
 import { ThinkingSelector } from "./thinking-selector.tsx";
-import { clearChatDraft, useChatDraft, useChatScope } from "./drafts.ts";
-import {
-  discardMessageReceipt,
-  finishMessageReceipt,
-  finishNewConversation,
-  prepareMessageReceipt,
-  prepareNewConversation,
-  readMessageDelivery,
-} from "./send-receipts.ts";
+import { useChatDraft, useChatScope } from "./drafts.ts";
 import {
   supportedThinkingLevel,
   THINKING_LABELS,
@@ -122,14 +120,17 @@ type SessionTarget = {
   kind: "session";
   sessionId: SessionId;
   head: string;
-  heads: readonly string[];
-  config: RunConfig;
+  heads: readonly HeadName[];
+  config: Configuration | null;
+  workspace: WorkspaceId | undefined;
+  catalog: SessionCatalogView;
   sending: boolean;
   running: boolean;
   stopping: boolean;
   error: string | undefined;
-  onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
+  onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
   onStop: () => void;
+  onChooseHead: (head: HeadName) => void;
 };
 
 export const Composer = memo(function Composer({
@@ -137,7 +138,6 @@ export const Composer = memo(function Composer({
   placeholder,
   prefill,
   gutters,
-  workspacePending,
   workspaceEpoch = 0,
   onBusyChange,
 }: {
@@ -145,13 +145,12 @@ export const Composer = memo(function Composer({
   placeholder: string;
   prefill?: { text: string; nonce: number };
   gutters: { left: number; right: number };
-  workspacePending?: { current: Promise<void> | undefined };
   workspaceEpoch?: number;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
-  const { client, info } = useHost();
+  const { client } = useHost();
   const folders = useRegistryFolders();
   const startSender = useStartSender();
   const pendingStart = usePendingStart();
@@ -173,11 +172,7 @@ export const Composer = memo(function Composer({
   const [thinking, setThinking] = useState<ThinkingLevel>();
   const [selectorOpen, setSelectorOpen] = useState(false);
 
-  const [delivery, setDelivery] = useState<Delivery>(() =>
-    activeSessionId === undefined
-      ? "steer"
-      : (readMessageDelivery({ scope, sessionId: activeSessionId }) ?? "steer"),
-  );
+  const [delivery, setDelivery] = useState<Delivery>("steer");
 
   const { catalog } = useModelCatalog(client);
   const insets = useSafeAreaInsets();
@@ -201,15 +196,11 @@ export const Composer = memo(function Composer({
 
   const submissionActive = useRef(false);
 
-  const localWorkspacePending = useRef<Promise<void> | undefined>(undefined);
-
   const { completion, commands } = useCompletions(
     client,
-    activeSessionId !== undefined
-      ? { kind: "session", sessionId: activeSessionId }
-      : folders === undefined
-        ? { kind: "cursor" }
-        : { kind: "registered", id: folders.kind === "ready" ? folders.selected?.id : undefined },
+    target.kind === "session"
+      ? { kind: "session", workspace: target.workspace, catalog: target.catalog }
+      : { kind: "registered", id: folders.kind === "ready" ? folders.selected?.id : undefined },
     draft,
     caret,
     focused,
@@ -240,8 +231,8 @@ export const Composer = memo(function Composer({
     localError ?? dictation.error ?? (target.kind === "session" ? target.error : undefined);
 
   const hasContent = draft.trim() !== "" || images.length > 0;
-  const sessionModel = target.kind === "session" ? target.config.model : undefined;
-  const sessionThinking = target.kind === "session" ? target.config.thinkingLevel : undefined;
+  const sessionModel = target.kind === "session" ? target.config?.model : undefined;
+  const sessionThinking = target.kind === "session" ? target.config?.thinking : undefined;
 
   const catalogModel = matchCatalogModel(
     catalog.kind === "ready" ? catalog.models : [],
@@ -280,7 +271,7 @@ export const Composer = memo(function Composer({
   const plusLeft = useDerivedValue(() => gutters.left + 2);
 
   const catalogModelKey =
-    catalogModel === undefined ? undefined : `${catalogModel.provider}:${catalogModel.id}`;
+    catalogModel === undefined ? undefined : `${catalogModel.ref.provider}:${catalogModel.ref.id}`;
 
   const [seenModelKey, setSeenModelKey] = useState(catalogModelKey);
 
@@ -319,7 +310,7 @@ export const Composer = memo(function Composer({
     );
   }, [completionOpen, attachExtend, attachProgress]);
 
-  function buildContent(): UserContent {
+  function buildContent(): DraftPart[] {
     const text = draft.trim();
 
     const notes = images
@@ -327,9 +318,9 @@ export const Composer = memo(function Composer({
       .filter((note) => note !== undefined);
 
     return [
-      ...(text === "" ? [] : [{ type: "text" as const, text }]),
+      ...(text === "" ? [] : [{ kind: "text" as const, text }]),
       ...images.map((image) => resolveAttachment(image).image.image),
-      ...notes.map((note) => ({ type: "text" as const, text: note })),
+      ...notes.map((note) => ({ kind: "text" as const, text: note })),
     ];
   }
 
@@ -343,26 +334,29 @@ export const Composer = memo(function Composer({
 
   const deliver = async (input: {
     sessionId: SessionId;
-    content: UserContent;
+    content: DraftContent;
     line: CommandLine | undefined;
-    send: (content: UserContent) => Promise<boolean>;
+    send: (content: DraftContent) => Promise<boolean>;
   }): Promise<boolean> => {
     if (input.line === undefined) return input.send(input.content);
 
-    const outcome = await client.plugins.commands.run({
-      sessionId: input.sessionId,
-      ...input.line,
-    });
+    const outcome = await client
+      .session(input.sessionId)
+      .command(input.line.name, input.line.argument === "" ? undefined : input.line.argument);
 
     switch (outcome.kind) {
       case "ran":
-        setNotice(outcome.output);
+        setNotice(outcome.output ?? undefined);
 
         return true;
-      case "prompt":
-        return input.send([{ type: "text", text: outcome.prompt }]);
-      case "not_found":
+      case "sent":
+        return true;
+      case "unknown":
         return input.send(input.content);
+      case "invalid":
+        setLocalError(outcome.issues[0]?.message ?? "The host refused that command's input.");
+
+        return false;
       case "failed":
         setLocalError(outcome.message);
 
@@ -375,36 +369,37 @@ export const Composer = memo(function Composer({
     }
   };
 
+  /** The head a session composer configures: the one on screen. */
+  const headOf = (session: SessionTarget): Head => {
+    const handle = client.session(session.sessionId);
+    const name = session.heads.find((head) => head === session.head);
+
+    return name === undefined ? handle : handle.head(name);
+  };
+
   const configureSession = async (
-    sessionId: SessionId,
+    head: Head,
     next: {
       model?: ModelInfo;
-      thinkingLevel?: ThinkingLevel;
+      thinking?: ThinkingLevel;
     },
   ): Promise<boolean> => {
     try {
-      const request = { sessionId };
-
-      const withModel =
-        next.model === undefined
-          ? request
-          : { ...request, model: { provider: next.model.provider, id: next.model.id } };
-
-      const outcome = await client.sessions.configure(
-        next.thinkingLevel === undefined
-          ? withModel
-          : { ...withModel, thinkingLevel: next.thinkingLevel },
-      );
+      const outcome = await head.configure({ model: next.model?.ref, thinking: next.thinking });
 
       switch (outcome.kind) {
-        case "queued":
+        case "configured":
           return true;
-        case "unknown_model":
+        case "unknown-model":
           setLocalError("The host doesn't offer that model.");
 
           return false;
-        case "unknown_agent":
+        case "unknown-agent":
           setLocalError("The host doesn't offer that agent.");
+
+          return false;
+        case "invalid":
+          setLocalError(outcome.issues[0]?.message ?? "The host refused that choice.");
 
           return false;
         default: {
@@ -432,17 +427,8 @@ export const Composer = memo(function Composer({
 
     try {
       if (target.kind === "session") {
-        const send = (message: UserContent) => {
-          const receipt = prepareMessageReceipt({
-            scope,
-            sessionId: target.sessionId,
-            content: message,
-            delivery: running ? delivery : undefined,
-            draft: submitted,
-          });
-
-          return target.onSend(message, receipt.delivery);
-        };
+        const send = (message: DraftContent) =>
+          target.onSend(message, running ? delivery : undefined);
 
         if (await deliver({ sessionId: target.sessionId, content, line, send }))
           clearSubmitted(submitted, submittedImages);
@@ -452,106 +438,44 @@ export const Composer = memo(function Composer({
 
       setStarting(true);
       onBusyChange?.(true);
+      const folder = folders.kind === "ready" ? folders.selected : undefined;
 
-      if (folders !== undefined) {
-        const folder = folders.kind === "ready" ? folders.selected : undefined;
-
-        if (folder === undefined) {
-          setLocalError(
-            folders.kind === "ready" ? "Choose a folder first." : "Folders are still loading.",
-          );
-
-          return;
-        }
-
-        if (readPendingStart(workspaceStorage, scope) !== undefined) {
-          setLocalError("Finish the waiting message first.");
-
-          return;
-        }
-
-        const typed = submitted.trim().split("\n")[0]?.slice(0, 48) ?? "";
-
-        const request = {
-          requestId: randomUUID(),
-          workspace: { id: folder.id },
-          message: { content },
-          name: typed === "" ? "New conversation" : typed,
-        };
-
-        const withModel =
-          model === undefined
-            ? request
-            : { ...request, model: { provider: model.provider, id: model.id } };
-
-        // The whole request is on record before it is sent; every retry sends the record.
-        const recorded = recordStart(
-          workspaceStorage,
-          scope,
-          thinking === undefined ? withModel : { ...withModel, thinkingLevel: thinking },
+      if (folder === undefined) {
+        setLocalError(
+          folders.kind === "ready" ? "Choose a folder first." : "Folders are still loading.",
         );
-
-        if (recorded.kind === "waiting") {
-          setLocalError("Finish the waiting message first.");
-
-          return;
-        }
-
-        clearSubmitted(submitted, submittedImages);
-        void startSender.send(recorded.pending.input, true).then((failure) => {
-          if (failure !== undefined) setLocalError(failure);
-        });
 
         return;
       }
 
-      await (workspacePending ?? localWorkspacePending).current;
+      if (readPendingStart(workspaceStorage, scope) !== undefined) {
+        setLocalError("Finish the waiting message first.");
 
-      const selection = usesWorkspaceCursor(info) ? await client.workspace.current() : undefined;
-
-      const workspace = selection?.kind === "project" ? selection.workspace.path : "home";
-      const id = prepareNewConversation({ scope, workspace });
-      const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
-      const name = line?.name ?? (typed === "" ? "New conversation" : typed);
-      const existing = await client.sessions.get({ sessionId: id });
-      const session = existing ?? (await client.sessions.create({ sessionId: id, name }));
-
-      if (
-        (model !== undefined || thinking !== undefined) &&
-        !(await configureSession(session.sessionId, { model, thinkingLevel: thinking }))
-      )
         return;
+      }
 
-      const accepted = await deliver({
-        sessionId: session.sessionId,
+      const typed = submitted.trim().split("\n")[0]?.slice(0, 48) ?? "";
+
+      // The whole request is on record before it is sent; every retry sends the record.
+      const recorded = recordStart(workspaceStorage, scope, {
+        requestId: randomUUID(),
+        workspace: folder.id,
+        name: typed === "" ? "New conversation" : typed,
         content,
-        line,
-        send: async (message) => {
-          const receipt = prepareMessageReceipt({
-            scope,
-            sessionId: session.sessionId,
-            content: message,
-            draft: submitted,
-          });
-
-          await client.messages.send({
-            sessionId: session.sessionId,
-            content: message,
-            delivery: receipt.delivery,
-            key: receipt.key,
-          });
-          clearChatDraft({ scope, submitted });
-          finishMessageReceipt({ scope, sessionId: session.sessionId, key: receipt.key });
-
-          return true;
-        },
+        model: model?.ref,
+        thinking,
       });
 
-      if (!accepted) return;
+      if (recorded.kind === "waiting") {
+        setLocalError("Finish the waiting message first.");
+
+        return;
+      }
+
       clearSubmitted(submitted, submittedImages);
-      finishNewConversation({ scope, id });
-      Keyboard.dismiss();
-      router.push(`/chat/${session.sessionId}`);
+      void startSender.send(recorded.pending.input, true).then((failure) => {
+        if (failure !== undefined) setLocalError(failure);
+      });
     } catch (cause: unknown) {
       setLocalError(describeHostError(cause));
     } finally {
@@ -564,15 +488,9 @@ export const Composer = memo(function Composer({
 
   /** A waiting start goes back into the composer, ahead of anything typed since. */
   const editStart = (pending: PendingStart) => {
-    const restored = startParts(pending.input).flatMap((part): StagedImage[] =>
-      part.type === "image"
-        ? [
-            {
-              id: randomUUID(),
-              uri: `data:${part.mimeType};base64,${part.data}`,
-              image: part,
-            },
-          ]
+    const restored = pending.input.content.flatMap((part): StagedImage[] =>
+      part.kind === "image"
+        ? [{ id: randomUUID(), uri: `data:${part.mime};base64,${part.data}`, image: part }]
         : [],
     );
 
@@ -663,9 +581,9 @@ export const Composer = memo(function Composer({
 
   const chooseHead = (head: string) => {
     if (target.kind !== "session") return;
-    void client.sessions
-      .configure({ sessionId: target.sessionId, head })
-      .catch((cause: unknown) => setLocalError(describeHostError(cause)));
+    const name = target.heads.find((candidate) => candidate === head);
+
+    if (name !== undefined) target.onChooseHead(name);
   };
 
   const chooseModel = async (choice: ModelInfo): Promise<boolean> => {
@@ -679,9 +597,9 @@ export const Composer = memo(function Composer({
 
     setSelectingModel(true);
 
-    const applied = await configureSession(target.sessionId, {
+    const applied = await configureSession(headOf(target), {
       model: choice,
-      thinkingLevel: supportedThinkingLevel(choice, chosenThinking),
+      thinking: supportedThinkingLevel(choice, chosenThinking),
     });
 
     setSelectingModel(false);
@@ -698,7 +616,7 @@ export const Composer = memo(function Composer({
     setThinking(choice);
 
     if (target.kind !== "session") return;
-    void configureSession(target.sessionId, { thinkingLevel: choice }).then((applied) => {
+    void configureSession(headOf(target), { thinking: choice }).then((applied) => {
       if (!applied) setThinking(sessionThinking);
     });
   };
@@ -742,7 +660,7 @@ export const Composer = memo(function Composer({
             {`Up to ${String(MAX_ATTACHMENTS)} photos per message.`}
           </html.p>
         ) : null}
-        {target.kind === "new" && folders !== undefined && pendingStart !== undefined ? (
+        {target.kind === "new" && pendingStart !== undefined ? (
           <PendingStartStrip
             key={pendingStart.input.requestId}
             pending={pendingStart}
@@ -821,7 +739,7 @@ export const Composer = memo(function Composer({
               </html.div>
             ) : null}
             {running ? (
-              <html.div style={[styles.deliveryRow, delivery === "next" && styles.queuedDelivery]}>
+              <html.div style={[styles.deliveryRow, delivery === "queue" && styles.queuedDelivery]}>
                 <Host
                   style={field.deliveryHost}
                   matchContents={{ vertical: true }}
@@ -831,7 +749,7 @@ export const Composer = memo(function Composer({
                     label={
                       <HStack spacing={spacing.xs}>
                         <Image
-                          systemName={delivery === "next" ? "clock" : "arrow.turn.up.right"}
+                          systemName={delivery === "queue" ? "clock" : "arrow.turn.up.right"}
                           size={14}
                           modifiers={[foregroundStyle(theme.accent)]}
                         />
@@ -842,7 +760,7 @@ export const Composer = memo(function Composer({
                             lineLimit(1),
                           ]}
                         >
-                          {delivery === "next" ? "After this response" : "Steer response"}
+                          {delivery === "queue" ? "After this response" : "Steer response"}
                         </Text>
                         <Image
                           systemName="chevron.down"
@@ -860,22 +778,12 @@ export const Composer = memo(function Composer({
                     <Button
                       label="Steer current response"
                       systemImage={delivery === "steer" ? "checkmark" : undefined}
-                      onPress={() => {
-                        setDelivery("steer");
-
-                        if (target.kind === "session")
-                          discardMessageReceipt({ scope, sessionId: target.sessionId });
-                      }}
+                      onPress={() => setDelivery("steer")}
                     />
                     <Button
                       label="Queue after response"
-                      systemImage={delivery === "next" ? "checkmark" : undefined}
-                      onPress={() => {
-                        setDelivery("next");
-
-                        if (target.kind === "session")
-                          discardMessageReceipt({ scope, sessionId: target.sessionId });
-                      }}
+                      systemImage={delivery === "queue" ? "checkmark" : undefined}
+                      onPress={() => setDelivery("queue")}
                     />
                   </Menu>
                 </Host>
@@ -1029,7 +937,7 @@ export const Composer = memo(function Composer({
               ) : hasContent ? (
                 <html.button
                   aria-label={
-                    running && delivery === "next"
+                    running && delivery === "queue"
                       ? "Queue message"
                       : running
                         ? "Steer response"
@@ -1089,7 +997,7 @@ export const Composer = memo(function Composer({
         client={client}
         open={modelPickerOpen}
         onClose={() => setModelPickerOpen(false)}
-        selectedModel={chosenModel}
+        selectedModel={chosenModel?.ref}
         selectingModel={selectingModel}
         modelError={localError}
         onSelect={chooseModel}
@@ -1146,9 +1054,7 @@ function matchCatalogModel(
 ): ModelInfo | undefined {
   if (ref === undefined) return undefined;
 
-  return models.find(
-    (item) => item.id === ref.id && (ref.provider === undefined || item.provider === ref.provider),
-  );
+  return models.find((item) => item.ref.id === ref.id && item.ref.provider === ref.provider);
 }
 
 const field = StyleSheet.create({

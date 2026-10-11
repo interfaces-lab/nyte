@@ -1,10 +1,10 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
-import { useCallback } from "react";
 import type { ReactElement } from "react";
-import { toolStatus } from "@nyte-ai/client";
-import type { SessionId, SessionInfo, ToolState, TurnToolClass } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, ToolClass } from "@nyte-ai/sdk";
+import { toolStatus } from "../view-helpers.ts";
+import type { ToolMessage } from "../view-helpers.ts";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -15,10 +15,15 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
-import { useSessionFrameSelector } from "../live.ts";
-import type { SessionFrame } from "../live.ts";
-import { useCatalog, useChildSessions, useSession } from "../queries.ts";
-import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
+import {
+  useCatalog,
+  useChildSessions,
+  useSession,
+  useSessionChoice,
+  useSessionView,
+  useWorkspaces,
+} from "../queries.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { modelDisplayName, providerIcon, THINKING_LABELS } from "./model-picker-state.ts";
 import { activityStyles, proseStyles, subagentCallStyles } from "./styles.stylex.ts";
 import { useChildSession, useOpenSubagentTray } from "./subagent-sessions.ts";
@@ -32,7 +37,7 @@ import {
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type DelegateToolClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
+export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 const lineStyles = create({
   detailsRow: { display: "flex", alignItems: "center", gap: 4 },
@@ -101,8 +106,9 @@ type SubagentSubject =
   | { readonly kind: "call"; readonly status: SubagentStatus };
 
 function SubagentModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
-  const catalog = useCatalog(session.sessionId);
-  const name = modelDisplayName(catalog.data, session.config.model);
+  const catalog = useCatalog();
+  const choice = useSessionChoice(session.id);
+  const name = modelDisplayName(catalog.data, choice?.model);
 
   if (name === undefined) return null;
 
@@ -119,12 +125,7 @@ function SubagentStatusLine({
   readonly watched: SessionId | undefined;
   readonly cwd: string | undefined;
 }): ReactElement {
-  const select = useCallback(
-    (frame: SessionFrame | undefined) => subagentActivity(frame, cwd),
-    [cwd],
-  );
-
-  const activity = useSessionFrameSelector(watched, select);
+  const activity = subagentActivity(useSessionView(watched), cwd);
   const running = status.indicator === "running";
 
   return (
@@ -157,11 +158,9 @@ function SubagentRow({
   readonly open: (() => void) | undefined;
   readonly xstyle: StyleXStyles;
 }): ReactElement {
-  const read = useReadSessions();
-
   const status =
     subject.kind === "session"
-      ? sessionStatus(subject.session, sessionHasUnreadCompletion(subject.session, read))
+      ? sessionStatus(subject.session, sessionHasUnreadCompletion(subject.session))
       : subject.status;
 
   const content = (
@@ -192,7 +191,7 @@ function SubagentRow({
             status={status}
             watched={
               subject.kind === "session" && status.indicator === "running"
-                ? subject.session.sessionId
+                ? subject.session.id
                 : undefined
             }
             cwd={cwd}
@@ -230,11 +229,11 @@ function SubagentNestedRows({
         .toSorted((left, right) => left.createdAt - right.createdAt)
         .map((child) => (
           <SubagentRow
-            key={child.sessionId}
-            title={child.name ?? child.preview ?? "Subagent"}
+            key={child.id}
+            title={child.name ?? "Subagent"}
             subject={{ kind: "session", session: child }}
             cwd={cwd}
-            open={openTray === undefined ? undefined : () => openTray(child.sessionId)}
+            open={openTray === undefined ? undefined : () => openTray(child.id)}
             xstyle={subagentCallStyles.nestedRow}
           />
         ))}
@@ -247,12 +246,12 @@ const STARTING: SubagentStatus = { indicator: "running", text: "Starting up" };
 export function SubagentCallView({
   session,
   title,
-  state,
+  message,
   cwd,
 }: {
   readonly session: SessionId;
   readonly title: string;
-  readonly state: ToolState;
+  readonly message: ToolMessage;
   readonly cwd: string | undefined;
 }): ReactElement {
   // The parent's list lags the child, and a parent that stopped or was left
@@ -265,7 +264,7 @@ export function SubagentCallView({
 
   const subject: SubagentSubject =
     child === undefined
-      ? { kind: "call", status: read.data === null ? callStatus(toolStatus(state)) : STARTING }
+      ? { kind: "call", status: read.data === null ? callStatus(toolStatus(message)) : STARTING }
       : "kind" in child
         ? { kind: "call", status: STARTING }
         : { kind: "session", session: child };
@@ -287,16 +286,16 @@ export function SubagentCallView({
 /** A call on a child, drawn as a tool line: the verb, then the agent it names, which opens the child. */
 export function SubagentLineView({
   toolClass,
-  state,
+  message,
   output,
 }: {
   readonly toolClass: DelegateToolClass;
-  readonly state: ToolState;
+  readonly message: ToolMessage;
   readonly output: string;
 }): ReactElement {
-  const status = toolStatus(state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
-  const session = toolClass.target.session;
+  const session = toolClass.child ?? undefined;
   const childSession = useChildSession(session);
 
   const child =
@@ -306,8 +305,9 @@ export function SubagentLineView({
         ? childSession.title
         : childSession.name;
 
-  const openTray = useOpenSubagentTray();
-  const label = child ?? "agent";
+  const tray = useOpenSubagentTray();
+  const openTray = session === undefined ? undefined : tray;
+  const label = child ?? toolClass.title ?? "agent";
   const verb = status.tense === "none" ? undefined : DELEGATE_VERBS[toolClass.role][status.tense];
   const expandable = output.trim() !== "";
 
@@ -346,7 +346,9 @@ export function SubagentLineView({
           <span {...props(lineStyles.agent)}>{agent}</span>
         ) : (
           <Row.Primary
-            onClick={() => openTray(session)}
+            onClick={() => {
+              if (session !== undefined) openTray(session);
+            }}
             xstyle={[lineStyles.agent, lineStyles.agentButton, focus.ring]}
           >
             {agent}
@@ -404,15 +406,17 @@ const citationStyles = create({
 });
 
 function CitationModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
-  const catalog = useCatalog(session.sessionId);
-  const { model, thinkingLevel } = session.config;
+  const catalog = useCatalog();
+  const choice = useSessionChoice(session.id);
+  const model = choice?.model;
+  const thinkingLevel = choice?.thinking;
   const name = modelDisplayName(catalog.data, model);
 
   if (model === undefined || name === undefined) return null;
 
   return (
     <span {...props(citationStyles.detail)}>
-      <Icon name={providerIcon(model.provider ?? "")} size={12} />
+      <Icon name={providerIcon(model.provider)} size={12} />
       <span {...props(citationStyles.detailText)}>
         {thinkingLevel === undefined || thinkingLevel === "off"
           ? name
@@ -420,6 +424,10 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
       </span>
     </span>
   );
+}
+
+function CitationFolder({ session }: { readonly session: SessionInfo }): string {
+  return useWorkspaces().data?.find((candidate) => candidate.id === session.workspace)?.name ?? "";
 }
 
 /**
@@ -473,7 +481,9 @@ export function SubagentCitation({
             <>
               <span {...props(citationStyles.detail)}>
                 <Icon name="folder" size={12} />
-                <span {...props(citationStyles.detailText)}>{child.workspace.cwd}</span>
+                <span {...props(citationStyles.detailText)}>
+                  <CitationFolder session={child} />
+                </span>
               </span>
               <CitationModel session={child} />
             </>

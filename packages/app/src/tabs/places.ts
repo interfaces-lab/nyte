@@ -1,6 +1,6 @@
 /** Where each window-tab place lives in the route, and back. */
 import type { useRouter } from "@tanstack/react-router";
-import { schemas } from "@nyte-ai/protocol";
+import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sameSelection } from "../layout/pane-layout.ts";
@@ -55,7 +55,7 @@ export function locationPlace(router: AppRouter): Place | undefined {
   if (segment === undefined) return pathname === "/" ? { kind: "blank" } : undefined;
   const session = decodeURIComponent(segment);
 
-  return Value.Check(schemas.SessionId, session)
+  return Value.Check(sessionIdSchema, session)
     ? { kind: "session", sessionId: session }
     : undefined;
 }

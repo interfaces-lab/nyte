@@ -12,7 +12,7 @@ import {
   StyledText,
 } from "@opentui/core";
 import type { Renderable, TextRenderable } from "@opentui/core";
-import type { ImageContent, UserMessage } from "@nyte-ai/schema";
+import type { UserContent } from "@nyte-ai/sdk";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -38,18 +38,22 @@ interface PresentedSkill {
   readonly path: string;
 }
 
+/** An attached file as a message carries it. */
+type AttachedFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
+
 interface UserPresentation {
   readonly text: string;
   readonly files: readonly PresentedFile[];
   readonly skills: readonly PresentedSkill[];
   readonly shells: readonly ShellRun[];
-  readonly images: readonly ImageContent[];
+  readonly images: readonly AttachedFile[];
 }
 
-function userPresentation(content: UserMessage["content"]): UserPresentation {
-  let text = Array.isArray(content)
-    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-    : content;
+function userPresentation(content: UserContent): UserPresentation {
+  let text =
+    typeof content === "string"
+      ? content
+      : content.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("");
 
   // Instructions the prompt pulled in are the skill, not the prompt; an
   // attached body is the file, not the prompt. Both fold back to their tag.
@@ -79,9 +83,17 @@ function userPresentation(content: UserMessage["content"]): UserPresentation {
     text = text.replace(block.source, "");
   }
 
-  const images = Array.isArray(content)
-    ? content.flatMap((part) => (part.type === "image" ? [part] : []))
-    : [];
+  const images =
+    typeof content === "string"
+      ? []
+      : content.flatMap((part) =>
+          part.kind === "file" && part.mime.startsWith("image/") ? [part] : [],
+        );
+
+  if (typeof content !== "string")
+    for (const part of content) {
+      if (part.kind === "reference") files.push({ path: part.path });
+    }
 
   if (images.length > 0) text = text.replace(/\[Image \d+\]/g, "");
 
@@ -285,7 +297,7 @@ function addShellTag(
 /** The request block of a turn; a pending message draws the same block ahead of its turn. */
 export function appendMessage(
   transcript: Transcript,
-  props: { readonly align: "end"; readonly content: UserMessage["content"] },
+  props: { readonly align: "end"; readonly content: UserContent },
   parent: Renderable,
   before?: Renderable,
 ): BoxRenderable {
@@ -347,18 +359,31 @@ export function appendMessage(
   for (const [index, image] of presentation.images.entries()) {
     const preview = new ImageRenderable(transcript.renderer, {
       id: transcript.nextId("user-image"),
-      source: Buffer.from(image.data, "base64"),
       width: "100%",
       height: 12,
       fit: "fit",
       visible: transcript.disclosures?.get(`image:${String(index)}`) ?? false,
     });
 
+    const load = (): void => {
+      if (preview.source !== undefined) return;
+      void transcript
+        .blob(image.blob)
+        .then((bytes) => {
+          if (!preview.isDestroyed) preview.source = Buffer.from(bytes);
+        })
+        .catch(() => undefined);
+    };
+
+    if (preview.visible) load();
+
     collapsedTag(transcript, tags, {
-      label: () => ` Image ${String(index + 1)} (${image.mimeType}) `,
+      label: () => ` Image ${String(index + 1)} (${image.mime}) `,
       onToggle: () => {
         preview.visible = !preview.visible;
         transcript.disclosures?.set(`image:${String(index)}`, preview.visible);
+
+        if (preview.visible) load();
       },
     });
     block.add(preview);

@@ -5,20 +5,17 @@
  */
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
-import type { WorkspaceSessionDirectory } from "../bridge.ts";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
-import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import {
-  keys,
-  queryClient,
+  sessionFolderPath,
   useWorkingSessionIds,
   useWorkspaceSessionDirectory,
 } from "../queries.ts";
 import { sessionActivityMark } from "../session-activity.ts";
-import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 import { activeTab, currentView, isPage, tabPlace, tabPlaces } from "./model.ts";
@@ -32,11 +29,7 @@ export function useWindowTabsState(): WindowState {
 }
 
 function sessionFolder(sessionId: SessionId): string | null | undefined {
-  const directory = queryClient
-    .getQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory)
-    ?.find((candidate) => candidate.sessions.some((session) => session.sessionId === sessionId));
-
-  return directory?.environment === "local" ? directory.workspacePath : undefined;
+  return sessionFolderPath(sessionId);
 }
 
 /**
@@ -104,9 +97,7 @@ export function useWindowTabsSync(): void {
 function sessionTitle(session: SessionInfo | undefined): string {
   if (session === undefined) return "Chat";
 
-  return (
-    session.name ?? (session.preview === undefined ? "New chat" : userDisplayText(session.preview))
-  );
+  return session.name ?? "New chat";
 }
 
 function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>): string {
@@ -130,14 +121,13 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
 /** The strip's items: titles, status marks and unread dots from the session directory. */
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const directory = useWorkspaceSessionDirectory();
-  const read = useReadSessions();
   const working = useWorkingSessionIds();
 
   const sessions = useMemo(
     () =>
       new Map(
         (directory.data ?? []).flatMap((entry) =>
-          entry.sessions.map((session) => [session.sessionId, session] as const),
+          entry.sessions.map((session) => [session.id, session] as const),
         ),
       ),
     [directory.data],
@@ -150,7 +140,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
 
     const mark =
-      session === undefined ? "idle" : sessionActivityMark(session, working.has(session.sessionId));
+      session === undefined ? "idle" : sessionActivityMark(session, working.has(session.id));
 
     const glyph =
       place.kind === "session" ? (
@@ -181,7 +171,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
           if (candidate.kind !== "session") return false;
           const listed = sessions.get(candidate.sessionId);
 
-          return listed !== undefined && sessionHasUnreadCompletion(listed, read);
+          return listed !== undefined && sessionHasUnreadCompletion(listed);
         }),
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,

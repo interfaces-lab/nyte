@@ -12,7 +12,7 @@ import type {
 import { closable, coalesce, emptyFold, fold, project, withRevision } from "@nyte-ai/core";
 import type { FoldState } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
-import type { Outbox } from "./outbox.ts";
+import type { JournalLoop } from "./journal.ts";
 import type { Rows } from "./rows.ts";
 
 /** Receives the values a pushed stream yields: the newest wins, then its end or its failure. */
@@ -116,13 +116,13 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
 
 /**
  * Yields a head's view on every change from the connection's shared fold
- * for it, projected with this watcher's options. The outbox's unsent sends
+ * for it, projected with this watcher's options. The journal's unsent sends
  * for the head are merged as `unsent` user messages; views are coalesced to
  * one per 16 ms frame. `return()` leaves the fold.
  */
 export function watchHead(
   folds: Folds,
-  outbox: Outbox,
+  journal: JournalLoop,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
@@ -139,7 +139,7 @@ export function watchHead(
         const state = hold.state();
 
         if (state === null) return;
-        const view = withUnsent(project(state, head, options), outbox, session, head, state);
+        const view = withUnsent(project(state, head, options), journal, session, head, state);
 
         if (view === shown) return;
         shown = view;
@@ -152,7 +152,7 @@ export function watchHead(
         fail: (error) => sink.fail(error),
       });
 
-      const unsubscribe = outbox.subscribe(emit);
+      const unsubscribe = journal.subscribe(emit);
       emit();
 
       return () => {
@@ -210,27 +210,21 @@ export function watchHost(rows: Rows): AsyncIterable<HostView> {
   );
 }
 
-/** Returns a view with the outbox's unsent sends for its head placed before its first pending user message, or the same view when there are none; a send the view already carries is reported landed and not shown twice. */
+/** Returns a view with the journal's unsent sends for its head placed before its first pending user message, or the same view when there are none. The journal is first told which answered sends the view carries (they land and leave it), and a send the view already carries is not shown twice. */
 export function withUnsent(
   view: SessionView,
-  outbox: Outbox,
+  journal: JournalLoop,
   session: SessionId,
   head: HeadName,
   state: FoldState | null,
 ): SessionView {
-  const unsent = outbox.unsent(session, head);
-
-  if (unsent.length === 0) return view;
+  if (journal.unsent(session, head).length === 0) return view;
 
   const known = (id: Message["id"]): boolean =>
     state === null ? view.messages.some((message) => message.id === id) : state.messages.has(id);
 
-  const missing = unsent.filter((message) => {
-    if (!known(message.id)) return true;
-    outbox.landed(message.id);
-
-    return false;
-  });
+  journal.landed(known);
+  const missing = journal.unsent(session, head).filter((message) => !known(message.id));
 
   if (missing.length === 0) return view;
 

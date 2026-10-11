@@ -2,8 +2,8 @@ import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { Model } from "@nyte-ai/schema";
+import type { Model } from "@nyte-ai/ai";
+import { sdk } from "@nyte-ai/sdk";
 
 export const FIXTURE_PROVIDER = "opencode";
 
@@ -48,10 +48,31 @@ function hostRipgrep(): string {
   );
 }
 
-/** Only public on-disk configuration is seeded. The binary owns its database. */
+/**
+ * Seeds what the binary's host keeps in its store, `<home>/.nyte/nyte.db`:
+ * the fixture provider's key, through the host's own key login, and the
+ * default model, set once the host has restored the seeded catalog.
+ */
+async function seedHost(home: string): Promise<void> {
+  await using host = await sdk.open({ home, workspace: { kind: "local", path: home } });
+  const login = host.models.login({ provider: FIXTURE_PROVIDER, method: { kind: "key" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "paste") await login.answer(FIXTURE_API_KEY);
+
+    if (step.kind === "failed") throw new Error(`The QA login failed: ${step.reason}`);
+  }
+
+  await host.models.refresh(FIXTURE_PROVIDER);
+  const outcome = await host.models.setDefault({ provider: FIXTURE_PROVIDER, id: FIXTURE_MODEL });
+
+  if (outcome.kind !== "set") throw new Error(`The QA default model was refused: ${outcome.kind}`);
+}
+
+/** Seeds the model catalog and settings files, then the credential and default model through the host. */
 export async function createWorkspace(options: {
   readonly baseUrl: string;
-  /** Adds project plugins (a probe command and the question tool), so Nyte asks for trust. */
+  /** Adds a project plugin with a probe command. */
   readonly plugin?: boolean;
 }): Promise<Workspace> {
   const endpoint = new URL(options.baseUrl);
@@ -95,40 +116,20 @@ export async function createWorkspace(options: {
     );
 
     const files = {
-      "auth.json": { [FIXTURE_PROVIDER]: { type: "api_key", key: FIXTURE_API_KEY } },
       // A fresh checkedAt is what stops a catalog fetch; only the rawCatalogs shape keeps it.
       "models-store.json": {
         rawCatalogs: { [FIXTURE_PROVIDER]: { models, checkedAt: Date.now() } },
       },
-      "settings.json": {
-        defaultProvider: FIXTURE_PROVIDER,
-        defaultModel: FIXTURE_MODEL,
-        defaultThinkingLevel: "off",
-        transport: "sse",
-        autoUpdate: false,
-        theme: "dark",
-        compaction: { enabled: false },
-      },
+      "settings.json": { autoUpdate: false, theme: "dark" },
     };
 
     for (const [name, value] of Object.entries(files)) {
       await writeFile(join(nyteHome, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
     }
 
+    await seedHost(home);
+
     if (options.plugin === true) {
-      // Bundle the public question example's dependencies, but use the binary's plugin API.
-      const built = await Bun.build({
-        entrypoints: [fileURLToPath(import.meta.resolve("@nyte-ai/plugin/examples/question"))],
-        outdir: join(cwd, ".nyte", "plugins", "question"),
-        naming: "index.js",
-        target: "bun",
-        format: "esm",
-        external: ["@nyte-ai/plugin"],
-      });
-
-      if (!built.success)
-        throw new AggregateError(built.logs, "Could not build the QA question plugin");
-
       const plugin = join(cwd, ".nyte", "plugins", "qa-probe");
       await mkdir(plugin, { recursive: true });
       await writeFile(
@@ -136,9 +137,11 @@ export async function createWorkspace(options: {
         `import { appendFileSync } from "node:fs";
 export default {
   id: "qa-probe",
-  session(api) {
+  activate(api) {
     appendFileSync(${JSON.stringify(join(cwd, PLUGIN_EVIDENCE))}, "setup\\n");
-    api.commands.add("qa-probe", {
+    api.contribute.commands.add({
+      name: "qa-probe",
+      title: "QA probe",
       description: "Show that the project plugin loaded",
       run: () => "QA plugin answered",
     });

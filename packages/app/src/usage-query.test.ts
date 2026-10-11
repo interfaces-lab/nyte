@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import type { HostBridge, UsageSnapshot, UsageWindow } from "./bridge.ts";
 import { installBridge } from "./nyte.ts";
 import { queryClient, usageReportOptions } from "./queries.ts";
 import { USAGE_RANGES, USAGE_STALE_AFTER_MS, usageWindow } from "./chrome/usage-view.ts";
 import { createWebBridge } from "./web/bridge.ts";
 
-const readUsage = vi.fn<HostBridge["usage"]>();
+const readUsage = vi.fn<NonNullable<HostBridge["usage"]>>();
 
 const web = createWebBridge().bridge;
 
@@ -45,7 +45,7 @@ const recorded = report({
     {
       day: "2026-09-02",
       workspacePath: null,
-      sessionId: sessionId("session-1"),
+      sessionId: asId<"session">("session-1"),
       subject: { kind: "model", provider: "openai", model: "gpt-5" },
       totals: {
         input: 100,
@@ -61,7 +61,7 @@ const recorded = report({
   ],
   sessions: [
     {
-      sessionId: sessionId("session-1"),
+      sessionId: asId<"session">("session-1"),
       name: "Chat",
       workspacePath: null,
       lastActivityAt: 2,

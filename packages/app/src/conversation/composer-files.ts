@@ -4,7 +4,7 @@
  * Every other file is referenced by path with the chip an `@` mention makes:
  * the file is already on disk, so the agent reads it from there.
  */
-import type { ImageContent } from "@nyte-ai/schema";
+import type { ImageContent } from "@nyte-ai/schema/model";
 import { nyte } from "../nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { fileFromUrl } from "./message-references.ts";

@@ -12,7 +12,9 @@ import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";
-import type { BrowserSignIn, DeviceCode } from "../bridge.ts";
+import type { DeviceCode } from "../bridge.ts";
+import { answerLogin } from "./login-attempts.ts";
+import type { BrowserSignIn } from "./login-attempts.ts";
 import { nyte } from "../nyte.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 
@@ -162,20 +164,20 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
  * to load on the serving machine.
  */
 export function BrowserSignInPanel({
-  attempt,
+  provider,
   browser,
   message,
 }: {
-  attempt: string;
+  provider: string;
   browser: BrowserSignIn;
   message: string | undefined;
 }): ReactElement {
   const host = linkHost(browser.url);
-  const answerLogin = browser.acceptsCode ? nyte.host.answerLogin : undefined;
+  const acceptsCode = browser.acceptsCode;
 
   return (
     <div {...props(styles.deviceCodePanel)}>
-      {answerLogin !== undefined && (
+      {acceptsCode && (
         <span {...props(styles.deviceCodeLead)}>
           Sign in at {host ?? "the provider's page"}, then paste the code it shows or the address it
           ends on.
@@ -203,12 +205,9 @@ export function BrowserSignInPanel({
           {host === undefined ? "Open Sign-In Page" : `Open ${host}`}
         </ButtonLink>
       </div>
-      {answerLogin !== undefined && (
-        <AnswerForm answer={(code) => answerLogin({ attempt, code })} />
-      )}
+      {acceptsCode && <AnswerForm answer={(code) => answerLogin(provider, code)} />}
       <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-        {message ??
-          (answerLogin === undefined ? "Nyte connects on its own once you sign in." : undefined)}
+        {message ?? (acceptsCode ? undefined : "Nyte connects on its own once you sign in.")}
       </span>
     </div>
   );

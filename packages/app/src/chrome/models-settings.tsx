@@ -1,8 +1,8 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 /**
- * Settings › Providers: connections and enabled models. The new-chat defaults render on Settings › Agent.
+ * Settings › Providers: provider connections, each signed in through the
+ * host's `models.login`. The new-chat default renders on Settings › Agent.
  */
-import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -11,30 +11,16 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { Input, InputGroup } from "@nyte-ai/ui/input";
+import { Input } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { SwitchField } from "@nyte-ai/ui/switch";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
-import {
-  formatContextWindow,
-  formatPricing,
-  providerIcon,
-  THINKING_LABELS,
-  thinkingLevelsFor,
-} from "../conversation/model-picker-state.ts";
+import { providerIcon } from "../conversation/model-picker-state.ts";
 import { nyte } from "../nyte.ts";
-import type { DesktopCatalog, ProviderStatus } from "../nyte.ts";
-import type { LoginMethod } from "../bridge.ts";
+import type { DesktopCatalog, ProviderStatus } from "../catalog.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
+import { connection } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
-import {
-  beginLoginAttempt,
-  endLoginAttempt,
-  newLoginAttemptId,
-  setLoginAttemptCancelling,
-  useLoginAttempt,
-} from "./login-attempts.ts";
+import { cancelLogin, startLogin, useLoginAttempt } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
@@ -84,16 +70,12 @@ export function NewChatsSection({
     (option) => option.provider === defaults.model.provider && option.id === defaults.model.id,
   );
 
-  // Keep a hidden or disabled default visible until the user chooses a listed model.
   const candidates = chosen !== undefined && !chosen.listed ? [chosen, ...listed] : listed;
-  const levels = thinkingLevelsFor(chosen);
 
   const modelOptions = candidates.map((option) => ({
     value: option.key,
     label: `${option.name} · ${providerNames.get(option.provider) ?? option.provider}`,
   }));
-
-  const levelOptions = levels.map((level) => ({ value: level, label: THINKING_LABELS[level] }));
 
   return (
     <section {...props(settingsPatterns.section)}>
@@ -118,10 +100,7 @@ export function NewChatsSection({
               const option = candidates.find((candidate) => candidate.key === key);
 
               if (option === undefined || setPreference.isPending) return;
-              setPreference.mutate({
-                kind: "defaults",
-                model: { provider: option.provider, id: option.id },
-              });
+              setPreference.mutate({ provider: option.provider, id: option.id });
             }}
           >
             <SelectTrigger aria-label="Default model" width="wide">
@@ -129,28 +108,6 @@ export function NewChatsSection({
             </SelectTrigger>
             <SelectContent>
               {modelOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value} label={option.label}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
-        <SettingsRow title="Reasoning" description="How long the model thinks before it answers">
-          <Select
-            items={levelOptions}
-            value={defaults.thinkingLevel}
-            disabled={levels.length === 0}
-            onValueChange={(thinkingLevel) => {
-              if (thinkingLevel !== null && !setPreference.isPending)
-                setPreference.mutate({ kind: "defaults", thinkingLevel });
-            }}
-          >
-            <SelectTrigger aria-label="Default reasoning">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {levelOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value} label={option.label}>
                   {option.label}
                 </SelectItem>
@@ -224,64 +181,36 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const setPreference = useSetPreference();
   const [keyFormOpen, setKeyFormOpen] = useState(false);
   const running = useLoginAttempt(provider.id);
-  // Once the catalog reports the connection, the attempt is only winding down.
-  const attempt = provider.connection.kind === "disconnected" ? running : undefined;
+  const disconnected = provider.credential === "missing";
+  const attempt = disconnected ? running : undefined;
 
   const login = useMutation({
-    mutationFn: async (method: LoginMethod) => {
-      const id = newLoginAttemptId();
-      beginLoginAttempt({ provider: provider.id, attempt: id, method: method.kind });
-
-      try {
-        return await nyte.host.login({ provider: provider.id, method, attempt: id });
-      } finally {
-        endLoginAttempt(provider.id, id);
-      }
-    },
+    mutationFn: (
+      method: { readonly kind: "browser" } | { readonly kind: "api_key"; readonly key: string },
+    ) => startLogin(provider.id, method),
     onSuccess: (outcome) => {
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
-
-      if (!provider.enabled)
-        setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true });
-
-      if (outcome.catalogRefreshed)
-        toast.add({ type: "success", title: `Connected to ${provider.name}` });
-      else
-        toast.add({
-          type: "warning",
-          title: `Connected to ${provider.name}, but its model list couldn't be updated. Sign out and in again to retry.`,
-        });
+      toast.add({ type: "success", title: `Connected to ${provider.name}` });
     },
     onError: () =>
       toast.add({ type: "error", title: `Couldn't sign in to ${provider.name}. Try again.` }),
   });
 
   const logout = useMutation({
-    mutationFn: () => nyte.host.logout({ provider: provider.id }),
+    mutationFn: () => connection().models.logout(provider.id),
     onSuccess: () => toast.add({ type: "success", title: `Signed out of ${provider.name}` }),
     onError: () =>
       toast.add({ type: "error", title: `Couldn't sign out of ${provider.name}. Try again.` }),
   });
 
-  const cancelLogin = (): void => {
-    if (attempt === undefined) return;
-    const id = attempt.attempt;
-    setLoginAttemptCancelling(provider.id, id, true);
-    void nyte.host.cancelLogin({ attempt: id }).catch(() => {
-      // The attempt is still running; give the button back rather than a stuck state.
-      setLoginAttemptCancelling(provider.id, id, false);
-      toast.add({
-        type: "error",
-        title: `Couldn't cancel the ${provider.name} sign-in. Try again.`,
-      });
-    });
+  const stopLogin = (): void => {
+    if (attempt !== undefined) cancelLogin(provider.id);
   };
 
   const busy = login.isPending || logout.isPending || setPreference.isPending;
-  const browser = provider.signIn.find((method) => method.kind === "browser");
-  const apiKey = provider.signIn.find((method) => method.kind === "api_key");
-  const { connection } = provider;
+  const browser = provider.methods.find((method) => method.kind === "oauth");
+  const apiKey = provider.methods.find((method) => method.kind === "key");
 
   const waiting =
     attempt?.cancelling === true
@@ -295,34 +224,26 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const popular = popularProviders.find((entry) => entry.id === provider.id);
 
   const badge =
-    connection.kind === "api_key"
-      ? "API key"
-      : connection.kind === "oauth"
-        ? "Subscription"
-        : popular?.recommended
-          ? "Recommended"
-          : undefined;
+    provider.credential === "failed"
+      ? "Credential failed"
+      : disconnected && popular?.recommended === true
+        ? "Recommended"
+        : undefined;
 
   const detail =
     waiting ??
-    (connection.kind === "oauth"
+    (!disconnected
       ? undefined
-      : connection.kind === "api_key"
-        ? connection.env === undefined
-          ? undefined
-          : `API key from ${connection.env}`
-        : (popular?.description ??
-          (browser !== undefined && apiKey !== undefined
-            ? `Sign in with ${browser.subscription}, or add an API key`
-            : apiKey !== undefined
-              ? "Add an API key to connect"
-              : browser !== undefined
-                ? "Sign in to connect"
-                : "Connects through the environment")));
+      : (popular?.description ??
+        (browser !== undefined && apiKey !== undefined
+          ? "Sign in, or add an API key"
+          : apiKey !== undefined
+            ? "Add an API key to connect"
+            : browser !== undefined
+              ? "Sign in to connect"
+              : "Connects through the environment")));
 
-  // A key from the environment is not ours to remove.
-  const canSignOut =
-    connection.kind === "oauth" || (connection.kind === "api_key" && connection.env === undefined);
+  const canSignOut = !disconnected;
 
   return (
     <ConnectionRow
@@ -336,10 +257,10 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       detail={detail}
       control={
         attempt !== undefined && attempt.method === "browser" ? (
-          <Button variant="outline" loading={attempt.cancelling} onClick={cancelLogin}>
+          <Button variant="outline" loading={attempt.cancelling} onClick={stopLogin}>
             Cancel
           </Button>
-        ) : connection.kind === "disconnected" ? (
+        ) : disconnected ? (
           browser === undefined && apiKey === undefined ? undefined : browser !== undefined &&
             apiKey !== undefined ? (
             <Menu>
@@ -352,9 +273,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                 }
               />
               <MenuContent align="end">
-                <MenuItem onClick={() => login.mutate({ kind: "browser" })}>
-                  {`Sign In with ${browser.subscription}`}
-                </MenuItem>
+                <MenuItem onClick={() => login.mutate({ kind: "browser" })}>Sign In</MenuItem>
                 <MenuItem
                   icon="key"
                   onClick={() => {
@@ -383,23 +302,14 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               Connect Provider
             </Button>
           )
-        ) : provider.enabled && !canSignOut ? undefined : (
+        ) : !canSignOut ? undefined : (
           <ConnectionMenu
             label={provider.name}
-            tone={provider.enabled ? "on" : "off"}
-            status={provider.enabled ? "Connected" : "Models off"}
+            tone="on"
+            status="Connected"
             loading={logout.isPending}
             disabled={login.isPending || setPreference.isPending}
           >
-            {!provider.enabled && (
-              <MenuItem
-                onClick={() =>
-                  setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true })
-                }
-              >
-                Enable Models
-              </MenuItem>
-            )}
             {canSignOut && (
               <MenuItem variant="danger" onClick={() => logout.mutate()}>
                 Disconnect Provider
@@ -413,17 +323,17 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           <DeviceCodePanel deviceCode={attempt.deviceCode} message={attempt.message} />
         ) : attempt?.browser !== undefined ? (
           <BrowserSignInPanel
-            attempt={attempt.attempt}
+            provider={provider.id}
             browser={attempt.browser}
             message={attempt.message}
           />
         ) : keyFormOpen && apiKey !== undefined ? (
           <ApiKeyForm
-            label={apiKey.label}
+            label="API key"
             pending={login.isPending}
             onSubmit={(key) => login.mutate({ kind: "api_key", key })}
             onCancel={() => {
-              cancelLogin();
+              stopLogin();
               login.reset();
               setKeyFormOpen(false);
             }}
@@ -435,143 +345,6 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
         ) : undefined
       }
     />
-  );
-}
-
-function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement {
-  const setPreference = useSetPreference();
-  const [query, setQuery] = useState("");
-  const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
-  const needle = query.trim().toLowerCase();
-  const enabled = catalog.providers.filter((provider) => provider.enabled);
-
-  const groups = enabled.flatMap((provider) => {
-    const all = catalog.models.filter((option) => option.provider === provider.id);
-
-    const matching = all.filter((option) =>
-      `${option.name}\n${option.id}`.toLowerCase().includes(needle),
-    );
-
-    return matching.length === 0 ? [] : [{ provider, all, matching }];
-  });
-
-  return (
-    <section {...props(settingsPatterns.section)}>
-      <div {...props(settingsPatterns.sectionHeader)}>
-        <h2 {...props(settingsPatterns.sectionTitle)}>Enabled models</h2>
-        <p {...props(settingsPatterns.sectionDescription)}>
-          Disabled models cannot be used by chats or subagents.
-        </p>
-      </div>
-      {enabled.length > 0 && (
-        <InputGroup variant="quiet" xstyle={styles.search}>
-          <Icon name="search" size={13} />
-          <Input
-            type="text"
-            aria-label="Search models"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="Search models"
-            value={query}
-            onValueChange={setQuery}
-          />
-        </InputGroup>
-      )}
-      {enabled.length === 0 && (
-        <div {...props(styles.quiet)}>Connect a provider to choose its models.</div>
-      )}
-      {enabled.length > 0 && groups.length === 0 && (
-        <div {...props(styles.quiet)}>No models match.</div>
-      )}
-      {groups.map(({ provider, all, matching }) => {
-        const active = all.filter((option) => !option.hidden).length;
-
-        const setAll = (hidden: boolean): void =>
-          setPreference.mutate({
-            kind: "models",
-            provider: provider.id,
-            ids: all.map((option) => option.id),
-            hidden,
-          });
-
-        const heading = (
-          <>
-            <Icon
-              name={
-                needle !== "" || expandedProviders.has(provider.id)
-                  ? "chevron-down"
-                  : "chevron-right"
-              }
-              size={12}
-            />
-            <span {...props(styles.groupTitle)}>{provider.name}</span>
-            <span {...props(styles.groupMeta)}>
-              <span>{active}</span> of <span>{all.length}</span> enabled
-              {provider.connection.kind === "disconnected" && " · Not connected"}
-            </span>
-          </>
-        );
-
-        return (
-          <Collapsible.Root
-            key={provider.id}
-            open={needle !== "" || expandedProviders.has(provider.id)}
-            onOpenChange={(open) =>
-              setExpandedProviders((previous) => {
-                const next = new Set(previous);
-
-                if (open) next.add(provider.id);
-                else next.delete(provider.id);
-
-                return next;
-              })
-            }
-            xstyle={settingsPatterns.group}
-          >
-            <div {...props(styles.groupHeading)}>
-              {needle === "" ? (
-                <Collapsible.Trigger
-                  xstyle={[styles.groupLabel, styles.groupTrigger, focus.ringInset]}
-                >
-                  {heading}
-                </Collapsible.Trigger>
-              ) : (
-                <span {...props(styles.groupLabel)}>{heading}</span>
-              )}
-              <Button
-                variant="outline"
-
-                loading={setPreference.isPending}
-                onClick={() => setAll(active === all.length)}
-              >
-                {active === all.length ? "Disable All Models" : "Enable All Models"}
-              </Button>
-            </div>
-            <Collapsible.Panel xstyle={styles.groupPanel}>
-              {matching.map((option) => (
-                <SwitchField
-                  key={option.key}
-                  label={option.name}
-                  description={`${formatContextWindow(option.contextWindow)} · ${formatPricing(option.cost)}`}
-                  xstyle={settingsPatterns.row}
-                  checked={!option.hidden}
-                  aria-busy={setPreference.isPending || undefined}
-                  onCheckedChange={(show) => {
-                    if (setPreference.isPending) return;
-                    setPreference.mutate({
-                      kind: "models",
-                      provider: provider.id,
-                      ids: [option.id],
-                      hidden: !show,
-                    });
-                  }}
-                />
-              ))}
-            </Collapsible.Panel>
-          </Collapsible.Root>
-        );
-      })}
-    </section>
   );
 }
 
@@ -588,12 +361,10 @@ export function ProvidersSettings(): ReactElement | null {
     );
   }
 
-  const connected = catalog.data.providers.filter(
-    (provider) => provider.connection.kind !== "disconnected",
-  );
+  const connected = catalog.data.providers.filter((provider) => provider.credential !== "missing");
 
   const disconnected = catalog.data.providers.filter(
-    (provider) => provider.connection.kind === "disconnected",
+    (provider) => provider.credential === "missing",
   );
 
   const popular = popularProviders.flatMap((entry) => {
@@ -635,7 +406,6 @@ export function ProvidersSettings(): ReactElement | null {
           <p {...props(settingsPatterns.sectionDescription)}>No model providers available.</p>
         )}
       </section>
-      <EnabledModelsSection catalog={catalog.data} />
     </>
   );
 }

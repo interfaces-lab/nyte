@@ -50,8 +50,8 @@ SOFTWARE.
 - Repository: https://github.com/earendil-works/pi
 - What: the agent loop, provider adapters, auth and OAuth flows, schema types,
   and assorted runtime utilities across `packages/ai`, `packages/core`,
-  `packages/schema`, `packages/telemetry`, `packages/tui`, and
-  `packages/plugin` are ported from pi and tracked against it. This is the
+  `packages/schema`, `packages/tui`, and `packages/plugin` are ported from pi
+  and tracked against it. This is the
   large majority of the `Based on` headers in this repository.
 - Packages: `@earendil-works/pi-mcp` 1.0.0 and
   `@earendil-works/pi-codemode` 1.0.0 supply the MCP client and QuickJS

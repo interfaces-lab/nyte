@@ -4,8 +4,9 @@ import { ActionSheetIOS, ActivityIndicator, Pressable, View } from "react-native
 import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { Failure, RunInfo, SessionId } from "@nyte-ai/protocol";
+import { useQuery } from "@tanstack/react-query";
+import type { BlobId, Connection, Failure, SessionId } from "@nyte-ai/sdk";
+import { useHost } from "../connection/host-context.tsx";
 import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
 import type { ChatRow } from "./transcript-rows.ts";
@@ -31,6 +32,43 @@ function copySheet(text: string) {
   );
 }
 
+/** Returns a blob's bytes as a data URI, closing the reader whatever happens. */
+async function blobUri(client: Connection, blob: BlobId, mime: string): Promise<string> {
+  const reader = await client.blob(blob);
+  let binary = "";
+
+  try {
+    for await (const chunk of reader.chunks())
+      for (const byte of chunk) binary += String.fromCharCode(byte);
+  } finally {
+    await reader.close();
+  }
+
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+/**
+ * Draws a photo a message carries as a blob, read once from the host and
+ * shown as a data URI; nothing until the bytes arrive.
+ */
+function BlobImage({ blob, mime, width }: { blob: BlobId; mime: string; width: number }) {
+  const { client } = useHost();
+
+  const image = useQuery({
+    queryKey: ["blob", blob],
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: () => blobUri(client, blob, mime),
+  });
+
+  return (
+    <html.img
+      alt="Message attachment"
+      src={image.data}
+      style={[styles.image, styles.imageWidth(width)]}
+    />
+  );
+}
+
 function UserMessage({
   item,
   layout,
@@ -40,11 +78,12 @@ function UserMessage({
 }) {
   const content = item.content;
 
-  const text = Array.isArray(content)
-    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
-    : content;
+  const text =
+    typeof content === "string"
+      ? content
+      : content.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n");
 
-  const hasPhotos = Array.isArray(content) && content.some((part) => part.type !== "text");
+  const hasPhotos = typeof content !== "string" && content.some((part) => part.kind === "file");
   const maxWidth = Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio);
 
   return (
@@ -68,22 +107,23 @@ function UserMessage({
           style={{ maxWidth }}
         >
           <Bubble variant="outgoing">
-            {Array.isArray(content) ? (
+            {typeof content !== "string" ? (
               content.map((part, index) =>
-                part.type === "text" ? (
+                part.kind === "text" ? (
                   <html.p key={index} style={[textStyles.body, styles.outgoingText]}>
                     {part.text}
                   </html.p>
-                ) : (
-                  <html.img
+                ) : part.kind === "file" ? (
+                  <BlobImage
                     key={index}
-                    alt="Message attachment"
-                    src={`data:${part.mimeType};base64,${part.data}`}
-                    style={[
-                      styles.image,
-                      styles.imageWidth(Math.min(media.thumbnailWidth, maxWidth - 28)),
-                    ]}
+                    blob={part.blob}
+                    mime={part.mime}
+                    width={Math.min(media.thumbnailWidth, maxWidth - 28)}
                   />
+                ) : (
+                  <html.p key={index} style={[textStyles.body, styles.outgoingText]}>
+                    {`@${part.path}`}
+                  </html.p>
                 ),
               )
             ) : (
@@ -144,51 +184,31 @@ function failureLabel(failure: Failure): string {
   }
 }
 
-function RunStatus({ run }: { run: RunInfo }) {
+function RunStatus({
+  execution,
+}: {
+  execution: Extract<ChatRow, { kind: "status" }>["execution"];
+}) {
   const theme = useTheme();
-  const phase = run.phase;
-  const active = !isTerminalPhase(phase);
-  let label: string;
+  const waiting = execution.kind === "waiting";
 
-  if (run.abortRequested && active) label = "Stopping…";
-  else {
-    switch (phase.kind) {
-      case "respond":
-        label = "Replying…";
-        break;
-      case "tools":
-        label = "Using tools…";
-        break;
-      case "waiting":
-        label = run.awaitingReply ? "Waiting for your answer" : "Waiting for background work";
-        break;
-      case "retry":
-        label = `${failureLabel(phase.failure)}. Retrying…`;
-        break;
-      case "aborted":
-        label = "Stopped";
-        break;
-      case "failed":
-        label = failureLabel(phase.failure);
-        break;
-      case "done":
-        return null;
-      default: {
-        const exhaustive: never = phase;
-
-        return exhaustive;
-      }
-    }
-  }
+  const label =
+    execution.kind === "live"
+      ? execution.stopping
+        ? "Stopping…"
+        : execution.phase === "responding"
+          ? "Replying…"
+          : "Using tools…"
+      : execution.kind === "waiting"
+        ? execution.on.kind === "part"
+          ? "Waiting for your answer"
+          : "Waiting for background work"
+        : `${execution.reason}. Retrying…`;
 
   return (
     <html.div style={styles.status} aria-live="polite">
-      {active && phase.kind !== "waiting" ? (
-        <ActivityIndicator size="small" color={theme.muted} />
-      ) : null}
-      <html.span style={[textStyles.caption, phase.kind === "failed" && styles.failed]}>
-        {label}
-      </html.span>
+      {waiting ? null : <ActivityIndicator size="small" color={theme.muted} />}
+      <html.span style={textStyles.caption}>{label}</html.span>
     </html.div>
   );
 }
@@ -266,7 +286,7 @@ export const MessageRow = memo(function MessageRow({
       {item.kind === "activity" ? (
         <WorkRow item={item} delegateNames={delegateNames} onOpenActivity={onOpenActivity} />
       ) : item.kind === "status" ? (
-        <RunStatus run={item.run} />
+        <RunStatus execution={item.execution} />
       ) : item.kind === "summary" ? (
         <Summary text={item.text} />
       ) : item.kind === "marker" ? (

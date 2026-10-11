@@ -34,14 +34,13 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
         ? workspace.name
         : `${repository.owner}/${repository.name}`;
 
-  const head = vcs.data?.kind === "repository" ? vcs.data.head : undefined;
+  const status = vcs.data?.kind === "repository" ? vcs.data : undefined;
 
   const branch =
-    head === undefined
+    status === undefined
       ? undefined
-      : head.kind === "detached"
-        ? `Detached ${head.oid.slice(0, 7)}`
-        : head.branch;
+      : (status.branch ??
+        (status.head === null ? undefined : `Detached ${status.head.slice(0, 7)}`));
 
   const openFolder = folderPicker();
 

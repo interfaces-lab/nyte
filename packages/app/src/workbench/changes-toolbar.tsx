@@ -13,7 +13,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { VcsSnapshot } from "@nyte-ai/protocol";
+import type { Cursor, GitStatus } from "@nyte-ai/sdk";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import {
@@ -275,24 +275,19 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
 function CommitScopeItems({
   repository,
   readByOid,
-  before,
+  cursor,
   page,
 }: {
   readonly repository: ChangesRepository | undefined;
   readonly readByOid: ReadonlyMap<string, ChangeScopeRead>;
-  readonly before: string | undefined;
+  readonly cursor: Cursor | undefined;
   readonly page: number;
 }): ReactElement {
   const [showNextPage, setShowNextPage] = useState(false);
-
-  const log = useVcsLog(
-    before === undefined ? { limit: COMMIT_PAGE_SIZE } : { limit: COMMIT_PAGE_SIZE, before },
-    repository !== undefined,
-  );
-
-  const commits = log.data?.commits ?? [];
-  const oldest = commits.at(-1);
-  const hasMore = log.data?.hasMore === true && oldest !== undefined && page < MAX_COMMIT_PAGES;
+  const log = useVcsLog({ limit: COMMIT_PAGE_SIZE, cursor }, repository !== undefined);
+  const commits = log.data?.items ?? [];
+  const next = log.data?.next ?? null;
+  const hasMore = next !== null && page < MAX_COMMIT_PAGES;
 
   return (
     <>
@@ -307,7 +302,7 @@ function CommitScopeItems({
           <CommitScopeItems
             repository={repository}
             readByOid={readByOid}
-            before={oldest.oid}
+            cursor={next}
             page={page + 1}
           />
         ) : (
@@ -382,7 +377,7 @@ export interface ChangesToolbarProps {
   /** Counts and file total for the scope on screen; working-tree rows in the menu show Git status file counts only. */
   readonly scopeStats: ChangeScopeStats | undefined;
   readonly scopeFileCount: number | undefined;
-  readonly snapshot: VcsSnapshot | undefined;
+  readonly snapshot: GitStatus | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly branch: BranchReadout | undefined;
   readonly turnOptions: readonly TurnChangeOption[];
@@ -482,7 +477,7 @@ export function ChangesToolbar({
                       <CommitScopeItems
                         repository={repository}
                         readByOid={commitReads}
-                        before={undefined}
+                        cursor={undefined}
                         page={1}
                       />
                     </MenuRadioGroup>

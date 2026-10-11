@@ -1,4 +1,4 @@
-"""Generate transparent technical assemblies for the eight package sections.
+"""Generate transparent technical assemblies for the seven package sections.
 
 Paired forms, three-layer stacks, and branching connections came from patterns
 in a one-time random alphanumeric prompt. The prompt is not part of the artwork.
@@ -89,16 +89,6 @@ def plugin():
     rect(69,84,25,25,opacity=.5)
 
 
-def telemetry():
-    # A single time series, with restrained horizontal reference lines.
-    path([(48,37),(48,130),(175,130)],opacity=.55)
-    for y in [65,96]:
-        line((48,y),(175,y),opacity=.16)
-    series=[(49,111),(70,101),(87,110),(108,78),(127,87),(148,56),(173,43)]
-    path(series,width=2)
-    node(*series[-1],r=3)
-
-
 def terminal():
     # One terminal window, viewed straight on.
     rect(44,40,132,94)
@@ -123,7 +113,7 @@ def desktop():
     line((87,139),(133,139))
 
 
-for name,draw in [('schema',schema),('ai',ai),('core',core),('ui',ui),('plugin',plugin),('telemetry',telemetry),('terminal',terminal),('desktop',desktop)]:
+for name,draw in [('schema',schema),('ai',ai),('core',core),('ui',ui),('plugin',plugin),('terminal',terminal),('desktop',desktop)]:
     parts=[]
     draw()
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 8 180 156" fill="none" stroke="{INK}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'+'\n'.join(parts)+'\n</svg>\n'

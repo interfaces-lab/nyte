@@ -135,9 +135,12 @@ function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSigna
   const host = incoming.headers.host;
   const url = new URL(incoming.url ?? "/", host === undefined ? origin : `http://${host}`);
   const method = incoming.method ?? "GET";
-  const body = method === "GET" || method === "HEAD" ? null : bodyOf(incoming);
+  const body =
+    method === "GET" || method === "HEAD"
+      ? {}
+      : { body: bodyOf(incoming), duplex: "half" as const };
 
-  return new Request(url, { method, headers, body, duplex: "half", signal });
+  return new Request(url.href, { method, headers, signal, ...body });
 }
 
 /** Returns a Node request's body as a stream that pauses the socket while the reader is full. */

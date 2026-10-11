@@ -15,7 +15,7 @@ import {
   REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
-import type { MentionFile } from "@nyte-ai/client";
+import type { MentionFile } from "./message-references.ts";
 import {
   $composerCompletion,
   $composerReferences,

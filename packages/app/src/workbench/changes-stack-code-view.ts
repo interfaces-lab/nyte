@@ -1,10 +1,10 @@
 import type { FileDiffMetadata, LineAnnotation } from "@pierre/diffs";
 import type { CodeViewItem } from "@pierre/diffs/react";
-import type { VcsLineStat } from "@nyte-ai/protocol";
+import type { LineStat } from "@nyte-ai/sdk";
 import { patchDigest } from "./changes-viewed.ts";
 import type { ChangeStackSection } from "./stacked-diff.ts";
 
-export type ChangesStackItem = ChangeStackSection & { readonly stat: VcsLineStat };
+export type ChangesStackItem = ChangeStackSection & { readonly stat: LineStat };
 
 interface CachedItem {
   readonly payload: string;

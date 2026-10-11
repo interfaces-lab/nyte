@@ -1,5 +1,3 @@
-import { createNyteClient } from "@nyte-ai/client";
-import type { ServerInfo } from "@nyte-ai/protocol";
 import { describe, expect, it } from "vitest";
 import {
   displayAddress,
@@ -69,34 +67,14 @@ describe("parseConnection", () => {
     ).toThrow(/token has its own field/);
   });
 
-  it("removes empty query and fragment delimiters before client routes are appended", async () => {
+  it("removes empty query and fragment delimiters before the sdk appends its routes", () => {
     for (const suffix of ["?", "#", "?#"]) {
       const connection = parseConnection({
         name: "My Mac",
         url: `https://mac.example/nyte/${suffix}`,
         token: "t",
       });
-      const requests: string[] = [];
-      const client = createNyteClient({
-        baseUrl: connection.url,
-        token: connection.token,
-        fetch: async (input) => {
-          requests.push(
-            typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-          );
-          return Response.json({
-            ok: true,
-            defined: true,
-            value: {
-              version: "test",
-              wireVersion: 1,
-              host: { kind: "unspecified" },
-            } satisfies ServerInfo,
-          });
-        },
-      });
-      await client.info();
-      expect(requests).toEqual(["https://mac.example/nyte/v1/info"]);
+      expect(connection.url).toBe("https://mac.example/nyte");
     }
   });
 });

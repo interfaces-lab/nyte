@@ -1,6 +1,6 @@
 /**
  * The desktop's own routes on the account listener, answered before the
- * web app and the Nyte server. They grant nothing by themselves: an
+ * web app and the host's operations. They grant nothing by themselves: an
  * enrollment needs the broker's signature and only records a device, and a
  * self-revocation removes only the device whose token is presented.
  *
@@ -72,7 +72,7 @@ export interface AuthorizingRequest {
   readonly headers: { get(name: string): string | null };
 }
 
-/** `Authorization: Bearer <token>`, read the way `@nyte-ai/server` reads it. */
+/** `Authorization: Bearer <token>`, read the way the host listener reads it. */
 export function bearerToken(request: AuthorizingRequest): string | undefined {
   const header = request.headers.get("authorization");
 
@@ -89,7 +89,11 @@ export function tokenDigest(token: string): Buffer {
   return createHash("sha256").update(token).digest();
 }
 
-/** The body as text, or undefined once it passes the limit. */
+/**
+ * The body as text, or undefined once it passes the limit. The rest is left
+ * unread rather than cancelled: cancelling would close the listener's socket
+ * before it could answer 413.
+ */
 async function limitedBody(request: Request): Promise<string | undefined> {
   const declared = Number(request.headers.get("content-length") ?? "0");
 
@@ -107,11 +111,7 @@ async function limitedBody(request: Request): Promise<string | undefined> {
     if (done) break;
     size += value.byteLength;
 
-    if (size > BODY_LIMIT_BYTES) {
-      await reader.cancel();
-
-      return undefined;
-    }
+    if (size > BODY_LIMIT_BYTES) return undefined;
 
     text += decoder.decode(value, { stream: true });
   }

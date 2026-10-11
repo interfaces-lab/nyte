@@ -1,4 +1,4 @@
-import type { MentionFile } from "@nyte-ai/client";
+import type { MentionFile } from "./message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
 import { isFolder } from "./message-references.ts";
 

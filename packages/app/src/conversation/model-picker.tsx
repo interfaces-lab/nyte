@@ -17,7 +17,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
+import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
   Menu,
@@ -36,9 +36,8 @@ import {
 import { Button } from "@nyte-ai/ui/button";
 import { menu } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
-import { nyte, type DesktopCatalog, type DesktopModelOption } from "../nyte.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 import { isSettingsSection } from "../settings/index.ts";
-import { shellActions } from "../chrome/shell-state.ts";
 import {
   modelTriggerLabel,
   pickerGroups,
@@ -131,22 +130,15 @@ function ModelPickerView({
   );
 
   const connected =
-    catalog?.providers.some((provider) => provider.connection.kind !== "disconnected") ?? false;
+    catalog?.providers.some((provider) => provider.credential !== "missing") ?? false;
 
-  // A server's models are the server's to change; the desktop manages that connection in Environments.
-  const manage =
-    catalog?.source === "server"
-      ? nyte.clientSurface === "desktop"
-        ? { label: "Environments…", open: () => shellActions.openEnvironments() }
-        : undefined
-      : isSettingsSection("providers")
-        ? {
-            label: connected ? "Manage Providers…" : "Connect a Provider…",
-            href: "/settings/providers",
-            open: () =>
-              void navigate({ to: "/settings/$section", params: { section: "providers" } }),
-          }
-        : undefined;
+  const manage = isSettingsSection("providers")
+    ? {
+        label: connected ? "Manage Providers…" : "Connect a Provider…",
+        href: "/settings/providers",
+        open: () => void navigate({ to: "/settings/$section", params: { section: "providers" } }),
+      }
+    : undefined;
 
   const levels = thinkingLevelsFor(current);
   const level = supportedThinkingLevel(current, thinkingLevel);
@@ -273,11 +265,6 @@ function ModelPickerView({
                   <div {...props(styles.empty)}>
                     {search.trim() !== "" ? (
                       <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
-                    ) : catalog?.source === "server" ? (
-                      <>
-                        <span {...props(styles.emptyTitle)}>No server models available</span>
-                        <span>Configure provider credentials on the server.</span>
-                      </>
                     ) : connected ? (
                       <>
                         <span {...props(styles.emptyTitle)}>Every model is hidden</span>
@@ -295,9 +282,7 @@ function ModelPickerView({
                   <AutocompleteGroup key={group.provider.id}>
                     <AutocompleteGroupLabel variant="inline">
                       <span>{group.provider.name}</span>
-                      {!group.provider.enabled ? (
-                        <span>· Off</span>
-                      ) : group.provider.connection.kind === "disconnected" ? (
+                      {group.provider.credential === "missing" ? (
                         <span>· Not connected</span>
                       ) : null}
                     </AutocompleteGroupLabel>

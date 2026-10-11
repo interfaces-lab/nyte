@@ -1,15 +1,16 @@
-import type { Delivery, PendingItem } from "@nyte-ai/core";
+import type { Delivery } from "@nyte-ai/sdk";
+import type { UserMessage } from "./view-helpers.ts";
 
 export interface DeliveryChoices {
   readonly steer: Delivery;
   readonly queue: Delivery;
 }
 
-export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "next" };
+export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "queue" };
 
 export function nextToSteer(
-  items: readonly PendingItem[],
+  items: readonly UserMessage[],
   choices: DeliveryChoices,
-): PendingItem | undefined {
-  return items.find((item) => item.delivery !== choices.steer);
+): UserMessage | undefined {
+  return items.find((item) => item.status.kind === "pending" && item.delivery !== choices.steer);
 }

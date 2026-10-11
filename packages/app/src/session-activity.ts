@@ -1,7 +1,8 @@
-import { sessionMark, type OutboxRow, type SessionMark } from "@nyte-ai/client";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { sessionMark } from "./view-helpers.ts";
+import type { SessionMark } from "./view-helpers.ts";
 
-/** A local submission still in the outbox, or a subagent still working, supersedes terminal history. */
+/** A row's mark: its main head's execution, or working when a child still works for it. */
 export function sessionActivityMark(
   session: Pick<SessionInfo, "heads">,
   working: boolean,
@@ -9,13 +10,4 @@ export function sessionActivityMark(
   const mark = sessionMark(session);
 
   return working && (mark === "idle" || mark === "failed") ? "working" : mark;
-}
-
-export function optimisticSessionIds(rows: readonly OutboxRow[]): ReadonlySet<SessionId> {
-  return new Set(
-    rows
-      .values()
-      .filter((row) => row.state.kind !== "retrying")
-      .map((row) => row.input.sessionId),
-  );
 }

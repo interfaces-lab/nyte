@@ -1,8 +1,9 @@
 import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
- * Trust is requested when a session reports it through an observer snapshot
- * or activation event. Folder selection failures appear as a dismissible
- * toast, leaving the current chat usable.
+ * A session's activation, as its view carries it, says when its workspace is
+ * out of reach or its plugins failed; trust is requested when the host refuses
+ * a folder. Failures appear as a dismissible toast, leaving the current chat
+ * usable.
  */
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/toast";
@@ -10,7 +11,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { SessionActivationState } from "@nyte-ai/protocol";
+import type { Activation } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient, useHostState } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -122,41 +123,23 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
 let failedShown = false;
 
-/** A session's activation says what it needs: trust, asked once per folder until granted, a workspace this host cannot open, or a plugin fix. */
-export function observeActivation(activation: SessionActivationState): void {
-  if (activation.kind !== "requires" || activation.requirement.kind !== "workspace_unavailable")
-    toast.close("workspace-unavailable");
+/** A session's activation says what it needs: a workspace this host cannot reach, or a plugin fix. */
+export function observeActivation(activation: Activation): void {
+  if (activation.kind !== "unavailable") toast.close("workspace-unavailable");
 
   switch (activation.kind) {
-    case "requires": {
-      const { requirement } = activation;
-
-      if (requirement.kind === "workspace_unavailable") {
-        let title: string;
-
-        switch (requirement.reason) {
-          case "unreachable":
-            title = "Couldn't reach this session's workspace";
-            break;
-          case "unsupported":
-            title = "Can't open this session's workspace";
-            break;
-          default: {
-            const _exhaustive: never = requirement.reason;
-            title = _exhaustive;
-          }
-        }
-
-        toast.add({ type: "error", title, id: "workspace-unavailable", timeout: 0 });
-
-        return;
-      }
-
-      requestTrust(requirement.cwd);
+    case "unavailable":
+      toast.add({
+        type: "error",
+        title:
+          activation.reason === "unreachable"
+            ? "Couldn't reach this session's workspace"
+            : "Can't open this session's workspace",
+        id: "workspace-unavailable",
+        timeout: 0,
+      });
 
       return;
-    }
-
     case "failed":
       failedShown = true;
       toast.add({
@@ -213,7 +196,6 @@ function grantTrust(
   return trust({ path, consent }).then((outcome) => {
     handleOpenOutcome(outcome);
     void queryClient.invalidateQueries({ queryKey: keys.workspaces });
-    void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
 
     return outcome.kind !== "failed";
   });

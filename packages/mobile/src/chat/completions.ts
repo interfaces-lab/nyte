@@ -1,21 +1,42 @@
 /**
  * What `@` and `/` offer in the composer, and what accepting one writes.
  *
- * The trigger scan is core's `completionTrigger`, the same one the desktop
- * composer uses, so a token means the same thing on both clients. The choices
- * come from the host: files from `workspace.files`, commands and skills from
- * the session's plugins, or from the new-session catalog before a conversation
- * exists. A registry host starts a chat with its first message, so a new chat
- * there offers skills but no commands, and files from the folder chosen here.
- * Accepting writes the exact text the desktop writes, so a message sent
- * from a phone reads back there as the same chip.
+ * The choices come from the host: files from the workspace's `files.find`,
+ * commands and skills from the session view's catalog. A chat starts with its
+ * first message, so a new chat offers no commands or skills, and files from
+ * the folder chosen here.
  */
-import { completionTrigger } from "@nyte-ai/client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { CompletionTrigger } from "@nyte-ai/client";
-import type { CommandInfo, PluginCatalog, SessionId, WorkspaceTarget } from "@nyte-ai/protocol";
-import type { NyteClient } from "@nyte-ai/client";
+import type { CommandInfo, Connection, SessionCatalogView, WorkspaceId } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
+
+/** The inline composer token being completed: its trigger, its span, and the text typed after the trigger. */
+export interface CompletionTrigger {
+  readonly kind: "@" | "/";
+  /** Full token span. Accepting a result replaces this range. */
+  readonly start: number;
+  readonly end: number;
+  readonly query: string;
+}
+
+/**
+ * Returns the @ or / token under the caret. Mid-word trigger characters are
+ * text, while the replacement range extends through the token's whole tail.
+ */
+function completionTrigger(value: string, cursor: number): CompletionTrigger | undefined {
+  const caret = Math.max(0, Math.min(cursor, value.length));
+  let start = caret;
+
+  while (start > 0 && (value[start - 1] ?? "").trim() !== "") start -= 1;
+  const kind = value[start];
+
+  if (start === caret || (kind !== "@" && kind !== "/")) return undefined;
+  let end = caret;
+
+  while (end < value.length && (value[end] ?? "").trim() !== "") end += 1;
+
+  return { kind, start, end, query: value.slice(start + 1, caret) };
+}
 
 /** A host read the menu shows as it goes: never an empty list standing in for a failure. */
 type Loaded<T> =
@@ -25,7 +46,12 @@ type Loaded<T> =
 
 /** Each choice carries what accepting it writes, so the writer needs no lookup. */
 export type Suggestion =
-  | { readonly kind: "file"; readonly url: string; readonly label: string; readonly detail: string }
+  | {
+      readonly kind: "file";
+      readonly path: string;
+      readonly label: string;
+      readonly detail: string;
+    }
   | { readonly kind: "command"; readonly name: string; readonly detail: string }
   | { readonly kind: "skill"; readonly name: string; readonly detail: string };
 
@@ -42,30 +68,17 @@ export interface Completions {
 }
 
 /**
- * Where a composer's `@` and `/` look. `cursor` is a new chat on a host whose
- * shared cursor names the folder; `registered` is a new chat on a registry
- * host, with the folder this phone chose, if any.
+ * Where a composer's `@` and `/` look: a conversation's folder and the
+ * catalog its view carries, or a new chat with the folder this phone chose,
+ * if any.
  */
 export type CompletionSource =
-  | { readonly kind: "session"; readonly sessionId: SessionId }
-  | { readonly kind: "cursor" }
-  | { readonly kind: "registered"; readonly id: string | undefined };
-
-function filesTarget(source: CompletionSource): WorkspaceTarget | undefined {
-  switch (source.kind) {
-    case "session":
-      return { kind: "session", sessionId: source.sessionId };
-    case "cursor":
-      return { kind: "workspace" };
-    case "registered":
-      return source.id === undefined ? undefined : { kind: "registered", id: source.id };
-    default: {
-      const exhaustive: never = source;
-
-      return exhaustive;
+  | {
+      readonly kind: "session";
+      readonly workspace: WorkspaceId | undefined;
+      readonly catalog: SessionCatalogView;
     }
-  }
-}
+  | { readonly kind: "registered"; readonly id: WorkspaceId | undefined };
 
 /** Commands and skills come whole, so the phone caps what it lists from them. */
 const MAX_SUGGESTIONS = 30;
@@ -84,7 +97,7 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export function suggestionKey(suggestion: Suggestion): string {
-  return suggestion.kind === "file" ? suggestion.url : `${suggestion.kind}:${suggestion.name}`;
+  return suggestion.kind === "file" ? suggestion.path : `${suggestion.kind}:${suggestion.name}`;
 }
 
 export function suggestionLabel(suggestion: Suggestion): string {
@@ -115,7 +128,9 @@ function matching(suggestions: readonly Suggestion[], query: string): readonly S
     .slice(0, MAX_SUGGESTIONS);
 }
 
-function slashChoices(catalog: Pick<PluginCatalog, "commands" | "skills">): readonly Suggestion[] {
+function slashChoices(
+  catalog: Pick<SessionCatalogView, "commands" | "skills">,
+): readonly Suggestion[] {
   return [
     ...catalog.commands.map((command): Suggestion => ({
       kind: "command",
@@ -131,53 +146,26 @@ function slashChoices(catalog: Pick<PluginCatalog, "commands" | "skills">): read
 }
 
 /**
- * The menu for the token under the caret. Commands and skills are read once per
- * conversation and workspace; files are read per query, because the host holds
- * the tree and narrows it rather than sending a repository to a phone.
+ * The menu for the token under the caret. Commands and skills are the session
+ * view's catalog; files are read per query, because the host holds the tree and
+ * narrows it rather than sending a repository to a phone.
  */
 export function useCompletions(
-  client: NyteClient,
+  client: Connection,
   source: CompletionSource,
   draft: string,
   caret: number,
   enabled: boolean,
   epoch: number,
 ): Completions {
-  const scanned = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
-
-  const trigger =
-    scanned?.kind === "@" && scanned.query.startsWith("file://") ? undefined : scanned;
-
+  const trigger = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
   const kind = trigger?.kind;
   const query = trigger?.query ?? "";
-  const sessionId = source.kind === "session" ? source.sessionId : undefined;
-  const target = filesTarget(source);
-  const commandsAvailable = source.kind !== "registered";
-
-  // The keys carry the conversation and the workspace epoch, so an answer for
-  // the previous chat or the previous folder can never appear as this one's.
-  const slashQuery = useQuery({
-    queryKey: ["slash-completion", sessionId ?? null, commandsAvailable, epoch],
-    enabled: kind === "/",
-    queryFn: async (): Promise<Pick<PluginCatalog, "commands" | "skills">> => {
-      if (sessionId === undefined) {
-        const catalog = await client.plugins.catalog();
-
-        return commandsAvailable ? catalog : { commands: [], skills: catalog.skills };
-      }
-
-      const [commands, skills] = await Promise.all([
-        client.plugins.commands.list({ sessionId }),
-        client.plugins.resources.list({ sessionId }),
-      ]);
-
-      return { commands, skills };
-    },
-  });
+  const workspace = source.kind === "session" ? source.workspace : source.id;
 
   const filesQuery = useQuery({
-    queryKey: ["file-completion", target ?? null, epoch, query],
-    enabled: kind === "@" && target !== undefined,
+    queryKey: ["file-completion", workspace ?? null, epoch, query],
+    enabled: kind === "@" && workspace !== undefined,
     // The previous key's rows stay up while the debounced read lands, so a
     // keystroke narrows the menu instead of flashing the loading notice.
     placeholderData: keepPreviousData,
@@ -187,27 +175,29 @@ export function useCompletions(
       // aborted delay ends before the request fires — debounce without a timer.
       await delay(FILE_DEBOUNCE_MS, signal);
 
-      if (target === undefined) return [];
-      const found = await client.workspace.files({ target, query });
+      if (workspace === undefined) return [];
+      const files = await client.workspace(workspace).files();
 
-      return found.map((file): Suggestion => ({
-        kind: "file",
-        url: file.url,
-        label: file.label,
-        detail: file.displayPath,
-      }));
+      if (files.kind !== "available") throw new Error(files.reason);
+      const found = await files.api.find({ query, limit: MAX_SUGGESTIONS });
+
+      return found.map((file): Suggestion => {
+        const slash = file.path.lastIndexOf("/");
+
+        return {
+          kind: "file",
+          path: file.path,
+          label: slash < 0 ? file.path : file.path.slice(slash + 1),
+          detail: file.path,
+        };
+      });
     },
   });
 
-  const slash: Loaded<Pick<PluginCatalog, "commands" | "skills">> =
-    slashQuery.status === "pending"
-      ? { kind: "loading" }
-      : slashQuery.status === "error"
-        ? { kind: "failed", message: describeHostError(slashQuery.error) }
-        : { kind: "ready", value: slashQuery.data };
+  const catalog = source.kind === "session" ? source.catalog : undefined;
 
   const files: Loaded<readonly Suggestion[]> =
-    target === undefined
+    workspace === undefined
       ? { kind: "failed", message: "Choose a folder to mention its files." }
       : filesQuery.status === "pending"
         ? { kind: "loading" }
@@ -215,7 +205,7 @@ export function useCompletions(
           ? { kind: "failed", message: describeHostError(filesQuery.error) }
           : { kind: "ready", value: filesQuery.data };
 
-  const commands = slashQuery.data?.commands ?? [];
+  const commands = catalog?.commands ?? [];
 
   if (trigger === undefined) return { completion: undefined, commands };
 
@@ -225,10 +215,10 @@ export function useCompletions(
     commands,
     completion: {
       trigger,
-      list:
-        slash.kind === "ready"
-          ? { kind: "ready", value: matching(slashChoices(slash.value), trigger.query) }
-          : slash,
+      list: {
+        kind: "ready",
+        value: matching(slashChoices(catalog ?? { commands: [], skills: [] }), trigger.query),
+      },
     },
   };
 }
@@ -285,7 +275,7 @@ export function acceptSuggestion(
     return { draft: `${head}${body}`, caret: head.length + before.length };
   }
 
-  const token = suggestion.kind === "command" ? `/${suggestion.name} ` : `@${suggestion.url} `;
+  const token = suggestion.kind === "command" ? `/${suggestion.name} ` : `@${suggestion.path} `;
 
   return { draft: `${before}${token}${after}`, caret: before.length + token.length };
 }

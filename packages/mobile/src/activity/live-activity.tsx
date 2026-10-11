@@ -3,7 +3,8 @@ import { useLiveActivity } from "@use-voltra/ios-client";
 import { resolveScheme } from "expo-linking";
 // oxlint-disable-next-line no-restricted-imports -- the Live Activity follows session state
 import { useEffect } from "react";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { liveRun } from "../view-helpers.ts";
 
 // WidgetKit renders this content in its own process, over a background that
 // follows the device appearance, and it keeps rendering while the app is
@@ -47,17 +48,18 @@ function lockScreenUi(working: readonly SessionInfo[], attention: readonly Sessi
       </Voltra.HStack>
       {shown.map((session) => {
         const waiting = attention.includes(session);
+        const run = liveRun(session);
 
         return (
-          <Voltra.HStack key={session.sessionId} style={{ gap: 8, alignItems: "center" }}>
+          <Voltra.HStack key={session.id} style={{ gap: 8, alignItems: "center" }}>
             <Voltra.Text style={{ color: FOREGROUND, fontSize: 15, flex: 1 }} numberOfLines={1}>
               {titleOf(session)}
             </Voltra.Text>
             {waiting ? (
               <Voltra.Text style={{ color: WARNING, fontSize: 13 }}>Needs input</Voltra.Text>
-            ) : session.heads[0]?.run !== undefined ? (
+            ) : run !== undefined ? (
               <Voltra.Timer
-                startAtMs={session.heads[0].run.startedAt}
+                startAtMs={run.startedAt}
                 direction="up"
                 textStyle="timer"
                 style={{ color: MUTED, fontSize: 13 }}
@@ -127,12 +129,12 @@ export function useWorkLiveActivitySync(
 
   const activity = useLiveActivity(variants, {
     activityName: "nyte-work",
-    deepLinkUrl: appLink(lead === undefined ? "" : `chat/${lead.sessionId}`),
+    deepLinkUrl: appLink(lead === undefined ? "" : `chat/${lead.id}`),
   });
 
   const { start, update, end, isActive: liveActive } = activity;
   const live = working.length + attention.length;
-  const activeKey = [...attention, ...working].map((session) => session.sessionId).join(",");
+  const activeKey = [...attention, ...working].map((session) => session.id).join(",");
 
   // The Live Activity is a native system that follows session state.
   useEffect(() => {

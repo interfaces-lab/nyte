@@ -29,18 +29,34 @@ import type {
   WidthMethod,
 } from "@opentui/core";
 import type { CliTheme } from "./theme.ts";
-import { completionTrigger } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/protocol";
-import type { ImageContent, UserMessage } from "@nyte-ai/schema";
+import type { BlobId, UserContent } from "@nyte-ai/sdk";
 import fuzzysort from "fuzzysort";
 import { cellOffset } from "./width.ts";
 import { promptDraft } from "./slash.ts";
+import { completionTrigger } from "./view-helpers.ts";
 
 const MAX_MENTION_RESULTS = 10;
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 
 type SupportedImageMime = "image/gif" | "image/jpeg" | "image/png" | "image/webp";
+
+/** An image the composer holds: bytes pasted here, or a blob a sent message carried back. */
+export type ComposerImage =
+  | { readonly kind: "bytes"; readonly mime: string; readonly data: string }
+  | { readonly kind: "blob"; readonly mime: string; readonly blob: BlobId; readonly name: string };
+
+/** One file or folder an `@` mention can name. */
+export interface MentionFile {
+  /** Absolute path. Directories carry a trailing separator. */
+  readonly path: string;
+  /** The `file:` URL a message spells the mention as (`@file:///…`). */
+  readonly url: string;
+  /** Path relative to the workspace root, forward slashes, `/` suffix for directories. */
+  readonly displayPath: string;
+  /** Basename, `/` suffix for directories. */
+  readonly label: string;
+}
 
 type ComposerPart =
   | {
@@ -50,7 +66,7 @@ type ComposerPart =
       /** File body, once read. Absent for binaries, oversized files, and unreadable paths. */
       readonly text?: string;
     }
-  | { readonly kind: "image"; readonly marker: string; readonly image: ImageContent }
+  | { readonly kind: "image"; readonly marker: string; readonly image: ComposerImage }
   | { readonly kind: "paste"; readonly marker: string; readonly text: string }
   /** A `!command` the user ran; its output rides along with the next prompt. */
   | { readonly kind: "shell"; readonly marker: string; readonly run: ShellRun };
@@ -64,7 +80,7 @@ export interface ShellRun {
 type ComposerPaste =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "file"; readonly path: string }
-  | { readonly kind: "image"; readonly image: ImageContent };
+  | { readonly kind: "image"; readonly image: ComposerImage };
 
 type ClipboardContent = { readonly mime: "image/png" | "text/plain"; readonly data: string };
 
@@ -140,7 +156,7 @@ interface FileMention {
 
 interface PreparedComposerPrompt {
   readonly displayText: string;
-  readonly content: UserMessage["content"];
+  readonly content: UserContent;
   readonly parts: readonly ComposerPart[];
 }
 
@@ -189,7 +205,7 @@ export function resolveComposerImagePaste(
 
   return {
     kind: "image",
-    image: { type: "image", data: Buffer.from(bytes).toString("base64"), mimeType },
+    image: { kind: "bytes", data: Buffer.from(bytes).toString("base64"), mime: mimeType },
   };
 }
 
@@ -230,7 +246,18 @@ export async function resolveComposerPaste(value: string, cwd: string): Promise<
 
   if (mimeType === undefined) return { kind: "file", path };
 
-  return { kind: "image", image: { type: "image", data: bytes.toString("base64"), mimeType } };
+  return {
+    kind: "image",
+    image: { kind: "bytes", data: bytes.toString("base64"), mime: mimeType },
+  };
+}
+
+/** Returns true when two images are the same bytes or the same blob. */
+function sameImage(left: ComposerImage, right: ComposerImage): boolean {
+  if (left.kind === "bytes" && right.kind === "bytes")
+    return left.mime === right.mime && left.data === right.data;
+
+  return left.kind === "blob" && right.kind === "blob" && left.blob === right.blob;
 }
 
 /** Paths that name directories carry a trailing separator everywhere. */
@@ -517,12 +544,9 @@ export class ComposerParts {
     return marker;
   }
 
-  addImage(image: ImageContent): string {
+  addImage(image: ComposerImage): string {
     const existing = this.parts.find(
-      (part) =>
-        part.kind === "image" &&
-        part.image.mimeType === image.mimeType &&
-        part.image.data === image.data,
+      (part) => part.kind === "image" && sameImage(part.image, image),
     );
 
     if (existing !== undefined) return existing.marker;
@@ -682,20 +706,30 @@ export class ComposerParts {
   }
 
   /** Put a sent message back into the composer, files and images as markers. */
-  load(content: UserMessage["content"]): string {
+  load(content: UserContent): string {
     this.clear();
     let text = "";
 
-    if (!Array.isArray(content)) {
+    if (typeof content === "string") {
       text = content;
     } else {
       for (const part of content) {
-        if (part.type === "text") {
+        if (part.kind === "text") {
           text += part.text;
           continue;
         }
 
-        const marker = this.addImage(part);
+        if (part.kind === "reference") {
+          text += `@${pathToFileURL(part.path).href}`;
+          continue;
+        }
+
+        const marker = this.addImage({
+          kind: "blob",
+          mime: part.mime,
+          blob: part.blob,
+          name: part.name,
+        });
 
         if (!text.includes(marker)) text += marker;
       }
@@ -722,11 +756,13 @@ export class ComposerParts {
    * Async, but the draft is snapshotted before the first await, so the caller
    * may clear the composer the moment this is called without losing parts.
    * `expandText` rewrites typed text on its way to the model (skill
-   * invocations) before markers expand.
+   * invocations) before markers expand; `upload` turns pasted image bytes
+   * into the blob a message carries.
    */
   async prepare(
     value: string,
-    expandText: (text: string) => string = (text) => text,
+    expandText: (text: string) => string,
+    upload: (bytes: Uint8Array) => Promise<BlobId>,
   ): Promise<PreparedComposerPrompt> {
     const rawDisplayText = value.trim();
 
@@ -784,7 +820,7 @@ export class ComposerParts {
       return { displayText, content: expandFiles(rawDisplayText), parts };
     }
 
-    const richContent: Exclude<UserMessage["content"], string> = [];
+    const richContent: Exclude<UserContent, string>[number][] = [];
     const byMarker = new Map(images.map((part) => [part.marker, part.image]));
     let cursor = 0;
 
@@ -795,14 +831,23 @@ export class ComposerParts {
       if (image === undefined) continue;
       const text = expandFiles(rawDisplayText.slice(cursor, match.index));
 
-      if (text !== "") richContent.push({ type: "text", text });
-      richContent.push(image);
+      if (text !== "") richContent.push({ kind: "text", text });
+      richContent.push(
+        image.kind === "blob"
+          ? { kind: "file", blob: image.blob, mime: image.mime, name: image.name }
+          : {
+              kind: "file",
+              blob: await upload(Buffer.from(image.data, "base64")),
+              mime: image.mime,
+              name: `${marker.slice(1, -1).toLowerCase().replace(" ", "-")}.${image.mime.slice("image/".length)}`,
+            },
+      );
       cursor = match.index + marker.length;
     }
 
     const tail = expandFiles(rawDisplayText.slice(cursor));
 
-    if (tail !== "") richContent.push({ type: "text", text: tail });
+    if (tail !== "") richContent.push({ kind: "text", text: tail });
 
     return { displayText, content: richContent, parts };
   }
@@ -874,7 +919,7 @@ export class DialogImagePreview {
       // image's percentage width; a plain box gives it the full row to fit into.
       this.container.add(
         new ImageRenderable(this.renderer, {
-          source: Buffer.from(part.image.data, "base64"),
+          source: part.image.kind === "bytes" ? Buffer.from(part.image.data, "base64") : undefined,
           width: "100%",
           height,
           fit: "fit",

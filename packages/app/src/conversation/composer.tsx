@@ -17,38 +17,27 @@ import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DragEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
-import type {
-  CommandInfo,
-  Delivery,
-  PendingItem,
-  RunId,
-  RunInfo,
-  SessionId,
-} from "@nyte-ai/protocol";
-import { isTerminalPhase } from "@nyte-ai/client";
+import type { CommandInfo, Delivery, Execution, SessionId, UserContent } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { refreshThread, requestStop, useSessionFrameSelector } from "../live.ts";
-import type { SessionFrame } from "../live.ts";
 import {
-  keys,
-  queryClient,
   useCatalog,
   useConfigureSession,
   useHostState,
   useMentionFiles,
   usePluginCatalog,
   useSessionActions,
+  useSessionChoice,
   useSessionCommands,
-  useSessionSnapshot,
+  useSessionView,
   useSetPreference,
 } from "../queries.ts";
 import { pickerDefaults } from "../preference-projection.ts";
-import { nyte } from "../nyte.ts";
-import type { OutboxRow } from "@nyte-ai/client";
-import { outbox } from "../use-outbox.ts";
+import { connection } from "../sdk.tsx";
+import type { UserMessage } from "../view-helpers.ts";
 import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
@@ -75,8 +64,18 @@ import {
   submissionDelivery,
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
-import { composerMessageContent, composerSendInput, composerSendPlan } from "./composer-send.ts";
-import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
+import {
+  composerMessageContent,
+  composerSendPlan,
+  sendComposerMessage,
+  uploadComposerContent,
+} from "./composer-send.ts";
+import {
+  UserMessageText,
+  messageFiles,
+  messageImages,
+  userMessageText,
+} from "./message-content.tsx";
 import { messageDraftText } from "./message-references.ts";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { MessageReference } from "./message-references.ts";
@@ -111,36 +110,33 @@ const SessionModelChip = memo(function SessionModelChip({
   sessionId: SessionId;
 }): ReactElement | null {
   const catalog = useCatalog(sessionId);
-  const snapshot = useSessionSnapshot(sessionId);
+  const choice = useSessionChoice(sessionId);
   const configure = useConfigureSession(sessionId);
   const options = catalog.data?.models ?? [];
-  const configured = snapshot.data?.session.config.model ?? snapshot.data?.config.model;
-  const selected = selectedModelOption(options, configured);
+  const selected = selectedModelOption(options, choice?.model);
   const current = selected?.option;
   const setPreference = useSetPreference();
-
-  const thinkingLevel =
-    snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel;
+  const thinkingLevel = choice?.thinking;
 
   const handleChange = useCallback(
     (change: ModelPickerChange) => {
-      // A cloud session's catalog lists that server's models, not this Mac's.
-      if (catalog.data?.source === "local") {
-        setPreference.mutate(
-          pickerDefaults({ model: current, thinkingLevel, fast: selected?.fast === true }, change),
-        );
-      }
+      const model = pickerDefaults(
+        { model: current, thinkingLevel, fast: selected?.fast === true },
+        change,
+      );
+
+      if (model !== undefined) setPreference.mutate(model);
 
       switch (change.kind) {
         case "model":
           configure.mutate({
             model: { provider: change.option.provider, id: change.option.id },
-            thinkingLevel: change.thinkingLevel,
+            thinking: change.thinkingLevel,
           });
 
           return;
         case "thinking":
-          configure.mutate({ thinkingLevel: change.thinkingLevel });
+          configure.mutate({ thinking: change.thinkingLevel });
 
           return;
         case "fast":
@@ -155,7 +151,7 @@ const SessionModelChip = memo(function SessionModelChip({
         }
       }
     },
-    [catalog.data?.source, configure, current, selected?.fast, setPreference, thinkingLevel],
+    [configure, current, selected?.fast, setPreference, thinkingLevel],
   );
 
   return (
@@ -746,11 +742,7 @@ export function ComposerFrame({
   );
 }
 
-function QueuedMessageContent({
-  content,
-}: {
-  readonly content: PendingItem["content"];
-}): ReactElement {
+function QueuedMessageContent({ content }: { readonly content: UserContent }): ReactElement {
   const text = userMessageText(content);
 
   if (text === "") {
@@ -771,25 +763,6 @@ function QueuedMessageContent({
   );
 }
 
-type MessageKeyState =
-  | { readonly kind: "pending"; readonly item: PendingItem }
-  | { readonly kind: "landed" }
-  | { readonly kind: "absent" };
-
-async function messageKeyState(sessionId: SessionId, key: string): Promise<MessageKeyState> {
-  const snapshot = await nyte.sessions.snapshot({ sessionId });
-  const item = snapshot?.pending.find((candidate) => candidate.key === key);
-
-  if (item !== undefined) return { kind: "pending", item };
-
-  const landed = snapshot?.transcript.some(
-    (turn) =>
-      turn.kind === "turn" && turn.parts.some((part) => part.kind === "user" && part.key === key),
-  );
-
-  return landed === true ? { kind: "landed" } : { kind: "absent" };
-}
-
 interface ComposerFeedback {
   readonly kind: "status" | "command" | "error";
   readonly message: string;
@@ -803,106 +776,15 @@ type PendingRowAction =
   | { readonly kind: "sending" }
   | { readonly kind: "failed"; readonly message: string };
 
-type PendingEdit =
-  | {
-      readonly kind: "durable";
-      readonly change: PendingItem["change"];
-      readonly key: PendingItem["key"];
-      readonly delivery: Delivery;
-      readonly content: PendingItem["content"];
-    }
-  | {
-      readonly kind: "outbox";
-      readonly key: string;
-      readonly delivery: Delivery;
-      readonly content: PendingItem["content"];
-    };
-
-interface QueueEditInput {
-  readonly sessionId: SessionId;
-  readonly edit: PendingEdit;
-  readonly content: PendingItem["content"];
+/** A queued or unsent message being edited in the composer; sending replaces it in place. */
+interface PendingEdit {
+  readonly message: UserMessage;
   readonly delivery: Delivery;
 }
 
-type QueueEditResult =
-  | { readonly kind: "updated"; readonly interruptedRun: RunId | undefined }
-  | { readonly kind: "landed" }
-  | { readonly kind: "missing" }
-  | { readonly kind: "failed"; readonly message: string };
-
-async function tryReplaceQueuedMessage({
-  sessionId,
-  edit,
-  content,
-  delivery,
-}: QueueEditInput): Promise<QueueEditResult> {
-  let change = edit.kind === "durable" ? edit.change : undefined;
-  let key = edit.key;
-
-  if (edit.kind === "outbox") {
-    const receipt = await nyte.messages.send({
-      sessionId,
-      key: edit.key,
-      content: edit.content,
-      delivery: deliveryChoices.queue,
-    });
-
-    change = receipt.change;
-  }
-
-  const currentRun = (await nyte.sessions.snapshot({ sessionId }))?.run;
-
-  const run =
-    currentRun !== undefined && !isTerminalPhase(currentRun.phase) ? currentRun.runId : undefined;
-
-  // Replace first under `next`, then abort that exact run. The edit cannot be lost or join the dying run.
-  const replacementDelivery = run === undefined ? delivery : deliveryChoices.queue;
-
-  if (change === undefined) return { kind: "missing" };
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const outcome = await nyte.messages.redeliver({
-      sessionId,
-      change,
-      delivery: replacementDelivery,
-      content,
-    });
-
-    switch (outcome.kind) {
-      case "redelivered":
-      case "unchanged":
-        return { kind: "updated", interruptedRun: run };
-      case "landed":
-        return outcome;
-      case "not_found":
-        break;
-      default: {
-        const _exhaustive: never = outcome;
-
-        return _exhaustive;
-      }
-    }
-
-    if (key === undefined) return { kind: "missing" };
-    const state = await messageKeyState(sessionId, key);
-
-    if (state.kind !== "pending") return state.kind === "landed" ? state : { kind: "missing" };
-
-    if (state.item.change === change) return { kind: "missing" };
-    change = state.item.change;
-    key = state.item.key;
-  }
-
-  return { kind: "missing" };
-}
-
-async function replaceQueuedMessage(input: QueueEditInput): Promise<QueueEditResult> {
-  try {
-    return await tryReplaceQueuedMessage(input);
-  } catch (cause: unknown) {
-    return { kind: "failed", message: errorMessage(cause) };
-  }
+/** The receipt a message stands for: the same id, minted before the network. */
+function messageReceipt(sessionId: SessionId, message: UserMessage) {
+  return connection().session(sessionId).receipt(asId<"receipt">(message.id));
 }
 
 function draftWith(document: ComposerDocumentState, text: string): ComposerDocumentState {
@@ -913,7 +795,7 @@ function draftWith(document: ComposerDocumentState, text: string): ComposerDocum
 
 export function Composer({
   sessionId,
-  run,
+  execution,
   pending,
   unsent,
   disabled = false,
@@ -926,12 +808,12 @@ export function Composer({
   floatingMount = null,
 }: {
   sessionId: SessionId;
-  /** The head's run as the fold holds it; Stop names it and follows its abort flag. */
-  run: RunInfo | undefined;
-  /** Durable queue items waiting behind a live run, in the deliverys the tray shows. */
-  pending: readonly PendingItem[];
-  /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
-  unsent: readonly OutboxRow[];
+  /** The head's run phase as the view carries it; Stop names its run and follows its fence. */
+  execution: Execution | undefined;
+  /** Admitted messages waiting for the next turn behind a live run. */
+  pending: readonly UserMessage[];
+  /** Messages in this client's journal the strip shows: retrying, or held behind a live run. */
+  unsent: readonly UserMessage[];
   disabled?: boolean;
   /**
    * The draft to start from. The composer owns the draft while mounted and
@@ -955,16 +837,15 @@ export function Composer({
   const [attachmentError, setAttachmentError] = useState<string>();
   const [feedback, setFeedback] = useState<ComposerFeedback>();
   const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
-  const liveRun = run !== undefined && !isTerminalPhase(run.phase) ? run : undefined;
-
-  const stopping = liveRun?.abortRequested === true;
+  const liveRun = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
+  const stopping = execution?.kind === "live" && execution.stopping;
 
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
   const [activeQueued, setActiveQueued] = useState<string>();
   const host = useHostState();
   const queueRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
-  const pluginCatalog = usePluginCatalog();
+  const pluginCatalog = usePluginCatalog(sessionId);
   const sessionCommands = useSessionCommands(sessionId);
   const sessionActions = useSessionActions();
 
@@ -981,12 +862,7 @@ export function Composer({
   const focusAfterMove = useRef(false);
   const cwd = host.data?.workspace?.path;
 
-  const selectActivity = useCallback(
-    (frame: SessionFrame | undefined) => subagentActivity(frame, cwd),
-    [cwd],
-  );
-
-  const activity = useSessionFrameSelector(floating ? sessionId : undefined, selectActivity);
+  const activity = subagentActivity(useSessionView(floating ? sessionId : undefined), cwd);
 
   const attachInlineSlot = useCallback(
     (slot: HTMLDivElement | null): void => {
@@ -1014,15 +890,7 @@ export function Composer({
     editorRef.current?.focus({ preventScroll: true });
   }, [floatingMount, portalHost]);
 
-  const activeCommands =
-    sessionCommands.data ?? (sessionCommands.isError ? NO_COMMANDS : undefined);
-
-  const suggestionCatalog = composerSource(
-    pluginCatalog.data === undefined || activeCommands === undefined
-      ? undefined
-      : { ...pluginCatalog.data, commands: activeCommands },
-    pluginCatalog.isError,
-  );
+  const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
 
   // A thread always has an open project behind it.
   const workspaceFiles = useMentionFiles(true);
@@ -1081,11 +949,9 @@ export function Composer({
     });
   }, [addFiles, disabled, fileDropRoot]);
 
-  // An action stays on its change until the watch takes the row away: a
-  // cancelled change leaves the queue, a redelivered one is a new change.
   const setRowAction = (change: string, action: PendingRowAction): void => {
     setRowActions((current) => {
-      const shown = new Set(pending.map((item) => item.change));
+      const shown = new Set<string>(pending.map((item) => item.id));
       const next = new Map([...current].filter(([held]) => shown.has(held)));
       next.set(change, action);
 
@@ -1140,24 +1006,9 @@ export function Composer({
   ): Promise<boolean> => {
     if (disabled || attachmentReads !== 0) return false;
     const sentAttachments = attachments;
-    const catalogFailed = pluginCatalog.data === undefined && pluginCatalog.isError;
-    const commandsFailed = sessionCommands.data === undefined && sessionCommands.isError;
 
-    // Until both lists answer, a slash line may be a command whose argument is a secret.
-    if (
-      /^\/\S/.test(submission.text.trim()) &&
-      (pluginCatalog.data === undefined || sessionCommands.data === undefined)
-    ) {
-      if (catalogFailed) void pluginCatalog.refetch();
-
-      if (commandsFailed) void sessionCommands.refetch();
-      setFeedback({
-        kind: "error",
-        message:
-          catalogFailed || commandsFailed
-            ? "Couldn't load commands. Try again."
-            : "Commands are still loading. Try again.",
-      });
+    if (/^\/\S/.test(submission.text.trim()) && sessionCommands.data === undefined) {
+      setFeedback({ kind: "error", message: "Commands are still loading. Try again." });
 
       return false;
     }
@@ -1174,10 +1025,7 @@ export function Composer({
     // A known command's line never reaches the model just because it cannot run here.
     const unavailable =
       plan.kind === "message"
-        ? parsePluginCommand(submission.text, [
-            ...(pluginCatalog.data?.commands ?? NO_COMMANDS),
-            ...(sessionCommands.data ?? NO_COMMANDS),
-          ])
+        ? parsePluginCommand(submission.text, sessionCommands.data ?? NO_COMMANDS)
         : undefined;
 
     if (unavailable !== undefined) {
@@ -1211,76 +1059,52 @@ export function Composer({
     setFeedback(undefined);
 
     if (edit !== undefined) {
-      const content = composerMessageContent(submission.text.trim(), sentAttachments);
-      const outcome = await replaceQueuedMessage({ sessionId, edit, content, delivery });
+      try {
+        const content = await uploadComposerContent(
+          composerMessageContent(
+            submission.text.trim(),
+            sentAttachments,
+            messageFiles(edit.message.content),
+          ),
+        );
+        await connection().session(sessionId).send(content, { replace: edit.message.id, delivery });
+        setPendingEdit(undefined);
 
-      switch (outcome.kind) {
-        case "updated": {
-          setPendingEdit(undefined);
+        return true;
+      } catch (cause: unknown) {
+        refuse(`Couldn't update the message: ${errorMessage(cause)}`, sent);
 
-          if (outcome.interruptedRun === undefined) return true;
-
-          try {
-            await requestStop(sessionId, outcome.interruptedRun);
-          } catch (cause: unknown) {
-            setFeedback({
-              kind: "error",
-              message: `The message was updated, but the run could not be stopped: ${errorMessage(cause)}`,
-            });
-          }
-
-          return true;
-        }
-
-        case "landed":
-          setPendingEdit(undefined);
-          refuse("That message was already sent. Your edit is back in the composer.", sent);
-
-          return false;
-        case "missing":
-          refuse("Couldn't find the queued message. Try again.", sent);
-
-          return false;
-        case "failed":
-          refuse(`Couldn't update the message: ${outcome.message}`, sent);
-
-          return false;
-        default: {
-          const _exhaustive: never = outcome;
-
-          return _exhaustive;
-        }
+        return false;
       }
     }
 
     if (plan.kind === "command") {
       try {
-        const outcome = await nyte.plugins.commands.run({ sessionId, ...plan.command });
+        const outcome = await connection()
+          .session(sessionId)
+          .command(
+            plan.command.name,
+            plan.command.argument === "" ? undefined : plan.command.argument,
+          );
 
         switch (outcome.kind) {
           case "ran":
             setFeedback(
-              outcome.output === undefined
-                ? undefined
-                : { kind: "command", message: outcome.output },
+              outcome.output === null ? undefined : { kind: "command", message: outcome.output },
             );
-            refreshThread(sessionId);
-            void queryClient.invalidateQueries({
-              queryKey: keys.pluginSettings(sessionId),
-              exact: true,
-            });
 
             return true;
-          case "prompt":
-            await outbox.submit({ sessionId, content: outcome.prompt, delivery: plan.delivery });
-
+          case "sent":
             return true;
-          case "not_found":
-            void queryClient.invalidateQueries({
-              queryKey: keys.sessionCommands(sessionId),
-              exact: true,
-            });
+          case "unknown":
             refuse(`/${plan.command.name} isn't available in this chat.`, sent);
+
+            return false;
+          case "invalid":
+            refuse(
+              outcome.issues[0]?.message ?? `/${plan.command.name} needs other arguments.`,
+              sent,
+            );
 
             return false;
           case "failed":
@@ -1318,11 +1142,11 @@ export function Composer({
     }
 
     try {
-      await outbox.submit(composerSendInput(sessionId, plan));
+      await sendComposerMessage(sessionId, plan);
 
       return true;
     } catch (cause: unknown) {
-      refuse(`Couldn't save the message: ${errorMessage(cause)}`, sent);
+      refuse(`Couldn't send the message: ${errorMessage(cause)}`, sent);
 
       return false;
     }
@@ -1342,42 +1166,41 @@ export function Composer({
 
   const abort = (): void => {
     if (disabled || liveRun === undefined || stopping) return;
-    requestStop(sessionId, liveRun.runId).catch(() => undefined);
+    connection()
+      .session(sessionId)
+      .run(liveRun.id)
+      .stop()
+      .catch(() => undefined);
   };
 
-  // The watch settles every outcome but a failed request: a cancelled or
-  // redelivered change leaves the tray with its event, and a landed one
-  // reaches the transcript. Only a request that never arrived needs a word.
-  const cancelPending = async (item: PendingItem): Promise<void> => {
-    setRowAction(item.change, { kind: "cancelling" });
+  /** Withdraws a queued or unsent message: its receipt's stop, before it lands. */
+  const cancelPending = async (item: UserMessage): Promise<void> => {
+    setRowAction(item.id, { kind: "cancelling" });
 
     try {
-      await nyte.messages.cancel({ sessionId, change: item.change });
+      await messageReceipt(sessionId, item).stop();
     } catch (cause: unknown) {
-      setRowAction(item.change, {
-        kind: "failed",
-        message: `Couldn't cancel: ${errorMessage(cause)}`,
-      });
+      setRowAction(item.id, { kind: "failed", message: `Couldn't cancel: ${errorMessage(cause)}` });
     }
   };
 
-  const sendPendingNow = async (item: PendingItem): Promise<void> => {
-    setRowAction(item.change, { kind: "sending" });
+  /** Moves a queued message into the live run: the same message replaced with steer delivery. */
+  const sendPendingNow = async (item: UserMessage): Promise<void> => {
+    setRowAction(item.id, { kind: "sending" });
 
     try {
-      await nyte.messages.redeliver({ sessionId, change: item.change, delivery: roles.steer });
+      await connection()
+        .session(sessionId)
+        .send(item.content, { replace: item.id, delivery: roles.steer });
     } catch (cause: unknown) {
-      setRowAction(item.change, {
-        kind: "failed",
-        message: `Couldn't send: ${errorMessage(cause)}`,
-      });
+      setRowAction(item.id, { kind: "failed", message: `Couldn't send: ${errorMessage(cause)}` });
     }
   };
 
   // The first queued follow-up is the one Enter adds. While it is mid-action,
   // Enter waits rather than reaching past it and reordering the queue.
   const nextQueued = nextToSteer(pending, roles);
-  const nextQueuedAction = nextQueued === undefined ? undefined : rowActions.get(nextQueued.change);
+  const nextQueuedAction = nextQueued === undefined ? undefined : rowActions.get(nextQueued.id);
 
   const nextIdleQueued =
     nextQueuedAction === undefined || nextQueuedAction.kind === "failed" ? nextQueued : undefined;
@@ -1408,41 +1231,15 @@ export function Composer({
         ? "Finish editing the queued message first."
         : "Send or clear your draft to edit this message.";
 
-  const beginEdit = (item: PendingItem | OutboxRow): void => {
-    if (!canBeginEdit) return;
-    const input = "input" in item ? item.input : item;
-
-    if (input.source?.kind === "action") return;
-    let edit: PendingEdit;
-
-    if ("input" in item) {
-      edit = {
-        kind: "outbox",
-        key: item.key,
-        delivery: item.input.delivery ?? roles.queue,
-        content: item.input.content,
-      };
-    } else {
-      edit = {
-        kind: "durable",
-        change: item.change,
-        key: item.key,
-        delivery: item.delivery,
-        content: item.content,
-      };
-    }
-
-    const text = messageDraftText(userMessageText(edit.content));
-    setPendingEdit(edit);
+  const beginEdit = (item: UserMessage): void => {
+    if (!canBeginEdit || item.source.kind === "action") return;
+    const text = messageDraftText(userMessageText(item.content));
+    setPendingEdit({ message: item, delivery: item.delivery });
     setFeedback(undefined);
     updateViewState((current) => ({
       ...current,
       draft: text,
-      attachments: messageImages(edit.content).map((content, index) => ({
-        id: crypto.randomUUID(),
-        name: `Image ${String(index + 1)}`,
-        content,
-      })),
+      attachments: [],
       selectionStart: text.length,
       selectionEnd: text.length,
     }));
@@ -1468,16 +1265,9 @@ export function Composer({
     if (button === document.activeElement) editorRef.current?.focus({ preventScroll: true });
   };
 
-  const removeOutboxRow = (row: OutboxRow): void => {
-    const withdrawal = outbox.withdraw(row.key);
-
-    if (withdrawal === undefined) return;
-    void withdrawal
-      .then(async (outcome) => {
-        if (outcome.kind === "durable") {
-          await nyte.messages.cancel({ sessionId, change: outcome.change });
-        }
-      })
+  const removeOutboxRow = (row: UserMessage): void => {
+    messageReceipt(sessionId, row)
+      .stop()
       .catch((cause: unknown) => {
         setFeedback({
           kind: "error",
@@ -1486,21 +1276,19 @@ export function Composer({
       });
   };
 
-  const sendOutboxRowNow = (row: OutboxRow): void => {
-    if (row.state.kind !== "durable") {
-      setFeedback({ kind: "status", message: "Wait for the message to finish sending." });
-
-      return;
-    }
-
-    void nyte.messages
-      .redeliver({ sessionId, change: row.state.change, delivery: roles.steer })
+  const sendOutboxRowNow = (row: UserMessage): void => {
+    void connection()
+      .session(sessionId)
+      .send(row.content, { replace: row.id, delivery: roles.steer })
       .catch((cause: unknown) => {
         setFeedback({ kind: "error", message: `Couldn't send: ${errorMessage(cause)}` });
       });
   };
 
-  const queueKeys = [...pending.map((item) => item.change), ...unsent.map((row) => row.key)];
+  const queueKeys: readonly string[] = [
+    ...pending.map((item) => item.id),
+    ...unsent.map((row) => row.id),
+  ];
 
   const focusedQueueKey =
     activeQueued !== undefined && queueKeys.includes(activeQueued) ? activeQueued : queueKeys[0];
@@ -1509,7 +1297,8 @@ export function Composer({
 
   const queueKeyDown = (
     event: KeyboardEvent<HTMLDivElement>,
-    item: PendingItem | OutboxRow,
+    item: UserMessage,
+    unsentRow: boolean,
   ): void => {
     if (event.defaultPrevented || event.target !== event.currentTarget) return;
 
@@ -1535,12 +1324,8 @@ export function Composer({
 
     if (disabled || event.repeat) return;
 
-    const editingThis =
-      "input" in item
-        ? pendingEdit?.kind === "outbox" && pendingEdit.key === item.key
-        : pendingEdit?.kind === "durable" && pendingEdit.change === item.change;
-
-    const action = "input" in item ? undefined : rowActions.get(item.change);
+    const editingThis = pendingEdit?.message.id === item.id;
+    const action = rowActions.get(item.id);
 
     if (editingThis || action?.kind === "sending" || action?.kind === "cancelling") return;
 
@@ -1552,7 +1337,7 @@ export function Composer({
       event.preventDefault();
       editorRef.current?.focus({ preventScroll: true });
 
-      if ("input" in item) removeOutboxRow(item);
+      if (unsentRow) removeOutboxRow(item);
       else void cancelPending(item);
 
       return;
@@ -1564,7 +1349,7 @@ export function Composer({
       event.preventDefault();
       editorRef.current?.focus({ preventScroll: true });
 
-      if ("input" in item) sendOutboxRowNow(item);
+      if (unsentRow) sendOutboxRowNow(item);
       else if (item.delivery !== roles.steer) void sendPendingNow(item);
 
       return;
@@ -1598,10 +1383,8 @@ export function Composer({
         </div>
         <div ref={queueRef} role="list" {...props(trayStyles.list, composerStyles.queueList)}>
           {pending.map((item) => {
-            const action = rowActions.get(item.change);
-
-            const editingThis =
-              pendingEdit?.kind === "durable" && pendingEdit.change === item.change;
+            const action = rowActions.get(item.id);
+            const editingThis = pendingEdit?.message.id === item.id;
 
             const busyRow = action?.kind === "cancelling" || action?.kind === "sending";
             const steering = item.delivery === roles.steer;
@@ -1609,19 +1392,21 @@ export function Composer({
             return (
               <div
                 role="listitem"
-                key={item.change}
-                data-queue-row={item.change}
-                tabIndex={focusedQueueKey === item.change ? 0 : -1}
+                key={item.id}
+                data-queue-row={item.id}
+                tabIndex={focusedQueueKey === item.id ? 0 : -1}
                 aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${queueDeleteKey}`}
                 aria-description={`Enter sends now. Space or Right Arrow edits. ${macPlatform(host.data?.platform) ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`}
-                onFocus={() => setActiveQueued(item.change)}
-                onKeyDown={(event) => queueKeyDown(event, item)}
+                onFocus={() => setActiveQueued(item.id)}
+                onKeyDown={(event) => queueKeyDown(event, item, false)}
                 data-editing={editingThis}
                 data-error={action?.kind === "failed"}
                 {...props(composerStyles.queueRow)}
               >
                 <div {...props(composerStyles.queueMessage)}>
-                  <QueuedMessageContent content={item.source?.label ?? item.content} />
+                  <QueuedMessageContent
+                    content={item.source.kind === "action" ? item.source.label : item.content}
+                  />
                   {action?.kind === "cancelling" && (
                     <span {...props(composerStyles.queuedState)}>Cancelling…</span>
                   )}
@@ -1640,7 +1425,7 @@ export function Composer({
                 </div>
                 {!busyRow && !editingThis && (
                   <div {...props(composerStyles.queueActions)}>
-                    {item.source?.kind !== "action" && (
+                    {item.source.kind !== "action" && (
                       <Button
                         iconOnly
                         icon="pencil"
@@ -1676,25 +1461,28 @@ export function Composer({
             );
           })}
           {unsent.map((row) => {
-            const editingThis = pendingEdit?.kind === "outbox" && pendingEdit.key === row.key;
+            const editingThis = pendingEdit?.message.id === row.id;
+            const retrying = row.status.kind === "unsent" ? row.status.retrying : null;
 
             return (
               <div
                 role="listitem"
-                key={row.key}
-                data-queue-row={row.key}
-                tabIndex={focusedQueueKey === row.key ? 0 : -1}
+                key={row.id}
+                data-queue-row={row.id}
+                tabIndex={focusedQueueKey === row.id ? 0 : -1}
                 aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${queueDeleteKey}`}
                 aria-description={`Enter sends now. Space or Right Arrow edits. ${macPlatform(host.data?.platform) ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`}
-                onFocus={() => setActiveQueued(row.key)}
-                onKeyDown={(event) => queueKeyDown(event, row)}
+                onFocus={() => setActiveQueued(row.id)}
+                onKeyDown={(event) => queueKeyDown(event, row, true)}
                 data-editing={editingThis}
-                data-error={row.state.kind === "retrying"}
+                data-error={retrying !== null}
                 {...props(composerStyles.queueRow)}
               >
                 <div {...props(composerStyles.queueMessage)}>
-                  <QueuedMessageContent content={row.input.source?.label ?? row.input.content} />
-                  {row.state.kind === "retrying" && (
+                  <QueuedMessageContent
+                    content={row.source.kind === "action" ? row.source.label : row.content}
+                  />
+                  {retrying !== null && (
                     <span
                       role="alert"
                       {...props(
@@ -1703,13 +1491,13 @@ export function Composer({
                         composerStyles.queuedError,
                       )}
                     >
-                      Couldn't send: {row.state.reason}. Retrying…
+                      Couldn't send: {retrying.reason}. Retrying…
                     </span>
                   )}
                 </div>
                 {!editingThis && (
                   <div {...props(composerStyles.queueActions)}>
-                    {row.input.source?.kind !== "action" && row.input.delivery !== roles.steer && (
+                    {row.source.kind !== "action" && row.delivery !== roles.steer && (
                       <Button
                         iconOnly
                         icon="pencil"

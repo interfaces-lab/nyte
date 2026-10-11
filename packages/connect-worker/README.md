@@ -16,12 +16,13 @@ It is served at `https://nyte-connect.daniel-fu90.workers.dev` (`workers_dev`, n
 | `POST /v1/environments/:id/devices` | Owner JWT | Enrolls a phone's token digest through the relay. 201 only once the device is active. |
 | `DELETE /v1/environments/:id/devices/:deviceId` | Owner JWT or environment proof | Strong revocation: also denies and revokes the enrolling Clerk session. 204. |
 | `POST /v1/environments/:id/devices/:deviceId/release` | Environment proof only, body exactly `{}` | Weak end: the device stops, its Clerk session is left alone. 204. |
-| `GET, POST /r/:id/v1/...` | Active device bearer token | Relayed to the desktop's Nyte server. |
+| `POST /r/:id/<operation>` | Active device bearer token | One row of the protocol's declarations table, relayed to the desktop's host. |
+| `GET /r/:id/.nyte/identity`, `GET /r/:id/.nyte/describe` | Active device bearer token | The host's identity challenge and description, relayed to the desktop. |
 | `DELETE /r/:id/_nyte/connect/device` | Reserved or active device bearer token | The phone drops its own credential, relayed to the desktop. |
 | `POST /v1/clerk/webhook` | Clerk webhook signature | `user.updated` (banned, locked) and `user.deleted`. |
 | `GET /.well-known/jwks.json` | none | The broker's public signing keys. |
 
-Another owner's environment or device answers 404, the same as one that does not exist. Under `/r/`, refusals use the Nyte server's error envelope (`{ ok: false, error }`), and an offline desktop answers 503 `closed`, never an auth error.
+Another owner's environment or device answers 404, the same as one that does not exist. Under `/r/`, refusals are the host's wire error (`{ code, message, hostId, issues, correlation }`), and an offline desktop answers 503 `unavailable`, never an auth error. `X-Nyte-Input` and `Last-Event-ID` reach the desktop; `X-Nyte-Host`, `X-Nyte-Credential`, `X-Nyte-Version` and `X-Nyte-Mime` come back, exposed to allowed browser origins.
 
 ## Browser access
 
@@ -37,12 +38,13 @@ Only these route/method pairs gain CORS and unauthenticated OPTIONS preflights:
 | `/v1/environments/:id` | DELETE with owner JWT only |
 | `/v1/environments/:id/devices` | POST |
 | `/v1/environments/:id/devices/:deviceId` | DELETE with owner JWT only |
-| `/r/:id/v1/...` | GET, POST, including GET SSE streams |
+| `/r/:id/<operation>` | POST, including SSE and octet streams |
+| `/r/:id/.nyte/identity`, `/r/:id/.nyte/describe` | GET |
 | `/r/:id/_nyte/connect/device` | DELETE with device bearer |
 
-Preflights allow only `authorization` and `content-type`, cache for 600 seconds, and advertise methods per route. Actual responses, including auth refusals and internal errors, echo the exact allowed origin and include `Vary: Origin`. `retry-after` and `allow` are exposed; the only header the Nyte HTTP/SSE client reads, `content-type`, is already CORS-safelisted. No wildcard or `Access-Control-Allow-Credentials` is sent. Unlisted origins are refused without CORS. No-Origin requests retain their previous behavior.
+Preflights allow only `authorization` and `content-type` on broker routes, plus `accept`, `last-event-id` and `x-nyte-input` under `/r/`; they cache for 600 seconds and advertise methods per route. Actual responses, including auth refusals and internal errors, echo the exact allowed origin and include `Vary: Origin`. `retry-after` and `allow` are exposed, and under `/r/` also `x-nyte-host`, `x-nyte-credential`, `x-nyte-version` and `x-nyte-mime`. No wildcard or `Access-Control-Allow-Credentials` is sent. Unlisted origins are refused without CORS. No-Origin requests retain their previous behavior.
 
-Desktop linking, leases, relay socket upgrades, broker machine-key release, webhook, and JWKS publication do not gain CORS. Browser requests with `nyte-proof` are refused without CORS even on the shared DELETE paths. The relay request-header allowlist already strips Origin, cookies, Referer, Sec-Fetch headers, and forwarding headers before frames reach the desktop; only authorization, content-type, and accept remain. The desktop relay uses its fixed loopback host. Its Connect route handler's no-Origin/host checks and the Nyte server's local origin and bearer checks stay unchanged.
+Desktop linking, leases, relay socket upgrades, broker machine-key release, webhook, and JWKS publication do not gain CORS. Browser requests with `nyte-proof` are refused without CORS even on the shared DELETE paths. The relay request-header allowlist already strips Origin, cookies, Referer, Sec-Fetch headers, and forwarding headers before frames reach the desktop; only authorization, content-type, accept, last-event-id, and x-nyte-input remain. The desktop relay uses its fixed loopback host. Its Connect route handler's no-Origin/host checks and the host listener's bearer checks stay unchanged.
 
 Browser token lifetime and XSS risks, the required strict CSP, and the browser client API are documented in `packages/connect/README.md`. Cloudflare and the broker still see all relayed traffic.
 

@@ -5,7 +5,7 @@ import type { Host, Kernel, Listener, OpenOptions } from "@nyte-ai/core";
 import { operations } from "@nyte-ai/protocol";
 import { postgresStore } from "@nyte-ai/host";
 import { credentialStore } from "@nyte-ai/host/credentials";
-import { identitySigner } from "@nyte-ai/host/identity";
+import { seedSigner } from "@nyte-ai/host/identity";
 import { listenFetch } from "@nyte-ai/host/listen-fetch";
 import { sandboxProvider } from "@nyte-ai/host/providers";
 import { start } from "workflow/api";
@@ -28,7 +28,7 @@ const boot: Parameters<typeof sandboxProvider>[0]["boot"] = async () => {
 
 let building: Promise<Served> | null = null;
 
-/** Returns this instance's composed host and its listener, built on the first call and shared by every request and workflow step the instance serves (a failed build is forgotten, so the next call builds again): `composeHost` with `postgresStore({ connectionString: process.env.DATABASE_URL })` (unset, `SdkError("unavailable")`), the plugin `{ id: "sandbox", environment: sandboxProvider({ boot }) }` with the `boot` the deployer supplies (§43i) and workspace `{ kind: "sandbox", locator: { name: process.env.NYTE_SANDBOX ?? "nyte" } }`, `execution: { kind: "dispatch", async dispatch({ session, head }) { await start(driveHead, [{ session, head }]); } }` with `workflow/api`'s `start` (awaited, its `Run` handle dropped) (§42p, §42s: after each commit the kernel dispatches every head a wake makes owed a step, one pending dispatch per head here, so admitted inputs are `covered` and activation attaches the sandbox here), `poll: 1000` so this instance reads what other instances wrote (§42h), `home: null`, protocol's `operations()`, description `{ name: "nyte-host", platform: "vercel", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the same Postgres store, so model logins persist across instances (§42e, §43j). Drives start only from that dispatch and the repair route; nothing subscribes to the bus or to `kernel.wakes`. Jobs stay in the instance that started them: `job.output` for a job another instance started answers `unavailable`, its output reaching a client only through its exit report (§42h, §42w). `listenFetch` serves with `auth: { kind: "token", token: process.env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, `identity: identitySigner(host.hostId, secrets)` when `NYTE_SECRET_KEY` is set (without it `/.nyte/identity` answers `unknown`), and a `before` that answers `GET /.nyte/repair` (the cron) through `answerRepair` with `process.env.CRON_SECRET`: it pages `host.execution.repair` (100 a page), which on this `dispatch` kernel dispatches every runnable head again (§42s). */
+/** Returns this instance's composed host and its listener, built on the first call and shared by every request and workflow step the instance serves (a failed build is forgotten, so the next call builds again): `composeHost` with `postgresStore({ connectionString: process.env.DATABASE_URL })` (unset, `SdkError("unavailable")`), the plugin `{ id: "sandbox", environment: sandboxProvider({ boot }) }` with the `boot` the deployer supplies (§43i) and workspace `{ kind: "sandbox", locator: { name: process.env.NYTE_SANDBOX ?? "nyte" } }`, `execution: { kind: "dispatch", async dispatch({ session, head }) { await start(driveHead, [{ session, head }]); } }` with `workflow/api`'s `start` (awaited, its `Run` handle dropped) (§42p, §42s: after each commit the kernel dispatches every head a wake makes owed a step, one pending dispatch per head here, so admitted inputs are `covered` and activation attaches the sandbox here), `poll: 1000` so this instance reads what other instances wrote (§42h), `home: null`, protocol's `operations()`, description `{ name: "nyte-host", platform: "vercel", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the same Postgres store, so model logins persist across instances (§42e, §43j). Drives start only from that dispatch and the repair route; nothing subscribes to the bus or to `kernel.wakes`. Jobs stay in the instance that started them: `job.output` for a job another instance started answers `unavailable`, its output reaching a client only through its exit report (§42h, §42w). `listenFetch` serves with `auth: { kind: "token", token: process.env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, `identity: seedSigner(host.hostId, seed)` when `NYTE_IDENTITY_KEY` (a base64 32-byte Ed25519 seed, §50a) is set (without it `/.nyte/identity` answers `unknown`), and a `before` that answers `GET /.nyte/repair` (the cron) through `answerRepair` with `process.env.CRON_SECRET`: it pages `host.execution.repair` (100 a page), which on this `dispatch` kernel dispatches every runnable head again (§42s). */
 export function vercelHost(): Promise<Served> {
   const built = (building ??= build());
 
@@ -44,9 +44,9 @@ async function build(): Promise<Served> {
 
   if (connectionString === undefined || connectionString === "")
     throw new SdkError("unavailable", "Set DATABASE_URL to the Postgres database the host keeps.");
-  const key = process.env.NYTE_SECRET_KEY;
+  const identityKey = process.env.NYTE_IDENTITY_KEY;
   const store = postgresStore({ connectionString });
-  const secrets = secretsFrom(key);
+  const secrets = secretsFrom(process.env.NYTE_SECRET_KEY);
   const description = { name: "nyte-host", platform: "vercel", version: manifest.version };
 
   const host = await composeHost({
@@ -81,9 +81,9 @@ async function build(): Promise<Served> {
     auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
     execution: { kind: "admit-only" },
     describe: () => description,
-    ...(key === undefined || key === ""
+    ...(identityKey === undefined || identityKey === ""
       ? {}
-      : { identity: await identitySigner(host.hostId, secrets) }),
+      : { identity: await seedSigner(host.hostId, Uint8Array.fromBase64(identityKey)) }),
     before: (request) => answerRepair(request, process.env.CRON_SECRET, repair),
   }).catch(async (error: unknown) => {
     await host.close();
@@ -100,8 +100,8 @@ async function build(): Promise<Served> {
  *
  * Without it, `key()` rejects `SdkError("unavailable")`: `secrets.set` and
  * model logins answer `unavailable`, stored logins read as absent while
- * provider keys from the environment still work, and the listener answers no
- * identity challenge.
+ * provider keys from the environment still work. The identity has its own
+ * variable (§50a).
  */
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
   if (key === undefined || key === "")

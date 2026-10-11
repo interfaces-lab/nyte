@@ -1,212 +1,110 @@
 /**
- * From flags and settings to a composed host: which provider answers, which
- * model and thinking level a run starts from, and the workspace's plugin set.
+ * From flags to the session a launch opens: which chat, and the model and
+ * thinking level the flags ask the head to use.
  */
 import process from "node:process";
-import { clampThinkingLevel, createNyteModels } from "@nyte-ai/ai";
-import type { Api, Model, Models, MutableModels, Provider } from "@nyte-ai/ai";
-import { isThinkingLevel, sessionId } from "@nyte-ai/core";
-import type { Nyte, SessionInfo, ThinkingLevel } from "@nyte-ai/core";
-import type { Plugin } from "@nyte-ai/core/plugins";
-import { workspaceStorePath } from "@nyte-ai/host";
-import type { TrustedWorkspace } from "@nyte-ai/host";
-import { notificationsPlugin } from "@nyte-ai/plugin/examples/notifications";
-import type { TelemetryContext } from "@nyte-ai/telemetry";
-import {
-  DEFAULT_THINKING_LEVEL,
-  defaultModel,
-  loadAuthenticatedModels,
-  requireModel,
-  requireProvider,
-} from "./catalog.ts";
+import notificationsPlugin from "@nyte-ai/plugin/notifications";
+import tuiRenderersPlugin from "@nyte-ai/plugin/renderers/tui";
+import type { Plugin } from "@nyte-ai/plugin/client";
+import type { ConfigurationPatch, Connection, Cursor, Session, SessionInfo } from "@nyte-ai/sdk";
+import { availableModels } from "./catalog.ts";
 import type { ResumeTarget, RunFlags } from "./flags.ts";
-import { Host } from "./host.ts";
-import type { ResolvedSettings } from "./settings.ts";
 
-export interface Runtime {
-  readonly models: MutableModels;
-  readonly provider: Provider;
-  /** Auth-filtered models for a signed-in startup; the full catalog for a signed-out shell. */
-  readonly modelCandidates: readonly Model<Api>[];
-}
-
-function runProviderCandidates(
-  models: Models,
-  providerId: string | undefined,
-  settings: ResolvedSettings | undefined,
-): readonly Provider[] {
-  if (providerId !== undefined) return [requireProvider(models, providerId)];
-  const providers = models.getProviders();
-
-  if (settings?.defaultProvider === undefined) return providers;
-  const preferred = models.getProvider(settings.defaultProvider);
-
-  if (preferred === undefined) return providers;
-
-  return [preferred, ...providers.filter((provider) => provider.id !== preferred.id)];
-}
-
-function resolveRunModel(
-  modelCandidates: readonly Model<Api>[],
-  providerId: string,
-  sources: {
-    readonly flag: string | undefined;
-    readonly environment: string | undefined;
-    readonly settings: ResolvedSettings;
-  },
-): Model<Api> {
-  const override = sources.flag ?? sources.environment;
-
-  if (override !== undefined) return requireModel(modelCandidates, providerId, override);
-
-  if (
-    sources.settings.defaultProvider === providerId &&
-    sources.settings.defaultModel !== undefined
-  ) {
-    const preferred = modelCandidates.find(
-      (model) => model.provider === providerId && model.id === sources.settings.defaultModel,
-    );
-
-    if (preferred !== undefined) return preferred;
-  }
-
-  return defaultModel(modelCandidates, providerId);
-}
-
-/** Choose configured auth and its credential-filtered models after refreshing the catalog. */
-export async function resolveRuntime(
-  flags: RunFlags,
-  settings: ResolvedSettings,
-  signal?: AbortSignal,
-): Promise<Runtime | undefined> {
-  const models = createNyteModels();
-  await loadAuthenticatedModels(models, { signal });
-
-  for (const provider of runProviderCandidates(models, flags.provider, settings)) {
-    const modelCandidates = await models.getAvailable(provider.id, { signal });
-
-    if (modelCandidates.length === 0) continue;
-
-    return { models, provider, modelCandidates };
-  }
-
-  return undefined;
-}
-
-/** Fetch a catalog so a signed-out shell can open and offer `/login`. */
-export async function signedOutRuntime(
-  flags: RunFlags,
-  settings: ResolvedSettings,
-  signal?: AbortSignal,
-): Promise<Runtime> {
-  const models = createNyteModels();
-  const preferred = runProviderCandidates(models, flags.provider, settings);
-  const remaining = models
-    .getProviders()
-    .filter((provider) => !preferred.some((candidate) => candidate.id === provider.id));
-
-  await models.refresh({ signal });
-
-  for (const provider of [...preferred, ...remaining]) {
-    const modelCandidates = models.getModels(provider.id);
-
-    if (modelCandidates.length > 0) return { models, provider, modelCandidates };
-  }
-
-  throw new Error(
-    "No models are available. Check your connection, then run `nyte update --models`.",
-  );
-}
-
-interface HostFallbacks {
-  readonly model: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
-}
-
-/** Resolve the composition fallbacks a workspace launch starts from. */
-export function hostFallbacks(
-  runtime: Runtime,
-  settings: ResolvedSettings,
-  flags: Pick<RunFlags, "model" | "effort">,
-): HostFallbacks {
-  const model = resolveRunModel(runtime.modelCandidates, runtime.provider.id, {
-    flag: flags.model,
-    environment: process.env["NYTE_MODEL"],
-    settings,
-  });
-
-  const requested = flags.effort ?? process.env["NYTE_EFFORT"];
-
-  const effort =
-    requested !== undefined && isThinkingLevel(requested)
-      ? requested
-      : (settings.defaultThinkingLevel ?? DEFAULT_THINKING_LEVEL);
-
-  return { model, thinkingLevel: clampThinkingLevel(model, effort) };
-}
-
-/** The terminal's own built-ins, after the shared set: attention comes through the shell. */
-export function tuiPlugins(): Plugin[] {
-  return [notificationsPlugin];
-}
-
-interface OpenWorkspaceHostOptions {
-  readonly telemetry?: TelemetryContext;
-  readonly workspace: TrustedWorkspace;
-  readonly settings: ResolvedSettings;
-  readonly runtime: Runtime;
-  readonly model: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
-  /** Plugin load failures. */
-  readonly report: (message: string) => void;
+/** The terminal's client plugins: run notifications and the part renderers it draws with. */
+export function tuiPlugins(): readonly Plugin[] {
+  return [notificationsPlugin, tuiRenderersPlugin];
 }
 
 /**
- * Compose the host for one workspace: its store, its plugin set behind trust,
- * and the model fallbacks the caller resolved.
+ * Returns the head configuration `--provider`, `--model` (or `NYTE_MODEL`)
+ * and `--effort` (or `NYTE_EFFORT`) ask for, or undefined when none is given.
+ * A bare model id is looked up across the signed-in providers.
  */
-export async function openWorkspaceHost(options: OpenWorkspaceHostOptions): Promise<Host> {
-  return Host.open({
-    cwd: options.workspace.cwd,
-    storePath: await workspaceStorePath(options.workspace.cwd),
-    models: options.runtime.models,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    telemetry: options.telemetry,
-    plugins: {
-      kind: "workspace",
-      target: { kind: "project", workspace: options.workspace },
-      extra: tuiPlugins(),
-      onFailure: (failure) => options.report(`plugin ${failure.path}: ${failure.error}`),
-    },
-    compaction: options.settings.compaction,
-    streamOptions: { transport: options.settings.transport },
-  });
+export async function flagConfiguration(
+  connection: Connection,
+  flags: Pick<RunFlags, "provider" | "model" | "effort">,
+): Promise<ConfigurationPatch | undefined> {
+  const requested = flags.model ?? process.env["NYTE_MODEL"];
+  const effort = flags.effort;
+
+  if (requested === undefined && effort === undefined) return undefined;
+  const configuration: ConfigurationPatch = effort === undefined ? {} : { thinking: effort };
+
+  if (requested === undefined) return configuration;
+  const slash = requested.indexOf("/");
+  const provider = flags.provider ?? (slash === -1 ? undefined : requested.slice(0, slash));
+  const id = slash === -1 || flags.provider !== undefined ? requested : requested.slice(slash + 1);
+
+  if (provider !== undefined) return { ...configuration, model: { provider, id } };
+
+  const found = availableModels(await connection.models.list()).find(
+    (model) => model.ref.id === id,
+  );
+
+  if (found === undefined) throw new Error(`Unavailable model: ${id}`);
+
+  return { ...configuration, model: found.ref };
 }
 
-/** The session a launch targets, through SDK operations alone. */
-export async function targetSession(nyte: Nyte, target: ResumeTarget): Promise<SessionInfo> {
+/** Returns every root session, newest activity first, across the directory's pages. */
+async function rootSessions(connection: Connection): Promise<readonly SessionInfo[]> {
+  const sessions: SessionInfo[] = [];
+  let cursor: Cursor | null = null;
+
+  do {
+    const page = await connection.sessions.list(
+      cursor === null ? { parents: { kind: "roots" } } : { parents: { kind: "roots" }, cursor },
+    );
+
+    sessions.push(...page.items);
+    cursor = page.next;
+  } while (cursor !== null);
+
+  return sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt);
+}
+
+/**
+ * The session a launch targets: a new one, the newest root session anything
+ * was written to (a launch that never sent creates nothing worth resuming),
+ * or the one an id names.
+ */
+export async function targetSession(
+  connection: Connection,
+  target: ResumeTarget,
+  configuration: ConfigurationPatch | undefined,
+): Promise<Session> {
+  const create = (): Promise<Session> =>
+    connection.sessions.create(configuration === undefined ? {} : { configuration });
+
   switch (target.kind) {
     case "new":
-      return nyte.sessions.create();
+      return create();
     case "latest": {
-      // Skip sessions that were created by a launch and never written to,
-      // and subagent children, which resume under their parent's task call.
-      const result = await nyte.sessions.list({ parent: null });
+      const used = (await rootSessions(connection)).find((info) =>
+        info.heads.some((head) => head.tip.kind !== "start"),
+      );
 
-      const used = result.items
-        .filter((info) => info.heads.some((head) => head.tip !== null))
-        .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)[0];
-
-      return used ?? nyte.sessions.create();
+      return used === undefined ? create() : connection.session(used.id);
     }
 
     case "session": {
-      const info = await nyte.sessions.get({ sessionId: sessionId(target.id) });
+      const sessions: SessionInfo[] = [];
+      let cursor: Cursor | null = null;
 
-      if (info === undefined) throw new Error(`Session not found: ${target.id}`);
+      do {
+        const page = await connection.sessions.list(
+          cursor === null ? { parents: { kind: "all" } } : { parents: { kind: "all" }, cursor },
+        );
 
-      return info;
+        sessions.push(...page.items);
+        cursor = page.next;
+      } while (cursor !== null && !sessions.some((info) => info.id === target.id));
+
+      const found = sessions.find((info) => info.id === target.id);
+
+      if (found === undefined) throw new Error(`Session not found: ${target.id}`);
+
+      return connection.session(found.id);
     }
 
     default: {

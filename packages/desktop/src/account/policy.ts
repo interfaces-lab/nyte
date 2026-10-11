@@ -53,7 +53,7 @@ export function rendererContentSecurityPolicy(input: {
   return [
     "default-src 'self'",
     `script-src 'self' 'wasm-unsafe-eval'${api === "" ? "" : " 'unsafe-inline'"}${evaluation}${api}${challenges}`,
-    `connect-src 'self'${api}${api === "" ? "" : " https://*.protect.clerk.com:*"}${socket}`,
+    `connect-src 'self'${api}${api === "" ? "" : " https://*.protect.clerk.com:*"} http://127.0.0.1:*${socket}`,
     `img-src 'self' data: blob: https://avatars.githubusercontent.com${api === "" ? "" : " https://img.clerk.com"}`,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",

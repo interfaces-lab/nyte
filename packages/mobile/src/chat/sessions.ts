@@ -1,10 +1,12 @@
-import { sessionMark, type SessionMark } from "@nyte-ai/client";
-import type { NyteClient } from "@nyte-ai/client";
-import type { SessionInfo } from "@nyte-ai/protocol";
-import { useCallback } from "react";
-import { keepPreviousData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import type { Connection, SessionInfo } from "@nyte-ai/sdk";
+import { useMemo, useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
+import { useWatch } from "../connection/use-watch.ts";
 import type { Theme } from "../theme.ts";
+import { hasRun, sessionMark, type SessionMark } from "../view-helpers.ts";
+
+/** How many roots the directory watch carries at first, and how many more each Show More adds. */
+const PAGE = 50;
 
 type SessionListState =
   | { kind: "loading" }
@@ -12,7 +14,8 @@ type SessionListState =
   | {
       kind: "ready";
       sessions: readonly SessionInfo[];
-      next: string | undefined;
+      /** Present when the watch is full, so more roots may exist past it. */
+      next: number | undefined;
     };
 
 export const statusLabels: Record<SessionMark, string> = {
@@ -33,13 +36,9 @@ export function needsAttention(session: SessionInfo): boolean {
   return needsInput(session) || hasFailed(session);
 }
 
-/** A question or a trust grant the user has to answer. */
+/** A question the user has to answer. */
 export function needsInput(session: SessionInfo): boolean {
-  return (
-    sessionMark(session) === "waiting" ||
-    (session.activation.kind === "requires" &&
-      session.activation.requirement.kind === "workspace_trust")
-  );
+  return sessionMark(session) === "waiting";
 }
 
 export function hasFailed(session: SessionInfo): boolean {
@@ -55,12 +54,7 @@ export function rowStatus(session: SessionInfo): string {
 
   if (mark !== "idle") return statusLabels[mark];
 
-  return latestRun(session) === undefined ? "New" : "Finished";
-}
-
-/** The run a list row reports on: the newest head's run, when it exists. */
-export function latestRun(session: SessionInfo) {
-  return session.heads[0]?.run;
+  return hasRun(session) ? "Finished" : "New";
 }
 
 /** One relative clock for list rows: Now, minutes, hours, days, then a date. */
@@ -110,68 +104,54 @@ export function markTone(mark: SessionMark, theme: Theme) {
 }
 
 /**
- * The shared sessions read for the root list. The query polls quietly while a
- * run is live so rows move from Working to Finished on their own, and the app
- * foreground wiring refetches after a share moves underneath. `refresh` resets
- * to loading for a pull; `reload` keeps the rows up.
+ * The root list, watched: rows move from Working to Finished as the host
+ * pushes them. Search matches names on the phone, over what the watch
+ * carries. `refresh` reopens the watch for a pull and blanks the rows;
+ * `more` widens it and keeps them up until the wider list lands.
  */
-export function useSessionList(client: NyteClient, search = "") {
-  const queryClient = useQueryClient();
-  const key = ["sessions", search] as const;
+export function useSessionList(client: Connection, search = "") {
+  const [limit, setLimit] = useState(PAGE);
 
-  const query = useInfiniteQuery({
-    queryKey: key,
-    queryFn: ({ pageParam }) => {
-      const request = { parent: null, limit: 50 };
-      const paged = pageParam === undefined ? request : { ...request, cursor: pageParam };
+  const [watched, restart] = useWatch(
+    useMemo(
+      () => ({ watch: () => client.sessions.watch({ parents: { kind: "roots" }, limit }) }),
+      [client, limit],
+    ),
+  );
 
-      return client.sessions.list(search === "" ? paged : { ...paged, search });
-    },
-    // SAFETY: widens the first page's absent cursor to the cursor type later pages carry.
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (page) => page.next,
-    // A debounced search change shows the last list while the new one lands.
-    placeholderData: keepPreviousData,
-    refetchInterval: (entry) =>
-      entry.state.data?.pages.some((page) => page.items.some(isActive)) === true ? 10_000 : false,
-  });
+  const needle = search.trim().toLocaleLowerCase();
 
-  const list: SessionListState = query.isPending
-    ? { kind: "loading" }
-    : query.data === undefined
-      ? { kind: "failed", message: describeHostError(query.error) }
-      : {
+  const current =
+    watched.kind === "ready" ? watched.value : watched.kind === "failed" ? watched.last : undefined;
+
+  const [seen, setSeen] = useState(current);
+
+  if (current !== undefined && current !== seen) setSeen(current);
+  const rows = current ?? seen;
+
+  const list: SessionListState =
+    rows !== undefined
+      ? {
           kind: "ready",
-          sessions: query.data.pages.flatMap((page) => page.items),
-          next: query.data.pages.at(-1)?.next,
-        };
+          sessions:
+            needle === ""
+              ? rows
+              : rows.filter((session) => (session.name ?? "").toLocaleLowerCase().includes(needle)),
+          next: rows.length >= limit ? limit + PAGE : undefined,
+        }
+      : watched.kind === "failed"
+        ? { kind: "failed", message: describeHostError(watched.error) }
+        : { kind: "loading" };
 
-  // A next-page failure keeps the loaded rows; only the banner knows.
   const error =
-    query.error !== null && query.data !== undefined ? describeHostError(query.error) : undefined;
+    watched.kind === "failed" && rows !== undefined ? describeHostError(watched.error) : undefined;
 
-  const refresh = useCallback(() => {
-    void queryClient.resetQueries({ queryKey: ["sessions", search] });
-  }, [queryClient, search]);
-
-  const { refetch, fetchNextPage } = query;
-
-  const reload = useCallback(() => {
-    void refetch();
-  }, [refetch]);
-
-  const more = useCallback(() => {
-    void fetchNextPage();
-  }, [fetchNextPage]);
-
-  return {
-    list,
-    // A placeholder page set still answers to the previous key's cursor, so
-    // "Show more" waits for the real page to land.
-    busy: query.isFetchingNextPage || query.isPlaceholderData,
-    error,
-    refresh,
-    reload,
-    more,
+  const refresh = () => {
+    setSeen(undefined);
+    restart();
   };
+
+  const more = () => setLimit((previous) => previous + PAGE);
+
+  return { list, busy: watched.kind === "loading" && rows !== undefined, error, refresh, more };
 }

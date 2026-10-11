@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { PaneController } from "../layout/pane-controller.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 
@@ -185,7 +185,7 @@ test("reload restores parked drafts and follow-up text", () => {
   writeDraft(first, "First idea");
   first.newChat();
   writeDraft(first, "Second idea");
-  const chat = sessionId("chat-1");
+  const chat = asId<"session">("chat-1");
   first.viewState.updateSession(chat, "primary", (current) => ({
     ...current,
     composer: {

@@ -3,8 +3,8 @@ import { ActivityIndicator, Alert, Keyboard } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { createMMKV, useMMKVString } from "react-native-mmkv";
 import { css, html } from "react-strict-dom";
-import type { RegisteredWorkspace, SessionId, StartInput } from "@nyte-ai/protocol";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { WorkspaceInfo } from "@nyte-ai/sdk";
+import { useQuery } from "@tanstack/react-query";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
 import { spacing, textStyles, useTheme } from "../theme.ts";
@@ -25,6 +25,7 @@ import {
   startPreview,
   subscribeAsking,
   type PendingStart,
+  type StartInput,
 } from "./workspace-start.ts";
 
 export const workspaceStorage = createMMKV({ id: "nyte.workspaces" });
@@ -34,25 +35,21 @@ export type RegistryFolders =
   | { kind: "failed"; message: string; refresh: () => void }
   | {
       kind: "ready";
-      ready: readonly RegisteredWorkspace[];
-      selected: RegisteredWorkspace | undefined;
+      ready: readonly WorkspaceInfo[];
+      selected: WorkspaceInfo | undefined;
       choose: (id: string) => void;
       refresh: () => void;
     };
 
-/** This phone's folder on a registry host; undefined on a cursor host. */
-export function useRegistryFolders(): RegistryFolders | undefined {
-  const { client, info, scope } = useHost();
-  const registry = info.workspaces?.kind === "registry";
+/** This phone's folder among the host's registered workspaces. */
+export function useRegistryFolders(): RegistryFolders {
+  const { client, scope } = useHost();
   const [chosenId, setChosenId] = useMMKVString(selectionKey(scope), workspaceStorage);
 
   const query = useQuery({
     queryKey: ["registered-workspaces"],
-    enabled: registry,
-    queryFn: () => client.environment("environment.workspaces.list", undefined),
+    queryFn: () => client.workspaces.list(),
   });
-
-  if (!registry) return undefined;
 
   if (query.isPending) return { kind: "loading" };
 
@@ -90,7 +87,6 @@ const replayed = new Set<string>();
  */
 export function useStartSender() {
   const { client, scope } = useHost();
-  const queryClient = useQueryClient();
   const navigation = useNavigation();
   const mounted = useRef(true);
 
@@ -98,7 +94,7 @@ export function useStartSender() {
     mounted.current = false;
   });
 
-  const open = (requestId: string, sessionId: SessionId) => {
+  const open = (requestId: string, sessionId: string) => {
     Keyboard.dismiss();
     removeStart(workspaceStorage, scope, requestId);
     router.push(`/chat/${sessionId}`);
@@ -113,8 +109,6 @@ export function useStartSender() {
 
     switch (outcome.kind) {
       case "accepted":
-        void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-
         if (waiting) open(input.requestId, outcome.sessionId);
 
         return undefined;

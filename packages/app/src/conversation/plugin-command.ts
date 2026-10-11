@@ -1,4 +1,4 @@
-import type { CommandInfo } from "@nyte-ai/protocol";
+import type { CommandInfo } from "@nyte-ai/sdk";
 
 export interface ParsedPluginCommand {
   readonly name: string;

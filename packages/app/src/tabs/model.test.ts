@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { reducePaneLayout } from "../layout/pane-layout.ts";
 import type { PaneLayoutAction, PaneSelection } from "../layout/pane-layout.ts";
 import { activeTab, canTravel, initialWindow, reduce, tabPlace, tabPlaces } from "./model.ts";
@@ -17,7 +17,7 @@ function run(actions: readonly WindowAction[], state = initialWindow("t1")): Win
   return actions.reduce((current, action) => reduce(current, action, createId), state);
 }
 
-const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: sessionId(id) });
+const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: asId<"session">(id) });
 
 const customize: Place = { kind: "customize", section: undefined, sessionId: undefined };
 

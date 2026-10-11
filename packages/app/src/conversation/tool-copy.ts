@@ -1,5 +1,5 @@
-import type { ToolTense } from "@nyte-ai/client";
-import type { Failure, ToolClass } from "@nyte-ai/protocol";
+import type { ToolTense } from "../view-helpers.ts";
+import type { Failure, ToolClass } from "@nyte-ai/sdk";
 
 /** The verb for each tense that asserts one; a call that did not finish shows none. */
 export type ToolVerbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
@@ -101,15 +101,13 @@ export function toolDetail(
   cwd: string | undefined,
 ): ToolDetail | undefined {
   switch (toolClass.kind) {
-    case "file_edit":
-    case "file_write":
-    case "file_patch": {
+    case "edit": {
       const title = tidyPath(toolClass.path, cwd);
 
       return { text: basename(title), title };
     }
 
-    case "file_read":
+    case "read":
     case "list":
       return { text: placeName(toolClass.path, cwd), title: tidyPath(toolClass.path, cwd) };
     case "shell":
@@ -134,22 +132,16 @@ export const LIST: ToolVerbs = { running: "Listing", past: "Listed" };
 
 const EDIT: ToolVerbs = { running: "Editing", past: "Edited" };
 
-const WRITE: ToolVerbs = { running: "Writing", past: "Wrote" };
-
 export function toolVerbs(toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>): ToolVerbs {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
       return READ;
     case "list":
       return LIST;
     case "shell":
       return RAN;
-    case "file_edit":
+    case "edit":
       return EDIT;
-    case "file_write":
-      return WRITE;
-    case "file_patch":
-      return toolClass.op === "edit" ? EDIT : WRITE;
     case "custom":
       return customTool(toolClass.label).verbs;
     default: {
@@ -168,16 +160,12 @@ export function toolNoun(
   toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>,
 ): string | undefined {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
       return "read";
     case "list":
       return "list";
-    case "file_edit":
+    case "edit":
       return "edit";
-    case "file_write":
-      return "write";
-    case "file_patch":
-      return toolClass.op;
     case "shell":
     case "custom":
       return undefined;

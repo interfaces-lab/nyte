@@ -38,8 +38,7 @@ export type Capability = keyof SettingsContext;
 
 /** Computed per call: the installed bridge decides, and tests install different ones. */
 export function settingsContext(): SettingsContext {
-  const desktop = nyte.clientSurface === "desktop";
-  const ownEnvironment = desktop || (nyte.environment === true && nyte.relay !== true);
+  const ownEnvironment = nyte.clientSurface === "desktop";
   const { browser, terminal } = clientCapabilities(nyte.host);
 
   return {
@@ -50,7 +49,7 @@ export function settingsContext(): SettingsContext {
     terminal,
     providers: ownEnvironment,
     account: ownEnvironment,
-    usage: desktop || nyte.environment === true,
+    usage: nyte.host.usage !== undefined,
   };
 }
 

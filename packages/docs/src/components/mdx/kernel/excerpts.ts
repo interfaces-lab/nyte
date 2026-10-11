@@ -221,21 +221,35 @@ export const backgroundWait: BackgroundWait = { [BACKGROUND_WAIT]: true };
 type WaitOptions = ToolWaitOptions | BackgroundWait;`,
   },
   hookBudgets: {
-    path: "core/src/plugins/hooks.ts",
-    line: 195,
-    code: `/**
- * Wall-clock budget per handler. Compaction is a provider request and gets
- * the room one takes; the rest are process-local decisions.
- */
-export type HookBudgets = Readonly<Record<HookName, number>>;
+    path: "core/src/hooks.ts",
+    line: 394,
+    code: `async function budgeted<T>(
+  name: HookName<"core">,
+  deactivated: AbortSignal,
+  run: (signal: AbortSignal) => Awaitable<T>,
+): Promise<T> {
+  const seconds = name === "before_compaction" ? 300 : 5;
+  const budget = new AbortController();
+  const ended = Promise.withResolvers<never>();
 
-export const HOOK_BUDGETS_MS: HookBudgets = {
-  transform_context: 5_000,
-  before_compaction: 300_000,
-  before_request: 5_000,
-  before_tool: 5_000,
-  after_tool: 5_000,
-};`,
+  const timer = setTimeout(() => {
+    budget.abort();
+    ended.reject(new Error(\`exceeded its \${seconds} s budget\`));
+  }, seconds * 1000);
+
+  const deactivate = (): void => ended.reject(new Error("was deactivated"));
+  deactivated.addEventListener("abort", deactivate, { once: true });
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => run(AbortSignal.any([budget.signal, deactivated]))),
+      ended.promise,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    deactivated.removeEventListener("abort", deactivate);
+  }
+}`,
   },
   runPhase: {
     path: "protocol/src/kernel.ts",

@@ -1,15 +1,14 @@
-import type { JobInfo } from "@nyte-ai/protocol";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
 import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../errors";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { nyte } from "../nyte.ts";
-import { keys } from "../queries.ts";
+import { useSession, useWorkspaceJobs } from "../queries.ts";
+import { connection } from "../sdk.tsx";
 import type { WorkbenchTabId } from "./controller.ts";
 import { mountTerminal } from "./terminal-runtime";
 import { isJobTerminal, terminalActions, useTerminal } from "./terminal-store";
@@ -68,14 +67,16 @@ function TerminalStatus({
             </Button>
           </div>
         );
-      case "completed":
-        return (
+      case "exited":
+        return tab.state.reason === "terminated" ? (
+          <div role="status" {...props(terminalStyles.state)}>
+            Command cancelled
+          </div>
+        ) : tab.state.code === 0 ? (
           <div role="status" {...props(terminalStyles.state)}>
             Command completed
           </div>
-        );
-      case "failed":
-        return (
+        ) : (
           <div
             role="status"
             {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}
@@ -83,20 +84,14 @@ function TerminalStatus({
             Command failed
           </div>
         );
-      case "cancelled":
-        return (
-          <div role="status" {...props(terminalStyles.state)}>
-            Command cancelled
-          </div>
-        );
-      case "interrupted":
+      case "lost":
         return (
           <div role="status" {...props(terminalStyles.state)}>
             Command interrupted
           </div>
         );
       default: {
-        const _exhaustive: never = tab.state.kind;
+        const _exhaustive: never = tab.state;
 
         return _exhaustive;
       }
@@ -152,32 +147,26 @@ export function TerminalPanel({
   readonly visible: boolean;
 }): ReactElement {
   const tab = useTerminal(tabId);
-  const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : null;
-  const jobRunning = tab !== undefined && isJobTerminal(tab) && tab.state.kind === "running";
-
-  const jobs = useQuery({
-    queryKey: keys.jobs(jobSessionId ?? undefined),
-    queryFn: (): Promise<readonly JobInfo[]> =>
-      jobSessionId === null ? Promise.resolve([]) : nyte.jobs.list({ sessionId: jobSessionId }),
-    enabled: jobSessionId !== null,
-    refetchInterval: jobRunning ? 2_000 : false,
-  });
+  const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : undefined;
+  const workspace = useSession(jobSessionId).data?.workspace;
+  const jobs = useWorkspaceJobs(jobSessionId === undefined ? undefined : workspace);
 
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
-      if (!isJobTerminal(current)) throw new Error("Only agent commands can be stopped here");
+      if (!isJobTerminal(current) || workspace === undefined)
+        throw new Error("Only agent commands can be stopped here");
 
-      return nyte.jobs.cancel({ sessionId: current.source.sessionId, jobId: current.source.jobId });
+      return connection().workspace(workspace).job(current.source.jobId).stop();
     },
-    onSuccess: () => jobs.refetch(),
   });
 
-  // The conversation reads the same key; the store follows the settled data
-  // no matter whose reader ran.
   useEffect(() => {
-    if (jobSessionId === null || jobs.data === undefined) return;
-    terminalActions.syncJobs(jobSessionId, jobs.data);
-  }, [jobSessionId, jobs.data]);
+    if (jobSessionId === undefined || jobs === undefined) return;
+    terminalActions.syncJobs(
+      jobSessionId,
+      jobs.filter((job) => job.session === jobSessionId),
+    );
+  }, [jobSessionId, jobs]);
   const [error, setError] = useState<string>();
 
   const restart = async (current: TerminalTab): Promise<void> => {
@@ -215,19 +204,11 @@ export function TerminalPanel({
           </div>
         </div>
       )}
-      {jobs.isError && tab !== undefined && isJobTerminal(tab) && (
-        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
-          <span>Couldn’t refresh command output. Showing the last received output.</span>
-          <Button variant="outline" onClick={() => void jobs.refetch()}>
-            Try Again
-          </Button>
-        </div>
-      )}
       {cancellation.isSuccess && (
         <div role="status" {...props(terminalStyles.state)}>
-          {cancellation.data.kind === "applied"
+          {cancellation.data.kind === "requested"
             ? "Cancellation requested."
-            : cancellation.data.kind === "finished"
+            : cancellation.data.kind === "settled"
               ? "This command has already finished."
               : "This command is no longer available."}
         </div>

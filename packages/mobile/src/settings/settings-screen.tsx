@@ -1,16 +1,16 @@
 import Constants from "expo-constants";
 import { useState } from "react";
 import { Alert, ScrollView } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { NyteWireError } from "@nyte-ai/client";
+import { SdkError } from "@nyte-ai/sdk";
 import { useAccount } from "../account/account-provider.tsx";
 import { ConnectSheet } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
-import { usesWorkspaceCursor } from "../chat/workspace-menu.ts";
+import { useWatch } from "../connection/use-watch.ts";
+import { workspaceName, workspacePath } from "../chat/workspace-menu.ts";
 import { useRegistryFolders } from "../chat/workspace-start.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
@@ -29,7 +29,7 @@ type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, info, connection, saved, edit, disconnect } = useHost();
+  const { client, connection, saved, edit, disconnect } = useHost();
   const account = useAccount();
   const [connectOpen, setConnectOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -41,23 +41,7 @@ export function SettingsScreen() {
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
 
-  const check = useQuery({
-    queryKey: ["host-check"],
-    retry: false,
-    queryFn: async () => {
-      await client.info();
-
-      return null;
-    },
-  });
-
-  const workspacesQuery = useQuery({
-    queryKey: ["workspace-list"],
-    retry: false,
-    enabled: usesWorkspaceCursor(info),
-    queryFn: () => client.workspace.list(),
-  });
-
+  const [check, recheck] = useWatch(client);
   const registry = useRegistryFolders();
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
@@ -66,16 +50,21 @@ export function SettingsScreen() {
   // its own: a revocation must stay revoked until the user reconnects.
   const refused =
     saved.kind === "managed" &&
-    check.error instanceof NyteWireError &&
-    (check.error.code === "unauthorized" || check.error.code === "forbidden");
+    ((check.kind === "failed" &&
+      check.error instanceof SdkError &&
+      (check.error.code === "unauthenticated" || check.error.code === "denied")) ||
+      (check.kind === "ready" &&
+        check.value.link.kind === "closed" &&
+        check.value.link.reason === "revoked"));
 
-  const status: HostStatus = check.isFetching
-    ? "checking"
-    : refused
-      ? "refused"
-      : check.isError
-        ? "unreachable"
-        : "connected";
+  const status: HostStatus =
+    check.kind === "loading" || (check.kind === "ready" && check.value.link.kind === "reconnecting")
+      ? "checking"
+      : refused
+        ? "refused"
+        : check.kind === "failed" || check.value.link.kind === "closed"
+          ? "unreachable"
+          : "connected";
 
   // Disconnecting deletes the saved token, so reconnecting means copying it from the host again.
   function confirmDisconnect() {
@@ -114,13 +103,7 @@ export function SettingsScreen() {
   const statusColor =
     status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
 
-  // A registry host shares only the folders its owner made ready; a cursor host lists its recents.
-  const workspaceList =
-    registry === undefined
-      ? workspacesQuery.data
-      : registry.kind === "ready"
-        ? registry.ready
-        : undefined;
+  const workspaceList = registry.kind === "ready" ? registry.ready : undefined;
 
   return (
     <ScrollView
@@ -211,10 +194,9 @@ export function SettingsScreen() {
           <GroupRow
             busy={status === "checking"}
             onClick={() => {
-              void check.refetch();
+              recheck();
 
-              if (registry === undefined) void workspacesQuery.refetch();
-              else if (registry.kind !== "loading") registry.refresh();
+              if (registry.kind !== "loading") registry.refresh();
             }}
           >
             <IconTile name="arrow.clockwise" />
@@ -238,11 +220,13 @@ export function SettingsScreen() {
           <SectionHeader label="Workspaces" />
           <Group>
             {workspaceList.map((workspace) => (
-              <GroupRow key={workspace.path}>
+              <GroupRow key={workspace.id}>
                 <IconTile name="folder" />
                 <html.div style={styles.rowText}>
-                  <html.span style={textStyles.body}>{workspace.name}</html.span>
-                  <html.span style={[textStyles.caption, styles.path]}>{workspace.path}</html.span>
+                  <html.span style={textStyles.body}>{workspaceName(workspace)}</html.span>
+                  <html.span style={[textStyles.caption, styles.path]}>
+                    {workspacePath(workspace)}
+                  </html.span>
                 </html.div>
               </GroupRow>
             ))}

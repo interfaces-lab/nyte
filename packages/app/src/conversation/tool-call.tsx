@@ -11,26 +11,21 @@ import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { parsePatchFacts, toolStatus } from "@nyte-ai/client";
-import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
+import { toolOutput, toolStatus } from "../view-helpers.ts";
+import type { ToolMessage } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { DiffView } from "./diff-view.tsx";
-import type { DiffFacts } from "./diff-view.tsx";
 import { EditCallView } from "./edit-call.tsx";
 import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
 import { ShellCallView } from "./shell-call.tsx";
 import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
 import { terminalText } from "./terminal-text.ts";
-import { tidyPath, toolDetail, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { toolDetail, toolNoun, toolVerbs } from "./tool-copy.ts";
 import { ToolLineView, ToolOutcome } from "./tool-line.tsx";
 
-type ToolBody =
-  | { readonly kind: "none" }
-  | { readonly kind: "output"; readonly text: string }
-  | { readonly kind: "diff"; readonly path: string; readonly diff: DiffFacts };
+type ToolBody = { readonly kind: "none" } | { readonly kind: "output"; readonly text: string };
 
 // Closed, the tail is a second trigger, so pressing it always opens.
 function OutputTail({ children }: { children: ReactNode }): ReactElement {
@@ -115,85 +110,58 @@ function ToolOutput({ text, open }: { text: string; open: boolean }): ReactEleme
 
 /**
  * Open state lives in Base UI, not here: a controlled `open` would re-render
- * this component (and re-parse the patch) on every toggle. The preview reads
- * `state.open` through `render` instead, and the chevron follows the trigger.
+ * this component on every toggle. The preview reads `state.open` through
+ * `render` instead, and the chevron follows the trigger.
  */
 export const ToolCallView = memo(function ToolCallView({
-  part,
-  progress,
+  message,
   cwd,
   density,
 }: {
-  part: ToolTurnPart;
-  progress: ToolProgress | undefined;
+  message: ToolMessage;
   cwd: string | undefined;
   density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
-
-  // Hunks are parsed once per part; the counts beside them are the class's own.
-  const facts = useMemo(
-    () => (part.class.kind === "file_patch" ? parsePatchFacts(part.class.patch) : undefined),
-    [part],
-  );
-
-  const { class: toolClass } = part;
-  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
+  const { state } = message;
+  const toolClass = state.class;
+  const raw = running
+    ? state.phase === "running"
+      ? (state.progress?.text ?? "")
+      : ""
+    : toolOutput(state);
   const text = useMemo(() => terminalText(raw), [raw]);
+  const body: ToolBody = text.trim() === "" ? { kind: "none" } : { kind: "output", text };
 
-  const body: ToolBody =
-    toolClass.kind === "file_patch" && facts !== undefined
-      ? {
-          kind: "diff",
-          path: tidyPath(toolClass.path, cwd),
-          diff: { patch: facts.patch, added: toolClass.added, removed: toolClass.removed },
-        }
-      : text.trim() === ""
-        ? { kind: "none" }
-        : { kind: "output", text };
-
-  // One card per child: its create. Every other call on it is a line.
   if (toolClass.kind === "delegate") {
-    return toolClass.role === "create" ? (
+    return toolClass.role === "create" && toolClass.child !== null ? (
       <SubagentCallView
-        session={toolClass.target.session}
-        title={toolClass.title}
-        state={part.state}
+        session={toolClass.child}
+        title={toolClass.title ?? "Subagent"}
+        message={message}
         cwd={cwd}
       />
     ) : (
-      <SubagentLineView toolClass={toolClass} state={part.state} output={text} />
+      <SubagentLineView toolClass={toolClass} message={message} output={text} />
     );
   }
 
   if (toolClass.kind === "shell") {
-    return (
-      <ShellCallView
-        part={part}
-        toolClass={toolClass}
-        progress={progress}
-        cwd={cwd}
-        density={density}
-      />
-    );
+    return <ShellCallView message={message} toolClass={toolClass} cwd={cwd} density={density} />;
   }
 
-  if (toolClass.kind === "file_read" || toolClass.kind === "list" || toolClass.kind === "custom") {
-    return <ToolLineView part={part} toolClass={toolClass} progress={progress} cwd={cwd} />;
+  if (toolClass.kind === "read" || toolClass.kind === "list" || toolClass.kind === "custom") {
+    return <ToolLineView message={message} toolClass={toolClass} cwd={cwd} />;
   }
 
-  if (
-    toolClass.kind === "file_patch" ||
-    ((toolClass.kind === "file_edit" || toolClass.kind === "file_write") && running)
-  ) {
-    return <EditCallView part={part} toolClass={toolClass} cwd={cwd} density={density} />;
+  if (toolClass.kind === "edit") {
+    return <EditCallView message={message} toolClass={toolClass} cwd={cwd} density={density} />;
   }
 
   const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
   const detail = toolDetail(toolClass, cwd);
   const expandable = body.kind !== "none";
-  const editDiff = body.kind === "diff";
   const dimmed = status.tone === "stopped" && toolCallStyles.lineDimmed;
 
   const lineContent = (
@@ -214,12 +182,7 @@ export const ToolCallView = memo(function ToolCallView({
 
   const line = expandable ? (
     <Collapsible.Trigger
-      xstyle={[
-        toolCallStyles.line,
-        editDiff && toolCallStyles.editLine,
-        density === "detailed" && toolCallStyles.lineDetailed,
-        dimmed,
-      ]}
+      xstyle={[toolCallStyles.line, density === "detailed" && toolCallStyles.lineDetailed, dimmed]}
     >
       {lineContent}
       <Collapsible.Chevron size={12} xstyle={toolCallStyles.chevron} />
@@ -245,11 +208,6 @@ export const ToolCallView = memo(function ToolCallView({
         <div {...componentProps}>
           {line}
           {body.kind === "output" && <ToolOutput text={body.text} open={state.open} />}
-          {body.kind === "diff" && (
-            <Collapsible.Panel keepMounted data-tool-body>
-              <DiffView path={body.path} diff={body.diff} variant="inline" />
-            </Collapsible.Panel>
-          )}
         </div>
       )}
     />

@@ -40,7 +40,7 @@ export function accountRoute(
  * `role: "owner"` asks for folder administration; the host honors it only
  * when its operator started it with `--device-admin`. The host must prove the
  * identity pinned for this environment, or on first pairing or `repair` the
- * identity it announces. A host that cannot rejects with `IdentityChanged`
+ * identity it announces. A host that cannot rejects with `SdkError` `stale`
  * and enrolls nothing lasting: the device is released and the pin stays.
  */
 export async function connectAccountEnvironment(input: {
@@ -104,7 +104,6 @@ export async function connectAccountEnvironment(input: {
       options: {
         signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
         relay: true,
-        principal: device.deviceId,
       },
     });
 

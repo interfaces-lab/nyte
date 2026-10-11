@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { Oid, SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { TurnId } from "@nyte-ai/sdk";
+import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -25,7 +27,7 @@ export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
   | { readonly kind: "staged" }
   | { readonly kind: "unstaged" }
-  | { readonly kind: "turn"; readonly turnId: Oid }
+  | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
 export type TerminalOwner =
@@ -296,7 +298,7 @@ const persistedChangesTab = Type.Object(
       Type.Object({ kind: Type.Literal("uncommitted") }, strict),
       Type.Object({ kind: Type.Literal("staged") }, strict),
       Type.Object({ kind: Type.Literal("unstaged") }, strict),
-      Type.Object({ kind: Type.Literal("turn"), turnId: nonEmpty }, strict),
+      Type.Object({ kind: Type.Literal("turn"), turnId: idSchema<"turn">() }, strict),
       Type.Object({ kind: Type.Literal("commit"), oid: nonEmpty }, strict),
     ]),
     selectedPath: Type.Union([nonEmpty, Type.Null()]),

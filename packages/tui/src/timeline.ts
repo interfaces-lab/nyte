@@ -16,10 +16,8 @@ import type {
   SimpleHighlight,
 } from "@opentui/core";
 import { Edge } from "@opentui/core/yoga";
-import { waitingCall } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
-import type { Turn } from "@nyte-ai/core";
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { branchSummary, compaction, isPart } from "@nyte-ai/plugin/client";
+import type { Message, SessionView, TurnId } from "@nyte-ai/sdk";
 import { diffChars } from "diff";
 import type { ShellExecution } from "./local-shell.ts";
 import { SPACING } from "./constants.ts";
@@ -32,50 +30,36 @@ import {
   type TurnSection,
   type TurnStatus,
 } from "./transcript.ts";
+import { openQuestions, turnEntries } from "./view-helpers.ts";
+import type { PartMessage, TurnEntry } from "./view-helpers.ts";
 import { cellOffset } from "./width.ts";
 
 // ---------------------------------------------------------------------------
 // The whole transcript
 // ---------------------------------------------------------------------------
 
-function messageId(item: Turn | ShellEntry): string {
-  switch (item.kind) {
-    case "turn":
-      return `turn:${item.id}`;
-    case "shell":
-      return `shell:${item.execution.id}`;
-    default:
-      return `${item.kind}:${item.commit}`;
-  }
+/** A system record between turns: a compaction or a branch summary. */
+interface NoteEntry {
+  readonly kind: "note";
+  readonly message: PartMessage;
 }
 
-/** A non-turn item as the marker between turns. */
-function markerProps(item: Exclude<Turn, { kind: "turn" }>): MarkerProps {
+/** One turn of the view, its notes taken out. */
+interface TurnItem {
+  readonly kind: "turn";
+  readonly entry: TurnEntry;
+}
+
+type Entry = TurnItem | NoteEntry | ShellEntry;
+
+function messageId(item: Entry): string {
   switch (item.kind) {
-    case "checkpoint":
-      return {
-        variant: "border",
-        content: `context compacted · ${String(item.body.tokensBefore)} tokens before`,
-        summary: item.body.summary,
-      };
-    case "summary":
-      return { variant: "border", content: "branch summary", summary: item.body.text };
-    case "config": {
-      const parts: string[] = [];
-
-      if (item.body.model !== undefined) {
-        const { provider, id } = item.body.model;
-        parts.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
-      }
-
-      if (item.body.thinkingLevel !== undefined)
-        parts.push(`Thinking → ${item.body.thinkingLevel}`);
-
-      if (item.body.agent !== undefined) parts.push(`Agent → ${item.body.agent}`);
-
-      return { variant: "default", content: parts.join(" · ") };
-    }
-
+    case "turn":
+      return `turn:${item.entry.turn.id}`;
+    case "note":
+      return `note:${item.message.id}`;
+    case "shell":
+      return `shell:${item.execution.id}`;
     default: {
       const _exhaustive: never = item;
 
@@ -84,58 +68,73 @@ function markerProps(item: Exclude<Turn, { kind: "turn" }>): MarkerProps {
   }
 }
 
-function turnStatus(
-  turn: Extract<Turn, { kind: "turn" }>,
-  state: SessionState,
-): TurnStatus | undefined {
-  const run = turn === state.transcript.items.at(-1) ? state.run : undefined;
+/** A note as the marker between turns. */
+function markerProps(message: PartMessage): MarkerProps {
+  if (isPart(message, compaction))
+    return message.status.kind === "live"
+      ? { variant: "default", content: "compacting context…" }
+      : {
+          variant: "border",
+          content: `context compacted · ${String(message.state.tokensBefore)} tokens before`,
+          summary: message.state.summary ?? "",
+        };
 
-  const answered =
-    run !== undefined &&
-    ((turn.run.kind === "run" && turn.run.id === run.runId) || run.startedAt >= turn.startedAt);
+  if (isPart(message, branchSummary))
+    return { variant: "border", content: "branch summary", summary: message.state.markdown };
 
-  if (run !== undefined) {
-    switch (run.phase.kind) {
-      case "respond":
-      case "tools":
-      case "waiting":
-      case "retry":
-        return state.compaction !== undefined
-          ? { kind: "compacting" }
-          : {
-              kind: "open",
-              phase: run.phase,
-              live: state.overlay,
-              waitingForUser: waitingCall(state) !== undefined,
-            };
-      case "aborted":
-        if (answered)
-          return {
-            kind: "settled",
-            failure: turn.failure ?? { class: "aborted", message: "Run stopped." },
-          };
-        break;
-      case "failed":
-        if (answered) return { kind: "settled", failure: turn.failure ?? run.phase.failure };
-        break;
-      case "done":
-        break;
-      default: {
-        const _exhaustive: never = run.phase;
+  return { variant: "default", content: `[${message.partKind}]` };
+}
 
-        return _exhaustive;
-      }
+/** What a turn's status row shows, from the turn and, while it is the live one, the head's execution. */
+function turnStatus(entry: TurnEntry, view: SessionView, live: boolean): TurnStatus | undefined {
+  const { turn, messages } = entry;
+
+  switch (turn.state.kind) {
+    case "ended": {
+      const { end } = turn.state;
+
+      if (messages.length === 0) return undefined;
+
+      return {
+        kind: "settled",
+        failure:
+          end.kind === "failed"
+            ? end.failure
+            : end.kind === "stopped"
+              ? { class: "aborted", message: "Run stopped." }
+              : undefined,
+      };
+    }
+
+    case "waiting":
+      return {
+        kind: "open",
+        mode:
+          turn.state.on.kind === "part" || openQuestions(view).length > 0 ? "waiting" : "working",
+        activity: null,
+      };
+    case "working": {
+      if (turn.run === null && messages.every((message) => message.kind === "user"))
+        return { kind: "unanswered" };
+      const { execution } = view;
+      const last = messages.at(-1);
+
+      const mode =
+        live && execution.kind === "retrying"
+          ? "retrying"
+          : last?.kind === "part" && last.partKind === "thinking" && last.status.kind === "live"
+            ? "thinking"
+            : "working";
+
+      return { kind: "open", mode, activity: turn.state.activity };
+    }
+
+    default: {
+      const _exhaustive: never = turn.state;
+
+      return _exhaustive;
     }
   }
-
-  if (turn.parts.length === 0 && turn.failure === undefined) return undefined;
-
-  return !answered &&
-    turn.parts.length === 1 &&
-    turn.parts[0]?.kind === "user" &&
-    turn.failure === undefined
-    ? { kind: "unanswered" }
-    : { kind: "settled", failure: turn.failure };
 }
 
 /** Measured rows are hints, never a limit on how much history can be reached. */
@@ -155,8 +154,7 @@ interface TranscriptItem {
   readonly messageId: string;
   /** The row starts a turn, where turn navigation stops. */
   readonly scrollAnchor: boolean;
-  readonly source: Turn | ShellEntry;
-  readonly item: Turn | ShellEntry;
+  readonly item: Entry;
   readonly disclosures: TranscriptDisclosures;
   height: number;
 }
@@ -166,14 +164,19 @@ type MountedItem =
   | { readonly kind: "marker"; readonly root: Renderable }
   | { readonly kind: "shell"; readonly root: BoxRenderable; readonly card: ToolCard };
 
-function entryTime(entry: Turn | ShellEntry): number {
+function entryTime(entry: Entry): number {
   switch (entry.kind) {
     case "turn":
-      return entry.startedAt;
+      return entry.entry.turn.startedAt;
+    case "note":
+      return entry.message.at;
     case "shell":
       return entry.execution.startedAt;
-    default:
-      return entry.at;
+    default: {
+      const _exhaustive: never = entry;
+
+      return _exhaustive;
+    }
   }
 }
 
@@ -329,15 +332,15 @@ export class Timeline {
   private readonly transcript: Transcript;
   private readonly mounted = new Map<number, MountedItem>();
   private readonly spacers: BoxRenderable[] = [];
-  private readonly heights = new Map<
-    string,
-    { readonly source: Turn | ShellEntry; readonly height: number }
-  >();
+  private readonly heights = new Map<string, { readonly source: Entry; readonly height: number }>();
   private items: TranscriptItem[] = [];
   /** A local shell card may follow the still-streaming conversation turn. */
   private lastTurnIndex = -1;
   private offsets: number[] = [0];
-  private state: SessionState | undefined;
+  private view: SessionView | undefined;
+  private key: string | undefined;
+  /** The last entry built for each turn, kept while its turn and messages are the same objects. */
+  private turnItems = new Map<TurnId, TurnItem>();
   private geometry = "";
   private queued = false;
   private changingLayout = false;
@@ -352,7 +355,6 @@ export class Timeline {
   private selectionRange:
     | { readonly selection: Selection; readonly start: number; readonly end: number }
     | undefined;
-  private liveTurn: { readonly key: string; readonly block: TurnBlock } | undefined;
   /** Content after the last turn that is not a turn: the messages still waiting to become one. */
   private readonly tail: Renderable | undefined;
   /** The user's `!` jobs on this head. Jobs, not commits: they join the items by start time. */
@@ -407,16 +409,14 @@ export class Timeline {
     this.pendingAnchor ??= this.anchor();
 
     for (const mounted of this.mounted.values()) repaintTree(mounted.root);
-
-    if (this.liveTurn !== undefined) repaintTree(this.liveTurn.block.root);
     this.transcript.renderer.requestRender();
   }
 
   /** Progress replaces one card; only a new command changes transcript order. */
   syncShell(execution: ShellExecution, note: string | undefined): void {
-    const state = this.state;
+    const { view, key } = this;
 
-    if (state === undefined) return;
+    if (view === undefined || key === undefined) return;
     const entry: ShellEntry = { kind: "shell", execution, note };
     this.shellEntries.set(execution.id, entry);
     const index = this.shellPositions.get(execution.id);
@@ -424,7 +424,7 @@ export class Timeline {
 
     if (index !== undefined && item !== undefined) {
       this.pendingAnchor ??= this.anchor();
-      this.items[index] = { ...item, source: entry, item: entry };
+      this.items[index] = { ...item, item: entry };
       const mounted = this.mounted.get(index);
 
       if (mounted !== undefined) this.syncMounted(index, mounted);
@@ -435,14 +435,46 @@ export class Timeline {
     }
 
     this.shellChanged = true;
-    this.sync(state);
+    this.sync(view, { key });
   }
 
-  /** The turns and shell jobs in start order; a job goes before the first item that started after it. */
-  private entries(state: SessionState): readonly (Turn | ShellEntry)[] {
-    const visible = state.transcript.items.filter(
-      (item) => item.kind !== "turn" || turnStatus(item, state) !== undefined,
-    );
+  /**
+   * The view's turns, each note before its turn, then the shell jobs merged in
+   * start order: a job goes before the first item that started after it. A
+   * turn whose messages and info are unchanged keeps its entry object.
+   */
+  private entries(view: SessionView): readonly Entry[] {
+    const turns = new Map<TurnId, TurnItem>();
+    const visible: Entry[] = [];
+
+    for (const entry of turnEntries(view)) {
+      const notes = entry.messages.filter(
+        (message): message is PartMessage => message.kind === "part" && message.role === "note",
+      );
+
+      const messages: readonly Message[] =
+        notes.length === 0
+          ? entry.messages
+          : entry.messages.filter((message) => message.kind !== "part" || message.role !== "note");
+
+      for (const message of notes) visible.push({ kind: "note", message });
+
+      if (messages.length === 0 && entry.turn.state.kind === "ended") continue;
+      const cached = this.turnItems.get(entry.turn.id);
+
+      const item: TurnItem =
+        cached !== undefined &&
+        cached.entry.turn === entry.turn &&
+        cached.entry.messages.length === messages.length &&
+        cached.entry.messages.every((message, index) => message === messages[index])
+          ? cached
+          : { kind: "turn", entry: { turn: entry.turn, messages } };
+
+      turns.set(entry.turn.id, item);
+      visible.push(item);
+    }
+
+    this.turnItems = turns;
 
     if (this.shellEntries.size === 0) return visible;
 
@@ -452,7 +484,7 @@ export class Timeline {
         left.execution.id.localeCompare(right.execution.id),
     );
 
-    const merged: (Turn | ShellEntry)[] = [];
+    const merged: Entry[] = [];
     let next = 0;
 
     for (const item of visible) {
@@ -467,33 +499,32 @@ export class Timeline {
     return [...merged, ...jobs.slice(next)];
   }
 
-  sync(state: SessionState, options: { readonly reset?: boolean } = {}): void {
-    const previous = this.state;
-    const source = state.transcript.items;
-    const tail = source.at(-1);
+  /** Draws one view of the head `key` names; a different key, or `reset`, starts over. */
+  sync(view: SessionView, options: { readonly key: string; readonly reset?: boolean }): void {
+    const previous = this.view;
 
     const changed =
-      previous?.transcript.items !== source ||
-      this.shellChanged ||
-      (tail?.kind === "turn" && tail.parts.length === 0 && previous?.run !== state.run);
+      previous?.messages !== view.messages || previous.turns !== view.turns || this.shellChanged;
 
     this.shellChanged = false;
+    const next = changed || previous === undefined ? this.entries(view) : undefined;
 
     const reset =
       options.reset === true ||
-      previous?.sessionId !== state.sessionId ||
-      previous?.head !== state.head ||
-      (changed &&
+      this.key !== options.key ||
+      (next !== undefined &&
         previous !== undefined &&
-        (source.length < previous.transcript.items.length ||
-          previous.transcript.items.some(
-            (item, index) => messageId(item) !== messageId(source[index] ?? item),
+        (next.length < this.items.length ||
+          this.items.some(
+            (item, index) => item.messageId !== messageId(next[index] ?? item.item),
           )));
 
     if (reset) this.clear();
-    this.state = state;
+    this.view = view;
+    this.key = options.key;
+    const entries = next ?? (reset ? this.entries(view) : undefined);
 
-    if (changed || reset) {
+    if (entries !== undefined) {
       this.pendingAnchor ??= this.anchor();
 
       const old =
@@ -501,29 +532,19 @@ export class Timeline {
           ? undefined
           : new Map(this.items.map((item) => [item.messageId, item]));
 
-      const next: TranscriptItem[] = [];
+      const items: TranscriptItem[] = [];
 
-      for (const item of this.entries(state)) {
-        const preceding = next.at(-1);
-
-        // A config run is one display item, not one mounted node per commit.
-        const merged =
-          item.kind === "config" && preceding?.item.kind === "config"
-            ? { ...item, body: { ...preceding.item.body, ...item.body } }
-            : item;
-
-        if (merged !== item) next.pop();
+      for (const item of entries) {
         const id = messageId(item);
-        const candidate = old === undefined ? this.items[next.length] : old.get(id);
+        const candidate = old === undefined ? this.items[items.length] : old.get(id);
         const existing = candidate?.messageId === id ? candidate : undefined;
-        next.push(
-          existing?.source === item
+        items.push(
+          existing?.item === item
             ? existing
             : {
                 messageId: id,
                 scrollAnchor: item.kind === "turn",
-                source: item,
-                item: merged,
+                item,
                 disclosures: existing?.disclosures ?? new TranscriptDisclosures(),
                 height: existing?.height ?? (item.kind === "turn" ? 8 : 3),
               },
@@ -532,11 +553,11 @@ export class Timeline {
 
       for (const [index, mounted] of this.mounted) {
         const before = this.items[index];
-        const after = next[index];
+        const after = items[index];
 
         if (
           before?.messageId !== after?.messageId ||
-          (mounted.kind === "marker" && before?.source !== after?.source)
+          (mounted.kind === "marker" && before?.item !== after?.item)
         ) {
           mounted.root.parent?.remove(mounted.root);
           mounted.root.destroyRecursively();
@@ -544,55 +565,27 @@ export class Timeline {
         }
       }
 
-      this.items = next;
+      this.items = items;
       this.shellPositions.clear();
       this.lastTurnIndex = -1;
 
-      for (const [index, item] of next.entries()) {
+      for (const [index, item] of items.entries()) {
         if (item.item.kind === "shell") this.shellPositions.set(item.item.execution.id, index);
-        else if (item.item.kind === "turn" && item.source === tail) this.lastTurnIndex = index;
+        else if (item.item.kind === "turn") this.lastTurnIndex = index;
       }
 
       this.reindex();
-      this.transcript.onEmptyChange(next.length === 0);
+      this.transcript.onEmptyChange(items.length === 0);
     }
 
     this.reconcileWindow();
 
-    if (changed || reset) {
+    if (entries !== undefined) {
       for (const [index, mounted] of this.mounted) this.syncMounted(index, mounted);
     } else {
       const last = this.mounted.get(this.lastTurnIndex);
 
       if (last !== undefined) this.syncMounted(this.lastTurnIndex, last);
-    }
-
-    if (state.compaction !== undefined && (!this.running() || tail?.kind !== "turn")) {
-      const key = `compaction:${state.compaction.id}`;
-
-      if (this.liveTurn?.key !== key) {
-        this.liveTurn?.block.remove();
-        this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
-      }
-
-      this.liveTurn.block.sync(undefined, { kind: "compacting" });
-    } else if (this.running() && tail?.kind !== "turn" && state.run !== undefined) {
-      const key = `live:${state.run.runId}`;
-
-      if (this.liveTurn?.key !== key) {
-        this.liveTurn?.block.remove();
-        this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
-      }
-
-      this.liveTurn.block.sync(undefined, {
-        kind: "open",
-        phase: state.run.phase,
-        live: state.overlay,
-        waitingForUser: waitingCall(state) !== undefined,
-      });
-    } else if (this.liveTurn !== undefined) {
-      this.liveTurn.block.remove();
-      this.liveTurn = undefined;
     }
 
     if (reset) this.pendingAnchor = "bottom";
@@ -678,14 +671,14 @@ export class Timeline {
     }
 
     this.endNavigation();
-    this.liveTurn?.block.remove();
-    this.liveTurn = undefined;
     this.shellEntries.clear();
     this.shellPositions.clear();
     this.items = [];
     this.lastTurnIndex = -1;
     this.offsets = [0];
-    this.state = undefined;
+    this.view = undefined;
+    this.key = undefined;
+    this.turnItems = new Map();
     this.geometry = "";
     this.selectionRange = undefined;
     this.reading = undefined;
@@ -759,27 +752,21 @@ export class Timeline {
     this.setNavigationSlack(0);
   }
 
-  private running(): boolean {
-    const run = this.state?.run;
-
-    return run !== undefined && !isTerminalPhase(run.phase);
-  }
-
   private syncMounted(index: number, mounted: MountedItem): void {
     const item = this.items[index]?.item;
-    const state = this.state;
+    const { view } = this;
 
     if (mounted.kind === "shell" && item?.kind === "shell") {
-      mounted.card.sync(item.execution, undefined);
+      mounted.card.sync(item.execution);
       mounted.card.setNote(item.note);
 
       return;
     }
 
-    if (mounted.kind !== "turn" || item?.kind !== "turn" || state === undefined) return;
-    const status = turnStatus(item, state);
+    if (mounted.kind !== "turn" || item?.kind !== "turn" || view === undefined) return;
+    const status = turnStatus(item.entry, view, index === this.lastTurnIndex);
 
-    if (status !== undefined) mounted.block.sync(item, status);
+    if (status !== undefined) mounted.block.sync(item.entry.messages, status);
   }
 
   private offset(index: number): number {
@@ -956,7 +943,7 @@ export class Timeline {
   private readonly beforeFrame = (): Promise<void> => {
     // Capture against the old geometry before Yoga can clamp a shrinking scroll
     // range or re-engage OpenTUI's bottom pin during reflow.
-    if (!this.changingLayout && this.state !== undefined) {
+    if (!this.changingLayout && this.view !== undefined) {
       if (this.followMode === "latest" && !this.atBottom()) this.setFollowMode("history");
       this.pendingAnchor ??= this.anchor();
       this.reconcileWindow();
@@ -972,7 +959,7 @@ export class Timeline {
     queueMicrotask(() => {
       this.queued = false;
 
-      if (!this.transcript.container.isDestroyed && this.state !== undefined) this.layout();
+      if (!this.transcript.container.isDestroyed && this.view !== undefined) this.layout();
     });
   };
 
@@ -997,7 +984,7 @@ export class Timeline {
           );
 
           // A different width is an estimate until this item is mounted and measured.
-          if (cached?.source === item.source && cached.height !== item.height) {
+          if (cached?.source === item.item && cached.height !== item.height) {
             item.height = cached.height;
             firstChanged = Math.min(firstChanged, index);
           }
@@ -1019,7 +1006,7 @@ export class Timeline {
 
         const key = `${geometry}:${item.messageId}:${String(item.disclosures.revision)}`;
         this.heights.delete(key);
-        this.heights.set(key, { source: item.source, height });
+        this.heights.set(key, { source: item.item, height });
       }
 
       while (this.heights.size > HEIGHT_CACHE_LIMIT) {
@@ -1124,6 +1111,8 @@ export class Timeline {
         ...this.transcript,
         disclosures: item.disclosures,
         tasks: () => owner.tasks(),
+        blob: (id) => owner.blob(id),
+        drawPart: (message) => owner.drawPart(message),
         get syntaxStyle() {
           return owner.syntaxStyle;
         },
@@ -1135,7 +1124,13 @@ export class Timeline {
       const mounted: MountedItem =
         item.item.kind === "turn"
           ? (() => {
-              const block = new TurnBlock(transcript, item.item.id, item.item.durationMs);
+              const { turn } = item.item.entry;
+
+              const block = new TurnBlock(
+                transcript,
+                turn.id,
+                (turn.endedAt ?? Date.now()) - turn.startedAt,
+              );
 
               return { kind: "turn", root: block.root, block };
             })()
@@ -1153,13 +1148,12 @@ export class Timeline {
                   item.item.execution,
                   root,
                   undefined,
-                  undefined,
                   item.item.note,
                 );
 
                 return { kind: "shell", root, card };
               })()
-            : { kind: "marker", root: appendMarker(transcript, markerProps(item.item)) };
+            : { kind: "marker", root: appendMarker(transcript, markerProps(item.item.message)) };
 
       this.mounted.set(index, mounted);
       this.syncMounted(index, mounted);
@@ -1199,8 +1193,6 @@ export class Timeline {
       spacer.parent?.remove(spacer);
       spacer.destroy();
     }
-
-    if (this.liveTurn !== undefined) children.push(this.liveTurn.block.root);
 
     if (this.tail !== undefined) children.push(this.tail);
     children.push(this.navigationSpacer);

@@ -4,7 +4,7 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useLayoutEffect, useState } from "react";
-import type { VcsFile } from "@nyte-ai/protocol";
+import type { FileStatus } from "@nyte-ai/sdk";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({ status: { color: role.contentSecondary } });
@@ -73,6 +73,6 @@ export function useTreeStatusTheme() {
 }
 
 /** The tree has no conflict mark; a conflict is a modification to resolve. */
-export function treeStatus(kind: VcsFile["kind"]): Exclude<VcsFile["kind"], "conflicted"> {
+export function treeStatus(kind: FileStatus): Exclude<FileStatus, "conflicted"> {
   return kind === "conflicted" ? "modified" : kind;
 }

@@ -1,2 +1,2 @@
 Nyte's customer-facing documentation and Cloud design-system reference.
-`packages/lab/src/core/guide.tsx` and `packages/core/src/kernel/README.md` define core contracts; product guides here describe what ships. Experiments belong in `packages/lab`.
+The JSDoc on `@nyte-ai/core`'s exports and the baseline `packages/lab/sdk-shape.ts` define core contracts; product guides here describe what ships. Experiments belong in `packages/lab`.

@@ -107,6 +107,12 @@ export async function ensureBinary(options = {}) {
   }
 }
 
+/**
+ * Spawns the native terminal client with `args`, forwarding SIGINT and
+ * SIGTERM, and resolves its exit code.
+ *
+ * @returns {Promise<number>}
+ */
 export async function launch(args = process.argv.slice(2), options = {}) {
   const binary = await ensureBinary(options);
   const child = spawn(binary, args, { stdio: "inherit" });

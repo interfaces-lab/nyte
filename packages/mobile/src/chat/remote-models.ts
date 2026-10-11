@@ -1,5 +1,4 @@
-import type { NyteClient } from "@nyte-ai/client";
-import type { ModelInfo } from "@nyte-ai/protocol";
+import type { Connection, ModelInfo } from "@nyte-ai/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { describeHostError } from "../connection/connection.ts";
 
@@ -8,15 +7,18 @@ type ModelCatalogState =
   | { kind: "failed"; message: string }
   | { kind: "ready"; models: readonly ModelInfo[]; defaultModel: ModelInfo | undefined };
 
-export function useModelCatalog(client: NyteClient, enabled = true) {
+export function useModelCatalog(client: Connection, enabled = true) {
   const query = useQuery({
     queryKey: ["models"],
     enabled,
     queryFn: async () => {
-      const [models, defaultModel] = await Promise.all([
-        client.provider.models.list(),
-        client.provider.models.default(),
-      ]);
+      const catalog = await client.models.list();
+      const models = catalog.providers.flatMap((provider) => provider.models);
+
+      const defaultModel = models.find(
+        (model) =>
+          model.ref.provider === catalog.default?.provider && model.ref.id === catalog.default.id,
+      );
 
       return { models, defaultModel };
     },

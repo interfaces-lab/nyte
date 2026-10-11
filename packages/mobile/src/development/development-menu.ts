@@ -1,5 +1,5 @@
-import type { NyteClient } from "@nyte-ai/client";
-import { MAIN, sessionId, type SessionInfo } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { Connection, SessionInfo } from "@nyte-ai/sdk";
 import { isLiveActivityActive, startLiveActivity, stopLiveActivity } from "@use-voltra/ios-client";
 import { registerDevMenuItems } from "expo-dev-client";
 import { router, useGlobalSearchParams } from "expo-router";
@@ -7,6 +7,7 @@ import { router, useGlobalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { Alert } from "react-native";
 import { appLink, workLiveActivityVariants } from "../activity/live-activity.tsx";
+import { sessionIdOf } from "../view-helpers.ts";
 
 const PREVIEW_ACTIVITY = "nyte-dev-preview";
 
@@ -27,31 +28,44 @@ async function showActivityPreview(kind: "working" | "attention") {
 
   const startedAt = Date.now() - 60_000;
 
+  const main = asId<"head">("main");
+
+  const run = {
+    id: asId<"run">(PREVIEW_ACTIVITY),
+    head: main,
+    startedAt,
+    attempt: 1,
+    configuration: {
+      kind: "exact",
+      model: { provider: "preview", id: "preview" },
+      thinking: "off",
+      agent: null,
+      settings: {},
+      settingsVersion: "preview",
+    },
+    origin: { kind: "continuation", from: "wake" },
+  } as const;
+
   const session = {
-    sessionId: sessionId(PREVIEW_ACTIVITY),
+    id: asId<"session">(PREVIEW_ACTIVITY),
     name: "Live Activity preview",
+    parent: null,
+    workspace: asId<"workspace">("fixture"),
     activation: { kind: "active" },
-    workspace: { kind: "local", id: "fixture", cwd: "/" },
     createdAt: startedAt,
     lastActivityAt: startedAt,
     pinned: false,
     archived: false,
-    config: {},
     heads: [
       {
-        head: MAIN,
-        tip: null,
-        run: {
-          runId: PREVIEW_ACTIVITY,
-          head: MAIN,
-          origin: { kind: "user" },
-          root: PREVIEW_ACTIVITY,
-          phase: { kind: kind === "working" ? "respond" : "waiting" },
-          awaitingReply: kind === "attention" ? true : undefined,
-          startedAt,
-          attempts: 1,
-          config: {},
-        },
+        name: main,
+        tip: { kind: "start" },
+        stack: null,
+        unread: false,
+        execution:
+          kind === "working"
+            ? { kind: "live", run, phase: "responding", stopping: false }
+            : { kind: "waiting", run, on: { kind: "part", part: asId<"part">(PREVIEW_ACTIVITY) } },
       },
     ],
   } satisfies SessionInfo;
@@ -64,7 +78,7 @@ async function showActivityPreview(kind: "working" | "attention") {
   await startLiveActivity(variants, { activityName: PREVIEW_ACTIVITY, deepLinkUrl: appLink("") });
 }
 
-export function DevelopmentMenu({ client }: { client: NyteClient | undefined }) {
+export function DevelopmentMenu({ client }: { client: Connection | undefined }) {
   const { id } = useGlobalSearchParams<{ id?: string | string[] }>();
   const currentId = Array.isArray(id) ? id[0] : id;
 
@@ -82,8 +96,8 @@ export function DevelopmentMenu({ client }: { client: NyteClient | undefined }) 
 
       const selected =
         currentId === undefined
-          ? (await client.sessions.list({ parent: null, limit: 1 })).items[0]?.sessionId
-          : sessionId(currentId);
+          ? (await client.sessions.list({ parents: { kind: "roots" }, limit: 1 })).items[0]?.id
+          : sessionIdOf(currentId);
 
       if (selected === undefined) throw new Error("There are no conversations on your Mac.");
 

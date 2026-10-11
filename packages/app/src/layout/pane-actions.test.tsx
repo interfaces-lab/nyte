@@ -7,7 +7,7 @@ import {
   createRouter,
   RouterContextProvider,
 } from "@tanstack/react-router";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { shellActions, useShellState } from "../chrome/shell-state.ts";
 import {
   PaneControllerProvider,
@@ -77,7 +77,7 @@ afterAll(() => vi.unstubAllGlobals());
 test("new chat leaves Customize and selects the blank pane through the shared pane action", () => {
   const workspaceKey = "new-chat-action-fixture";
   const controller = paneControllerForWorkspace(workspaceKey);
-  const id = sessionId("previous-chat");
+  const id = asId<"session">("previous-chat");
   controller.selectSession(id);
   shellActions.openCustomize(id);
 

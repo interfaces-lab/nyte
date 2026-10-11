@@ -14,9 +14,9 @@ import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Button } from "@nyte-ai/ui/button";
 import { App } from "../app.tsx";
-import { connectSessionDirectory, loadLocalResources } from "../queries.ts";
+import { loadLocalResources } from "../queries.ts";
 import { createAppRouter } from "../router.tsx";
-import { serverConnectionProblem } from "../server-connection.ts";
+import { connectionProblem } from "../sdk.tsx";
 import { startRendererStartup } from "../startup.ts";
 import type { Connection } from "./bridge.ts";
 import { AddFolderDialogHost } from "./add-folder.tsx";
@@ -61,9 +61,6 @@ function start(
   connection: Connection,
   mount: (shell: ReactNode) => void = (shell) => root.render(shell),
 ): void {
-  // Directory changes are pushed; listen before the first snapshot is read so none slips between.
-  connectSessionDirectory();
-
   focusManager.setEventListener((setFocused) => {
     const update = (): void => {
       setFocused(document.visibilityState !== "hidden" && document.hasFocus());
@@ -132,7 +129,7 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   try {
     await connectAddress(connection, false);
   } catch (cause) {
-    const refused = serverConnectionProblem(cause).kind === "authentication";
+    const refused = connectionProblem(cause).kind === "authentication";
 
     // A refused saved token never works again: a local or Tailscale token ends
     // with its share, and a removed device's token stays revoked.

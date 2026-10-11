@@ -2,33 +2,31 @@
  * Ordered configuration intent for one followed session.
  *
  * A known cycle changes selection at once; discovery reserves its input
- * order before yielding. Keep the local selection until version-valid SDK
- * selected inputs include the acknowledged config. Pending selections stay
- * visible while metadata catches up; failures restore the last acknowledged
- * choice or, once reconciled, the SDK selection.
+ * order before yielding. Keep the local selection until a view's selected
+ * configuration shows the acknowledged one. Pending selections stay visible
+ * while the view catches up; failures restore the last acknowledged choice
+ * or, once reconciled, the view's selection.
  *
  * Dispatch is one ordered queue of configuration intents and submission
  * slots. One configure is in flight at a time. Consecutive intents coalesce
  * into the newest of their run; a slot ends a run, so the configuration a
  * message was pressed under is dispatched exactly as captured, and later
  * intents wait until that message is admitted or abandoned. This orders
- * admission: the config commit is queued before the message and later config
- * commits after it. Which run a message finally executes under follows core's
- * delivery timing, not a promise made here.
+ * admission: the head is configured before the message is sent and later
+ * configuration after it.
  */
-import type { Api, Model } from "@nyte-ai/ai";
-import type { ConfigureOutcome, ThinkingLevel } from "@nyte-ai/core";
+import type { ConfigureOutcome, ModelRef, Thinking } from "@nyte-ai/sdk";
 
 /** What the next run would use: a model and a thinking level. */
 export interface RunChoice {
-  readonly model: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
+  readonly model: ModelRef;
+  readonly thinkingLevel: Thinking;
 }
 
 /** The fields one request changes; unspecified fields keep the selected value. */
 export interface ConfigPatch {
-  readonly model?: Model<Api>;
-  readonly thinkingLevel?: ThinkingLevel;
+  readonly model?: ModelRef;
+  readonly thinkingLevel?: Thinking;
 }
 
 type ConfigureResult =
@@ -51,11 +49,11 @@ export interface SubmissionSlot {
 
 interface SessionConfiguratorOptions {
   readonly configure: (patch: ConfigPatch) => Promise<ConfigureOutcome>;
-  /** SDK selected session inputs, including acknowledged config that has not landed yet. */
+  /** The view's selected configuration, or the fallback before a view has one. */
   readonly readSelected: () => RunChoice;
   /** The selected configuration moved; repaint from it. */
   readonly onChange: (selected: RunChoice) => void;
-  /** Core queued the commit; `patch` names the fields the user chose. */
+  /** The head stored the choice; `patch` names the fields the user chose. */
   readonly onAcknowledged: (choice: RunChoice, patch: ConfigPatch) => void;
 }
 
@@ -91,12 +89,17 @@ function sameChoice(left: RunChoice, right: RunChoice): boolean {
   );
 }
 
-function failureMessage(outcome: Exclude<ConfigureOutcome, { kind: "queued" }>, choice: RunChoice) {
+function failureMessage(
+  outcome: Exclude<ConfigureOutcome, { kind: "configured" }>,
+  choice: RunChoice,
+): string {
   switch (outcome.kind) {
-    case "unknown_model":
+    case "unknown-model":
       return `Unknown model: ${choice.model.provider}/${choice.model.id}`;
-    case "unknown_agent":
-      return "Unknown agent";
+    case "unknown-agent":
+      return `Unknown agent: ${outcome.agent}`;
+    case "invalid":
+      return outcome.issues.map((issue) => issue.message).join("; ") || "Invalid configuration";
     default: {
       const _exhaustive: never = outcome;
 
@@ -112,14 +115,13 @@ function isIntent(entry: Intent | Slot): entry is Intent {
 export class SessionConfigurator {
   private readonly options: SessionConfiguratorOptions;
   private selectedChoice: RunChoice | undefined;
-  /** Retained until a selected SDK read started after acknowledgement arrives. */
+  /** Retained until a view's selection shows it. */
   private acknowledgedChoice: RunChoice | undefined;
   private readonly queue: (Intent | Slot)[] = [];
   private inFlight: Intent | undefined;
   /** Fields a failed intent established nothing for; the next dispatch carries them. */
   private carried: ConfigPatch = {};
   private disposed = false;
-  private revision = 0;
   private preparing = false;
   private readonly preparations: (() => void | Promise<void>)[] = [];
   private latestPreparation: Preparation | undefined;
@@ -143,13 +145,10 @@ export class SessionConfigurator {
     return this.preparing || this.preparations.length > 0;
   }
 
-  get version(): number {
-    return this.revision;
-  }
-
-  /** A selected SDK projection includes queued config, so it needs no landing evidence. */
-  observeSelected(version: number): void {
-    if (version !== this.revision) return;
+  /** A view's selection that shows the acknowledged choice lets the local one go. */
+  observeSelected(selected: RunChoice): void {
+    if (this.acknowledgedChoice === undefined || !sameChoice(this.acknowledgedChoice, selected))
+      return;
     this.acknowledgedChoice = undefined;
     this.reconcile();
   }
@@ -162,7 +161,6 @@ export class SessionConfigurator {
   prepareSelection(
     prepare: (selected: RunChoice) => ConfigPatch | undefined | Promise<ConfigPatch | undefined>,
   ): Promise<ConfigureResult> {
-    this.revision += 1;
     const preparation: Preparation = { outcome: { kind: "pending" } };
     this.latestPreparation = preparation;
     const settled = Promise.withResolvers<ConfigureResult>();
@@ -378,7 +376,7 @@ export class SessionConfigurator {
     try {
       const outcome = await this.options.configure(intent.patch);
 
-      if (outcome.kind === "queued") {
+      if (outcome.kind === "configured") {
         result = { kind: "acknowledged" };
       } else {
         result = { kind: "failed", message: failureMessage(outcome, intent.choice) };
@@ -390,7 +388,6 @@ export class SessionConfigurator {
     this.inFlight = undefined;
 
     if (result.kind === "acknowledged") {
-      this.revision += 1;
       this.acknowledgedChoice = intent.choice;
 
       if (!this.disposed) this.options.onAcknowledged(intent.choice, intent.patch);

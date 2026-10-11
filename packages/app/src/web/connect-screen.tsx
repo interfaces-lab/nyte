@@ -1,16 +1,15 @@
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ServerInfo } from "@nyte-ai/protocol";
+import type { HostId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { type } from "@nyte-ai/ui/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
-import { serverConnectionProblem } from "../server-connection.ts";
+import { connectionProblem, hostChanged } from "../sdk.tsx";
 import type { Connection } from "./bridge.ts";
 import { parseConnection, saveConnection } from "./connection.ts";
-import { IdentityChanged } from "./identity.ts";
 import { webBridge } from "./install.ts";
 import { connectPinned } from "./pins.ts";
 import { WebPage } from "./web-page.tsx";
@@ -43,13 +42,13 @@ export type ConnectFailure =
   | { readonly kind: "identity_changed" };
 
 export function connectFailure(cause: unknown): ConnectFailure {
-  return cause instanceof IdentityChanged
+  return hostChanged(cause)
     ? { kind: "identity_changed" }
-    : { kind: "problem", message: serverConnectionProblem(cause).message };
+    : { kind: "problem", message: connectionProblem(cause).message };
 }
 
 /** Connect to `connection` as the host this browser pinned at its address; `repair` pins whichever host proves itself there now. */
-export function connectAddress(connection: Connection, repair: boolean): Promise<ServerInfo> {
+export function connectAddress(connection: Connection, repair: boolean): Promise<HostId> {
   return connectPinned({
     bridge: webBridge,
     storage: localStorage,

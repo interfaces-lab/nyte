@@ -10,10 +10,10 @@ import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/client";
-import type { CommandInfo, PluginCatalog } from "@nyte-ai/protocol";
-import type { Skill } from "@nyte-ai/schema";
+import { completionTrigger } from "../view-helpers.ts";
+import type { MentionFile } from "./message-references.ts";
+import type { CommandInfo } from "@nyte-ai/sdk";
+import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
@@ -34,7 +34,7 @@ interface SkillSuggestion {
   readonly label: string;
   readonly description: string;
   readonly icon: "skills";
-  readonly skill: Skill;
+  readonly skill: SkillInfo;
 }
 
 interface PluginCommandSuggestion {
@@ -100,7 +100,9 @@ type ComposerSource<T> =
   | { readonly status: "error" }
   | { readonly status: "ready"; readonly data: T };
 
-export type ComposerSuggestionCatalog = ComposerSource<PluginCatalog>;
+export type ComposerSuggestionCatalog = ComposerSource<
+  Pick<SessionCatalogView, "commands" | "skills">
+>;
 
 export type ComposerMentionFiles = ComposerSource<readonly MentionFile[]>;
 
@@ -162,7 +164,7 @@ function suggestionsFor(
   kind: SuggestionMenuState["kind"],
   rawQuery: string,
   commands: readonly CommandInfo[],
-  skills: readonly Skill[],
+  skills: readonly SkillInfo[],
   rankMentions: ReturnType<typeof createMentionSuggestionRanking>,
   hasConversationContext: boolean,
 ): readonly ComposerSuggestion[] {
@@ -232,7 +234,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
         ? "Created by Nyte"
         : `Created by ${suggestion.command.owner}`;
     case "skill":
-      return suggestion.skill.filePath;
+      return suggestion.skill.location;
     case "mention":
       return undefined;
     case "file":
@@ -370,7 +372,7 @@ function SuggestionPreview({
 function suggestionReference(suggestion: ChipSuggestion): MessageReference {
   switch (suggestion.kind) {
     case "skill":
-      return { kind: "skill", name: suggestion.skill.name, path: suggestion.skill.filePath };
+      return { kind: "skill", name: suggestion.skill.name, path: suggestion.skill.location };
     case "mention":
       return CONVERSATION_MENTION;
     case "file":
@@ -497,7 +499,7 @@ export function useComposerSuggestions({
   ): void => {
     if (suggestion.kind === "plugin-command") {
       const runs =
-        suggestion.command.selection === "run" &&
+        suggestion.command.arguments === null &&
         onCommand !== undefined &&
         references.length === 0 &&
         `${text.slice(0, token.start)}${text.slice(token.end)}`.trim() === "";

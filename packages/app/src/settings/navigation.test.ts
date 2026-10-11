@@ -15,8 +15,8 @@ test("only sections this host can show are settings sections", () => {
   installBridge({ ...web, clientSurface: "desktop" });
   assert.ok(isSettingsSection("providers"));
 
-  installBridge({ ...web, environment: true, relay: true });
-  assert.ok(isSettingsSection("usage"));
+  installBridge({ ...web, relay: true });
+  assert.equal(isSettingsSection("usage"), false);
   assert.equal(isSettingsSection("providers"), false);
   assert.equal(isSettingsSection("profile"), false);
 });

@@ -22,8 +22,8 @@ Its steps are in `qa/headless.ts`:
 3. Piped stdin with `-p` runs a real `seq 1 3` through the bash tool. The answer goes to stdout,
    and the tool name and outcome go to stderr. The tool output reaches the provider.
 4. `-p --session <id>` sends the earlier conversation and replays nothing.
-5. `--provider`, `--model` and `--effort` set the request's model and `reasoning_effort`. A
-   completed run saves them, so the next run without flags uses them.
+5. `--provider`, `--model` and `--effort` set the request's model and `reasoning_effort`. The
+   model becomes the host's default, so the next run without flags uses it; the level does not.
 6. A provider error exits 1 with a `failed` result.
 7. SIGTERM while a bash tool runs exits 143 with a `cancelled` result, and the tool's process is
    gone before QA cleanup starts.
@@ -32,31 +32,29 @@ Its steps are in `qa/headless.ts`:
 OpenTUI's `EmbeddedTerminalRenderable` parses that output, answers terminal queries, and encodes
 keys, mouse and resize. The steps are in `qa/tui.ts`:
 
-1. A project plugin makes Nyte ask for workspace trust. The default answer quits with no plugin
-   code run and no provider request, and the next launch asks again.
-2. Trusting the workspace loads the plugin, and its slash command answers.
-3. Each typed key shows in the composer. This is the one timed input: `text.idle` fails above a
+1. The project plugin loads, and its slash command answers.
+2. Each typed key shows in the composer. This is the one timed input: `text.idle` fails above a
    p95 of 16.67 ms or a maximum of 50 ms. The reply shows while the provider still holds its
    stream, then completes.
-4. Esc stops a run while its bash tool streams output. The tool process ends, no further provider
+3. Esc stops a run while its bash tool streams output. The tool process ends, no further provider
    request is made, the typed draft stays, and Ctrl+C clears it.
-5. A 150-row reply pages up to its first row, one wheel step moves three rows, and Ctrl+End
+4. A 150-row reply pages up to its first row, one wheel step moves three rows, and Ctrl+End
    returns to the newest row.
-6. Resizing to 64x20 and back keeps the draft, the cursor at its end, and one composer footer.
-7. The model picker and Shift+Tab change the footer without a request. The next request carries
+5. Resizing to 64x20 and back keeps the draft, the cursor at its end, and one composer footer.
+6. The model picker and Shift+Tab change the footer without a request. The next request carries
    the chosen model and `reasoning_effort`.
-8. A run started at `/effort low` keeps `low` for its tool continuation while Shift+Tab sets
+7. A run started at `/effort low` keeps `low` for its tool continuation while Shift+Tab sets
    `medium`. A Ctrl+Enter follow-up shows in the queue row, waits for the run to finish, and is
    sent at `medium`.
-9. A question tool waits for a picked answer. The answer reaches the provider as the tool result,
+8. A question tool waits for a picked answer. The answer reaches the provider as the tool result,
    with no extra user message.
-10. A `!` command runs locally without a model request, and Esc stops it and its process. `!echo
+9. A `!` command runs locally without a model request, and Esc stops it and its process. `!echo
     kept` puts its output in the composer, and the next prompt carries one exact `<shell>` block.
-11. Settings lists the thinking level. Esc closes it.
-12. `/quit` prints the two-line resume command. `--session=` reopens the transcript, model and
-    level without asking for trust again, and the next request carries the history.
-13. SIGTERM prints the same resume command and exits 143.
-14. A new session shows the saved model and level, and `/effort low` before its first message
+10. Settings lists the thinking level. Esc closes it.
+11. `/quit` prints the two-line resume command. `--session=` reopens the transcript, model and
+    level, and the next request carries the history.
+12. SIGTERM prints the same resume command and exits 143.
+13. A new session shows the saved model and level, and `/effort low` before its first message
     reaches that request.
 
 A failure names its step. `--show` plays the same `tui` scenario on a real CLI renderer, with the
@@ -68,7 +66,7 @@ be at least 100x33.
 ## Isolation
 
 `run.mjs` sets HOME and an environment allowlist before Bun loads anything. Each scenario gets its
-own workspace (with a probe plugin and the public question plugin example), NYTE_HOME, settings, credentials, model catalog and database. Nyte talks to a
+own workspace (with a probe plugin), NYTE_HOME, settings, credentials, model catalog and database. Nyte talks to a
 loopback provider that speaks chat-completions SSE, and HTTP(S) proxy variables point at the same
 server, so a request for anything else is refused there and fails the scenario.
 

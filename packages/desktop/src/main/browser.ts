@@ -16,8 +16,8 @@ import type {
   HostEvent,
   BrowserBridge,
 } from "@nyte-ai/app/bridge.ts";
-import type { SessionId } from "@nyte-ai/core";
-import type { HostSettings } from "@nyte-ai/host/settings";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { DesktopSettings } from "./desktop-settings.ts";
 import { loadBlocker, shieldPaused, type Blocker } from "./adblock.ts";
 import {
   crashRetryDelay,
@@ -186,7 +186,7 @@ export interface BrowserSurfacesDependencies {
   readonly windowShown: (window: BrowserWindow) => boolean;
   /** Read per request, so a changed setting applies to the next one. */
   readonly settings: () => Pick<
-    HostSettings,
+    DesktopSettings,
     "blockAds" | "adblockAllowedHosts" | "upgradeToHttps"
   >;
   /** Visits of pages a panel holds, per cookie jar. */
@@ -1256,9 +1256,8 @@ export function createBrowserSurfaces(
 
       if (target === undefined)
         throw new ExpectedHostError({
-          code: "invalid_input",
+          code: "invalid",
           message: "Only web addresses open in the browser panel.",
-          issues: [{ path: "/url", message: "Enter an http or https address" }],
         });
       const surfaceOwner = owner ?? { kind: "home" };
       const surface = surfaces.get(id) ?? create(id, surfaceOwner);

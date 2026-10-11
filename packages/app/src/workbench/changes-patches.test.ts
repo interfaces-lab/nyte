@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { VCS_DIFF_PATHS_MAX } from "@nyte-ai/protocol";
-import type { VcsDiff } from "@nyte-ai/protocol";
-import { createPatchLoader } from "./changes-patches.ts";
+import type { PatchEntry } from "@nyte-ai/sdk";
+import { PATCH_READ_MAX, createPatchLoader } from "./changes-patches.ts";
 import type { PatchSource } from "./changes-patches.ts";
 
 interface Read {
   readonly paths: readonly string[];
-  readonly answer: (diffs: readonly VcsDiff[]) => void;
+  readonly answer: (diffs: readonly PatchEntry[]) => void;
   readonly fail: (cause: Error) => void;
 }
 
@@ -28,14 +27,11 @@ function source(key: string, paths: readonly string[]) {
   return { value, reads };
 }
 
-const binary = (
-  path: string,
-  patch = `Binary files a/${path} and b/${path} differ\n`,
-): VcsDiff => ({
+const binary = (path: string, digest = `digest-${path}`): PatchEntry => ({
   path,
   status: "modified",
   kind: "binary",
-  patch,
+  digest,
 });
 
 const settled = () => new Promise((resolve) => setImmediate(resolve));
@@ -68,17 +64,17 @@ test("one read is in flight at a time, and a path the answer omits reads as empt
 
 test("mark-all reads in protocol-sized batches and settles even when a batch fails", async () => {
   const loader = createPatchLoader();
-  const paths = Array.from({ length: VCS_DIFF_PATHS_MAX + 4 }, (_, index) => `file-${index}`);
+  const paths = Array.from({ length: PATCH_READ_MAX + 4 }, (_, index) => `file-${index}`);
   const current = source("k1", paths);
   loader.setSource(current.value);
   const ensured = loader.ensure(paths);
   await settled();
 
   assert.equal(current.reads.length, 1);
-  assert.equal(current.reads[0]?.paths.length, VCS_DIFF_PATHS_MAX);
+  assert.equal(current.reads[0]?.paths.length, PATCH_READ_MAX);
   current.reads[0]?.answer((current.reads[0]?.paths ?? []).map((path) => binary(path)));
   await settled();
-  assert.deepEqual(current.reads[1]?.paths, paths.slice(VCS_DIFF_PATHS_MAX));
+  assert.deepEqual(current.reads[1]?.paths, paths.slice(PATCH_READ_MAX));
   current.reads[1]?.fail(new Error("git stopped"));
 
   const answer = await ensured;
@@ -89,7 +85,7 @@ test("mark-all reads in protocol-sized batches and settles even when a batch fai
 
 test("a source replaced during mark-all answers superseded and never publishes the old read", async () => {
   const loader = createPatchLoader();
-  const paths = Array.from({ length: VCS_DIFF_PATHS_MAX + 4 }, (_, index) => `file-${index}`);
+  const paths = Array.from({ length: PATCH_READ_MAX + 4 }, (_, index) => `file-${index}`);
   const first = source("k1", paths);
   loader.setSource(first.value);
   const ensured = loader.ensure(paths);
@@ -99,7 +95,7 @@ test("a source replaced during mark-all answers superseded and never publishes t
     const { key, fresh } = loader.getSnapshot();
 
     for (const entry of fresh.values()) {
-      if (entry.kind === "binary") published.push(`${String(key)} ${entry.text}`);
+      if (entry.kind === "binary") published.push(`${String(key)} ${entry.digest}`);
     }
   });
 
@@ -122,7 +118,7 @@ test("a source replaced during mark-all answers superseded and never publishes t
   const answer = await again;
   const entry = answer.kind === "read" ? answer.entries.get("file-0") : undefined;
   assert.ok(entry?.kind === "binary");
-  assert.equal(entry.text, "new");
+  assert.equal(entry.digest, "new");
   assert.deepEqual(published, ["k2 new"]);
 });
 

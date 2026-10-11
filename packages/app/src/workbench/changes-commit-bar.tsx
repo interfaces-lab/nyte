@@ -15,12 +15,8 @@ import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type {
-  VcsBranchOutcome,
-  VcsCommitOutcome,
-  VcsCommitTarget,
-  VcsPushOutcome,
-} from "@nyte-ai/protocol";
+import type { GitOutcome, GitRevision } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import {
@@ -34,7 +30,7 @@ import {
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
-import { keys, queryClient, refreshVcs, refreshVcsSnapshot } from "../queries.ts";
+import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
@@ -183,61 +179,48 @@ export interface CommitBarResult {
   readonly offerPublish?: boolean;
 }
 
-export function createBranchResultMessage(result: VcsBranchOutcome, name: string): CommitBarResult {
+/** What a git write that did not apply says, whichever step it was. */
+function refusedMessage(
+  result: Exclude<GitOutcome, { readonly kind: "applied" }>,
+  what: string,
+): CommitBarResult {
   switch (result.kind) {
-    case "created":
-      return { tone: "success", text: `Created branch ${name} and switched to it.` };
-    case "exists":
-      return { tone: "error", text: `Branch ${name} already exists. Pick another name.` };
-    case "invalid_name":
-      return {
-        tone: "error",
-        text: `${name} is not a valid branch name. Pick another name.`,
-        detail: result.reason,
-      };
-    case "failed":
-      return { tone: "error", text: "Couldn’t create the branch.", detail: result.reason };
+    case "unchanged":
+      return { tone: "error", text: `${what}: nothing to do.` };
     case "stale":
       return { tone: "error", text: "Changes changed. Review them and try again." };
-  }
-}
-
-export function commitResultMessage(result: VcsCommitOutcome): CommitBarResult {
-  switch (result.kind) {
-    case "committed":
-      return { tone: "success", text: `Committed ${result.oid.slice(0, 7)}: ${result.summary}` };
-    case "nothing_to_commit":
-      return { tone: "error", text: "Nothing to commit." };
-    case "failed":
-      return { tone: "error", text: "The commit didn’t go through.", detail: result.reason };
-    case "stale":
-      return { tone: "error", text: "Changes changed. Review them and try again." };
-  }
-}
-
-export function pushResultMessage(result: VcsPushOutcome): CommitBarResult {
-  switch (result.kind) {
-    case "pushed":
-      return { tone: "success", text: `Pushed ${result.branch} to ${result.remote}.` };
-    case "up_to_date":
-      return { tone: "success", text: "Nothing to push." };
-    case "no_upstream":
-      return {
-        tone: "error",
-        text: `${result.branch} tracks no remote branch yet. Publish it to push.`,
-        offerPublish: true,
-      };
+    case "busy":
+      return { tone: "error", text: "A run is still writing to this workspace." };
     case "rejected":
-      return {
-        tone: "error",
-        text: "The remote has commits this branch doesn’t. Pull them, then push again.",
-        detail: result.reason,
-      };
-    case "failed":
-      return { tone: "error", text: "The push didn’t go through.", detail: result.reason };
-    case "stale":
-      return { tone: "error", text: "Changes changed. Review them and try again." };
+      return { tone: "error", text: `${what} didn’t go through.`, detail: result.reason };
+    default: {
+      const _exhaustive: never = result;
+
+      return _exhaustive;
+    }
   }
+}
+
+export function createBranchResultMessage(result: GitOutcome, name: string): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: `Created branch ${name} and switched to it.` }
+    : refusedMessage(result, `Creating ${name}`);
+}
+
+export function commitResultMessage(result: GitOutcome): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: "Committed." }
+    : result.kind === "unchanged"
+      ? { tone: "error", text: "Nothing to commit." }
+      : refusedMessage(result, "The commit");
+}
+
+export function pushResultMessage(result: GitOutcome): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: "Pushed." }
+    : result.kind === "unchanged"
+      ? { tone: "success", text: "Nothing to push." }
+      : refusedMessage(result, "The push");
 }
 
 export function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
@@ -287,8 +270,8 @@ export function actionFailureMessage(cause: unknown): CommitBarResult {
  * What a commit covers. The staged scope commits the index as it stands;
  * every other working-tree scope commits each tracked change with it.
  */
-export function commitTargetFor(scope: WorkbenchChangesScope): VcsCommitTarget {
-  return scope.kind === "staged" ? { kind: "staged" } : { kind: "all" };
+export function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
+  return scope.kind === "staged" ? "staged" : "all";
 }
 
 /** A pull request needs a title; the message's first line is it, then the branch. */
@@ -386,7 +369,7 @@ export function ChangesCommitBar({
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     if (running) return;
     const plan = commitActionPlan(chosen);
-    let expect = { revision };
+    let expect: GitRevision = asId<"git-revision">(revision);
     setRunning(true);
     setResult(undefined);
     setInterrupted(undefined);
@@ -404,35 +387,16 @@ export function ChangesCommitBar({
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
 
-        const created = await nyte.workspace.vcs.createBranch({
-          target: { kind: "workspace" },
-          name,
-          checkout: true,
-          expect,
-        });
-
+        const created = await (await workspaceGit()).branch({ name, checkout: true }, { expect });
         const outcome = createBranchResultMessage(created, name);
 
-        if (created.kind !== "created") {
-          if (created.kind === "stale") refreshVcs();
+        if (created.kind !== "applied") {
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
-
-        if (plan.commit || plan.push) {
-          const snapshot = await refreshVcsSnapshot();
-
-          if (snapshot.kind !== "repository") {
-            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
-
-            return;
-          }
-
-          expect = { revision: snapshot.revision };
-        }
+        expect = created.revision;
 
         // The prompt stays until the branch exists, so a taken or invalid name
         // can be corrected without retyping either field.
@@ -442,58 +406,38 @@ export function ChangesCommitBar({
       }
 
       if (plan.commit && options.skipCommit !== true) {
-        const committed = await nyte.workspace.vcs.commit({
-          target: { kind: "workspace" },
-          message,
-          files: commitTargetFor(scope),
-          expect,
-        });
+        const committed = await (
+          await workspaceGit()
+        ).commit({ message, files: commitTargetFor(scope) }, { expect });
 
         const outcome = commitResultMessage(committed);
 
-        if (committed.kind !== "committed") {
-          if (committed.kind === "stale") refreshVcs();
+        if (committed.kind !== "applied") {
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
-
-        if (plan.push) {
-          const snapshot = await refreshVcsSnapshot();
-
-          if (snapshot.kind !== "repository") {
-            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
-
-            return;
-          }
-
-          expect = { revision: snapshot.revision };
-        }
+        expect = committed.revision;
 
         setMessage("");
         reported.push(outcome.text);
       }
 
       if (plan.push) {
-        const pushed = await nyte.workspace.vcs.push({
-          target: { kind: "workspace" },
-          setUpstream: options.setUpstream === true,
-          expect,
-        });
+        const pushed = await (
+          await workspaceGit()
+        ).push({ setUpstream: options.setUpstream === true }, { expect });
 
         const outcome = pushResultMessage(pushed);
 
         if (outcome.tone === "error") {
-          if (pushed.kind === "stale") refreshVcs();
-          else setInterrupted(chosen);
+          if (pushed.kind !== "stale") setInterrupted(chosen);
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
         reported.push(outcome.text);
       }
 

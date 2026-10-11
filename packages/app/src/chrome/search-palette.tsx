@@ -3,7 +3,7 @@ import { props } from "@stylexjs/stylex";
 // oxlint-disable-next-line no-restricted-imports -- the shortcut follows the open state
 import { useEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../components/ui.tsx";
@@ -57,7 +57,7 @@ interface PaletteAction {
 }
 
 function sessionTitle(session: SessionInfo): string {
-  return session.name ?? session.preview ?? "New chat";
+  return session.name ?? "New chat";
 }
 
 function matches(action: PaletteAction, query: string): boolean {
@@ -171,7 +171,7 @@ export function SearchPalette({
   );
 
   const rows = [
-    ...(includesAgents ? sessions.map((session) => session.sessionId) : []),
+    ...(includesAgents ? sessions.map((session) => session.id) : []),
     ...(tab === "agents" ? [] : visibleActions.map((action) => action.key)),
   ];
 
@@ -204,12 +204,12 @@ export function SearchPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mac, open, onOpenChange]);
 
-  const chatsPending = searchingAgents ? sessionSearch.isPending : recentSessions === undefined;
+  const chatsPending = searchingAgents
+    ? sessionSearch.data === undefined
+    : recentSessions === undefined;
 
   const emptyMessage = (): string => {
     if (includesAgents && (!sessionQueriesAvailable || chatsPending)) return "Loading chats…";
-
-    if (searchingAgents && sessionSearch.isError) return "Couldn’t load chats. Try again.";
 
     if (tab === "agents")
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
@@ -223,16 +223,16 @@ export function SearchPalette({
     <Command.Group heading={searchingAgents ? "Chats" : "Recent chats"}>
       {sessions.map((session) => (
         <Command.Item
-          key={session.sessionId}
-          value={session.sessionId}
+          key={session.id}
+          value={session.id}
           leading={
             <StatusGlyph
               session={session}
-              mark={sessionActivityMark(session, workingSessions.has(session.sessionId))}
+              mark={sessionActivityMark(session, workingSessions.has(session.id))}
             />
           }
           meta={formatTimeAgo(session.lastActivityAt)}
-          onClick={() => run(() => onOpenSession(session.sessionId))}
+          onClick={() => run(() => onOpenSession(session.id))}
         >
           {sessionTitle(session)}
         </Command.Item>

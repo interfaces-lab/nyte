@@ -1,20 +1,17 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
-import { keys, loadLocalResources, queryClient, RECORDED_STARTS } from "./queries.ts";
+import { keys, loadLocalResources, queryClient } from "./queries.ts";
 import { currentRouteSession, Shell } from "./router.tsx";
 import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
 import { useMountEffect } from "./use-mount-effect.ts";
 import { activePaneController, paneControllerForWorkspace } from "./layout/pane-context.tsx";
-import type { PaneController } from "./layout/pane-controller.ts";
 import { windowTabs } from "./tabs/window-tabs.ts";
-import { BLANK_SELECTION, activePane, activeSelection } from "./layout/pane-layout.ts";
-import { reviewRecordedStarts } from "./recorded-starts.ts";
-import type { StartNotice } from "./recorded-starts.ts";
+import { BLANK_SELECTION, activeSelection } from "./layout/pane-layout.ts";
 import {
   applyBrowserEvent,
   applyBrowserAgentOpened,
@@ -23,8 +20,9 @@ import {
 import { applyBrowserHistory } from "./workbench/browser-history.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
-import { applyLoginEvent } from "./chrome/login-attempts.ts";
 import { acceptHostSettings } from "./preferences/host.ts";
+import { mountClientPlugins, observeRunEnds } from "./client-plugins.tsx";
+import { directoryWatch } from "./sdk.tsx";
 
 /**
  * The route owns what the stage shows. A folder the host opened on its own
@@ -72,11 +70,6 @@ function useHostEvents(router: AppRouter): void {
             .catch(() => undefined);
 
           return;
-        case "catalog_changed":
-          void queryClient.invalidateQueries({ queryKey: keys.catalog });
-          void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
-
-          return;
         case "update_changed":
           queryClient.setQueryData(keys.updates, event.state);
 
@@ -89,17 +82,9 @@ function useHostEvents(router: AppRouter): void {
           void queryClient.invalidateQueries({ queryKey: keys.github });
 
           return;
-        case "login_progress":
-          applyLoginEvent(event);
-
-          return;
         case "server_changed":
           void queryClient.invalidateQueries({ queryKey: keys.server });
-          void queryClient.invalidateQueries({ queryKey: keys.catalog });
 
-          return;
-        // Folded by the directory feed, which subscribed before this shell mounted.
-        case "session_directory":
           return;
         case "remote_access_changed":
           void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
@@ -107,11 +92,6 @@ function useHostEvents(router: AppRouter): void {
           return;
         case "status":
           toast.add({ title: event.message });
-
-          return;
-        case "starts_changed":
-          void queryClient.invalidateQueries({ queryKey: RECORDED_STARTS });
-          reviewStarts(router);
 
           return;
         case "browser_changed":
@@ -146,81 +126,28 @@ function useHostEvents(router: AppRouter): void {
       }
     });
 
-    // Answers that arrived before this shell mounted are on record; act on them now.
-    reviewStarts(router);
-
     return unsubscribe;
   });
 }
 
-let reviewing: Promise<void> = Promise.resolve();
+/** Mounts the client plugins and feeds them each run that ends in the directory. */
+function useClientPlugins(): void {
+  useMountEffect(() => {
+    mountClientPlugins(focusedSession);
+    const directory = directoryWatch("all");
+    let previous = directory.value ?? [];
 
-/** Answered root starts, one review at a time, so a refused message comes back once. */
-function reviewStarts(router: AppRouter): void {
-  const starts = nyte.host.starts;
-
-  if (starts === undefined) return;
-  reviewing = reviewing
-    .then(async () => {
-      const host = await nyte.host.state();
-      const controller = activePaneController(host.workspace?.path);
-
-      const notices = await reviewRecordedStarts({
-        starts,
-        restore: (composer) =>
-          controller.viewState.restoreBlank(activePane(controller.getSnapshot().layout).id, {
-            composer,
-            updatedAt: Date.now(),
-          }),
-      });
-
-      for (const notice of notices) showStartNotice(router, controller, notice);
-    })
-    .catch(() => undefined);
-}
-
-function showStartNotice(router: AppRouter, controller: PaneController, notice: StartNotice): void {
-  switch (notice.kind) {
-    case "accepted": {
-      const id = toast.add({
-        type: "success",
-        title: "Chat started",
-        description: notice.preview,
-        actionProps: {
-          children: "Open",
-          onClick: () => {
-            toast.close(id);
-            controller.selectSession(notice.sessionId);
-            void router.navigate({
-              to: "/session/$sessionId",
-              params: { sessionId: notice.sessionId },
-            });
-          },
-        },
-      });
-
-      return;
-    }
-
-    case "refused":
-      toast.add({
-        type: "error",
-        title: "Chat didn’t start",
-        description: `${notice.message} The message is back in your drafts.`,
-        timeout: 0,
-      });
-
-      return;
-    default: {
-      const _exhaustive: never = notice;
-
-      return _exhaustive;
-    }
-  }
+    return directory.subscribe(() => {
+      const next = directory.value ?? [];
+      observeRunEnds(previous, next);
+      previous = next;
+    });
+  });
 }
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
   useHostEvents(router);
+  useClientPlugins();
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");

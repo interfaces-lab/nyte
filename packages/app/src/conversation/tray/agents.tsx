@@ -2,15 +2,14 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useId, useLayoutEffect, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { warmThread } from "../../live.ts";
-import { nyte } from "../../nyte.ts";
-import { keys, useSession } from "../../queries.ts";
+import { useSession, warmSession } from "../../queries.ts";
+import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
@@ -53,7 +52,7 @@ function agentTitle(agent: SubagentSession | undefined, sessionId: SessionId): s
 
   if ("kind" in agent) return agent.title;
 
-  return agent.name ?? agent.preview ?? sessionId;
+  return agent.name ?? sessionId;
 }
 
 function agentActivityAt(agent: SubagentSession): number {
@@ -79,7 +78,6 @@ export function SubagentTray({
   readonly viewport: HTMLElement | null;
   readonly detail: ReactNode;
 }): ReactElement | null {
-  const client = useQueryClient();
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
@@ -92,14 +90,12 @@ export function SubagentTray({
         : undefined;
 
   const stop = useMutation({
-    mutationFn: (sessionId: SessionId) => nyte.runs.abort({ sessionId }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.childSessions(parentSessionId) }),
+    mutationFn: (sessionId: SessionId) => connection().session(sessionId).stop(),
   });
 
   const stopAll = useMutation({
     mutationFn: (sessionIds: readonly SessionId[]) =>
-      Promise.all(sessionIds.map((sessionId) => nyte.runs.abort({ sessionId }))),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.childSessions(parentSessionId) }),
+      Promise.all(sessionIds.map((sessionId) => connection().session(sessionId).stop())),
   });
 
   const active = useMemo(
@@ -113,7 +109,7 @@ export function SubagentTray({
           return (
             attention ||
             agentActivityAt(right) - agentActivityAt(left) ||
-            left.sessionId.localeCompare(right.sessionId)
+            left.id.localeCompare(right.id)
           );
         }),
     [agents],
@@ -122,9 +118,7 @@ export function SubagentTray({
   const running = active.filter((agent) => trayState(agent) === "working");
   const stoppable = active.filter((agent) => !("kind" in agent));
 
-  const settled = agents.find(
-    (agent) => agent.sessionId === pinnedId && trayState(agent) === "inactive",
-  );
+  const settled = agents.find((agent) => agent.id === pinnedId && trayState(agent) === "inactive");
 
   const listed = settled === undefined ? active : [...active, settled];
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
@@ -133,7 +127,7 @@ export function SubagentTray({
   const selected =
     selectedId === undefined
       ? undefined
-      : (selectedSession.data ?? agents.find((agent) => agent.sessionId === selectedId));
+      : (selectedSession.data ?? agents.find((agent) => agent.id === selectedId));
 
   const pendingAction = stop.isPending || stopAll.isPending;
 
@@ -211,7 +205,7 @@ export function SubagentTray({
                   disabled={stop.isPending}
                   onClick={() => {
                     if (stopCandidates === undefined) {
-                      setStopCandidates(stoppable.map((agent) => agent.sessionId));
+                      setStopCandidates(stoppable.map((agent) => agent.id));
 
                       return;
                     }
@@ -219,8 +213,8 @@ export function SubagentTray({
                     const candidates = new Set(stopCandidates);
                     stopAll.mutate(
                       stoppable
-                        .filter((agent) => candidates.has(agent.sessionId))
-                        .map((agent) => agent.sessionId),
+                        .filter((agent) => candidates.has(agent.id))
+                        .map((agent) => agent.id),
                     );
                     setStopCandidates(undefined);
                   }}
@@ -244,15 +238,15 @@ export function SubagentTray({
                 const state = trayState(agent);
 
                 return (
-                  <Row key={agent.sessionId} xstyle={trayParts.row} interactive>
+                  <Row key={agent.id} xstyle={trayParts.row} interactive>
                     <Row.Primary
-                      aria-label={`Open ${agentTitle(agent, agent.sessionId)}`}
-                      onPointerEnter={() => void warmThread(agent.sessionId).catch(() => undefined)}
-                      onFocus={() => void warmThread(agent.sessionId).catch(() => undefined)}
-                      onPointerDown={() => void warmThread(agent.sessionId).catch(() => undefined)}
+                      aria-label={`Open ${agentTitle(agent, agent.id)}`}
+                      onPointerEnter={() => void warmSession(agent.id).catch(() => undefined)}
+                      onFocus={() => void warmSession(agent.id).catch(() => undefined)}
+                      onPointerDown={() => void warmSession(agent.id).catch(() => undefined)}
                       onClick={() => {
                         setStopCandidates(undefined);
-                        onViewChange({ kind: "detail", sessionId: agent.sessionId });
+                        onViewChange({ kind: "detail", sessionId: agent.id });
                       }}
                     >
                       <Row.Leading aria-hidden="true">
@@ -262,7 +256,7 @@ export function SubagentTray({
                           state === "working" && <StatusDot mark="working" />
                         )}
                       </Row.Leading>
-                      <Row.Label>{agentTitle(agent, agent.sessionId)}</Row.Label>
+                      <Row.Label>{agentTitle(agent, agent.id)}</Row.Label>
                     </Row.Primary>
                     <Row.Meta>{TRAY_STATE_LABEL[state]}</Row.Meta>
                   </Row>

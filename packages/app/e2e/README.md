@@ -3,7 +3,7 @@
 Two Playwright projects, configured in `playwright.config.ts`.
 
 - `web` runs `server/start.ts`, which serves the built app and an in-memory SDK on `127.0.0.1:5181`. Its provider answers `Echo: <message>` without a network. The specs cover pairing links, reloads, wrong tokens, a first chat, and one workspace journey that reads, saves, blames, searches, and mentions a seeded Git workspace.
-- `desktop` launches the built Electron app with an isolated `NYTE_HOME` and chats seeded by the benchmark fixture in `packages/desktop/benchmark`. It starts Remote access in Settings, pairs a browser, checks that both clients see the same chats, then stops Remote access and checks the browser loses the server.
+- `desktop` launches the built Electron app with an isolated `HOME` and chats seeded through `sdk.open` into the store it opens (`desktop/launch.ts`). It starts Remote access in Settings, pairs a browser, checks that both clients see the same chats, then stops Remote access and checks the browser loses the server.
 
 ## Prerequisites
 

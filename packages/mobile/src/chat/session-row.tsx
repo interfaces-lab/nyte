@@ -1,11 +1,11 @@
 import { Link } from "expo-router";
-import type { SessionInfo } from "@nyte-ai/protocol";
-import { sessionMark } from "@nyte-ai/client";
+import type { SessionInfo } from "@nyte-ai/sdk";
 import { SymbolView } from "expo-symbols";
 import { ActivityIndicator, Pressable } from "react-native";
 import { css, html } from "react-strict-dom";
 import { controls, list, useTheme, radii, textStyles, tokens, typography } from "../theme.ts";
-import { elapsed, formatActivity, latestRun, rowStatus } from "./sessions.ts";
+import { liveRun, sessionMark } from "../view-helpers.ts";
+import { elapsed, formatActivity, rowStatus } from "./sessions.ts";
 
 function Meta({
   session,
@@ -17,7 +17,7 @@ function Meta({
   twoLines: boolean;
 }) {
   const mark = sessionMark(session);
-  const run = latestRun(session);
+  const run = liveRun(session);
 
   const clock =
     mark === "working" || mark === "retry"
@@ -26,12 +26,7 @@ function Meta({
         : elapsed(run.startedAt, now)
       : undefined;
 
-  const lead =
-    mark === "idle"
-      ? session.preview?.trim() ||
-        session.workspace.cwd.split("/").filter(Boolean).at(-1) ||
-        "New chat"
-      : rowStatus(session);
+  const lead = rowStatus(session);
 
   return (
     <html.span
@@ -80,7 +75,7 @@ export function SessionRow({
   twoLines?: boolean;
 }) {
   return (
-    <Link href={`/chat/${session.sessionId}`} asChild>
+    <Link href={`/chat/${session.id}`} asChild>
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${session.name || "New chat"}, ${rowStatus(session)}`}

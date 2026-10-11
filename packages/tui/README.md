@@ -19,6 +19,7 @@ When there is no positional prompt, print mode reads stdin. Piped stdin selects 
 mode even when stdout is a terminal. An explicit positional prompt takes precedence
 over stdin. `--effort` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and
 `max`; an invalid explicit value is an error. The selected model may clamp a valid level.
+In print mode `--model` also becomes the host's default model; `--effort` applies to that run only.
 
 ## Print output and exits
 
@@ -37,31 +38,32 @@ Cleanup failures produce `cleanup_failed`; a diagnostic sink failure cannot skip
 or the JSON terminal record. Local cleanup causes are retained outside machine output.
 The result has `kind` and `code`, a `session` when known, and `next.argv` and `next.command`
 when a session can be opened. Failures include `message`; local signals include `signal`.
-Parse, trust, settings, and startup errors also produce a terminal JSON record.
+Parse, settings, and startup errors also produce a terminal JSON record.
 
 | Terminal kind | Exit | Meaning |
 | --- | --- | --- |
 | `completed` | 0 | The run finished and output delivery drained |
 | `failed` | 1 | Startup, configuration, run, delivery, or cleanup failed |
-| `input-required` | 2 | Print aborted and durably settled a run parked with a participant `Selection`, such as a question or web-search consent |
+| `input-required` | 2 | Print stopped and settled a run waiting on a question part |
 | `aborted` | 130 | The durable run was aborted |
 | `cancelled` | 130 or 143 | This CLI was interrupted by SIGINT or SIGTERM, respectively |
 
-Print waits through background tools. For a call parked with a participant `Selection`, it requests
-abort and awaits durable settlement before reporting `input_required`. It never approves or replies.
+Print waits through background tools. For a run waiting on a question, it stops the run and awaits
+its settlement before reporting `input_required`. It never answers.
 The supplied recovery command opens interactive inspection in the original workspace without
 submitting a message; the aborted call is no longer pending.
 Local signal cancellation requests a run abort separately from
 stopping the SDK waiter; a cancelled waiter alone does not prove the run was aborted.
 
-`nyte status --json` emits a `status` record containing stored credential provider and method
-metadata, then a terminal result. It does not include credential values. `nyte status --help`
+`nyte status --json` emits a `status` record listing each provider with a credential and its
+state (`configured`, `verified` or `failed`), then a terminal result. It does not include credential values. `nyte status --help`
 shows its accepted options.
 
 ## CLI authentication and updates
 
-Login requires terminal stdin and stderr before provider login starts, even when the
-provider and method are explicit. Redirecting stdout is supported. Prompts, masked secret
+Login runs through the host, which keeps the credential encrypted in its store. It requires
+terminal stdin and stderr before provider login starts, even when the provider and method are
+explicit. Redirecting stdout is supported. Prompts, masked secret
 input, authentication instructions, and progress use stderr. Login and logout receipts
 use stdout. SIGINT and Ctrl+C cancel login with exit 130; SIGTERM exits 143. Cancelling
 an active secret prompt does not save a credential. GitHub Copilot discovers the account's
@@ -71,7 +73,6 @@ network is available. A signed-out interactive launch fetches the feed so the sh
 offer `/login`; if no cached catalog exists while offline, Nyte reports that no models are available.
 
 `nyte logout <provider>` works without a terminal and removes only that stored credential.
-Its receipt reports credentials still available through environment variables or other tools.
 `nyte login --help`, `nyte logout --help`, `nyte update --help`, and `nyte status --help`
 show command-specific usage without starting the operation. Help must be used on its own.
 Unknown, duplicate, and incompatible options fail before the operation starts.
@@ -105,22 +106,12 @@ There is no app-level Cmd+C binding, matching OpenCode; native Cmd+C belongs to 
 
 ## Local plugins and reload
 
-Install each plugin under `~/.nyte/plugins/<id>/` or `.nyte/plugins/<id>/`.
-`index.ts` exports the session plugin and optional `tui.ts` exports the TUI definition.
-Compiled entries use `index.js` or `tui.js` instead. Both exports use the directory's id.
-A workspace unit replaces the entire user unit with the same id.
+The host loads core plugins from `~/.nyte/plugins/` and the workspace's `.nyte/plugins/`: a
+`<name>.ts` or `<name>.js` file, or `<name>/index.<ext>`, exporting a `Plugin` from
+`@nyte-ai/plugin/core`. The terminal mounts its own client plugins: run notifications and the
+`@nyte-ai/plugin/renderers/tui` part renderers.
 
-Filesystem changes reload changed content automatically. `/reload` also rereads settings
-and retries unchanged failed plugin imports and setups. A failed import, manifest read,
-or directory scan leaves the active snapshot in place. Session behavior and TUI setup
-activate separately; a failed replacement keeps that entry's previous activation.
-
-TUI setup receives `context.signal`, aborted on replacement, disposal, or the default five-second
-setup budget. Listen for abort and return a cleanup function. Cooperative cleanup finishes
-before the renderer closes. Aborted candidates cannot register listeners or slots, show
-toasts, or change plugin memory through the context API. The budget does not stop JavaScript
-or revoke renderer/client references a plugin already retained; a cleanup returned after
-the budget still runs when setup eventually settles.
+`/reload` re-reads the workspace's project resources and this terminal's settings.
 
 ## Working directory
 
@@ -129,15 +120,15 @@ Relative paths start from the chat's current directory. Absolute paths, `~`, `~/
 paths containing spaces work. Paths are literal, not shell expressions.
 
 Selecting `/cd` fills the composer. Directory suggestions appear as you type; Tab completes a
-path so you can browse deeper. Untrusted destinations require approval before project plugins
-or tools load. Cancel keeps the current directory.
+path so you can browse deeper. The destination is registered as a workspace on this host and the
+chat moves there.
 
 Finish active runs, jobs, and queued messages before switching. Tools, skills, project plugins,
 file mentions, and the status bar follow the new directory. Other chats keep their directories.
 New chats start in the current directory.
 
-History stays in the original workspace's database. To resume after quitting, launch Nyte from
-that original workspace. The chat remembers its new working directory and checks trust again.
+History lives in `~/.nyte/nyte.db`, shared by every launch on this machine. The chat
+remembers its working directory.
 
 ## Transcript scrolling
 
@@ -222,7 +213,7 @@ A result may join an active run, but never starts a new run on its own. When the
 it waits for your next message and remains available in Tasks. Compaction may continue an active
 run, but cannot restart a stopped one.
 
-Child tasks inherit workspace trust. Background agents are not offered tools marked
+Background agents are not offered tools marked
 `availability: "foreground"`, regardless of their name. That capability means the tool needs a
 participant or another foreground-only host service; it is separate from whether a wait carries a
 selection.
@@ -276,28 +267,18 @@ already sent in a prompt remains in the saved conversation.
 ## Usage
 
 `/usage` opens a scrollable panel below the composer, capped at 16 rows and roughly
-40% of terminal height. The conversation stays visible. One loading line remains
-until the complete report is ready; sections do not load progressively. Escape
-closes the panel, restores composer focus, and cancels outstanding reads.
+40% of terminal height. The conversation stays visible. Escape closes the panel and
+restores composer focus.
 
-Claude and Codex account sections show 5-hour, weekly, and provider-reported
-model-specific windows, including Claude Fable. Each meter labels the percentage
-used and remaining, with the reset time when known. Account reads use Nyte's
-existing provider logins, independently of the selected model. Missing login or
-request failure produces an explicit message. Percentages always come from the
-provider; no quota is inferred from local token history. Account reads time out
-after ten seconds so an unavailable endpoint cannot hold the report indefinitely.
+Each provider that reported account windows on its last response gets a section: each window
+labels the percentage used and remaining, with the reset time when known. Percentages always
+come from the provider; no quota is inferred from local token history.
 
-The same panel shows Nyte workspace consumption and separate Claude Code and Codex
-local history, grouped by model with token counts, input/output and cache breakdowns,
-and estimated API cost. Tool histories are all-time across projects and do not
-contribute to Nyte's workspace totals. API cost estimates are not subscription charges.
-Missing prices and unreadable records are called out.
-
-Local history uses the shared host reader with `CLAUDE_CONFIG_DIR` and `CODEX_HOME`.
-These filesystem reads need no login or network call. Reopening `/usage` refreshes
-the report and reuses unchanged file scans.
+The panel also shows this chat's consumption: total tokens, input/output and cache breakdowns,
+and estimated API cost from its completed runs. API cost estimates are not subscription charges.
 
 ## Filename search
 
-The TUI's `@` mentions use core's ripgrep file discovery and fuzzy ranking on every platform. Core owns executable resolution, ignore rules, and cancellation. No native filename library is embedded in the CLI.
+The TUI's `@` mentions list the workspace's files through its files capability, ignored files
+left out, and rank them fuzzily on every platform. No native filename library is embedded in the
+CLI.

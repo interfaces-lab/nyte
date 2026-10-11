@@ -2,15 +2,15 @@ import "../../test/web-bridge.ts";
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { sessionId } from "@nyte-ai/protocol";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { SubagentCallView } from "./subagent-call.tsx";
 import { SubagentTray } from "./tray/agents.tsx";
 import type { SubagentTrayView } from "./tray/agents.tsx";
 import type { SubagentSession } from "./subagent-sessions.ts";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
-import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
+import { endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -36,61 +36,19 @@ vi.hoisted(() => {
 
 afterAll(() => vi.unstubAllGlobals());
 
-const parent = sessionId("chat");
+const parent = asId<"session">("chat");
 
-const child = sessionId("child");
+const child = asId<"session">("child");
 
-const childSession: SessionInfo = {
-  sessionId: child,
-  activation: { kind: "active" },
-  workspace: { kind: "local", id: "fixture", cwd: "/" },
-  name: "Map the workbench",
-  createdAt: 1,
-  lastActivityAt: 2,
-  pinned: false,
-  archived: false,
-  heads: [
-    {
-      head: "main",
-      tip: null,
-      run: {
-        runId: "child-run",
-        head: "main",
-        origin: { kind: "user" },
-        root: "child-run",
-        phase: { kind: "done" },
-        startedAt: 1,
-        attempts: 1,
-        config: {},
-      },
-    },
-  ],
-  config: {},
-  parent: { sessionId: parent, runId: "run", callId: "task", depth: 1 },
-};
+const childSession: SessionInfo = sessionRow("child", { name: "Map the workbench", parent });
 
-const turn: RenderedTurn = {
-  kind: "turn",
-  id: "turn",
-  run: { kind: "none" },
-  startedAt: 1,
-  durationMs: 0,
-  parts: [
-    {
-      kind: "tool",
-      callId: "task",
-      at: 1,
-      class: {
-        kind: "delegate",
-        role: "create",
-        title: "Map the workbench",
-        target: { kind: "one", session: child },
-      },
-      state: { kind: "success", commit: "created" },
-      output: "Started Map the workbench",
-    },
-  ],
-};
+const create = settledTool(
+  "task",
+  { kind: "delegate", child, role: "create", title: "Map the workbench" },
+  "Started Map the workbench",
+);
+
+const turn = endedTurn([create]);
 
 test("a create draws one agent card", () => {
   const client = new QueryClient();
@@ -105,8 +63,8 @@ test("a create draws one agent card", () => {
           turn={turn}
           continuations={[]}
           density="compact"
-          liveTools={new Map()}
           cwd={undefined}
+          changes={[]}
           onOpenChanges={() => {}}
           running={false}
         />
@@ -124,7 +82,7 @@ for (const kind of ["list", "detail"] as const) {
 
     const provisional: SubagentSession = {
       kind: "provisional",
-      sessionId: child,
+      id: child,
       title: "Map the workbench",
       startedAt: 1,
     };
@@ -142,7 +100,11 @@ for (const kind of ["list", "detail"] as const) {
           <SubagentCallView
             session={child}
             title={provisional.title}
-            state={{ kind: "running" }}
+            message={{
+              ...create,
+              state: { ...create.state, phase: "running", progress: null },
+              status: { kind: "live", run: null },
+            }}
             cwd={undefined}
           />
           <SubagentTray

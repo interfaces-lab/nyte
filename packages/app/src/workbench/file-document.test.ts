@@ -1,21 +1,26 @@
 import { expect, test } from "vitest";
-import type { WorkspaceFileSaveOutcome, WorkspaceFormatResult } from "@nyte-ai/protocol";
+import type { FileDocument, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { createFileDocument } from "./file-document.ts";
 
-const document = {
+const v1 = asId<"file-version">("v1");
+
+const v2 = asId<"file-version">("v2");
+
+const document: Extract<FileDocument, { readonly kind: "text" }> = {
   kind: "text",
   path: "/workspace/file.ts",
   contents: "original",
-  version: "v1",
-} as const;
+  version: v1,
+};
 
 test("typing while saving keeps the newer text dirty and acknowledges the saved version", async () => {
   const buffer = createFileDocument(document, "first edit");
-  const pending = Promise.withResolvers<WorkspaceFileSaveOutcome>();
+  const pending = Promise.withResolvers<WriteOutcome>();
   const saving = buffer.save({ write: () => pending.promise });
   await Promise.resolve();
   buffer.edit("second edit");
-  pending.resolve({ kind: "saved", version: "v2" });
+  pending.resolve({ kind: "saved", version: v2 });
   await saving;
   expect(buffer.getSnapshot()).toMatchObject({
     contents: "second edit",
@@ -26,12 +31,12 @@ test("typing while saving keeps the newer text dirty and acknowledges the saved 
 
 test("an external refetch does not advance a dirty file's conflict baseline", async () => {
   const buffer = createFileDocument(document, "my edit");
-  buffer.observeDisk({ ...document, contents: "external edit", version: "v2" });
+  buffer.observeDisk({ ...document, contents: "external edit", version: v2 });
   await buffer.save({
     write: async (input) => {
       expect(input.version).toBe("v1");
 
-      return { kind: "conflict" };
+      return { kind: "stale", current: v2 };
     },
   });
   expect(buffer.getSnapshot()).toMatchObject({ contents: "my edit", status: { kind: "conflict" } });
@@ -39,7 +44,7 @@ test("an external refetch does not advance a dirty file's conflict baseline", as
 
 test("formatting does not overwrite edits made while the formatter was running", async () => {
   const buffer = createFileDocument(document, "before format");
-  const pending = Promise.withResolvers<WorkspaceFormatResult>();
+  const pending = Promise.withResolvers<FormatOutcome>();
   let writes = 0;
 
   const saving = buffer.save({
@@ -47,17 +52,12 @@ test("formatting does not overwrite edits made while the formatter was running",
     write: async () => {
       writes += 1;
 
-      return { kind: "saved", version: "v2" };
+      return { kind: "saved", version: v2 };
     },
   });
 
   buffer.edit("new typing");
-  pending.resolve({
-    kind: "formatted",
-    contents: "formatted old text",
-    version: "v1",
-    formatter: "prettier",
-  });
+  pending.resolve({ kind: "formatted", contents: "formatted old text" });
   await saving;
   expect(writes).toBe(0);
   expect(buffer.getSnapshot()).toMatchObject({
@@ -71,11 +71,11 @@ test("formatter failure keeps the draft and does not write unformatted text", as
   const buffer = createFileDocument(document, "draft");
   let writes = 0;
   await buffer.save({
-    format: async () => ({ kind: "unsupported", message: "No formatter" }),
+    format: async () => ({ kind: "unavailable", reason: "No formatter" }),
     write: async () => {
       writes += 1;
 
-      return { kind: "saved", version: "v2" };
+      return { kind: "saved", version: v2 };
     },
   });
   expect(writes).toBe(0);
@@ -88,12 +88,7 @@ test("formatter failure keeps the draft and does not write unformatted text", as
 test("failed writes retain formatted text and the old disk version for retry", async () => {
   const buffer = createFileDocument(document, "draft");
   await buffer.save({
-    format: async () => ({
-      kind: "formatted",
-      contents: "formatted",
-      version: "v1",
-      formatter: "oxfmt",
-    }),
+    format: async () => ({ kind: "formatted", contents: "formatted" }),
     write: async () => {
       throw new Error("Read-only file");
     },
@@ -108,7 +103,7 @@ test("failed writes retain formatted text and the old disk version for retry", a
     write: async (input) => {
       expect(input.contents).toBe("formatted");
 
-      return { kind: "saved", version: "v2" };
+      return { kind: "saved", version: v2 };
     },
   });
   expect(buffer.getSnapshot()).toMatchObject({
@@ -120,12 +115,12 @@ test("failed writes retain formatted text and the old disk version for retry", a
 
 test("discard adopts the latest disk text, while a clean refetch follows external changes", () => {
   const buffer = createFileDocument(document, "draft");
-  buffer.discard({ ...document, contents: "latest", version: "v2" });
+  buffer.discard({ ...document, contents: "latest", version: v2 });
   expect(buffer.getSnapshot()).toMatchObject({
     contents: "latest",
     savedContents: "latest",
     version: "v2",
   });
-  buffer.observeDisk({ ...document, contents: "later", version: "v3" });
+  buffer.observeDisk({ ...document, contents: "later", version: asId<"file-version">("v3") });
   expect(buffer.getSnapshot().contents).toBe("later");
 });

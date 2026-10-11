@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { asId } from "@nyte-ai/schema";
 import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -35,7 +36,7 @@ function ready(name: string): GitHubProviderState {
 function selectWorkspace(client: QueryClient, path: string | null): void {
   client.setQueryData(keys.host, {
     platform: "darwin",
-    workspace: path === null ? undefined : { path, name: path, lastOpenedAt: 1 },
+    workspace: path === null ? undefined : { id: asId<"workspace">(path), path, name: path },
   } satisfies HostState);
 }
 

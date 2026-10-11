@@ -3,28 +3,48 @@ import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type {
-  WorkspaceSearchInput,
-  WorkspaceSearchMatch,
-  WorkspaceSearchResult,
-} from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
-import { useWorkspaceSearch } from "../queries.ts";
+import { useHostState, useWorkspaceSearch } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 
-type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
-  Pick<WorkspaceSearchMatch, "line" | "column" | "length">;
+/** One match as a result row draws it: where it is, and the line it sits on. */
+interface SearchMatch {
+  readonly line: number;
+  readonly column: number;
+  readonly length: number;
+  readonly snippet: string;
+  readonly snippetColumn: number;
+}
+
+/** One file's matches, under its absolute and workspace-relative paths. */
+interface SearchFile {
+  readonly path: string;
+  readonly displayPath: string;
+  readonly source: "disk";
+  readonly matches: readonly SearchMatch[];
+}
+
+/** The host's matches grouped by file, and whether it stopped at its limit. */
+interface SearchResult {
+  readonly matchCount: number;
+  readonly truncated: boolean;
+  readonly files: readonly SearchFile[];
+}
+
+type SearchLocation = Pick<SearchFile, "path" | "displayPath"> &
+  Pick<SearchMatch, "line" | "column" | "length">;
 
 interface WorkspaceSearchProps {
   readonly onOpen: (location: SearchLocation) => void;
-  readonly drafts?: WorkspaceSearchInput["drafts"];
+  /** Unsaved editor text; the host searches files on disk. */
+  readonly drafts?: readonly { readonly path: string; readonly contents: string }[];
   readonly active?: boolean;
 }
 
@@ -32,7 +52,47 @@ type SearchState =
   | { readonly kind: "idle" }
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
-  | { readonly kind: "ready"; readonly result: WorkspaceSearchResult };
+  | { readonly kind: "ready"; readonly result: SearchResult };
+
+/** Groups the host's matches by file in the order it found them. */
+function searchResult(
+  root: string,
+  query: string,
+  found: {
+    readonly matches: readonly {
+      readonly path: string;
+      readonly line: number;
+      readonly column: number;
+      readonly text: string;
+    }[];
+    readonly truncated: boolean;
+  },
+): SearchResult {
+  const files = new Map<string, SearchMatch[]>();
+
+  for (const match of found.matches) {
+    const matches = files.get(match.path) ?? [];
+    matches.push({
+      line: match.line,
+      column: match.column,
+      length: query.length,
+      snippet: match.text,
+      snippetColumn: 1,
+    });
+    files.set(match.path, matches);
+  }
+
+  return {
+    matchCount: found.matches.length,
+    truncated: found.truncated,
+    files: [...files].map(([path, matches]) => ({
+      path: `${root.replace(/\/$/u, "")}/${path}`,
+      displayPath: path,
+      source: "disk",
+      matches,
+    })),
+  };
+}
 
 const styles = create({
   panel: {
@@ -200,6 +260,7 @@ export function WorkspaceSearch({
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
+  const root = useHostState().data?.workspace?.path ?? "";
 
   const state: SearchState =
     query === ""
@@ -210,7 +271,7 @@ export function WorkspaceSearch({
           ? { kind: "error", message: search.error.message }
           : search.data === undefined
             ? { kind: "loading" }
-            : { kind: "ready", result: search.data };
+            : { kind: "ready", result: searchResult(root, debouncedInput.query, search.data) };
 
   return (
     <section aria-label="Workspace search" {...props(styles.panel)}>
@@ -351,9 +412,6 @@ export function WorkspaceSearchResults({
               {file.displayPath}
             </span>
             <span {...props(styles.count)}>{file.matches.length}</span>
-            {file.source === "draft" && (
-              <span {...props(intent.warning, styles.draft)}>Unsaved</span>
-            )}
           </h3>
           <ul {...props(styles.group)}>
             {file.matches.map((match) => {

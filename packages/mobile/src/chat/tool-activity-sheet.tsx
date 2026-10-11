@@ -11,14 +11,12 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
-import { formatToolDuration, toolStatus } from "@nyte-ai/client";
-import type { ToolTense, ToolTone } from "@nyte-ai/client";
-import type { SessionId, TurnToolClass } from "@nyte-ai/protocol";
+import type { SessionId, ToolClass, ToolOutcome } from "@nyte-ai/sdk";
+import { toolStatus, type ToolTense, type ToolTone } from "../view-helpers.ts";
 import { controls, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { delegateTitle } from "./delegate-names.ts";
 import { Markdown } from "./markdown.tsx";
-import { activityPartId } from "./transcript-rows.ts";
 import type { ActivityPart, ChatRow } from "./transcript-rows.ts";
 
 export function useActivitySheet(rows: readonly ChatRow[]) {
@@ -43,12 +41,12 @@ function titled(verbs: Verbs, tense: ToolTense, subject: string): string {
 }
 
 function toolTitle(
-  toolClass: TurnToolClass,
+  toolClass: ToolClass,
   tense: ToolTense,
   names: ReadonlyMap<SessionId, string>,
 ): string {
   switch (toolClass.kind) {
-    case "file_read":
+    case "read":
       return titled({ running: "Reading", past: "Read" }, tense, toolClass.path);
     case "list":
       return titled({ running: "Listing", past: "Listed" }, tense, toolClass.path);
@@ -57,18 +55,8 @@ function toolTitle(
         toolClass.description ??
         titled({ running: "Running", past: "Ran" }, tense, toolClass.command)
       );
-    case "file_edit":
+    case "edit":
       return titled({ running: "Editing", past: "Edited" }, tense, toolClass.path);
-    case "file_write":
-      return titled({ running: "Writing", past: "Wrote" }, tense, toolClass.path);
-    case "file_patch":
-      return titled(
-        toolClass.op === "edit"
-          ? { running: "Editing", past: "Edited" }
-          : { running: "Writing", past: "Wrote" },
-        tense,
-        toolClass.path,
-      );
     case "delegate":
       return delegateTitle(toolClass, tense, names);
     case "custom":
@@ -88,11 +76,8 @@ function activityState(part: ActivityPart, names: ReadonlyMap<SessionId, string>
       tone: part.streaming ? ("running" as const) : ("success" as const),
     };
 
-  if (part.kind === "progress")
-    return { title: part.progress.title ?? "Working", tone: "running" as const };
-
-  const status = toolStatus(part.tool.state);
-  const title = part.progress?.title ?? toolTitle(part.tool.class, status.tense, names);
+  const status = toolStatus(part.state, part.status);
+  const title = toolTitle(part.state.class, status.tense, names);
 
   return {
     title: status.word === undefined ? title : `${title} · ${status.word}`,
@@ -144,19 +129,18 @@ export function activitySummary(
   let other = 0;
 
   for (const part of parts) {
-    if (part.kind !== "tool" || part.tool.state.kind !== "success") continue;
-    const tool = part.tool.class;
+    if (part.kind !== "tool" || part.state.phase !== "settled" || part.state.outcome.kind !== "ok")
+      continue;
+    const tool = part.state.class;
 
     switch (tool.kind) {
-      case "file_read":
+      case "read":
         reads.add(tool.path);
         break;
       case "list":
         folders.add(tool.path);
         break;
-      case "file_edit":
-      case "file_write":
-      case "file_patch":
+      case "edit":
         edits.add(tool.path);
         break;
       case "shell":
@@ -238,6 +222,28 @@ function Output({ text }: { text: string }) {
   );
 }
 
+/** Returns what a settled call said: its text content, its error, or why it did not run. */
+function outputOf(outcome: ToolOutcome): string | undefined {
+  switch (outcome.kind) {
+    case "ok":
+      return outcome.content
+        .flatMap((item) => (item.kind === "text" ? [item.text] : []))
+        .join("\n");
+    case "failed":
+      return outcome.message;
+    case "rejected":
+      return outcome.reason;
+    case "interrupted":
+    case "stopped":
+      return undefined;
+    default: {
+      const exhaustive: never = outcome;
+
+      return exhaustive;
+    }
+  }
+}
+
 const ActivityDetail = memo(function ActivityDetail({
   part,
   delegateNames,
@@ -248,12 +254,14 @@ const ActivityDetail = memo(function ActivityDetail({
   onOpenFile: ((path: string) => void) | undefined;
 }) {
   const state = activityState(part, delegateNames);
-  const tool = part.kind === "tool" ? part.tool : undefined;
-  const progress = part.kind === "thinking" ? undefined : part.progress;
-  const output = tool?.output;
+  const tool = part.kind === "tool" ? part.state : undefined;
+  const progress = tool?.phase === "running" ? tool.progress?.text : undefined;
+  const output = tool?.phase === "settled" ? outputOf(tool.outcome) : undefined;
 
   const file =
-    tool?.class.kind === "file_patch" && tool.state.kind === "success" ? tool.class : undefined;
+    tool?.phase === "settled" && tool.changes !== null && tool.class.kind === "edit"
+      ? { path: tool.class.path, added: tool.changes.added, removed: tool.changes.removed }
+      : undefined;
 
   const prose = tool?.class.kind === "custom" || tool?.class.kind === "delegate";
 
@@ -272,13 +280,8 @@ const ActivityDetail = memo(function ActivityDetail({
         </html.span>
       </html.div>
       {tool?.class.kind === "shell" ? <Output text={`$ ${tool.class.command}`} /> : null}
-      {tool?.class.kind === "shell" && tool.class.facts !== undefined ? (
-        <html.span style={textStyles.caption}>
-          {formatToolDuration(tool.class.facts.durationMs)}
-        </html.span>
-      ) : null}
       {part.kind === "thinking" ? <Markdown text={part.text} streaming={part.streaming} /> : null}
-      {progress === undefined || progress.text === "" ? null : <Output text={progress.text} />}
+      {progress === undefined || progress === "" ? null : <Output text={progress} />}
       {output === undefined || output === "" ? null : prose ? (
         <Markdown text={output} />
       ) : (
@@ -345,7 +348,7 @@ export function ToolActivitySheet({
                 </html.div>
                 <LegendList
                   data={parts}
-                  keyExtractor={activityPartId}
+                  keyExtractor={(part) => part.id}
                   getItemType={(part) => part.kind}
                   estimatedItemSize={180}
                   recycleItems={false}

@@ -8,7 +8,7 @@
  * this file is the one place the instructions change.
  */
 
-import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
+import type { SdkError } from "@nyte-ai/sdk";
 import type { SavedConnection } from "./connection.ts";
 
 /**
@@ -192,30 +192,24 @@ export function recoveryCopy(
  * refuses is a different problem from one that never answers, and the two need
  * different instructions; collapsing them into "couldn't connect" hides which.
  *
- * The parameter is the client's two error types, never `unknown`. An unnamed
- * cause has to be handled where it was caught instead of guessed at here, which
- * is what once turned every failure into "No answer".
+ * The parameter is the sdk's error, never `unknown`. An unnamed cause has to be
+ * handled where it was caught instead of guessed at here, which is what once
+ * turned every failure into "No answer".
  */
-export function classifyConnectFailure(
-  cause: NyteWireError | NyteTransportError,
-  address: string,
-): ConnectFailure {
-  if (cause instanceof NyteWireError) {
-    if (cause.code === "unauthorized" || cause.code === "forbidden") return { kind: "refused" };
-
-    return { kind: "wrongServer", address };
-  }
-
-  switch (cause.failure.kind) {
-    case "network":
-    case "disconnected":
+export function classifyConnectFailure(cause: SdkError, address: string): ConnectFailure {
+  switch (cause.code) {
+    case "unauthenticated":
+    case "denied":
+      return { kind: "refused" };
+    case "unavailable":
       return { kind: "silent", address };
-    case "bad_status":
-    case "bad_content_type":
-    case "bad_body":
+    case "stale":
+    case "unknown":
+    case "invalid":
+    case "internal":
       return { kind: "wrongServer", address };
     default: {
-      const exhaustive: never = cause.failure;
+      const exhaustive: never = cause.code;
 
       return exhaustive;
     }

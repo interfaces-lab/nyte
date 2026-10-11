@@ -53,7 +53,7 @@ After the credential is saved the host applies any account-specific model availa
 
 The main-process side is covered by `src/main/host-login.test.ts`. `packages/app/src/chrome/models-settings-login.electron.test.ts` drives the settings row with real clicks in Electron's Chromium over a recorded bridge; it builds the harness in `packages/app/src/chrome/fixtures/` and needs an environment where Electron can open a window.
 
-Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for updates, [PERFORMANCE.md](PERFORMANCE.md) and the [benchmark guide](benchmark/README.md) for performance work, and [build/ICONS.md](build/ICONS.md) for icons.
+Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for updates, [PERFORMANCE.md](PERFORMANCE.md) for performance work, and [build/ICONS.md](build/ICONS.md) for icons.
 
 ## Testing a deployed server
 

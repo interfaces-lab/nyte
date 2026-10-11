@@ -257,7 +257,7 @@ export async function* parseOutputFrames(
   }
 }
 
-/** Returns the request init for an operation whose bytes travel as the body: the JSON input base64url in `X-Nyte-Input`, the bytes as `application/octet-stream`. */
+/** Returns the request init for an operation whose bytes travel as the body: the JSON input base64url in `X-Nyte-Input`, the bytes as `application/octet-stream`. A stream is sent half-duplex. */
 export function withInputHeader(
   input: Json,
   body: Uint8Array | ReadableStream<Uint8Array>,
@@ -265,9 +265,15 @@ export function withInputHeader(
   return {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream", [INPUT_HEADER]: base64url(input) },
-    body,
-    ...(body instanceof ReadableStream ? { duplex: "half" as const } : {}),
+    ...(body instanceof ReadableStream
+      ? { body, duplex: "half" as const }
+      : { body: ownsBuffer(body) ? body : body.slice() }),
   };
+}
+
+/** Returns whether bytes sit on a plain `ArrayBuffer`, the only backing the DOM's `BodyInit` takes; a view over a `SharedArrayBuffer` is copied first. */
+function ownsBuffer(bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> {
+  return bytes.buffer instanceof ArrayBuffer;
 }
 
 /** Returns the JSON input a request carries in `X-Nyte-Input`, or null when it carries none; a header that is not base64url JSON throws `SdkError("invalid")`. */

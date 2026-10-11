@@ -600,6 +600,10 @@ function App(props: AppProps): BoxRenderable {
     onFollowModeChange: setFollowingLatest,
     onEmptyChange: setTranscriptEmpty,
     tasks: () => [],
+    blob: async () => {
+      throw new Error("No host is open.");
+    },
+    drawPart: () => undefined,
     userBlocks,
     userBlockWidth,
   };

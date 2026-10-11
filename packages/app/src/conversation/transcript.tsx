@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { elementScroll, useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -83,6 +83,11 @@ export function useTranscriptDock() {
   const setDock = transcript?.setDock;
 
   return useCallback((dock: HTMLDivElement | null) => setDock?.(dock), [setDock]);
+}
+
+/** The session the enclosing transcript draws, if any. */
+export function useTranscriptSession(): SessionId | undefined {
+  return useContext(TranscriptContext)?.sessionId;
 }
 
 export function useTranscriptNavigation() {

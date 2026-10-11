@@ -16,19 +16,18 @@ third-party assets or dependencies.
 | `nyte-ai` | Existing CLI launcher, published through the app release workflow |
 | `@nyte-ai/ai` | Models, providers, credentials, and streaming |
 | `@nyte-ai/core` | Agent kernel, sessions, storage, and plugin contracts |
-| `@nyte-ai/host` | Model, plugin, and workspace composition |
-| `@nyte-ai/server` | Authenticated HTTP calls and SSE watches |
-| `@nyte-ai/client` | Browser-safe fetch client, observer, outbox, and projections |
-| `@nyte-ai/plugin` | Supplied plugins, MCP, and codemode |
+| `@nyte-ai/host` | Node host, listener, stores, local workspace, and deploy templates |
+| `@nyte-ai/sdk` | `sdk.open` and `sdk.connect`, one surface in process and over the wire |
+| `@nyte-ai/plugin` | Plugin contracts, supplied plugins, MCP, codemode, and renderers |
 | `@nyte-ai/protocol` | SDK wire operations and schemas |
 | `@nyte-ai/schema` | Shared message, model, and tool types |
-| `@nyte-ai/telemetry` | Instrumentation contracts and OpenTelemetry adapter |
 
-The nine SDK packages share the CLI release version. Their `workspace:*`
+The seven SDK packages share the CLI release version. Their `workspace:*`
 dependencies become exact versions when pnpm packs them. The first prerelease
-uses the `next` dist-tag. Node hosts require Node 26.4 or later; `client`,
-`protocol`, and `schema` also run in browsers. The supplied plugin package
-currently brings OpenTUI as a dependency, including for headless hosts.
+uses the `next` dist-tag. Node hosts require Node 26.4 or later; `sdk` (its
+`browser` and `react-native` entry), `core`, `protocol`, and `schema` also run in
+browsers. The supplied plugin package declares OpenTUI and React as optional
+peers, for its renderers.
 
 ## Private
 
@@ -36,13 +35,11 @@ currently brings OpenTUI as a dependency, including for headless hosts.
 | --- | --- |
 | `app`, `desktop`, `tui`, `mobile` | Product applications, distributed through their own builds |
 | `connect`, `connect-worker` | Product connection services |
-| `serve` | Product listener and CLI; currently depends on `app` |
-| `cloudflare`, `vercel` | Deployment adapters awaiting a separate packaging and runtime verification pass |
 | `ui` | Component library awaiting a separate release |
 | `docs`, `lab`, `demo`, `demo/website`, `demo/server/*` | Site, experiments, and examples |
 
-Use public `server` with a Node adapter when building a custom web app. Do not
-publish `app` just to make the current `serve` package installable.
+Use `@nyte-ai/sdk` when building a custom web app: `sdk.open` and `host.listen`
+serve it, and `sdk.connect` reaches it from the browser.
 
 ## Build and pack
 
@@ -79,7 +76,7 @@ symlinks can hide missing files and Node's refusal to strip TypeScript inside
 
 No SDK packages have been published by this change. Before the first release:
 
-- Confirm access to the `@nyte-ai` npm scope and availability of all nine names.
+- Confirm access to the `@nyte-ai` npm scope and availability of all seven names.
 - Configure npm trusted publishing for each package using
   `.github/workflows/sdk-packages.yml` and the `npm-sdk` GitHub environment.
 - Protect that environment with release approval. If npm requires an initial

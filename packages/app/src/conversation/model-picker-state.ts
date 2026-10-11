@@ -2,21 +2,21 @@
  * Pure rules the model picker and Settings › Models share. The host already
  * decided which models are listed; this file only formats and groups.
  */
-import type { RunConfig } from "@nyte-ai/protocol";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
-import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
+import type { ModelRef } from "@nyte-ai/sdk";
+import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
+import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 /** The row a model ref selects: the row itself, or the row whose fast sibling it names. */
 export function selectedModelOption(
   options: readonly DesktopModelOption[],
-  model: RunConfig["model"],
+  model: ModelRef | undefined,
 ): { readonly option: DesktopModelOption; readonly fast: boolean } | undefined {
   if (model === undefined) return undefined;
 
   for (const option of options) {
-    if (model.provider !== undefined && option.provider !== model.provider) continue;
+    if (option.provider !== model.provider) continue;
 
     if (option.id === model.id) return { option, fast: false };
 
@@ -38,7 +38,7 @@ export function modelRefFor(option: DesktopModelOption, fast: boolean) {
 /** The catalog's name for a session's model; the raw id until the catalog loads. */
 export function modelDisplayName(
   catalog: DesktopCatalog | undefined,
-  model: RunConfig["model"],
+  model: ModelRef | undefined,
 ): string | undefined {
   if (model === undefined) return undefined;
 

@@ -1,11 +1,7 @@
 import process from "node:process";
-import { createNyteModels, FileCredentialStore } from "@nyte-ai/ai";
-import type { AuthType } from "@nyte-ai/ai";
-import { createWorkspaceStore, WorkspaceTrustRequired } from "@nyte-ai/host";
-import type { TrustedWorkspace } from "@nyte-ai/host";
-import { createOtelExport } from "@nyte-ai/host/otel";
+import type { Host, LoginMethod } from "@nyte-ai/sdk";
 import { loginProvider, logoutProvider } from "./auth.ts";
-import { loadAuthenticatedModels, requireProvider } from "./catalog.ts";
+import { availableModels } from "./catalog.ts";
 import {
   alignedRows,
   ansiEnabled,
@@ -18,18 +14,16 @@ import {
 } from "./cli-style.ts";
 import { parseFlags, parseUpdateArgs, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
-import { cliInteraction } from "./interaction.ts";
+import { openTerminalHost } from "./host.ts";
+import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
-import { FileSettingsStore } from "./settings.ts";
-import { hostFallbacks, openWorkspaceHost, resolveRuntime, targetSession } from "./run.ts";
+import { flagConfiguration, targetSession } from "./run.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
 import { runTui } from "./interactive.ts";
-import { ACCOUNT_HELP, accountCommand } from "./account-command.ts";
-import { SERVE_HELP, serveCommand } from "./serve-command.ts";
 
 const invocationArgs = process.argv.slice(2);
 
@@ -46,9 +40,17 @@ const invocation = new PrintInvocation({ json, output });
 
 const signal = invocation.controller.signal;
 
+/** Opens the host for this folder; the invocation closes it. */
+async function openHost(): Promise<Host> {
+  const host = await openTerminalHost();
+  invocation.defer(() => host.close());
+
+  return host;
+}
+
 function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
   let providerId: string | undefined;
-  let method: AuthType | undefined;
+  let method: LoginMethod["kind"] | undefined;
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
@@ -61,7 +63,7 @@ function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
         throw new Error("--method must be oauth or api_key. Run `nyte login --help`.");
       }
 
-      method = value;
+      method = value === "oauth" ? "oauth" : "key";
       continue;
     }
 
@@ -87,25 +89,15 @@ function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
 
 async function authenticate(command: "login" | "logout", args: readonly string[]): Promise<void> {
   const options = parseAuthArgs(command, args);
-  const models = createNyteModels();
-
-  if (options.providerId !== undefined) {
-    const provider = requireProvider(models, options.providerId);
-
-    if (command === "login" && options.method !== undefined) {
-      const method = options.method === "oauth" ? provider.auth.oauth : provider.auth.apiKey;
-
-      if (method?.login === undefined)
-        throw new Error(`Unsupported login method for ${provider.name}: ${options.method}`);
-    }
-  }
 
   if (command === "login" && (!process.stdin.isTTY || !process.stderr.isTTY)) {
     const argv = [
       "nyte",
       "login",
       ...(options.providerId === undefined ? [] : [options.providerId]),
-      ...(options.method === undefined ? [] : ["--method", options.method]),
+      ...(options.method === undefined
+        ? []
+        : ["--method", options.method === "key" ? "api_key" : "oauth"]),
     ];
 
     const commandLine = argv.map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(" ");
@@ -115,31 +107,34 @@ async function authenticate(command: "login" | "logout", args: readonly string[]
   }
 
   signal.throwIfAborted();
+  const host = await openHost();
 
-  const interaction = cliInteraction(signal, () => {
+  const driver = cliLoginDriver(signal, () => {
     process.emit("SIGINT");
   });
 
   if (command === "logout") {
-    const result = await logoutProvider({ models, interaction, providerId: options.providerId });
+    const result = await logoutProvider({
+      connection: host,
+      driver,
+      providerId: options.providerId,
+    });
     console.log(`${statusGlyph("ok", ansiEnabled())} ${result.message}`);
 
     return;
   }
 
-  const provider = await loginProvider({ models, interaction, ...options });
+  const provider = await loginProvider({
+    connection: host,
+    driver,
+    providerId: options.providerId,
+    method: options.method,
+  });
+
   console.log(`${statusGlyph("ok", ansiEnabled())} Logged in to ${provider.name}.`);
 
   try {
-    // Refresh dynamic catalogs after saving auth. Copilot resolves its account
-    // model IDs during login and uses generated definitions without this step.
-    const refreshed = await models.refresh({ providers: [provider.id], force: true, signal });
-
-    for (const error of refreshed.errors.values()) {
-      console.error(`Login is saved, but model discovery failed: ${error.message}`);
-    }
-
-    await loadAuthenticatedModels(models, { force: true, allowNetwork: false, signal });
+    await host.models.refresh(provider.id);
   } catch {
     signal.throwIfAborted();
     console.error("Login is saved, but the model catalog failed to reload.");
@@ -152,24 +147,18 @@ async function update(args: readonly string[]): Promise<void> {
   const options = parseUpdateArgs(args);
 
   if (options.kind === "models") {
-    const models = createNyteModels();
-    const refreshed = await models.refresh({ force: true, signal });
+    const host = await openHost();
+    await host.models.refresh();
     signal.throwIfAborted();
     const color = ansiEnabled();
 
-    for (const provider of models.getProviders()) {
-      const error = refreshed.errors.get(provider.id);
-
-      if (error === undefined) {
-        console.log(
-          `${statusGlyph("ok", color)} ${provider.id}  ${String(models.getModels(provider.id).length)} models`,
-        );
-      } else {
-        console.log(`${statusGlyph("fail", color)} ${provider.id}  ${error.message}`);
-      }
+    for (const provider of (await host.models.list()).providers) {
+      console.log(
+        provider.credential === "failed"
+          ? `${statusGlyph("fail", color)} ${provider.id}  credential failed`
+          : `${statusGlyph("ok", color)} ${provider.id}  ${String(provider.models.length)} models`,
+      );
     }
-
-    if (refreshed.errors.size > 0) process.exitCode = 1;
 
     return;
   }
@@ -244,13 +233,20 @@ async function update(args: readonly string[]): Promise<void> {
 }
 
 async function status(): Promise<void> {
-  const stored = await new FileCredentialStore().list();
+  const host = await openHost();
+
+  const stored = (await host.models.list()).providers.filter(
+    (provider) => provider.credential !== "missing",
+  );
 
   if (json) {
     output.write(
       `${JSON.stringify({
         type: "status",
-        credentials: stored.map((info) => ({ provider: info.providerId, method: info.type })),
+        credentials: stored.map((provider) => ({
+          provider: provider.id,
+          credential: provider.credential,
+        })),
       })}\n`,
     );
 
@@ -263,85 +259,40 @@ async function status(): Promise<void> {
     return;
   }
 
-  const rows = stored.map((info) => ({ label: info.providerId, detail: info.type }));
+  const rows = stored.map((provider) => ({ label: provider.id, detail: provider.credential }));
 
   for (const row of alignedRows(rows, ansiEnabled())) console.log(row);
 }
 
 async function print(flags: RunFlags): Promise<PrintOutcome> {
   signal.throwIfAborted();
-  let workspace: TrustedWorkspace;
+  const host = await openHost();
+  signal.throwIfAborted();
 
-  try {
-    workspace = await createWorkspaceStore().require(process.cwd());
-  } catch (cause) {
-    if (cause instanceof WorkspaceTrustRequired) {
-      throw new Error(
-        `Workspace is not trusted: ${cause.cwd}. Run \`nyte\` interactively to trust it first.`,
-        { cause },
-      );
-    }
+  if (availableModels(await host.models.list()).length === 0)
+    throw new Error("Couldn't find a stored credential. Run `nyte login`.");
+  const configuration = await flagConfiguration(host, flags);
 
-    throw cause;
+  if (configuration?.model !== undefined) {
+    const set = await host.models.setDefault(configuration.model);
+
+    if (set.kind === "unknown-model")
+      throw new Error(`Unavailable model: ${configuration.model.provider}/${configuration.model.id}`);
   }
 
-  signal.throwIfAborted();
-  const settingsStore = new FileSettingsStore();
-  const settings = await settingsStore.read(workspace.cwd);
-  signal.throwIfAborted();
-  const runtime = await resolveRuntime(flags, settings, signal);
+  const session = await targetSession(host, flags.resume, undefined);
+  invocation.sessionId = session.id;
   signal.throwIfAborted();
 
-  if (runtime === undefined)
-    throw new Error("Couldn't find a stored credential. Run `nyte login`.");
-  const { model, thinkingLevel } = hostFallbacks(runtime, settings, flags);
-  const otel = createOtelExport({ serviceName: "nyte-tui" });
-  invocation.defer(() => otel.shutdown());
-
-  const host = await openWorkspaceHost({
-    workspace,
-    settings,
-    runtime,
-    model,
-    thinkingLevel,
-    telemetry: otel.telemetry,
-    report: output.error,
-  });
-
-  invocation.defer(() => host.close());
-  signal.throwIfAborted();
-  const target = await targetSession(host.nyte, flags.resume);
-  invocation.sessionId = target.sessionId;
-  signal.throwIfAborted();
-  invocation.defer(host.attach(target.sessionId));
-
-  const modelConfig =
-    flags.model !== undefined || process.env["NYTE_MODEL"] !== undefined
-      ? { model: { provider: model.provider, id: model.id } }
-      : undefined;
-
-  const configure = flags.effort === undefined ? modelConfig : { ...modelConfig, thinkingLevel };
-
-  const outcome = await printRun({
-    nyte: host.nyte,
-    sessionId: target.sessionId,
+  return printRun({
+    session,
     content: flags.rest.join(" "),
     json: flags.json,
     quiet: flags.quiet,
     output,
     signal,
-    configure,
+    configuration,
   });
-
-  if (outcome.kind === "completed") {
-    await settingsStore.updateGlobal({
-      defaultProvider: runtime.provider.id,
-      defaultModel: model.id,
-      defaultThinkingLevel: thinkingLevel,
-    });
-  }
-
-  return outcome;
 }
 
 async function main(): Promise<PrintOutcome | undefined> {
@@ -369,34 +320,6 @@ async function main(): Promise<PrintOutcome | undefined> {
 
       return undefined;
     }
-  }
-
-  if (command === "serve") {
-    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
-      console.log(SERVE_HELP);
-
-      return undefined;
-    }
-
-    // The host owns its signals: Ctrl-C stops the listener, then the runtime.
-    invocation.handoff();
-    await serveCommand(invocationArgs.slice(1), output);
-
-    return undefined;
-  }
-
-  if (command === "account") {
-    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
-      console.log(ACCOUNT_HELP);
-
-      return undefined;
-    }
-
-    // Linking waits on a browser; Ctrl-C cancels the request at the broker, then exits.
-    invocation.handoff();
-    await accountCommand(invocationArgs.slice(1), output);
-
-    return undefined;
   }
 
   if (command === "login" || command === "logout") {

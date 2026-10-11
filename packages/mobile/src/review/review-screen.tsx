@@ -1,13 +1,10 @@
 import { router } from "expo-router";
-import { randomUUID } from "expo-crypto";
 import { SymbolView, type SFSymbol } from "expo-symbols";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { SessionId } from "@nyte-ai/protocol";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import { changesFromTurns, sessionMark, waitingCall } from "@nyte-ai/client";
+import type { SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -16,10 +13,11 @@ import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
-import { formatDuration, latestChangedTurn } from "../chat/turn-changes.ts";
+import { formatDuration, latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/markdown.tsx";
+import { executionMark, openQuestion } from "../view-helpers.ts";
 import {
   controls,
   list,
@@ -53,39 +51,31 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const [now] = useState(() => Date.now());
   const summaryWidth = useWindowDimensions().width - list.gutter * 2;
 
-  const changes = useMemo(
-    () => changesFromTurns(chat.state?.transcript.items ?? []),
-    [chat.state?.transcript.items],
-  );
+  const view = chat.state;
+  const changes = view?.changes ?? [];
 
   const changedTurn = useMemo(
-    () => latestChangedTurn(chat.state?.transcript.items ?? []),
-    [chat.state?.transcript.items],
+    () => (view === undefined ? undefined : latestChangedTurn(view)),
+    [view],
   );
 
-  const summary = useMemo(() => {
-    if (changedTurn === undefined || changedTurn.kind !== "turn") return undefined;
+  const summary = useMemo(
+    () =>
+      view === undefined || changedTurn === undefined ? undefined : turnAnswer(view, changedTurn),
+    [view, changedTurn],
+  );
 
-    return changedTurn.parts.findLast((part) => part.kind === "assistant")?.text;
-  }, [changedTurn]);
-
-  const info = chat.state?.info;
-  const run = chat.state?.run;
-  const waiting = chat.state === undefined ? undefined : waitingCall(chat.state);
-  const running = run !== undefined && !isTerminalPhase(run.phase);
-  const mark = info === undefined ? "idle" : sessionMark(info);
+  const info = chat.info;
+  const execution = view?.execution;
+  const run = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
+  const waiting = view === undefined ? undefined : openQuestion(view);
+  const running = run !== undefined;
+  const mark = executionMark(execution);
   const added = changes.reduce((total, file) => total + file.added, 0);
   const removed = changes.reduce((total, file) => total + file.removed, 0);
   const tone = markTone(mark, theme);
-
-  const outcome =
-    run?.phase.kind === "done"
-      ? "completed"
-      : run?.phase.kind === "aborted"
-        ? "aborted"
-        : run?.phase.kind === "failed"
-          ? "failed"
-          : undefined;
+  const ended = execution?.kind === "idle" ? execution.lastRun?.end.kind : undefined;
+  const outcome = ended === "stopped" ? "aborted" : ended;
 
   // One decision drives the headline, its symbol, its tint, and the detail line,
   // so the four can never describe different states.
@@ -129,9 +119,9 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                 symbol: "checkmark.circle.fill",
                 tint: theme.success,
                 detail:
-                  changedTurn === undefined
+                  changedTurn === undefined || changedTurn.endedAt === null
                     ? "Finished"
-                    : `Finished in ${formatDuration(changedTurn.durationMs)}`,
+                    : `Finished in ${formatDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
               };
 
   async function merge() {
@@ -140,7 +130,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
     setMergeError(undefined);
 
     try {
-      await client.messages.send({ sessionId, content: MERGE_PROMPT, key: randomUUID() });
+      await client.session(sessionId).send(MERGE_PROMPT);
       router.back();
     } catch (cause) {
       setMergeError(describeHostError(cause));

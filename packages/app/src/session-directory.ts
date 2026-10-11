@@ -1,18 +1,42 @@
-import type { SessionsBridge } from "./bridge.ts";
+import type { SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 
-export type SessionPage = Awaited<ReturnType<SessionsBridge["list"]>>;
+/** The root sessions of one workspace; `workspacePath` is null for a workspace no folder backs. */
+export interface WorkspaceSessionDirectory {
+  readonly environment: "local";
+  readonly workspace: WorkspaceId;
+  readonly workspacePath: string | null;
+  readonly sessions: readonly SessionInfo[];
+}
 
-/** Read every root session before publishing a workspace change; children live under their parent's task call. */
-export async function loadSessionDirectory(list: SessionsBridge["list"]): Promise<SessionPage> {
-  const first = await list({ parent: null, includeArchived: true });
-  const items = [...first.items];
-  let cursor = first.next;
+/** Groups root sessions by workspace in the directory's order; a workspace no row names is left out. */
+export function groupDirectory(
+  sessions: readonly SessionInfo[],
+  workspaces: readonly { readonly id: WorkspaceId; readonly path: string }[],
+): readonly WorkspaceSessionDirectory[] {
+  const groups = new Map<WorkspaceId, SessionInfo[]>();
 
-  while (cursor !== undefined) {
-    const page = await list({ cursor, parent: null, includeArchived: true });
-    items.push(...page.items);
-    cursor = page.next;
+  for (const session of sessions) {
+    const group = groups.get(session.workspace) ?? [];
+    group.push(session);
+    groups.set(session.workspace, group);
   }
 
-  return { ...first, items, next: undefined };
+  return [...groups].map(([workspace, rows]) => {
+    const info = workspaces.find((candidate) => candidate.id === workspace);
+
+    return {
+      environment: "local",
+      workspace,
+      workspacePath: info === undefined ? null : info.path,
+      sessions: rows,
+    };
+  });
+}
+
+/** The sessions of one workspace path; `null` is the workspace no folder backs. */
+export function localSessions(
+  directories: readonly WorkspaceSessionDirectory[],
+  path: string | null,
+): readonly SessionInfo[] | undefined {
+  return directories.find((directory) => directory.workspacePath === path)?.sessions;
 }

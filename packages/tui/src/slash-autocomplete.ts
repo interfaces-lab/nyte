@@ -10,10 +10,8 @@ import { commandBindings } from "@opentui/keymap/extras";
 import { isComposerTextKey } from "./keymap.ts";
 import { CHAT_KEYBINDS, COMPLETION_METHODS } from "./constants.ts";
 import type { Shell } from "./app/ui.ts";
-import { completionTrigger } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/protocol";
 import { explicitMentionFile, fileMentionSuggestions } from "./composer.ts";
-import type { FileMentionSuggestions } from "./composer.ts";
+import type { FileMentionSuggestions, MentionFile } from "./composer.ts";
 import {
   DirectoryListing,
   directoryCompletionQuery,
@@ -25,6 +23,7 @@ import type { MenuItem } from "./menu-list.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion, SLASH_COMMANDS } from "./slash.ts";
 import type { SlashCommand } from "./slash.ts";
 import type { CliTheme } from "./theme.ts";
+import { completionTrigger } from "./view-helpers.ts";
 import { cellOffset } from "./width.ts";
 
 type SlashInput = Pick<

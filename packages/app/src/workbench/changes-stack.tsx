@@ -4,7 +4,7 @@ import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { VcsLineStat } from "@nyte-ai/protocol";
+import type { LineStat } from "@nyte-ai/sdk";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -298,7 +298,7 @@ function StackHeader({
   children,
 }: {
   readonly path: string;
-  readonly stat: VcsLineStat;
+  readonly stat: LineStat;
   readonly collapsed: boolean;
   readonly demand: ((path: string) => () => void) | undefined;
   readonly onToggleCollapsed: (path: string) => void;

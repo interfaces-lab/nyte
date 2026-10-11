@@ -18,8 +18,9 @@
  * The host folds days in its own time zone; the renderer shares the machine,
  * so `localDay` here is the same calendar as the one that wrote the report.
  */
-import type { SessionId } from "@nyte-ai/protocol";
-import type { AccountUsage, UsageSnapshot } from "../bridge.ts";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ModelCatalogView } from "@nyte-ai/sdk";
+import type { UsageSnapshot } from "../bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 
 /**
@@ -614,7 +615,7 @@ export function deriveLocalHistory(tool: LocalTool, usage: LocalHistory): LocalH
   const total = usage.summary.total;
   const gaps = coverageGaps(usage);
   const priced = total.cost.total > 0;
-  const whole = priced ? total.cost.total : total.totalTokens;
+  const whole = priced ? total.cost.total : total.total;
 
   return {
     kind: "rows",
@@ -622,12 +623,12 @@ export function deriveLocalHistory(tool: LocalTool, usage: LocalHistory): LocalH
     rows: usage.summary.models.map((row) => ({
       key: `${row.provider}/${row.model}`,
       label: row.model,
-      meta: `${formatTokens(row.usage.totalTokens)} tokens · ${plural(row.turns, "record")}`,
+      meta: `${formatTokens(row.usage.total)} tokens · ${plural(row.turns, "record")}`,
       value:
         row.usage.cost.total === 0 && gaps.length > 0
           ? absent("Unpriced")
           : cost(row.usage.cost.total),
-      share: whole === 0 ? 0 : (priced ? row.usage.cost.total : row.usage.totalTokens) / whole,
+      share: whole === 0 ? 0 : (priced ? row.usage.cost.total : row.usage.total) / whole,
     })),
   };
 }
@@ -699,7 +700,7 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
 
     const spend: Spend = {
       cost: history.summary.total.cost.total,
-      tokens: history.summary.total.totalTokens,
+      tokens: history.summary.total.total,
     };
 
     return {
@@ -735,25 +736,11 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
 // subscription windows
 // ---------------------------------------------------------------------------
 
-/** The account behind a subscription window, named the way its provider is. */
-const LIMIT_PROVIDER_LABELS: Readonly<Record<AccountUsage["provider"], string>> = {
-  anthropic: "Claude",
-  "openai-codex": "Codex",
-};
-
-const WEEKLY = "seven_day";
-
-const SCOPED_WEEKLY = `${WEEKLY}_`;
-
-/**
- * Only the weeks are shown. A five-hour window refills before it can be
- * planned around; a week is what a subscription runs out of. A model's own
- * week comes first because it fills first.
- */
-function weeklyRank(id: string): number | undefined {
-  if (id.startsWith(SCOPED_WEEKLY)) return 0;
-
-  return id === WEEKLY ? 1 : undefined;
+/** The windows one provider reported on its last response, as the catalog carries them. */
+export interface AccountLimits {
+  readonly provider: string;
+  readonly name: string;
+  readonly limits: ModelCatalogView["providers"][number]["limits"];
 }
 
 /** One window's meter: how much is gone, and when it comes back. */
@@ -773,52 +760,25 @@ interface AccountView {
   readonly failed: boolean;
 }
 
-/** A provider's own windows, named the way its own dashboard names them. */
-export function deriveAccount(account: AccountUsage): AccountView {
-  const name = LIMIT_PROVIDER_LABELS[account.provider];
-
-  if (account.kind === "failed") {
-    return { title: name, meters: [], message: account.message, failed: true };
-  }
-
-  if (account.kind === "unavailable") {
-    return {
-      title: name,
-      meters: [],
-      message: `Sign in to ${name} with a subscription in Settings › Providers to see its limits.`,
-      failed: false,
-    };
-  }
-
-  const title = account.limits.plan === undefined ? name : `${name} · ${account.limits.plan}`;
-
-  const meters = account.limits.windows
-    .filter((window) => weeklyRank(window.id) !== undefined)
-    .toSorted((left, right) => (weeklyRank(left.id) ?? 0) - (weeklyRank(right.id) ?? 0))
+/** A provider's own windows, as it labels them, most used first. */
+export function deriveAccount(account: AccountLimits): AccountView {
+  const meters = account.limits
     .map((window) => ({
-      key: window.id,
-      label: window.id.startsWith(SCOPED_WEEKLY)
-        ? `Weekly · ${window.id.slice(SCOPED_WEEKLY.length)}`
-        : "Weekly",
-      used: Math.round(window.usedPercent),
+      key: window.label,
+      label: window.label,
+      used: window.limit === 0 ? 0 : Math.round((window.used / window.limit) * 100),
       reset:
-        window.resetsAt === undefined
+        window.resetsAt === null
           ? "Reset time unknown"
           : `Resets ${new Date(window.resetsAt).toLocaleString(undefined, {
               weekday: "short",
               hour: "numeric",
               minute: "2-digit",
             })}`,
-    }));
+    }))
+    .toSorted((left, right) => right.used - left.used);
 
-  if (meters.length === 0) {
-    return { title, meters, message: `${name} reported no weekly limit.`, failed: false };
-  }
-
-  return {
-    title,
-    meters,
-    message: undefined,
-    failed: false,
-  };
+  return meters.length === 0
+    ? { title: account.name, meters, message: `${account.name} reported no limit.`, failed: false }
+    : { title: account.name, meters, message: undefined, failed: false };
 }

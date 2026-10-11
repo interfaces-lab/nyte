@@ -1,12 +1,11 @@
 /**
- * `window.nyte`: the SDK interfaces verbatim. Every operation is one `invoke`
- * carrying its path and input object; `watch` is the one transport adaptation,
- * an AsyncIterable become a push subscription with the same cursor semantics.
+ * `window.nyte`: the host beside the sdk. Every operation is one `invoke`
+ * carrying its path and input object; sessions go over the sdk connection
+ * the renderer opens to `host.endpoint()`.
  *
  * Main owns request decoding and reply construction. Preload preserves each
  * path's input/output relationship instead of widening transport payloads.
  */
-import type { SessionEvent } from "@nyte-ai/core";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { exposeClerkBridge } from "@clerk/electron/preload";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
@@ -19,9 +18,6 @@ import {
   CALL_CHANNEL,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
-  WATCH_EVENT_CHANNEL,
-  WATCH_START_CHANNEL,
-  WATCH_STOP_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
@@ -31,17 +27,9 @@ import type {
   CallPath,
   CallReplyFor,
   DesktopBridge,
-  WatchEnvelope,
-  WatchStartInput,
 } from "../shared/ipc.ts";
-import type {
-  BrowserBoundsMessage,
-  BrowserFocusMessage,
-  HostEvent,
-  WatchInput,
-} from "@nyte-ai/app/bridge.ts";
+import type { BrowserBoundsMessage, BrowserFocusMessage, HostEvent } from "@nyte-ai/app/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/errors.ts";
-import type { IpcResult } from "@nyte-ai/app/errors.ts";
 
 exposeClerkBridge();
 
@@ -96,135 +84,6 @@ function object<P extends Exclude<CallPath, NoneCallPath>>(
 
 const bridge = {
   clientSurface: "desktop",
-  sessions: {
-    create: object("sessions.create"),
-    get: object("sessions.get"),
-    snapshot: object("sessions.snapshot"),
-    metadata: object("sessions.metadata"),
-    list: object("sessions.list"),
-    rename: object("sessions.rename"),
-    setPinned: object("sessions.setPinned"),
-    setArchived: object("sessions.setArchived"),
-    delete: object("sessions.delete"),
-    configure: object("sessions.configure"),
-  },
-  messages: {
-    send: object("messages.send"),
-    cancel: object("messages.cancel"),
-    redeliver: object("messages.redeliver"),
-  },
-  jobs: {
-    list: object("jobs.list"),
-    start: object("jobs.start"),
-    background: object("jobs.background"),
-    cancel: object("jobs.cancel"),
-  },
-  runs: {
-    abort: object("runs.abort"),
-    reply: object("runs.reply"),
-    diff: object("runs.diff"),
-  },
-  heads: {
-    move: object("heads.move"),
-  },
-  workspace: {
-    list: none("workspace.list"),
-    forget: object("workspace.forget"),
-    files: object("workspace.files"),
-    read: object("workspace.read"),
-    save: object("workspace.save"),
-    format: object("workspace.format"),
-    search: object("workspace.search"),
-    blame: object("workspace.blame"),
-    vcs: {
-      snapshot: object("workspace.vcs.snapshot"),
-      changes: object("workspace.vcs.changes"),
-      diff: object("workspace.vcs.diff"),
-      contents: object("workspace.vcs.contents"),
-      log: object("workspace.vcs.log"),
-      refs: object("workspace.vcs.refs"),
-      stage: object("workspace.vcs.stage"),
-      discard: object("workspace.vcs.discard"),
-      commit: object("workspace.vcs.commit"),
-      createBranch: object("workspace.vcs.createBranch"),
-      push: object("workspace.vcs.push"),
-    },
-  },
-  provider: {
-    models: {
-      default: none("provider.models.default"),
-    },
-  },
-  plugins: {
-    catalog: none("plugins.catalog"),
-    list: object("plugins.list"),
-    commands: {
-      list: object("plugins.commands.list"),
-      run: object("plugins.commands.run"),
-    },
-    settings: {
-      list: object("plugins.settings.list"),
-      apply: object("plugins.settings.apply"),
-    },
-    resources: { list: object("plugins.resources.list") },
-  },
-  watch(
-    input: WatchInput,
-    onEvent: (event: SessionEvent) => void,
-    onError?: (error: Error) => void,
-  ) {
-    const watchId = crypto.randomUUID();
-    let ended = false;
-
-    const fail = (error: Error): void => {
-      if (ended) return;
-      ended = true;
-      // An ended watch receives nothing more; only the host-side stop still owes a call.
-      ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
-      onError?.(error);
-    };
-
-    // WATCH_EVENT_CHANNEL is private to Nyte main and emits only WatchEnvelope.
-    const listener = (_event: Electron.IpcRendererEvent, frame: WatchEnvelope): void => {
-      if (frame.watchId !== watchId || ended) return;
-
-      if (frame.kind === "event") {
-        onEvent(frame.event);
-
-        return;
-      }
-
-      if (frame.error !== undefined) fail(bridgeError(frame.error));
-      else fail(new Error("Watch ended unexpectedly"));
-    };
-
-    ipcRenderer.on(WATCH_EVENT_CHANNEL, listener);
-
-    const start: WatchStartInput =
-      "live" in input
-        ? { watchId, sessionId: input.sessionId, live: true }
-        : input.afterSeq === undefined
-          ? { watchId, sessionId: input.sessionId }
-          : { watchId, sessionId: input.sessionId, afterSeq: input.afterSeq };
-
-    // A refused start (bad cursor, no workspace) is a watch that ended before it began.
-    const started = ipcRenderer
-      .invoke(WATCH_START_CHANNEL, start)
-      .then((result: IpcResult<void>) => {
-        if (!result.ok) fail(bridgeError(result.error));
-      })
-      .catch(() => fail(new Error("The host watch could not start.")));
-
-    return () => {
-      ended = true;
-      ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
-      // START and STOP use separate invoke channels. Preserve their order so a
-      // fast unmount cannot stop first and leave the later start orphaned.
-      void started
-        .then(() => ipcRenderer.invoke(WATCH_STOP_CHANNEL, { watchId }))
-        .catch(() => undefined);
-    };
-  },
   host: {
     onMenuCommand(listener: (command: AppMenuCommand) => void) {
       // Only the main process sends this private channel; never expose the IPC event.
@@ -238,36 +97,20 @@ const bridge = {
       return () => ipcRenderer.removeListener(APP_MENU_COMMAND_CHANNEL, wrapped);
     },
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
+    endpoint: none("host.endpoint"),
     state: none("host.state"),
-    sessionDirectory: none("host.sessionDirectory"),
     fonts: none("host.fonts"),
     openWorkspace: object("host.openWorkspace"),
     pickWorkspace: none("host.pickWorkspace"),
-    trustWorkspace: object("host.trustWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),
-    catalog: object("host.catalog"),
-    usage: object("host.usage"),
-    accountLimits: none("host.accountLimits"),
-    login: object("host.login"),
-    cancelLogin: object("host.cancelLogin"),
-    logout: object("host.logout"),
-    setPreference: object("host.setPreference"),
-    settings: { get: none("host.settings.get"), set: object("host.settings.set") },
     updates: {
       state: none("host.updates.state"),
       check: none("host.updates.check"),
-    },
-    github: {
-      state: none("host.github.state"),
-      signIn: none("host.github.signIn"),
-      signOut: none("host.github.signOut"),
-      createPullRequest: object("host.github.createPullRequest"),
     },
     server: {
       state: none("host.server.state"),
       connect: object("host.server.connect"),
       disconnect: none("host.server.disconnect"),
-      createSession: none("host.server.createSession"),
     },
     remote: {
       state: none("host.remote.state"),

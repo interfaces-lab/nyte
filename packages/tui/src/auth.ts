@@ -1,201 +1,162 @@
-import { FileCredentialStore } from "@nyte-ai/ai";
-import type { AuthInteraction, AuthType, CredentialStore, Models, Provider } from "@nyte-ai/ai";
-import { invalidateAuthenticatedModels, providerAuthStatuses, requireProvider } from "./catalog.ts";
+/**
+ * Sign in and out through the host: the host runs a provider's login and
+ * holds the credential; the client draws each step and answers what it asks.
+ * The CLI and the full-screen shell differ only in their driver.
+ */
+import type { Connection, LoginMethod, ModelCatalogView } from "@nyte-ai/sdk";
 
-/** Only methods with an interactive flow belong in the login picker. */
-function loginMethods(provider: Provider) {
-  const methods: { id: AuthType; label: string }[] = [];
+type Provider = ModelCatalogView["providers"][number];
 
-  if (provider.auth.oauth !== undefined)
-    methods.push({
-      id: "oauth",
-      label: provider.auth.oauth.loginLabel ?? provider.auth.oauth.name,
-    });
-
-  if (provider.auth.apiKey?.login !== undefined)
-    methods.push({ id: "api_key", label: provider.auth.apiKey.name });
-
-  return methods;
+/** How a client draws a login: a URL to open, text to paste back, one option to pick, progress. */
+export interface LoginDriver {
+  readonly signal: AbortSignal;
+  open(url: string, code: string | undefined): void;
+  paste(message: string, secret: boolean): Promise<string>;
+  choose(
+    message: string,
+    options: readonly { readonly id: string; readonly label: string }[],
+  ): Promise<string>;
+  progress(message: string): void;
 }
 
-export async function authProviderChoices(input: {
-  readonly action: "login" | "logout";
-  readonly models: Models;
-  readonly signal?: AbortSignal;
-  readonly credentials?: CredentialStore;
-}) {
-  if (input.action === "login") {
-    const statuses = await providerAuthStatuses(input.models, { signal: input.signal });
-
-    return statuses
-      .filter((status) => loginMethods(status.provider).length > 0)
-      .map((status) => ({
-        id: status.provider.id,
-        label: status.provider.name,
-        description: status.kind === "authenticated" ? "signed in" : "",
-      }));
-  }
-
-  const credentials = input.credentials ?? new FileCredentialStore();
-  const stored = await credentials.list({ signal: input.signal });
-
-  return stored.flatMap((credential) => {
-    const provider = input.models.getProvider(credential.providerId);
-
-    return provider === undefined
-      ? []
-      : [
-          {
-            id: provider.id,
-            label: provider.name,
-            description: credential.type === "oauth" ? "OAuth" : "API key",
-          },
-        ];
-  });
+/** One provider as a picker row; signed-in providers say so. */
+export interface ProviderChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
 }
 
-/** CLI and full-screen clients differ only in how they present provider-owned prompts. */
+function signedIn(provider: Provider): boolean {
+  return provider.credential === "configured" || provider.credential === "verified";
+}
+
+function methodLabel(method: LoginMethod): string {
+  return method.kind === "oauth" ? "Sign in with a browser" : "API key";
+}
+
+/** Returns the providers a login can reach, or the ones a logout can remove a credential from. */
+export function authProviderChoices(
+  catalog: ModelCatalogView,
+  action: "login" | "logout",
+): readonly ProviderChoice[] {
+  return catalog.providers
+    .filter((provider) => (action === "login" ? provider.methods.length > 0 : signedIn(provider)))
+    .map((provider) => ({
+      id: provider.id,
+      label: provider.name,
+      description: action === "login" && signedIn(provider) ? "signed in" : "",
+    }));
+}
+
+function requireProvider(catalog: ModelCatalogView, id: string): Provider {
+  const provider = catalog.providers.find((candidate) => candidate.id === id);
+
+  if (provider === undefined) throw new Error(`Unknown provider: ${id}`);
+
+  return provider;
+}
+
+/**
+ * Signs in to a provider through the host's login, asking which provider and
+ * method when they are not given, and returns the provider once the host
+ * says done. Dropping out cancels the attempt, never a saved credential.
+ */
 export async function loginProvider(input: {
-  readonly models: Models;
-  readonly interaction: AuthInteraction;
+  readonly connection: Connection;
+  readonly driver: LoginDriver;
   readonly providerId?: string;
-  readonly method?: AuthType;
+  readonly method?: LoginMethod["kind"];
 }): Promise<Provider> {
-  const controller = new AbortController();
+  const { connection, driver } = input;
+  const catalog = await connection.models.list();
+  const choices = authProviderChoices(catalog, "login");
 
-  const signal =
-    input.interaction.signal === undefined
-      ? controller.signal
-      : AbortSignal.any([controller.signal, input.interaction.signal]);
+  if (input.providerId === undefined && choices.length === 0)
+    throw new Error("No providers support interactive login.");
+  const providerId = input.providerId ?? (await driver.choose("Sign in to a provider", choices));
+  const provider = requireProvider(catalog, providerId);
+  const first = provider.methods[0];
 
-  const interaction: AuthInteraction = {
-    signal,
-    prompt: (prompt) => {
-      signal.throwIfAborted();
+  if (first === undefined) throw new Error(`${provider.name} has no interactive login methods.`);
 
-      return input.interaction.prompt({
-        ...prompt,
-        signal: prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]),
-      });
-    },
-    notify: (event) => {
-      if (!signal.aborted) input.interaction.notify(event);
-    },
-  };
+  const kind =
+    input.method ??
+    (provider.methods.length === 1
+      ? first.kind
+      : await driver.choose(
+          `Sign in to ${provider.name} with`,
+          provider.methods.map((method) => ({ id: method.kind, label: methodLabel(method) })),
+        ));
+
+  const method = provider.methods.find((candidate) => candidate.kind === kind);
+
+  if (method === undefined)
+    throw new Error(`Unsupported login method for ${provider.name}: ${kind}`);
+  const login = connection.models.login({ provider: provider.id, method });
+  const steps = login.steps()[Symbol.asyncIterator]();
+
+  const aborted = new Promise<"aborted">((resolve) => {
+    driver.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+  });
 
   try {
-    signal.throwIfAborted();
+    for (;;) {
+      const next = await Promise.race([steps.next(), aborted]);
 
-    const providers =
-      input.providerId === undefined
-        ? await authProviderChoices({ action: "login", models: input.models, signal })
-        : undefined;
+      if (next === "aborted") throw new Error("Authentication cancelled.");
 
-    if (providers?.length === 0) throw new Error("No providers support interactive login.");
+      if (next.done === true) throw new Error(`${provider.name} login ended without an answer.`);
+      const step = next.value;
 
-    const providerId =
-      input.providerId ??
-      (await interaction.prompt({
-        type: "select",
-        message: "Sign in to a provider",
-        options: providers ?? [],
-      }));
+      switch (step.kind) {
+        case "open":
+          driver.open(step.url, step.code);
+          break;
+        case "paste":
+          await login.answer(await driver.paste(step.message, step.secret));
+          break;
+        case "choose":
+          await login.answer(await driver.choose(step.message, step.options));
+          break;
+        case "waiting":
+          driver.progress("Waiting for the provider…");
+          break;
+        case "done":
+          return provider;
+        case "failed":
+          throw new Error(step.reason);
+        default: {
+          const _exhaustive: never = step;
 
-    signal.throwIfAborted();
-    const provider = requireProvider(input.models, providerId);
-    const methods = loginMethods(provider);
-    const first = methods[0];
-
-    if (first === undefined) throw new Error(`${provider.name} has no interactive login methods.`);
-
-    const methodId =
-      input.method ??
-      (methods.length === 1
-        ? first.id
-        : await interaction.prompt({
-            type: "select",
-            message: `Sign in to ${provider.name} with`,
-            options: methods,
-          }));
-
-    const method = methods.find((candidate) => candidate.id === methodId);
-
-    if (method === undefined)
-      throw new Error(`Unsupported login method for ${provider.name}: ${methodId}`);
-    await input.models.login(provider.id, method.id, interaction);
-    invalidateAuthenticatedModels(input.models);
-
-    return provider;
+          return _exhaustive;
+        }
+      }
+    }
   } finally {
-    // Includes provider errors and abandoned callback/device-code waits.
-    controller.abort();
+    void steps.return?.();
   }
 }
 
-/** Removal targets stored credentials, not every provider with usable external auth. */
+/** Removes a provider's saved credential, asking which when none is given. */
 export async function logoutProvider(input: {
-  readonly models: Models;
-  readonly interaction: AuthInteraction;
+  readonly connection: Connection;
+  readonly driver: LoginDriver;
   readonly providerId?: string;
-  readonly credentials?: CredentialStore;
 }): Promise<{ readonly provider: Provider; readonly message: string }> {
-  const credentials = input.credentials ?? new FileCredentialStore();
-  const options = { signal: input.interaction.signal };
-  options.signal?.throwIfAborted();
+  const { connection, driver } = input;
+  const catalog = await connection.models.list();
+  const choices = authProviderChoices(catalog, "logout");
 
-  // Validate an explicit target before reading or mutating storage.
-  if (input.providerId !== undefined) requireProvider(input.models, input.providerId);
-  const providers =
-    input.providerId === undefined
-      ? await authProviderChoices({
-          action: "logout",
-          models: input.models,
-          credentials,
-          ...options,
-        })
-      : [];
-
-  if (input.providerId === undefined && providers.length === 0)
+  if (input.providerId === undefined && choices.length === 0)
     throw new Error("No stored credentials found.");
 
   const providerId =
-    input.providerId ??
-    (await input.interaction.prompt({
-      type: "select",
-      message: "Remove a stored credential",
-      options: providers,
-    }));
+    input.providerId ?? (await driver.choose("Remove a stored credential", choices));
 
-  const provider = requireProvider(input.models, providerId);
-  // Re-read after the picker: another client may have removed this credential.
-  const credential = await credentials.read(provider.id, options);
+  const provider = requireProvider(catalog, providerId);
 
-  if (credential === undefined) {
-    const auth = await input.models.checkAuth(provider.id, options);
+  if (!signedIn(provider)) throw new Error(`No stored credential for ${provider.name}.`);
+  await connection.models.logout(provider.id);
 
-    if (auth !== undefined)
-      throw new Error(
-        `${provider.name} is authenticated through ${auth.source ?? "external configuration"}. Unset or remove that source to disconnect; no stored credential was removed.`,
-      );
-    throw new Error(`No stored credential for ${provider.name}.`);
-  }
-
-  await input.models.logout(provider.id, options);
-  invalidateAuthenticatedModels(input.models);
-  const removed = `Removed stored credential for ${provider.name}.`;
-
-  try {
-    const remaining = await input.models.checkAuth(provider.id, options);
-
-    return {
-      provider,
-      message:
-        remaining === undefined
-          ? `Signed out of ${provider.name}.`
-          : `${removed} Still authenticated through ${remaining.source ?? "external configuration"}; unset or remove that source to disconnect.`,
-    };
-  } catch {
-    // A post-mutation status failure must not imply that deletion failed.
-    return { provider, message: `${removed} Couldn't check remaining authentication.` };
-  }
+  return { provider, message: `Signed out of ${provider.name}.` };
 }

@@ -14,7 +14,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
-import { serverConnectionProblem } from "../server-connection.ts";
+import { connectionProblem, hostChanged } from "../sdk.tsx";
 import type { Connection } from "./bridge.ts";
 import {
   accountRoute,
@@ -32,7 +32,6 @@ import {
 import type { AccountDevice } from "./account-device.ts";
 import { ConnectScreen } from "./connect-screen.tsx";
 import { forgetConnection } from "./connection.ts";
-import { IdentityChanged } from "./identity.ts";
 import { webBridge } from "./install.ts";
 import { connectPinned } from "./pins.ts";
 import { WebPage } from "./web-page.tsx";
@@ -236,7 +235,6 @@ function AccountFlow({
             options: {
               signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
               relay: true,
-              principal: saved.deviceId,
             },
           });
 
@@ -244,7 +242,7 @@ function AccountFlow({
         } catch (cause) {
           if (controller.signal.aborted) return;
 
-          if (cause instanceof IdentityChanged) {
+          if (hostChanged(cause)) {
             forgetAccountDevice(sessionStorage);
             active.current = undefined;
             void releaseAccountDevice(saved);
@@ -261,7 +259,7 @@ function AccountFlow({
             return;
           }
 
-          if (serverConnectionProblem(cause).kind === "authentication") {
+          if (connectionProblem(cause).kind === "authentication") {
             forgetAccountDevice(sessionStorage);
             active.current = undefined;
             void releaseAccountDevice(saved);
@@ -343,7 +341,7 @@ function AccountFlow({
     } catch (cause) {
       if (controller.signal.aborted) return;
 
-      if (cause instanceof IdentityChanged) setChanged({ environment, role });
+      if (hostChanged(cause)) setChanged({ environment, role });
       else setProblem(accountProblem(cause));
     }
 

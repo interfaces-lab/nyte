@@ -1,64 +1,223 @@
 /**
- * The contract between the interface and whatever hosts it: the SDK
- * namespaces verbatim, `watch` as a push subscription, and a host namespace
- * for what lives beside the SDK (workspace lifecycle, provider sign-in, files,
- * terminals, browser surfaces). The desktop carries it over Electron IPC; a
- * browser client carries it over `@nyte-ai/client`.
+ * The contract between the interface and whatever hosts it: where the host's
+ * listener is (the interface connects to it with `@nyte-ai/sdk`), and a host
+ * namespace for what lives beside the sdk (workspace selection, files on this
+ * machine, terminals, browser surfaces, usage history, GitHub). The desktop
+ * carries it over Electron IPC; the web app supplies its own.
  */
-import type { HostSettings, HostSettingsPatch } from "@nyte-ai/host/settings";
-import type {
-  AccountUsage,
-  BrowserSignIn,
-  CatalogModel,
-  DeviceCode,
-  GitHubProviderState,
-  GitHubPullRequestInput,
-  GitHubPullRequestOutcome,
-  LoginMethod,
-  LoginOutcome,
-  PreferenceChange,
-  ProviderAuthStatus,
-  ProviderCatalog,
-  RemoteNyte,
-  Seq,
-  ServerInfo,
-  SessionEvent,
-  SessionId,
-  SessionInfo,
-  StartInput,
-  UsageSnapshot,
-  UsageWindow,
-  WorkspaceInfo,
-} from "@nyte-ai/protocol";
+import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
+import type { ConnectionProblem, HostEndpoint } from "./sdk.tsx";
 import { clientActions } from "./client-actions.ts";
 
-export type {
-  AccountUsage,
-  BrowserSignIn,
-  DeviceCode,
-  GitHubAccount,
-  GitHubProviderState,
-  GitHubPullRequest,
-  GitHubPullRequestContext,
-  GitHubPullRequestInput,
-  GitHubPullRequestOutcome,
-  GitHubRepository,
-  LoginMethod,
-  LoginOutcome,
-  PreferenceChange,
-  ProviderStatus,
-  SignInMethod,
-  UsageEntry,
-  UsageReport,
-  UsageSession,
-  UsageSnapshot,
-  UsageSource,
-  UsageSubject,
-  UsageTotals,
-  UsageWindow,
-} from "@nyte-ai/protocol";
-
 type Disposer = () => void;
+
+/**
+ * `~/.nyte/settings.json` on the machine the desktop runs on, as main reads
+ * it. Keys the terminal UI shares sit beside the desktop's own; main owns the
+ * file, the renderer only asks for a patch.
+ */
+export interface HostSettings {
+  readonly cacheWarming: "off" | "streaming" | "idle";
+  readonly autoCompaction: boolean;
+  readonly compactionKeepRecentTokens: number;
+  readonly compactionReserveTokens: number;
+  readonly traceEndpoint: string | null;
+  readonly workspaceTrust: "ask" | "always" | "never";
+  readonly notifications: boolean;
+  readonly unreadBadge: boolean;
+  readonly keepAwake: boolean;
+  readonly terminalShell: string | null;
+  readonly blockAds: boolean;
+  readonly adblockAllowedHosts: readonly string[];
+  readonly upgradeToHttps: boolean;
+  readonly browserAccess: "ask" | "full" | "read" | "off";
+}
+
+/** One key of the settings file. */
+export type HostSettingKey = keyof HostSettings;
+
+/** A change to some keys of the settings file. */
+export type HostSettingsPatch = Partial<HostSettings>;
+
+/** Days in the serving machine's time zone. */
+export interface UsageWindow {
+  /** `YYYY-MM-DD`, inclusive, or `null` for every retained day. */
+  readonly sinceDay: string | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly untilDay: string;
+}
+
+/** Recorded tokens and API-equivalent cost. `reasoning` is part of `output`. */
+export interface UsageTotals {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly reasoning: number;
+  readonly tokens: number;
+  readonly cost: number;
+  /** Usage-bearing commits, including compaction and tools, not user turns. */
+  readonly turns: number;
+}
+
+/** What a usage entry was spent on: a model, tools, or compaction. */
+export type UsageSubject =
+  | { readonly kind: "model"; readonly provider: string; readonly model: string }
+  | { readonly kind: "tool" }
+  | { readonly kind: "compaction" };
+
+/** One day, workspace, chat, and subject. Totals live only on entries. */
+export interface UsageEntry {
+  readonly day: string;
+  readonly workspacePath: string | null;
+  readonly sessionId: SessionId;
+  readonly subject: UsageSubject;
+  readonly totals: UsageTotals;
+}
+
+/** A chat a usage report names. */
+export interface UsageSession {
+  readonly sessionId: SessionId;
+  readonly name?: string;
+  readonly workspacePath: string | null;
+  readonly lastActivityAt: number;
+}
+
+/** How one store's read went. A failed store is a row, not a failed report. */
+export interface UsageSource {
+  readonly workspacePath: string | null;
+  readonly status: "ok" | "failed";
+  readonly sessions: number;
+  readonly message: string | null;
+}
+
+/** Usage entries over a window of days, with the chats and stores they came from. */
+export interface UsageReport {
+  readonly readAt: number;
+  /** The resolved window. An all-time read starts at the earliest retained day. */
+  readonly sinceDay: string;
+  readonly untilDay: string;
+  readonly entries: readonly UsageEntry[];
+  readonly sessions: readonly UsageSession[];
+  readonly sources: readonly UsageSource[];
+  /** The equal-length window just before this one, when history reaches that far. */
+  readonly previous?: { readonly cost: number; readonly tokens: number };
+  readonly earliestDay?: string;
+}
+
+/** One model's turns and usage in another tool's history. */
+export interface ModelUsage {
+  readonly provider: string;
+  readonly model: string;
+  readonly turns: number;
+  readonly usage: Usage;
+}
+
+/** Another tool's history summed by model, compaction and tools. */
+export interface UsageSummary {
+  readonly models: readonly ModelUsage[];
+  readonly compaction: Usage;
+  readonly tools: Usage;
+  readonly total: Usage;
+}
+
+/** Another tool's own history on the serving machine, kept apart from Nyte's entries. */
+export type LocalHistoryUsage =
+  | { readonly kind: "missing" }
+  | { readonly kind: "failed"; readonly message: string }
+  | {
+      readonly kind: "ready";
+      readonly summary: UsageSummary;
+      readonly unpricedRecords: number;
+      readonly malformedRecords: number;
+      readonly unreadableFiles: number;
+    };
+
+/** Retained usage on the serving machine: Nyte's stores, and Claude Code's and Codex's own history. */
+export interface UsageSnapshot extends UsageReport {
+  /** The whole Nyte read failed, apart from any single failed store. */
+  readonly nyteError: string | null;
+  readonly claudeCode: LocalHistoryUsage;
+  readonly codex: LocalHistoryUsage;
+}
+
+/** A code the user enters at `verificationUri`. It stays until the attempt ends. */
+export interface DeviceCode {
+  readonly userCode: string;
+  readonly verificationUri: string;
+  readonly expiresInSeconds?: number;
+  readonly instructions?: string;
+}
+
+/** The GitHub repository the selected folder's remote names. */
+export interface GitHubRepository {
+  readonly owner: string;
+  readonly name: string;
+  readonly remoteName: string;
+  /** The canonical public URL. Remote credentials and raw remote URLs never cross. */
+  readonly url: string;
+}
+
+/** The account `gh` is signed in as. */
+export interface GitHubAccount {
+  readonly login: string;
+  readonly name?: string;
+  readonly avatarUrl?: string;
+}
+
+/** A pull request for the checked-out branch. */
+export interface GitHubPullRequest {
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly state: "OPEN" | "CLOSED" | "MERGED";
+  readonly draft: boolean;
+  readonly headRefName: string;
+  readonly baseRefName: string;
+}
+
+/** Whether the checked-out branch has a pull request. */
+export type GitHubPullRequestContext =
+  | { readonly kind: "none" }
+  | { readonly kind: "ready"; readonly pullRequest: GitHubPullRequest }
+  | { readonly kind: "error"; readonly message: string };
+
+/** What opening a pull request takes. */
+export interface GitHubPullRequestInput {
+  readonly title: string;
+  readonly body?: string;
+  readonly draft?: boolean;
+}
+
+/** Every state `gh` can leave a pull request request in; `exists` carries the one already open. */
+export type GitHubPullRequestOutcome =
+  | { readonly kind: "created"; readonly url: string }
+  | { readonly kind: "exists"; readonly pullRequest: GitHubPullRequest }
+  | { readonly kind: "cli_missing" }
+  | { readonly kind: "signed_out" }
+  | { readonly kind: "no_remote" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/** The serving machine's GitHub CLI login and the repository of the selected folder. */
+export type GitHubProviderState =
+  | { readonly kind: "cli_missing"; readonly repository?: GitHubRepository }
+  | { readonly kind: "signed_out"; readonly repository?: GitHubRepository }
+  | {
+      readonly kind: "signing_in";
+      readonly repository?: GitHubRepository;
+      readonly deviceCode: DeviceCode;
+    }
+  | {
+      readonly kind: "ready";
+      readonly repository?: GitHubRepository;
+      readonly account: GitHubAccount;
+      readonly pullRequest: GitHubPullRequestContext;
+    }
+  | {
+      readonly kind: "error";
+      readonly repository?: GitHubRepository;
+      readonly message: string;
+    };
 
 export type ThemePreference = "system" | "light" | "dark";
 
@@ -91,80 +250,13 @@ export type AppMenuCommand =
 // host types
 // ---------------------------------------------------------------------------
 
-export type CloudAvailability =
-  | { readonly kind: "ready" }
-  | { readonly kind: "unavailable"; readonly message: string };
-
-/**
- * Sessions live in a local store (Home or a folder) or on the configured server.
- * `sessions` are the top-level rows; `delegating` names those with a subagent
- * still working, which the host sees and the rows alone do not say.
- */
-export type WorkspaceSessionDirectory =
-  | {
-      readonly environment: "local";
-      readonly workspacePath: string | null;
-      readonly sessions: readonly SessionInfo[];
-      readonly delegating: readonly SessionId[];
-    }
-  | {
-      readonly environment: "cloud";
-      readonly sessions: readonly SessionInfo[];
-      readonly delegating: readonly SessionId[];
-      readonly availability: CloudAvailability;
-    };
-
-/** Where a session row lives: one local store (`null` is Home) or the configured server. */
-export type SessionDirectorySource =
-  | { readonly environment: "local"; readonly workspacePath: string | null }
-  | { readonly environment: "cloud" };
-
-export type SessionDirectoryChange =
-  | {
-      readonly kind: "upsert";
-      readonly source: SessionDirectorySource;
-      readonly session: SessionInfo;
-    }
-  | { readonly kind: "removed"; readonly sessionId: SessionId }
-  | { readonly kind: "dropped"; readonly source: SessionDirectorySource }
-  | { readonly kind: "availability"; readonly availability: CloudAvailability }
-  | {
-      readonly kind: "delegating";
-      readonly source: SessionDirectorySource;
-      readonly sessionIds: readonly SessionId[];
-    };
-
-/** Top-level rows as the host holds them; `revision` is the last change event folded in. */
-export interface SessionDirectorySnapshot {
-  readonly revision: number;
-  readonly directories: readonly WorkspaceSessionDirectory[];
-}
-
-/** The sessions of one local store: `null` is Home. */
-export function localSessions(
-  directories: readonly WorkspaceSessionDirectory[],
-  workspacePath: string | null,
-): readonly SessionInfo[] | undefined {
-  return directories.find(
-    (directory) => directory.environment === "local" && directory.workspacePath === workspacePath,
-  )?.sessions;
-}
-
-/** The sessions of the connected server, if one is configured. */
-export function cloudSessions(
-  directories: readonly WorkspaceSessionDirectory[],
-): readonly SessionInfo[] | undefined {
-  return directories.find((directory) => directory.environment === "cloud")?.sessions;
-}
-
 /** The server the desktop reaches, without its token; the renderer never reads that back. */
 export type ServerState =
   | { readonly kind: "none" }
   | {
       readonly kind: "connected";
       readonly baseUrl: string;
-      readonly info: ServerInfo;
-      readonly provider: ProviderAuthStatus;
+      readonly version: string;
     }
   | {
       readonly kind: "unavailable";
@@ -172,10 +264,7 @@ export type ServerState =
       readonly problem: ServerConnectionProblem;
     };
 
-export interface ServerConnectionProblem {
-  readonly kind: "authentication" | "network" | "incompatible" | "server";
-  readonly message: string;
-}
+export type ServerConnectionProblem = ConnectionProblem;
 
 export type ServerConnectOutcome =
   | { readonly kind: "connected"; readonly baseUrl: string; readonly version: string }
@@ -263,7 +352,7 @@ export interface RemotePairing {
 
 export type ServedTarget =
   | { readonly kind: "home" }
-  | { readonly kind: "project"; readonly workspace: WorkspaceInfo };
+  | { readonly kind: "project"; readonly workspace: SelectedWorkspace };
 
 /**
  * The local store this desktop is serving to browsers and the iOS app. It
@@ -332,9 +421,16 @@ export interface ConnectBridge {
   signOut(): Promise<void>;
 }
 
+/** The folder a window has selected: its workspace on the host, and the path and name the shell shows. */
+export interface SelectedWorkspace {
+  readonly id: WorkspaceId;
+  readonly path: string;
+  readonly name: string;
+}
+
 export interface HostState {
   /** Absent selects the id-only Home target, not the operating-system home folder. */
-  readonly workspace: WorkspaceInfo | undefined;
+  readonly workspace: SelectedWorkspace | undefined;
   readonly platform: NodeJS.Platform;
   /** This computer's name. The web app's host has none to give. */
   readonly machineName?: string;
@@ -344,44 +440,6 @@ export interface HostState {
    * for it belong to this binding and no other.
    */
   readonly binding?: { readonly hostId: string; readonly principal: string };
-}
-
-/** A root chat's first message under a request id this client minted; the folder is the one selected when it is recorded. */
-export type RootStartInput = Omit<StartInput, "workspace">;
-
-export type RootStartOutcome =
-  | { readonly kind: "accepted"; readonly sessionId: SessionId }
-  | { readonly kind: "refused"; readonly message: string }
-  /** No answer came. The host may have the chat; the start stays on record and only its retry asks again. */
-  | { readonly kind: "unanswered" };
-
-/** A root start on record that the renderer has yet to act on. */
-export interface RecordedStart {
-  readonly requestId: string;
-  /** The message as recorded, so a refusal gives it back. */
-  readonly message: StartInput["message"];
-  readonly outcome: RootStartOutcome;
-}
-
-/**
- * Root starts on a registry host, durable by request id. A start is on record
- * before the host hears of it, fixed to this host, this principal and the
- * folder selected then; every retry sends that record unchanged. An answer
- * nobody was waiting for stays on record until the renderer acts on it.
- */
-export interface RootStarts {
-  /** Record, then send. Rejects only when nothing was recorded or sent. */
-  start(input: RootStartInput): Promise<RootStartOutcome>;
-  /**
-   * Ask again about a recorded start, exactly as recorded, or take the answer
-   * already on record. An answer leaves the record: the caller acts on it.
-   * Undefined when the start is not on record here or is being asked about now.
-   */
-  retry(requestId: string): Promise<RootStartOutcome | undefined>;
-  /** Starts on record that nobody is asking about right now, oldest first. */
-  list(): Promise<readonly RecordedStart[]>;
-  /** The renderer has acted on this start; its record goes. */
-  dismiss(requestId: string): Promise<void>;
 }
 
 /** CSS family names discovered by the native host; font-file paths never cross IPC. */
@@ -405,28 +463,11 @@ export interface TrustConsent {
 
 export type OpenWorkspaceOutcome =
   /** The folder is current. `needsTrust`: it carries project input and no decision yet, so ask now. */
-  | { kind: "opened"; workspace: WorkspaceInfo; needsTrust: boolean }
+  | { kind: "opened"; workspace: SelectedWorkspace; needsTrust: boolean }
   /** The host would not make the folder current until it is trusted there; a remote server's answer. */
   | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
-
-/**
- * What a running sign-in shows while the provider's flow waits on the user.
- * Device codes and their instructions stay until the attempt ends; messages
- * are the latest word from the flow and never replace a code. The device
- * secret never leaves the host. `browser` names the page to finish on, which
- * only a host that cannot open the serving machine's browser reports.
- */
-export type LoginProgress =
-  | ({ readonly kind: "device_code" } & DeviceCode)
-  | ({ readonly kind: "browser" } & BrowserSignIn)
-  | { readonly kind: "message"; readonly message: string };
-
-export type DesktopModelOption = CatalogModel;
-
-/** Everything the picker and Settings › Models draw from, read in one call. */
-export type DesktopCatalog = ProviderCatalog;
 
 // ---------------------------------------------------------------------------
 // browser surfaces
@@ -580,28 +621,16 @@ export type HostEvent =
   | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "terminal_data"; id: string; data: string }
   | { kind: "terminal_exit"; id: string; exitCode: number }
-  | { kind: "workspace_opened"; workspace: WorkspaceInfo }
+  | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   /** A host mutation (file save, terminal) was refused. Sessions report trust through their activation. */
   | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
-  /** A sign-in, sign-out, or preference change; re-read the catalog. */
-  | { kind: "catalog_changed" }
   | { kind: "github_changed" }
-  /** A running sign-in has something to show. `attempt` is the ID the renderer chose for it. */
-  | { kind: "login_progress"; attempt: string; provider: string; progress: LoginProgress }
   /** The server was connected or disconnected; re-read its state. */
   | { kind: "server_changed" }
-  /** Rows changed in the host's session model. Contiguous revisions apply; a gap re-reads the snapshot. */
-  | {
-      kind: "session_directory";
-      revision: number;
-      changes: readonly SessionDirectoryChange[];
-    }
   /** Remote access started, stopped, or moved folders; re-read its state. */
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
-  /** A recorded root start was answered or asked about; re-read `starts.list`. */
-  | { kind: "starts_changed" }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download"; surface: string; download: BrowserDownload }
   /** The page asked for a new tab: a Cmd+click, a `target="_blank"` link. */
@@ -626,50 +655,6 @@ export type HostEvent =
       url: string;
       state: BrowserSurfaceState;
     };
-
-// ---------------------------------------------------------------------------
-// the renderer-facing bridge, the SDK interfaces verbatim
-// ---------------------------------------------------------------------------
-
-export type SessionsBridge = Pick<
-  RemoteNyte["sessions"],
-  | "create"
-  | "get"
-  | "snapshot"
-  | "metadata"
-  | "list"
-  | "rename"
-  | "setPinned"
-  | "setArchived"
-  | "delete"
-  | "configure"
->;
-
-export type MessagesBridge = Pick<RemoteNyte["messages"], "send" | "cancel" | "redeliver">;
-
-export type RunsBridge = Pick<RemoteNyte["runs"], "abort" | "reply" | "diff">;
-
-export type HeadsBridge = Pick<RemoteNyte["heads"], "move">;
-
-/** `workspace.list` and `workspace.forget` answer from the registry even when no workspace is open. */
-export type WorkspaceBridge = Pick<
-  RemoteNyte["workspace"],
-  "list" | "forget" | "files" | "read" | "save" | "format" | "search" | "blame" | "vcs"
->;
-
-export type ProviderBridge = {
-  readonly models: Pick<RemoteNyte["provider"]["models"], "default">;
-};
-
-export type PluginsBridge = Pick<RemoteNyte["plugins"], "catalog" | "list"> & {
-  readonly commands: Pick<RemoteNyte["plugins"]["commands"], "list" | "run">;
-  readonly settings: Pick<RemoteNyte["plugins"]["settings"], "list" | "apply">;
-  readonly resources: Pick<RemoteNyte["plugins"]["resources"], "list">;
-};
-
-export type WatchInput =
-  | { sessionId: SessionId; afterSeq?: Seq }
-  | { sessionId: SessionId; live: true };
 
 export interface TerminalBridge {
   create(input: { id: string; workspacePath: string | null }): Promise<TerminalInfo>;
@@ -755,7 +740,13 @@ export interface HostBridge {
   /** Keep Electron's native material and controls in the renderer's appearance mode. */
   setThemePreference(preference: ThemePreference): void;
   state(): Promise<HostState>;
-  sessionDirectory(): Promise<SessionDirectorySnapshot>;
+  /**
+   * Where the host's listener is and the credential to reach it with. The
+   * interface connects with `sdk.connect` and holds that one connection.
+   */
+  endpoint(): Promise<HostEndpoint>;
+  /** Keeps the device token a pairing connect yielded, so the next start connects with it. Absent where the credential is not paired. */
+  readonly remember?: (credential: CredentialSource) => void;
   /** Installed UI and fixed-pitch families, discovered without renderer font permissions. */
   fonts(): Promise<LocalFontCatalog>;
   /** Select local history by path, even when the folder is unavailable. */
@@ -773,45 +764,13 @@ export interface HostBridge {
   }) => Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
   /**
-   * Root starts on a registry host, where `sessions.create` is refused. Absent
-   * where the renderer creates, configures and sends itself.
-   */
-  readonly starts?: RootStarts;
-  /** A session reads its owning host's catalog. Omit the input for local provider settings. */
-  catalog(input?: { readonly sessionId: SessionId }): Promise<DesktopCatalog>;
-  /**
    * Fold retained history from Home and registered desktop workspace stores
    * for one window. The window is the request, not a client-side slice, so
    * desktop figures are scoped to the same days. Claude Code is a separate
-   * all-time local-history snapshot, independent of this window.
+   * all-time local-history snapshot, independent of this window. Absent
+   * where the host keeps no usage history; Settings hides the Usage page.
    */
-  usage(input: UsageWindow): Promise<UsageSnapshot>;
-  /**
-   * The subscription windows the signed-in Anthropic and OpenAI accounts
-   * report. This is the only usage read that leaves the machine, so the page
-   * asks for it once per visit and never on a timer.
-   */
-  accountLimits(): Promise<readonly AccountUsage[]>;
-  /**
-   * Browser sign-in needs a user gesture. An API key crosses IPC once and is
-   * never read back; the provider's own login flow stores it. `attempt` is a
-   * renderer-chosen ID that correlates progress events and a later cancel with
-   * this call; a new attempt for the same provider cancels the previous one
-   * and starts once that one has settled. An ID is single-use: one the host
-   * still knows, running or recently settled, is refused.
-   */
-  login(input: { provider: string; method: LoginMethod; attempt: string }): Promise<LoginOutcome>;
-  /** Stop a running sign-in. An attempt that already ended is a no-op. */
-  cancelLogin(input: { attempt: string }): Promise<void>;
-  /**
-   * Finish a browser sign-in whose progress `acceptsCode` with the code or
-   * redirect address its page ended on. Absent where the host opens that page
-   * itself.
-   */
-  readonly answerLogin?: (input: { attempt: string; code: string }) => Promise<void>;
-  logout(input: { provider: string }): Promise<void>;
-  /** Apply one preference change and answer with the catalog as it now stands. */
-  setPreference(change: PreferenceChange): Promise<DesktopCatalog>;
+  readonly usage?: (input: UsageWindow) => Promise<UsageSnapshot>;
   /** Absent where the host does not update itself. */
   readonly updates?: {
     state(): Promise<UpdateState>;
@@ -825,8 +784,6 @@ export interface HostBridge {
     /** Proves the server answers with this token before remembering either. */
     connect(input: { baseUrl: string; token: string }): Promise<ServerConnectOutcome>;
     disconnect(): Promise<void>;
-    /** A new chat on the server; the desktop's selected folder does not change. */
-    createSession(): Promise<SessionInfo>;
   };
   remote: {
     state(): Promise<RemoteAccessState>;
@@ -870,30 +827,10 @@ export interface HostBridge {
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
-/** What `window.nyte` is: the SDK verbatim, plus watch-over-push and the host. */
+/** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files and git are the connection's. */
 export interface NyteBridge {
   readonly clientSurface: ClientSurface;
-  /** The web app's server answers `environment.*`, as `ServerInfo.environment` reported. The desktop always has its own. */
-  readonly environment?: true;
   /** The web app reaches a desktop through the Nyte account relay. That desktop's provider and GitHub sign-ins stay on it. */
   readonly relay?: true;
-  readonly sessions: SessionsBridge;
-  readonly messages: MessagesBridge;
-  readonly jobs: RemoteNyte["jobs"];
-  readonly runs: RunsBridge;
-  readonly heads: HeadsBridge;
-  readonly workspace: WorkspaceBridge;
-  readonly provider: ProviderBridge;
-  readonly plugins: PluginsBridge;
-  /**
-   * `onError` hears a watch that ended with an error (the SDK's `watch`
-   * threw, or the start itself was refused), so a failure never dissolves
-   * into silence.
-   */
-  watch(
-    input: WatchInput,
-    onEvent: (event: SessionEvent) => void,
-    onError?: (error: Error) => void,
-  ): Disposer;
   readonly host: HostBridge;
 }

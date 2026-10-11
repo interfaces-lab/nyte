@@ -1,19 +1,17 @@
-import type { JobInfo, Nyte, SessionEvent, SessionId } from "@nyte-ai/core";
+import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { BoxRenderable, ScrollBoxRenderable, StyledText, TextRenderable, fg } from "@opentui/core";
 import { keycap } from "./constants.ts";
 import { formatDuration } from "./format.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { InlineMenu, MenuScreen } from "./picker.ts";
-import { waitingCall } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
 import { closePanel, notice, openInlineMenu, setHints } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
 
 import {
   TaskIndex,
-  projectTasks,
   statusMark,
   taskAgent,
+  taskConfiguration,
   taskElapsedMs,
   taskLabel,
   taskStatus,
@@ -25,6 +23,8 @@ import type { Task } from "./tasks.ts";
 import { Timeline } from "./timeline.ts";
 import { ToolOutputExpansion } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
+import { openQuestions } from "./view-helpers.ts";
+import type { OpenQuestion } from "./view-helpers.ts";
 
 class TaskInspector {
   readonly container: BoxRenderable;
@@ -101,9 +101,7 @@ class TaskInspector {
       fg(theme.dim)(
         [
           status,
-          ...(task.kind === "agent"
-            ? [task.state.config.model?.id, task.state.config.thinkingLevel]
-            : []),
+          task.kind === "agent" ? taskConfiguration(task) : undefined,
           elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
         ]
           .filter((value) => value !== undefined)
@@ -120,7 +118,7 @@ class TaskInspector {
     }
 
     if (task.kind === "agent") {
-      this.view.sync(task.state);
+      if (task.view !== undefined) this.view.sync(task.view, { key: task.id });
     } else {
       if (this.output === undefined) {
         this.output = new TextRenderable(this.shell.renderer, {
@@ -130,7 +128,7 @@ class TaskInspector {
         this.scroll.add(this.output);
       }
 
-      this.output.content = task.job.output || "No output yet.";
+      this.output.content = task.job.tail || "No output yet.";
     }
   }
 
@@ -149,21 +147,16 @@ class TaskInspector {
 
 interface TaskBrowserOptions {
   readonly shell: Shell;
-  readonly nyte: Nyte;
+  readonly connection: Connection;
   readonly onChange?: () => void;
   readonly onClose: () => void;
   readonly onError: (cause: unknown) => void;
 }
 
-function isForegroundJob(job: JobInfo): boolean {
-  return job.phase.kind === "running" && !job.isBackgrounded;
-}
-
 /** Session-owned jobs stay alive when their menu or output view closes. */
 export class TaskBrowser {
   private readonly options: TaskBrowserOptions;
-  private state: SessionState | undefined;
-  private jobs: readonly JobInfo[] = [];
+  private session: SessionInfo | undefined;
   private rows: readonly Task[] = [];
   private menu: InlineMenu | undefined;
   private inspector: { view: TaskInspector; id: string; unregister: () => void } | undefined;
@@ -171,8 +164,6 @@ export class TaskBrowser {
   private finished = false;
   private menuHasTasks = false;
   private generation = 0;
-  private request = 0;
-  private backgrounding = false;
 
   constructor(options: TaskBrowserOptions) {
     this.options = options;
@@ -184,91 +175,19 @@ export class TaskBrowser {
     };
   }
 
-  update(state: SessionState, event?: SessionEvent): void {
-    const changedSession = this.state?.sessionId !== state.sessionId;
-    const previousWaiting = this.state === undefined ? undefined : waitingCall(this.state);
-
-    if (changedSession) {
-      this.close();
-      this.generation += 1;
-      this.jobs = [];
-      this.index?.close();
-      this.index = new TaskIndex({
-        nyte: this.options.nyte,
-        onChange: () => this.updateTasks(),
-        onError: this.options.onError,
-      });
-    }
-
-    this.state = state;
-    this.index?.update(state, event);
-
-    if (event?.kind === "job") {
-      const jobs = new Map(this.jobs.map((job) => [job.id, job]));
-      jobs.set(event.job.id, event.job);
-      this.jobs = [...jobs.values()];
-    }
-
-    if (changedSession || event?.kind === "job") this.updateTasks();
-    // Parent questions must still notify the host without repainting unchanged tasks.
-    else if (previousWaiting?.waitId !== waitingCall(state)?.waitId) this.options.onChange?.();
-
-    if (changedSession || event === undefined || event.kind === "synced") {
-      void this.refresh().catch(this.options.onError);
-    }
-  }
-
-  private async refresh(): Promise<void> {
-    const state = this.state;
-
-    if (state === undefined) return;
-    const generation = this.generation;
-    const request = ++this.request;
-    const before = new Map(this.jobs.map((job) => [job.id, job]));
-    const listed = await this.options.nyte.jobs.list({ sessionId: state.sessionId });
-
-    if (generation !== this.generation || request !== this.request) return;
-    const merged = new Map(listed.map((job) => [job.id, job]));
-
-    // A watch update received during the read wins, even within the same clock tick.
-    for (const job of this.jobs) {
-      if (job !== before.get(job.id)) merged.set(job.id, job);
-    }
-
-    this.jobs = [...merged.values()];
+  /** Follows the tasks of the session on screen; a new session starts a new index. */
+  follow(session: SessionInfo): void {
+    if (this.session?.id === session.id) return;
+    this.close();
+    this.generation += 1;
+    this.session = session;
+    this.index?.close();
+    this.index = new TaskIndex(session, {
+      connection: this.options.connection,
+      onChange: () => this.updateTasks(),
+      onError: this.options.onError,
+    });
     this.updateTasks();
-  }
-
-  async backgroundForeground(): Promise<void> {
-    if (this.backgrounding) return;
-    const state = this.state;
-
-    if (state === undefined) return;
-    this.backgrounding = true;
-    const generation = this.generation;
-
-    try {
-      const jobs = await this.options.nyte.jobs.list({
-        sessionId: state.sessionId,
-        head: state.head,
-      });
-
-      if (generation !== this.generation) return;
-      const foreground = jobs.filter(isForegroundJob);
-
-      if (foreground.length === 0) {
-        notice(this.options.shell, "No foreground work to background.");
-
-        return;
-      }
-
-      for (const job of foreground) {
-        if (generation !== this.generation) return;
-        await this.act(state.sessionId, job.id, "background");
-      }
-    } finally {
-      this.backgrounding = false;
-    }
   }
 
   get tasks(): readonly Task[] {
@@ -276,7 +195,7 @@ export class TaskBrowser {
   }
 
   private updateTasks(): void {
-    this.rows = projectTasks(this.index?.states ?? [], this.jobs);
+    this.rows = this.index?.tasks ?? [];
     this.repaint();
   }
 
@@ -284,16 +203,13 @@ export class TaskBrowser {
     return this.tasks.length > 0;
   }
 
-  /** Foreground work is not a task row, but it is what Ctrl+Z moves. */
-  get hasForegroundWork(): boolean {
-    return this.jobs.some(isForegroundJob);
-  }
+  /** The first question a child is waiting on, with the child that asks it. */
+  get waiting(): { readonly session: SessionId; readonly question: OpenQuestion } | undefined {
+    for (const task of this.rows) {
+      if (task.kind !== "agent" || task.view === undefined) continue;
+      const question = openQuestions(task.view)[0];
 
-  get waiting() {
-    for (const state of this.index?.states ?? []) {
-      const waiting = waitingCall(state);
-
-      if (waiting !== undefined) return waiting;
+      if (question !== undefined) return { session: task.id, question };
     }
 
     return undefined;
@@ -339,18 +255,11 @@ export class TaskBrowser {
     const { shell } = this.options;
 
     if (this.menu !== undefined || shell.ui.selecting || shell.ui.prompting) return;
-    this.index?.discover();
     this.finished = false;
     this.menuHasTasks = this.tasks.some(unfinishedTask);
     this.menu = openInlineMenu(shell, this.screen(), this.options.onError);
     shell.dismissInfoPanel = () => this.close();
     setHints(shell, this.menu.hints);
-    const menu = this.menu;
-    void this.refresh().catch((cause) => {
-      if (this.menu !== menu) return;
-      this.close();
-      this.options.onError(cause);
-    });
   }
 
   close(): void {
@@ -366,7 +275,7 @@ export class TaskBrowser {
 
   dispose(): void {
     this.generation += 1;
-    this.state = undefined;
+    this.session = undefined;
     this.close();
     this.index?.close();
     this.rows = [];
@@ -390,11 +299,9 @@ export class TaskBrowser {
             label: `${taskAgent(task)} · ${taskLabel(task)}`,
             description: [
               elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
-              ...(task.kind === "agent"
-                ? [task.state.config.model?.id, task.state.config.thinkingLevel]
-                : []),
+              task.kind === "agent" ? taskConfiguration(task) : undefined,
             ]
-              .filter((value) => value !== undefined)
+              .filter((value) => value !== undefined && value !== "")
               .join(" · "),
             status: { text: taskActivity(task), tone: "dim" as const },
           };
@@ -456,68 +363,40 @@ export class TaskBrowser {
   }
 
   private async cancelTask(id: string): Promise<void> {
-    const state = this.state;
+    const session = this.session;
     const task = this.tasks.find((candidate) => candidate.id === id);
 
-    if (state === undefined || task === undefined) return;
+    if (session === undefined || task === undefined) return;
 
     if (this.inspector === undefined) this.close();
 
     if (task.kind === "agent") {
       if (!canStopTask(task)) return;
       notice(this.options.shell, "Cancellation requested.");
-      await this.options.nyte.runs.abort({
-        sessionId: task.state.sessionId,
-        head: task.state.head,
-      });
+      await this.options.connection.session(task.id).stop();
 
       return;
     }
 
-    if (task.job.phase.kind !== "running") {
+    if (task.job.state.kind !== "running") {
       notice(this.options.shell, "This task has already finished. /tasks opens its output.");
 
       return;
     }
 
-    await this.act(state.sessionId, task.job.id, "cancel");
-  }
-
-  private async act(
-    sessionId: SessionId,
-    jobId: string,
-    action: "background" | "cancel",
-  ): Promise<void> {
     const generation = this.generation;
-    // The request is acknowledged before the host works on it; the notice
-    // stands unless the host answers that there was nothing to do.
-    notice(
-      this.options.shell,
-      action === "background"
-        ? "Running in background. /tasks to inspect."
-        : "Cancellation requested.",
-    );
-    const outcome = await this.options.nyte.jobs[action]({ sessionId, jobId });
+    notice(this.options.shell, "Cancellation requested.");
+
+    const outcome = await this.options.connection
+      .workspace(session.workspace)
+      .job(task.job.id)
+      .stop();
 
     if (generation !== this.generation) return;
 
-    switch (outcome.kind) {
-      case "applied":
-        break;
-      case "not_found":
-        notice(this.options.shell, "This task is no longer available.");
-        break;
-      case "finished":
-        notice(this.options.shell, "This command has already finished.");
-        break;
-      default: {
-        const exhaustive: never = outcome;
-
-        return exhaustive;
-      }
-    }
-
-    await this.refresh();
+    if (outcome.kind === "missing") notice(this.options.shell, "This task is no longer available.");
+    else if (outcome.kind === "settled")
+      notice(this.options.shell, "This command has already finished.");
   }
 
   private inspect(id: string): void {

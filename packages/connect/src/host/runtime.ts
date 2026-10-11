@@ -236,35 +236,29 @@ interface HighWater {
 }
 
 function storeFailed(): ConnectError {
-  return new ConnectError({
-    code: "internal",
-    message: "Nyte can't use ~/.nyte/connect.json. Remote access is off.",
-  });
+  return new ConnectError("internal", "Nyte can't use ~/.nyte/connect.json. Remote access is off.");
 }
 
 function unavailable(): ConnectError {
-  return new ConnectError({
-    code: "forbidden",
-    message: "Account remote access isn't available in this build or on this Mac.",
-  });
+  return new ConnectError(
+    "denied",
+    "Account remote access isn't available in this build or on this Mac.",
+  );
 }
 
 function notLinked(): ConnectError {
-  return new ConnectError({
-    code: "not_found",
-    message: "Link this Mac to your account first.",
-  });
+  return new ConnectError("unknown", "Link this Mac to your account first.");
 }
 
 function closed(): ConnectError {
-  return new ConnectError({ code: "closed", message: "Nyte is quitting." });
+  return new ConnectError("unavailable", "Nyte is quitting.");
 }
 
 function originChanged(): ConnectError {
-  return new ConnectError({
-    code: "forbidden",
-    message: "This host is linked through another broker. Unlink it before linking here.",
-  });
+  return new ConnectError(
+    "denied",
+    "This host is linked through another broker. Unlink it before linking here.",
+  );
 }
 
 /** The owner, the clock or this host ended the transaction before it was completed. */

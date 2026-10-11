@@ -10,20 +10,23 @@
  * inside Electron, and this module is exercised without it.
  */
 import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@pierre/diffs";
-import type { VcsContents, VcsScope } from "@nyte-ai/protocol";
+import type { GitApi, GitScope } from "@nyte-ai/sdk";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 
-/** `nyte.workspace.vcs.contents`, passed in so this module stays testable. */
+/** A file's old and new sides under a scope, as `git.contents` answers. */
+export type DiffContents = Awaited<ReturnType<GitApi["contents"]>>;
+
+/** `git.contents`, passed in so this module stays testable. */
 export type DiffContentsReader = (input: {
-  readonly scope: VcsScope;
+  readonly scope: GitScope;
   readonly path: string;
-}) => Promise<VcsContents>;
+}) => Promise<DiffContents>;
 
 export interface DiffExpansionSource {
   readonly readContents: DiffContentsReader;
   /** The repository root, so two checkouts of one path cannot share a cache entry. */
   readonly root: string;
-  readonly scope: VcsScope;
+  readonly scope: GitScope;
 }
 
 export type DiffFilesLoader = (fileDiff: FileDiffMetadata) => Promise<FileDiffLoadedFiles>;
@@ -49,7 +52,7 @@ function fileSide(
 }
 
 function textSide(
-  side: VcsContents["old"],
+  side: DiffContents["old"],
   path: string,
   position: "current" | "previous",
 ): string {

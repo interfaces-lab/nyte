@@ -1,6 +1,6 @@
-import type { ModelInfo, RunConfig } from "@nyte-ai/protocol";
+import type { ModelInfo, Thinking } from "@nyte-ai/sdk";
 
-export type ThinkingLevel = NonNullable<RunConfig["thinkingLevel"]>;
+export type ThinkingLevel = Thinking;
 
 /**
  * Low → high, same order the host catalog uses. A model's list is the subset
@@ -27,16 +27,16 @@ export const THINKING_LABELS: Readonly<Record<ThinkingLevel, string>> = {
 };
 
 export function thinkingLevelsFor(
-  option: Pick<ModelInfo, "thinkingLevels"> | undefined,
+  option: Pick<ModelInfo, "thinking"> | undefined,
 ): readonly ThinkingLevel[] {
-  const supported = option?.thinkingLevels ?? (["off"] as const);
+  const supported = option?.thinking ?? (["off"] as const);
   const ordered = THINKING_ORDER.filter((level) => supported.includes(level));
 
   return ordered.length === 0 ? ["off"] : ordered;
 }
 
 export function supportedThinkingLevel(
-  option: Pick<ModelInfo, "thinkingLevels"> | undefined,
+  option: Pick<ModelInfo, "thinking"> | undefined,
   requested: ThinkingLevel | undefined,
 ): ThinkingLevel {
   const levels = thinkingLevelsFor(option);

@@ -163,33 +163,13 @@ function serverStanding(state: Exclude<ServerState, { kind: "none" }>): Connecti
     };
   }
 
-  const { auth } = state.provider;
-
-  return auth.kind === "ready" || auth.kind === "unverified"
-    ? { tone: "on", status: "Connected" }
-    : { tone: "warn", status: "Model unavailable" };
+  return { tone: "on", status: "Connected" };
 }
 
 function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
   if (state.kind === "unavailable") return state.problem.message;
-  const { model, auth } = state.provider;
-  const name = `${model.provider}/${model.id}`;
 
-  if (auth.kind !== "ready" && auth.kind !== "unverified") return `${name}: ${auth.message}.`;
-  const modelLine = auth.kind === "ready" ? `${name}.` : `${name}, not verified.`;
-  const host = state.info.host;
-
-  if (host.kind === "unspecified")
-    return `${modelLine} The server responds, but does not report its tools or history storage.`;
-
-  const persistence =
-    host.persistence === "durable"
-      ? "Chat history uses durable storage."
-      : host.persistence === "ephemeral"
-        ? "Chat history is temporary and can disappear when the server restarts."
-        : "The server has not reported how chat history is stored.";
-
-  return `${modelLine} ${host.capabilities.workspace ? "Workspace tools available." : "Chat only."} ${persistence}`;
+  return `Nyte ${state.version}.`;
 }
 
 export function CloudConnection({ active }: { readonly active: boolean }): ReactElement {

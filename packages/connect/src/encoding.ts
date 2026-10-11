@@ -87,8 +87,8 @@ export function isBrokerOrigin(origin: string): boolean {
 }
 
 /**
- * Where phones reach a desktop: `<origin>/r/<environmentId>`. The Nyte HTTP
- * client keeps this path prefix and appends `/v1/...` to it.
+ * Where phones reach a desktop: `<origin>/r/<environmentId>`. A protocol
+ * transport keeps this path prefix and appends `/<operation>` to it.
  */
 export function relayAddress(origin: string, environmentId: string): string {
   if (!isBrokerOrigin(origin))

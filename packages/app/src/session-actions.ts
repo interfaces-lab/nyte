@@ -1,12 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
+import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import type { SessionsBridge, WorkspaceSessionDirectory } from "./bridge.ts";
 import { ActionToasts } from "./action-toasts.ts";
 import { keys } from "./query-keys.ts";
-import type { SessionPage } from "./session-directory.ts";
-
-type SessionWrites = Pick<SessionsBridge, "rename" | "setPinned" | "setArchived" | "delete">;
+import { connection, directoryWatch } from "./sdk.tsx";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -47,9 +44,8 @@ function applyChange(session: SessionInfo, change: SessionChange): SessionInfo |
  */
 export class SessionActions {
   readonly #client: QueryClient;
-  readonly #sessions: SessionWrites;
+  readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
-  readonly #releaseResources: ((sessionId: SessionId) => void) | undefined;
   readonly #listeners = new Set<() => void>();
   readonly #queues = new Map<SessionId, Promise<boolean>>();
   readonly #archiveVersions = new Map<SessionId, PendingChange>();
@@ -58,19 +54,16 @@ export class SessionActions {
 
   constructor({
     client,
-    sessions,
+    sessions = connection,
     toasts = new ActionToasts(),
-    releaseResources,
   }: {
     client: QueryClient;
-    sessions: SessionWrites;
+    sessions?: () => Pick<Connection, "session">;
     toasts?: ActionToasts;
-    releaseResources?: (sessionId: SessionId) => void;
   }) {
     this.#client = client;
-    this.#sessions = sessions;
+    this.#connection = sessions;
     this.#toasts = toasts;
-    this.#releaseResources = releaseResources;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -85,7 +78,7 @@ export class SessionActions {
     let projected: SessionInfo | null = session;
 
     for (const pending of changes) {
-      if (pending.sessionId === session.sessionId && projected !== null)
+      if (pending.sessionId === session.id && projected !== null)
         projected = applyChange(projected, pending.change);
     }
 
@@ -208,15 +201,9 @@ export class SessionActions {
 
   #find(sessionId: SessionId): SessionInfo | undefined {
     const session =
-      this.#client
-        .getQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory)
-        ?.flatMap((directory) => directory.sessions)
-        .find((item) => item.sessionId === sessionId) ??
+      directoryWatch("all").value?.find((item) => item.id === sessionId) ??
       this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId)) ??
-      this.#client.getQueryData<SessionSnapshot>(keys.snapshot(sessionId))?.session ??
-      this.#client
-        .getQueryData<SessionPage>(keys.sessionPreview)
-        ?.items.find((item) => item.sessionId === sessionId);
+      undefined;
 
     return session === undefined ? undefined : (this.projectSession(session) ?? undefined);
   }
@@ -245,42 +232,21 @@ export class SessionActions {
       try {
         const { sessionId, change } = pending;
 
-        switch (change.kind) {
-          case "archive":
-            await this.#sessions.setArchived({ sessionId, archived: change.archived });
-            break;
-          case "pin":
-            await this.#sessions.setPinned({ sessionId, pinned: change.pinned });
-            break;
-          case "rename":
-            await this.#sessions.rename({ sessionId, name: change.name });
-            break;
-          case "delete":
-            await this.#sessions.delete({ sessionId });
-            break;
-          default: {
-            const exhaustive: never = change;
+        const session = this.#connection().session(sessionId);
+        const outcome =
+          change.kind === "delete"
+            ? await session.remove()
+            : await session.update(
+                change.kind === "archive"
+                  ? { archived: change.archived }
+                  : change.kind === "pin"
+                    ? { pinned: change.pinned }
+                    : { name: change.name },
+              );
 
-            return exhaustive;
-          }
-        }
-
-        // Discard reads started before the write before removing its projection.
-        await Promise.all([
-          this.#client.cancelQueries({ queryKey: keys.sessions }),
-          this.#client.cancelQueries({ queryKey: keys.session(sessionId), exact: true }),
-          this.#client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true }),
-        ]);
+        if (outcome.kind !== "updated" && outcome.kind !== "removed")
+          throw new Error(`The host answered ${outcome.kind}`);
         this.#commit(pending);
-
-        if (
-          change.kind === "delete" ||
-          (change.kind === "archive" &&
-            change.archived &&
-            this.#archiveVersions.get(sessionId) === pending)
-        ) {
-          this.#releaseResources?.(sessionId);
-        }
 
         return true;
       } catch {
@@ -303,60 +269,24 @@ export class SessionActions {
 
     this.#queues.set(pending.sessionId, work);
     void work.then(() => {
-      if (this.#queues.get(pending.sessionId) !== work) return;
-      this.#queues.delete(pending.sessionId);
-      void this.#client.invalidateQueries({ queryKey: keys.sessions });
-      void this.#client.invalidateQueries({
-        queryKey: keys.session(pending.sessionId),
-        exact: true,
-      });
-
-      if (pending.change.kind !== "delete")
-        void this.#client.invalidateQueries({
-          queryKey: keys.snapshot(pending.sessionId),
-          exact: true,
-        });
+      if (this.#queues.get(pending.sessionId) === work) this.#queues.delete(pending.sessionId);
     });
 
     return work;
   }
 
+  /** The directory watch carries the change; a row read on its own is patched here. */
   #commit({ sessionId, change }: PendingChange): void {
-    const update = (sessions: readonly SessionInfo[]): readonly SessionInfo[] =>
-      sessions.flatMap((session) => {
-        if (session.sessionId !== sessionId) return [session];
-        const changed = applyChange(session, change);
-
-        return changed === null ? [] : [changed];
-      });
-
-    this.#client.setQueryData<readonly WorkspaceSessionDirectory[]>(
-      keys.sessionDirectory,
-      (directories) =>
-        directories?.map((directory) => ({ ...directory, sessions: update(directory.sessions) })),
-    );
-    this.#client.setQueryData<SessionPage>(keys.sessionPreview, (page) =>
-      page === undefined ? page : { ...page, items: update(page.items) },
-    );
-    this.#client.setQueriesData<SessionPage>({ queryKey: ["sessions", "search"] }, (page) =>
-      page === undefined
-        ? page
-        : { ...page, items: update(page.items).filter((session) => !session.archived) },
-    );
-    this.#client.setQueryData<SessionInfo | null>(keys.session(sessionId), (session) =>
-      session === null || session === undefined ? session : applyChange(session, change),
-    );
-
     if (change.kind === "delete") {
-      this.#client.removeQueries({ queryKey: keys.snapshot(sessionId), exact: true });
+      this.#client.removeQueries({ queryKey: keys.session(sessionId), exact: true });
 
       return;
     }
 
-    this.#client.setQueryData<SessionSnapshot>(keys.snapshot(sessionId), (snapshot) =>
-      snapshot === undefined
-        ? snapshot
-        : { ...snapshot, session: applyChange(snapshot.session, change) ?? snapshot.session },
+    this.#client.setQueryData<SessionInfo | null>(keys.session(sessionId), (session) =>
+      session === undefined || session === null
+        ? session
+        : (applyChange(session, change) ?? session),
     );
   }
 }

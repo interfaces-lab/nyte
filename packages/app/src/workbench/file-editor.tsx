@@ -14,7 +14,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
-import type { WorkspaceFileDocument } from "@nyte-ai/protocol";
+import type { FileDocument } from "@nyte-ai/sdk";
 import { button } from "@nyte-ai/ui/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/styles.stylex.ts";
@@ -25,7 +25,13 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
-import { useHostState, useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
+import {
+  useHostState,
+  useSaveWorkspaceFile,
+  useWorkspaceFile,
+  workspaceFiles,
+  workspaceGit,
+} from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -34,7 +40,7 @@ import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
-type TextFile = Extract<WorkspaceFileDocument, { readonly kind: "text" }>;
+type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 
 export interface FileEditorHandle {
   save(): Promise<void>;
@@ -191,7 +197,7 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
           ? `The file could not be opened. ${document.error.message}`
           : document.data?.kind === "binary"
             ? "Binary files cannot be edited here."
-            : document.data?.kind === "too_large"
+            : document.data?.kind === "large"
               ? "This file is too large for the workbench editor."
               : "Opening file…"}
       </div>
@@ -253,7 +259,7 @@ function TextFileEditor({
 
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
-    queryFn: () => nyte.workspace.blame({ target: { kind: "workspace" }, path: file.path }),
+    queryFn: async () => (await workspaceGit()).blame(file.path),
     enabled: gitBlame && active && !dirty,
   });
 
@@ -272,9 +278,10 @@ function TextFileEditor({
 
   const save = (): Promise<void> =>
     buffer.save({
-      write: saveFile.mutateAsync,
+      write: (input) =>
+        saveFile.mutateAsync({ path: input.path, contents: input.contents, expect: input.version }),
       format: formatOnSave
-        ? (input) => nyte.workspace.format({ target: { kind: "workspace" }, ...input })
+        ? async (input) => (await workspaceFiles()).format(input.path, input.contents)
         : undefined,
     });
 
@@ -418,12 +425,7 @@ function TextFileEditor({
   const format = async (): Promise<void> => {
     const current = buffer.getSnapshot();
 
-    const result = await nyte.workspace.format({
-      target: { kind: "workspace" },
-      path: file.path,
-      contents: current.contents,
-      version: current.version,
-    });
+    const result = await (await workspaceFiles()).format(file.path, current.contents);
 
     if (result.kind === "formatted") buffer.edit(result.contents);
   };
@@ -471,10 +473,7 @@ function TextFileEditor({
           ]);
         };
 
-  const blameLine =
-    blame.data?.kind === "blame"
-      ? blame.data.lines.find((entry) => entry.line === line)
-      : undefined;
+  const blameLine = blame.data?.lines.find((entry) => entry.line === line);
 
   const blameText = dirty
     ? "Save the file to see up-to-date Git blame."
@@ -482,13 +481,9 @@ function TextFileEditor({
       ? blame.error.message
       : blame.isFetching
         ? "Loading Git blame…"
-        : blame.data?.kind === "error" || blame.data?.kind === "unsupported"
-          ? blame.data.message
-          : blameLine === undefined
-            ? "No Git blame for this line."
-            : blameLine.uncommitted
-              ? "Uncommitted changes"
-              : `${blameLine.author} · ${new Date(blameLine.authorTime * 1000).toLocaleDateString()} · ${blameLine.summary}`;
+        : blameLine === undefined
+          ? "No Git blame for this line."
+          : `${blameLine.author} · ${new Date(blameLine.at).toLocaleDateString()} · ${blameLine.commit.slice(0, 7)}`;
 
   return (
     <div
@@ -527,7 +522,6 @@ function TextFileEditor({
         <div {...props(styles.status)} title={blameText}>
           <span>Line {line}</span>
           <span {...props(styles.statusText)}>{blameText}</span>
-          {blame.data?.kind === "blame" && blame.data.truncated && <span>Partial blame</span>}
         </div>
       )}
       {snapshot.status.kind !== "idle" && (

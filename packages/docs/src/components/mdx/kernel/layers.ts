@@ -4,8 +4,8 @@ export const LAYERS: readonly Layer[] = [
   {
     name: "Client",
     icon: "computer",
-    files: "@nyte-ai/client",
-    role: "Sends messages, stops runs, answers parked calls. Folds the event log into session state.",
+    files: "@nyte-ai/sdk",
+    role: "Sends messages, stops runs, answers parked calls. Folds the host's deltas into the session view.",
     href: "/docs/kernel/events",
   },
   {

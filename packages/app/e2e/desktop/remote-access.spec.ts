@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { launchDesktop } from "../../../desktop/benchmark/desktop.ts";
+import { launchDesktop } from "./launch.ts";
 import { collectErrors } from "../utils/errors.ts";
 
 const APP_ROOT = resolve(import.meta.dirname, "../..");
@@ -44,8 +44,7 @@ test("a browser paired through Remote access shares the desktop's chats until it
 
   const desktop = await launchDesktop({
     parentDirectory: parent,
-    sessionCount: 2,
-    turnsPerSession: 1,
+    sessions: ["Seeded chat 1", "Seeded chat 2"],
   });
 
   cleanup.defer(() => desktop.close());
@@ -53,7 +52,7 @@ test("a browser paired through Remote access shares the desktop's chats until it
   cleanup.defer(() => context.close());
 
   const { page } = desktop;
-  const seeded = desktop.fixture.sessions.map((session) => session.name);
+  const seeded = desktop.sessions;
   await openRemoteAccess(page);
 
   const thisMacOnly = page

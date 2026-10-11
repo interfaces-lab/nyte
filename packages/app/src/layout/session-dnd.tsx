@@ -22,7 +22,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";

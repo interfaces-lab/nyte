@@ -23,7 +23,7 @@ const encoder = new TextEncoder();
  * first frame. A `pairing` code is sent once; the device token the host
  * returns becomes `Connection.credential` and is kept in memory for a later
  * connect with the same URL and code. It returns then; each journal entry
- * is resent with its id afterwards, in order, through the outbox (shown
+ * is resent with its id afterwards, in order, through the retry loop (shown
  * `unsent` until it lands), so a link drop during replay cannot hang it.
  *
  * @throws {SdkError} unavailable when the URL is unreachable.
@@ -177,7 +177,7 @@ async function verifyIdentity(url: string, send: typeof fetch, expected: HostId)
     );
 }
 
-/** Resends journal entries in order, each with its id, through the connection's outbox; a failure is logged and the next entry goes on. */
+/** Resends journal entries in order, each with its id, through the connection's retry loop; a failure is logged and the next entry goes on. */
 async function replay(connection: Connection, entries: readonly JournalEntry[]): Promise<void> {
   for (const entry of entries)
     await connection

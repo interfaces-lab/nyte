@@ -18,20 +18,18 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
 import { draftPreviewText } from "../conversation/message-references.ts";
-import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import { failureNotice } from "../conversation/tool-copy.ts";
 import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
-import { toast } from "@nyte-ai/ui/toast";
 import { Link, useMatch, useRouter } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 // oxlint-disable-next-line no-restricted-imports -- neighbouring sessions preload as the active session changes
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
-import type { SessionMark } from "@nyte-ai/client";
-import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { SessionMark } from "../view-helpers.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
@@ -59,8 +57,6 @@ import { activePane } from "../layout/pane-layout.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { macPlatform } from "../platform.ts";
 import {
-  keys,
-  queryClient,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
@@ -69,9 +65,9 @@ import {
   useWorkingSessionIds,
   useWorkspaceSessionDirectory,
   useWorkspaces,
+  type RailWorkspace,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import { useReadSessions } from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
@@ -100,7 +96,7 @@ import { activateWorkspace } from "./use-show-session.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
-import { cloudSessions, localSessions } from "../bridge.ts";
+import { localSessions } from "../session-directory.ts";
 import type { GitHubRepository } from "../bridge.ts";
 
 /** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
@@ -276,9 +272,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
 }
 
 function sessionTitle(session: SessionInfo): string {
-  return (
-    session.name ?? (session.preview === undefined ? "New chat" : userDisplayText(session.preview))
-  );
+  return session.name ?? "New chat";
 }
 
 /** One confirmation surface at a time: a chat deletion or a workspace-wide archive. */
@@ -307,16 +301,8 @@ export function Sidebar(): ReactElement {
   const sessionDirectory = useWorkspaceSessionDirectory();
   const server = useServerState(false);
 
-  const cloudDirectory = sessionDirectory.data?.find(
-    (directory) => directory.environment === "cloud",
-  );
-
   const cloudFailure =
-    cloudDirectory?.availability.kind === "unavailable"
-      ? cloudDirectory.availability.message
-      : server.data?.kind === "unavailable"
-        ? server.data.problem.message
-        : undefined;
+    server.data?.kind === "unavailable" ? server.data.problem.message : undefined;
 
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
@@ -363,10 +349,7 @@ export function Sidebar(): ReactElement {
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const cloudAvailable = server.data?.kind === "connected" && cloudFailure === undefined;
 
-  // New chat's environment picker creates cloud chats; the folder only lists
-  // them, so it appears once the first chat exists or when a failure needs showing.
-  const cloudFolderVisible =
-    cloudFailure !== undefined || (cloudDirectory?.sessions.length ?? 0) > 0;
+  const cloudFolderVisible = cloudFailure !== undefined;
 
   const [revealedSessions, setRevealedSessions] = useState<ReadonlyMap<string, number>>(
     () => new Map(),
@@ -377,7 +360,6 @@ export function Sidebar(): ReactElement {
   // Without a grouping the rail is one list of chats, and Inbox shelves that
   // list; folders are a grouping you pick.
   const flat = view.grouping === "none" || view.grouping === "inbox";
-  const readSessions = useReadSessions();
   const workingSessions = useWorkingSessionIds();
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
@@ -394,15 +376,15 @@ export function Sidebar(): ReactElement {
       ? undefined
       : sessionDirectory.data
           ?.flatMap((directory) => directory.sessions)
-          .find((session) => session.sessionId === paneSessionId);
+          .find((session) => session.id === paneSessionId);
 
-  if (hold?.sessionId !== paneSession?.sessionId) {
+  if (hold?.sessionId !== paneSession?.id) {
     setHold(
       paneSession === undefined
         ? undefined
         : {
-            sessionId: paneSession.sessionId,
-            shelf: shelfOf(paneSession, readSessions, workingSessions, undefined),
+            sessionId: paneSession.id,
+            shelf: shelfOf(paneSession, workingSessions, undefined),
           },
     );
   }
@@ -435,11 +417,10 @@ export function Sidebar(): ReactElement {
       view,
       "local",
       Date.now(),
-      readSessions,
       workingSessions,
     ).flatMap((group) => group.sessions);
 
-    const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
+    const index = ordered.findIndex((session) => session.id === activeSessionId);
 
     if (index === -1) return;
 
@@ -447,14 +428,14 @@ export function Sidebar(): ReactElement {
       if (neighbour !== undefined)
         void router.preloadRoute({
           to: "/session/$sessionId",
-          params: { sessionId: neighbour.sessionId },
+          params: { sessionId: neighbour.id },
         });
     }
-  }, [activeSessionId, activeWorkspaceSessions, workingSessions, readSessions, router, view]);
+  }, [activeSessionId, activeWorkspaceSessions, workingSessions, router, view]);
 
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
-  const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
+  const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
     ...(homeVisible ? [{ kind: "home" } as const] : []),
     ...(workspaces.data ?? [])
       .toSorted((left, right) => left.name.localeCompare(right.name))
@@ -511,20 +492,6 @@ export function Sidebar(): ReactElement {
     setConfirmation({ kind: "closed" });
   };
 
-  const newCloudChat = async (): Promise<void> => {
-    try {
-      setCloudCollapsed(false);
-      const session = await nyte.host.server.createSession();
-      await showSession({ kind: "cloud" }, session.sessionId);
-    } catch {
-      toast.add({
-        type: "error",
-        title: "Couldn't create a Cloud chat. Check the server connection in Settings.",
-      });
-      void queryClient.invalidateQueries({ queryKey: keys.server });
-    }
-  };
-
   const previewContextFor = (place: SessionPlace): SessionPreviewContext =>
     place.kind === "cloud"
       ? { kind: "cloud" }
@@ -551,44 +518,42 @@ export function Sidebar(): ReactElement {
 
     return (
       <SessionRow
-        key={session.sessionId}
+        key={session.id}
         session={session}
         elsewhere={place.kind === "cloud" ? { icon: "cloud", name: "Cloud" } : undefined}
         unreachable={place.kind === "cloud" && cloudFailure !== undefined}
         draggable={path === (workspacePath ?? null)}
         previewContext={previewContextFor(place)}
-        selected={session.sessionId === activeSessionId}
-        working={workingSessions.has(session.sessionId)}
+        selected={session.id === activeSessionId}
+        working={workingSessions.has(session.id)}
         layoutEnabled={layoutEnabled}
         showUpdated={view.show.includes("updated")}
-        onOpen={(target) => void showSession(place, session.sessionId, false, target)}
-        onOpenBeside={() => void showSession(place, session.sessionId, true)}
+        onOpen={(target) => void showSession(place, session.id, false, target)}
+        onOpenBeside={() => void showSession(place, session.id, true)}
         onHover={() =>
           void router.preloadRoute({
             to: "/session/$sessionId",
-            params: { sessionId: session.sessionId },
+            params: { sessionId: session.id },
           })
         }
-        onRename={(name) => renameSession.mutate({ sessionId: session.sessionId, name })}
+        onRename={(name) => renameSession.mutate({ sessionId: session.id, name })}
         onDelete={() =>
           setConfirmation({
             kind: "delete-session",
             workspacePath: path,
-            sessionId: session.sessionId,
+            sessionId: session.id,
             title: sessionTitle(session),
           })
         }
         onPin={() => {
           sessionActions.pin({
-            sessionId: session.sessionId,
+            sessionId: session.id,
             pinned: !session.pinned,
           });
         }}
         onArchive={() => {
           recordArchive(1);
-          sessionActions.archive([session.sessionId], !session.archived, (id) =>
-            removeSession(path, id),
-          );
+          sessionActions.archive([session.id], !session.archived, (id) => removeSession(path, id));
         }}
       />
     );
@@ -620,19 +585,18 @@ export function Sidebar(): ReactElement {
 
   const order = sessionOrder(view.sortByStatus, workingSessions);
 
+  const directories = sessionDirectory.data;
+
   const rows =
-    sessionDirectory.data === undefined
+    directories === undefined
       ? undefined
       : places
           .flatMap((place) =>
             sessionsForView(
-              (place.kind === "local"
-                ? localSessions(sessionDirectory.data, place.path)
-                : cloudSessions(sessionDirectory.data)) ?? [],
+              (place.kind === "local" ? localSessions(directories, place.path) : undefined) ?? [],
               view,
               place.kind,
               undefined,
-              readSessions,
               workingSessions,
             )
               .flatMap((group) => group.sessions)
@@ -693,9 +657,7 @@ export function Sidebar(): ReactElement {
 
     if (view.grouping === "inbox") {
       const shelved = (shelf: SessionShelf): typeof listed =>
-        listed.filter(
-          ({ session }) => shelfOf(session, readSessions, workingSessions, hold) === shelf,
-        );
+        listed.filter(({ session }) => shelfOf(session, workingSessions, hold) === shelf);
 
       const inbox = shelved("inbox");
 
@@ -759,8 +721,7 @@ export function Sidebar(): ReactElement {
     }
 
     const live = listed.filter(
-      ({ session }) =>
-        sessionActivityMark(session, workingSessions.has(session.sessionId)) !== "idle",
+      ({ session }) => sessionActivityMark(session, workingSessions.has(session.id)) !== "idle",
     ).length;
 
     const page = sessionPage(
@@ -796,14 +757,14 @@ export function Sidebar(): ReactElement {
         ? undefined
         : place.kind === "local"
           ? localSessions(sessionDirectory.data, place.path)
-          : cloudSessions(sessionDirectory.data);
+          : undefined;
 
     if (sessions === undefined && drafts.length === 0) return null;
 
     const sessionGroups =
       sessions === undefined
         ? []
-        : sessionsForView(sessions, view, place.kind, undefined, readSessions, workingSessions);
+        : sessionsForView(sessions, view, place.kind, undefined, workingSessions);
 
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
@@ -1091,14 +1052,14 @@ export function Sidebar(): ReactElement {
                                         workspaceName: entry.kind === "home" ? "Home" : entry.name,
                                         workspacePath: path,
                                         sessionIds: sessionsForNavigation(sessions).map(
-                                          (session) => session.sessionId,
+                                          (session) => session.id,
                                         ),
                                       })
                               }
                               onRemove={
                                 entry.kind === "home"
                                   ? () => shellActions.setHomeVisible(false)
-                                  : () => forgetWorkspace.mutate(entry.path)
+                                  : () => forgetWorkspace.mutate(entry.id)
                               }
                             >
                               {sessionPanel({ kind: "local", path })}
@@ -1117,7 +1078,7 @@ export function Sidebar(): ReactElement {
                             active={false}
                             expanded={!cloudCollapsed}
                             onExpandedChange={(next) => setCloudCollapsed(!next)}
-                            onNewChat={cloudAvailable ? () => void newCloudChat() : undefined}
+                            onNewChat={undefined}
                             onArchiveAll={undefined}
                             onRemove={() => void nyte.host.server.disconnect()}
                           >
@@ -1450,16 +1411,20 @@ function SessionGlyph({
   );
 }
 
-/** What a row that needs you is waiting on: the question asked, or why the run failed. */
+/** What a row that needs you is waiting on: an answer, or why the last run failed. */
 function sessionAsk(session: SessionInfo): string | undefined {
   for (const head of session.heads) {
-    const run = head.run;
+    const { execution } = head;
 
-    if (run?.phase.kind === "waiting" && run.awaitingReply === true) return run.question;
+    if (execution.kind === "waiting" && execution.on.kind === "part") return "Needs your answer";
   }
 
-  for (const head of session.heads)
-    if (head.run?.phase.kind === "failed") return failureNotice(head.run.phase.failure).text;
+  for (const head of session.heads) {
+    const { execution } = head;
+
+    if (execution.kind === "idle" && execution.lastRun?.end.kind === "failed")
+      return failureNotice(execution.lastRun.end.failure).text;
+  }
 
   return undefined;
 }
@@ -1518,11 +1483,7 @@ function SessionRow({
   const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
   const [draftName, setDraftName] = useState<string | undefined>();
 
-  const { isDragging, listeners, setNodeRef } = useSessionDraggable(
-    session.sessionId,
-    title,
-    !draggable,
-  );
+  const { isDragging, listeners, setNodeRef } = useSessionDraggable(session.id, title, !draggable);
 
   const commitRename = (): void => {
     if (draftName === undefined) return;

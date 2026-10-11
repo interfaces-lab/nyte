@@ -6,7 +6,7 @@
  * it moved between. Back walks the focused pane first, then the tab, so an
  * unsplit tab reads as one list and a page returns to the split it covered.
  */
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
   activeSelection,

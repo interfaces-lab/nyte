@@ -4,7 +4,7 @@ import { setTimeout } from "node:timers/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Static } from "typebox";
-import type { JsonValue } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/sdk";
 import { FIXTURE_API_KEY, FIXTURE_MODEL, FIXTURE_TITLE_MODEL } from "./workspace.ts";
 
 const textPart = Type.Object({ type: Type.Literal("text"), text: Type.String() });
@@ -68,7 +68,7 @@ export type ProviderAction =
   | { readonly kind: "reply"; readonly text: string }
   | { readonly kind: "hold"; readonly text: string; readonly tail?: string }
   | { readonly kind: "fail"; readonly status?: number; readonly message: string }
-  | { readonly kind: "tool"; readonly name: string; readonly arguments: Record<string, JsonValue> };
+  | { readonly kind: "tool"; readonly name: string; readonly arguments: Record<string, Json> };
 
 export interface ProviderStep {
   readonly name: string;

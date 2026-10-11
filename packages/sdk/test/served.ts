@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { HeadName, SessionId, SessionView } from "@nyte-ai/schema";
 import { TOKEN, TOKEN_AUTHORITY, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
 import type { Connection, Kernel, Listener, Plugin } from "@nyte-ai/core";
-import { identitySigner, listenFetch, localProvider } from "@nyte-ai/host";
+import { listenFetch, localProvider, seedSigner } from "@nyte-ai/host";
 import { operations } from "@nyte-ai/protocol";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
@@ -68,7 +68,12 @@ export async function served(options?: {
     transport: { kind: "fetch" },
     auth: { kind: "token", token: TOKEN_SECRET },
     ...(options?.identity === true
-      ? { identity: await identitySigner(host.kernel.hostId, { key: async () => secret }) }
+      ? {
+          identity: await seedSigner(
+            host.kernel.hostId,
+            crypto.getRandomValues(new Uint8Array(32)),
+          ),
+        }
       : {}),
   });
 

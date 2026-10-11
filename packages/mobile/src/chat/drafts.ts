@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { createMMKV, useMMKVString } from "react-native-mmkv";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 
 const drafts = createMMKV({ id: "nyte.drafts" });

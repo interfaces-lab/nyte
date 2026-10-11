@@ -6,7 +6,7 @@
  * variable, so the static boot shell and the mounted rail share one number.
  */
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { AppInfo } from "../bridge.ts";

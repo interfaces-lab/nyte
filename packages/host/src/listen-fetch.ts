@@ -309,7 +309,7 @@ export async function listenFetch(
   return { address: null, fetch, disconnectClients, close, [Symbol.asyncDispose]: close };
 }
 
-/** Returns the response with `done` called once when its body ends, errors or is cancelled, or at once when it has none. */
+/** Returns the response with `done` called once when its body ends, errors or is cancelled, or at once when it has none. The transformer is a plain object rather than a literal argument because the DOM lib's `Transformer` has no `cancel` yet, so this file also compiles in a DOM program. */
 function landing(response: Response, done: () => void): Response {
   if (response.body === null) {
     done();
@@ -317,10 +317,10 @@ function landing(response: Response, done: () => void): Response {
     return response;
   }
 
+  const settles = { flush: done, cancel: done };
+
   return new Response(
-    response.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({ flush: done, cancel: done }),
-    ),
+    response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(settles)),
     { status: response.status, statusText: response.statusText, headers: response.headers },
   );
 }

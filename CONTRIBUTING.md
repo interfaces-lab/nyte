@@ -19,24 +19,21 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | --- | --- |
 | [ai](packages/ai/README.md) | Provider streaming, authentication, and model catalog |
 | [schema](packages/schema) | Shared data schemas |
-| [core](packages/core/README.md) | Durable sessions, execution, storage, and client state |
+| [core](packages/core/README.md) | Durable sessions, execution, storage, and session views |
 | [protocol](packages/protocol/README.md) | Wire operations, schemas, and SSE framing |
-| [client](packages/client/README.md) | HTTP client for the wire protocol |
-| [server](packages/server/README.md) | HTTP request handler over the core SDK |
-| [host](packages/host/README.md) | Model and plugin composition, workspace trust |
-| [plugin](packages/plugin) | Plugin contract and built-ins; see [examples](packages/plugin/examples/README.md) |
+| [host](packages/host/README.md) | Node host, listener, stores, local workspace, and deploy templates |
+| [sdk](packages/sdk) | `sdk.open` and `sdk.connect`: the one surface every client uses |
+| [plugin](packages/plugin) | Plugin contracts (`/core`, `/client`), supplied plugins, and renderers |
 | [cli](packages/cli/README.md) | npm distribution and installer for the Nyte binary |
 | [tui](packages/tui/README.md) | Terminal client and native binary |
 | [desktop](packages/desktop/README.md) | Electron desktop client |
 | [renderer](packages/app/README.md) | React interface for the desktop and a future browser client |
-| [serve](packages/serve/README.md) | One trusted folder and the web app from a local address |
 | [mobile](packages/mobile/README.md) | Native iOS companion for a remote host |
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
-| [telemetry](packages/telemetry/README.md) | Runtime telemetry |
 | [docs](packages/docs/README.md) | Documentation website and design system reference |
 | [demo](packages/demo) | Website and server deployment examples |
 
-Read the [Core guide](packages/lab/src/core/guide.tsx) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
+Read the [SDK baseline](packages/lab/sdk-shape.ts) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
 
 ## Verification
 

@@ -11,10 +11,14 @@ import {
   RELAY_CHUNK_BYTES,
   RELAY_CLOSE,
   RELAY_PING,
+  RELAY_REFUSALS,
+  RELAY_REQUEST_HEADER_NAMES,
+  RELAY_RESPONSE_HEADER_NAMES,
   RELAY_WINDOW_BYTES,
   decodeChunk,
   encodeChunks,
 } from "@nyte-ai/connect/relay";
+import type { RelayRefusalCode } from "@nyte-ai/connect/relay";
 import { createProof, generateMachineKey, randomId, sha256 } from "@nyte-ai/connect/signing";
 import type { PrivateJwk } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
@@ -135,7 +139,11 @@ function phone(
 
   if (input.bearer !== undefined) headers.set("authorization", `Bearer ${input.bearer}`);
 
-  return broker.fetch(`${broker.origin}/r/${input.environmentId}${path}`, { ...init, headers });
+  return broker.fetch(`${broker.origin}/r/${input.environmentId}${path}`, {
+    method: "POST",
+    ...init,
+    headers,
+  });
 }
 
 async function wireError(response: Response): Promise<{ status: number; body: unknown }> {
@@ -144,9 +152,15 @@ async function wireError(response: Response): Promise<{ status: number; body: un
   return { status: response.status, body };
 }
 
-const refused = (status: number, code: string) => ({
+const refused = (status: number, refusal: RelayRefusalCode) => ({
   status,
-  body: { ok: false, error: { code, message: expect.any(String) } },
+  body: {
+    code: RELAY_REFUSALS[refusal].code,
+    message: RELAY_REFUSALS[refusal].message,
+    hostId: null,
+    issues: [],
+    correlation: null,
+  },
 });
 
 const settle = (ms = 300) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -284,16 +298,16 @@ describe("the desktop's relay socket", () => {
     const { environmentId, key, desktop, bearer } = await enrolled();
 
     desktop.handler = undefined;
-    const waiting = phone({ environmentId, bearer }, "/v1/sessions");
+    const waiting = phone({ environmentId, bearer }, "/sessions.list");
     await desktop.next("open");
     const replacement = await attached({ environmentId, key });
 
     expect((await desktop.closed).code).toBe(RELAY_CLOSE.replaced);
     expect(await wireError(await waiting)).toEqual(refused(503, "closed"));
     replacement.handler = echo;
-    const answer = await phone({ environmentId, bearer }, "/v1/sessions");
+    const answer = await phone({ environmentId, bearer }, "/sessions.list");
 
-    expect(await answer.text()).toBe("GET /v1/sessions");
+    expect(await answer.text()).toBe("POST /sessions.list");
   });
 
   it("keeps its socket and answers pings across hibernation", async () => {
@@ -302,10 +316,24 @@ describe("the desktop's relay socket", () => {
     await broker.evictRelay(environmentId);
     desktop.socket.send(RELAY_PING);
     await desktop.next("pong");
-    const answer = await phone({ environmentId, bearer }, "/v1/health?full=1");
+    const answer = await phone({ environmentId, bearer }, "/.nyte/identity?nonce=n1", {
+      method: "GET",
+    });
 
     expect(answer.status).toBe(200);
-    expect(await answer.text()).toBe("GET /v1/health?full=1");
+    expect(await answer.text()).toBe("GET /.nyte/identity?nonce=n1");
+  });
+
+  it("forwards the discovery routes without a bearer, and nothing else", async () => {
+    const { environmentId } = await enrolled();
+    const identity = await phone({ environmentId }, "/.nyte/identity?nonce=n1", { method: "GET" });
+    const described = await phone({ environmentId }, "/.nyte/describe", { method: "GET" });
+
+    expect(await identity.text()).toBe("GET /.nyte/identity?nonce=n1");
+    expect(await described.text()).toBe("GET /.nyte/describe");
+    expect(await wireError(await phone({ environmentId }, "/sessions.list"))).toEqual(
+      refused(401, "unauthorized"),
+    );
   });
 
   it("closes with revoked when the environment is removed, and refuses its proofs after", async () => {
@@ -332,11 +360,13 @@ describe("the desktop's relay socket", () => {
 
 const WEB_ORIGINS = ["https://app.nyte.sh", "http://localhost:5179", "http://127.0.0.1:5179"];
 
-function expectCors(response: Response, origin: string): void {
+const RELAY_EXPOSED = ["retry-after", "allow", ...RELAY_RESPONSE_HEADER_NAMES].join(", ");
+
+function expectCors(response: Response, origin: string, exposed = "retry-after, allow"): void {
   expect(response.headers.get("access-control-allow-origin")).toBe(origin);
   expect(response.headers.get("vary")?.toLowerCase().split(/,\s*/u)).toContain("origin");
   expect(response.headers.get("access-control-allow-credentials")).toBeNull();
-  expect(response.headers.get("access-control-expose-headers")).toBe("retry-after, allow");
+  expect(response.headers.get("access-control-expose-headers")).toBe(exposed);
 }
 
 describe("browser clients", () => {
@@ -345,33 +375,42 @@ describe("browser clients", () => {
     async (origin) => {
       const environmentId = crypto.randomUUID();
       const deviceId = crypto.randomUUID();
-      const routes = [
-        [BROKER_ROUTES.environments, "GET", "GET"],
-        [BROKER_ROUTES.environment(environmentId), "DELETE", "DELETE"],
-        [BROKER_ROUTES.devices(environmentId), "POST", "POST"],
-        [BROKER_ROUTES.device(environmentId, deviceId), "DELETE", "DELETE"],
-        [`/r/${environmentId}/v1/events`, "GET", "GET, POST"],
-        [`/r/${environmentId}/v1/sessions`, "POST", "GET, POST"],
-        [`/r/${environmentId}/_nyte/connect/device`, "DELETE", "DELETE"],
-      ];
 
-      for (const [path, method, methods] of routes) {
+      const brokerHeaders = {
+        requested: "Authorization, Content-Type",
+        allowed: "authorization, content-type",
+      };
+
+      const relayHeaders = {
+        requested: "Authorization, Content-Type, Last-Event-ID, X-Nyte-Input",
+        allowed: RELAY_REQUEST_HEADER_NAMES.join(", "),
+      };
+
+      const routes = [
+        [BROKER_ROUTES.environments, "GET", "GET", brokerHeaders],
+        [BROKER_ROUTES.environment(environmentId), "DELETE", "DELETE", brokerHeaders],
+        [BROKER_ROUTES.devices(environmentId), "POST", "POST", brokerHeaders],
+        [BROKER_ROUTES.device(environmentId, deviceId), "DELETE", "DELETE", brokerHeaders],
+        [`/r/${environmentId}/head.watch`, "POST", "POST", relayHeaders],
+        [`/r/${environmentId}/.nyte/describe`, "GET", "GET", relayHeaders],
+        [`/r/${environmentId}/_nyte/connect/device`, "DELETE", "DELETE", relayHeaders],
+      ] as const;
+
+      for (const [path, method, methods, headers] of routes) {
         const answer = await broker.fetch(`${broker.origin}${path}`, {
           method: "OPTIONS",
           headers: {
             origin,
-            "access-control-request-method": method ?? "",
-            "access-control-request-headers": "Authorization, Content-Type",
+            "access-control-request-method": method,
+            "access-control-request-headers": headers.requested,
           },
         });
 
         expect(answer.status).toBe(204);
         expect(await answer.text()).toBe("");
-        expectCors(answer, origin);
+        expectCors(answer, origin, headers === relayHeaders ? RELAY_EXPOSED : undefined);
         expect(answer.headers.get("access-control-allow-methods")).toBe(methods);
-        expect(answer.headers.get("access-control-allow-headers")).toBe(
-          "authorization, content-type",
-        );
+        expect(answer.headers.get("access-control-allow-headers")).toBe(headers.allowed);
         expect(answer.headers.get("access-control-max-age")).toBe("600");
       }
     },
@@ -407,8 +446,11 @@ describe("browser clients", () => {
     const body: unknown = await list.json();
     expect(Value.Check(EnvironmentList, body)).toBe(true);
 
-    for (const method of ["GET", "POST"]) {
-      const answer = await phone(input, "/v1/events?live=1", {
+    for (const [method, path] of [
+      ["POST", "/head.watch"],
+      ["GET", "/.nyte/describe"],
+    ] as const) {
+      const answer = await phone(input, path, {
         method,
         headers: {
           origin,
@@ -421,12 +463,12 @@ describe("browser clients", () => {
       });
 
       expect(answer.status).toBe(200);
-      expectCors(answer, origin);
+      expectCors(answer, origin, RELAY_EXPOSED);
       expect(answer.headers.get("content-type")).toBe("text/event-stream");
       expect(await answer.text()).toBe("data: hello\n\n");
       expect(seen.pop()).toEqual({
         method,
-        path: "/v1/events?live=1",
+        path,
         headers: { authorization: `Bearer ${input.bearer}`, accept: "text/event-stream" },
       });
     }
@@ -436,7 +478,7 @@ describe("browser clients", () => {
       headers: { origin, accept: "application/json" },
     });
     expect(release.status).toBe(204);
-    expectCors(release, origin);
+    expectCors(release, origin, RELAY_EXPOSED);
     expect(seen.pop()).toEqual({
       method: "DELETE",
       path: "/_nyte/connect/device",
@@ -473,10 +515,10 @@ describe("browser clients", () => {
     const origin = "https://app.nyte.sh";
     const input = await enrolled();
     input.desktop.handler = undefined;
-    const missing = await phone({ environmentId: input.environmentId }, "/v1/health", {
+    const missing = await phone({ environmentId: input.environmentId }, "/sessions.list", {
       headers: { origin },
     });
-    expectCors(missing, origin);
+    expectCors(missing, origin, RELAY_EXPOSED);
     expect(await wireError(missing)).toEqual(refused(401, "unauthorized"));
     const invalidSession = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
       headers: { origin },
@@ -491,7 +533,7 @@ describe("browser clients", () => {
       "https://app.nyte.sh/",
       "http://localhost:5180",
     ]) {
-      const denied = await phone(input, "/v1/health", { headers: { origin: unlisted } });
+      const denied = await phone(input, "/sessions.list", { headers: { origin: unlisted } });
       expect(await wireError(denied)).toEqual(refused(403, "forbidden"));
       expect(denied.headers.get("access-control-allow-origin")).toBeNull();
       const preflight = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
@@ -504,8 +546,8 @@ describe("browser clients", () => {
     }
     expect(input.desktop.pending("open")).toEqual([]);
     input.desktop.close();
-    const offline = await phone(input, "/v1/health", { headers: { origin } });
-    expectCors(offline, origin);
+    const offline = await phone(input, "/sessions.list", { headers: { origin } });
+    expectCors(offline, origin, RELAY_EXPOSED);
     expect(await wireError(offline)).toEqual(refused(503, "closed"));
   });
 
@@ -559,11 +601,11 @@ describe("browser clients", () => {
 
   it("leaves native requests and their OPTIONS behavior unchanged", async () => {
     const input = await enrolled();
-    const answer = await phone(input, "/v1/health");
+    const answer = await phone(input, "/sessions.list");
     expect(answer.status).toBe(200);
-    expect(await answer.text()).toBe("GET /v1/health");
+    expect(await answer.text()).toBe("POST /sessions.list");
     expect(answer.headers.get("access-control-allow-origin")).toBeNull();
-    const options = await phone(input, "/v1/health", { method: "OPTIONS" });
+    const options = await phone(input, "/sessions.list", { method: "OPTIONS" });
     expect(await wireError(options)).toEqual(refused(405, "method_not_allowed"));
     expect(options.headers.get("access-control-allow-origin")).toBeNull();
   });
@@ -575,19 +617,26 @@ describe("phone requests", () => {
     const { environmentId, desktop, bearer } = await enrolled(async (request) => {
       seen.push({ method: request.method, path: request.path, headers: request.headers });
 
-      return request.path.startsWith("/v1/cached")
+      return request.path === "/models.list"
         ? { status: 200, headers: { "cache-control": "max-age=60" }, body: "cached" }
         : {
             status: 201,
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "x-nyte-host": "host_1",
+              "x-nyte-version": "v1",
+              "x-nyte-mime": "text/plain",
+            },
             body: new TextDecoder().decode(request.body),
           };
     });
-    const answer = await phone({ environmentId, bearer }, "/v1/sessions?limit=5", {
+    const answer = await phone({ environmentId, bearer }, "/files.write", {
       method: "POST",
       headers: {
         accept: "application/json",
-        "content-type": "application/json",
+        "content-type": "application/octet-stream",
+        "last-event-id": "7",
+        "x-nyte-input": "eyJwYXRoIjoiYSJ9",
         cookie: "session=secret",
         "x-forwarded-for": "10.0.0.1",
       },
@@ -598,18 +647,23 @@ describe("phone requests", () => {
     expect(await answer.text()).toBe('{"title":"hi"}');
     expect(answer.headers.get("content-type")).toBe("application/json");
     expect(answer.headers.get("cache-control")).toBe("no-store");
+    expect(answer.headers.get("x-nyte-host")).toBe("host_1");
+    expect(answer.headers.get("x-nyte-version")).toBe("v1");
+    expect(answer.headers.get("x-nyte-mime")).toBe("text/plain");
     expect(seen).toEqual([
       {
         method: "POST",
-        path: "/v1/sessions?limit=5",
+        path: "/files.write",
         headers: {
           authorization: `Bearer ${bearer}`,
           accept: "application/json",
-          "content-type": "application/json",
+          "content-type": "application/octet-stream",
+          "last-event-id": "7",
+          "x-nyte-input": "eyJwYXRoIjoiYSJ9",
         },
       },
     ]);
-    const cached = await phone({ environmentId, bearer }, "/v1/cached");
+    const cached = await phone({ environmentId, bearer }, "/models.list");
 
     expect(cached.headers.get("cache-control")).toBe("max-age=60");
     expect(desktop.pending("reset")).toEqual([]);
@@ -617,7 +671,7 @@ describe("phone requests", () => {
 
   it("answers a bodyless status with no body", async () => {
     const { environmentId, bearer } = await enrolled(async () => ({ status: 204 }));
-    const answer = await phone({ environmentId, bearer }, "/v1/sessions/x", { method: "POST" });
+    const answer = await phone({ environmentId, bearer }, "/session.remove");
 
     expect(answer.status).toBe(204);
     expect(await answer.text()).toBe("");
@@ -634,59 +688,81 @@ describe("phone requests", () => {
         phone({ environmentId, bearer }, "/_nyte/connect/enroll", { method: "POST" }),
         refused(404, "not_found"),
       ],
-      ["a path outside /v1", phone({ environmentId, bearer }, "/admin"), refused(404, "not_found")],
+      [
+        "a path outside the table",
+        phone({ environmentId, bearer }, "/admin"),
+        refused(404, "not_found"),
+      ],
+      ["the old API", phone({ environmentId, bearer }, "/v1/info"), refused(404, "not_found")],
+      [
+        "a query on an operation",
+        phone({ environmentId, bearer }, "/sessions.list?x=1"),
+        refused(404, "not_found"),
+      ],
       [
         "a dot segment",
-        phone({ environmentId, bearer }, "/v1/%2e%2e/secret"),
+        phone({ environmentId, bearer }, "/x/%2e%2e/secret"),
         refused(404, "not_found"),
       ],
       [
         "an encoded slash",
-        phone({ environmentId, bearer }, "/v1/a%2Fb"),
+        phone({ environmentId, bearer }, "/a%2Fsessions.list"),
         refused(404, "not_found"),
       ],
       [
+        "GET on an operation",
+        phone({ environmentId, bearer }, "/sessions.list", { method: "GET" }),
+        refused(405, "method_not_allowed"),
+      ],
+      [
+        "POST on discovery",
+        phone({ environmentId, bearer }, "/.nyte/describe"),
+        refused(405, "method_not_allowed"),
+      ],
+      [
         "an unknown environment",
-        phone({ environmentId: crypto.randomUUID(), bearer }, "/v1/x"),
+        phone({ environmentId: crypto.randomUUID(), bearer }, "/sessions.list"),
         refused(401, "unauthorized"),
       ],
       [
         "PUT",
-        phone({ environmentId, bearer }, "/v1/x", { method: "PUT" }),
+        phone({ environmentId, bearer }, "/sessions.list", { method: "PUT" }),
         refused(405, "method_not_allowed"),
       ],
       [
         "DELETE on the API",
-        phone({ environmentId, bearer }, "/v1/x", { method: "DELETE" }),
+        phone({ environmentId, bearer }, "/sessions.list", { method: "DELETE" }),
         refused(405, "method_not_allowed"),
       ],
       [
         "a browser",
-        phone({ environmentId, bearer }, "/v1/x", { headers: { origin: "https://evil.example" } }),
+        phone({ environmentId, bearer }, "/sessions.list", {
+          headers: { origin: "https://evil.example" },
+        }),
         refused(403, "forbidden"),
       ],
       [
         "a declared oversize body",
-        phone({ environmentId, bearer }, "/v1/x", {
+        phone({ environmentId, bearer }, "/sessions.list", {
           method: "POST",
           body: new Uint8Array(RELAY_BODY_LIMIT_BYTES + 1),
         }),
         refused(413, "payload_too_large"),
       ],
-      ["no bearer", phone({ environmentId }, "/v1/x"), refused(401, "unauthorized")],
+      ["no bearer", phone({ environmentId }, "/sessions.list"), refused(401, "unauthorized")],
       [
         "an unknown bearer",
-        phone({ environmentId, bearer: deviceToken() }, "/v1/x"),
+        phone({ environmentId, bearer: deviceToken() }, "/sessions.list"),
         refused(401, "unauthorized"),
       ],
       [
         "a malformed bearer",
-        phone({ environmentId, bearer: "not-a-token" }, "/v1/x"),
+        phone({ environmentId, bearer: "not-a-token" }, "/sessions.list"),
         refused(401, "unauthorized"),
       ],
       [
         "another environment's bearer",
-        phone({ environmentId, bearer: other.bearer }, "/v1/x"),
+        phone({ environmentId, bearer: other.bearer }, "/sessions.list"),
         refused(401, "unauthorized"),
       ],
     ];
@@ -705,7 +781,7 @@ describe("phone requests", () => {
 
       return JSON.stringify(rows) === '[{"relay_session":null}]';
     });
-    expect(await wireError(await phone({ environmentId, bearer }, "/v1/x"))).toEqual(
+    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
       refused(503, "closed"),
     );
   });
@@ -730,7 +806,7 @@ describe("phone requests", () => {
       deviceId,
     );
     expect((await release()).status).toBe(204);
-    expect(await wireError(await phone({ environmentId, bearer }, "/v1/x"))).toEqual(
+    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
       refused(401, "unauthorized"),
     );
     await broker.query(
@@ -746,13 +822,15 @@ describe("phone requests", () => {
     desktop.handler = undefined;
     const aborts = Array.from({ length: RELAY_CHANNEL_LIMIT }, () => new AbortController());
     const pending = aborts.map((abort) =>
-      phone({ environmentId, bearer }, "/v1/slow", { signal: abort.signal }).catch(() => undefined),
+      phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
+        () => undefined,
+      ),
     );
     const opened = [];
 
     for (let index = 0; index < RELAY_CHANNEL_LIMIT; index += 1)
       opened.push((await desktop.next("open")).ch);
-    expect(await wireError(await phone({ environmentId, bearer }, "/v1/one-more"))).toEqual(
+    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
       refused(503, "closed"),
     );
 
@@ -771,7 +849,10 @@ describe("flow control", () => {
     const upload = new Uint8Array(randomBytes(RELAY_WINDOW_BYTES * 2 + 1000));
 
     desktop.handler = undefined;
-    const answer = phone({ environmentId, bearer }, "/v1/upload", { method: "POST", body: upload });
+    const answer = phone({ environmentId, bearer }, "/files.upload", {
+      method: "POST",
+      body: upload,
+    });
     const { ch } = await desktop.next("open");
     const received: Uint8Array[] = [];
     const take = async () => {
@@ -818,7 +899,7 @@ describe("flow control", () => {
         controller.enqueue(new Uint8Array(65_536));
       },
     });
-    const answer = await phone({ environmentId, bearer }, "/v1/upload", {
+    const answer = await phone({ environmentId, bearer }, "/files.upload", {
       method: "POST",
       body,
       duplex: "half",
@@ -826,7 +907,7 @@ describe("flow control", () => {
 
     expect(await wireError(answer)).toEqual(refused(413, "payload_too_large"));
     const opened = desktop.received.find(
-      (frame) => frame.t === "open" && frame.path === "/v1/upload",
+      (frame) => frame.t === "open" && frame.path === "/files.upload",
     );
 
     await waitFor(async () =>
@@ -843,7 +924,7 @@ describe("flow control", () => {
       body: large,
     }));
     const before = desktop.received.length;
-    const answer = await phone({ environmentId, bearer }, "/v1/large");
+    const answer = await phone({ environmentId, bearer }, "/files.bytes");
     const reader = answer.body?.getReader();
     const chunks: Uint8Array[] = [];
 
@@ -906,7 +987,10 @@ describe("flow control", () => {
       const { environmentId, desktop, bearer } = await enrolled();
 
       desktop.handler = undefined;
-      const answer = phone({ environmentId, bearer }, "/v1/x", { method: "POST", body: "{}" });
+      const answer = phone({ environmentId, bearer }, "/sessions.list", {
+        method: "POST",
+        body: "{}",
+      });
       const { ch } = await desktop.next("open");
 
       act(desktop, ch);
@@ -926,7 +1010,7 @@ describe("cancellation and revocation", () => {
 
     desktop.handler = undefined;
     const abort = new AbortController();
-    const answer = phone({ environmentId, bearer }, "/v1/slow", { signal: abort.signal }).catch(
+    const answer = phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
       (error: unknown) => error,
     );
     const { ch } = await desktop.next("open");
@@ -942,7 +1026,7 @@ describe("cancellation and revocation", () => {
 
       desktop.handler = undefined;
       const abort = new AbortController();
-      const answer = phone({ environmentId, bearer }, "/v1/events", {
+      const answer = phone({ environmentId, bearer }, "/head.watch", {
         signal: abort.signal,
         headers: origin === undefined ? {} : { origin },
       });
@@ -961,7 +1045,7 @@ describe("cancellation and revocation", () => {
       const reader = response.body?.getReader();
 
       expect(new TextDecoder().decode((await reader?.read())?.value)).toBe("data: one\n\n");
-      if (origin !== undefined) expectCors(response, origin);
+      if (origin !== undefined) expectCors(response, origin, RELAY_EXPOSED);
       abort.abort();
       await desktop.next("reset", (reset) => reset.ch === ch);
     },
@@ -971,7 +1055,7 @@ describe("cancellation and revocation", () => {
     const { environmentId, desktop, bearer, deviceId } = await enrolled();
 
     desktop.handler = undefined;
-    const answer = phone({ environmentId, bearer }, "/v1/events");
+    const answer = phone({ environmentId, bearer }, "/head.watch");
     const { ch } = await desktop.next("open");
 
     desktop.send({ t: "head", ch, status: 200, headers: { "content-type": "text/event-stream" } });
@@ -995,7 +1079,7 @@ describe("cancellation and revocation", () => {
         () => true,
       ),
     ).toBe(true);
-    expect(await wireError(await phone({ environmentId, bearer }, "/v1/x"))).toEqual(
+    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
       refused(401, "unauthorized"),
     );
     expect(desktop.socket.readyState).toBe(WebSocket.OPEN);

@@ -1,187 +1,136 @@
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { Failure, RunInfo, ToolProgress, ToolTurnPart, UserTurnPart } from "@nyte-ai/protocol";
-import { livePartKey } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
+import { branchSummary, compaction, isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
+import type {
+  Execution,
+  Failure,
+  Message,
+  PartStatus,
+  SessionView,
+  ToolPartState,
+  TurnId,
+  UserContent,
+} from "@nyte-ai/sdk";
 
 export type ActivityPart =
-  | { kind: "tool"; tool: ToolTurnPart; progress: ToolProgress | undefined }
-  | { kind: "thinking"; id: string; text: string; streaming: boolean }
-  | { kind: "progress"; id: string; progress: ToolProgress };
+  | { kind: "tool"; id: string; state: ToolPartState; status: PartStatus }
+  | { kind: "thinking"; id: string; text: string; streaming: boolean };
 
 export type ChatRow =
-  | { kind: "user"; id: string; content: UserTurnPart["content"]; delivery: "sent" | "queued" }
+  | { kind: "user"; id: string; content: UserContent; delivery: "sent" | "queued" }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "activity"; id: string; parts: readonly ActivityPart[] }
-  | { kind: "status"; id: string; run: RunInfo }
+  | { kind: "status"; id: string; execution: Exclude<Execution, { kind: "idle" }> }
   | { kind: "failure"; id: string; failure: Failure }
   | { kind: "summary"; id: string; text: string }
   | { kind: "marker"; id: string; text: string };
 
-export function activityPartId(part: ActivityPart): string {
-  return part.kind === "tool" ? part.tool.callId : part.id;
-}
+const STOPPED: Failure = { class: "aborted", message: "" };
 
-export function transcriptRows(items: SessionState["transcript"]["items"]): ChatRow[] {
-  const rows: ChatRow[] = [];
+/** Rows of one message, by the message object: the view keeps an unchanged message's identity, so its row keeps its own. */
+const rowsOf = new WeakMap<Message, ChatRow>();
 
-  for (const item of items) {
-    if (item.kind === "summary") {
-      rows.push({ kind: "summary", id: item.commit, text: item.body.text });
-      continue;
-    }
+/** Returns the row a user, text, summary or compaction message draws as, or undefined for a step. */
+function messageRow(message: Message): ChatRow | undefined {
+  const cached = rowsOf.get(message);
 
-    if (item.kind === "checkpoint") {
-      rows.push({ kind: "marker", id: item.commit, text: "Earlier context summarized" });
-      continue;
-    }
+  if (cached !== undefined) return cached;
 
-    if (item.kind === "config") {
-      if (item.body.model !== undefined)
-        rows.push({
-          kind: "marker",
-          id: item.commit,
-          text: `Model changed to ${item.body.model.id}`,
-        });
-      continue;
-    }
-
-    let group: ActivityPart[] | undefined;
-    let groupIndex = 0;
-
-    for (const part of item.parts) {
-      if (part.kind === "tool" || part.kind === "thinking") {
-        const activity: ActivityPart =
-          part.kind === "tool"
-            ? { kind: "tool", tool: part, progress: undefined }
-            : {
-                kind: "thinking",
-                id: `thinking:${part.commit}:${part.contentIndex}`,
-                text: part.text,
-                streaming: false,
-              };
-
-        if (group === undefined) {
-          group = [];
-          rows.push({ kind: "activity", id: `activity:${item.id}:${groupIndex}`, parts: group });
-          groupIndex += 1;
-        }
-
-        group.push(activity);
-        continue;
-      }
-
-      group = undefined;
-
-      if (part.kind === "user") {
-        rows.push({
+  const row: ChatRow | undefined =
+    message.kind === "user"
+      ? {
           kind: "user",
-          id: part.key === undefined ? `message:${part.commit}` : `submission:${part.key}`,
-          content: part.content,
-          delivery: "sent",
-        });
-      } else {
-        rows.push({
-          kind: "assistant",
-          id: `assistant:${part.commit}:${part.contentIndex}`,
-          text: part.text,
-          streaming: false,
-        });
-      }
-    }
+          id: `submission:${message.id}`,
+          content: message.content,
+          delivery: message.status.kind === "landed" ? "sent" : "queued",
+        }
+      : isPart(message, text)
+        ? {
+            kind: "assistant",
+            id: message.id,
+            text: message.state.markdown,
+            streaming: message.status.kind === "live",
+          }
+        : isPart(message, branchSummary)
+          ? { kind: "summary", id: message.id, text: message.state.markdown }
+          : isPart(message, compaction)
+            ? { kind: "marker", id: message.id, text: "Earlier context summarized" }
+            : undefined;
 
-    if (item.failure !== undefined)
-      rows.push({ kind: "failure", id: `failure:${item.id}`, failure: item.failure });
-  }
+  if (row !== undefined) rowsOf.set(message, row);
 
-  return rows;
+  return row;
 }
 
-export function conversationRows(committed: readonly ChatRow[], state: SessionState): ChatRow[] {
-  const progress = new Map<string, ToolProgress>();
+/** Returns the step a tool or thinking message adds to an activity row, or undefined for anything else. */
+function activityPart(message: Message): ActivityPart | undefined {
+  if (isPart(message, tool))
+    return { kind: "tool", id: message.id, state: message.state, status: message.status };
 
-  for (const part of state.overlay) {
-    if (part.kind === "tool") progress.set(part.callId, part.progress);
-  }
+  if (isPart(message, thinking))
+    return {
+      kind: "thinking",
+      id: message.id,
+      text: message.state.markdown,
+      streaming: message.status.kind === "live",
+    };
 
-  const represented = new Set<string>();
+  return undefined;
+}
 
-  const rows = committed.map((row) => {
-    if (row.kind !== "activity" || progress.size === 0) return row;
+/**
+ * Returns the transcript as rows in one pass over `view.messages`: adjacent
+ * steps grouped into one activity row, each turn closed by how it ended when
+ * it failed or stopped, and the head's execution last while it is not idle.
+ * Part kinds this app has no row for are skipped.
+ */
+export function conversationRows(view: SessionView): ChatRow[] {
+  const ends = new Map(view.turns.map((turn) => [turn.id, turn.state]));
+  const rows: ChatRow[] = [];
+  let group: ActivityPart[] | undefined;
+  let turn: TurnId | undefined;
 
-    let parts: ActivityPart[] | undefined;
+  const closeTurn = () => {
+    const state = turn === undefined ? undefined : ends.get(turn);
 
-    for (const [index, part] of row.parts.entries()) {
-      if (part.kind !== "tool") continue;
-      const update = progress.get(part.tool.callId);
+    if (state?.kind === "ended" && state.end.kind !== "completed")
+      rows.push({
+        kind: "failure",
+        id: `failure:${String(turn)}`,
+        failure: state.end.kind === "failed" ? state.end.failure : STOPPED,
+      });
+  };
 
-      if (update === undefined) continue;
-      represented.add(part.tool.callId);
-
-      if (update === part.progress) continue;
-      parts ??= [...row.parts];
-      parts[index] = { ...part, progress: update };
+  for (const message of view.messages) {
+    if (message.turn !== turn) {
+      closeTurn();
+      turn = message.turn;
+      group = undefined;
     }
 
-    return parts === undefined ? row : { ...row, parts };
-  });
+    const step = activityPart(message);
 
-  let group: ActivityPart[] | undefined;
-  const turn = state.transcript.items.findLast((item) => item.kind === "turn");
-  const activityPrefix = `activity:${turn?.id ?? state.run?.runId ?? "stream"}:`;
+    if (step !== undefined) {
+      if (group === undefined) {
+        group = [];
+        rows.push({ kind: "activity", id: `activity:${message.id}`, parts: group });
+      }
 
-  let groupIndex = committed.filter(
-    (row) => row.kind === "activity" && row.id.startsWith(activityPrefix),
-  ).length;
-
-  for (const part of state.overlay) {
-    if (part.kind === "text") {
-      group = undefined;
-      rows.push({ kind: "assistant", id: livePartKey(part), text: part.text, streaming: true });
+      group.push(step);
       continue;
     }
 
-    if (part.kind === "tool" && represented.has(part.callId)) continue;
+    group = undefined;
+    const row = messageRow(message);
 
-    const activity: ActivityPart =
-      part.kind === "thinking"
-        ? { kind: "thinking", id: livePartKey(part), text: part.text, streaming: true }
-        : { kind: "progress", id: livePartKey(part), progress: part.progress };
-
-    if (group === undefined) {
-      const previous = rows.at(-1);
-      group = previous?.kind === "activity" ? [...previous.parts] : [];
-
-      if (previous?.kind === "activity") rows[rows.length - 1] = { ...previous, parts: group };
-      else {
-        rows.push({ kind: "activity", id: `${activityPrefix}${groupIndex}`, parts: group });
-        groupIndex += 1;
-      }
-    }
-
-    group.push(activity);
+    if (row !== undefined) rows.push(row);
   }
 
-  const run = state.run;
+  closeTurn();
 
-  if (run !== undefined) {
-    const recordedFailure = state.transcript.items.some(
-      (item) =>
-        item.kind === "turn" &&
-        item.run.kind === "run" &&
-        item.run.id === run.runId &&
-        item.failure !== undefined,
-    );
-
-    if (!isTerminalPhase(run.phase) || (run.phase.kind !== "done" && !recordedFailure))
-      rows.push({ kind: "status", id: `status:${run.runId}`, run });
-  }
-
-  for (const pending of state.pending)
+  if (view.execution.kind !== "idle")
     rows.push({
-      kind: "user",
-      id: pending.key === undefined ? `message:${pending.change}` : `submission:${pending.key}`,
-      content: pending.content,
-      delivery: "queued",
+      kind: "status",
+      id: `status:${view.execution.run.id}`,
+      execution: view.execution,
     });
 
   return rows;

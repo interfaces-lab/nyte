@@ -1,9 +1,9 @@
 import { createContext, useContext } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 
 export type ProvisionalSubagentSession = {
   readonly kind: "provisional";
-  readonly sessionId: SessionId;
+  readonly id: SessionId;
   readonly title: string;
   readonly startedAt: number;
 };

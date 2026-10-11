@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { launch } from "../src/launcher.js";
+import { main } from "../src/main.ts";
 
 try {
-  process.exitCode = await launch();
+  process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;

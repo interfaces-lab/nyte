@@ -11,7 +11,7 @@
  *   After that it lands while the window is blurred and while the view is
  *   hidden. Keyboard input and `capturePage` work without ever showing it.
  */
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/sdk";
 
 /**
  * The surface an agent session's pages live on. One per session, so a chat's

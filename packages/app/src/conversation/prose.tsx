@@ -36,8 +36,8 @@ import {
   referenceTitle,
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import type { MentionFile } from "@nyte-ai/client";
-import { sessionId } from "@nyte-ai/protocol";
+import type { MentionFile } from "./message-references.ts";
+import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
@@ -198,7 +198,7 @@ function MarkdownLink({
     return agent === "" ? (
       <>{children}</>
     ) : (
-      <SubagentCitation session={sessionId(agent)} label={nodeText(children)} />
+      <SubagentCitation session={asId<"session">(agent)} label={nodeText(children)} />
     );
   }
 

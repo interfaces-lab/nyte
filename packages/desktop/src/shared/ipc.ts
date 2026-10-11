@@ -1,24 +1,15 @@
 /**
- * The wire between the Electron main host and the renderer client.
- *
- * The bridge contract itself lives in `@nyte-ai/app/bridge.ts`; this file
- * is how Electron IPC carries it: one channel per concern, one operation path
- * per bridge method, the method's single input object as the payload, its
- * receipt or outcome union as the response. `watch` is the one transport
- * adaptation: an AsyncIterable cannot cross IPC, so it becomes a start/stop
- * pair around a push channel, cursor semantics unchanged.
+ * The wire between the Electron main host and the renderer for what lives
+ * beside the sdk: windows, terminals, browser panels, remote access and the
+ * local listener's endpoint. Sessions, models and settings go over the sdk
+ * connection the renderer opens to that endpoint. One channel
+ * per concern, one operation path per bridge method, its single input object
+ * as the payload and its outcome as the response.
  */
-import type { Operation, Seq, SessionEvent, SessionId } from "@nyte-ai/protocol";
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 
 export const CALL_CHANNEL = "nyte:call";
-
-export const WATCH_START_CHANNEL = "nyte:watch-start";
-
-export const WATCH_STOP_CHANNEL = "nyte:watch-stop";
-
-export const WATCH_EVENT_CHANNEL = "nyte:watch-event";
 
 export const HOST_EVENT_CHANNEL = "nyte:host-event";
 
@@ -32,88 +23,19 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
-/** Every SDK operation the bridge carries, one path per operation. Each is a wire-protocol operation. */
-export const SDK_OPERATION_PATHS = [
-  "sessions.create",
-  "sessions.get",
-  "sessions.snapshot",
-  "sessions.metadata",
-  "sessions.list",
-  "sessions.rename",
-  "sessions.setPinned",
-  "sessions.setArchived",
-  "sessions.delete",
-  "sessions.configure",
-  "messages.send",
-  "messages.cancel",
-  "messages.redeliver",
-  "jobs.list",
-  "jobs.start",
-  "jobs.background",
-  "jobs.cancel",
-  "runs.abort",
-  "runs.reply",
-  "runs.diff",
-  "heads.move",
-  "workspace.list",
-  "workspace.forget",
-  "workspace.files",
-  "workspace.read",
-  "workspace.save",
-  "workspace.format",
-  "workspace.search",
-  "workspace.blame",
-  "workspace.vcs.snapshot",
-  "workspace.vcs.changes",
-  "workspace.vcs.diff",
-  "workspace.vcs.contents",
-  "workspace.vcs.log",
-  "workspace.vcs.refs",
-  "workspace.vcs.stage",
-  "workspace.vcs.discard",
-  "workspace.vcs.commit",
-  "workspace.vcs.createBranch",
-  "workspace.vcs.push",
-  "provider.models.default",
-  "plugins.catalog",
-  "plugins.list",
-  "plugins.commands.list",
-  "plugins.commands.run",
-  "plugins.settings.list",
-  "plugins.settings.apply",
-  "plugins.resources.list",
-] as const satisfies readonly Operation[];
-
-export type SdkOperationPath = (typeof SDK_OPERATION_PATHS)[number];
-
-/** Host operations beside the SDK: workspace lifecycle and provider auth. */
+/** Host operations beside the sdk, one path per bridge method. */
 export const HOST_OPERATION_PATHS = [
+  "host.endpoint",
   "host.state",
-  "host.sessionDirectory",
   "host.fonts",
   "host.openWorkspace",
   "host.pickWorkspace",
-  "host.trustWorkspace",
   "host.closeWorkspace",
-  "host.catalog",
-  "host.usage",
-  "host.accountLimits",
-  "host.login",
-  "host.cancelLogin",
-  "host.logout",
-  "host.setPreference",
-  "host.settings.get",
-  "host.settings.set",
   "host.updates.state",
   "host.updates.check",
-  "host.github.state",
-  "host.github.signIn",
-  "host.github.signOut",
-  "host.github.createPullRequest",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
-  "host.server.createSession",
   "host.remote.state",
   "host.remote.start",
   "host.remote.stop",
@@ -156,32 +78,49 @@ export const HOST_OPERATION_PATHS = [
 
 export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
-export type CallPath = SdkOperationPath | HostOperationPath;
-
-export interface WatchStartInput {
-  readonly watchId: string;
-  readonly sessionId: SessionId;
-  /** Replay from this cursor. Omitted with `live` unset replays from the start. */
-  readonly afterSeq?: Seq;
-  /** Skip replay and start at the tip; `synced` still arrives first. */
-  readonly live?: boolean;
-}
-
-export type WatchEnvelope =
-  | { readonly watchId: string; readonly kind: "event"; readonly event: SessionEvent }
-  | { readonly watchId: string; readonly kind: "ended"; readonly error?: IpcFailure };
+export type CallPath = HostOperationPath;
 
 /**
- * The desktop carries every host capability the contract leaves optional for
- * browsers, except two: it opens sign-in pages itself, so it never takes a
- * code back, and its roots start in the renderer over `sessions.create`, so
- * it has no durable `starts` of its own.
+ * `window.nyte` on the desktop: the client surface and every host bridge
+ * member main answers. Not here: `settings` (the desktop's settings are host
+ * settings over the connection), `trustWorkspace` (a registered folder runs),
+ * `usage` and `github` (nothing on this host serves them yet), `remember`
+ * (the loopback token is minted per run).
  */
-export type DesktopBridge = Omit<NyteBridge, "host"> & {
-  readonly host: Required<Omit<HostBridge, "answerLogin" | "starts">>;
+export type DesktopBridge = {
+  readonly clientSurface: NyteBridge["clientSurface"];
+  readonly host: Pick<
+    HostBridge,
+    | "onMenuCommand"
+    | "setThemePreference"
+    | "state"
+    | "endpoint"
+    | "fonts"
+    | "openWorkspace"
+    | "closeWorkspace"
+    | "server"
+    | "remote"
+    | "connect"
+    | "openExternal"
+    | "confirmExternal"
+    | "pathForFile"
+    | "onEvent"
+  > &
+    Required<
+      Pick<
+        HostBridge,
+        | "pickWorkspace"
+        | "updates"
+        | "revealPath"
+        | "openPluginsFolder"
+        | "contextMenu"
+        | "terminal"
+        | "browser"
+      >
+    >;
 };
 
-/** Walk `sessions.create` / `host.github.state` to the matching DesktopBridge method. */
+/** Walk `host.server.state` to the matching DesktopBridge method. */
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T
     ? BridgeMethod<T[Head], Rest>

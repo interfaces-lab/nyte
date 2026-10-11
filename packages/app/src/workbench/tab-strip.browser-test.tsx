@@ -1,7 +1,7 @@
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { JobView } from "@nyte-ai/sdk";
 import { WorkbenchTabStrip } from "./tab-strip.tsx";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 import { fileActions } from "./file-store.ts";
@@ -44,18 +44,18 @@ async function drag(from: HTMLElement, distance: number): Promise<void> {
 }
 
 export async function run(): Promise<string> {
-  const session = sessionId("browser-tab-strip-session");
+  const session = asId<"session">("browser-tab-strip-session");
 
-  const job: JobInfo = {
-    id: "browser-tab-strip-job",
-    origin: { kind: "run", runId: "run", callId: "call" },
-    head: "main",
+  const job: JobView = {
+    id: asId<"job">("browser-tab-strip-job"),
     command: "pnpm test",
-    isBackgrounded: true,
-    phase: { kind: "running" },
+    title: "pnpm test",
+    session: null,
+    pty: null,
+    state: { kind: "running" },
     startedAt: 1,
-    updatedAt: 1,
-    output: "running\n",
+    endedAt: null,
+    tail: "running\n",
   };
 
   const viewKey = workbenchViewKey("/workspace/browser-tab-strip");

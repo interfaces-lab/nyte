@@ -23,38 +23,47 @@ export function Hero5() {
 
         <div className="relative mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pb-[clamp(3rem,8vh,5rem)]">
           <h1 className="animate-plate-rise font-pixel text-hero text-balance motion-reduce:animate-none">
-            Nyte is your foundation for building AI agents.
+            Nyte is your foundation for building AI frameworks and agents.
           </h1>
 
           <p className="mt-6 max-w-[27rem] animate-plate-rise text-[17px]/8 text-pretty text-white/72 [animation-delay:90ms] motion-reduce:animate-none">
-            I built Nyte like{" "}
+            Nyte is a{" "}
             <FactWord
-              href="/docs/kernel/store"
-              above="Content-addressed"
-              below="Compare-and-swap refs"
+              href="/docs/sdk"
+              above="TypeScript SDK"
+              below="For building AI apps"
               tint="[--tint:#ffd6e8]"
             >
-              git
+              modern toolkit
             </FactWord>{" "}
-            so it could run on{" "}
+            for building AI-driven{" "}
             <FactWord
-              href="/docs"
-              above="SQLite"
-              below="Terminal + desktop"
+              href="/docs/build/desktop"
+              above="Native-feeling UIs"
+              below="Runs on desktop & terminal"
               tint="[--tint:#e3dcff]"
             >
-              my laptop
+              desktop apps
+            </FactWord>{" "}
+            with{" "}
+            <FactWord
+              href="/docs/build/deployment"
+              above="Multi-deployment"
+              below="From laptops to edge, to cloud"
+              tint="[--tint:#c8f3ff]"
+            >
+              flexible deployment
             </FactWord>{" "}
             and{" "}
             <FactWord
-              href="/docs/build/composition"
-              above="Durable Objects"
-              below="Postgres"
-              tint="[--tint:#c8f3ff]"
+              href="/docs/models"
+              above="Multi-model"
+              below="Open-source & commercial LLMs"
+              tint="[--tint:#ffd6e8]"
             >
-              at the edge
+              multi-model support
             </FactWord>
-            . It&apos;s open source, so it&apos;s yours too.
+            . Build locally, deploy anywhere.
           </p>
 
           <div className="mt-8 flex animate-plate-rise flex-wrap gap-2 [animation-delay:180ms] motion-reduce:animate-none">

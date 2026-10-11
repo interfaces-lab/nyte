@@ -1,13 +1,12 @@
 import { CliRenderEvents, resolveRenderLib } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { RunInfo } from "@nyte-ai/protocol";
+import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
 /** What the followed session is doing right now. */
 export interface Activity {
   readonly busy: boolean;
-  readonly run: RunInfo | undefined;
+  readonly execution: Execution | undefined;
   /** The ask in front of the user, from the followed session or one of its sub-agents. */
   readonly question: string | undefined;
 }
@@ -32,14 +31,14 @@ const MSG_MAX_BYTES = 2048;
 export function reportProgramStatus(renderer: CliRenderer, read: () => Activity): void {
   const lib = resolveRenderLib();
   let written: string | undefined;
-  let live: RunInfo["runId"] | undefined;
+  let live: RunId | undefined;
 
   const sync = (): void => {
     if (renderer.isDestroyed) return;
     const activity = read();
 
-    if (activity.run !== undefined && !isTerminalPhase(activity.run.phase))
-      live = activity.run.runId;
+    if (activity.execution !== undefined && activity.execution.kind !== "idle")
+      live = activity.execution.run.id;
     const sequence = encode(statusOf(activity, live));
 
     if (sequence === written) return;
@@ -65,19 +64,20 @@ export function reportProgramStatus(renderer: CliRenderer, read: () => Activity)
   });
 }
 
-/** Precedence: an ask, then busy, then a run that ended while watched. Aborted is the user's interrupt: idle. */
-function statusOf(activity: Activity, live: RunInfo["runId"] | undefined): ProgramStatus {
-  const { question, busy, run } = activity;
+/** Precedence: an ask, then busy, then a run that ended while watched. Stopped is the user's interrupt: idle. */
+function statusOf(activity: Activity, live: RunId | undefined): ProgramStatus {
+  const { question, busy, execution } = activity;
 
   if (question !== undefined) return { state: "blocked", kind: "question", msg: question };
 
   if (busy) return { state: "working" };
+  const last = execution?.kind === "idle" ? execution.lastRun : null;
 
-  if (run === undefined || run.runId !== live) return { state: "idle" };
+  if (last === null || last === undefined || last.id !== live) return { state: "idle" };
 
-  if (run.phase.kind === "failed") return { state: "error", msg: run.phase.failure.message };
+  if (last.end.kind === "failed") return { state: "error", msg: last.end.failure.message };
 
-  return { state: run.phase.kind === "done" ? "done" : "idle" };
+  return { state: last.end.kind === "completed" ? "done" : "idle" };
 }
 
 function encode(status: ProgramStatus): string {

@@ -1,5 +1,5 @@
-import type { SessionId } from "@nyte-ai/protocol";
-import { schemas, sessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import type { Rect, VirtualItem } from "@tanstack/react-virtual";
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
@@ -9,6 +9,12 @@ import type { ToolCallDensity } from "../preferences/index.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;
+
+const IMAGE_CONTENT = Type.Object({
+  type: Type.Literal("image"),
+  data: Type.String(),
+  mimeType: Type.String(),
+});
 
 /** Sessions whose measured row heights survive a visit; matches the snapshot cache's entry budget. */
 const MEASURED_SESSIONS = 12;
@@ -148,7 +154,7 @@ const persistedSnapshotSchema = Type.Object(
 
 const attachmentsSchema = Type.Array(
   Type.Object(
-    { id: Type.String({ minLength: 1 }), name: Type.String(), content: schemas.ImageContent },
+    { id: Type.String({ minLength: 1 }), name: Type.String(), content: IMAGE_CONTENT },
     strict,
   ),
 );
@@ -537,7 +543,7 @@ export class SessionViewStateStore {
       const composer = composerView(stored, images?.sessions[id]);
 
       if (!composerHasContent(composer)) continue;
-      this.#sessions.set(sessionId(id), { ...defaultSessionViewState("primary"), composer });
+      this.#sessions.set(asId<"session">(id), { ...defaultSessionViewState("primary"), composer });
     }
   }
 

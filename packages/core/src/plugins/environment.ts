@@ -13,6 +13,8 @@ const LIST_LIMIT = 500;
 
 const SHELL_BYTES = 32 * 1024;
 
+const PROGRESS_BYTES = 4 * 1024;
+
 const MIME_TYPES: Readonly<Record<string, string>> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -223,7 +225,7 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   },
 };
 
-/** Runs a command through `env.exec` in the workspace root, tied to the call's signal: output and exit code, the output bounded to its last 32 KiB with the cut noted. Never replayed: after a crash the call settles `interrupted`. */
+/** Runs a command through `env.exec` in the workspace root, tied to the call's signal: output and exit code, the output bounded to its last 32 KiB with the cut noted. While it runs, each output frame publishes the last 4 KiB of output as the part's progress `text` (§34, §51h), so a client draws it live. Never replayed: after a crash the call settles `interrupted`. */
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
   description:
@@ -255,18 +257,13 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
         kept -= first?.byteLength ?? 0;
         dropped += first?.byteLength ?? 0;
       }
+
+      invocation.progress({ text: tailOf(chunks, PROGRESS_BYTES) });
     }
 
     const end = await job.settled();
     const exit = end.kind === "exited" ? (end.code ?? code) : code;
-    const joined = new Uint8Array(kept);
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      joined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
+    const joined = joinBytes(chunks);
     const cut = Math.max(0, joined.byteLength - SHELL_BYTES);
     const output = new TextDecoder().decode(joined.subarray(cut)).trimEnd();
 
@@ -283,6 +280,35 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
     return text([...truncated, ...(output === "" ? [] : [output]), status].join("\n"));
   },
 };
+
+/** Returns the chunks as one byte array, in order. */
+function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return joined;
+}
+
+/** Returns the last `limit` bytes of the chunks as text, starting at the first whole line when it had to cut, without trailing whitespace. */
+function tailOf(chunks: readonly Uint8Array[], limit: number): string {
+  const tail: Uint8Array[] = [];
+  let size = 0;
+
+  for (const chunk of chunks.toReversed()) {
+    if (size >= limit) break;
+    tail.unshift(chunk);
+    size += chunk.byteLength;
+  }
+
+  const text = new TextDecoder().decode(joinBytes(tail).subarray(Math.max(0, size - limit)));
+
+  return (size > limit ? text.slice(text.indexOf("\n") + 1) : text).trimEnd();
+}
 
 /** Contributes the workspace tools (decision 13): `read` (class read), `write` and `edit` (class edit), `list` (class list) and `bash` (class shell); and, at activation, the prompt section `cwd` (order 100) naming the session environment's `cwd`, left out when the session has no environment. */
 export const environmentPlugin: Plugin<"core"> = {

@@ -7,7 +7,7 @@
  * settings page. New entries take a field of a record key; the single-key
  * entries keep the layout earlier builds wrote.
  */
-import { typed } from "@nyte-ai/schema";
+import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import type { ThemePreference } from "../bridge.ts";
 import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";

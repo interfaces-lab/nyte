@@ -11,10 +11,8 @@ import {
   screen,
   shell,
 } from "electron";
-import { createNyteModels } from "@nyte-ai/ai";
-import { nyteHome } from "@nyte-ai/host";
-import { HostSettingsStore } from "@nyte-ai/host/settings";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   BROWSER_BOUNDS_CHANNEL,
@@ -22,13 +20,9 @@ import {
   CALL_CHANNEL,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
-  WATCH_EVENT_CHANNEL,
-  WATCH_START_CHANNEL,
-  WATCH_STOP_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
-import type { WatchEnvelope } from "../shared/ipc.ts";
 import type { HostEvent, UpdateState } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
@@ -43,10 +37,8 @@ import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
 import { BrowserHistoryStore } from "./browser-history.ts";
 import { showContextMenu } from "./context-menu.ts";
-import { ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
-import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
@@ -59,16 +51,12 @@ import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
+import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
+import { sealedSecretsKey } from "./secrets-key.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 
-import {
-  decodeBrowserBounds,
-  decodeBrowserFocus,
-  decodeWatchStart,
-  decodeWatchStop,
-  themePreference,
-} from "./ipc-inputs.ts";
+import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-inputs.ts";
 
 interface NyteWindow {
   readonly window: BrowserWindow;
@@ -155,9 +143,12 @@ app.setPath(
 // The packaged test must remain isolated after an update relaunches without shell variables.
 if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
+/** The directory whose `.nyte` the host keeps its store, settings and keys in; the packaged update test keeps its own. */
+const home = updateTest ? app.getPath("userData") : homedir();
+
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
-function send(window: HostWindow, channel: string, payload: HostEvent | WatchEnvelope): void {
+function send(window: HostWindow, channel: string, payload: HostEvent): void {
   const entry = windows.get(window);
 
   if (entry !== undefined && !entry.window.isDestroyed()) {
@@ -180,8 +171,8 @@ function reveal(window: BrowserWindow): void {
   window.focus();
 }
 
-/** One view of ~/.nyte/settings.json per process, shared by the host and the browser surfaces. */
-const settings = new HostSettingsStore();
+/** The desktop's host settings as the host view last carried them; the browser surfaces read them per request. */
+let settings = DEFAULT_DESKTOP_SETTINGS;
 
 /** The page whose forwarded key is running a menu item: it held keyboard focus when the key was pressed. */
 let forwardingSurface: string | undefined;
@@ -191,7 +182,7 @@ const browserHistory = new BrowserHistoryStore(
 );
 
 const browserSurfaces = createBrowserSurfaces({
-  settings: settings.current,
+  settings: () => settings,
   history: browserHistory,
   window: (id) =>
     (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
@@ -271,15 +262,17 @@ function applyViewCommand(contents: Electron.WebContents, command: ViewCommand):
   }
 }
 
-settings.subscribe(() => browserSurfaces.settingsChanged());
-
 let updates: ReturnType<typeof registerUpdates> | undefined;
 
 /** The power save blocker Keep awake holds while a chat works. */
 let awakeBlocker: number | undefined;
 
 const hostDependencies = {
-  settings,
+  home,
+  settingsChanged: (next) => {
+    settings = next;
+    browserSurfaces.settingsChanged();
+  },
   keepAwake: (awake: boolean) => {
     if (awake) {
       // The system stays up; the display may still sleep.
@@ -296,19 +289,10 @@ const hostDependencies = {
     state: async (): Promise<UpdateState> => updates?.state() ?? { kind: "idle" },
     check: async () => updates?.click(),
   },
-  createModels: createNyteModels,
-  appVersion: app.getVersion(),
-  appRoot: app.isPackaged
-    ? join(process.resourcesPath, "app")
-    : join(app.getAppPath(), "..", "app", "dist"),
-  // A sibling entry of this bundle; see the main build's rollup inputs.
-  usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
-  storeWorker: new URL("./store-worker.js", import.meta.url),
   // Built-in plugins, registered here; nothing is loaded or discovered at run time.
-  remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: nyteHome() }) },
+  remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: join(home, ".nyte") }) },
   emitHostEvent: (event, window) =>
     window === undefined ? broadcast(event) : send(window, HOST_EVENT_CHANNEL, event),
-  emitWatchEvent: (envelope, window) => send(window, WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
   confirmExternal: async (url, id) => {
     const window = windows.get(id)?.window;
@@ -336,7 +320,6 @@ const hostDependencies = {
 
     if (failure !== "") throw new Error(failure);
   },
-  trashPath: (path) => shell.trashItem(path),
   showContextMenu: (input, window) =>
     showContextMenu({ window: windows.get(window)?.window, input }),
   browser: browserSurfaces,
@@ -356,10 +339,22 @@ const hostDependencies = {
 
     return result.canceled ? undefined : result.filePaths[0];
   },
-} satisfies DesktopHostDependencies;
+} satisfies Omit<DesktopHostDependencies, "rendererOrigin" | "secrets" | "connect">;
+
+/** Returns the renderer's origin as Chromium sends it, `scheme://host`; Node reports a custom scheme's `URL.origin` as opaque. */
+function rendererOrigin(url: string): string {
+  const parsed = new URL(url);
+
+  return `${parsed.protocol}//${parsed.host}`;
+}
 
 function getHost(): DesktopHost {
-  desktopHost ??= new DesktopHost({ ...hostDependencies, connect });
+  desktopHost ??= new DesktopHost({
+    ...hostDependencies,
+    connect,
+    rendererOrigin: rendererOrigin(rendererUrl),
+    secrets: sealedSecretsKey(join(home, ".nyte", "secret.sealed"), keychain),
+  });
 
   return desktopHost;
 }
@@ -419,7 +414,7 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
 
   return new ConnectRuntime({
     config,
-    home: nyteHome(),
+    home: join(home, ".nyte"),
     authorizer: account === undefined ? undefined : { kind: "session", account },
     onChange: () => broadcast({ kind: "remote_access_changed" }),
   });
@@ -490,18 +485,6 @@ function registerIpc(): void {
     senderWindow(event);
 
     return callIpc(getHost, event.sender.id, request);
-  });
-
-  ipcMain.handle(WATCH_START_CHANNEL, async (event, input) => {
-    senderWindow(event);
-
-    return ipcResult(() => getHost().watchStart(event.sender.id, decodeWatchStart(input)));
-  });
-
-  ipcMain.handle(WATCH_STOP_CHANNEL, async (event, input) => {
-    senderWindow(event);
-
-    return ipcResult(() => getHost().watchStop(decodeWatchStop(input)));
   });
 }
 
@@ -610,7 +593,7 @@ function createWindow(): NyteWindow {
     screen.off("display-metrics-changed", syncWindowChrome);
     windows.delete(id);
     browserSurfaces.releaseWindow(id);
-    desktopHost?.closeWindow(id);
+    desktopHost?.releaseWindow(id);
   });
 
   return entry;
@@ -644,11 +627,9 @@ if (!hasSingleInstanceLock) {
       app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     }
 
-    const first = createWindow();
-    const firstId = first.window.webContents.id;
+    createWindow();
     void getHost()
-      .prepare(firstId)
-      .then(() => getHost().autostartConnect(firstId))
+      .autostartConnect()
       .catch(() => undefined);
     // A lease held before sleep says nothing about now.
     powerMonitor.on("resume", () => connect?.resume());
@@ -689,7 +670,7 @@ if (!hasSingleInstanceLock) {
       updates = registerUpdates({
         publish: (state) => broadcast({ kind: "update_changed", state }),
         item: updateItem,
-        activity: () => getHost().updateActivity(),
+        activity: async () => getHost().updateActivity(),
         beforeRelaunch: async () => {
           await desktopHost?.close();
         },

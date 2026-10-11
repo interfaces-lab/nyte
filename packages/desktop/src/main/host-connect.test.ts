@@ -13,11 +13,6 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
-import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import type { MutableModels, Provider } from "@nyte-ai/ai";
-import { createNyteClient } from "@nyte-ai/client";
-import { environmentId } from "@nyte-ai/host";
-import type { Api, Model } from "@nyte-ai/schema";
 import type { ConnectView, HostEvent } from "@nyte-ai/app/bridge.ts";
 import {
   BROKER_ROUTES,
@@ -51,8 +46,8 @@ import {
 } from "@nyte-ai/connect/signing";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { DesktopHost } from "./host.ts";
-import { unusedBrowserAgent } from "./browser-stub.ts";
+import type { DesktopHost } from "./host.ts";
+import { testDesktop } from "./fixtures/desktop-host.ts";
 import { AccountCancelled } from "./account-session.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
 import { readConnectConfig } from "./connect-config.ts";
@@ -80,41 +75,6 @@ const CONFIG: ConnectConfig = {
   origin: ORIGIN,
   clerk: { publishableKey: "pk_test_Y2xlcmsubnl0ZS50ZXN0JA", frontendApiHost: "clerk.nyte.test" },
 };
-
-const model: Model<Api> = {
-  id: "echo",
-  name: "Echo",
-  api: "openai-responses",
-  provider: "echo",
-  baseUrl: "https://example.invalid",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100_000,
-  maxTokens: 1_000,
-};
-
-const failing: Provider["stream"] = () => {
-  throw new Error("No provider in the connect test");
-};
-
-function localModels(): MutableModels {
-  const models = createModels({
-    credentials: new InMemoryCredentialStore(),
-    modelsStore: new InMemoryModelsStore(),
-  });
-
-  models.setProvider({
-    id: model.provider,
-    name: "Echo",
-    auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "fixture" } }) } },
-    getModels: () => [model],
-    stream: failing,
-    streamSimple: failing,
-  });
-
-  return models;
-}
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -598,45 +558,13 @@ async function desktop(
     timing: { ...FAST, ...options.timing },
   });
 
-  const host = new DesktopHost({
-    storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
-    createModels: localModels,
-    appVersion: "test",
+  const made = await testDesktop({
     connect: runtime,
     emitHostEvent: (event) => events.push(event),
-    emitWatchEvent: () => undefined,
-    openExternal: () => undefined,
-    revealPath: () => undefined,
-    showContextMenu: () => Promise.resolve(undefined),
-    confirmExternal: () => Promise.resolve("cancel"),
-    pickFolder: async () => undefined,
-    listFonts: async () => ({ sans: [], monospace: [] }),
-    browser: {
-      menu: async () => undefined,
-      perform: async () => undefined,
-      open: () => {
-        throw new Error("Browser is not used by connect tests");
-      },
-      navigate: () => undefined,
-      close: () => undefined,
-      captureFrame: () => Promise.resolve(undefined),
-      find: () => Promise.resolve({ active: 0, total: 0 }),
-      cancelDownload: () => undefined,
-      login: () => undefined,
-      history: async () => [],
-      forgetHistory: async () => undefined,
-      focusPage: () => undefined,
-      settingsChanged: () => undefined,
-      setBounds: () => undefined,
-      retain: () => undefined,
-      release: () => undefined,
-      warm: async () => undefined,
-      releaseWindow: () => undefined,
-      agent: unusedBrowserAgent(),
-    },
   });
 
-  cleanups.push(() => host.close());
+  const { host } = made;
+  cleanups.push(() => made.close());
 
   return { host, runtime, events };
 }
@@ -687,39 +615,45 @@ async function info(
   setup: Fixture,
   token: string | undefined,
 ): Promise<{ readonly status: number; readonly code: string | undefined }> {
-  const response = await phoneFetch(setup, "/v1/info", {
-    headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
+  const headers = new Headers({ "content-type": "application/json" });
+
+  if (token !== undefined) headers.set("authorization", `Bearer ${token}`);
+
+  const response = await phoneFetch(setup, "/sessions.list", {
+    method: "POST",
+    headers,
+    body: "{}",
   });
 
   const body: unknown = await response.json();
-
-  const code = Value.Check(Type.Object({ error: Type.Object({ code: Type.String() }) }), body)
-    ? body.error.code
-    : undefined;
+  const code = Value.Check(Type.Object({ code: Type.String() }), body) ? body.code : undefined;
 
   return { status: response.status, code };
 }
 
-/** A live watch for `token` through the relay; `ended` resolves once the desktop drops it. */
+/** A live host watch for `token` through the relay; `ended` resolves once the desktop drops it. */
 async function watch(
   setup: Fixture,
-  host: DesktopHost,
+  _host: DesktopHost,
   token: string,
 ): Promise<{ readonly ended: Promise<string> }> {
-  const session = await host.call(1, "sessions.create", { name: "watched" });
-  const client = createNyteClient({ baseUrl: address(setup), token, fetch: setup.relay.fetch });
-  const seen: string[] = [];
+  const response = await phoneFetch(setup, "/connection.watch", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: "{}",
+  });
+
+  assert.equal(response.status, 200);
+  const reader = response.body?.getReader();
+  assert.ok(reader);
+  await reader.read();
 
   const ended = (async () => {
-    for await (const event of client.watch({ sessionId: session.sessionId, live: true })) {
-      seen.push(event.kind);
-    }
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read());
   })().then(
     () => "ended",
     () => "ended",
   );
-
-  await vi.waitFor(() => assert.ok(seen.includes("synced")));
 
   return { ended };
 }
@@ -747,7 +681,7 @@ async function stored(setup: Fixture): Promise<string> {
   return readFile(join(setup.state, "connect.json"), "utf8");
 }
 
-const denied = { status: 403, code: "forbidden" } as const;
+const denied = { status: 403, code: "denied" } as const;
 
 const allowed = { status: 200, code: undefined } as const;
 
@@ -767,7 +701,7 @@ test("a linked Mac serves only leased devices, and no session secret reaches dis
   assert.deepEqual(broker.bearers, [`${BROKER_ROUTES.environments} Bearer ${SESSION_JWT}`]);
   assert.equal(setup.relay.connected(), serving.environment.id);
 
-  assert.deepEqual(await info(setup, undefined), { status: 401, code: "unauthorized" });
+  assert.deepEqual(await info(setup, undefined), { status: 401, code: "unauthenticated" });
   assert.deepEqual(await info(setup, randomBytes(32).toString("base64url")), denied);
   const phone = await broker.phone();
   assert.deepEqual(await info(setup, phone.token), allowed);
@@ -916,7 +850,7 @@ test("devices the broker no longer has active are forgotten once their grant cou
   const fresh = randomBytes(32).toString("base64url");
 
   const second = await desktop(setup);
-  await second.host.autostartConnect(1);
+  await second.host.autostartConnect();
   await vi.waitFor(async () => assert.deepEqual(await info(setup, kept.token), allowed));
   const freshGrant = await broker.grant({ token: fresh });
   assert.equal(
@@ -945,7 +879,7 @@ test("after a restart a recorded device is refused until a lease verifies", asyn
 
   setup.broker.leaseMode = "offline";
   const second = await desktop(setup);
-  await second.host.autostartConnect(1);
+  await second.host.autostartConnect();
   await vi.waitFor(async () =>
     assert.equal((await linked(second.host)).connection.kind, "connected"),
   );
@@ -1483,22 +1417,6 @@ test("pending unlinks are kept until the broker confirms them, and a full queue 
   assert.deepEqual(await pending(), []);
 }, 30_000);
 
-test("sessions keep this Mac's environment id while it links and unlinks", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  const before = await host.call(1, "sessions.create", {});
-  assert.equal((await host.call(1, "host.connect.link", undefined)).kind, "linked");
-  const whileLinked = await host.call(1, "sessions.create", {});
-  const linkId = setup.broker.env?.id;
-  assert.ok(linkId);
-  await host.call(1, "host.connect.unlink", undefined);
-  const after = await host.call(1, "sessions.create", {});
-  assert.equal(before.workspace.id, await environmentId());
-  assert.notEqual(before.workspace.id, linkId);
-  assert.equal(whileLinked.workspace.id, before.workspace.id);
-  assert.equal(after.workspace.id, before.workspace.id);
-});
-
 test("a linked Mac keeps serving with its machine key when the sign-in dialog is unavailable", async () => {
   const setup = await fixture();
   const first = await desktop(setup);
@@ -1507,7 +1425,7 @@ test("a linked Mac keeps serving with its machine key when the sign-in dialog is
   await first.host.close();
 
   const second = await desktop(setup, { account: undefined });
-  await second.host.autostartConnect(1);
+  await second.host.autostartConnect();
   await vi.waitFor(async () => assert.deepEqual(await info(setup, phone.token), allowed));
   const current = await linked(second.host);
   assert.deepEqual(current.account, { kind: "unavailable" });
@@ -1524,7 +1442,7 @@ test("serving outlives the window that turned it on", async () => {
   await serve(desktop_);
   const phone = await setup.broker.phone();
 
-  desktop_.host.closeWindow(1);
+  desktop_.host.releaseWindow(1);
   assert.deepEqual(await info(setup, phone.token), allowed);
   assert.equal((await linked(desktop_.host)).connection.kind, "connected");
 });
@@ -1554,7 +1472,7 @@ test("unlink refuses at once, closes the relay, and retries the broker on a late
 
   broker.offline = false;
   const second = await desktop(setup);
-  await second.host.autostartConnect(1);
+  await second.host.autostartConnect();
   await vi.waitFor(async () => {
     const current = await view(second.host);
     assert.ok(current.kind === "unlinked" && current.notice.kind === "none");
@@ -1645,7 +1563,7 @@ test("another instance taking the relay over stops this one, wake included, unti
   desktop_.runtime.resume();
   await sleep(300);
   assert.equal(setup.relay.auths, auths);
-  assert.deepEqual(await info(setup, phone.token), { status: 503, code: "closed" });
+  assert.deepEqual(await info(setup, phone.token), { status: 503, code: "unavailable" });
 
   await desktop_.host.call(1, "host.connect.setEnabled", { enabled: false });
   await desktop_.host.call(1, "host.connect.setEnabled", { enabled: true });
@@ -1719,7 +1637,7 @@ test("a malformed machine key on disk keeps a restart off the broker and the rel
   const auths = setup.relay.auths;
 
   const { host } = await desktop(setup);
-  await host.autostartConnect(1);
+  await host.autostartConnect();
   await sleep(300);
   assert.deepEqual(await view(host), { kind: "unavailable", reason: "store_failed" });
   await assert.rejects(host.call(1, "host.connect.setEnabled", { enabled: true }));

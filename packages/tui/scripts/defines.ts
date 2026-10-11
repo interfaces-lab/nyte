@@ -13,9 +13,5 @@ export function binaryDefines(
     // dead code elimination drop the branch this binary cannot use. Set
     // OPENTUI_LIBC=musl in the environment to compile against musl instead.
     "process.env.OPENTUI_LIBC": JSON.stringify(env["OPENTUI_LIBC"] ?? "glibc"),
-    // The Nyte Connect broker this binary links through, baked in at build time; the
-    // running process's NYTE_CONNECT_ORIGIN still takes precedence. A bare identifier,
-    // because `process` is an import binding in the sources and would not be replaced.
-    NYTE_BUILT_CONNECT_ORIGIN: JSON.stringify(env["NYTE_CONNECT_ORIGIN"] ?? ""),
   };
 }

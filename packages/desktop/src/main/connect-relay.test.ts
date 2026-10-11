@@ -47,9 +47,9 @@ function pattern(offset: number, length: number): Buffer {
 
 interface Local {
   readonly port: number;
-  /** Bytes `/v1/big` has handed to its response. */
+  /** Bytes `/head.watch` has handed to its response. */
   written: number;
-  /** While set, `/v1/upload` reads nothing. */
+  /** While set, `/files.upload` reads nothing. */
   uploadGate: PromiseWithResolvers<void> | undefined;
   uploadsAborted: number;
   holdsClosed: number;
@@ -58,7 +58,7 @@ interface Local {
 async function localServer(): Promise<Local> {
   const server = createServer((request, response) => {
     switch (request.url) {
-      case "/v1/echo?x=1":
+      case "/.nyte/identity?x=1":
         response.writeHead(200, {
           "content-type": "application/json",
           "cache-control": "no-store",
@@ -72,22 +72,22 @@ async function localServer(): Promise<Local> {
         );
 
         return;
-      case "/v1/redirect":
+      case "/sessions.create":
         response.writeHead(302, { location: "http://127.0.0.1:1/" });
         response.end();
 
         return;
-      case "/v1/empty-204":
+      case "/session.remove":
         response.writeHead(204);
         response.end();
 
         return;
-      case "/v1/empty-205":
+      case "/session.stop":
         response.writeHead(205, { "content-length": "0" });
         response.end();
 
         return;
-      case "/v1/big": {
+      case "/head.watch": {
         response.writeHead(200, { "content-type": "application/octet-stream" });
         let offset = 0;
 
@@ -112,7 +112,7 @@ async function localServer(): Promise<Local> {
         return;
       }
 
-      case "/v1/hold":
+      case "/sessions.watch":
         response.writeHead(200, { "content-type": "text/plain" });
         response.write("x");
         response.on("close", () => {
@@ -120,7 +120,7 @@ async function localServer(): Promise<Local> {
         });
 
         return;
-      case "/v1/upload": {
+      case "/files.upload": {
         request.on("close", () => {
           if (!request.complete) local.uploadsAborted += 1;
         });
@@ -213,7 +213,7 @@ test("a relayed request reaches only the listener's port, and only allowlisted h
 
   const response = await relay.exchange({
     method: "GET",
-    path: "/v1/echo?x=1",
+    path: "/.nyte/identity?x=1",
     headers: { authorization: "Bearer device", accept: "application/json" },
   });
 
@@ -222,7 +222,7 @@ test("a relayed request reaches only the listener's port, and only allowlisted h
   const echoed: unknown = await response.json();
   assert.deepEqual(echoed, {
     method: "GET",
-    url: "/v1/echo?x=1",
+    url: "/.nyte/identity?x=1",
     headers: {
       host: `127.0.0.1:${String(local.port)}`,
       authorization: "Bearer device",
@@ -232,11 +232,14 @@ test("a relayed request reaches only the listener's port, and only allowlisted h
   });
 
   // A redirect is never followed or passed on: the exchange is reset.
-  assert.equal((await relay.exchange({ method: "GET", path: "/v1/redirect" })).status, 503);
+  assert.equal((await relay.exchange({ method: "POST", path: "/sessions.create" })).status, 503);
   assert.equal(relay.resets, 1);
 
-  for (const status of [204, 205]) {
-    const empty = await relay.exchange({ method: "GET", path: `/v1/empty-${String(status)}` });
+  for (const [status, path] of [
+    [204, "/session.remove"],
+    [205, "/session.stop"],
+  ] as const) {
+    const empty = await relay.exchange({ method: "POST", path });
     assert.equal(empty.status, status);
     assert.equal(empty.body, null);
   }
@@ -250,7 +253,7 @@ test("a response moves only as the relay grants credit, and the local server wai
   connection.start();
   await connected(connection);
 
-  const response = await relay.exchange({ method: "GET", path: "/v1/big" });
+  const response = await relay.exchange({ method: "POST", path: "/head.watch" });
   await vi.waitFor(() => assert.equal(relay.received, RELAY_WINDOW_BYTES));
   await sleep(300);
   assert.equal(relay.received, RELAY_WINDOW_BYTES);
@@ -275,7 +278,7 @@ test("request bytes are credited only as the local socket takes them", async () 
 
   const answered = relay.exchange({
     method: "POST",
-    path: "/v1/upload",
+    path: "/files.upload",
     headers: { "content-type": "application/octet-stream" },
     body,
   });
@@ -304,7 +307,7 @@ test("a body past the limit resets the exchange and aborts the local request", a
 
   const response = await relay.exchange({
     method: "POST",
-    path: "/v1/upload",
+    path: "/files.upload",
     headers: { "content-type": "application/octet-stream" },
     body: new Uint8Array(RELAY_BODY_LIMIT_BYTES + 1),
   });
@@ -322,7 +325,7 @@ test("a phone going away, dropped streams, or a lost socket ends the local excha
   await connected(connection);
 
   const hold = async (signal?: AbortSignal) => {
-    const response = await relay.exchange({ method: "GET", path: "/v1/hold", signal });
+    const response = await relay.exchange({ method: "POST", path: "/sessions.watch", signal });
     assert.ok(response.body);
     const reader = response.body.getReader();
     assert.equal(new TextDecoder().decode((await reader.read()).value), "x");
@@ -356,18 +359,18 @@ test("a frame that breaks the contract closes the socket, and it comes back with
   connection.start();
   await connected(connection);
 
-  const openFrame = (path: string, ch = randomId(), method = "GET", headers = {}) =>
+  const openFrame = (path: string, ch = randomId(), method = "POST", headers = {}) =>
     JSON.stringify({ t: "open", ch, method, path, headers });
 
   const breaking: readonly [string, () => Promise<void> | void][] = [
-    ["a dot segment", () => relay.send(openFrame("/v1/../_nyte/connect/enroll"))],
-    ["an encoded slash", () => relay.send(openFrame("/v1/a%2Fb"))],
+    ["a dot segment", () => relay.send(openFrame("/sessions.list/../_nyte/connect/enroll"))],
+    ["an encoded slash", () => relay.send(openFrame("/sessions%2Flist"))],
     ["a path outside the allowlist", () => relay.send(openFrame("/index.html"))],
     ["a desktop route with a query", () => relay.send(openFrame("/_nyte/connect/device?x=1"))],
-    ["another method", () => relay.send(openFrame("/v1/echo", randomId(), "PUT"))],
+    ["another method", () => relay.send(openFrame("/sessions.list", randomId(), "PUT"))],
     [
       "a header outside the allowlist",
-      () => relay.send(openFrame("/v1/echo", randomId(), "GET", { origin: ORIGIN })),
+      () => relay.send(openFrame("/sessions.list", randomId(), "POST", { origin: ORIGIN })),
     ],
     ["a binary message", () => relay.send(Buffer.from("{}"))],
     ["a second ready", () => relay.send('{"t":"ready"}')],
@@ -375,22 +378,22 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "a live channel id opened again",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/v1/hold", ch));
-        relay.send(openFrame("/v1/hold", ch));
+        relay.send(openFrame("/sessions.watch", ch));
+        relay.send(openFrame("/sessions.watch", ch));
       },
     ],
     [
       "one channel past the limit",
       () => {
         for (let index = 0; index <= RELAY_CHANNEL_LIMIT; index += 1)
-          relay.send(openFrame("/v1/hold"));
+          relay.send(openFrame("/sessions.watch"));
       },
     ],
     [
       "request data after its end",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/v1/upload", ch, "POST"));
+        relay.send(openFrame("/files.upload", ch));
         relay.send(JSON.stringify({ t: "end", ch }));
         relay.send(JSON.stringify({ t: "data", ch, data: encodeChunks(new Uint8Array(4))[0] }));
       },
@@ -399,7 +402,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "credit past the window",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/v1/hold", ch));
+        relay.send(openFrame("/sessions.watch", ch));
         relay.send(JSON.stringify({ t: "end", ch }));
         relay.send(JSON.stringify({ t: "credit", ch, bytes: RELAY_WINDOW_BYTES }));
       },
@@ -412,7 +415,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
         void relay.exchange({
           ch,
           method: "POST",
-          path: "/v1/upload",
+          path: "/files.upload",
           body: new Uint8Array(RELAY_BODY_LIMIT_BYTES),
         });
         // Stalled on credit: less than a chunk of room is left.
@@ -448,7 +451,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
   const auths = relay.auths;
   relay.send(JSON.stringify({ t: "reset", ch: randomId() }));
   relay.send(JSON.stringify({ t: "credit", ch: randomId(), bytes: 1 }));
-  const response = await relay.exchange({ method: "GET", path: "/v1/empty-204" });
+  const response = await relay.exchange({ method: "POST", path: "/session.remove" });
   assert.equal(response.status, 204);
   assert.equal(relay.auths, auths);
   assert.deepEqual(relay.violations, []);

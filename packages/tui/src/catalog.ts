@@ -1,149 +1,40 @@
 /**
- * The terminal client's provider catalog: explicit provider factories over
- * the `~/.nyte` credential and model stores, so a login made here is a login
- * in every Nyte client.
+ * Readings of the host's model catalog: the models a signed-in provider
+ * serves, one model by its ref, and a thinking level a model accepts.
  */
-import { defaultModelPerProvider } from "@nyte-ai/ai";
-import type {
-  Api,
-  AuthCheck,
-  AuthOperationOptions,
-  Model,
-  Models,
-  ModelsRefreshOptions,
-  Provider,
-} from "@nyte-ai/ai";
-import type { ThinkingLevel } from "@nyte-ai/core";
+import type { ModelCatalogView, ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
+import { THINKING_LEVELS } from "./constants.ts";
 
-export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
-
-type ProviderAuthStatus =
-  | { readonly kind: "authenticated"; readonly provider: Provider; readonly auth: AuthCheck }
-  | { readonly kind: "unauthenticated"; readonly provider: Provider };
-
-/** Resolve provider status concurrently so pickers can mark logged-in providers. */
-export function providerAuthStatuses(
-  models: Models,
-  options?: AuthOperationOptions,
-): Promise<ProviderAuthStatus[]> {
-  return Promise.all(
-    models.getProviders().map(async (provider): Promise<ProviderAuthStatus> => {
-      const auth = await models.checkAuth(provider.id, options);
-
-      return auth === undefined
-        ? { kind: "unauthenticated", provider }
-        : { kind: "authenticated", provider, auth };
-    }),
+/** Returns every model of a provider whose credential is configured or verified. */
+export function availableModels(catalog: ModelCatalogView): readonly ModelInfo[] {
+  return catalog.providers.flatMap((provider) =>
+    provider.credential === "configured" || provider.credential === "verified"
+      ? provider.models
+      : [],
   );
 }
 
-async function fetchAuthenticatedModels(
-  models: Models,
-  options: Pick<ModelsRefreshOptions, "force" | "allowNetwork" | "signal">,
-): Promise<readonly Model<Api>[]> {
-  const statuses = await providerAuthStatuses(models, { signal: options.signal });
-
-  const providers = statuses.flatMap((status) =>
-    status.kind === "authenticated" ? [status.provider] : [],
+/** Returns the model a ref names, a fast ref resolving to the base row that carries it. */
+export function findModel(models: readonly ModelInfo[], ref: ModelRef): ModelInfo | undefined {
+  return models.find(
+    (model) =>
+      (model.ref.provider === ref.provider && model.ref.id === ref.id) ||
+      (model.fast?.provider === ref.provider && model.fast.id === ref.id),
   );
+}
 
-  await models.refresh({ providers: providers.map((provider) => provider.id), ...options });
+/** Returns `provider/id` for a ref: the id a choice, a flag and a notice spell. */
+export function modelId(ref: ModelRef): string {
+  return `${ref.provider}/${ref.id}`;
+}
 
-  const available = await Promise.all(
-    providers.map((provider) => models.getAvailable(provider.id, { signal: options.signal })),
+/** Returns the level a model accepts nearest at or below `level`, else its lowest. */
+export function clampThinking(model: ModelInfo, level: Thinking): Thinking {
+  const rank = THINKING_LEVELS.indexOf(level);
+
+  return (
+    model.thinking.findLast((candidate) => THINKING_LEVELS.indexOf(candidate) <= rank) ??
+    model.thinking[0] ??
+    "off"
   );
-
-  return available.flat();
-}
-
-interface CatalogCache {
-  loaded: readonly Model<Api>[] | undefined;
-  loading: Promise<readonly Model<Api>[]> | undefined;
-}
-
-const catalogCache = new WeakMap<Models, CatalogCache>();
-
-function cacheFor(models: Models): CatalogCache {
-  const existing = catalogCache.get(models);
-
-  if (existing !== undefined) return existing;
-  const created: CatalogCache = { loaded: undefined, loading: undefined };
-  catalogCache.set(models, created);
-
-  return created;
-}
-
-/** The last catalog this process loaded, so a menu paints before the network answers. */
-export function cachedAuthenticatedModels(models: Models): readonly Model<Api>[] | undefined {
-  return cacheFor(models).loaded;
-}
-
-/** A completed credential mutation makes both cached and in-flight auth snapshots obsolete. */
-export function invalidateAuthenticatedModels(models: Models): void {
-  const cache = cacheFor(models);
-  cache.loaded = undefined;
-  cache.loading = undefined;
-}
-
-/** One model catalog across every provider with configured auth. Concurrent callers share a refresh. */
-export function loadAuthenticatedModels(
-  models: Models,
-  options: Pick<ModelsRefreshOptions, "force" | "allowNetwork" | "signal"> = {},
-): Promise<readonly Model<Api>[]> {
-  const cache = cacheFor(models);
-  const pending = cache.loading;
-
-  if (pending !== undefined && options.force !== true) return pending;
-
-  const load = fetchAuthenticatedModels(models, options)
-    .then((available) => {
-      if (cache.loading === load) cache.loaded = available;
-
-      return available;
-    })
-    .finally(() => {
-      if (cache.loading === load) cache.loading = undefined;
-    });
-
-  cache.loading = load;
-
-  return load;
-}
-
-export function requireProvider(models: Models, providerId: string): Provider {
-  const provider = models.getProvider(providerId);
-
-  if (provider === undefined) throw new Error(`Unknown provider: ${providerId}`);
-
-  return provider;
-}
-
-/** Choose the provider's preferred model from the exact catalog the caller permits. */
-export function defaultModel(
-  modelCandidates: readonly Model<Api>[],
-  providerId: string,
-): Model<Api> {
-  const providerModels = modelCandidates.filter((model) => model.provider === providerId);
-  const preferredId = defaultModelPerProvider[providerId];
-
-  const model =
-    providerModels.find((candidate) => candidate.id === preferredId) ?? providerModels.at(0);
-
-  if (model === undefined) throw new Error(`${providerId} does not expose any available models`);
-
-  return model;
-}
-
-export function requireModel(
-  modelCandidates: readonly Model<Api>[],
-  providerId: string,
-  modelId: string,
-): Model<Api> {
-  const model = modelCandidates.find(
-    (candidate) => candidate.provider === providerId && candidate.id === modelId,
-  );
-
-  if (model === undefined) throw new Error(`Unavailable ${providerId} model: ${modelId}`);
-
-  return model;
 }

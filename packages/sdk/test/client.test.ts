@@ -382,7 +382,7 @@ describe("client", () => {
     expect(closed).toBe(1);
   });
 
-  it("rewrites the journal row of a send still unsent when a replace names it", async () => {
+  it("rewrites the journal row of a send still unsent when a replace names it, and keeps the row until a view shows the answered id", async () => {
     const host = await open();
     const journal = memoryJournal();
     const connection = await client(host, journal);
@@ -410,6 +410,8 @@ describe("client", () => {
     expect([one.message, two.message]).toEqual([id, id]);
     expect(await two.settled()).toMatchObject({ kind: "completed" });
     expect(users(await host.view(session.id))).toEqual(["Final."]);
+    expect(await journal.load()).toHaveLength(1);
+    expect(users(await session.view())).toEqual(["Final."]);
     expect(await journal.load()).toEqual([]);
   });
 

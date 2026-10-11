@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { WORKSPACE_TRUST_TITLE } from "../src/constants.ts";
 import {
   command,
   composer,
@@ -95,49 +94,16 @@ export const tui: Scenario = {
 
         let terminal = await open();
 
-        await context.beat(
-          "a project plugin waits behind workspace trust; Enter quits and the next launch asks again",
-          async () => {
-            await terminal.waitForScreen(
-              (screen) =>
-                screen.text.includes(WORKSPACE_TRUST_TITLE) && screen.text.includes("▸ [q] Quit"),
-              deadline(),
-            );
-            assert.equal(await pluginSetups(), 0, "No project code runs before trust");
-            await press(
-              terminal,
-              "workspace.accept",
-              (screen) => !screen.text.includes(WORKSPACE_TRUST_TITLE),
-            );
-            assert.equal(await terminal.waitForExit(deadline()), 0);
-            await terminal.close();
-            assert.equal(await pluginSetups(), 0, "Declining trust runs no project code");
-            assert.equal(provider.requests.length, 0, "Declining trust contacts no provider");
-            terminal = await open();
-            await terminal.waitForScreen(
-              (screen) => screen.text.includes(WORKSPACE_TRUST_TITLE),
-              deadline(),
-            );
-          },
-        );
-
-        await context.beat(
-          "trusting the workspace loads the project plugin's command",
-          async () => {
-            await press(terminal, "workspace.toggle", (screen) =>
-              screen.text.includes("▸ [a] Trust this workspace"),
-            );
-            await press(
-              terminal,
-              "workspace.accept",
-              (screen) => ready(screen) && footer(screen, FIXTURE_MODEL, "off"),
-            );
-            await command(terminal, "qa-probe", (screen) =>
-              screen.text.includes("QA plugin answered"),
-            );
-            assert.ok((await pluginSetups()) > 0, "The trusted plugin ran its setup");
-          },
-        );
+        await context.beat("the project plugin's command answers", async () => {
+          await terminal.waitForScreen(
+            (screen) => ready(screen) && footer(screen, FIXTURE_MODEL, "minimal"),
+            deadline(),
+          );
+          await command(terminal, "qa-probe", (screen) =>
+            screen.text.includes("QA plugin answered"),
+          );
+          assert.ok((await pluginSetups()) > 0, "The project plugin activated");
+        });
 
         await context.beat(
           "typed keys echo at once; the reply streams in before the provider finishes",
@@ -285,20 +251,20 @@ export const tui: Scenario = {
               "model",
               (screen) =>
                 screen.text.includes("Type to search") &&
-                screen.text.includes(`${FIXTURE_PROVIDER}/${FIXTURE_MODEL} · Off`),
+                screen.text.includes(`${FIXTURE_PROVIDER}/${FIXTURE_MODEL} · Minimal`),
             );
             await press(terminal, "model.next", (screen) =>
-              screen.text.includes(`${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL} · Off`),
+              screen.text.includes(`${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL} · Minimal`),
             );
             await press(
               terminal,
               "picker.accept",
               (screen) =>
                 !screen.text.includes("Type to search") &&
-                footer(screen, FIXTURE_CHILD_MODEL, "off"),
+                footer(screen, FIXTURE_CHILD_MODEL, "minimal"),
             );
             await press(terminal, "chat.thinking.cycle", (screen) =>
-              footer(screen, FIXTURE_CHILD_MODEL, "minimal"),
+              footer(screen, FIXTURE_CHILD_MODEL, "low"),
             );
             assert.equal(provider.requests.length, requests, "Choosing sends nothing");
             await type(terminal, "which model is this");
@@ -309,7 +275,7 @@ export const tui: Scenario = {
             );
             const request = await provider.waitForRequest((item) => item.script === "chosen model");
             assert.equal(request.model, FIXTURE_CHILD_MODEL);
-            assert.equal(request.payload.reasoning_effort, "minimal");
+            assert.equal(request.payload.reasoning_effort, "low");
           },
         );
 
@@ -331,6 +297,9 @@ export const tui: Scenario = {
                 prompt: "queued follow-up",
                 action: { kind: "reply", text: "The queued follow-up arrived." },
               },
+            );
+            await command(terminal, "effort minimal", (screen) =>
+              footer(screen, FIXTURE_CHILD_MODEL, "minimal"),
             );
             await command(terminal, "effort low", (screen) =>
               footer(screen, FIXTURE_CHILD_MODEL, "low"),
@@ -524,7 +493,6 @@ export const tui: Scenario = {
                 footer(screen, FIXTURE_CHILD_MODEL, "medium"),
               deadline(),
             );
-            assert.ok(!terminal.screen().text.includes(WORKSPACE_TRUST_TITLE), "Trust was saved");
             const before = chat().length;
             await type(terminal, "after the restart");
             await press(

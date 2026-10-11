@@ -16,16 +16,18 @@ import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
-import type { ConversationTurn, RenderedTurn } from "./transcript-rows.ts";
+import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import { drawPart } from "../client-plugins.tsx";
+import { useTranscriptSession } from "./transcript.tsx";
+import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
+import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
+import { isToolMessage } from "../view-helpers.ts";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
@@ -34,10 +36,21 @@ import { ComposerFrame } from "./composer.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
-import { composerMessageContent } from "./composer-send.ts";
+import {
+  composerContentEmpty,
+  composerMessageContent,
+  uploadComposerContent,
+} from "./composer-send.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
-import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
+import {
+  UserMessageText,
+  messageFiles,
+  messageImages,
+  useBlobUrl,
+  userMessageText,
+} from "./message-content.tsx";
+import type { MessageFile } from "./message-content.tsx";
 import { messageDraftText } from "./message-references.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
@@ -52,9 +65,15 @@ import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { failureNotice } from "./tool-copy.ts";
-import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
+import {
+  displayTranscriptParts,
+  isTextMessage,
+  isThinkingMessage,
+  userDisplayText,
+} from "./transcript-presentation.ts";
+import type { TextMessage } from "./transcript-presentation.ts";
 import { errorMessage } from "../errors.ts";
-import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 
 function UserMessagePreview({
   expandable,
@@ -115,19 +134,21 @@ function UserMessagePreview({
   );
 }
 
-function UserMessageImages({ content }: { content: UserTurnPart["content"] }): ReactElement | null {
+function BlobImage({ file }: { file: MessageFile }): ReactElement | null {
+  const src = useBlobUrl(file.blob);
+
+  return src === undefined ? null : <ImagePreview src={src} name={file.name} />;
+}
+
+function UserMessageImages({ content }: { content: UserContent }): ReactElement | null {
   const images = messageImages(content);
 
   if (images.length === 0) return null;
 
   return (
     <AttachmentGroup {...props(turnStyles.userImages)}>
-      {images.map((item, index) => (
-        <ImagePreview
-          key={index}
-          src={`data:${item.mimeType};base64,${item.data}`}
-          name={`Image ${String(index + 1)}`}
-        />
+      {images.map((item) => (
+        <BlobImage key={item.blob} file={item} />
       ))}
     </AttachmentGroup>
   );
@@ -144,7 +165,7 @@ export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
 
-type ConversationTurnId = ConversationTurn["id"];
+type ConversationTurnId = ConversationTurn["info"]["id"];
 
 export type TurnChangesTarget =
   | { readonly kind: "turn"; readonly turnId: ConversationTurnId }
@@ -154,19 +175,12 @@ interface UserEditState extends BranchModelChoice {
   /** The message as a draft: its head sentences back as chips, edited in the composer's editor. */
   readonly document: ComposerDocumentState;
   readonly attachments: readonly ComposerImageAttachment[];
+  /** The files the message already carries; an edit keeps them. */
+  readonly kept: readonly MessageFile[];
   readonly attachmentReads: number;
   readonly attachmentError: string | undefined;
   readonly saving: boolean;
   readonly error: string | undefined;
-}
-
-/** The message's own images become attachments the edit can keep or drop. */
-function attachmentsOf(content: UserTurnPart["content"]): readonly ComposerImageAttachment[] {
-  return messageImages(content).map((image, index) => ({
-    id: crypto.randomUUID(),
-    name: `Image ${String(index + 1)}`,
-    content: image,
-  }));
 }
 
 /**
@@ -180,8 +194,8 @@ export function UserMessageView({
   onEdit,
   branchModel,
 }: {
-  content: UserTurnPart["content"];
-  onEdit?: (content: UserTurnPart["content"], choice: BranchModelChoice) => Promise<void>;
+  content: UserContent;
+  onEdit?: (content: UserContent, choice: BranchModelChoice) => Promise<void>;
   branchModel?: BranchModelPicker;
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
@@ -223,7 +237,8 @@ export function UserMessageView({
     flushSync(() =>
       setEdit({
         document: { text, selectionStart: text.length, selectionEnd: text.length },
-        attachments: attachmentsOf(content),
+        attachments: [],
+        kept: messageFiles(content),
         attachmentReads: 0,
         attachmentError: undefined,
         saving: false,
@@ -258,9 +273,9 @@ export function UserMessageView({
 
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
     if (edit === undefined || edit.saving || onEdit === undefined) return false;
-    const next = composerMessageContent(submission.text.trim(), edit.attachments);
+    const draft = composerMessageContent(submission.text.trim(), edit.attachments, edit.kept);
 
-    if (Array.isArray(next) ? next.length === 0 : next.trim() === "") {
+    if (composerContentEmpty(draft)) {
       setEdit({ ...edit, error: "A message cannot be empty." });
 
       return false;
@@ -269,6 +284,7 @@ export function UserMessageView({
     setEdit({ ...edit, saving: true, error: undefined });
 
     try {
+      const next = await uploadComposerContent(draft);
       await onEdit(next, {
         model: edit.model,
         thinkingLevel: edit.thinkingLevel,
@@ -422,7 +438,7 @@ function TurnChangesCard({
   onReview,
   onOpenFile,
 }: {
-  readonly files: readonly FileChange[];
+  readonly files: SessionView["changes"];
   readonly onReview: () => void;
   readonly onOpenFile: (path: string) => void;
 }): ReactElement {
@@ -490,77 +506,98 @@ function TurnChangesCard({
   );
 }
 
+function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
+  const sessionId = useTranscriptSession();
+
+  if (isPart(message, compaction)) {
+    return message.state.summary === null ? null : (
+      <HistoryDisclosure label="Chat context summarized">
+        <Prose markdown={message.state.summary} />
+      </HistoryDisclosure>
+    );
+  }
+
+  if (isPart(message, branchSummary)) {
+    return (
+      <HistoryDisclosure label="Branch summary">
+        <Prose markdown={message.state.markdown} />
+      </HistoryDisclosure>
+    );
+  }
+
+  if (message.kind !== "part" || sessionId === undefined) return null;
+
+  return <>{drawPart(sessionId, message, { kind: "transcript", role: message.role })}</>;
+}
+
 function TurnPartView({
-  part,
-  liveTools,
+  message,
   cwd,
   density,
   onEditUser,
   branchModel,
 }: {
-  part: TurnPart;
-  liveTools: ReadonlyMap<string, LiveToolProgress>;
+  message: ViewMessage;
   cwd: string | undefined;
   density: ToolCallDensity;
   onEditUser?: (
-    part: UserTurnPart,
-    content: UserTurnPart["content"],
+    message: UserMessage,
+    content: UserContent,
     choice: BranchModelChoice,
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
 }): ReactElement | null {
-  switch (part.kind) {
-    case "user":
-      return (
-        <UserMessageView
-          content={part.source?.label ?? part.content}
-          onEdit={
-            onEditUser === undefined || part.source?.kind === "action"
-              ? undefined
-              : (content, choice) => onEditUser(part, content, choice)
-          }
-          branchModel={branchModel}
-        />
-      );
-    case "assistant":
-      return part.text.trim() === "" ? null : <Prose markdown={part.text} />;
-    case "thinking":
-      return <ThinkingLine text={part.text} streaming={false} />;
-    case "tool":
-      return (
-        <ToolCallView
-          part={part}
-          progress={liveTools.get(part.callId)?.progress}
-          cwd={cwd}
-          density={density}
-        />
-      );
-    default: {
-      const _exhaustive: never = part;
-
-      return _exhaustive;
-    }
+  if (message.kind === "user") {
+    return (
+      <UserMessageView
+        content={message.source.kind === "action" ? message.source.label : message.content}
+        onEdit={
+          onEditUser === undefined || message.source.kind === "action"
+            ? undefined
+            : (content, choice) => onEditUser(message, content, choice)
+        }
+        branchModel={branchModel}
+      />
+    );
   }
+
+  if (isTextMessage(message))
+    return message.state.markdown.trim() === "" ? null : (
+      <Prose markdown={message.state.markdown} />
+    );
+
+  if (isThinkingMessage(message))
+    return (
+      <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
+    );
+
+  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+
+  return <NoteView message={message} />;
 }
 
 const ResponseView = memo(function ResponseView({
-  parts,
+  messages,
 }: {
-  parts: readonly Extract<TurnPart, { readonly kind: "assistant" }>[];
+  messages: readonly TextMessage[];
 }): ReactElement | null {
-  const markdown = useMemo(() => parts.map((part) => part.text.trim()).join("\n\n"), [parts]);
+  const markdown = useMemo(
+    () => messages.map((message) => message.state.markdown.trim()).join("\n\n"),
+    [messages],
+  );
+  const streaming = messages.some((message) => message.status.kind === "live");
 
-  return markdown === "" ? null : <Prose markdown={markdown} />;
+  return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
 });
 
 interface TurnBodyProps {
   density: ToolCallDensity;
-  liveTools: ReadonlyMap<string, LiveToolProgress>;
-  live?: LiveSnapshot;
   cwd: string | undefined;
+  /** The session's changed files, latest state per path, for the changes card's counts. */
+  changes: SessionView["changes"];
   onEditUser?: (
-    part: UserTurnPart,
-    content: UserTurnPart["content"],
+    message: UserMessage,
+    content: UserContent,
     choice: BranchModelChoice,
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
@@ -569,76 +606,70 @@ interface TurnBodyProps {
 }
 
 function drawsNothing(turn: ConversationTurn): boolean {
-  return turn.parts.length === 0 && turn.failure === undefined;
+  return turn.messages.length === 0 && turn.info.state.kind !== "ended";
 }
 
-/** One turn's parts, failure, and changes, as siblings in the row's column. */
+/** The paths this turn's settled calls changed, with the session's counts for each. */
+function turnChanges(
+  turn: ConversationTurn,
+  changes: SessionView["changes"],
+): SessionView["changes"] {
+  const paths = new Set(
+    turn.messages.flatMap((message) =>
+      isToolMessage(message) && message.state.phase === "settled"
+        ? (message.state.changes?.paths ?? [])
+        : [],
+    ),
+  );
+
+  return changes.filter((change) => paths.has(change.path));
+}
+
+/** One turn's messages, failure, and changes, as siblings in the row's column. */
 const TurnBody = memo(function TurnBody({
   turn,
   density,
-  liveTools,
-  live,
   cwd,
+  changes: sessionChanges,
   onEditUser,
   branchModel,
   onOpenChanges,
   running,
 }: TurnBodyProps & { turn: ConversationTurn }): ReactElement | null {
-  const changes = useMemo(() => changesFromTurns([turn]), [turn]);
-
-  const changeTotals = useMemo(
-    () =>
-      changes.reduce(
-        (totals, file) => ({
-          added: totals.added + file.added,
-          removed: totals.removed + file.removed,
-        }),
-        { added: 0, removed: 0 },
-      ),
-    [changes],
-  );
-
-  // Progress updates must reuse the settled grouping so summaries can update only live tools.
-  const display = useMemo(() => displayTranscriptParts(turn.parts), [turn]);
+  const changes = useMemo(() => turnChanges(turn, sessionChanges), [turn, sessionChanges]);
+  const display = useMemo(() => displayTranscriptParts(turn.messages), [turn]);
 
   if (drawsNothing(turn)) return null;
-  const failure = turn.failure === undefined ? undefined : failureNotice(turn.failure);
+  const { state } = turn.info;
+  const failure =
+    state.kind === "ended" && state.end.kind === "failed"
+      ? failureNotice(state.end.failure)
+      : undefined;
 
   return (
     <>
       {display.map((item, index) => {
         if (item.kind === "step") {
-          const first = item.parts[0];
-          // Only the trailing group carries the run; an earlier one is
-          // settled history, and the run's indicator belongs below the
-          // prose that follows it.
+          const [first] = item.messages;
           const trailing = index === display.length - 1;
           const active = running && trailing;
 
-          // One settled call has nothing to fold; its own line says more
-          // than a header counting it.
-          if (!active && item.parts.length === 1 && first?.kind === "tool") {
-            return (
-              <TurnPartView
-                key={turnPartId(first)}
-                part={first}
-                liveTools={liveTools}
-                cwd={cwd}
-                density={density}
-              />
-            );
+          if (
+            !active &&
+            item.messages.length === 1 &&
+            first !== undefined &&
+            isToolMessage(first)
+          ) {
+            return <TurnPartView key={first.id} message={first} cwd={cwd} density={density} />;
           }
 
           return (
             <StepGroupView
-              key={`step:${first === undefined ? turn.id : turnPartId(first)}`}
-              parts={item.parts}
-              run={turn.run}
-              live={trailing ? live : undefined}
-              liveTools={liveTools}
+              key={`step:${first?.id ?? turn.info.id}`}
+              messages={item.messages}
               cwd={cwd}
-              added={trailing ? changeTotals.added : 0}
-              removed={trailing ? changeTotals.removed : 0}
+              added={trailing ? turn.info.summary.added : 0}
+              removed={trailing ? turn.info.summary.removed : 0}
               running={active}
               density={density}
             />
@@ -646,21 +677,18 @@ const TurnBody = memo(function TurnBody({
         }
 
         if (item.kind === "response") {
-          const first = item.parts[0];
-
           return (
             <ResponseView
-              key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
-              parts={item.parts}
+              key={`response:${item.messages[0]?.id ?? turn.info.id}`}
+              messages={item.messages}
             />
           );
         }
 
         return (
           <TurnPartView
-            key={turnPartId(item.part)}
-            part={item.part}
-            liveTools={liveTools}
+            key={item.message.id}
+            message={item.message}
             cwd={cwd}
             density={density}
             onEditUser={onEditUser}
@@ -679,8 +707,8 @@ const TurnBody = memo(function TurnBody({
       {!running && changes.length > 0 && (
         <TurnChangesCard
           files={changes}
-          onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}
-          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.id, path })}
+          onReview={() => onOpenChanges({ kind: "turn", turnId: turn.info.id })}
+          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.info.id, path })}
         />
       )}
     </>
@@ -690,59 +718,26 @@ const TurnBody = memo(function TurnBody({
 export const TurnView = memo(function TurnView({
   turn,
   continuations,
-  live,
   running,
   ...body
 }: TurnBodyProps & {
-  turn: RenderedTurn;
+  turn: ConversationTurn;
   continuations: readonly ConversationTurn[];
 }): ReactElement | null {
-  switch (turn.kind) {
-    case "turn": {
-      const turns = [turn, ...continuations];
+  const turns = [turn, ...continuations];
 
-      // A completion's continuation turn draws nothing until its response
-      // lands; an empty completed turn must not leave a blank row behind.
-      if (turns.every(drawsNothing)) return null;
+  if (turns.every(drawsNothing)) return null;
 
-      // The prompt sticks within this column, so the request's turn and the
-      // turns background reports opened under it share it. Only the last
-      // turn can still be running.
-      return (
-        <div {...props(turnStyles.turn)}>
-          {turns.map((entry, index) => {
-            const last = index === turns.length - 1;
-
-            return (
-              <TurnBody
-                key={entry.id}
-                {...body}
-                turn={entry}
-                live={last ? live : undefined}
-                running={running && last}
-              />
-            );
-          })}
-        </div>
-      );
-    }
-
-    case "checkpoint":
-      return (
-        <HistoryDisclosure label="Chat context summarized">
-          <Prose markdown={turn.body.summary} />
-        </HistoryDisclosure>
-      );
-    case "summary":
-      return (
-        <HistoryDisclosure label="Branch summary">
-          <Prose markdown={turn.body.text} />
-        </HistoryDisclosure>
-      );
-    default: {
-      const _exhaustive: never = turn;
-
-      return _exhaustive;
-    }
-  }
+  return (
+    <div {...props(turnStyles.turn)}>
+      {turns.map((entry, index) => (
+        <TurnBody
+          key={entry.info.id}
+          {...body}
+          turn={entry}
+          running={running && index === turns.length - 1}
+        />
+      ))}
+    </div>
+  );
 });

@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { memoryStore } from "@nyte-ai/core";
 import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
-import { defaultSecrets, localProvider, openHost } from "../src/index.ts";
+import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 
 const folders: string[] = [];
@@ -168,6 +168,70 @@ describe("openHost", () => {
     );
   });
 
+  it("restores a credentialed provider's saved catalog at open, with no network call", async () => {
+    const home = await folder();
+    const store = memoryStore();
+    const fetch = vi.fn(async () => new Response(null, { status: 500 }));
+    vi.stubGlobal("fetch", fetch);
+    await mkdir(join(home, ".nyte"));
+    await writeFile(
+      join(home, ".nyte", "models-store.json"),
+      JSON.stringify({
+        rawCatalogs: {
+          opencode: {
+            checkedAt: Date.now(),
+            models: [
+              {
+                id: "saved-model",
+                name: "Saved model",
+                api: "openai-completions",
+                provider: "opencode",
+                baseUrl: "https://example.test/v1",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 100_000,
+                maxTokens: 4_096,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await credentialStore(store, defaultSecrets(home)).modify("opencode", async () => ({
+      type: "api_key",
+      key: "saved-key",
+    }));
+    const options = { store, plugins: [chatOnly], workspace: { kind: "chat-only", locator: null }, home };
+
+    try {
+      await (await openHost(options)).close();
+      await using host = await openHost(options);
+      const opencode = (await host.models.list()).providers.find(
+        (provider) => provider.id === "opencode",
+      );
+
+      expect(opencode?.models.map((model) => model.ref.id)).toEqual(["saved-model"]);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("defaults the store to <home>/.nyte/nyte.db and the workspace to the local folder process.cwd()", async () => {
+    const home = await folder();
+    const first = await openHost({ models: fakeModels().models, home });
+    const created = await first.sessions.create({});
+    await first.close();
+
+    expect(await readdir(join(home, ".nyte"))).toContain("nyte.db");
+    await using second = await openHost({ models: fakeModels().models, home });
+    const [workspace] = await second.workspaces.list();
+
+    expect((await second.sessions.list({})).items.map((info) => info.id)).toContain(created.id);
+    expect(workspace?.target).toEqual({ kind: "local", path: process.cwd() });
+  });
+
   it("loads a local workspace's plugin files as project plugins", async () => {
     const home = await folder();
     const workspace = await folder();
@@ -188,7 +252,7 @@ describe("openHost", () => {
     });
   });
 
-  it("listens with an identity the secrets key derives and X-Nyte-Host on every answer", async () => {
+  it("listens with an identity from <home>/.nyte/identity.key and X-Nyte-Host on every answer", async () => {
     const home = await folder();
     await using host = await open(home);
     await using listener = await host.listen({
@@ -199,6 +263,7 @@ describe("openHost", () => {
     const answer: unknown = await identity.json();
 
     expect(answer).toMatchObject({ hostId: host.hostId, nonce: "n1" });
+    expect(await readdir(join(home, ".nyte"))).toEqual(["identity.key"]);
 
     if (
       typeof answer !== "object" ||
@@ -237,4 +302,83 @@ describe("openHost", () => {
     expect(refused.status).toBe(401);
     expect(refused.headers.get("X-Nyte-Host")).toBe(host.hostId);
   });
+
+  it("reads no secrets key across open, listen, models.list() and the identity route", async () => {
+    const home = await folder();
+    let reads = 0;
+
+    await using host = await openHost({
+      store: memoryStore(),
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      home,
+      secrets: {
+        key: async () => {
+          reads += 1;
+
+          return new Uint8Array(32);
+        },
+      },
+    });
+    await using listener = await host.listen({
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token: TOKEN },
+    });
+
+    expect((await host.models.list()).providers.length).toBeGreaterThan(0);
+    expect(
+      (await listener.fetch(new Request("http://host.test/.nyte/identity?nonce=n1"))).status,
+    ).toBe(200);
+    expect(reads).toBe(0);
+  });
+
+  it("reloads plugin files when one lands in the watched directory, and withdraws a failure once the file loads", async () => {
+    const home = await folder();
+    const dir = join(home, ".nyte", "plugins");
+    await mkdir(dir, { recursive: true });
+    await using host = await open(home);
+    const before = await viewOf(host);
+
+    expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
+    await writeFile(join(dir, "hot.mjs"), 'export default { id: "hot" };\n');
+    const landed = await viewWhere(
+      host,
+      (view) => view.catalog !== before.catalog && view.plugins.some((row) => row.id === "hot"),
+    );
+
+    expect(landed.plugins.find((row) => row.id === "hot")).toMatchObject({
+      source: "user",
+      path: join(dir, "hot.mjs"),
+    });
+    expect(landed.plugins.some((row) => row.id === "chat-only")).toBe(true);
+
+    const broken = join(dir, "broken.mjs");
+    await writeFile(broken, "export default {;\n");
+    await viewWhere(host, (view) => view.plugins.some((row) => row.id === broken));
+    await writeFile(broken, 'export default { id: "mended" };\n');
+    const mended = await viewWhere(
+      host,
+      (view) =>
+        view.plugins.some((row) => row.id === "mended") &&
+        !view.plugins.some((row) => row.id === broken),
+    );
+
+    expect(mended.plugins.some((row) => row.id === "hot")).toBe(true);
+  });
 });
+
+/** Returns the first host view `matches` accepts, failing after 5 s. */
+async function viewWhere(host: Host, matches: (view: HostView) => boolean): Promise<HostView> {
+  const views = host.watch()[Symbol.asyncIterator]();
+  const deadline = setTimeout(() => void views.return?.(), 5000);
+
+  try {
+    for (let next = await views.next(); next.done !== true; next = await views.next())
+      if (matches(next.value)) return next.value;
+  } finally {
+    clearTimeout(deadline);
+    await views.return?.();
+  }
+
+  throw new Error("No host view matched within 5 s.");
+}

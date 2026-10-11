@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useId, useMemo, useState, type ReactElement } from "react";
-import type { MentionFile } from "@nyte-ai/client";
-import type { VcsFile } from "@nyte-ai/protocol";
+import type { MentionFile } from "../conversation/message-references.ts";
+import type { WorktreeFile } from "../view-helpers.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -24,7 +24,7 @@ export function FilesEmptyState({
   onSearch,
 }: {
   readonly files: readonly MentionFile[] | undefined;
-  readonly changes: readonly VcsFile[];
+  readonly changes: readonly WorktreeFile[];
   readonly explorerVisible: boolean;
   readonly onOpen: (file: MentionFile) => void;
   readonly onShowExplorer: () => void;
@@ -145,7 +145,7 @@ function ChangedFiles({
   onOpen,
 }: {
   readonly id: string;
-  readonly changes: readonly VcsFile[];
+  readonly changes: readonly WorktreeFile[];
   readonly byPath: ReadonlyMap<string, MentionFile>;
   readonly onOpen: (file: MentionFile) => void;
 }): ReactElement | null {

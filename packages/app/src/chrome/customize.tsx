@@ -1,21 +1,20 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
-import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/protocol";
+import type { CommandInfo, HostView, Json, SessionId, SettingInfo, SkillInfo } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
 import {
-  keys,
   useApplyPluginSetting,
   useHostState,
   usePluginSettingsProjection,
-  type CustomizeInventory,
+  useSessionView,
 } from "../queries.ts";
+import { hostWatch, useWatch } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { SettingsRow, SettingsSwitchRow } from "../settings/rows.tsx";
@@ -70,6 +69,17 @@ const BUILTINS = new Map<string, Presentation>([
 
 const PLUGIN_SECTION = "plugin:";
 
+/** One loaded plugin as the host view lists it. */
+type PluginInfo = HostView["plugins"][number];
+
+/** What Customize lists: the host's plugins, and the settings, skills and commands in scope. */
+interface CustomizeInventory {
+  readonly plugins: readonly PluginInfo[];
+  readonly settings: readonly SettingInfo[];
+  readonly skills: readonly SkillInfo[];
+  readonly commands: readonly CommandInfo[];
+}
+
 interface PluginView extends Partial<Presentation> {
   readonly info: PluginInfo;
   readonly name: string;
@@ -77,21 +87,30 @@ interface PluginView extends Partial<Presentation> {
   readonly off: boolean;
 }
 
+/** The load errors a plugin reported, one per line; undefined when it loaded. */
+function loadFailure(plugin: PluginInfo): string | undefined {
+  const errors = plugin.issues.filter((issue) => issue.severity === "error");
+
+  return errors.length === 0 ? undefined : errors.map((issue) => issue.message).join("\n");
+}
+
 function isToggle(setting: SettingInfo): boolean {
-  return (
-    setting.choices.length === 2 &&
-    setting.choices.every((choice) => choice.id === "on" || choice.id === "off")
-  );
+  return typeof setting.value === "boolean";
+}
+
+/** A choice's value as the key a select item carries. */
+function choiceKey(value: Json): string {
+  return JSON.stringify(value);
 }
 
 function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginView | undefined {
   const builtin = BUILTINS.get(plugin.id);
 
-  if (builtin === undefined && plugin.source === "builtin" && plugin.status === "active")
+  if (builtin === undefined && plugin.source === "builtin" && loadFailure(plugin) === undefined)
     return undefined;
 
   const toggles = settings.filter((setting) => setting.owner === plugin.id && isToggle(setting));
-  const off = toggles.length > 0 && toggles.every((setting) => setting.current === "off");
+  const off = toggles.length > 0 && toggles.every((setting) => setting.value === false);
 
   return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };
 }
@@ -127,8 +146,8 @@ function hasPage(plugin: PluginView, inventory: CustomizeInventory): boolean {
   const owns = (owner: string): boolean => owner === plugin.info.id;
 
   return (
-    plugin.info.status === "failed" ||
-    plugin.info.path !== undefined ||
+    loadFailure(plugin.info) !== undefined ||
+    plugin.info.path !== null ||
     inventory.settings.some((setting) => owns(setting.owner)) ||
     inventory.commands.some((command) => owns(command.owner))
   );
@@ -144,7 +163,7 @@ function PluginRow({
   readonly onOpen: (plugin: PluginView) => void;
 }): ReactElement {
   const detail =
-    plugin.info.status === "failed" ? (
+    loadFailure(plugin.info) !== undefined ? (
       <ConnectionStatus tone="err">Couldn&rsquo;t load</ConnectionStatus>
     ) : plugin.off ? (
       <ConnectionStatus tone="off">Off</ConnectionStatus>
@@ -234,7 +253,7 @@ function Overview({
           <ConnectionList>
             {inventory.skills.map((skill) => (
               <ConnectionRow
-                key={skill.filePath}
+                key={skill.location}
                 glyph={<Icon name="skills" size={16} />}
                 title={skill.name}
                 detail={skill.description}
@@ -244,7 +263,7 @@ function Overview({
                       iconOnly
                       icon="folder-open"
                       aria-label={revealLabel(host.data?.platform)}
-                      onClick={() => void reveal({ path: parentPath(skill.filePath) })}
+                      onClick={() => void reveal({ path: parentPath(skill.location) })}
                     />
                   )
                 }
@@ -264,34 +283,42 @@ function PluginSetting({
 }: {
   readonly setting: SettingInfo;
   readonly disabled: boolean;
-  readonly onApply: (choiceId: string) => void;
+  readonly onApply: (value: Json) => void;
 }): ReactElement {
   if (isToggle(setting))
     return (
       <SettingsSwitchRow
         title={setting.label}
         disabled={disabled}
-        checked={setting.current === "on"}
-        onCheckedChange={(checked) => onApply(checked ? "on" : "off")}
+        checked={setting.value === true}
+        onCheckedChange={(checked) => onApply(checked)}
       />
     );
+
+  const choices = setting.choices ?? [];
 
   return (
     <SettingsRow title={setting.label}>
       <Select
-        items={setting.choices.map((choice) => ({ value: choice.id, label: choice.label }))}
-        disabled={disabled}
-        value={setting.current}
-        onValueChange={(choiceId) => {
-          if (choiceId !== null) onApply(choiceId);
+        items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
+        disabled={disabled || choices.length === 0}
+        value={choiceKey(setting.value)}
+        onValueChange={(key) => {
+          const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
+
+          if (choice !== undefined) onApply(choice.value);
         }}
       >
         <SelectTrigger aria-label={setting.label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {setting.choices.map((choice) => (
-            <SelectItem key={choice.id} value={choice.id} label={choice.label}>
+          {choices.map((choice) => (
+            <SelectItem
+              key={choiceKey(choice.value)}
+              value={choiceKey(choice.value)}
+              label={choice.label}
+            >
               {choice.label}
             </SelectItem>
           ))}
@@ -318,7 +345,7 @@ function Detail({
   const { info } = plugin;
   const settings = inventory.settings.filter((setting) => setting.owner === info.id);
   const commands = inventory.commands.filter((command) => command.owner === info.id);
-  const failure = info.status === "failed" ? info.error : undefined;
+  const failure = loadFailure(info);
   const path = info.path;
 
   return (
@@ -360,10 +387,7 @@ function Detail({
 
       {info.source !== "builtin" && (
         <div {...props(settingsPatterns.group)}>
-          <SettingsRow title="Version">
-            <span {...props(styles.value)}>{info.version}</span>
-          </SettingsRow>
-          {path !== undefined && (
+          {path !== null && (
             <SettingsRow title="Location" description={path} controlWidth="wide">
               {reveal !== undefined && (
                 <Button variant="outline" icon="folder-open" onClick={() => void reveal({ path })}>
@@ -389,8 +413,10 @@ function Detail({
               <PluginSetting
                 key={setting.id}
                 setting={setting}
-                disabled={sessionId === undefined || apply.isPending}
-                onApply={(choiceId) => apply.mutate({ id: setting.id, choiceId })}
+                disabled={
+                  (sessionId === undefined && setting.scope === "session") || apply.isPending
+                }
+                onApply={(value) => apply.mutate({ id: setting.id, value })}
               />
             ))}
           </div>
@@ -436,22 +462,21 @@ export function CustomizeSurface({
   const navigate = useNavigate();
   const projectSettings = usePluginSettingsProjection(sessionId);
 
-  const inventory = useQuery<CustomizeInventory>({
-    queryKey: sessionId === undefined ? keys.pluginCatalog : ["customize", sessionId],
-    select: (inventory) => ({ ...inventory, settings: projectSettings(inventory.settings) }),
-    queryFn: async () => {
-      if (sessionId === undefined) return nyte.plugins.catalog();
+  const hostView = useWatch(hostWatch("host"));
+  const view = useSessionView(sessionId);
 
-      const [plugins, settings, skills, commands] = await Promise.all([
-        nyte.plugins.list({ sessionId }),
-        nyte.plugins.settings.list({ sessionId }),
-        nyte.plugins.resources.list({ sessionId }),
-        nyte.plugins.commands.list({ sessionId }),
-      ]);
-
-      return { plugins, settings, skills, commands };
-    },
-  });
+  const inventory = {
+    data:
+      hostView === undefined
+        ? undefined
+        : ({
+            plugins: hostView.plugins,
+            settings: projectSettings(view?.catalog.settings ?? hostView.settings),
+            skills: view?.catalog.skills ?? [],
+            commands: view?.catalog.commands ?? [],
+          } satisfies CustomizeInventory),
+    isPending: hostView === undefined,
+  };
 
   const show = (next: string): void =>
     void navigate({ to: ".", search: (previous) => ({ ...previous, customize: next }) });
@@ -481,11 +506,6 @@ export function CustomizeSurface({
         ) : (
           <>
             {inventory.isPending && <InventoryLoading />}
-            {inventory.isError && (
-              <p role="alert" {...props(settingsPatterns.sectionDescription)}>
-                Couldn&rsquo;t load plugins and skills: {inventory.error.message}
-              </p>
-            )}
             {inventory.data !== undefined && (
               <Overview
                 inventory={inventory.data}

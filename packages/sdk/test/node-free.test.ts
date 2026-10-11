@@ -11,7 +11,7 @@ const WALKED: Readonly<Record<string, string>> = {
   "@nyte-ai/schema": "schema/src/index.ts",
 };
 
-const SPECIFIER = /^(?:import|export)\s(?!type\s)[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;
+const SPECIFIER = /^(?:import|export)\s[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;
 
 /** Returns the file a specifier names when the walk follows it: a relative path, or the root of core, protocol or schema; null for anything else. */
 function fileOf(from: string, specifier: string): string | null {
@@ -21,7 +21,7 @@ function fileOf(from: string, specifier: string): string | null {
   return entry === undefined ? null : join(packages, entry);
 }
 
-/** Returns every runtime specifier (type-only imports are erased) the files reachable from `entry` import, walking the sdk's files and the core, protocol and schema roots. */
+/** Returns every specifier the files reachable from `entry` import, type-only ones included (a DOM program must not see Node's types either), walking the sdk's files and the core, protocol and schema roots. */
 function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
   const seen = new Map<string, readonly string[]>();
   const queue = [join(packages, entry)];
@@ -48,7 +48,7 @@ function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
 }
 
 describe("the web entry", () => {
-  it("reaches no node: import and not @nyte-ai/host", () => {
+  it("reaches no node: import and not @nyte-ai/host, not even as a type", () => {
     const files = reachable("sdk/src/index.web.ts");
 
     const offending = [...files].flatMap(([file, specifiers]) =>

@@ -8,9 +8,40 @@
  * sentences where they were inserted, clipboard chips unwrap to their body,
  * and those sentences read back as chips.
  */
-import type { MentionFile } from "@nyte-ai/client";
+import type { FileEntryView } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+
+/**
+ * One file or folder `@` can name: its absolute path, the `file:` URL a
+ * message spells it as, the path relative to the workspace root (`/` after a
+ * folder) and its basename (`/` after a folder).
+ */
+export interface MentionFile {
+  readonly path: string;
+  readonly url: string;
+  readonly displayPath: string;
+  readonly label: string;
+}
+
+/** A scanned entry under a workspace root, as `@` names it. */
+export function mentionFile(
+  root: string,
+  entry: Pick<FileEntryView, "path" | "kind">,
+): MentionFile {
+  const folder = entry.kind === "directory" ? "/" : "";
+  const path = `${root.replace(/\/$/u, "")}/${entry.path}`;
+  const url = new URL("file:///");
+  url.pathname = `${path}${folder}`;
+  const name = entry.path.split("/").at(-1) ?? entry.path;
+
+  return {
+    path: `${path}${folder}`,
+    url: url.href,
+    displayPath: `${entry.path}${folder}`,
+    label: `${name}${folder}`,
+  };
+}
 
 export type MessageReference =
   | {

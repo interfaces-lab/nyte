@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { asId } from "@nyte-ai/schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
@@ -15,7 +16,7 @@ const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
 const github = { state: pending, signIn: pending, signOut: pending, createPullRequest: pending };
 
-const withEnvironment: NyteBridge = { ...web, environment: true, host: { ...web.host, github } };
+const withEnvironment: NyteBridge = { ...web, host: { ...web.host, github } };
 
 const desktop: NyteBridge = {
   ...web,
@@ -96,7 +97,7 @@ function render(github: GitHubProviderState, connect: ConnectView | undefined): 
   clients.add(client);
   client.setQueryData(keys.host, {
     platform: "darwin",
-    workspace: { path: "/srv/repo", name: "repo", lastOpenedAt: 1 },
+    workspace: { id: asId<"workspace">("repo"), path: "/srv/repo", name: "repo" },
     machineName: "Studio Mac",
   } satisfies HostState);
   client.setQueryData([...keys.github, "/srv/repo"], github);
@@ -164,7 +165,8 @@ test("the GitHub CLI, the Nyte account, and this Mac each change only their own 
   assert.doesNotMatch(linked.get("GitHub") ?? "", /The Octocat/);
 });
 
-test("the web app lists Profile only when its server has an environment", () => {
+test("Profile is listed on the desktop, which owns its environment, and not in the web app", () => {
+  installBridge(desktop);
   assert.ok(settingsSectionGroups().flat().includes("profile"));
 
   installBridge(web);

@@ -4,12 +4,19 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { Delivery, ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai/protocol";
-import { waitingCall, type SessionState } from "@nyte-ai/client";
-import type { FileChange } from "@nyte-ai/client";
-import type { UserContent } from "./remote-chat.ts";
+import type {
+  ActOutcome,
+  Configuration,
+  Delivery,
+  HeadName,
+  PartId,
+  SessionId,
+  SessionView,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
+import type { DraftContent } from "../media/attachments.ts";
 import { spacing, tokens } from "../theme.ts";
+import { openQuestion } from "../view-helpers.ts";
 import { Composer } from "./composer.tsx";
 import { ReviewStrip } from "./review-strip.tsx";
 import { conversationLayout } from "./conversation-layout.ts";
@@ -21,27 +28,37 @@ import {
 import { Timeline } from "./timeline.tsx";
 
 type ChatScreenProps = {
-  state: SessionState;
+  state: SessionView;
+  sessionId: SessionId;
+  workspace: WorkspaceId | undefined;
+  head: string;
+  configuration: Configuration | null;
   sending: boolean;
   error: string | undefined;
-  onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
+  onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
   getSubmissionKey: () => string | undefined;
   onStop: () => void;
-  onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
+  onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onChooseHead: (head: HeadName) => void;
   delegateNames: ReadonlyMap<SessionId, string>;
-  changes: readonly FileChange[] | undefined;
+  changes: SessionView["changes"] | undefined;
   onAskMerge: () => void;
   prefill: { text: string; nonce: number } | undefined;
 };
 
 export function ChatScreen({
   state,
+  sessionId,
+  workspace,
+  head,
+  configuration,
   sending,
   error,
   onSend,
   getSubmissionKey,
   onStop,
   onReply,
+  onChooseHead,
   delegateNames,
   changes,
   onAskMerge,
@@ -64,12 +81,11 @@ export function ChatScreen({
     scrollPreviousItemPeek: spacing.lg,
   });
 
-  const running = state.run !== undefined && !isTerminalPhase(state.run.phase);
-  const stopping = state.run?.abortRequested === true;
-  const waiting = waitingCall(state);
+  const running = state.execution.kind !== "idle";
+  const stopping = state.execution.kind === "live" && state.execution.stopping;
   const { composerRef, onComposerLayout, anchorSend } = scroller;
   // The jump pill doubles as the way back to an off-screen question.
-  const answerable = waiting !== undefined;
+  const answerable = openQuestion(state) !== undefined;
 
   return (
     <html.div style={styles.screen}>
@@ -80,6 +96,7 @@ export function ChatScreen({
         >
           <Timeline
             state={state}
+            sessionId={sessionId}
             delegateNames={delegateNames}
             onReply={onReply}
             layout={layout}
@@ -96,20 +113,18 @@ export function ChatScreen({
           <View ref={composerRef} onLayout={onComposerLayout}>
             {changes !== undefined ? (
               <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
-                <ReviewStrip
-                  changes={changes}
-                  sessionId={state.info.sessionId}
-                  onAskMerge={onAskMerge}
-                />
+                <ReviewStrip changes={changes} sessionId={sessionId} onAskMerge={onAskMerge} />
               </html.div>
             ) : null}
             <Composer
               target={{
                 kind: "session",
-                sessionId: state.info.sessionId,
-                head: state.head,
-                heads: state.info.heads.map((entry) => entry.head),
-                config: state.config,
+                sessionId,
+                head,
+                heads: state.heads.map((entry) => entry.name),
+                config: configuration,
+                workspace,
+                catalog: state.catalog,
                 sending,
                 running,
                 stopping,
@@ -117,9 +132,10 @@ export function ChatScreen({
                 onSend: (content, delivery) => {
                   const sent = onSend(content, delivery);
 
-                  return anchorSend(sent, getSubmissionKey());
+                  return anchorSend(sent, getSubmissionKey);
                 },
                 onStop,
+                onChooseHead,
               }}
               placeholder="Follow up…"
               prefill={prefill}

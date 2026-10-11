@@ -1,375 +1,162 @@
-import { NyteWireError, type NyteClient } from "@nyte-ai/client";
-import { waitingCall, type SessionState, type SessionUpdate } from "@nyte-ai/client";
-import {
-  acceptsSelectionReply,
-  type Delivery,
-  type ModelInfo,
-  type ModelRef,
-  type OperationInput,
-  type ReplyOutcome,
-  type SelectionReply,
-  type SessionId,
-} from "@nyte-ai/protocol";
-// oxlint-disable-next-line no-restricted-imports -- the session observer lifecycle follows its target
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { SdkError } from "@nyte-ai/sdk";
+import type {
+  ActOutcome,
+  Configuration,
+  Connection,
+  Delivery,
+  HeadName,
+  ModelInfo,
+  ModelRef,
+  PartId,
+  SessionId,
+} from "@nyte-ai/sdk";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
-import { observeSession } from "./session-observers.ts";
-import { clearChatDraft, useChatScope } from "./drafts.ts";
-import { finishMessageReceipt, prepareMessageReceipt, type SendReceipt } from "./send-receipts.ts";
+import { useWatch } from "../connection/use-watch.ts";
+import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
-export type UserContent = OperationInput<"messages.send">["content"];
+/**
+ * Returns one head of a session as the chat draws it: the `SessionView` its
+ * watch yields, the directory row for the name and pin, and the writes a
+ * screen makes on it. Sends go through the sdk's journal, so a message the
+ * phone could not deliver shows unsent and is resent on the next connect.
+ */
+export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
+  const session = useMemo(() => client.session(sessionId), [client, sessionId]);
 
-export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | undefined) {
-  const scope = useChatScope();
-
-  const target = useMemo(
-    () => ({ client, sessionId: activeSessionId, scope }),
-    [client, activeSessionId, scope],
+  const head = useMemo(
+    () => (headName === undefined ? session : session.head(headName)),
+    [session, headName],
   );
 
-  const activeTarget = useRef<typeof target | undefined>(undefined);
+  const [watched] = useWatch(head);
+  const info = useQuery({ queryKey: ["session-info", sessionId], queryFn: () => session.info() });
 
-  const [view, setView] = useState<
-    { target: typeof target; state?: SessionState; error?: string } | undefined
-  >(undefined);
+  const state =
+    watched.kind === "ready" ? watched.value : watched.kind === "failed" ? watched.last : undefined;
 
-  const [sendError, setSendError] = useState<
-    { target: typeof target; message: string } | undefined
-  >(undefined);
-
-  const submission = useRef<(SendReceipt & { target: typeof target }) | undefined>(undefined);
-
-  const inFlight = useRef<typeof submission.current>(undefined);
-  const [sendingTarget, setSendingTarget] = useState<typeof target | undefined>(undefined);
-  const configuring = useRef<{ target: typeof target; model: ModelInfo } | undefined>(undefined);
+  const submission = useRef<string | undefined>(undefined);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string>();
 
   const [modelSelection, setModelSelection] = useState<
-    | { target: typeof target; kind: "saving" | "accepted"; model: ModelInfo }
-    | { target: typeof target; kind: "failed"; message: string }
-    | undefined
+    { kind: "saving"; model: ModelInfo } | { kind: "failed"; message: string } | undefined
   >(undefined);
-
-  const observed = useRef<
-    ({ target: typeof target } & ReturnType<typeof observeSession>) | undefined
-  >(undefined);
-
-  const replying = useRef<{ target: typeof target; waitId: string } | undefined>(undefined);
-
-  const answered = useRef<
-    | {
-        target: typeof target;
-        waitId: string;
-        outcome: ReplyOutcome;
-      }
-    | undefined
-  >(undefined);
-
-  useEffect(() => {
-    activeTarget.current = target;
-    submission.current = undefined;
-    inFlight.current = undefined;
-    replying.current = undefined;
-    answered.current = undefined;
-    configuring.current = undefined;
-    const sessionId = target.sessionId;
-    let observer: ReturnType<typeof observeSession> | undefined;
-    let unsubscribe: (() => void) | undefined;
-
-    const disconnect = () => {
-      unsubscribe?.();
-      unsubscribe = undefined;
-      observer?.close();
-      observer = undefined;
-
-      if (observed.current?.target === target) observed.current = undefined;
-    };
-
-    const connect = () => {
-      if (observer !== undefined || sessionId === undefined) return;
-
-      const next = observeSession(target.client, sessionId, (cause) => {
-        if (observer !== next) return;
-        setView((previous) => ({
-          target,
-          state: previous?.target === target ? previous.state : undefined,
-          error: describeHostError(cause),
-        }));
-
-        if (
-          cause instanceof NyteWireError &&
-          (cause.code === "unauthorized" ||
-            cause.code === "forbidden" ||
-            cause.code === "unknown_session")
-        )
-          disconnect();
-      });
-
-      observer = next;
-      observed.current = { target, ...next };
-
-      const updateView = (update: SessionUpdate) => {
-        if (observer !== next) return;
-        setView({ target, state: update.state });
-
-        if (update.selectedVersion === next.selection.version) {
-          setModelSelection((current) =>
-            current?.target === target && current.kind === "accepted" ? undefined : current,
-          );
-        }
-      };
-
-      unsubscribe = next.observer.subscribe(updateView);
-
-      if (next.observer.state !== undefined) {
-        updateView({ kind: "snapshot", state: next.observer.state, selectedVersion: undefined });
-      }
-    };
-
-    if (AppState.currentState === "active" || AppState.currentState === null) connect();
-
-    const subscription = AppState.addEventListener("change", (status) => {
-      if (status === "active") connect();
-      else disconnect();
-    });
-
-    return () => {
-      disconnect();
-      subscription.remove();
-
-      if (activeTarget.current === target) activeTarget.current = undefined;
-    };
-  }, [target]);
-
-  const state = view?.target === target ? view.state : undefined;
 
   const send = useCallback(
-    async (content: UserContent, delivery?: Delivery): Promise<boolean> => {
-      const sessionId = target.sessionId;
+    async (content: DraftContent, delivery?: Delivery): Promise<boolean> => {
+      const empty =
+        typeof content === "string"
+          ? content.trim() === ""
+          : !content.some((part) => (part.kind === "text" ? part.text.trim() !== "" : true));
 
-      const empty = Array.isArray(content)
-        ? !content.some((part) =>
-            part.type === "text" ? part.text.trim() !== "" : part.data !== "",
-          )
-        : content.trim() === "";
-
-      if (
-        activeTarget.current !== target ||
-        sessionId === undefined ||
-        empty ||
-        inFlight.current !== undefined ||
-        configuring.current !== undefined
-      ) {
-        return false;
-      }
-
-      const attempt = {
-        target,
-        ...prepareMessageReceipt({ scope: target.scope, sessionId, content, delivery }),
-      };
-
-      submission.current = attempt;
-      inFlight.current = attempt;
-      setSendingTarget(target);
+      if (empty || sending) return false;
+      setSending(true);
       setSendError(undefined);
 
       try {
-        await client.messages.send({
-          sessionId,
-          content,
-          delivery: attempt.delivery,
-          key: attempt.key,
-        });
-
-        if (attempt.draft !== undefined)
-          clearChatDraft({ scope: target.scope, sessionId, submitted: attempt.draft });
-
-        finishMessageReceipt({ scope: target.scope, sessionId, key: attempt.key });
-
-        if (submission.current === attempt) submission.current = undefined;
+        const workspace = client.workspace((await session.info()).workspace);
+        const message = await uploadDraft(workspace, content);
+        const receipt = await head.send(message, delivery === undefined ? undefined : { delivery });
+        submission.current = receipt.message;
 
         return true;
       } catch (cause) {
-        if (activeTarget.current === target) {
-          setSendError({
-            target,
-            message:
-              cause instanceof NyteWireError && cause.code === "payload_too_large"
-                ? "This message is too large for your Mac. Remove a photo or shorten the text."
-                : describeHostError(cause),
-          });
-        }
+        setSendError(
+          cause instanceof Error && !(cause instanceof SdkError)
+            ? cause.message
+            : describeHostError(cause),
+        );
 
         return false;
       } finally {
-        if (inFlight.current === attempt) {
-          inFlight.current = undefined;
-          setSendingTarget(undefined);
-        }
+        setSending(false);
       }
     },
-    [client, target],
+    [client, session, head, sending],
   );
-
-  const waiting = state === undefined ? undefined : waitingCall(state);
 
   const selectModel = useCallback(
     async (model: ModelInfo): Promise<boolean> => {
-      const live = observed.current;
-      const sessionId = target.sessionId;
-
-      if (
-        activeTarget.current !== target ||
-        live?.target !== target ||
-        sessionId === undefined ||
-        configuring.current !== undefined
-      )
-        return false;
-      const attempt = { target, model };
-      configuring.current = attempt;
-      live.selection.version += 1;
-      setModelSelection({ ...attempt, kind: "saving" });
+      if (modelSelection?.kind === "saving") return false;
+      setModelSelection({ kind: "saving", model });
 
       try {
-        const outcome = await client.sessions.configure({
-          sessionId,
-          model: { provider: model.provider, id: model.id },
-        });
+        const outcome = await head.configure({ model: model.ref });
 
-        if (activeTarget.current !== target) return false;
+        if (outcome.kind === "configured") {
+          setModelSelection(undefined);
 
-        if (observed.current?.target === target) observed.current.selection.version += 1;
-
-        if (outcome.kind !== "queued") {
-          setModelSelection({
-            target,
-            kind: "failed",
-            message:
-              outcome.kind === "unknown_model"
-                ? "That model is no longer available on your Mac. Refresh the model list."
-                : "Your Mac couldn't apply that model choice.",
-          });
-
-          return false;
+          return true;
         }
 
-        setModelSelection({ ...attempt, kind: "accepted" });
+        setModelSelection({
+          kind: "failed",
+          message:
+            outcome.kind === "unknown-model"
+              ? "That model is no longer available on your Mac. Refresh the model list."
+              : "Your Mac couldn't apply that model choice.",
+        });
 
-        return true;
+        return false;
       } catch (cause) {
-        if (activeTarget.current === target) {
-          if (observed.current?.target === target) observed.current.selection.version += 1;
-          setModelSelection({ target, kind: "failed", message: describeHostError(cause) });
-        }
+        setModelSelection({ kind: "failed", message: describeHostError(cause) });
 
         return false;
-      } finally {
-        if (configuring.current === attempt) configuring.current = undefined;
-
-        // A lost response can hide a queued choice. Read selected inputs without changing the run.
-        if (activeTarget.current === target && observed.current?.target === target)
-          observed.current.observer.refresh();
       }
     },
-    [client, target],
+    [head, modelSelection],
   );
 
+  /** Answers the open question with a choice; undefined when the host could not be asked. */
   const reply = useCallback(
-    async (answer: SelectionReply): Promise<ReplyOutcome | undefined> => {
-      const live = observed.current;
-
-      const current =
-        live?.observer.state === undefined ? undefined : waitingCall(live.observer.state);
-
-      if (
-        activeTarget.current !== target ||
-        live?.target !== target ||
-        waiting === undefined ||
-        current === undefined ||
-        current.sessionId !== waiting.sessionId ||
-        current.runId !== waiting.runId ||
-        current.callId !== waiting.callId ||
-        current.waitId !== waiting.waitId ||
-        replying.current !== undefined ||
-        !acceptsSelectionReply(waiting.selection, answer)
-      )
-        return undefined;
-      const previous = answered.current;
-
-      if (previous?.target === target && previous.waitId === waiting.waitId)
-        return previous.outcome;
-      const attempt = { target, waitId: waiting.waitId };
-      replying.current = attempt;
-
+    async (part: PartId, choice: string): Promise<ActOutcome<unknown> | undefined> => {
       try {
-        const outcome = await client.runs.reply({
-          sessionId: waiting.sessionId,
-          runId: waiting.runId,
-          callId: waiting.callId,
-          waitId: waiting.waitId,
-          reply:
-            answer.other === undefined
-              ? { choices: [...answer.choices] }
-              : { choices: [...answer.choices], other: answer.other.trim() },
-        });
-
-        if (activeTarget.current === target) {
-          answered.current = { ...attempt, outcome };
-
-          // Core retries the new snapshot; stopping observation never undoes an accepted answer.
-          if (observed.current?.target === target)
-            void observed.current.observer.resync().catch(() => undefined);
-        }
-
-        return outcome;
+        return await session.part(part).act("answer", { choice });
       } catch {
-        // The question owns reply failure feedback; keep it out of the composer.
         return undefined;
-      } finally {
-        if (replying.current === attempt) replying.current = undefined;
       }
     },
-    [client, target, waiting],
+    [session],
   );
+
+  const [stopError, setStopError] = useState<string>();
 
   const stop = async (): Promise<void> => {
-    if (activeSessionId === undefined || state?.run === undefined) return;
+    const execution = state?.execution;
+
+    if (execution === undefined || execution.kind === "idle") return;
 
     try {
-      await client.runs.abort({ sessionId: activeSessionId, runId: state.run.runId });
+      await session.run(execution.run.id).stop();
     } catch (cause) {
-      if (activeTarget.current === target) {
-        setView((current) => ({
-          target,
-          state: current?.target === target ? current.state : undefined,
-          error: describeHostError(cause),
-        }));
-      }
+      setStopError(describeHostError(cause));
     }
   };
 
-  const selection = modelSelection?.target === target ? modelSelection : undefined;
+  const configuration: Configuration | null =
+    state?.configuration.selected ?? state?.configuration.effective ?? null;
 
   const selectedModel: ModelRef | undefined =
-    selection?.kind === "accepted"
-      ? selection.model
-      : (state?.info.config.model ?? state?.config.model);
+    modelSelection?.kind === "saving" ? modelSelection.model.ref : configuration?.model;
 
   return {
     state,
-    sending: sendingTarget === target,
+    info: info.data,
+    reloadInfo: info.refetch,
+    configuration,
+    sending,
     error:
-      sendError?.target === target
-        ? sendError.message
-        : view?.target === target
-          ? view.error
-          : undefined,
+      sendError ??
+      stopError ??
+      (watched.kind === "failed" ? describeHostError(watched.error) : undefined),
     send,
-    getSubmissionKey: () => submission.current?.key,
+    getSubmissionKey: () => submission.current,
     reply,
     selectedModel,
-    selectingModel: selection?.kind === "saving",
-    modelError: selection?.kind === "failed" ? selection.message : undefined,
+    selectingModel: modelSelection?.kind === "saving",
+    modelError: modelSelection?.kind === "failed" ? modelSelection.message : undefined,
     selectModel,
     stop,
   };

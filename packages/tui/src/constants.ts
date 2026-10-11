@@ -6,6 +6,18 @@ import process from "node:process";
 import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput } from "@opentui/keymap";
 import { defaultBindingParser } from "@opentui/keymap/addons";
+import type { Thinking } from "@nyte-ai/sdk";
+
+/** Every thinking level a model may accept, lowest first; a model's own `thinking` says which. */
+export const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly Thinking[];
 
 /** Acceptance modes used by the slash command API, including mouse activation. */
 export const COMPLETION_METHODS = { accept: "return", fill: "tab" } as const;
@@ -27,8 +39,6 @@ export const CHAT_KEYBINDS = {
   "completion.page.up": "pageup",
   "completion.page.down": "pagedown",
   "chat.interrupt": "escape",
-  // Ctrl+B belongs to textarea cursor movement; Ctrl+Z is unbound in OpenTUI.
-  "chat.job.background": "ctrl+z",
   "chat.scroll.page.up": "pageup",
   "chat.scroll.page.down": "pagedown",
   "chat.scroll.latest": "ctrl+end",
@@ -82,10 +92,6 @@ export const CHAT_KEYBINDS = {
   "auth.submit": "return",
   "auth.open": "return,o",
   "auth.copy": "c",
-  "workspace.trust": "a",
-  "workspace.decline": "q,escape",
-  "workspace.accept": "return",
-  "workspace.toggle": "up,down,tab,shift+tab",
 } as const satisfies Readonly<Record<string, string>>;
 
 export type ChatCommand = keyof typeof CHAT_KEYBINDS;
@@ -264,10 +270,3 @@ export function pendingHint(hidden: number): string {
 
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
 }
-
-export const WORKSPACE_TRUST_TITLE = "Workspace Trust Required";
-
-export const WORKSPACE_TRUST_MESSAGE =
-  "This directory has plugins or skills of its own. Trusting it loads them and lets Nyte run code here.";
-
-export const WORKSPACE_TRUST_QUESTION = "Do you trust the contents of this directory?";

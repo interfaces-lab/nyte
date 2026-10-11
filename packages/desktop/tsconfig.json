@@ -3,7 +3,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "skipLibCheck": true,
@@ -11,5 +11,5 @@
     "types": ["vite/client", "node"],
     "customConditions": ["nyte-source"]
   },
-  "include": ["src", "benchmark", "lint", "electron.vite.config.ts", "electron-builder.config.ts"]
+  "include": ["src", "lint", "electron.vite.config.ts", "electron-builder.config.ts"]
 }

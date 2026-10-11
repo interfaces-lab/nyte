@@ -1,18 +1,16 @@
-import { toolStatus } from "@nyte-ai/client";
-import type { TurnToolClass } from "@nyte-ai/protocol";
-import type { LiveSnapshot } from "../live.ts";
-import { formatRunDuration } from "./transcript-presentation.ts";
+import type { ToolClass } from "@nyte-ai/sdk";
+import { isToolMessage, toolStatus } from "../view-helpers.ts";
+import { formatRunDuration, isThinkingMessage } from "./transcript-presentation.ts";
 import { DELEGATE_VERBS } from "./subagent-status.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import type { StepTurnPart } from "./transcript-presentation.ts";
+import type { StepMessage } from "./transcript-presentation.ts";
 
 export interface StepGroupPresentationInput {
-  readonly parts: readonly StepTurnPart[];
+  readonly messages: readonly StepMessage[];
   readonly durationMs: number;
   readonly added: number;
   readonly removed: number;
   readonly running: boolean;
-  readonly live?: Pick<LiveSnapshot, "order" | "tools">;
 }
 
 export type DurableStepGroupPresentation =
@@ -27,25 +25,23 @@ export type DurableStepGroupPresentation =
     }
   | {
       readonly active: true;
-      readonly runningClasses: readonly TurnToolClass[];
+      readonly runningClasses: readonly ToolClass[];
       readonly added: number;
       readonly removed: number;
     };
 
-function activityLabel(running: readonly TurnToolClass[]): string | undefined {
+function activityLabel(running: readonly ToolClass[]): string | undefined {
   const newest = running.at(-1);
 
   if (newest === undefined) return undefined;
 
   switch (newest.kind) {
-    case "file_read":
+    case "read":
     case "list":
       return "Exploring";
     case "shell":
       return "Running";
-    case "file_edit":
-    case "file_write":
-    case "file_patch":
+    case "edit":
       return "Editing";
     case "delegate":
       return DELEGATE_VERBS[newest.role].running;
@@ -68,7 +64,7 @@ function count(n: number, noun: string, plural = `${noun}s`): string {
 }
 
 /** One changed or read file is named; more are counted. Only a call that succeeded did its thing. */
-function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
+function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   const changed = new Set<string>();
   const read = new Set<string>();
   const listed = new Set<string>();
@@ -77,9 +73,10 @@ function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
   let failed = 0;
   let stopped = 0;
 
-  for (const part of parts) {
-    if (part.kind !== "tool") continue;
-    const { tone } = toolStatus(part.state);
+  for (const message of messages) {
+    if (!isToolMessage(message)) continue;
+    const { tone } = toolStatus(message);
+    const toolClass = message.state.class;
 
     if (tone === "failure") {
       failed += 1;
@@ -93,28 +90,25 @@ function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
 
     if (tone !== "success") continue;
 
-    switch (part.class.kind) {
-      case "file_patch":
-        changed.add(part.class.path);
+    switch (toolClass.kind) {
+      case "edit":
+        changed.add(toolClass.path);
         break;
-      case "file_read":
-        read.add(part.class.path);
+      case "read":
+        read.add(toolClass.path);
         break;
       case "list":
-        listed.add(part.class.path);
+        listed.add(toolClass.path);
         break;
       case "shell":
         commands += 1;
         break;
-      // A mutation still classed as its call never settled into a change.
-      case "file_edit":
-      case "file_write":
       case "delegate":
       case "custom":
         tools += 1;
         break;
       default: {
-        const _exhaustive: never = part.class;
+        const _exhaustive: never = toolClass;
 
         return _exhaustive;
       }
@@ -125,7 +119,9 @@ function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
 
   if (did + failed + stopped === 0) {
     const { title } = reasoningHeading(
-      parts.map((part) => (part.kind === "thinking" ? part.text : "")).join("\n\n"),
+      messages
+        .map((message) => (isThinkingMessage(message) ? message.state.markdown : ""))
+        .join("\n\n"),
     );
 
     return { verb: title ?? "Thought", detail: formatRunDuration(durationMs) };
@@ -205,46 +201,44 @@ function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
 }
 
 export function durableStepGroupPresentation({
-  parts,
+  messages,
   durationMs,
   added,
   removed,
   running,
-}: Pick<
-  StepGroupPresentationInput,
-  "parts" | "durationMs" | "added" | "removed" | "running"
->): DurableStepGroupPresentation {
-  const runningClasses: TurnToolClass[] = [];
+}: StepGroupPresentationInput): DurableStepGroupPresentation {
+  const runningClasses: ToolClass[] = [];
 
-  for (const part of parts) {
-    if (part.kind !== "tool") continue;
+  for (const message of messages) {
+    if (!isToolMessage(message)) continue;
 
-    if (toolStatus(part.state).tense === "running") runningClasses.push(part.class);
+    if (toolStatus(message).tense === "running") runningClasses.push(message.state.class);
   }
 
   if (!running) {
     return {
       active: false,
-      summary: { ...settledSummary(parts, durationMs), added, removed },
+      summary: { ...settledSummary(messages, durationMs), added, removed },
     };
   }
 
   return { active: true, runningClasses, added, removed };
 }
 
+/** The active verb: the newest running call's activity, else Thinking while a thought streams, else Working. */
 export function liveStepGroupPresentation({
   durable,
-  live,
+  messages,
 }: {
   readonly durable: DurableStepGroupPresentation;
-  readonly live?: Pick<LiveSnapshot, "order" | "tools">;
+  readonly messages: readonly StepMessage[];
 }) {
   if (!durable.active) return durable;
-  const newest = live?.order.at(-1);
+  const newest = messages.at(-1);
 
   const verb =
     activityLabel(durable.runningClasses) ??
-    (live !== undefined && live.tools.size === 0 && newest?.kind === "thinking"
+    (newest !== undefined && isThinkingMessage(newest) && newest.status.kind === "live"
       ? "Thinking"
       : "Working");
 

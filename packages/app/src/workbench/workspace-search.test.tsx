@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, test, vi } from "vitest";
 import type { ComponentProps } from "react";
-import type { WorkspaceSearchResult } from "@nyte-ai/protocol";
 import { WorkspaceSearchResults } from "./workspace-search.tsx";
 
 // The Electron preload is absent in Node. React, styles and query observers run unchanged.
@@ -14,7 +13,10 @@ function renderResults(state: ComponentProps<typeof WorkspaceSearchResults>["sta
   return renderToStaticMarkup(<WorkspaceSearchResults state={state} onOpen={() => undefined} />);
 }
 
-const result: WorkspaceSearchResult = {
+const result: Extract<
+  ComponentProps<typeof WorkspaceSearchResults>["state"],
+  { kind: "ready" }
+>["result"] = {
   files: [
     {
       path: "/workspace/src/hello.ts",
@@ -28,13 +30,12 @@ const result: WorkspaceSearchResult = {
     {
       path: "/workspace/test/hello.ts",
       displayPath: "test/hello.ts",
-      source: "draft",
+      source: "disk",
       matches: [{ line: 3, column: 4, length: 5, snippet: "// HELLO", snippetColumn: 1 }],
     },
   ],
   matchCount: 3,
   truncated: false,
-  skipped: null,
 };
 
 test("results are grouped by relative path with accessible line and column destinations", () => {
@@ -45,7 +46,6 @@ test("results are grouped by relative path with accessible line and column desti
   assert.match(html, /<button[^>]*aria-label="src\/hello.ts, line 8, column 15:/);
   assert.match(html, /<button[^>]*aria-label="src\/hello.ts, line 12, column 9:/);
   assert.match(html, /<button[^>]*aria-label="test\/hello.ts, line 3, column 4:/);
-  assert.match(html, /Unsaved/);
   assert.doesNotMatch(html, /Search limit reached|files skipped/);
 });
 
