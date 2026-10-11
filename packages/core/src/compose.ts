@@ -44,6 +44,8 @@ export type ComposeOptions = OpenOptions & {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
+  /** The interval in ms at which this host re-reads a store it shares with other instances, passed to the kernel as `KernelOptions.poll` (§42h): the Vercel deploy sets 1000; a Durable Object and a local host leave it unset. */
+  readonly poll?: number;
 };
 
 /** The core plugins every session loads first, in decision 13's order: what `kernel.builtins` holds. */

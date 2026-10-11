@@ -64,7 +64,7 @@ const driving = new WeakMap<Kernel, Set<RunId>>();
 
 const closings = new WeakMap<Kernel, AbortController>();
 
-/** Takes the execution lease on every head the coverage names into the kernel's lease table and renews every lease in the table every 10 s, and parks the durable waits the store records in `kernel.waits`; closing the last open coverage releases every lease in it. */
+/** Registers a coverage without claiming any lease (§42t) and parks the durable waits the store records for it in `kernel.waits`; `{ kind: "sessions" }` covers the named sessions only, not their children (those are dispatched on their own), and reads only those sessions' heads and parked waits, never scanning the whole store (§42p, §42t). While the handle is open the coverage counts for `isCovered`, through the same registration `driveInProcess` uses (`addDriven`), so on an `admit-only` kernel driven by alarms or workflows admission wakes the covered heads and activation attaches their environments (§42a). Leases are claimed lazily: a head's lease is claimed when `advance` steps it and released when the head reports `idle`, and every 10 s `renew` touches only the leases this kernel holds, so an idle head costs no writes. Closing the last open coverage releases every lease still held; closing any one removes its registration. */
 export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promise<Owned> {
   const table = leasesOf(kernel);
   table.coverages += 1;
@@ -106,7 +106,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. Under an open coverage the lease stays in the kernel's table; without one it is released when the step returns. */
+/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. The head's lease is claimed here when this kernel does not hold it (§42t); under an open coverage it stays held until a step reports `idle`, which releases it, and without one it is released when the step returns. */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
@@ -308,6 +308,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
   return { close, [Symbol.asyncDispose]: close };
 }
 
+/** Claims or renews the execution lease on a head, in order with every other claim and release on that lease: answers `fenced` when the lease this kernel held was taken (its revision moved) or the CAS answers stale, `busy { until }` while a live lease belongs to another kernel — another `holder`, or the same `holder` with another `instance`, both fields compared (§42q) — and null once the lease is this kernel's for 30 s more. */
 function claim(
   kernel: Kernel,
   session: SessionId,
@@ -623,10 +624,14 @@ function failed(error: unknown): RunEnd {
 
 function decodeLease(object: Json | null): Lease | null {
   if (!isJsonObject(object) || object.kind !== "lease" || !isJsonObject(object.body)) return null;
-  const { holder, expiresAt } = object.body;
+  const { holder, instance, expiresAt } = object.body;
 
   return typeof holder === "string" && typeof expiresAt === "number"
-    ? { holder: asId<"host">(holder), expiresAt }
+    ? {
+        holder: asId<"host">(holder),
+        instance: typeof instance === "string" ? instance : "",
+        expiresAt,
+      }
     : null;
 }
 

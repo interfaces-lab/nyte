@@ -2,7 +2,6 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
   CallId,
-  ChangeSet,
   CommandOutcome,
   CommitId,
   Configuration,
@@ -10,7 +9,6 @@ import type {
   ConfigureOutcome,
   Decision,
   Delivery,
-  DiffOptions,
   Disposer,
   HeadName,
   HostDescription,
@@ -20,7 +18,6 @@ import type {
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
-  PatchEntry,
   Placement,
   PrincipalId,
   PruneReport,
@@ -30,7 +27,6 @@ import type {
   RunView,
   SessionCatalogView,
   SessionId,
-  SnapshotId,
   Submission,
   ToolCall,
   ToolOutcome,
@@ -44,7 +40,7 @@ import { runCommand } from "./commands.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
-import type { EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
+import type { EnvironmentWrap, ExecutionEnv, Resources, SnapshotsApi } from "./environment.ts";
 import { createEnvironmentRegistry } from "./environment-registry.ts";
 import type { EnvironmentRegistry } from "./environment-registry.ts";
 import { SdkError } from "./error.ts";
@@ -85,6 +81,8 @@ import { activateSession, createWorkspaces, workspaceHandle } from "./workspaces
 export interface Kernel {
   /** The host this kernel runs as. */
   readonly hostId: HostId;
+  /** A random id minted per kernel, written as a lease's `instance` beside its `holder`: `busy` and `fenced` compare both, so two kernels over one store (two processes on one sqlite file, two Vercel instances) never both drive a head, and a lease another instance of the same host holds is `busy` until it expires (§42b, §42j, §42q). */
+  readonly instance: string;
   /** The open store. */
   readonly store: StoreConnection;
   /** Name, platform and version, as `HostView` carries them. */
@@ -144,7 +142,7 @@ export interface Kernel {
   /** Dispatches `after_tool` over a call's outcome. Default: the session's hook dispatch. */
   readonly afterTool: ToolOutcomeRewriter;
   /** Resolves the snapshots of a session's environment around a run, or null when it takes none; the provider attaches lazily. Default `environments.snapshots`. */
-  snapshots(session: SessionId): Promise<RunSnapshots | null>;
+  snapshots(session: SessionId): Promise<SnapshotsApi | null>;
   /** Resolves the environment a session's tools run against. Default `environments.attach`. */
   env(session: SessionId): Promise<ExecutionEnv>;
   /** Layers a wrap on a session's environment, the disposer removing it: `PluginApi.wrapEnv`. Default `environments.wrap`. */
@@ -352,23 +350,6 @@ export interface ToolOutcomeRewriter {
   ): Promise<ToolOutcome>;
 }
 
-/** Takes content-addressed snapshots of a session's environment before and after a run and diffs them: where a tool call's `changes` come from. */
-export interface RunSnapshots {
-  /** Returns the snapshot taken before the run. */
-  before(run: RunId): Promise<SnapshotId>;
-  /** Returns the snapshot taken after the run. */
-  after(run: RunId): Promise<SnapshotId>;
-  /** Returns what changed between two snapshots. */
-  diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>;
-  /** Returns the parsed patches of the listed paths between two snapshots; a path the comparison does not report is left out (§37a). */
-  patches(
-    from: SnapshotId,
-    to: SnapshotId,
-    paths: readonly string[],
-    options?: DiffOptions,
-  ): Promise<readonly PatchEntry[]>;
-}
-
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
 
 const NO_TURN: TurnDriver = { run: async () => unavailable("turn") };
@@ -382,54 +363,57 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
+/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional (absent, its default), and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it — the fold cache and `sessionEvents` read `refs.log` after the last seen seq of each open session, and the wait registry re-checks its parked waits against targets settled elsewhere — so an API instance sees what a step instance wrote and a wait parked elsewhere still wakes (§42h; the Vercel deploy sets 1000, a Durable Object and a local host none; absent, the kernel reads only what it writes itself). */
+export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
+  Partial<
+    Pick<
+      Kernel,
+      | "defaultWorkspace"
+      | "execution"
+      | "runs"
+      | "wakes"
+      | "turn"
+      | "summarize"
+      | "compact"
+      | "resolveConfiguration"
+      | "admit"
+      | "command"
+      | "waits"
+      | "models"
+      | "settings"
+      | "workspaces"
+      | "workspace"
+      | "parts"
+      | "partDefinitions"
+      | "durable"
+      | "tools"
+      | "beforeTool"
+      | "afterTool"
+      | "snapshots"
+      | "env"
+      | "wrapEnv"
+      | "resources"
+      | "request"
+      | "home"
+      | "environments"
+      | "jobs"
+      | "pages"
+      | "connections"
+      | "secrets"
+      | "builtins"
+      | "hostPlugins"
+      | "pluginSources"
+      | "pluginApi"
+      | "plugins"
+      | "principals"
+      | "prune"
+    >
+  > & {
+    readonly poll?: number;
+  };
+
 /** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. */
-export function createKernel(
-  input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
-    Partial<
-      Pick<
-        Kernel,
-        | "defaultWorkspace"
-        | "execution"
-        | "runs"
-        | "wakes"
-        | "turn"
-        | "summarize"
-        | "compact"
-        | "resolveConfiguration"
-        | "admit"
-        | "command"
-        | "waits"
-        | "models"
-        | "settings"
-        | "workspaces"
-        | "workspace"
-        | "parts"
-        | "partDefinitions"
-        | "durable"
-        | "tools"
-        | "beforeTool"
-        | "afterTool"
-        | "snapshots"
-        | "env"
-        | "wrapEnv"
-        | "resources"
-        | "request"
-        | "home"
-        | "environments"
-        | "jobs"
-        | "pages"
-        | "connections"
-        | "secrets"
-        | "builtins"
-        | "hostPlugins"
-        | "pluginSources"
-        | "pluginApi"
-        | "plugins"
-        | "principals"
-        | "prune"
-      >
-    >,
-): Kernel {
+export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const revisions = new Map<string, Revision>();
   const activations = new Map<SessionId, Activation>();
@@ -453,6 +437,7 @@ export function createKernel(
 
   const kernel: Kernel = {
     hostId: input.hostId,
+    instance: crypto.randomUUID(),
     store: input.store,
     description: input.description,
     bus,

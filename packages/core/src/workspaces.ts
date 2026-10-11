@@ -14,12 +14,13 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/schema";
 import { availabilityOf, readWorkspace } from "./environment-registry.ts";
+import type { SnapshotsApi } from "./environment.ts";
 import { SdkError } from "./error.ts";
 import { createJobs, jobHandle } from "./jobs.ts";
 import type { PageHolder } from "./pages.ts";
 import { pluginSessionOf } from "./plugin-api.ts";
 import { sessionPlugins } from "./plugin-runtime.ts";
-import type { Kernel, RunSnapshots } from "./kernel.ts";
+import type { Kernel } from "./kernel.ts";
 import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodeRunRecord, decodeSessionRecord, decodeWorkspaceRecord } from "./records.ts";
@@ -194,7 +195,7 @@ export function workspaceHandle(
       : null;
   };
 
-  const snapshots = async (): Promise<RunSnapshots> => {
+  const snapshots = async (): Promise<SnapshotsApi> => {
     const session = await viewing();
 
     const found =
@@ -506,7 +507,7 @@ async function* patchesOf(
     readonly run: RunId;
     readonly paths: readonly string[];
     readonly options: DiffOptions | undefined;
-    snapshots(): Promise<RunSnapshots>;
+    snapshots(): Promise<SnapshotsApi>;
   },
 ): AsyncGenerator<PatchSet> {
   const { run, options } = input;

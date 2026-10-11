@@ -39,6 +39,14 @@ export interface ExecutionEnv {
 export type EnvironmentWrap = (inner: ExecutionEnv) => ExecutionEnv & { readonly browser?: BrowserApi };
 
 /**
+ * Takes and compares content-addressed snapshots of an environment's tree:
+ * before and after each run, the changes between two, and their patches.
+ *
+ * @category environment
+ * @since 0.1.0
+ */
+export interface SnapshotsApi { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>; patches(from: SnapshotId, to: SnapshotId, paths: readonly string[], options?: DiffOptions): Promise<readonly PatchEntry[]> }
+/**
  * Describes what a core plugin supplies to serve a workspace kind.
  *
  * **Details**
@@ -74,10 +82,10 @@ export interface EnvironmentProvider {
   inspect(target: WorkspaceTarget): Promise<{ readonly identity: EnvironmentIdentity; readonly availability: Availability; readonly projectSources: readonly string[] }>;
   /** Binds a folder, boots or joins a VM, connects a sandbox: the tools' hands. `close()` detaches; `destroy()` tears down. */
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
-  /** Required for local and sandbox. */
-  readonly git?: (env: ExecutionEnv) => GitApi;
-  /** Required wherever files are served: content-addressed trees before and after each run. */
-  readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>; patches(from: SnapshotId, to: SnapshotId, paths: readonly string[], options?: DiffOptions): Promise<readonly PatchEntry[]> };
+  /** Required for local and sandbox; `undefined` for an environment that serves no git (a sandbox without it), which the workspace answers as `unsupported`. */
+  readonly git?: (env: ExecutionEnv) => GitApi | undefined;
+  /** Required wherever files are served: content-addressed trees before and after each run; `undefined` for an environment that keeps none. */
+  readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   /** Supplies a browser capability. */
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
   /** Tears down remote sandboxes; local providers reject. */

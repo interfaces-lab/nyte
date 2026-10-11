@@ -1,0 +1,11 @@
+import type { Host, Kernel, ListenOptions, Listener } from "@nyte-ai/core";
+import type { HandlerOptions } from "@nyte-ai/protocol";
+
+/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): everything `listen` does, and in the same order, for the `fetch` transport — `before` first, the unauthenticated `GET /.nyte/identity?nonce=` and `GET /.nyte/describe` routes, then protocol's `createHandler` with the same `connection(request)` (pairing redeemed under either auth kind with the device token in `X-Nyte-Credential`; under `token` the listener token as `TOKEN` with `TOKEN_AUTHORITY`, any other bearer a device token for `authenticateToken` remembered for 60 s and until its principal's connection drops, a remembered token no principal holds any more revoking that principal through `kernel.connections`; under `custom` a known device token first, then `authorize(request)`), one connection per principal and authority registered with `kernel.connections` (a revoke aborts that principal's open requests and streams), CORS for `origins`, `maxBodyBytes` (default 8 MiB), `execution` (default run covering all: `driveInProcess` when the kernel is `admit-only`, else `host.execution.cover`; `admit-only` takes nothing, and a `dispatch` kernel is treated as `admit-only` whatever `execution` says, with no in-process driver and no cover, §42v), `disconnectClients()` and `close()` (once; every later request answers `unavailable`) — except that the listener token is compared in constant time over Web Crypto SHA-256 digests (`crypto.subtle.digest`, every byte pair XOR-folded into one accumulator, so neither length nor content leaks) and device tokens are remembered by their Web Crypto hex digest. A `token` auth shorter than 16 characters throws `SdkError("invalid")` before anything is set up; `address` is null; `plugins` is the file loader `plugins.replace`/`plugins.check` load their wire paths through, as for `listen`. What `listen` delegates its `fetch` transport to. */
+export async function listenFetch(
+  host: Omit<Host, "listen"> & { readonly kernel: Kernel },
+  options: ListenOptions & { readonly transport: { readonly kind: "fetch" } },
+  plugins?: NonNullable<HandlerOptions["plugins"]>,
+): Promise<Listener> {
+  throw new Error("not implemented");
+}

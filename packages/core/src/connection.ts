@@ -5,6 +5,7 @@ import type {
   ByteReader,
   CredentialSource,
   ExecutionCoverage,
+  HeadName,
   HostId,
   HostView,
   JournalEntry,
@@ -68,8 +69,29 @@ export interface OpenOptions {
   readonly plugins: readonly Plugin<"core">[];
   /** Where a root session acts when `create` names no workspace. */
   readonly workspace: WorkspaceTarget;
-  /** Run sessions here, or only admit and leave running to a driver. Default run. */
-  readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
+  /**
+   * Run sessions here, only admit and leave running to a driver, or admit
+   * and hand each head to a dispatcher. Default run.
+   *
+   * **Details**
+   *
+   * - `run`: this host drives the covered sessions in process.
+   * - `admit-only`: this host admits; a driver (alarms, a listener) runs.
+   * - `dispatch`: the kernel writes `admitted` with `covered: true` and,
+   *   after the commit, calls `dispatch` for every wake of a head
+   *   (admission of a non-`attach` input, a part answer, a child run's
+   *   end, a job's end, a stop, a timer), deduplicated per instance while
+   *   one for that head is pending. A rejection is recorded in no event:
+   *   the head stays owed and `repair` re-dispatches it. A session with a
+   *   resolved dispatch in this instance counts as covered, and activation
+   *   attaches as for `run`. A Vercel deploy dispatches each head to a
+   *   workflow, which ends when it finds the head `busy`: the lease
+   *   holder's loop re-reads after each turn and sees the wake.
+   */
+  readonly execution?:
+    | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
+    | { readonly kind: "admit-only" }
+    | { readonly kind: "dispatch"; dispatch(target: { readonly session: SessionId; readonly head: HeadName }): Promise<void> };
   /** The key core encrypts secrets with before storing them. The host composes it: OS keychain, else a 0600 file. Omitted = `secrets.set` answers unavailable. */
   readonly secrets?: { key(): Promise<Uint8Array> };
 }

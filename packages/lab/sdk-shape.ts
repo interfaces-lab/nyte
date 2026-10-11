@@ -223,8 +223,29 @@ interface OpenOptions {
   readonly plugins: readonly Plugin<"core">[];
   /** Where a root session acts when `create` names no workspace. */
   readonly workspace: WorkspaceTarget;
-  /** Run sessions here, or only admit and leave running to a driver. Default run. */
-  readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
+  /**
+   * Run sessions here, only admit and leave running to a driver, or admit
+   * and hand each head to a dispatcher. Default run.
+   *
+   * **Details**
+   *
+   * - `run`: this host drives the covered sessions in process.
+   * - `admit-only`: this host admits; a driver (alarms, a listener) runs.
+   * - `dispatch`: the kernel writes `admitted` with `covered: true` and,
+   *   after the commit, calls `dispatch` for every wake of a head
+   *   (admission of a non-`attach` input, a part answer, a child run's
+   *   end, a job's end, a stop, a timer), deduplicated per instance while
+   *   one for that head is pending. A rejection is recorded in no event:
+   *   the head stays owed and `repair` re-dispatches it. A session with a
+   *   resolved dispatch in this instance counts as covered, and activation
+   *   attaches as for `run`. A Vercel deploy dispatches each head to a
+   *   workflow, which ends when it finds the head `busy`: the lease
+   *   holder's loop re-reads after each turn and sees the wake.
+   */
+  readonly execution?:
+    | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
+    | { readonly kind: "admit-only" }
+    | { readonly kind: "dispatch"; dispatch(target: { readonly session: SessionId; readonly head: HeadName }): Promise<void> };
   /** The key core encrypts secrets with before storing them. The host composes it: OS keychain, else a 0600 file. Omitted = `secrets.set` answers unavailable. */
   readonly secrets?: { key(): Promise<Uint8Array> };
 }
@@ -4428,6 +4449,14 @@ interface ExecutionEnv {
  */
 type EnvironmentWrap = (inner: ExecutionEnv) => ExecutionEnv & { readonly browser?: BrowserApi };
 /**
+ * Takes and compares content-addressed snapshots of an environment's tree:
+ * before and after each run, the changes between two, and their patches.
+ *
+ * @category environment
+ * @since 0.1.0
+ */
+interface SnapshotsApi { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>; patches(from: SnapshotId, to: SnapshotId, paths: readonly string[], options?: DiffOptions): Promise<readonly PatchEntry[]> }
+/**
  * Describes what a core plugin supplies to serve a workspace kind.
  *
  * **Details**
@@ -4463,10 +4492,10 @@ interface EnvironmentProvider {
   inspect(target: WorkspaceTarget): Promise<{ readonly identity: EnvironmentIdentity; readonly availability: Availability; readonly projectSources: readonly string[] }>;
   /** Binds a folder, boots or joins a VM, connects a sandbox: the tools' hands. `close()` detaches; `destroy()` tears down. */
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
-  /** Required for local and sandbox. */
-  readonly git?: (env: ExecutionEnv) => GitApi;
-  /** Required wherever files are served: content-addressed trees before and after each run. */
-  readonly snapshots?: (env: ExecutionEnv) => { before(run: RunId): Promise<SnapshotId>; after(run: RunId): Promise<SnapshotId>; diff(from: SnapshotId, to: SnapshotId): Promise<ChangeSet>; patches(from: SnapshotId, to: SnapshotId, paths: readonly string[], options?: DiffOptions): Promise<readonly PatchEntry[]> };
+  /** Required for local and sandbox; `undefined` for an environment that serves no git (a sandbox without it), which the workspace answers as `unsupported`. */
+  readonly git?: (env: ExecutionEnv) => GitApi | undefined;
+  /** Required wherever files are served: content-addressed trees before and after each run; `undefined` for an environment that keeps none. */
+  readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   /** Supplies a browser capability. */
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
   /** Tears down remote sandboxes; local providers reject. */
@@ -5332,7 +5361,7 @@ interface ObjectStore {
  * - `sessions/<id>/journal/<principal>`: client-side only; the sdk's RequestJournal over the same interface.
  * - `workspaces/<id>`: workspace record.
  * - `kv/<scope>/<owner>/<key>`: settings, plugin storage, secrets (encrypted object).
- * - `sessions/<id>/leases/<head>`: `{ holder: HostId, expiresAt }`; what `execution.cover` takes and `advance` renews. `fenced` is this CAS answering stale.
+ * - `sessions/<id>/leases/<head>`: `{ holder: HostId, instance, expiresAt }`; what `execution.cover` takes and `advance` renews. `holder` is the host, `instance` the kernel within it; `busy` and `fenced` compare both. `fenced` is this CAS answering stale.
  * - `host/identity`: `{ id: HostId, createdAt }`, written once, never moved.
  * - `host/settings`, `host/principals`, `host/catalog`.
  *

@@ -99,7 +99,7 @@ export interface ObjectStore {
  * - `sessions/<id>/journal/<principal>`: client-side only; the sdk's RequestJournal over the same interface.
  * - `workspaces/<id>`: workspace record.
  * - `kv/<scope>/<owner>/<key>`: settings, plugin storage, secrets (encrypted object).
- * - `sessions/<id>/leases/<head>`: `{ holder: HostId, expiresAt }`; what `execution.cover` takes and `advance` renews. `fenced` is this CAS answering stale.
+ * - `sessions/<id>/leases/<head>`: `{ holder: HostId, instance, expiresAt }`; what `execution.cover` takes and `advance` renews. `holder` is the host, `instance` the kernel within it; `busy` and `fenced` compare both. `fenced` is this CAS answering stale.
  * - `host/identity`: `{ id: HostId, createdAt }`, written once, never moved.
  * - `host/settings`, `host/principals`, `host/catalog`.
  *

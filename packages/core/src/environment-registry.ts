@@ -9,13 +9,18 @@ import type {
   WorkspaceTarget,
 } from "@nyte-ai/schema";
 import type { BrowserApi } from "./browser.ts";
-import type { EnvironmentProvider, EnvironmentWrap, ExecutionEnv } from "./environment.ts";
+import type {
+  EnvironmentProvider,
+  EnvironmentWrap,
+  ExecutionEnv,
+  SnapshotsApi,
+} from "./environment.ts";
 import { SdkError } from "./error.ts";
 import { wrapFiles } from "./files-wrap.ts";
 import type { FileScope } from "./files-wrap.ts";
 import type { FilesApi } from "./files.ts";
 import type { GitApi } from "./git.ts";
-import type { Kernel, RunSnapshots } from "./kernel.ts";
+import type { Kernel } from "./kernel.ts";
 import { wrapBrowser } from "./pages.ts";
 import type { PageHolder } from "./pages.ts";
 import { requireAuthority } from "./principals.ts";
@@ -54,7 +59,7 @@ export interface EnvironmentRegistry {
   /** Adds a wrap to a session's stack after those added before it; the disposer removes it. Attaches nothing and never waits. What `kernel.wrapEnv` and `PluginApi.wrapEnv` do. */
   wrap(session: SessionId, wrap: EnvironmentWrap): Disposer;
   /** Resolves the run snapshots of a session's environment: the provider's `snapshots` applied to the env `attach` resolves, built once per attachment; null when the provider supplies none or the environment does not attach. What `kernel.snapshots(session)` resolves. */
-  snapshots(session: SessionId): Promise<RunSnapshots | null>;
+  snapshots(session: SessionId): Promise<SnapshotsApi | null>;
   /** Resolves a session's capabilities for an authority, starting nothing beyond the attachment; pages opened or adopted through its browser are held through `kernel.pages` by `holder` (`wrapBrowser`, §37i), null for a client. Without participant authority each is `denied`. When the environment does not attach, each is `unsupported` if no provider serves the kind or its `inspect` answers unsupported, and `unavailable` otherwise (`retry: "allowed"`, the reason the attach or `inspect` gave). Attached: `files` is `available` with the env's files (core's `upload` and batch receipts in this session); `git` is `available` with the provider's `git` applied to the env, its writes checking owner authority, else `unsupported`; `browser` is `available` with the browser the wrap stack adds, else the provider's `browser` applied to the env, held through the page table, else `unsupported`. */
   capabilities(
     session: SessionId,
@@ -66,7 +71,7 @@ export interface EnvironmentRegistry {
   /** Resolves a workspace's own environment: its provider attaching its target once, no wraps, shared by every caller outside a session; its `files` carry core's `upload` and a `batch()` whose receipt is held in memory (§37b). Fails as `attach` does. */
   attachWorkspace(workspace: WorkspaceId): Promise<ExecutionEnv>;
   /** Resolves the run snapshots of a workspace's own environment, as `snapshots` does over `attachWorkspace`: what `Workspace.changes` and `patches` read outside a session (§37f). */
-  workspaceSnapshots(workspace: WorkspaceId): Promise<RunSnapshots | null>;
+  workspaceSnapshots(workspace: WorkspaceId): Promise<SnapshotsApi | null>;
   /** Resolves a workspace's own capabilities for an authority, as `capabilities` does over `attachWorkspace`. */
   workspaceCapabilities(
     workspace: WorkspaceId,
@@ -84,7 +89,7 @@ interface Attachment {
   readonly env: ExecutionEnv;
   browser(): BrowserApi | undefined;
   git(): GitApi | undefined;
-  snapshots(): RunSnapshots | null;
+  snapshots(): SnapshotsApi | null;
 }
 
 /** Returns a wrap stack as last built: the version it was built at, the env on top, its files with core's members laid over them, and the browser a wrap added. */
@@ -388,7 +393,7 @@ function attachment(
   };
 
   let git: GitApi | undefined;
-  let snapshots: RunSnapshots | null | undefined;
+  let snapshots: SnapshotsApi | null | undefined;
   let own: BrowserApi | undefined;
 
   return {

@@ -21,7 +21,7 @@ import type {
   SnapshotId,
 } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
-import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
+import type { ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { run } from "./command.ts";
 import type { Ran } from "./command.ts";
@@ -37,9 +37,6 @@ import {
 import type { Changed } from "./patch.ts";
 import { decodeText } from "./text.ts";
 import { WALK_LIMIT, walkTree } from "./tree.ts";
-
-/** Returns an environment's run snapshots: what `EnvironmentProvider.snapshots` answers for one environment. */
-export type Snapshots = ReturnType<NonNullable<EnvironmentProvider["snapshots"]>>;
 
 /** Returns a repository holding an environment: its root, git directory, and the environment's path under the root (`""` or `sub/dir/`). */
 type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
@@ -76,7 +73,7 @@ const CHUNK = 64 * 1024;
 export function localSnapshots(
   env: ExecutionEnv,
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
-): Snapshots {
+): SnapshotsApi {
   const binary = options.git ?? "git";
   const befores = new Map<RunId, Promise<SnapshotId>>();
   const stamps = new Map<string, { readonly stamp: string; readonly hash: string }>();

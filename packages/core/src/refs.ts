@@ -78,5 +78,5 @@ export function hostCatalogRef(): string {
 /** Returns what `host/identity` holds: the host's id and when it was first opened. */
 export interface HostIdentity { readonly id: HostId; readonly createdAt: number }
 
-/** Returns what `sessions/<id>/leases/<head>` holds: the host running the head and when its lease expires. */
-export interface Lease { readonly holder: HostId; readonly expiresAt: number }
+/** Returns what `sessions/<id>/leases/<head>` holds: the host running the head, the kernel instance within it that holds the lease (`kernel.instance`), and when the lease expires (§42q). */
+export interface Lease { readonly holder: HostId; readonly instance: string; readonly expiresAt: number }
