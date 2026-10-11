@@ -4,6 +4,11 @@
   "description": "Base UI primitives styled with StyleX. The default entries are compiled; StyleX consumers opt into src with the `nyte-source` condition.",
   "type": "module",
   "exports": {
+    "./appearance": {
+      "nyte-source": "./src/appearance.ts",
+      "types": "./dist/appearance.d.ts",
+      "default": "./dist/appearance.js"
+    },
     "./alert-dialog": {
       "nyte-source": "./src/alert-dialog.tsx",
       "types": "./dist/alert-dialog.d.ts",
@@ -18,6 +23,11 @@
       "nyte-source": "./src/button.tsx",
       "types": "./dist/button.d.ts",
       "default": "./dist/button.js"
+    },
+    "./chart": {
+      "nyte-source": "./src/chart.tsx",
+      "types": "./dist/chart.d.ts",
+      "default": "./dist/chart.js"
     },
     "./checkbox": {
       "nyte-source": "./src/checkbox.tsx",
@@ -88,6 +98,11 @@
       "nyte-source": "./src/kbd.tsx",
       "types": "./dist/kbd.d.ts",
       "default": "./dist/kbd.js"
+    },
+    "./meter": {
+      "nyte-source": "./src/meter.tsx",
+      "types": "./dist/meter.d.ts",
+      "default": "./dist/meter.js"
     },
     "./menu": {
       "nyte-source": "./src/menu.tsx",
