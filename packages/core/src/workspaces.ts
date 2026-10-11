@@ -30,9 +30,9 @@ import { invalidateResources } from "./resources.ts";
 import {
   MAIN,
   STALE,
+  attachesHere,
   attempt,
   commit,
-  isCovered,
   liveRuns,
   load,
   put,
@@ -360,7 +360,7 @@ export function workspaceHandle(
   };
 }
 
-/** Activates a session on this host and returns how it stands, set with `kernel.setActivation` when it changed. An unknown session activates nothing. The session's plugins are loaded first when its runtime has had none loaded in this process (`sessionPlugins`: the built-ins, then the session's own list or `kernel.hostPlugins`, §36c); with `reload`, the runtime replaces its set with that full list, so every plugin re-activates over freshly resolved resources and one a failed activation rejected is tried again (§37l). A session this host's execution does not cover then stays `inactive` and attaches nothing; its plugins resolved no environment or resources (§37m). Otherwise its environment attaches (`kernel.env`): `active` once it attaches; `unavailable { workspace, reason }` when no provider serves the workspace's kind (`unsupported`) or its `inspect` says unavailable; `failed { message }` when attaching throws otherwise. The workspace bus announces the change. Concurrent calls share one activation, a `reload` running after the one in flight. What `sessions.create`, a known session's first `pluginsFor` and `advance` after this host started, and `Workspace.reload()` run. */
+/** Activates a session on this host and returns how it stands, set with `kernel.setActivation` when it changed. An unknown session activates nothing. The session's plugins are loaded first when its runtime has had none loaded in this process (`sessionPlugins`: the built-ins, then the session's own list or `kernel.hostPlugins`, §36c); with `reload`, the runtime replaces its set with that full list, so every plugin re-activates over freshly resolved resources and one a failed activation rejected is tried again (§37l). A session this host's execution does not cover then stays `inactive` and attaches nothing; its plugins resolved no environment or resources (§37m); on a `dispatch` kernel every session attaches, as for `run` (§42p). Otherwise its environment attaches (`kernel.env`): `active` once it attaches; `unavailable { workspace, reason }` when no provider serves the workspace's kind (`unsupported`) or its `inspect` says unavailable; `failed { message }` when attaching throws otherwise. The workspace bus announces the change. Concurrent calls share one activation, a `reload` running after the one in flight. What `sessions.create`, a known session's first `pluginsFor` and `advance` after this host started, and `Workspace.reload()` run. */
 export function activateSession(
   kernel: Kernel,
   session: SessionId,
@@ -464,7 +464,7 @@ async function activate(kernel: Kernel, session: SessionId, reload: boolean): Pr
   if (reload) await runtime.replace(sessionPlugins(kernel, runtime));
   else if (!runtime.loaded()) await runtime.load(sessionPlugins(kernel, runtime));
 
-  if (!(await isCovered(kernel, session))) return settle(kernel, session, workspace, INACTIVE);
+  if (!(await attachesHere(kernel, session))) return settle(kernel, session, workspace, INACTIVE);
 
   try {
     await kernel.env(session);

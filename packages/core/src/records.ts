@@ -99,6 +99,8 @@ export type RunRecord = {
   readonly snapshot: SnapshotId | null;
   readonly usage: Usage | null;
   readonly requests: number;
+  /** The durable steps parked on this run, by session and call, each written by its park in the same set as its wait: what `deliverChildReport` reads, through `endRun`, to leave the end to a durable wait parked on another instance. */
+  readonly waitedBy?: readonly { readonly session: SessionId; readonly call: CallId }[];
 };
 
 /** Returns what `sessions/<id>/parts/<part>` holds: the part's kind, placement, current state version and status. */

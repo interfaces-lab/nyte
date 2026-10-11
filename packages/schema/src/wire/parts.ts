@@ -22,7 +22,11 @@ export const PlacementType = Type.Union([
 
 /** The TypeBox schema of a `PartStatus`. */
 export const PartStatusType = Type.Union([
-  Type.Object({ kind: Type.Literal("live"), run: nullable(idSchema<"run">()) }),
+  Type.Object({
+    kind: Type.Literal("live"),
+    run: nullable(idSchema<"run">()),
+    waiting: Type.Optional(idSchema<"call">()),
+  }),
   Type.Object({ kind: Type.Literal("waiting"), run: idSchema<"run">(), on: WaitTargetType }),
   Type.Object({
     kind: Type.Literal("settled"),

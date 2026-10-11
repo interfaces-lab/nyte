@@ -43,21 +43,8 @@ import {
   readTip,
   requireSession,
 } from "./session-state.ts";
-
-/** Returns the first act on a modal part: the action's name and its validated input. */
-interface Answered {
-  readonly action: string;
-  readonly input: unknown;
-}
-
-/** Returns what one kernel holds in memory about its parts, keyed by part ref: the definitions that created them, closed parts, modal answers, `answer()` waiters and the acts in flight. */
-interface PartTable {
-  readonly created: Map<string, PartDefinition>;
-  readonly closed: Set<string>;
-  readonly answered: Map<string, Answered>;
-  readonly waiters: Map<string, Set<(answer: Answered | null) => void>>;
-  readonly acting: Map<string, Set<AbortController>>;
-}
+import { release, settle, tableOf } from "./part-table.ts";
+import type { Answered } from "./part-table.ts";
 
 /** Returns what an action handler ended with: its return value, what it threw, or the part closing first. */
 type Performed =
@@ -70,9 +57,6 @@ type Answer<K extends PartDefinition> = NonNullable<Awaited<ReturnType<Part<K>["
 
 /** Returns what `update` resolves with. */
 type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
-
-/** Each kernel's in-memory part table. */
-const tables = new WeakMap<Kernel, PartTable>();
 
 /** The session each handle this module bound acts in. */
 const boundIn = new WeakMap<object, SessionId>();
@@ -362,10 +346,16 @@ function partHandleFor<K extends PartDefinition>(
 
       if (record.placement.kind === "modal") {
         settle(table, name, { action: named, input: accepted.value });
-        await kernel.waits.partAnswered(id, {
-          action: named,
-          input: isJson(accepted.value) ? accepted.value : null,
-        });
+
+        const status = (await load(kernel, await kernel.store.refs.get(name), decodePartRecord))
+          ?.record.status;
+
+        await kernel.waits.partAnswered(
+          session,
+          id,
+          { action: named, input: isJson(accepted.value) ? accepted.value : null },
+          status?.kind === "live" ? (status.waiting ?? null) : null,
+        );
       }
 
       return { kind: "ok", output };
@@ -519,28 +509,6 @@ async function firstAnswer(kernel: Kernel, name: string): Promise<Answered | nul
   });
 }
 
-/** Records the first answer to a modal part and resolves its waiters with it. */
-function settle(table: PartTable, name: string, answer: Answered): void {
-  if (table.answered.has(name)) return;
-  table.answered.set(name, answer);
-
-  for (const resolve of table.waiters.get(name) ?? []) resolve(answer);
-  table.waiters.delete(name);
-}
-
-/** Marks a part closed in memory: its waiters resolve null, its acts in flight resolve closed, and its creating definition and answer are dropped. */
-function release(table: PartTable, name: string): void {
-  table.closed.add(name);
-  table.created.delete(name);
-
-  for (const resolve of table.waiters.get(name) ?? []) resolve(null);
-
-  for (const controller of table.acting.get(name) ?? []) controller.abort();
-  table.waiters.delete(name);
-  table.acting.delete(name);
-  table.answered.delete(name);
-}
-
 /** Returns an act's input as the definition validates it for the action, or null when the definition has no such action; throws `invalid` with the issues. Without a definition the input passes as given. */
 async function actInput(
   definition: PartDefinition | null,
@@ -629,23 +597,4 @@ function accepts(schema: Schema<unknown>, value: unknown): boolean {
 /** Returns an error issue at the root. */
 function issue(message: string): ValidationIssue {
   return { severity: "error", path: [], message };
-}
-
-/** Returns the kernel's part table, creating it on first use. */
-function tableOf(kernel: Kernel): PartTable {
-  const known = tables.get(kernel);
-
-  if (known !== undefined) return known;
-
-  const table: PartTable = {
-    created: new Map(),
-    closed: new Set(),
-    answered: new Map(),
-    waiters: new Map(),
-    acting: new Map(),
-  };
-
-  tables.set(kernel, table);
-
-  return table;
 }

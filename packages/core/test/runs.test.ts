@@ -1,18 +1,24 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { PatchEvent } from "@nyte-ai/schema";
+import type { CallId, Json, PatchEvent, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   LOCAL,
+  callRef,
+  decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
   deliverChildReport,
   driveInProcess,
+  endRun,
   envelope,
+  memoryStore,
   partRef,
   publishPatch,
   runRef,
+  runStep,
   startRun,
 } from "../src/index.ts";
+import type { Kernel } from "../src/index.ts";
 import { completed, configuration, label, livePart, main, setup } from "./harness.ts";
 
 describe("runs", () => {
@@ -205,8 +211,74 @@ describe("runs", () => {
     const parent = await host.sessions.create();
     const child = await host.sessions.create({ parent: parent.id });
 
-    await deliverChildReport(kernel, child.id, asId("r1"), completed, true);
+    await deliverChildReport(kernel, child.id, asId("r1"), completed, true, []);
 
     expect((await parent.view()).messages).toEqual([]);
+  });
+
+  it("attaches no report when a durable wait parked on another instance holds the child's run, which a later cover wakes once", async () => {
+    const store = await memoryStore().open();
+    const x = await setup({ store, execution: { kind: "admit-only" } });
+    const parent = await x.host.sessions.create();
+    const child = await x.host.sessions.create({ parent: parent.id });
+
+    const run = await startRun(
+      x.kernel,
+      child.id,
+      main,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
+
+    const call: CallId = asId("wait-child");
+    const target: WaitTarget = { kind: "run", session: child.id, run: run.id };
+
+    const waited = (kernel: Kernel) =>
+      runStep<Json>(kernel, {
+        session: parent.id,
+        head: main,
+        run: null,
+        call,
+        kind: "hook",
+        replay: "safe",
+        intent: { test: true },
+        part: null,
+        signal: new AbortController().signal,
+        body: async (durable) => (await durable.wait(target)).kind,
+        settle: async (ended) => ({
+          result: ended.kind === "done" ? ended.value : null,
+          updates: [],
+        }),
+        decode: (result) => result,
+      });
+
+    expect(await waited(x.kernel)).toEqual({ kind: "parked" });
+
+    const stored = await store.refs.get(runRef(child.id, run.id));
+
+    expect(
+      decodeRunRecord(stored?.target ? await store.objects.get(stored.target) : null),
+    ).toMatchObject({
+      waitedBy: [{ session: parent.id, call }],
+    });
+
+    const y = await setup({ store, execution: { kind: "admit-only" } });
+    await endRun(y.kernel, child.id, run.id, completed);
+
+    expect((await y.host.session(parent.id).view()).messages).toEqual([]);
+
+    const z = await setup({ store, execution: { kind: "admit-only" } });
+    const owned = await z.host.execution.cover({ kind: "sessions", sessions: [parent.id] });
+    const recorded = await store.refs.get(callRef(parent.id, call));
+
+    expect(
+      decodeCallRecord(recorded?.target ? await store.objects.get(recorded.target) : null),
+    ).toMatchObject({
+      waiting: null,
+      waits: [{ kind: "run", session: child.id, run: run.id, end: completed }],
+    });
+    expect(await waited(z.kernel)).toEqual({ kind: "done", value: "run" });
+    expect((await z.host.session(parent.id).view()).messages).toEqual([]);
+    await owned.close();
   });
 });

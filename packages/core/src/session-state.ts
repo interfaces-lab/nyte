@@ -437,7 +437,7 @@ export function changeCall(
   return done;
 }
 
-/** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed. */
+/** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed (§42ac: `sessions` names sessions and their descendants). */
 export async function covers(
   kernel: Kernel,
   coverage: ExecutionCoverage,
@@ -461,7 +461,11 @@ export async function covers(
 
 const driven = new WeakMap<Kernel, Set<ExecutionCoverage>>();
 
-/** Records a coverage an in-process driver runs while it is open (what `driveInProcess` registers), so `isCovered` counts it on a kernel whose own execution is `admit-only` (§41b); the disposer removes it. */
+const pending = new WeakMap<Kernel, Set<string>>();
+
+const dispatched = new WeakMap<Kernel, Set<SessionId>>();
+
+/** Records a coverage an in-process driver or an open `cover` runs while it is open, so `isCovered` counts it on a kernel whose own execution is `admit-only` (§41b, §42a); the disposer removes it. */
 export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer {
   const coverages = driven.get(kernel) ?? new Set<ExecutionCoverage>();
   const entry = { ...coverage };
@@ -473,7 +477,7 @@ export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer
   };
 }
 
-/** Returns whether this host runs a session: execution is `run` and its coverage includes it, or an open in-process driver's coverage includes it. */
+/** Returns whether this host runs a session: execution is `run` and its coverage includes it, an open driver's or `cover`'s coverage includes it, or a `dispatch` for it resolved in this instance (§42p). */
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
   if (kernel.execution.kind === "run" && (await covers(kernel, kernel.execution.coverage, session)))
     return true;
@@ -481,7 +485,37 @@ export async function isCovered(kernel: Kernel, session: SessionId): Promise<boo
   for (const coverage of driven.get(kernel) ?? [])
     if (await covers(kernel, coverage, session)) return true;
 
-  return false;
+  return dispatched.get(kernel)?.has(session) ?? false;
+}
+
+/** Returns whether a session's environment attaches here: on a `dispatch` kernel always, as for `run` (§42p), else when `isCovered` says so. What activation and a plugin's `api.env` read. */
+export async function attachesHere(kernel: Kernel, session: SessionId): Promise<boolean> {
+  return kernel.execution.kind === "dispatch" || isCovered(kernel, session);
+}
+
+/** Hands a head owed a step to a `dispatch` kernel's dispatcher (§42s): at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a resolved dispatch makes its session count for `isCovered`, a rejected one is recorded nowhere, the head staying owed for `repair`. Does nothing on any other kernel. */
+export function dispatchHead(kernel: Kernel, session: SessionId, head: HeadName): void {
+  const execution = kernel.execution;
+
+  if (execution.kind !== "dispatch") return;
+  const inFlight = pending.get(kernel) ?? new Set<string>();
+  pending.set(kernel, inFlight);
+  const key = JSON.stringify([session, head]);
+
+  if (inFlight.has(key)) return;
+  inFlight.add(key);
+
+  void Promise.resolve()
+    .then(() => execution.dispatch({ session, head }))
+    .then(
+      () => {
+        const sessions = dispatched.get(kernel) ?? new Set<SessionId>();
+        dispatched.set(kernel, sessions);
+        sessions.add(session);
+      },
+      () => undefined,
+    )
+    .finally(() => inFlight.delete(key));
 }
 
 /** Returns the `session` event for a record about to be written: the current directory row with the record's fields and heads, and `rows` laid over named heads. */

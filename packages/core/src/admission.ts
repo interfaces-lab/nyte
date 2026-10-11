@@ -215,7 +215,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   });
 
   const configuration = await resolve(sending, submission.configuration);
-  const covered = await isCovered(kernel, session);
+  const covered = kernel.execution.kind === "dispatch" || (await isCovered(kernel, session));
 
   return attempt(`Admitting ${id}`, async () => {
     const [inbox, run] = await Promise.all([
@@ -277,7 +277,7 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
       ? previous.configuration
       : await resolve(sending, submission.configuration);
 
-  const covered = await isCovered(kernel, session);
+  const covered = kernel.execution.kind === "dispatch" || (await isCovered(kernel, session));
 
   return attempt(`Revising ${target}`, async () => {
     const [inbox, run, receipt] = await Promise.all([
@@ -364,7 +364,7 @@ async function edit(sending: Sending, target: MessageId): Promise<SendReceipt> {
   }
 
   const run = "kind" in checked ? null : checked.run;
-  const covered = await isCovered(kernel, session);
+  const covered = kernel.execution.kind === "dispatch" || (await isCovered(kernel, session));
 
   const message = (stopped: RunId | null, position: number): MessageRecord => ({
     id: asId<"message">(id),

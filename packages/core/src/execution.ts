@@ -28,6 +28,7 @@ import {
   addDriven,
   commit,
   covers,
+  dispatchHead,
   isJsonObject,
   liveRun,
   load,
@@ -37,6 +38,7 @@ import {
   withFold,
 } from "./session-state.ts";
 import type { Found } from "./session-state.ts";
+import { drivenBy } from "./driving.ts";
 import { executeCall, owedCalls } from "./tool-runner.ts";
 import { loadWaits } from "./wait-registry.ts";
 import { ensureActivated } from "./workspaces.ts";
@@ -47,27 +49,34 @@ const RENEW_MS = 10_000;
 
 const PAGE = 100;
 
-/** Returns one kernel's execution leases: each head it holds with the revision it wrote, how many coverages are open, their renew timer, and the queue that keeps claims on one lease in order. */
+/** Returns one lease this kernel holds: its head, the revision it wrote, when it expires, and the open cover handles that own it (none while only the advance that claimed it holds it). */
+interface Held {
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly revision: Revision;
+  readonly expiresAt: number;
+  readonly owners: Set<object>;
+}
+
+/** Returns one kernel's execution leases: each head it holds, the open cover handles with what each covers, the heads an advance is stepping now, the renew timer, and the queue that keeps claims on one lease in order. */
 interface LeaseTable {
-  readonly held: Map<
-    string,
-    { readonly session: SessionId; readonly head: HeadName; readonly revision: Revision }
-  >;
+  readonly held: Map<string, Held>;
+  readonly covers: Map<object, ExecutionCoverage>;
+  readonly advancing: Set<string>;
   readonly queue: Map<string, Promise<unknown>>;
-  coverages: number;
   timer: ReturnType<typeof setInterval> | null;
 }
 
 const tables = new WeakMap<Kernel, LeaseTable>();
 
-const driving = new WeakMap<Kernel, Set<RunId>>();
-
 const closings = new WeakMap<Kernel, AbortController>();
 
-/** Registers a coverage without claiming any lease (§42t) and parks the durable waits the store records for it in `kernel.waits`; `{ kind: "sessions" }` covers the named sessions only, not their children (those are dispatched on their own), and reads only those sessions' heads and parked waits, never scanning the whole store (§42p, §42t). While the handle is open the coverage counts for `isCovered`, through the same registration `driveInProcess` uses (`addDriven`), so on an `admit-only` kernel driven by alarms or workflows admission wakes the covered heads and activation attaches their environments (§42a). Leases are claimed lazily: a head's lease is claimed when `advance` steps it and released when the head reports `idle`, and every 10 s `renew` touches only the leases this kernel holds, so an idle head costs no writes. Closing the last open coverage releases every lease still held; closing any one removes its registration. */
+/** Registers a coverage without claiming any lease (§42t, §42y) and parks the durable waits the store records for it in `kernel.waits`: every session's, or for `{ kind: "sessions" }` only the named sessions' (`sessions/<id>/calls/`, never a whole-store scan, §42p). A `sessions` coverage covers the named sessions and their descendants (§42ac); a descendant's own parked waits are loaded when a cover names it, as a dispatched child's step does, or live in this process from when they parked. While the handle is open the coverage counts for `isCovered`, through the same registration `driveInProcess` uses (`addDriven`), so on an `admit-only` kernel driven by alarms or workflows admission wakes the covered heads and activation attaches their environments (§42a). The handle owns the leases the advances of its sessions claim (a lease is held only while a turn runs, §42y): every 10 s `renew` touches the leases open handles own, and closing the handle releases each lease it owns that no other open handle owns and no advance is stepping; an advance in flight releases its own lease when its turn ends (§42ac). */
 export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promise<Owned> {
   const table = leasesOf(kernel);
-  table.coverages += 1;
+  const handle = {};
+  table.covers.set(handle, { ...coverage });
+  const unregister = addDriven(kernel, coverage);
 
   table.timer ??= setInterval(() => {
     renew(kernel).catch(() => undefined);
@@ -77,26 +86,30 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      table.coverages -= 1;
+      unregister();
+      table.covers.delete(handle);
 
-      if (table.coverages > 0) return;
+      if (table.covers.size === 0 && table.timer !== null) {
+        clearInterval(table.timer);
+        table.timer = null;
+      }
 
-      if (table.timer !== null) clearInterval(table.timer);
-      table.timer = null;
+      const released: Promise<void>[] = [];
 
-      await Promise.all(
-        Array.from(table.held.values(), (entry) => release(kernel, entry.session, entry.head)),
-      );
+      for (const [name, entry] of table.held) {
+        if (!entry.owners.delete(handle) || entry.owners.size > 0 || table.advancing.has(name))
+          continue;
+        released.push(release(kernel, entry.session, entry.head));
+      }
+
+      await Promise.all(released);
     })();
 
     return closing;
   };
 
   try {
-    for (const entry of await coveredHeads(kernel, coverage))
-      await claim(kernel, entry.session, entry.head);
-
-    await loadWaits(kernel);
+    await loadWaits(kernel, coverage.kind === "sessions" ? coverage.sessions : undefined);
   } catch (error) {
     await close();
 
@@ -106,25 +119,44 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. The head's lease is claimed here when this kernel does not hold it (§42t); under an open coverage it stays held until a step reports `idle`, which releases it, and without one it is released when the step returns. */
+/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), claims or renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. A head this instance is already stepping answers `busy` until its own lease expires and releases nothing (§42y). The lease it claims is owned by the open covers of its session; the advance releases it in `finally` when its turn ends by abort, a throw or any report but `continue`, and `continue` keeps it for the drive to go on at once, unless no open cover owns it any more, when it is released too (§42ac). */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
 ): Promise<AdvanceReport> {
   const { session, head } = input;
-  const found = await readSession(kernel, session);
+  const table = leasesOf(kernel);
+  const name = leaseRef(session, head);
 
-  if (found === null || !found.record.heads.some((entry) => entry.name === head))
-    return { kind: "idle" };
-  await ensureActivated(kernel, session);
-  const refused = await claim(kernel, session, head);
-
-  if (refused !== null) return refused;
+  if (table.advancing.has(name))
+    return { kind: "busy", until: table.held.get(name)?.expiresAt ?? Date.now() + LEASE_MS };
+  table.advancing.add(name);
+  let claimed = false;
+  let report: AdvanceReport | null = null;
 
   try {
-    return await step(kernel, session, head);
+    const found = await readSession(kernel, session);
+
+    if (found === null || !found.record.heads.some((entry) => entry.name === head))
+      return { kind: "idle" };
+    await ensureActivated(kernel, session);
+    const refused = await claim(kernel, session, head);
+
+    if (refused !== null) return refused;
+    claimed = true;
+    const owners = table.held.get(name)?.owners;
+
+    for (const [handle, coverage] of table.covers)
+      if (await covers(kernel, coverage, session)) owners?.add(handle);
+
+    report = await step(kernel, session, head);
+
+    return report;
   } finally {
-    if (leasesOf(kernel).coverages === 0) await release(kernel, session, head);
+    table.advancing.delete(name);
+
+    if (claimed && (report?.kind !== "continue" || (table.held.get(name)?.owners.size ?? 0) === 0))
+      await release(kernel, session, head);
   }
 }
 
@@ -158,7 +190,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return next(kernel, session, head);
 }
 
-/** Returns one page of heads owed a step: a steer or queue input waiting and no live run; a live run with a tool call to re-run (its wait completed, or its host died mid-call); or a live run no turn drives here that waits on nothing, left mid-turn by a host that closed or died (§38y). */
+/** Returns one page of heads owed a step: a steer or queue input waiting and no live run; a live run with a tool call to re-run (its wait completed, or its host died mid-call); or a live run no turn drives here that waits on nothing, left mid-turn by a host that closed or died (§38y). On a `dispatch` kernel each runnable head is also handed to `dispatchHead` instead of being advanced here (§42s). */
 export async function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
@@ -168,23 +200,30 @@ export async function repair(
 
   for (const info of page.items) {
     for (const head of info.heads) {
-      const live = await liveRun(kernel, info.id, head.name);
-
-      const owed =
-        live === null
-          ? (await dueInputs(kernel, info.id, head.name)) !== null
-          : !drivenBy(kernel).has(live.record.view.id) &&
-            (live.record.waiting === null ||
-              (await owedCalls(kernel, info.id, live.record.view.id)).some((call) => !call.parked));
-
-      if (owed) runnable.push({ session: info.id, head: head.name });
+      if (await owed(kernel, info.id, head.name))
+        runnable.push({ session: info.id, head: head.name });
     }
   }
+
+  for (const entry of runnable) dispatchHead(kernel, entry.session, entry.head);
 
   return { runnable, next: page.next };
 }
 
-/** Drives covered heads in process, its coverage counted by `isCovered` while it is open (so admission wakes it and activation attaches environments even on an `admit-only` kernel, §41b): on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then, and one reported `retry` is stepped again at its `until`. Closing the handle stops it without waiting on the turns in flight: it aborts them with the kernel's host-closing signal, so each returns at once and its drive leaves the run live in the store for the next open or another host to resume through `advance` (§38y), then releases the leases. */
+/** Returns whether a head is owed a step: a steer or queue input waiting and no live run; a live run with a tool call to re-run; or a live run no turn drives here that waits on nothing (§38y). */
+async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise<boolean> {
+  const live = await liveRun(kernel, session, head);
+
+  if (live === null) return (await dueInputs(kernel, session, head)) !== null;
+
+  return (
+    !drivenBy(kernel).has(live.record.view.id) &&
+    (live.record.waiting === null ||
+      (await owedCalls(kernel, session, live.record.view.id)).some((call) => !call.parked))
+  );
+}
+
+/** Drives covered heads in process, its coverage counted by `isCovered` while it is open (so admission wakes it and activation attaches environments even on an `admit-only` kernel, §41b): on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then, and one reported `retry` or `busy` is stepped again at its `until` (a lease another instance holds, such as a crashed process's, expires by then, §42y). Closing the handle stops it without waiting on the turns themselves: it aborts them with the kernel's host-closing signal, so each returns at once and its drive leaves the run live in the store for the next open or another host to resume through `advance` (§38y); it waits for those advances to return, each releasing its own lease (§42ac), then closes its cover, so no lease it held is left when close returns. */
 export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Owned {
   const undrive = addDriven(kernel, coverage);
   const covering = cover(kernel, coverage);
@@ -238,7 +277,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
         if (report.kind === "waiting" && report.until !== null) schedule(report.until);
 
-        if (report.kind === "retry") stepAt(session, head, report.until);
+        if (report.kind === "retry" || report.kind === "busy") stepAt(session, head, report.until);
 
         if (report.kind !== "continue") return;
       }
@@ -296,6 +335,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       const closing = closingOf(kernel);
       closings.delete(kernel);
       closing.abort();
+      await Promise.all(inflight.values());
       await covering.then(
         (owned) => owned.close(),
         () => undefined,
@@ -321,9 +361,10 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
   return inOrder(kernel, leaseRef(session, head), () => releaseNow(kernel, session, head));
 }
 
+/** Renews the leases open cover handles own; a lease only an advance holds is renewed by its drive. */
 async function renew(kernel: Kernel): Promise<void> {
-  for (const entry of leasesOf(kernel).held.values())
-    await claim(kernel, entry.session, entry.head);
+  for (const entry of Array.from(leasesOf(kernel).held.values()))
+    if (entry.owners.size > 0) await claim(kernel, entry.session, entry.head);
 }
 
 function inOrder<T>(kernel: Kernel, name: string, task: () => Promise<T>): Promise<T> {
@@ -360,7 +401,7 @@ async function claimNow(
   if (
     mine === undefined &&
     lease !== null &&
-    lease.holder !== kernel.hostId &&
+    (lease.holder !== kernel.hostId || lease.instance !== kernel.instance) &&
     lease.expiresAt > now
   )
     return { kind: "busy", until: lease.expiresAt };
@@ -368,7 +409,12 @@ async function claimNow(
   const outcome = await commit(kernel, [
     {
       name,
-      target: await put(kernel, "lease", { holder: kernel.hostId, expiresAt: now + LEASE_MS }, now),
+      target: await put(
+        kernel,
+        "lease",
+        { holder: kernel.hostId, instance: kernel.instance, expiresAt: now + LEASE_MS },
+        now,
+      ),
       expect: ref === null ? "absent" : ref.revision,
     },
   ]);
@@ -379,7 +425,13 @@ async function claimNow(
     return { kind: "fenced" };
   }
 
-  held.set(name, { session, head, revision: outcome.revisions[0] });
+  held.set(name, {
+    session,
+    head,
+    revision: outcome.revisions[0],
+    expiresAt: now + LEASE_MS,
+    owners: held.get(name)?.owners ?? new Set(),
+  });
 
   return null;
 }
@@ -392,28 +444,6 @@ async function releaseNow(kernel: Kernel, session: SessionId, head: HeadName): P
   if (mine === undefined) return;
   held.delete(name);
   await commit(kernel, [{ name, target: null, expect: mine }]);
-}
-
-async function coveredHeads(
-  kernel: Kernel,
-  coverage: ExecutionCoverage,
-): Promise<readonly { readonly session: SessionId; readonly head: HeadName }[]> {
-  const heads: { readonly session: SessionId; readonly head: HeadName }[] = [];
-  let cursor: Cursor | undefined;
-
-  do {
-    const page = await listSessions(kernel, LOCAL, { cursor, limit: PAGE });
-
-    for (const info of page.items) {
-      if (!(await covers(kernel, coverage, info.id))) continue;
-
-      for (const head of info.heads) heads.push({ session: info.id, head: head.name });
-    }
-
-    cursor = page.next ?? undefined;
-  } while (cursor !== undefined);
-
-  return heads;
 }
 
 /** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended `stopped`, so the step goes on to the next input; stopping wins over waiting and retrying. A retrying run reports `retry` until its `until`; once that passed, a run no turn drives here is driven again (§38o), the turn taking the next attempt. A run no turn drives here first re-runs its tool calls owed a re-run, a stopping one with its signal aborted first (after a restart too), so a stopped step sees `stopped` and returns; it reports `waiting` while a call stays parked. */
@@ -506,7 +536,7 @@ async function drive(
   run: RunView,
 ): Promise<void> {
   const driven = drivenBy(kernel);
-  driven.add(run.id);
+  driven.set(run.id, session);
   const closing = closingOf(kernel).signal;
 
   const signal = AbortSignal.any([
@@ -521,7 +551,7 @@ async function drive(
   const unrenew = (): void => clearInterval(renewal);
   closing.addEventListener("abort", unrenew, { once: true });
 
-  const ended = await kernel.turn
+  const turned = kernel.turn
     .run({
       session,
       head,
@@ -539,9 +569,15 @@ async function drive(
       driven.delete(run.id);
     });
 
+  const closed = new Promise<null>((resolve) => {
+    if (closing.aborted) resolve(null);
+    else closing.addEventListener("abort", () => resolve(null), { once: true });
+  });
+
+  const ended = await Promise.race([turned, closed]);
   const stopping = kernel.runs.isStopping(run.id);
 
-  if (closing.aborted && !stopping) return;
+  if (ended === null || (closing.aborted && !stopping)) return;
 
   if (ended.returned && !stopping && (await owedCalls(kernel, session, run.id)).length > 0) {
     kernel.wakes.notify(session, head);
@@ -609,10 +645,39 @@ async function dueInputs(
   });
 }
 
+/** Returns what a head needs after a step drove it: `continue` when an input is due, the live run must be stopped, a call is owed a re-run, or the run waits on nothing; `waiting` until the head's next timer or deadline while a call is parked; `retry` until a retrying run's `until`; `idle` when nothing is live or due, or another drive here holds the run. */
 async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise<AdvanceReport> {
-  return (await dueInputs(kernel, session, head)) === null
-    ? { kind: "idle" }
-    : { kind: "continue" };
+  const live = await liveRun(kernel, session, head);
+
+  if (live === null)
+    return (await dueInputs(kernel, session, head)) === null
+      ? { kind: "idle" }
+      : { kind: "continue" };
+  const run = live.record.view.id;
+
+  if (drivenBy(kernel).has(run)) return { kind: "idle" };
+  const calls = await owedCalls(kernel, session, run);
+
+  if (live.record.stopping || kernel.runs.isStopping(run) || calls.some((call) => !call.parked))
+    return { kind: "continue" };
+  const waiting = live.record.waiting;
+
+  if (waiting !== null || calls.length > 0)
+    return {
+      kind: "waiting",
+      until:
+        kernel.waits.nextDeadline(session, head) ??
+        (waiting === null
+          ? null
+          : waiting.kind === "timer"
+            ? waiting.until
+            : (waiting.deadline ?? null)),
+    };
+
+  if (live.record.retrying !== null && live.record.retrying.until > Date.now())
+    return { kind: "retry", until: live.record.retrying.until };
+
+  return { kind: "continue" };
 }
 
 function failed(error: unknown): RunEnd {
@@ -636,10 +701,11 @@ function decodeLease(object: Json | null): Lease | null {
 }
 
 function leasesOf(kernel: Kernel): LeaseTable {
-  const table = tables.get(kernel) ?? {
+  const table: LeaseTable = tables.get(kernel) ?? {
     held: new Map(),
+    covers: new Map(),
+    advancing: new Set(),
     queue: new Map(),
-    coverages: 0,
     timer: null,
   };
 
@@ -654,11 +720,4 @@ function closingOf(kernel: Kernel): AbortController {
   closings.set(kernel, known);
 
   return known;
-}
-
-function drivenBy(kernel: Kernel): Set<RunId> {
-  const driven = driving.get(kernel) ?? new Set<RunId>();
-  driving.set(kernel, driven);
-
-  return driven;
 }

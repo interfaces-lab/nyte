@@ -9,6 +9,7 @@ import type {
   SetOutcome,
 } from "@nyte-ai/schema";
 import type { Kernel } from "./kernel.ts";
+import { followedFrom, publishMarks } from "./follow.ts";
 
 /** Carries every session's live events, durable and transient, to in-process listeners. */
 export interface SessionBus {
@@ -54,9 +55,7 @@ export function createBus(): SessionBus {
 
 const LOG_PAGE = 256;
 
-const published = new WeakMap<Kernel, Map<SessionId, Seq>>();
-
-/** Records a successful set's ref revisions, then publishes its events to their sessions with the seq and time the store logged. */
+/** Records a successful set's ref revisions, then publishes its events to their sessions with the seq and time the store logged, draining each session's log from this kernel's publish mark, so events another instance logged in between go out too, in seq order. A session's first mark starts where the set's own events start, or, when a fold or a watch follows the session, where its feed finished reading the log, whichever is earlier (so another instance's events since the feed's read are not skipped). */
 export async function publishSet(
   kernel: Kernel,
   updates: readonly RefUpdate[],
@@ -82,13 +81,14 @@ export async function publishSet(
     last = session;
   }
 
-  const marks = published.get(kernel) ?? new Map<SessionId, Seq>();
-  published.set(kernel, marks);
+  const marks = publishMarks(kernel);
 
   for (const [session, count] of counts) {
     if (!marks.has(session)) {
       const through = session === last ? outcome.seq : await kernel.store.refs.tail(session);
-      marks.set(session, asSeq(Math.max(0, through - count)));
+      const own = Math.max(0, through - count);
+      const from = followedFrom(kernel.bus, session);
+      marks.set(session, asSeq(from === null ? own : Math.min(from, own)));
     }
 
     await drain(kernel, marks, session);

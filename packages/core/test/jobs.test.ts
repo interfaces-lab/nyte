@@ -296,7 +296,7 @@ describe("jobs", () => {
     await watched.return?.();
   });
 
-  it("reads a job this process did not start as lost after a new kernel", async () => {
+  it("reads a job this process did not start as lost after a new kernel, its output unavailable", async () => {
     const { kernel, host, provider, workspace } = await world();
     const job = await host.workspace(workspace).jobs.start({ command: "pnpm dev" });
     const second = kernelOver(kernel.store, provider);
@@ -306,7 +306,7 @@ describe("jobs", () => {
     expect(await lost.settled()).toEqual({ kind: "lost" });
     expect(await lost.stop()).toEqual({ kind: "missing" });
     expect(await lost.resize({ columns: 1, rows: 1 })).toEqual({ kind: "missing" });
-    expect(await drain(lost.output())).toEqual(["exit"]);
+    expect(() => lost.output()).toThrow(expect.objectContaining({ code: "unavailable" }));
     await expect(lost.write(new Uint8Array(1))).rejects.toMatchObject({ code: "unknown" });
     expect(await fresh.workspace(workspace).jobs.list()).toEqual([]);
     expect(jobHandle(second, caller, job.id).key).toBeNull();

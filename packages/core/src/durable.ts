@@ -12,8 +12,10 @@ import type {
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import { decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord } from "./records.ts";
-import { changeCall, readCall, runWaiting } from "./session-state.ts";
+import { partRef, runRef } from "./refs.ts";
+import { changeCall, load, put, readCall, runWaiting } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
 import { onStepWoken, waitingOn } from "./wait-registry.ts";
 
@@ -321,7 +323,7 @@ function durableOf(
   return durable;
 }
 
-/** Writes a step's wait at `index` to its record, with an empty outcome slot per target of a combination, with `call waiting` and, inside a run, the run's `waiting` with `run waiting`, all in one set; then parks it in the kernel's registry. A record already waiting is parked as it stands. */
+/** Writes a step's wait at `index` to its record, with an empty outcome slot per target of a combination, with `call waiting`, inside a run the run's `waiting` with `run waiting`, the step in the `waitedBy` of every run it waits on, and `waiting: <call>` on the live status of every modal part it waits on with its `part waiting { call }` event (§42z, §42ac: the fold and every view show it, and `act` finds the one call its answer goes to), all in one set; then parks it in the kernel's registry. A record already waiting is parked as it stands. */
 async function park(
   kernel: Kernel,
   place: Place,
@@ -353,10 +355,13 @@ async function park(
               change: "waiting",
               on,
             },
-      updates:
-        on === null || place.run === null
+      updates: [
+        ...(on === null || place.run === null
           ? []
-          : await runWaiting(kernel, place.session, place.run, on),
+          : await runWaiting(kernel, place.session, place.run, on)),
+        ...(await modalsWaiting(kernel, place.session, place.call, target)),
+        ...(await runsWaited(kernel, place, target)),
+      ],
     };
   });
 
@@ -371,6 +376,76 @@ async function park(
     call: place.call,
     target: record.waiting,
   });
+}
+
+/** Returns the updates that add the step to the `waitedBy` of each live run a wait targets (not its own run), none for a run that has ended or already lists it. */
+async function runsWaited(
+  kernel: Kernel,
+  place: Place,
+  target: NonNullable<CallRecord["waiting"]>,
+): Promise<readonly RefUpdate[]> {
+  const updates: RefUpdate[] = [];
+  const waiter = { session: place.session, call: place.call };
+
+  for (const waited of "targets" in target ? target.targets : [target]) {
+    if (waited.kind !== "run" || (waited.session === place.session && waited.run === place.run))
+      continue;
+    const name = runRef(waited.session, waited.run);
+    const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+    const listed = found?.record.waitedBy ?? [];
+
+    if (
+      found === null ||
+      updates.some((update) => update.name === name) ||
+      listed.some((entry) => entry.session === waiter.session && entry.call === waiter.call)
+    )
+      continue;
+
+    updates.push({
+      name,
+      target: await put(kernel, "run", { ...found.record, waitedBy: [...listed, waiter] }),
+      expect: found.ref.revision,
+    });
+  }
+
+  return updates;
+}
+
+/** Returns the updates that mark each live modal part a wait targets as waited on by `call`, none for a part that is not modal, not live or already marked. */
+async function modalsWaiting(
+  kernel: Kernel,
+  session: SessionId,
+  call: CallId,
+  target: NonNullable<CallRecord["waiting"]>,
+): Promise<readonly RefUpdate[]> {
+  const parts = ("targets" in target ? target.targets : [target]).flatMap((waited) =>
+    waited.kind === "part" ? [waited.part] : [],
+  );
+
+  const updates: RefUpdate[] = [];
+
+  for (const part of new Set(parts)) {
+    const name = partRef(session, part);
+    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const status = found?.record.status;
+
+    if (
+      found === null ||
+      found.record.placement.kind !== "modal" ||
+      status?.kind !== "live" ||
+      status.waiting === call
+    )
+      continue;
+
+    updates.push({
+      name,
+      target: await put(kernel, "part", { ...found.record, status: { ...status, waiting: call } }),
+      expect: found.ref.revision,
+      event: { head: null, kind: "part", part, change: "waiting", call },
+    });
+  }
+
+  return updates;
 }
 
 /** Returns a record's entry under a key, or undefined when it has none of its own. */

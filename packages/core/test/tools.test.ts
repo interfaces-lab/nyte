@@ -7,12 +7,15 @@ import {
   LOCAL,
   callRef,
   decodeCallRecord,
+  decodePartRecord,
   decodeRunRecord,
   definePart,
   envelope,
   executeCall,
   isPart,
   memoryStore,
+  partRef,
+  pollStore,
   runRef,
   startRun,
   text,
@@ -23,10 +26,11 @@ import type {
   ConnectionContext,
   Kernel,
   Session,
+  StoreConnection,
   ToolDefinition,
   ToolSource,
 } from "../src/index.ts";
-import { configuration, main, recording, setup, until } from "./harness.ts";
+import { configuration, expireLease, main, recording, setup, until } from "./harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -524,6 +528,105 @@ describe("tool calls", () => {
     ).toEqual([]);
   });
 
+  it("resumes a call parked on a modal question on one kernel once another kernel answers it, by the call the part names, the park shown in the view and the answer reaching a kernel with nothing parked (§42x, §42z, §42ac)", async () => {
+    const question = definePart({
+      kind: "test/question",
+      state: standard(Type.Object({})),
+      actions: { answer: { input: standard(Type.Object({ choice: Type.String() })) } },
+      fallback: (_state, { id }) => `Ask ${id}`,
+    });
+
+    const ask = {
+      name: "ask",
+      description: "Wait for the answer to a question.",
+      parameters: standard(Type.Object({ part: Type.String() })),
+      class: () => ({ kind: "custom", label: "Asking" }),
+      replay: "safe",
+      execute: async (args, invocation) => {
+        const woke = await invocation.wait({ kind: "part", part: asId(args.part) });
+
+        return {
+          content: [
+            {
+              kind: "text",
+              text:
+                woke.kind === "part" && woke.answer !== null
+                  ? JSON.stringify(woke.answer.input)
+                  : "unanswered",
+            },
+          ],
+        };
+      },
+    } satisfies ToolDefinition<{ part: string }>;
+
+    const store = await memoryStore().open();
+    const lists: string[] = [];
+
+    const spied: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        list(prefix) {
+          lists.push(prefix);
+
+          return store.refs.list(prefix);
+        },
+      },
+    };
+
+    const first = await setup({ store, tools: source([ask]), poll: 10 });
+    const second = await setup({ store: spied });
+    const third = await setup({ store, poll: 10 });
+    const session = await first.host.sessions.create();
+    const run = await liveRun(first.kernel, session.id);
+    const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
+    const notified: string[] = [];
+    first.kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));
+    const input = { session: session.id, run, call: "ask", name: "ask", args: { part: part.id } };
+    const unpoll = pollStore(first.kernel);
+
+    expect(await call(first.kernel, input)).toEqual({ kind: "parked" });
+
+    const stored = await store.refs.get(partRef(session.id, part.id));
+
+    expect(
+      decodePartRecord(stored?.target ? await store.objects.get(stored.target) : null)?.status,
+    ).toEqual({ kind: "live", run: null, waiting: "ask" });
+    expect((await session.view()).parts.find((view) => view.id === part.id)?.status).toEqual({
+      kind: "live",
+      run: null,
+      waiting: "ask",
+    });
+
+    const asked = part.answer();
+    const elsewhere = third.host.session(session.id).part(part.id).answer();
+    const unpollThird = pollStore(third.kernel);
+    lists.length = 0;
+
+    expect(
+      await second.host.session(session.id).part(part.id).act("answer", { choice: "yes" }),
+    ).toEqual({ kind: "ok", output: undefined });
+    expect(lists.filter((prefix) => prefix.includes("/calls/"))).toEqual([]);
+    expect(await readCall(second.kernel, session.id, "ask")).toMatchObject({
+      waiting: null,
+      waits: [
+        { kind: "part", part: part.id, answer: { action: "answer", input: { choice: "yes" } } },
+      ],
+    });
+
+    await until(() => (notified.length > 0 ? true : undefined));
+
+    expect(notified).toEqual([`${session.id}/${main}`]);
+    expect(await asked).toEqual({ action: "answer", input: { choice: "yes" } });
+    expect(await elsewhere).toEqual({ action: "answer", input: { choice: "yes" } });
+    unpollThird();
+    expect(await call(first.kernel, input)).toMatchObject({
+      kind: "ok",
+      content: [{ kind: "text", text: '{"choice":"yes"}' }],
+    });
+    unpoll();
+  });
+
   it("re-runs a safe call once and settles a never call interrupted after a crash", async () => {
     const store = await memoryStore().open();
     const executions = { safe: 0, never: 0 };
@@ -562,6 +665,7 @@ describe("tool calls", () => {
 
     await until(() => (executions.safe === 1 && executions.never === 1 ? true : undefined));
 
+    await expireLease(store, session.id, main);
     const second = await setup({ store, tools });
     const step = second.host.execution.advance({ session: session.id, head: main });
     const resumed = await second.script.started(1);
@@ -813,6 +917,7 @@ describe("tool calls", () => {
       },
     ]);
 
+    await expireLease(store, session.id, main);
     const second = await setup({ store, tools });
 
     expect(await second.host.execution.advance({ session: session.id, head: main })).toEqual({

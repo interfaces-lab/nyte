@@ -67,6 +67,7 @@ import { prune } from "./prune.ts";
 import { scanResources } from "./resources.ts";
 import { createSettingsApi } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
+import { dispatchHead } from "./session-state.ts";
 import { stoppableTool } from "./tool-runner.ts";
 import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
@@ -83,6 +84,8 @@ export interface Kernel {
   readonly hostId: HostId;
   /** A random id minted per kernel, written as a lease's `instance` beside its `holder`: `busy` and `fenced` compare both, so two kernels over one store (two processes on one sqlite file, two Vercel instances) never both drive a head, and a lease another instance of the same host holds is `busy` until it expires (§42b, §42j, §42q). */
   readonly instance: string;
+  /** The interval in ms at which `pollStore` re-reads the store this kernel shares with other instances, or null when it reads only what it writes (`KernelOptions.poll`, §42h). */
+  readonly poll: number | null;
   /** The open store. */
   readonly store: StoreConnection;
   /** Name, platform and version, as `HostView` carries them. */
@@ -412,7 +415,7 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
     readonly poll?: number;
   };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. A random `instance` is minted and `poll` recorded (null when absent); on a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const revisions = new Map<string, Revision>();
@@ -438,6 +441,7 @@ export function createKernel(input: KernelOptions): Kernel {
   const kernel: Kernel = {
     hostId: input.hostId,
     instance: crypto.randomUUID(),
+    poll: input.poll ?? null,
     store: input.store,
     description: input.description,
     bus,
@@ -599,6 +603,9 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     prune: input.prune ?? (() => prune(kernel)),
   };
+
+  if (kernel.execution.kind === "dispatch")
+    kernel.wakes.subscribe((session, head) => dispatchHead(kernel, session, head));
 
   return kernel;
 }

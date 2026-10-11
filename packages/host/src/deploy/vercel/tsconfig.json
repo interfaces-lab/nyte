@@ -3,6 +3,7 @@
   "extends": "../../../../../tsconfig.base.json",
   "include": ["**/*.ts"],
   "compilerOptions": {
-    "lib": ["ESNext"]
+    "lib": ["ESNext"],
+    "paths": { "bun": ["./types/bun.d.ts"] }
   }
 }

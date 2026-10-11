@@ -93,6 +93,7 @@ export type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "part"; readonly part: PartId } & (
       | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null; readonly owner: string | null }
       | { readonly change: "updated"; readonly state: Json; readonly version: number }
+      | { readonly change: "waiting"; readonly call: CallId }
       | { readonly change: "settled"; readonly commit: CommitId; readonly endedAt: number }
       | { readonly change: "failed"; readonly failure: Failure }
       | { readonly change: "closed" }

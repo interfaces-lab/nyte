@@ -34,6 +34,8 @@ export type Placement =
  *
  * - `live`: being written: streaming text, a running tool, an open modal.
  *   `run` is null for a part created outside a run (a modal a client opened).
+ *   `waiting` is the durable step parked on a modal's answer, which `act`
+ *   writes the answer to.
  * - `waiting`: parked on a durable wait.
  * - `settled`: committed.
  * - `failed`: its run failed or was stopped; `run` null when closed by a
@@ -43,7 +45,7 @@ export type Placement =
  * @since 0.1.0
  */
 export type PartStatus =
-  | { readonly kind: "live"; readonly run: RunId | null }
+  | { readonly kind: "live"; readonly run: RunId | null; readonly waiting?: CallId }
   | { readonly kind: "waiting"; readonly run: RunId; readonly on: WaitTarget }
   | { readonly kind: "settled"; readonly commit: CommitId; readonly endedAt: number }
   | { readonly kind: "failed"; readonly run: RunId | null; readonly failure: Failure };

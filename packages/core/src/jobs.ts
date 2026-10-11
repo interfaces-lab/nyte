@@ -325,7 +325,7 @@ export function createJobs(
   };
 }
 
-/** Returns a handle on a job by id for a connection; binds synchronously, no I/O, and each member checks participant authority. `key` is the job's (null for a pipe job or an id the table does not hold). `write`, `resize` and `idle` go to the process (`not-pty` and false for a pipe job); `output` opens a reader of the job's output fan-out; `close` detaches this handle's open `output` streams and leaves the process running. `stop` stops the process, awaits `endJob` and answers `settled { outcome }` (also for a job already ended). `settled` waits until the table shows the job ended. For an id the table does not hold: `write` throws `SdkError("unknown")`, `output` yields `exit { code: null }`, `resize` answers `missing`, `idle` false, `stop` `missing` and `settled` `lost`. */
+/** Returns a handle on a job by id for a connection; binds synchronously, no I/O, and each member checks participant authority. `key` is the job's (null for a pipe job or an id the table does not hold). `write`, `resize` and `idle` go to the process (`not-pty` and false for a pipe job); `output` opens a reader of the job's output fan-out; `close` detaches this handle's open `output` streams and leaves the process running. `stop` stops the process, awaits `endJob` and answers `settled { outcome }` (also for a job already ended). `settled` waits until the table shows the job ended. For an id the table does not hold (one this instance never started, or another instance's, §42w): `write` throws `SdkError("unknown")`, `output` throws `SdkError("unavailable")` as it is called, before any stream opens, so a request for it fails (§42aa), `resize` answers `missing`, `idle` false, `stop` `missing` and `settled` `lost`. */
 export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId): Job {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `job.${operation}`);
@@ -367,24 +367,15 @@ export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId)
     },
     output() {
       need("output");
+      const entry = kernel.jobs.get(id);
+
+      if (entry === undefined)
+        throw new SdkError(
+          "unavailable",
+          `Job ${id} is not running in this host instance; its output reaches you through its exit report.`,
+        );
 
       return closable<OutputFrame>(() => {
-        const entry = kernel.jobs.get(id);
-
-        if (entry === undefined) {
-          let sent = false;
-
-          return {
-            async pull() {
-              if (sent) return { done: true, value: undefined };
-              sent = true;
-
-              return { done: false, value: { kind: "exit", code: null } };
-            },
-            close: () => undefined,
-          };
-        }
-
         const reader = entry.output.open();
         const detach = (): void => reader.close();
         readers.add(detach);

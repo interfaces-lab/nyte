@@ -13,27 +13,42 @@ import {
   sessionRef,
 } from "../src/index.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { completed, main, setup } from "./harness.ts";
+import { completed, expireLease, main, setup } from "./harness.ts";
 
 describe("execution", () => {
-  it("answers busy for another host's lease and fenced once this host's lease is taken", async () => {
+  it("answers busy for a lease another host holds mid-turn and fenced once this host's lease is taken", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store, hostId: asId("first") });
     const second = await setup({ store, hostId: asId("second") });
     const session = await first.host.sessions.create();
     const head = { session: session.id, head: main };
     const owned = await first.host.execution.cover({ kind: "all" });
+
+    expect(await store.refs.get(leaseRef(session.id, main))).toBeNull();
+
+    await session.send("Go.");
+    await session.send("Then this.", { delivery: "queue" });
+    const running = first.host.execution.advance(head);
+    const turn = await first.script.started(1);
     const busy = await second.host.execution.advance(head);
 
     expect(busy).toMatchObject({ kind: "busy" });
     expect(busy.kind === "busy" && busy.until > Date.now()).toBe(true);
-    expect(await first.host.execution.advance(head)).toEqual({ kind: "idle" });
+
+    turn.finish();
+
+    expect(await running).toEqual({ kind: "continue" });
+    expect(await store.refs.get(leaseRef(session.id, main))).not.toBeNull();
 
     await store.refs.set([
       {
         name: leaseRef(session.id, main),
         target: await store.objects.put(
-          envelope("lease", { holder: "second", expiresAt: Date.now() + 30_000 }, 0),
+          envelope(
+            "lease",
+            { holder: "second", instance: "other", expiresAt: Date.now() + 30_000 },
+            0,
+          ),
         ),
       },
     ]);
@@ -41,19 +56,40 @@ describe("execution", () => {
     expect(await first.host.execution.advance(head)).toEqual({ kind: "fenced" });
     expect(await first.host.execution.advance(head)).toMatchObject({ kind: "busy" });
 
-    await store.refs.set([
-      {
-        name: leaseRef(session.id, main),
-        target: await store.objects.put(
-          envelope("lease", { holder: "second", expiresAt: Date.now() - 1 }, 0),
-        ),
-      },
-    ]);
+    await expireLease(store, session.id, main);
+    const next = first.host.execution.advance(head);
+    (await first.script.started(2)).finish();
 
-    expect(await first.host.execution.advance(head)).toEqual({ kind: "idle" });
-    await owned.close();
-
+    expect(await next).toEqual({ kind: "idle" });
     expect(await store.refs.get(leaseRef(session.id, main))).toBeNull();
+    await owned.close();
+  });
+
+  it("answers busy for a lease the same host holds in another instance (§42b)", async () => {
+    const store = await memoryStore().open();
+    const first = await setup({ store });
+    const second = await setup({ store });
+    const session = await first.host.sessions.create();
+    const head = { session: session.id, head: main };
+
+    expect(first.kernel.hostId).toBe(second.kernel.hostId);
+    expect(first.kernel.instance).not.toBe(second.kernel.instance);
+
+    await session.send("Go.");
+    const running = first.host.execution.advance(head);
+    const turn = await first.script.started(1);
+    const lease = await store.refs.get(leaseRef(session.id, main));
+
+    expect(lease?.target ? await store.objects.get(lease.target) : null).toMatchObject({
+      kind: "lease",
+      body: { holder: first.kernel.hostId, instance: first.kernel.instance },
+    });
+    expect(await second.host.execution.advance(head)).toMatchObject({ kind: "busy" });
+
+    turn.finish();
+    await running;
+
+    expect(await second.host.execution.advance(head)).toEqual({ kind: "idle" });
   });
 
   it("reports continue while a steer or queue input waits, then idle", async () => {
@@ -136,15 +172,15 @@ describe("execution", () => {
         headRef(session.id, main),
         inboxRef(session.id, main),
         receiptRef(session.id, receipt.id),
-        leaseRef(session.id, main),
       ]),
     );
+    expect(await kernel.store.refs.get(leaseRef(session.id, main))).toBeNull();
 
     const objects = await inspect.objects();
 
     expect(objects.next).toBeNull();
     expect(objects.items.map((object) => object.kind)).toEqual(
-      expect.arrayContaining(["session", "commit", "inbox", "receipt", "lease"]),
+      expect.arrayContaining(["session", "commit", "inbox", "receipt"]),
     );
 
     const kinds: string[] = [];
@@ -164,15 +200,14 @@ describe("execution", () => {
     await owned.close();
   });
 
-  it("releases on close the lease advance took for a session created after cover", async () => {
+  it("holds the lease of a session created after cover while its turn runs, and releases it on close", async () => {
     const { kernel, host, script } = await setup();
     const driver = driveInProcess(kernel, { kind: "all" });
     await new Promise((resolve) => setTimeout(resolve, 20));
     const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
-    (await script.started(1)).finish();
+    await session.send("Go.");
+    await script.started(1);
 
-    expect(await receipt.settled()).toEqual(completed);
     expect(await kernel.store.refs.get(leaseRef(session.id, main))).not.toBeNull();
 
     await driver.close();

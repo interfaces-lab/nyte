@@ -227,7 +227,9 @@ export async function endRun(
       },
     ]);
 
-    return outcome.kind === "set" ? { head, parent: record.parent } : STALE;
+    return outcome.kind === "set"
+      ? { head, parent: record.parent, waitedBy: found.record.waitedBy ?? [] }
+      : STALE;
   });
 
   kernel.runs.end(run);
@@ -259,7 +261,8 @@ export async function endRun(
 
   const woke = await kernel.waits.runEnded(session, run, end);
 
-  if (ended.parent !== null) await deliverChildReport(kernel, session, run, end, woke);
+  if (ended.parent !== null)
+    await deliverChildReport(kernel, session, run, end, woke, ended.waitedBy);
 
   if (runnable) kernel.wakes.notify(session, ended.head);
 }

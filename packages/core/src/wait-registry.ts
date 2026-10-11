@@ -8,6 +8,7 @@ import type {
   Json,
   MessageId,
   PartId,
+  Ref,
   RefUpdate,
   RunEnd,
   RunId,
@@ -17,6 +18,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { Kernel } from "./kernel.ts";
 import { answerOf } from "./part-handle.ts";
+import { answeredElsewhere, partAnswers } from "./part-table.ts";
 import { decodeCallRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
@@ -41,10 +43,12 @@ export interface WaitRegistry {
   runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
   /** Wakes the waits on a job that ended, with `job { end }`, remembers the end for waits parked later, and resolves whether a wait consumed the end, as `runEnded` does: `endJob` sends the exit report only when none did. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
-  /** Wakes the waits on a part that was answered, with `part { answer }`. */
+  /** Wakes the waits on a part of `session` that was answered, with `part { answer }`, the answer made durable first (§42x, §42z): `call`, the step the part's live status names as waiting on it, is parked here if it is not (read by its id, no listing), so its outcome is written to its call record (`sessions/<id>/calls/<call>`) before any local wake, and an instance that parked it elsewhere sees it through `poll`'s re-check. */
   partAnswered(
+    session: SessionId,
     part: PartId,
     answer: { readonly action: string; readonly input: Json },
+    call: CallId | null,
   ): Promise<boolean>;
   /** Wakes the waits on a part that closed unanswered, with `part { answer: null }`. */
   partClosed(part: PartId): Promise<boolean>;
@@ -58,6 +62,8 @@ export interface WaitRegistry {
   tick(now: number): Promise<boolean>;
   /** Returns the earliest timer or deadline among a head's parked waits, or null when none has one: what `advance` reports as `waiting { until }`. */
   nextDeadline(session: SessionId, head: HeadName): number | null;
+  /** Re-checks every parked wait against the store, for waits another instance may have settled (§42h, §42x): a wait whose call another instance completed is dropped here and its head woken here (its step re-runs and reads the recorded outcome; a call whose step already has a result is dropped quietly), a part answer the record shows settles that part's local `answer()` promises (§42z), and each target still open is offered the outcome the store shows (a run that ended, a part closed); resolves whether a step woke. What `pollStore` runs. */
+  recheck(): Promise<boolean>;
 }
 
 /** Returns what offering one outcome to one target did: woke its step, filled a slot of a pending `all`, or nothing. */
@@ -280,42 +286,44 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       ),
     );
 
+  const park = async (entry: ParkedWait): Promise<void> => {
+    const key = keyOf(entry.session, entry.call);
+
+    if (slots.has(key)) return;
+    const target = entry.target;
+    const targets = "targets" in target ? target.targets : [target];
+    const recorded = (await readCall(kernel, entry.session, entry.call))?.record.partial ?? [];
+
+    if (slots.has(key)) return;
+
+    const slot: Slot = {
+      entry,
+      targets,
+      outcomes: targets.map((_target, index) => recorded.at(index) ?? null),
+    };
+
+    slots.set(key, slot);
+
+    if (target.kind === "all" && targets.length === 0) {
+      await settle(slot, { kind: "all", outcomes: [] });
+
+      return;
+    }
+
+    await expire(slot, Date.now());
+
+    for (const [index, waited] of targets.entries()) {
+      if (slots.get(key) !== slot) return;
+
+      if ((slot.outcomes.at(index) ?? null) !== null) continue;
+      const outcome = await settled(entry.session, waited);
+
+      if (outcome !== null) await offer(slot, index, outcome);
+    }
+  };
+
   return {
-    async park(entry) {
-      const key = keyOf(entry.session, entry.call);
-
-      if (slots.has(key)) return;
-      const target = entry.target;
-      const targets = "targets" in target ? target.targets : [target];
-      const recorded = (await readCall(kernel, entry.session, entry.call))?.record.partial ?? [];
-
-      if (slots.has(key)) return;
-
-      const slot: Slot = {
-        entry,
-        targets,
-        outcomes: targets.map((_target, index) => recorded.at(index) ?? null),
-      };
-
-      slots.set(key, slot);
-
-      if (target.kind === "all" && targets.length === 0) {
-        await settle(slot, { kind: "all", outcomes: [] });
-
-        return;
-      }
-
-      await expire(slot, Date.now());
-
-      for (const [index, waited] of targets.entries()) {
-        if (slots.get(key) !== slot) return;
-
-        if ((slot.outcomes.at(index) ?? null) !== null) continue;
-        const outcome = await settled(entry.session, waited);
-
-        if (outcome !== null) await offer(slot, index, outcome);
-      }
-    },
+    park,
     runEnded: async (session, run, end) =>
       (
         await deliver(
@@ -334,12 +342,26 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         })
       ).some((taken) => taken !== "none");
     },
-    partAnswered: (part, answer) =>
-      wokeBy((target) => target.kind === "part" && target.part === part, {
-        kind: "part",
-        part,
-        answer,
-      }),
+    async partAnswered(session, part, answer, call) {
+      const on = (target: WaitTarget): boolean => target.kind === "part" && target.part === part;
+      let parked = false;
+
+      if (call !== null && !slots.has(keyOf(session, call))) {
+        const record = (await readCall(kernel, session, call))?.record;
+        const waiting = record?.result === null ? record.waiting : null;
+
+        if (
+          record !== undefined &&
+          waiting !== null &&
+          ("targets" in waiting ? waiting.targets.some(on) : on(waiting))
+        ) {
+          await park({ session, head: record.head, run: record.run, call, target: waiting });
+          parked = !slots.has(keyOf(session, call));
+        }
+      }
+
+      return (await wokeBy(on, { kind: "part", part, answer })) || parked;
+    },
     partClosed: (part) =>
       wokeBy((target) => target.kind === "part" && target.part === part, {
         kind: "part",
@@ -366,6 +388,44 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
           entry.session === session && (entry.call === call || entry.call.startsWith(`${call}:`)),
       ),
     tick: (now) => anyOf([...slots.values()].map((slot) => expire(slot, now))),
+    recheck: () =>
+      anyOf(
+        [...slots.values()].map(async (slot) => {
+          const { entry } = slot;
+          const key = keyOf(entry.session, entry.call);
+          const record = (await readCall(kernel, entry.session, entry.call))?.record;
+
+          if (record !== undefined)
+            for (const answered of partAnswers([...record.waits, ...record.partial]))
+              answeredElsewhere(kernel, entry.session, answered.part, answered.answer);
+
+          if (record === undefined || record.result !== null || record.waiting === null) {
+            if (slots.get(key) !== slot) return false;
+            slots.delete(key);
+
+            if (record === undefined || record.result !== null) return false;
+            woken(slot);
+
+            return true;
+          }
+
+          slot.outcomes = slot.targets.map(
+            (_target, index) => record.partial.at(index) ?? slot.outcomes.at(index) ?? null,
+          );
+
+          const offers = await Promise.all(
+            slot.targets.map(async (target, index) => {
+              if (slots.get(key) !== slot || (slot.outcomes.at(index) ?? null) !== null)
+                return "none";
+              const outcome = await settled(entry.session, target);
+
+              return outcome === null ? "none" : offer(slot, index, outcome);
+            }),
+          );
+
+          return offers.includes("woke");
+        }),
+      ),
     nextDeadline(session, head) {
       const due = [...slots.values()].flatMap((slot) => {
         if (slot.entry.session !== session || slot.entry.head !== head) return [];
@@ -386,9 +446,25 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   };
 }
 
-/** Rebuilds `kernel.waits` after a restart from every `calls/*` record whose `waiting` is set, with the partial outcomes it recorded; `cover` calls it. Parking an entry the registry already holds changes nothing. */
-export async function loadWaits(kernel: Kernel): Promise<void> {
-  for (const ref of await kernel.store.refs.list("sessions/")) {
+/** Rebuilds `kernel.waits` after a restart from every `calls/*` record whose `waiting` is set, with the partial outcomes it recorded: every session's, or only the listed sessions' (`sessions/<id>/calls/`, never a whole-store scan, §42p); `cover` calls it. Parking an entry the registry already holds changes nothing. */
+export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
+  const refs =
+    sessions === undefined
+      ? await kernel.store.refs.list("sessions/")
+      : (
+          await Promise.all(
+            sessions.map((session) => kernel.store.refs.list(`sessions/${session}/calls/`)),
+          )
+        ).flat();
+
+  for (const entry of await waitingCalls(kernel, refs)) await kernel.waits.park(entry);
+}
+
+/** Returns the parked waits the `calls/*` records among `refs` hold: each call with no result whose `waiting` is set. */
+async function waitingCalls(kernel: Kernel, refs: readonly Ref[]): Promise<readonly ParkedWait[]> {
+  const entries: ParkedWait[] = [];
+
+  for (const ref of refs) {
     const [root, session, kind] = ref.name.split("/");
 
     if (root !== "sessions" || session === undefined || kind !== "calls") continue;
@@ -397,7 +473,7 @@ export async function loadWaits(kernel: Kernel): Promise<void> {
 
     if (record === undefined || record.result !== null || record.waiting === null) continue;
 
-    await kernel.waits.park({
+    entries.push({
       session: asId<"session">(session),
       head: record.head,
       run: record.run,
@@ -405,6 +481,8 @@ export async function loadWaits(kernel: Kernel): Promise<void> {
       target: record.waiting,
     });
   }
+
+  return entries;
 }
 
 /** Returns what a wait shows as waiting on: the target itself, or a combination's first target whose outcome slot is empty; null when none is. */

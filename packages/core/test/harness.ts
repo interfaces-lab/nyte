@@ -16,6 +16,7 @@ import {
   createHostState,
   createKernel,
   envelope,
+  leaseRef,
   memoryStore,
   partRef,
   publishSet,
@@ -152,6 +153,7 @@ export async function setup(
     >
   > & {
     readonly script?: Script;
+    readonly poll?: number;
   },
 ): Promise<{
   readonly kernel: Kernel;
@@ -178,6 +180,7 @@ export async function setup(
     snapshots: options?.snapshots,
     secrets: options?.secrets,
     env: async () => env,
+    poll: options?.poll,
   });
 
   if ((await store.refs.get(workspaceRef(workspace))) === null) {
@@ -204,6 +207,22 @@ export async function setup(
     host: createHost(kernel, { credential: { kind: "token", token: "x" } }),
     script: turns,
   };
+}
+
+/** Writes an expired lease over a head, as a crashed host leaves it once its 30 s have passed (§42j), so a restarted kernel may take the head. */
+export async function expireLease(
+  store: StoreConnection,
+  session: SessionId,
+  head: HeadName,
+): Promise<void> {
+  await store.refs.set([
+    {
+      name: leaseRef(session, head),
+      target: await store.objects.put(
+        envelope("lease", { holder: "crashed", instance: "crashed", expiresAt: 0 }, 0),
+      ),
+    },
+  ]);
 }
 
 /** Writes a live transcript part for a run, as the turn would. */

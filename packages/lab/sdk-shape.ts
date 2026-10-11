@@ -965,7 +965,7 @@ interface Host extends Connection {
    * Vercel workflows. `open` runs everything by default.
    */
   readonly execution: {
-    /** Takes leases on the covered sessions; the returned handle releases them. */
+    /** Registers this host's coverage of the sessions, taking no lease (a lease is what an advance holds while a turn runs); the returned handle unregisters it and releases the leases its advances still hold. */
     cover(coverage: ExecutionCoverage): Promise<Owned>;
     /** Runs one leased kernel step on a head; the driver schedules the next. */
     advance(input: { readonly session: SessionId; readonly head: HeadName }): Promise<AdvanceReport>;
@@ -2667,6 +2667,8 @@ type Schedule =
  *
  * - `live`: being written: streaming text, a running tool, an open modal.
  *   `run` is null for a part created outside a run (a modal a client opened).
+ *   `waiting` is the durable step parked on a modal's answer, which `act`
+ *   writes the answer to.
  * - `waiting`: parked on a durable wait.
  * - `settled`: committed.
  * - `failed`: its run failed or was stopped; `run` null when closed by a
@@ -2676,7 +2678,7 @@ type Schedule =
  * @since 0.1.0
  */
 type PartStatus =
-  | { readonly kind: "live"; readonly run: RunId | null }
+  | { readonly kind: "live"; readonly run: RunId | null; readonly waiting?: CallId }
   | { readonly kind: "waiting"; readonly run: RunId; readonly on: WaitTarget }
   | { readonly kind: "settled"; readonly commit: CommitId; readonly endedAt: number }
   | { readonly kind: "failed"; readonly run: RunId | null; readonly failure: Failure };
@@ -5361,7 +5363,7 @@ interface ObjectStore {
  * - `sessions/<id>/journal/<principal>`: client-side only; the sdk's RequestJournal over the same interface.
  * - `workspaces/<id>`: workspace record.
  * - `kv/<scope>/<owner>/<key>`: settings, plugin storage, secrets (encrypted object).
- * - `sessions/<id>/leases/<head>`: `{ holder: HostId, instance, expiresAt }`; what `execution.cover` takes and `advance` renews. `holder` is the host, `instance` the kernel within it; `busy` and `fenced` compare both. `fenced` is this CAS answering stale.
+ * - `sessions/<id>/leases/<head>`: `{ holder: HostId, instance, expiresAt }`; what an advance holds while a turn runs, renewed while it runs (`execution.cover` takes none). `holder` is the host, `instance` the kernel within it; `busy` and `fenced` compare both. `fenced` is this CAS answering stale.
  * - `host/identity`: `{ id: HostId, createdAt }`, written once, never moved.
  * - `host/settings`, `host/principals`, `host/catalog`.
  *
@@ -5541,6 +5543,7 @@ type DurableEvent = { readonly head: HeadName | null } & (
   | { readonly kind: "part"; readonly part: PartId } & (
       | { readonly change: "created"; readonly partKind: string; readonly placement: Placement; readonly state: Json; readonly version: number; readonly run: RunId | null; readonly owner: string | null }
       | { readonly change: "updated"; readonly state: Json; readonly version: number }
+      | { readonly change: "waiting"; readonly call: CallId }
       | { readonly change: "settled"; readonly commit: CommitId; readonly endedAt: number }
       | { readonly change: "failed"; readonly failure: Failure }
       | { readonly change: "closed" }

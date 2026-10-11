@@ -21,7 +21,7 @@ import { CORE_CONTEXT, LOCAL } from "./principals.ts";
 import { createRegistrySet } from "./registry.ts";
 import type { RegistrySet } from "./registry.ts";
 import { sessionHandle } from "./session.ts";
-import { isCovered, requireSession } from "./session-state.ts";
+import { attachesHere, requireSession } from "./session-state.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 
 /** Holds one session's core plugins (plugins are per session on core): their apis, the registries they write and the hooks they register. */
@@ -182,7 +182,7 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
   const resolve = async (): Promise<void> => {
     core = null;
 
-    if (!(await isCovered(kernel, session))) {
+    if (!(await attachesHere(kernel, session))) {
       resolved = { env: null, inputs: null };
 
       return;

@@ -888,6 +888,12 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
         state: event.state,
         version: event.version,
       }));
+    case "waiting":
+      return updatePart(draft, id, (part) =>
+        part.status.kind === "live"
+          ? { ...part, status: { ...part.status, waiting: event.call } }
+          : part,
+      );
     case "settled":
       return updatePart(draft, id, (part) => ({
         ...part,

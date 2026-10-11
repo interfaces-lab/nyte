@@ -784,6 +784,7 @@ const events = {
     { seq: asSeq(19), at: 1, head, kind: "part", part, change: "settled", commit, endedAt: 3 },
     { seq: asSeq(20), at: 1, head: null, kind: "part", part, change: "failed", failure },
     { seq: asSeq(21), at: 1, head: null, kind: "part", part, change: "closed" },
+    { seq: asSeq(21), at: 1, head: null, kind: "part", part, change: "waiting", call },
   ],
   call: [
     {
@@ -2221,6 +2222,25 @@ describe("wire schemas", () => {
       expect(await SessionEventSchema["~standard"].validate(event)).toEqual({ value: event });
     }
     expect(new Set(all.map((event) => event.kind)).size).toBe(Object.keys(events).length);
+  });
+
+  it("round-trips a part waiting event through JSON and rejects one without a call id (§42ac)", async () => {
+    const event: SessionEvent = {
+      seq: asSeq(30),
+      at: 1,
+      head: null,
+      kind: "part",
+      part,
+      change: "waiting",
+      call,
+    };
+
+    const wire: unknown = JSON.parse(JSON.stringify(event));
+
+    expect(await SessionEventSchema["~standard"].validate(wire)).toEqual({ value: event });
+    expect(
+      (await SessionEventSchema["~standard"].validate({ ...event, call: 7 })).issues?.length,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps an exact configuration whole where a patch is also accepted", async () => {

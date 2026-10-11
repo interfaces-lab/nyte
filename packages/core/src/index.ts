@@ -47,6 +47,7 @@ export * from "./plugins/environment.ts";
 export * from "./plugins/parts.ts";
 export * from "./plugins/resources.ts";
 export * from "./plugins/system-prompt.ts";
+export * from "./poll.ts";
 export * from "./principals-api.ts";
 export * from "./principals.ts";
 export * from "./prune.ts";

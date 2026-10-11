@@ -150,6 +150,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
       state: JsonType,
       version: Type.Number(),
     }),
+    Type.Object({ ...common, ...PART, change: Type.Literal("waiting"), call: idSchema<"call">() }),
     Type.Object({
       ...common,
       ...PART,

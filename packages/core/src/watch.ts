@@ -14,6 +14,7 @@ import type {
 } from "@nyte-ai/schema";
 import { publishSet } from "./bus.ts";
 import { emptyFold, fold, project, withRevision } from "./fold.ts";
+import { followSession } from "./follow.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { envelope } from "./records.ts";
@@ -247,10 +248,17 @@ function openFeed(
     push(event);
   };
 
-  const dispose = kernel.bus.subscribe(session, (event) => {
+  const unsubscribe = kernel.bus.subscribe(session, (event) => {
     if (building) buffered.push(event);
     else deliver(event);
   });
+
+  const follow = followSession(kernel.bus, session);
+
+  const dispose = (): void => {
+    unsubscribe();
+    follow.dispose();
+  };
 
   const ready = (async () => {
     try {
@@ -261,6 +269,8 @@ function openFeed(
 
         if (events.length < LOG_PAGE) break;
       }
+
+      follow.read(asSeq(through));
 
       const at = Date.now();
       const seed = { seq: asSeq(0), at };

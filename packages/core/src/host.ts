@@ -115,7 +115,7 @@ export interface Host extends Connection {
    * Vercel workflows. `open` runs everything by default.
    */
   readonly execution: {
-    /** Takes leases on the covered sessions; the returned handle releases them. */
+    /** Registers this host's coverage of the sessions, taking no lease (a lease is what an advance holds while a turn runs); the returned handle unregisters it and releases the leases its advances still hold. */
     cover(coverage: ExecutionCoverage): Promise<Owned>;
     /** Runs one leased kernel step on a head; the driver schedules the next. */
     advance(input: { readonly session: SessionId; readonly head: HeadName }): Promise<AdvanceReport>;
