@@ -1,7 +1,7 @@
 /**
- * The app's client plugins: the notifications plugin and the React renderers
- * from `@nyte-ai/plugin`, mounted once per app. Renderers draw the part kinds
- * the app has no view of its own for; a declared `run_ended_anywhere` fires
+ * The app's client plugins: the notifications plugin, the React renderers
+ * from `@nyte-ai/plugin` and the app's own canvas renderer, mounted once per
+ * app. Renderers draw the part kinds the app has no view of its own for; a declared `run_ended_anywhere` fires
  * when a session's main head goes idle after a run, as the directory watch
  * shows. Hooks a plugin registers from `activate` are not run.
  */
@@ -29,6 +29,7 @@ import type {
   Setting,
 } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
+import { canvasRenderers } from "./conversation/canvas-frame.tsx";
 import { connection } from "./sdk.tsx";
 import type { PartMessage } from "./view-helpers.ts";
 
@@ -157,7 +158,7 @@ function memoryStorage(): PluginStorage {
   return storage;
 }
 
-const plugins: readonly Plugin[] = [notifications, renderers];
+const plugins: readonly Plugin[] = [notifications, renderers, canvasRenderers];
 
 const runEnded: { readonly run: HookHandler<"run_ended_anywhere">; readonly api: PluginApi }[] = [];
 

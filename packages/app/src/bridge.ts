@@ -830,6 +830,8 @@ export interface HostBridge {
 /** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files and git are the connection's. */
 export interface NyteBridge {
   readonly clientSurface: ClientSurface;
+  /** Where the inline canvas runtime shell loads from. Absent, `/canvas/index.html` on this origin. */
+  readonly canvasShell?: string;
   /** The web app reaches a desktop through the Nyte account relay. That desktop's provider and GitHub sign-ins stay on it. */
   readonly relay?: true;
   readonly host: HostBridge;

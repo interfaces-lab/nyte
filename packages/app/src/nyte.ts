@@ -23,6 +23,9 @@ export const nyte: NyteBridge = {
   get clientSurface() {
     return bridge().clientSurface;
   },
+  get canvasShell() {
+    return bridge().canvasShell;
+  },
   get relay() {
     return bridge().relay;
   },

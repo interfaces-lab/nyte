@@ -1,12 +1,13 @@
 import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
-import { dropInlinedGhosttyWasm } from "./vite.ts";
+import { canvasShell, dropInlinedGhosttyWasm } from "./vite.ts";
 
 /** The browser build of the interface: `index.html` mounts `src/web/entry.tsx`. */
 export default defineConfig(() => ({
   plugins: [
     dropInlinedGhosttyWasm(),
+    canvasShell(),
     stylex.vite({
       useCSSLayers: true,
       // Older targets make lightningcss polyfill the tokens' light-dark() and
