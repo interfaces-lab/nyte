@@ -10,6 +10,7 @@ import type {
 } from "@nyte-ai/schema";
 import { bumpGeneration, jsonSchemaOf, publishCatalog } from "./catalog.ts";
 import type { ExecutionEnv, Resources } from "./environment.ts";
+import { dev } from "./dev-log.ts";
 import { createHookDispatch, isCoreHook } from "./hooks.ts";
 import type { HookDispatch } from "./hooks.ts";
 import type { Kernel } from "./kernel.ts";
@@ -23,6 +24,7 @@ import type { RegistrySet } from "./registry.ts";
 import { sessionHandle } from "./session.ts";
 import { attachesHere, requireSession } from "./session-state.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
+import { activateSession } from "./workspaces.ts";
 
 /** Holds one session's core plugins (plugins are per session on core): their apis, the registries they write and the hooks they register. */
 export interface PluginRuntime {
@@ -30,6 +32,8 @@ export interface PluginRuntime {
   readonly registries: RegistrySet;
   /** The session's hook dispatch. */
   readonly hooks: HookDispatch;
+  /** The session's activation in this process (`activateSession`), started when the runtime is created and settled once: resolved once its plugins loaded and its environment attached or failed to, rejected when the activation throws (the session's activation `failed`). Admission, `session.command` and `advance` await it (§44a); a reload installs a new runtime with a new `ready` (§44c). */
+  readonly ready: Promise<void>;
   /** Loads plugins after those already loaded and returns one outcome per plugin, in order. Preflight first, as `check`: a duplicate id (in the list, where both are rejected, or already loaded), a second environment provider of one kind, or a schema whose `jsonSchema` throws rejects that plugin with its issues. Then the session's environment and resources are resolved once (`kernel.env` and `kernel.resources`; null when unavailable, and null without attaching anything when this host's execution does not cover the session, §37m), and per plugin in host registration order: an api over a fresh `AbortController`, the declared `contribute` and `hooks` installed through it, then `await activate(api)`; a throwing `activate` aborts that controller, removing what the plugin installed, and rejects it with the error as an issue. Then one reload pass, the catalog published, `session_activated` observed, and `HostView.plugins` and `HostView.settings` republished. */
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
   /** Replaces the loaded set with `plugins` by id and returns one outcome per plugin in `plugins` order: a loaded plugin absent from the list is deactivated; each listed plugin's previous version is deactivated and the new one loaded as `load` does. A new version rejected in preflight leaves the previous running, and one whose `activate` throws re-activates the previous: either is `kept-previous` with the new version's issues; a plugin with no previous version is `rejected`. */
@@ -42,8 +46,6 @@ export interface PluginRuntime {
   api(owner: string): PluginApi<"core"> | undefined;
   /** Returns the active plugins in load order: what the environment registry reads providers from. */
   plugins(): readonly Plugin<"core">[];
-  /** Returns whether `load` or `replace` was called on this runtime in this process: what `activateSession` checks before loading the session's list into a known session (§36c). */
-  loaded(): boolean;
   /** Returns the list `Host.plugins.replace(plugins, { session })` gave this session, kept so a reload loads it again (§37l); null while the session follows `kernel.hostPlugins`. */
   assigned(): readonly Plugin<"core">[] | null;
   /** Keeps a session's own list, or null to follow `kernel.hostPlugins` again; loads nothing. */
@@ -91,8 +93,12 @@ const NEVER = new AbortController().signal;
 
 const holds = new WeakMap<Kernel, Map<PartDefinition, Hold>>();
 
-/** Returns a session's plugin runtime with nothing loaded, its registries and hook dispatch empty; `kernel.pluginsFor(session)` creates it on first use and records it among `kernel.runtimes()`, and `activateSession` loads `sessionPlugins` into it. After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` with owners (a non-built-in plugin contributing a reserved kind is reported as a collision, §34b), publishes the catalog and republishes `HostView.plugins`. */
-export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginRuntime {
+/** Returns a session's plugin runtime, its registries and hook dispatch empty, and starts its activation as `ready`: once `previous` (the runtime this one replaces on a reload, whose own list it keeps) settled and closed, `activateSession` loads `sessionPlugins` into it and attaches the session's environment. `kernel.pluginsFor(session)` creates it on first use and `kernel.reloadPlugins(session)` in place of the one held; both record it among `kernel.runtimes()`. After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` with owners (a non-built-in plugin contributing a reserved kind is reported as a collision, §34b), publishes the catalog and republishes `HostView.plugins`. */
+export function createPluginRuntime(
+  kernel: Kernel,
+  session: SessionId,
+  previous: PluginRuntime | null,
+): PluginRuntime {
   const active = new Map<string, Active>();
   const rows = new Map<string, readonly ValidationIssue[]>();
 
@@ -110,9 +116,7 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
 
   let closed = false;
 
-  let called = false;
-
-  let own: readonly Plugin<"core">[] | null = null;
+  let own = previous?.assigned() ?? null;
 
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -219,11 +223,13 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
     active.set(plugin.id, { plugin, controller, api });
 
     try {
+      dev("plugins", "activate", { session, plugin: plugin.id });
       install(plugin, api);
       await plugin.activate?.(api);
 
       return null;
     } catch (error) {
+      dev("plugins", "failed", { session, plugin: plugin.id, error });
       controller.abort();
       active.delete(plugin.id);
 
@@ -255,19 +261,23 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
     await publishSettings(kernel);
   };
 
-  return {
+  const closedPrevious =
+    previous === null
+      ? Promise.resolve()
+      : previous.ready.then(
+          () => previous.close(),
+          () => previous.close(),
+        );
+
+  const ready = closedPrevious.then(() => activateSession(kernel, session, runtime));
+  ready.catch(() => undefined);
+
+  const runtime: PluginRuntime = {
     registries,
     hooks,
-    load(plugins) {
-      called = true;
-
-      return serial(() => loadAll(plugins));
-    },
-    replace(plugins) {
-      called = true;
-
-      return serial(() => replaceAll(plugins));
-    },
+    ready,
+    load: (plugins) => serial(() => loadAll(plugins)),
+    replace: (plugins) => serial(() => replaceAll(plugins)),
     check: async (plugins) => checkPlugins(plugins),
     issues: () =>
       [...rows].map(([id, issues]) => ({
@@ -283,13 +293,13 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
       return core;
     },
     plugins: () => [...active.values()].map((entry) => entry.plugin),
-    loaded: () => called,
     assigned: () => own,
     assign(plugins) {
       own = plugins;
     },
     close: () =>
       serial(async () => {
+        dev("plugins", "close", { session, plugins: [...active.keys()] });
         closed = true;
 
         for (const id of [...active.keys()].reverse()) stop(id);
@@ -298,11 +308,14 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
       }),
   };
 
+  return runtime;
+
   /** Loads plugins after those already loaded: `load`'s body, run in turn. */
   async function loadAll(
     plugins: readonly Plugin<"core">[],
   ): Promise<readonly PluginLoadOutcome[]> {
     await requireSession(kernel, session);
+    dev("plugins", "load", { session, plugins: plugins.map(({ id }) => id) });
     closed = false;
 
     const checked = preflight(
@@ -335,6 +348,7 @@ export function createPluginRuntime(kernel: Kernel, session: SessionId): PluginR
     plugins: readonly Plugin<"core">[],
   ): Promise<readonly PluginLoadOutcome[]> {
     await requireSession(kernel, session);
+    dev("plugins", "replace", { session, plugins: plugins.map(({ id }) => id) });
     closed = false;
     const checked = preflight(plugins, []);
     await resolve();
@@ -398,7 +412,7 @@ export function pluginRuntimes(kernel: Kernel): readonly PluginRuntime[] {
   return [...kernel.runtimes().values()];
 }
 
-/** Runs the preflight over `plugins` as one set and touches nothing: per-plugin outcomes (`activated` with warnings, `rejected` with errors) and the collisions between them (one tool name, setting id or part kind from two plugins; a reserved part kind from a non-built-in plugin, §34b). What `Host.plugins.check` answers. */
+/** Runs the preflight over `plugins` as one set and touches nothing: per-plugin outcomes (`activated` with warnings, `rejected` with errors) and the collisions between them (one tool name, setting id or part kind from two plugins; a reserved part kind from a non-built-in plugin, §34b). The plugin ids `models` and `settings` are reserved for the host (it owns `kv/secret/models/*` and the `settings` report rows, §43b): a plugin with either id is `rejected` with an error issue at `["id"]`, which `composeHost` turns into `SdkError("invalid")`. What `Host.plugins.check` answers. */
 export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
   return {
     plugins: preflight(plugins, []).map(({ plugin, issues, ok }) => ({

@@ -24,7 +24,9 @@ import type {
 } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
 import type { Failure, Message } from "@nyte-ai/schema/model";
+import { contributionsOf } from "./configuration.ts";
 import { projectedCommit, requestBody, tokenEstimate } from "./context.ts";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Compactor, Kernel, Summarizer } from "./kernel.ts";
 import { modelInfo, withLimits } from "./models.ts";
@@ -184,6 +186,7 @@ export async function compactIfNeeded(
 > {
   const { session, head, run } = input;
   const tokensBefore = tokenEstimate(input.transcript);
+  dev("compaction", input.reason, { session, run: run.id, tokensBefore, at: input.info.compactAt });
 
   if (input.reason === "threshold" && tokensBefore <= input.info.compactAt) return SKIPPED;
   const split = splitOf(input.transcript, input.info);
@@ -281,6 +284,8 @@ export async function compactIfNeeded(
 
     return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
   });
+
+  dev("compaction", "compacted", { session, run: run.id, part });
 
   return { kind: "compacted", message: asId<"message">(part) };
 }
@@ -730,12 +735,14 @@ async function configurationOf(
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+  await kernel.pluginsFor(session).ready;
 
   const resolved = await kernel.resolveConfiguration({
     session,
     head,
     selected: entry.selected,
     patch: null,
+    contributions: contributionsOf(kernel.pluginsFor(session)),
   });
 
   if (resolved.kind !== "exact")

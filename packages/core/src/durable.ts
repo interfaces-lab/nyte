@@ -10,6 +10,7 @@ import type {
   SessionId,
   WaitOutcome,
 } from "@nyte-ai/schema";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
@@ -122,7 +123,10 @@ export async function runStep<T>(
       };
     });
 
+  dev("durable", "step", { session: input.session, call, kind: input.kind });
+
   if (record.result !== null) {
+    dev("durable", "replayed", { session: input.session, call });
     const value = input.decode(record.result);
 
     if (value === null)
@@ -147,6 +151,8 @@ export async function runStep<T>(
 
   await Promise.all(writes);
 
+  dev("durable", "ran", { session: input.session, call, parked: parkedExecutions.has(durable) });
+
   if (parkedExecutions.has(durable)) return { kind: "parked" };
 
   if ("error" in ran) {
@@ -156,6 +162,7 @@ export async function runStep<T>(
   }
 
   await settle({ kind: "done", value: ran.value });
+  dev("durable", "settled", { session: input.session, call });
 
   return { kind: "done", value: ran.value };
 }
@@ -258,6 +265,8 @@ function durableOf(
   function memo<V extends Json>(name: string, compute: () => Awaitable<V>): Promise<V>;
   async function memo(name: string, compute: () => Awaitable<Json>): Promise<Json> {
     const known = entryOf((await readCall(kernel, place.session, place.call))?.record.memos, name);
+
+    dev("durable", "memo", { call: place.call, name, hit: known !== undefined });
 
     if (known !== undefined) return known;
     const value = await compute();

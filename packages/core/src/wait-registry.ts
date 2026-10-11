@@ -16,6 +16,7 @@ import type {
   WaitOutcome,
   WaitTarget,
 } from "@nyte-ai/schema";
+import { dev } from "./dev-log.ts";
 import type { Kernel } from "./kernel.ts";
 import { answerOf } from "./part-handle.ts";
 import { answeredElsewhere, partAnswers } from "./part-table.ts";
@@ -43,7 +44,7 @@ export interface WaitRegistry {
   runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
   /** Wakes the waits on a job that ended, with `job { end }`, remembers the end for waits parked later, and resolves whether a wait consumed the end, as `runEnded` does: `endJob` sends the exit report only when none did. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
-  /** Wakes the waits on a part of `session` that was answered, with `part { answer }`, the answer made durable first (§42x, §42z): `call`, the step the part's live status names as waiting on it, is parked here if it is not (read by its id, no listing), so its outcome is written to its call record (`sessions/<id>/calls/<call>`) before any local wake, and an instance that parked it elsewhere sees it through `poll`'s re-check. */
+  /** Wakes the waits on a part of `session` that was answered, with `part { answer }`, the answer made durable first (§42x, §42z): `call`, the step the part's live status names as waiting on it, is parked here if it is not (read by its id, no listing), so its outcome is written to its call record (`sessions/<id>/calls/<call>`) before any local wake, and an instance that parked it elsewhere settles it from the store on its next `poll` pass (`settleFromStore`). */
   partAnswered(
     session: SessionId,
     part: PartId,
@@ -62,8 +63,8 @@ export interface WaitRegistry {
   tick(now: number): Promise<boolean>;
   /** Returns the earliest timer or deadline among a head's parked waits, or null when none has one: what `advance` reports as `waiting { until }`. */
   nextDeadline(session: SessionId, head: HeadName): number | null;
-  /** Re-checks every parked wait against the store, for waits another instance may have settled (§42h, §42x): a wait whose call another instance completed is dropped here and its head woken here (its step re-runs and reads the recorded outcome; a call whose step already has a result is dropped quietly), a part answer the record shows settles that part's local `answer()` promises (§42z), and each target still open is offered the outcome the store shows (a run that ended, a part closed); resolves whether a step woke. What `pollStore` runs. */
-  recheck(): Promise<boolean>;
+  /** Settles every parked wait from what the store shows, for waits another instance may have settled (§42h, §42x): a wait whose call another instance completed is dropped here and its head woken here (its step re-runs and reads the recorded outcome; a call whose step already has a result is dropped quietly), a part answer the record shows settles that part's local `answer()` promises (§42z), and each target still open is offered the outcome the store shows (a run that ended, a part closed); resolves whether a step woke. What `pollStore` runs. */
+  settleFromStore(): Promise<boolean>;
 }
 
 /** Returns what offering one outcome to one target did: woke its step, filled a slot of a pending `all`, or nothing. */
@@ -131,6 +132,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const woken = (slot: Slot): void => {
     const { entry } = slot;
     const key = keyOf(entry.session, entry.call);
+    dev("waits", "wake", { session: entry.session, call: entry.call });
 
     if (slots.get(key) === slot) slots.delete(key);
 
@@ -303,6 +305,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     };
 
     slots.set(key, slot);
+    dev("waits", "park", { session: entry.session, call: entry.call, targets: targets.length });
 
     if (target.kind === "all" && targets.length === 0) {
       await settle(slot, { kind: "all", outcomes: [] });
@@ -387,8 +390,12 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         (entry) =>
           entry.session === session && (entry.call === call || entry.call.startsWith(`${call}:`)),
       ),
-    tick: (now) => anyOf([...slots.values()].map((slot) => expire(slot, now))),
-    recheck: () =>
+    tick(now) {
+      dev("waits", "tick", { parked: slots.size });
+
+      return anyOf([...slots.values()].map((slot) => expire(slot, now)));
+    },
+    settleFromStore: () =>
       anyOf(
         [...slots.values()].map(async (slot) => {
           const { entry } = slot;

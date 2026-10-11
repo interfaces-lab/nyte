@@ -1,4 +1,5 @@
 export * from "./admission.ts";
+export * from "./agent-loop.ts";
 export * from "./browser.ts";
 export * from "./bus.ts";
 export * from "./catalog.ts";
@@ -10,6 +11,7 @@ export * from "./configuration.ts";
 export * from "./connection.ts";
 export * from "./content.ts";
 export * from "./context.ts";
+export * from "./dev-log.ts";
 export * from "./directory.ts";
 export * from "./durable.ts";
 export * from "./environment-registry.ts";

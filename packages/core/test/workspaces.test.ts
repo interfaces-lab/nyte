@@ -582,22 +582,25 @@ describe("activation (§37j–m)", () => {
 
     const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
     const session = await host.sessions.create({ workspace });
-    const runtime = kernel.pluginsFor(session.id);
+    const first = kernel.pluginsFor(session.id);
 
-    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
+    expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
 
     broken = false;
     await host.workspace(workspace).reload();
 
-    expect(runtime.plugins().map((plugin) => plugin.id)).toEqual([
-      "builtin",
-      "fake-environment",
-      "flaky",
-    ]);
+    expect(first.plugins()).toEqual([]);
+    expect(
+      kernel
+        .pluginsFor(session.id)
+        .plugins()
+        .map((plugin) => plugin.id),
+    ).toEqual(["builtin", "fake-environment", "flaky"]);
 
     const own: Plugin<"core"> = { id: "own" };
     await host.plugins.replace([own], { session: session.id });
     await host.workspace(workspace).reload();
+    const runtime = kernel.pluginsFor(session.id);
 
     expect(runtime.assigned()).toEqual([own]);
     expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);

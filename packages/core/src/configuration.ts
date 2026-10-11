@@ -5,7 +5,6 @@ import type {
   ConfigurationPatch,
   ConfigureOutcome,
   Json,
-  SessionId,
   Thinking,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -16,15 +15,22 @@ import { check } from "./json-schema.ts";
 import type { ConfigurationResolver, Kernel } from "./kernel.ts";
 import { defaultModel } from "./models.ts";
 import type { Agent, SettingDefinition } from "./plugin.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
+
+/** Returns what a configuration resolves against: the agents and setting definitions a session's plugins contribute. */
+export type Contributions = {
+  readonly agents: readonly Agent[];
+  readonly settings: readonly SettingDefinition[];
+};
 
 /** Returns what `resolveConfiguration` answers short of a configuration. */
 type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
 
-/** Returns the resolver admission, `configure` and `sessions.create` call: what `kernel.resolveConfiguration` holds. An exact `Configuration` patch is checked, never re-resolved: its model must still be in the catalog (`unknown-model`), its agent registered (`unknown-agent`), and its `settingsVersion` equal to `settingsVersion(kernel, session)` (`invalid` with one issue at `settingsVersion` otherwise). A `ConfigurationPatch` (or none) resolves field by field over `selected`. Agent: `patch.agent` when given (null clears it to the built-in agent), else `selected.agent`, else null; a non-null id the session's `agents` registry does not hold is `unknown-agent`. Model: `patch.model`, else `selected.model`, else the agent's pinned `model`, else `defaultModel`; a ref `models.getModel` does not know is `unknown-model` (a fast sibling `<id>-fast` is a model like any other). Thinking: `patch.thinking` when a level is given, `invalid` at `thinking` when the model's `ModelInfo.thinking` lacks it; null, or no level given or kept, resolves the model's default, the first level after `"off"` in `ModelInfo.thinking` when the model reasons and `"off"` otherwise; a level kept from `selected` that the model no longer accepts is clamped to the nearest it accepts (ai's `clampThinkingLevel`). Settings: `selected.settings` with `patch.settings` merged over it per key; each key must name a session-scope `SettingDefinition` in the session's `settings` registry and its value pass that schema, every failure an issue at `settings.<id>`, together `invalid { issues }`. The result is `{ kind: "exact", model, thinking, agent, settings, settingsVersion }` with the session's current `settingsVersion`. A session whose plugins this process has not loaded (one `sessions.create` is still writing) reads its registries as the static contributions of `kernel.builtins` then `kernel.hostPlugins`. */
+/** Returns the resolver admission, `configure` and `sessions.create` call: what `kernel.resolveConfiguration` holds. An exact `Configuration` patch is checked, never re-resolved: its model must still be in the catalog (`unknown-model`), its agent among the contributions (`unknown-agent`), and its `settingsVersion` equal to `settingsVersion(contributions.settings)` (`invalid` with one issue at `settingsVersion` otherwise). A `ConfigurationPatch` (or none) resolves field by field over `selected`. Agent: `patch.agent` when given (null clears it to the built-in agent), else `selected.agent`, else null; a non-null id `contributions.agents` does not hold is `unknown-agent`. Model: `patch.model`, else `selected.model`, else the agent's pinned `model`, else `defaultModel`; a ref `models.getModel` does not know is `unknown-model` (a fast sibling `<id>-fast` is a model like any other). Thinking: `patch.thinking` when a level is given, `invalid` at `thinking` when the model's `ModelInfo.thinking` lacks it; null, or no level given or kept, resolves the model's default, the first level after `"off"` in `ModelInfo.thinking` when the model reasons and `"off"` otherwise; a level kept from `selected` that the model no longer accepts is clamped to the nearest it accepts (ai's `clampThinkingLevel`). Settings: `selected.settings` with `patch.settings` merged over it per key; each key must name a session-scope `SettingDefinition` among `contributions.settings` and its value pass that schema, every failure an issue at `settings.<id>`, together `invalid { issues }`. The result is `{ kind: "exact", model, thinking, agent, settings, settingsVersion }` with the contributions' current `settingsVersion`; the caller passes the contributions (`contributionsOf` its runtime, or `staticContributions` while `sessions.create` writes the session). */
 export function createConfigurationResolver(kernel: Kernel, models: Models): ConfigurationResolver {
-  return async ({ session, selected, patch }) => {
-    const version = await settingsVersion(kernel, session);
-    const { agents } = contributed(kernel, session);
+  return async ({ selected, patch, contributions }) => {
+    const version = await settingsVersion(contributions.settings);
+    const { agents } = contributions;
 
     if (patch !== null && "kind" in patch) {
       if (models.getModel(patch.model.provider, patch.model.id) === undefined)
@@ -41,13 +47,23 @@ export function createConfigurationResolver(kernel: Kernel, models: Models): Con
       return patch;
     }
 
-    return resolvePatch(kernel, models, { session, selected, patch: patch ?? {}, version, agents });
+    return resolvePatch(kernel, models, {
+      selected,
+      patch: patch ?? {},
+      version,
+      contributions,
+    });
   };
 }
 
-/** Returns the version of a session's setting schemas: `objectId` of the session-scope `SettingDefinition`s its `settings` registry holds, each as `{ id, schema }` with the schema's output JSON Schema (`jsonSchemaOf`), sorted by id. A `Configuration` carrying another version is rejected, never re-resolved. */
-export function settingsVersion(kernel: Kernel, session: SessionId): Promise<string> {
-  const schemas = sessionSettings(kernel, session)
+/**
+ * Returns the version of a session's setting schemas: `objectId` of the session-scope
+ * `SettingDefinition`s among `settings`, each as `{ id, schema }` with the schema's output JSON
+ * Schema (`jsonSchemaOf`), sorted by id. A `Configuration` carrying another version is rejected,
+ * never re-resolved.
+ */
+export function settingsVersion(settings: readonly SettingDefinition[]): Promise<string> {
+  const schemas = sessionScoped(settings)
     .flatMap((definition) => {
       try {
         return [{ id: definition.id, schema: jsonSchemaOf(definition.schema, "output") }];
@@ -65,16 +81,16 @@ async function resolvePatch(
   kernel: Kernel,
   models: Models,
   input: {
-    readonly session: SessionId;
     readonly selected: Configuration | null;
     readonly patch: ConfigurationPatch;
     readonly version: string;
-    readonly agents: readonly Agent[];
+    readonly contributions: Contributions;
   },
 ): Promise<Configuration | Refusal> {
   const { selected, patch } = input;
   const agent = patch.agent === undefined ? (selected?.agent ?? null) : patch.agent;
-  const pinned = agent === null ? undefined : input.agents.find((entry) => entry.id === agent);
+  const pinned =
+    agent === null ? undefined : input.contributions.agents.find((entry) => entry.id === agent);
 
   if (agent !== null && pinned === undefined) return { kind: "unknown-agent", agent };
 
@@ -91,7 +107,7 @@ async function resolvePatch(
 
   if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
   const settings: Record<string, Json> = { ...selected?.settings, ...patch.settings };
-  const definitions = sessionSettings(kernel, input.session);
+  const definitions = sessionScoped(input.contributions.settings);
 
   for (const [id, value] of Object.entries(settings)) {
     const definition = definitions.find((entry) => entry.id === id);
@@ -140,26 +156,18 @@ function thinkingOf(
   return model.reasoning ? (accepted.find((level) => level !== "off") ?? "off") : "off";
 }
 
-/** Returns the session-scope setting definitions a session's plugins contribute. */
-function sessionSettings(kernel: Kernel, session: SessionId): readonly SettingDefinition[] {
-  return contributed(kernel, session).settings.filter(
-    (definition) => definition.scope === "session",
-  );
+/** Returns the session-scope setting definitions among `settings`. */
+function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {
+  return settings.filter((definition) => definition.scope === "session");
 }
 
-/** Returns the agents and settings a session's plugins contribute: its registries once its plugins loaded in this process, else the static contributions of the built-ins and the host plugins. */
-function contributed(
-  kernel: Kernel,
-  session: SessionId,
-): { readonly agents: readonly Agent[]; readonly settings: readonly SettingDefinition[] } {
-  const runtime = kernel.runtimes().get(session);
+/** Returns a session runtime's registries as what its configuration resolves against. */
+export function contributionsOf(runtime: PluginRuntime): Contributions {
+  return { agents: runtime.registries.agents.list(), settings: runtime.registries.settings.list() };
+}
 
-  if (runtime?.loaded() === true)
-    return {
-      agents: runtime.registries.agents.list(),
-      settings: runtime.registries.settings.list(),
-    };
-
+/** Returns the static contributions of `kernel.builtins` then `kernel.hostPlugins`: what a session `sessions.create` is still writing will load, so its configuration resolves before it has a runtime. */
+export function staticContributions(kernel: Kernel): Contributions {
   const plugins = [...kernel.builtins, ...kernel.hostPlugins];
 
   return {

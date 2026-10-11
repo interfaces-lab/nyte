@@ -16,6 +16,7 @@ import type {
   ViewOptions,
 } from "@nyte-ai/schema";
 import { send } from "./admission.ts";
+import { contributionsOf } from "./configuration.ts";
 import { SdkError } from "./error.ts";
 import { historyHead } from "./history.ts";
 import type { Kernel } from "./kernel.ts";
@@ -249,12 +250,13 @@ export interface Head {
   compact(input?: { readonly instructions?: string }): Promise<{ readonly kind: "started"; readonly message: MessageId } | { readonly kind: "busy"; readonly run: RunId } | { readonly kind: "nothing-to-compact" }>;
 }
 
-/** Returns a handle on one head of a session for a connection. Binds synchronously; no I/O. */
+/** Returns a handle on one head of a session for a connection, its `send` admitting through `admit`: `send` (after the session's activation), or `sendNow` for the api an activation constructs (§44b). Binds synchronously; no I/O. */
 export function headHandle(
   kernel: Kernel,
   context: ConnectionContext,
   session: SessionId,
   head: HeadName,
+  admit: typeof send = send,
 ): Head {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `head.${operation}`);
@@ -267,7 +269,7 @@ export function headHandle(
     async send(content, options) {
       need("send");
 
-      return send(kernel, { session, head, context, content, options });
+      return admit(kernel, { session, head, context, content, options });
     },
     async configure(patch) {
       need("configure");
@@ -326,12 +328,14 @@ async function configure(
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+  await kernel.pluginsFor(session).ready;
 
   const selected = await kernel.resolveConfiguration({
     session,
     head,
     selected: entry.selected,
     patch,
+    contributions: contributionsOf(kernel.pluginsFor(session)),
   });
 
   if (selected.kind !== "exact") return selected;

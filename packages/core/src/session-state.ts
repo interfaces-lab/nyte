@@ -23,6 +23,7 @@ import type {
 } from "@nyte-ai/schema";
 import { publishSet } from "./bus.ts";
 import { SdkError } from "./error.ts";
+import { dev } from "./dev-log.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { LOCAL } from "./principals.ts";
@@ -247,18 +248,23 @@ export async function writeReceipt(
 }
 
 /** Stores a record in its envelope and returns its object id. */
-export function put(
+export async function put(
   kernel: Kernel,
   kind: RecordKind,
   body: Json,
   at = Date.now(),
 ): Promise<ObjectId> {
-  return kernel.store.objects.put(envelope(kind, body, at));
+  const object = envelope(kind, body, at);
+  const id = await kernel.store.objects.put(object);
+  dev("store", "objects.put", { id, kind, bytes: dev.bytes(object) });
+
+  return id;
 }
 
 /** Publishes one batch and its events: the one `refs.set` of a durable change. */
 export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Promise<SetOutcome> {
   const outcome = await kernel.store.refs.set(updates);
+  dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
   await publishSet(kernel, updates, outcome);
 
   return outcome;
@@ -325,9 +331,11 @@ export function positionOf(commit: CommitId | null): Position {
 
 /** Stores a commit in its envelope and returns its id: the object id the store returned. */
 export async function putCommit(kernel: Kernel, record: CommitRecord): Promise<CommitId> {
-  return asId<"commit">(
-    await kernel.store.objects.put(envelope("commit", record, record.at, record.parent)),
-  );
+  const object = envelope("commit", record, record.at, record.parent);
+  const id = asId<"commit">(await kernel.store.objects.put(object));
+  dev("store", "objects.put", { id, kind: "commit", bytes: dev.bytes(object) });
+
+  return id;
 }
 
 /** Returns the object a commit is stored as: the object whose id is the commit's. */
@@ -504,6 +512,7 @@ export function dispatchHead(kernel: Kernel, session: SessionId, head: HeadName)
 
   if (inFlight.has(key)) return;
   inFlight.add(key);
+  dev("execution", "dispatch", { session, head });
 
   void Promise.resolve()
     .then(() => execution.dispatch({ session, head }))

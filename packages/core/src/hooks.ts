@@ -16,6 +16,7 @@ import type {
 import { Compile } from "typebox/compile";
 import { isParked, runStep } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { AdmissionGate, Kernel } from "./kernel.ts";
 import type { HookEntry, HookHandler, HookName, HookTable, PluginApi } from "./plugin.ts";
@@ -211,6 +212,8 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
       };
     },
     async observe(name, event, context) {
+      dev("hooks", name, { session, handlers: handlers[name].length });
+
       for (const handler of ordered(name)) {
         const api = apiOf(handler.plugin);
 
@@ -230,6 +233,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
       }
     },
     async transform(name, value, context) {
+      dev("hooks", name, { session, handlers: handlers[name].length });
       let current = value;
 
       for (const handler of ordered(name)) {
@@ -287,6 +291,8 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
 
               return { action: "error", message: failure(handler.plugin, name, error) };
             }
+
+            dev("hooks", name, { session, plugin: handler.plugin, decision: decision.action });
 
             if (decision.action === "reject" || decision.action === "error") return decision;
 

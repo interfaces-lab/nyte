@@ -8,6 +8,7 @@ import type {
   SessionId,
   SetOutcome,
 } from "@nyte-ai/schema";
+import { dev } from "./dev-log.ts";
 import type { Kernel } from "./kernel.ts";
 import { followedFrom, publishMarks } from "./follow.ts";
 
@@ -28,6 +29,8 @@ export function createBus(): SessionBus {
 
   return {
     publish(session, event) {
+      dev("bus", event.kind, { session, seq: "seq" in event ? event.seq : null });
+
       for (const listener of sessions.get(session) ?? []) listener(event);
 
       for (const listener of everyone) listener(session, event);

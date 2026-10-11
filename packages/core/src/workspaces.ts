@@ -18,8 +18,8 @@ import type { SnapshotsApi } from "./environment.ts";
 import { SdkError } from "./error.ts";
 import { createJobs, jobHandle } from "./jobs.ts";
 import type { PageHolder } from "./pages.ts";
-import { pluginSessionOf } from "./plugin-api.ts";
 import { sessionPlugins } from "./plugin-runtime.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { Kernel } from "./kernel.ts";
 import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
@@ -67,8 +67,6 @@ const PATCH_READ_MAX = 32;
 const PATCH_READS = 4;
 
 const buses = new WeakMap<Kernel, WorkspaceBus>();
-
-const activations = new WeakMap<Kernel, Map<SessionId, Promise<Activation>>>();
 
 const patchCaches = new WeakMap<Kernel, Map<string, PatchCache>>();
 
@@ -176,7 +174,18 @@ export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Wo
   };
 }
 
-/** Returns a handle on a workspace for a connection; binds synchronously, no I/O, and checks each member's `@authority` tag against the context's authority. A context whose `origin` names a session on this workspace (a tool invocation's) is that session's view: its capabilities, snapshots and jobs go through the session's environment; otherwise the workspace's own environment serves them (§37f). `info` is `workspaceInfo` (`SdkError("unknown")` when the record is gone); `watch` yields it coalesced on workspace-bus changes and on `session` and `run` events, ending when the record is gone. `update` rewrites `projectResources` on the record, drops its cached resources and announces it: `missing` without a record. `reload` drops the cached resources, detaches the workspace's own environment and re-activates every session on it (`activateSession` with `reload`): `missing` without a record. `jobs` is `createJobs(kernel, context, id)` and `job(id)` is `jobHandle`. `changes(run)` diffs the run's first snapshot (`RunRecord.snapshot` while the run is live, else the provider's `before(run)`) to `after(run)` (`SdkError("unavailable")` when the environment takes none). `patches(run, paths, options)` yields full `PatchSet`s over the same revision: paths not yet read at it are read through the provider's `snapshots.patches` in batches of at most 32 with at most 4 reads in flight, each landing batch yielding the map again, and a batch whose read throws yielding its paths as `failed { reason }` (with the status the snapshots' diff gives, `modified` when it cannot say; left out when the diff no longer reports them) and leaving them uncached so a later call reads them again; reads are cached by (workspace, run, options, revision, path) across calls, so a path read once at a revision is never read again, and while the revision moved the previous revision's entry is held with `fresh: false` until its fresh read lands; a path the new revision no longer reports leaves. `files()`, `git()` and `browser()` are the matching entry of the environment registry's `capabilities` (session view) or `workspaceCapabilities`; pages opened through the browser are held by the origin's head when the context acts from a step, by no head for a client (§37i). What `kernel.workspace(id)` returns as `CORE_CONTEXT`; a connection and an invocation bind their own. */
+/**
+ * Returns a handle on a workspace for a connection; binds synchronously, no I/O, and checks each
+ * member's `@authority` tag against the context's authority. A context whose `origin` names a
+ * session on this workspace (a tool invocation's) is that session's view: its capabilities,
+ * snapshots and jobs go through the session's environment, otherwise the workspace's own serves
+ * them (§37f). `update` rewrites `projectResources`; `reload` drops the cached resources, detaches
+ * the workspace's own environment and installs a new plugin runtime for every session on it
+ * (`kernel.reloadPlugins`, §44c); both answer `missing` without a record. `patches` is `patchesOf`,
+ * and pages opened through `browser()` are held by the origin's head when the context acts from a
+ * step, by no head for a client (§37i). What `kernel.workspace(id)` returns as `CORE_CONTEXT`; a
+ * connection and an invocation bind their own.
+ */
 export function workspaceHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -252,6 +261,7 @@ export function workspaceHandle(
 
   return {
     id,
+    /** Returns `workspaceInfo`; `SdkError("unknown")` when the record is gone. */
     async info() {
       need("participant", "info");
       const info = await workspaceInfo(kernel, id);
@@ -260,6 +270,7 @@ export function workspaceHandle(
 
       return info;
     },
+    /** Yields `info` coalesced on workspace-bus changes and on `session` and `run` events, ending when the record is gone. */
     watch() {
       need("participant", "watch");
 
@@ -334,14 +345,14 @@ export function workspaceHandle(
       invalidateResources(kernel, id);
       await kernel.environments.detachWorkspace(id);
 
-      for (const session of await sessionsOn(kernel, id))
-        await activateSession(kernel, session, { reload: true });
+      for (const session of await sessionsOn(kernel, id)) await kernel.reloadPlugins(session);
       busOf(kernel).changed(id);
 
       return { kind: "updated" };
     },
     jobs: createJobs(kernel, context, id),
     job: (job) => jobHandle(kernel, context, job),
+    /** Diffs the run's first snapshot (`RunRecord.snapshot` while the run is live, else the provider's `before(run)`) to `after(run)`; `SdkError("unavailable")` when the environment takes none. */
     async changes(run) {
       need("participant", "changes");
       const found = await snapshots();
@@ -360,49 +371,33 @@ export function workspaceHandle(
   };
 }
 
-/** Activates a session on this host and returns how it stands, set with `kernel.setActivation` when it changed. An unknown session activates nothing. The session's plugins are loaded first when its runtime has had none loaded in this process (`sessionPlugins`: the built-ins, then the session's own list or `kernel.hostPlugins`, §36c); with `reload`, the runtime replaces its set with that full list, so every plugin re-activates over freshly resolved resources and one a failed activation rejected is tried again (§37l). A session this host's execution does not cover then stays `inactive` and attaches nothing; its plugins resolved no environment or resources (§37m); on a `dispatch` kernel every session attaches, as for `run` (§42p). Otherwise its environment attaches (`kernel.env`): `active` once it attaches; `unavailable { workspace, reason }` when no provider serves the workspace's kind (`unsupported`) or its `inspect` says unavailable; `failed { message }` when attaching throws otherwise. The workspace bus announces the change. Concurrent calls share one activation, a `reload` running after the one in flight. What `sessions.create`, a known session's first `pluginsFor` and `advance` after this host started, and `Workspace.reload()` run. */
-export function activateSession(
+/**
+ * Runs a session's activation over the runtime `createPluginRuntime` made for it: what that
+ * runtime's `ready` settles with (§44a). An unknown session activates nothing. The session's
+ * plugins load into the runtime (`sessionPlugins`, §36c), so a runtime a reload installed
+ * re-activates every plugin and retries one a failed activation rejected (§37l). Then its
+ * environment attaches (`attach`) and the activation is set and announced (`settle`). A load that
+ * throws sets `failed { message }` through the same code and rejects.
+ */
+export async function activateSession(
   kernel: Kernel,
   session: SessionId,
-  options?: { readonly reload?: boolean },
-): Promise<Activation> {
-  const table = activations.get(kernel) ?? new Map<SessionId, Promise<Activation>>();
-  activations.set(kernel, table);
-  const running = table.get(session);
-  const reload = options?.reload === true;
-
-  if (running !== undefined && !reload) return running;
-
-  const started = (running ?? Promise.resolve(INACTIVE))
-    .catch(() => INACTIVE)
-    .then(() => activate(kernel, session, reload));
-
-  table.set(session, started);
-
-  void started
-    .finally(() => {
-      if (table.get(session) === started) table.delete(session);
-    })
-    .catch(() => undefined);
-
-  return started;
-}
-
-/** Resolves once a session is activated in this process: the activation in flight, or a new one when its runtime has loaded nothing yet (§36c). A caller acting through a plugin api of the same session while its activation is in flight is that activation re-entering itself (a plugin sending from its own `activate`): it does not wait, since the activation waits on it. What `advance`, admission and `session.command` await before running hooks (§37j). */
-export async function ensureActivated(
-  kernel: Kernel,
-  session: SessionId,
-  context?: ConnectionContext,
+  runtime: PluginRuntime,
 ): Promise<void> {
-  const running = activations.get(kernel)?.get(session);
+  const found = await readSession(kernel, session);
 
-  if (running !== undefined) {
-    if (context === undefined || pluginSessionOf(context) !== session) await running;
+  if (found === null) return;
+  const workspace = found.record.workspace;
 
-    return;
+  try {
+    await runtime.load(sessionPlugins(kernel, runtime));
+  } catch (error) {
+    settle(kernel, session, workspace, failed(error));
+
+    throw error;
   }
 
-  if (kernel.runtimes().get(session)?.loaded() !== true) await activateSession(kernel, session);
+  settle(kernel, session, workspace, await attach(kernel, session, workspace));
 }
 
 /** Returns a registered workspace's record with its live fields, or null when `workspaces/<id>` is absent: `availability` from its provider's `inspect` (`unavailable { reason: "unsupported" }` when no provider serves the kind), `sessions` the number of session records naming it, and `writers` the live runs of those sessions. */
@@ -454,52 +449,61 @@ export async function sessionsOn(
   );
 }
 
-async function activate(kernel: Kernel, session: SessionId, reload: boolean): Promise<Activation> {
-  const found = await readSession(kernel, session);
-
-  if (found === null) return kernel.activation(session);
-  const workspace = found.record.workspace;
-  const runtime = kernel.pluginsFor(session);
-
-  if (reload) await runtime.replace(sessionPlugins(kernel, runtime));
-  else if (!runtime.loaded()) await runtime.load(sessionPlugins(kernel, runtime));
-
-  if (!(await attachesHere(kernel, session))) return settle(kernel, session, workspace, INACTIVE);
+/**
+ * Returns how a session whose plugins loaded stands once its environment attached or failed to. A
+ * session this host's execution does not cover stays `inactive` and attaches nothing, its plugins
+ * resolving no environment or resources (§37m); on a `dispatch` kernel every session attaches, as
+ * for `run` (§42p). Otherwise `kernel.env` attaches it: `active`; `unavailable { workspace, reason }`
+ * when no provider serves the workspace's kind or its `inspect` says unavailable; `failed { message }`
+ * when attaching throws otherwise.
+ */
+async function attach(
+  kernel: Kernel,
+  session: SessionId,
+  workspace: WorkspaceId,
+): Promise<Activation> {
+  if (!(await attachesHere(kernel, session))) return INACTIVE;
 
   try {
     await kernel.env(session);
 
-    return settle(kernel, session, workspace, ACTIVE);
+    return ACTIVE;
   } catch (error) {
     const record = await readWorkspace(kernel, workspace);
     const availability = record === null ? null : await availabilityOf(kernel, record.target);
 
-    return settle(
-      kernel,
-      session,
-      workspace,
-      availability?.kind === "unavailable"
-        ? { kind: "unavailable", workspace, reason: availability.reason }
-        : { kind: "failed", message: error instanceof Error ? error.message : String(error) },
-    );
+    return availability?.kind === "unavailable"
+      ? { kind: "unavailable", workspace, reason: availability.reason }
+      : failed(error);
   }
 }
 
+/** Sets a session's activation with `kernel.setActivation` when it changed and announces it on the workspace bus. */
 function settle(
   kernel: Kernel,
   session: SessionId,
   workspace: WorkspaceId,
   activation: Activation,
-): Activation {
-  if (JSON.stringify(kernel.activation(session)) !== JSON.stringify(activation)) {
-    kernel.setActivation(session, activation);
-    busOf(kernel).changed(workspace);
-  }
-
-  return activation;
+): void {
+  if (JSON.stringify(kernel.activation(session)) === JSON.stringify(activation)) return;
+  kernel.setActivation(session, activation);
+  busOf(kernel).changed(workspace);
 }
 
-/** Yields a run's patches for `paths` as `Workspace.patches` describes. */
+function failed(error: unknown): Activation {
+  return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+}
+
+/**
+ * Yields a run's patches for `paths` as full `PatchSet`s over one revision. Paths not yet read at
+ * it are read through the provider's `snapshots.patches` in batches of at most 32, at most 4 in
+ * flight, each landing batch yielding the map again. A batch whose read throws yields its paths as
+ * `failed { reason }` (the status the diff gives, `modified` when it cannot say; left out when the
+ * diff no longer reports them) and leaves them uncached for a later call. Reads are cached by
+ * workspace, run, options, revision and path across calls; while the revision moved, the previous
+ * revision's entry is held with `fresh: false` until its fresh read lands, and a path the new
+ * revision no longer reports leaves.
+ */
 async function* patchesOf(
   kernel: Kernel,
   input: {

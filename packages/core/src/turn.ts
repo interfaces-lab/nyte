@@ -1,7 +1,4 @@
 import type { Models } from "@nyte-ai/ai";
-import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
-import { isContextOverflow, isRecoverableLength } from "@nyte-ai/ai/utils/overflow";
-import { abortableSleep, isRetryableAssistantError, retryDelayMs } from "@nyte-ai/ai/utils/retry";
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
   HeadName,
@@ -15,19 +12,22 @@ import type {
   RunId,
   RunView,
   SessionId,
+  Transcript,
   Usage,
 } from "@nyte-ai/schema";
 import type {
   Api,
-  AssistantMessage,
-  Context,
+  AssistantMessageEvent,
   Failure,
   JsonValue,
   Model,
   ProviderCheckpointMaterial,
 } from "@nyte-ai/schema/model";
+import { agentLoop } from "./agent-loop.ts";
+import type { LoopConfig, LoopEvent, Prepared } from "./agent-loop.ts";
 import { compactIfNeeded } from "./compaction.ts";
 import { providerContext, requestBody } from "./context.ts";
+import { dev } from "./dev-log.ts";
 import type { HookContext } from "./hooks.ts";
 import { check } from "./json-schema.ts";
 import type { Kernel, LandedInput, TurnDriver } from "./kernel.ts";
@@ -59,17 +59,24 @@ import {
 } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
 
-/** Returns one tool call as the provider streamed it. */
-type ModelToolCall = Extract<AssistantMessage["content"][number], { readonly type: "toolCall" }>;
-
-/** Returns one merged thought's share of a thinking part's `signature` (§38f): its length in the part's markdown, so a replay splits the thoughts back, and the provider's `thinkingSignature` and `redacted` for it. */
+/**
+ * Returns one merged thought's share of a thinking part's `signature` (§38f): its length in the
+ * part's markdown, so a replay splits the thoughts back, and the provider's `thinkingSignature` and
+ * `redacted` for it.
+ */
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;
   readonly redacted: boolean;
 };
 
-/** Returns one text or thinking part a request has open: its id, kind, the markdown streamed into it so far, its provider continuity data, and for thinking how many adjacent thoughts it holds. It stays live until the request's stream is done. Settled, a text part's `signature` is `textSignature` and a thinking part's is `thoughts`, or null when no thought carried a signature and none was redacted. */
+/**
+ * Returns one text or thinking part a request has open: its id, kind, the markdown streamed into it
+ * so far, its provider continuity data, and for thinking how many adjacent thoughts it holds. It
+ * stays live until the request's stream is done. Settled, a text part's `signature` is
+ * `textSignature` and a thinking part's is `thoughts`, or null when no thought carried a signature
+ * and none was redacted.
+ */
 interface OpenPart {
   readonly part: PartId;
   readonly kind: "text" | "thinking";
@@ -92,28 +99,11 @@ interface AttemptState {
   readonly opened: OpenPart[];
   /** The current request's text and thinking parts still streaming, by the provider's content index, until their `*_end`. */
   readonly parts: Map<number, OpenPart>;
+  /** Where each thought still streaming starts in its thinking part's markdown, by content index. */
+  readonly starts: Map<number, number>;
   /** The thinking part the next thought merges into; null once text or a tool call streamed after it. */
   merging: OpenPart | null;
 }
-
-/** Returns how one provider request's stream ended, with the usage it was charged. */
-type StreamOutcome =
-  | {
-      readonly kind: "done";
-      readonly message: AssistantMessage;
-      readonly stop: "stop" | "length" | "toolUse";
-      readonly calls: readonly ModelToolCall[];
-      readonly usage: Usage;
-    }
-  | { readonly kind: "overflow"; readonly message: AssistantMessage; readonly usage: Usage }
-  | {
-      readonly kind: "failed";
-      readonly message: AssistantMessage;
-      readonly failure: Failure;
-      readonly retryable: boolean;
-      readonly usage: Usage;
-    }
-  | { readonly kind: "stopped" };
 
 /** Returns one turn's fixed inputs. */
 interface Turn {
@@ -142,6 +132,8 @@ const CALLER: ConnectionContext = {
   origin: null,
 };
 
+const ABORTED: Failure = { class: "aborted", message: "The run was stopped." };
+
 const ORPHANED: Failure = {
   class: "runner",
   message: "The host stopped while this response streamed.",
@@ -157,7 +149,15 @@ const ZERO: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** Returns the turn driver `advance` runs a run's turn with: what `kernel.turn` holds. `run_started` and `run_ended` are observed by `startRun` and `endRun` once logged (§38q, n); the turn observes neither. A run driven again with live text or thinking parts of its own (the host died mid-stream) fails them and takes the next attempt (`run retrying` with `until` now). Then it loops, one provider request per pass, in the baseline's hook order (§38s): `buildContext` (the run's configuration) → `transform_context` → the run's tools (`kernel.tools(session, run).list()`, narrowed to the agent's `tools` when its configuration's agent names some) → `transcriptOf` → `transform_transcript` → `compactIfNeeded` on the transformed transcript (reason `threshold`; `before_compaction` inside; a compaction rebuilds the body through both transforms again, without compacting twice in one pass) → `before_request` (`ModelRequest { model, thinking, step: "assistant", attempt, options: { sampling: {}, headers: {} } }`; a model the catalog lacks fails the run `runner`) → `run phase responding` (clearing `retrying`) → `models.streamSimple(model, providerContext(...), { signal, reasoning, samplingParams, headers, maxTokens, sessionId })` through `withLimits`, so a response that changed the provider's account limits moves the catalog generation, `reasoning` the request's thinking (none for `"off"`; ai lowers a level through the model's `thinkingLevelMap` and a fast ref to its base with the mode set). Stream events become parts through `createPart` with `run`, `head` and `CORE_CONTEXT`: `text_start` opens a `text` part (placement transcript `answer`, id `${run}:${attempt}:${index}`, `signature` null), `thinking_start` opens a `thinking` part (transcript `step`, `merged` 1, `signature` null) unless it follows a thought, which it merges into (`merged` + 1, first id kept, markdown joined by a blank line); each delta is a `publishPatch` `append`; the parts stay live while the stream runs, and once it is done every part the response opened settles with its final markdown and `signature` (§38f, as `OpenPart` says), each its `part updated`, `part settled` and commit, the commits chained in opening order, all in one set. Tool calls wait for the stream's end. A `done` stream publishes a `request` event (`usageOf(message, info)`, `ContextView { tokens: the reported input, cache and output tokens, window: info.contextWindow, lastRequest }`, step `assistant`) on the run ref, in the same write that adds the usage to the run record's `usage` and bumps its `requests` (§38v, w), and observes `after_request` (step `assistant`, `durationMs`); a length stop that ended short of the output limit (`isRecoverableLength`) is an overflow, its parts left live. An error the policy retries (`isRetryableAssistantError` and `retryDelayMs` from `@nyte-ai/ai/utils/retry`, up to `RETRY_POLICY.maxRetries` per request) fails every part the response opened with the failure, so the next attempt's parts replace them and none of the failed attempt's text reaches the next request, publishes `run retrying { attempt + 1, until: now + retryDelayMs, reason }` with the run record's `retrying` set, its `view.attempt` bumped and the failed request's usage added to its `usage` in the same set (§38t, v), so part ids never repeat after a restart, sleeps until `until` (abortable; after a restart `advance` drives the run once `until` passed, §38o) and repeats the pass at the next attempt; an overflow (`isContextOverflow` from `@nyte-ai/ai/utils/overflow`) runs `compactIfNeeded` with reason `overflow` once per request and repeats as a retry; an abort is `stopped`; any other error, or a retry budget spent, fails the response's parts and ends the run `failed { failure }` (`classifyAssistantFailure` from `@nyte-ai/ai/utils/failure`). With no tool calls `boundary()` lands the inputs that joined meanwhile and the attached ones waiting: when it landed one that is not an attach, the loop runs again in this run (a steer admitted while the final answer streamed joins it, as its `joined { run }` schedule said); an attach lands in the run but never by itself causes a pass (it rides with whatever turn comes next), so with only attaches, or nothing, landed the run ends `completed { usage }`, the run's total: the run record's `usage`, every request the run was charged across parks, re-drives and restarts (compaction's written by `compactIfNeeded`). With calls: `run phase executing`, then each call in response order through `executeCall` (call id, and so tool part id, `${run}:${requests}:${providerCallId}` with `requests` the run record's count as the response's own `request` event wrote it (§38w), so a provider reusing `call_0`, in this run or another, never replays an earlier call; as `LOCAL` with participant authority, the run's signal), each awaited until it settles or parks; a parked call does not hold back the next (§38k), so every call has its step record before the turn returns, and when any parked the turn returns without ending the run (`advance` reports `waiting`, §34d; a later drive resumes after `resume` re-ran it). Then `boundary()` lands joined inputs and the loop runs again. A stopped run (its fence passed, its signal aborted) ends `stopped`, its open parts already failed by the fence; a turn aborted by the host closing returns the same and the driver leaves the run live (§38y). */
+/**
+ * Returns the turn driver `advance` runs a run's turn with: what `kernel.turn` holds, the adapter
+ * between the kernel and `agentLoop` (§45d). It resumes the run's attempt, builds the loop's config
+ * from the kernel, and lands each loop event as today's writes. `done` and `parked` end
+ * `completed { usage }`, the run record's total; a parked call leaves the run live for `advance`
+ * (§34d). `stopped` fails the parts still open with `aborted` when the run is stopping; a turn
+ * aborted by the host closing leaves them and the run live for the next open (§38y).
+ * `run_started` and `run_ended` are observed by `startRun` and `endRun`, not here (§38q, n).
+ */
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   return {
     run: (input) =>
@@ -176,209 +176,374 @@ export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   };
 }
 
-/** Runs one turn: resumes the attempt, then one provider request per pass until the run ends or a call parks. */
+/**
+ * Runs one turn: resumes the attempt (`resumed`), runs `agentLoop` from the run record's attempt
+ * with `RETRY_POLICY` over the kernel's config, and lands its events.
+ */
 async function turn(
   context: Turn,
   given: RunView,
   boundary: () => Promise<readonly LandedInput[]>,
 ): Promise<RunEnd> {
-  const { kernel, models, session, head, signal } = context;
+  const { kernel, models, session, head } = context;
+  const run = given.id;
   const configuration = given.configuration;
-  const hooks = kernel.pluginsFor(session).hooks;
+  const { signal } = context;
   const resumedState = await resumed(context, given);
 
   if (resumedState === null) return STOPPED;
   let state = resumedState;
-  let retries = 0;
-  let overflowed = false;
+  let charged = { total: ZERO, requests: 0 };
 
-  for (;;) {
-    if (stopping(context, given.id)) return STOPPED;
-    const info = await modelInfo(kernel, models, configuration.model, session);
+  const body = () => requestBody(kernel, models, session, head, state.run, configuration);
 
-    if (info === null) return failed(`No model ${configuration.model.id} is in the catalog.`);
-    let body = await requestBody(kernel, models, session, head, state.run, configuration);
-
-    const compacted = await compactIfNeeded(kernel, models, {
+  const compact = (transcript: Transcript, at: ModelInfo, reason: "threshold" | "overflow") =>
+    compactIfNeeded(kernel, models, {
       session,
       head,
       run: state.run,
       configuration,
-      transcript: body.transcript,
-      info,
-      reason: "threshold",
+      transcript,
+      info: at,
+      reason,
       signal,
     });
 
-    if (compacted.kind === "compacted")
-      body = await requestBody(kernel, models, session, head, state.run, configuration);
+  const config: LoopConfig = {
+    attempt: state.attempt,
+    retry: RETRY_POLICY,
+    /**
+     * Builds one request in the baseline's hook order (§38s): the configuration's model looked up,
+     * with `overflow` set an `overflow` compaction first (nothing to compact fails with the
+     * overflow), `requestBody`, a `threshold` compaction (rebuilding the body, never twice in one
+     * pass), `before_request` with the attempt on the session's current runtime, the request model
+     * looked up, the head's checkpoint and `providerContext`. A model the catalog lacks fails the
+     * run `runner`.
+     */
+    async prepareRequest(asked) {
+      const configured = await modelInfo(kernel, models, configuration.model, session);
 
-    const request: ModelRequest = await hooks.transform(
-      "before_request",
-      {
-        model: configuration.model,
-        thinking: configuration.thinking,
-        step: "assistant",
-        attempt: state.attempt,
-        options: { sampling: {}, headers: {} },
-      },
-      context.where,
-    );
+      if (configured === null)
+        return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
 
-    const model = models.getModel(request.model.provider, request.model.id);
-    const requestInfo = await modelInfo(kernel, models, request.model, session);
+      if (asked.overflow !== null) {
+        const recovered = await compact((await body()).transcript, configured, "overflow");
 
-    if (model === undefined || requestInfo === null)
-      return failed(`No model ${request.model.provider}/${request.model.id} is in the catalog.`);
+        if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
+      }
 
-    if (stopping(context, given.id)) return STOPPED;
-    await changeRun(context, given.id, (record) =>
-      record.phase === "responding" && record.retrying === null
-        ? null
-        : {
-            record: { ...record, phase: "responding", retrying: null },
-            event: { head, kind: "run", run: given.id, change: "phase", phase: "responding" },
-          },
-    );
+      let built = await body();
 
-    const started = Date.now();
+      if ((await compact(built.transcript, configured, "threshold")).kind === "compacted")
+        built = await body();
 
-    const checkpoint = await checkpointOf(context, model);
+      const request: ModelRequest = await kernel.pluginsFor(session).hooks.transform(
+        "before_request",
+        {
+          model: configuration.model,
+          thinking: configuration.thinking,
+          step: "assistant",
+          attempt: asked.attempt,
+          options: { sampling: {}, headers: {} },
+        },
+        context.where,
+      );
 
-    const outcome = await withLimits(kernel, models, model.provider, () =>
-      stream(context, state, {
-        model,
-        info: requestInfo,
+      const model = models.getModel(request.model.provider, request.model.id);
+      const found = await modelInfo(kernel, models, request.model, session);
+
+      if (model === undefined || found === null)
+        return failedRequest(
+          `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
+        );
+      const checkpoint = await checkpointOf(context, model);
+
+      return {
+        kind: "request",
         request,
-        context: providerContext(body.transcript, body.source, checkpoint),
-      }),
-    );
-
-    switch (outcome.kind) {
-      case "stopped":
-        return STOPPED;
-      case "failed": {
-        if (outcome.retryable && retries < RETRY_POLICY.maxRetries && !signal.aborted) {
-          retries += 1;
-          const until = Date.now() + retryDelayMs(RETRY_POLICY, retries);
-          state = await retry(context, state, outcome.failure, until, outcome.usage);
-
-          if (
-            !(await abortableSleep(until - Date.now(), signal).then(
-              () => true,
-              () => false,
-            ))
-          )
-            return STOPPED;
-          continue;
-        }
-
-        await failOpen(context, state, outcome.failure);
-
-        return { kind: "failed", failure: outcome.failure };
-      }
-
-      case "overflow": {
-        const failure: Failure = classifyAssistantFailure(outcome.message);
-
-        const overflow: Failure =
-          failure.class === "context_window"
-            ? failure
-            : { class: "context_window", message: "The response ran out of context." };
-
-        const recovered = overflowed
+        model,
+        info: found,
+        context: providerContext(built.transcript, built.source, checkpoint),
+        at: Date.now(),
+        usage: (message) => usageOf(message, found),
+      };
+    },
+    /**
+     * Sets `run phase responding` (clearing `retrying`) and returns `models.streamSimple` with the
+     * request's thinking as `reasoning` (none for `"off"`), sampling, headers and output limit.
+     * It settles once the response's result did and `withLimits` moved the catalog generation when
+     * the response changed the provider's account limits.
+     */
+    async stream(prepared) {
+      await changeRun(context, run, (record) =>
+        record.phase === "responding" && record.retrying === null
           ? null
-          : await compactIfNeeded(kernel, models, {
-              session,
-              head,
-              run: state.run,
-              configuration,
-              transcript: body.transcript,
-              info,
-              reason: "overflow",
-              signal,
-            });
+          : {
+              record: { ...record, phase: "responding", retrying: null },
+              event: { head, kind: "run", run, change: "phase", phase: "responding" },
+            },
+      );
 
-        overflowed = true;
+      const thinkingLevel = prepared.request.thinking;
 
-        if (recovered === null || recovered.kind === "skipped") {
-          await failOpen(context, state, overflow);
+      const events = models.streamSimple(prepared.model, prepared.context, {
+        signal,
+        reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
+        samplingParams: { ...prepared.request.options.sampling },
+        headers: { ...prepared.request.options.headers },
+        maxTokens: prepared.info.maxOutput,
+        sessionId: session,
+      });
 
-          return { kind: "failed", failure: overflow };
-        }
+      return {
+        events,
+        settled: withLimits(kernel, models, prepared.model.provider, async () => {
+          await events.result();
+        }),
+      };
+    },
+    tools: {
+      /**
+       * Runs the call through the durable `executeCall` as `LOCAL` with participant authority, its
+       * id (and tool part id) `${run}:${requests}:${providerCallId}` with `requests` the count the
+       * response's own `request` event wrote (§38w); settled or parked.
+       */
+      execute: (call, called) =>
+        executeCall(kernel, {
+          session,
+          head,
+          run,
+          call: asId<"call">(`${run}:${charged.requests}:${call.id}`),
+          name: call.name,
+          args: isJson(call.arguments) ? call.arguments : {},
+          context: CALLER,
+          signal: called,
+        }),
+    },
+    /**
+     * Observes `after_request` (step `assistant`, `durationMs` from the request's preparation) on the
+     * session's current runtime, publishes the `request` event on the run ref in
+     * the write that adds the usage to the run record and bumps its `requests` (§38v, w), and sets
+     * `run phase executing` when the response has calls. It never ends the loop: core has no
+     * after-turn decision.
+     */
+    async finishTurn({ calls, usage, prepared }) {
+      const { request, info } = prepared;
 
-        state = await retry(context, state, overflow, Date.now(), outcome.usage);
-        continue;
-      }
+      void kernel.pluginsFor(session).hooks.observe(
+        "after_request",
+        {
+          model: request.model,
+          thinking: request.thinking,
+          usage,
+          durationMs: Date.now() - prepared.at,
+          step: "assistant",
+        },
+        context.where,
+      );
 
-      case "done": {
-        retries = 0;
-        overflowed = false;
+      charged = await charge(context, run, usage, requestEvent(head, "assistant", usage, info));
 
-        void hooks.observe(
-          "after_request",
-          {
-            model: request.model,
-            thinking: request.thinking,
-            usage: outcome.usage,
-            durationMs: Date.now() - started,
-            step: "assistant",
-          },
-          context.where,
-        );
-
-        const { total, requests } = await charge(
-          context,
-          given.id,
-          outcome.usage,
-          requestEvent(head, "assistant", outcome.usage, requestInfo),
-        );
-
-        if (outcome.calls.length === 0) {
-          if ((await boundary()).some((input) => input.delivery !== "attach")) continue;
-
-          return { kind: "completed", usage: total };
-        }
-
-        if (stopping(context, given.id)) return STOPPED;
-        await changeRun(context, given.id, (record) =>
+      if (calls.length > 0)
+        await changeRun(context, run, (record) =>
           record.phase === "executing"
             ? null
             : {
                 record: { ...record, phase: "executing" },
-                event: { head, kind: "run", run: given.id, change: "phase", phase: "executing" },
+                event: { head, kind: "run", run, change: "phase", phase: "executing" },
               },
         );
 
-        let parked = false;
+      return undefined;
+    },
+    boundary: () => boundary(),
+  };
 
-        for (const call of outcome.calls) {
-          if (stopping(context, given.id)) return STOPPED;
+  const land = async (event: LoopEvent): Promise<void> => {
+    switch (event.type) {
+      case "message_start":
+        return opened(context, state, event.kind, event.index);
+      case "message_update":
+        return updated(context, state, event.event);
+      case "message_end":
+        return settled(context, state);
+      case "turn_retry":
+        state = await retry(context, state, event.failure, event.until, event.usage);
 
-          const result = await executeCall(kernel, {
-            session,
-            head,
-            run: given.id,
-            call: asId<"call">(`${given.id}:${requests}:${call.id}`),
-            name: call.name,
-            args: isJson(call.arguments) ? call.arguments : {},
-            context: CALLER,
-            signal,
-          });
-
-          if (result.kind === "parked") parked = true;
-        }
-
-        if (stopping(context, given.id)) return STOPPED;
-
-        if (parked) return { kind: "completed", usage: total };
-        await boundary();
-      }
+        return;
+      default:
+        return;
     }
+  };
+
+  const loop = agentLoop(config, signal);
+
+  for await (const event of loop) {
+    dev("turn", event.type, { session, run, attempt: state.attempt });
+    await land(event);
+  }
+
+  const end = await loop.result();
+
+  switch (end.reason) {
+    case "done":
+    case "parked":
+      return { kind: "completed", usage: charged.total };
+    case "stopped":
+      if (kernel.runs.isStopping(run)) await failOpen(context, state, ABORTED);
+
+      return STOPPED;
+    case "failed":
+      await failOpen(context, state, end.failure);
+
+      return { kind: "failed", failure: end.failure };
   }
 }
 
-/** Returns the attempt a drive resumes: the run record's, or the next one when the run still has live text or thinking parts of its own (the host died mid-stream), which it fails in the same set as `run retrying` with `until` now; the next part index counts the parts the attempt already made. Null once the run is gone. */
+/**
+ * Lands `message_start`. Text opens a `text` part (placement transcript `answer`, id
+ * `${run}:${attempt}:${index}`, `signature` null). Thinking opens a `thinking` part (transcript
+ * `step`, `merged` 1) unless it follows a thought, which it merges into: `merged` + 1, the first id
+ * kept, the markdown joined by a blank line. A tool call's start ends the merge.
+ */
+async function opened(
+  context: Turn,
+  state: AttemptState,
+  kind: "text" | "thinking" | "toolCall",
+  index: number,
+): Promise<void> {
+  if (kind === "toolCall") {
+    state.merging = null;
+
+    return;
+  }
+
+  if (kind === "text") {
+    state.merging = null;
+    state.parts.set(index, await open(context, state, "text"));
+
+    return;
+  }
+
+  const merging = state.merging;
+
+  if (merging === null) {
+    const created = await open(context, state, "thinking");
+    state.merging = created;
+    state.parts.set(index, created);
+    state.starts.set(index, 0);
+
+    return;
+  }
+
+  merging.merged += 1;
+  append(context, state, merging, THOUGHTS);
+  state.parts.set(index, merging);
+  state.starts.set(index, merging.markdown.length);
+}
+
+/**
+ * Lands `message_update`: each delta is a `publishPatch` `append` on its part, and a block's end
+ * sets the part's final markdown and its signature (a text's `textSignature`, a thought's
+ * `thinkingSignature` and `redacted`, §38f).
+ */
+async function updated(
+  context: Turn,
+  state: AttemptState,
+  event: AssistantMessageEvent,
+): Promise<void> {
+  switch (event.type) {
+    case "text_delta":
+    case "thinking_delta": {
+      const found = state.parts.get(event.contentIndex);
+
+      if (found !== undefined) append(context, state, found, event.delta);
+
+      return;
+    }
+
+    case "text_end": {
+      const found = state.parts.get(event.contentIndex);
+
+      if (found === undefined) return;
+      const block = event.partial.content[event.contentIndex];
+      found.markdown = event.content;
+      found.textSignature =
+        block?.type === "text" ? (block.textSignature ?? null) : found.textSignature;
+      state.parts.delete(event.contentIndex);
+
+      return;
+    }
+
+    case "thinking_end": {
+      const found = state.parts.get(event.contentIndex);
+
+      if (found === undefined) return;
+      const block = event.partial.content[event.contentIndex];
+      const start = state.starts.get(event.contentIndex) ?? 0;
+      found.markdown = found.markdown.slice(0, start) + event.content;
+
+      found.thoughts.push({
+        length: event.content.length,
+        signature: block?.type === "thinking" ? (block.thinkingSignature ?? null) : null,
+        redacted: block?.type === "thinking" && block.redacted === true,
+      });
+
+      state.starts.delete(event.contentIndex);
+      state.parts.delete(event.contentIndex);
+
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+/**
+ * Lands `message_end`: closes the thoughts still streaming, settles every part the response opened
+ * with its final markdown and signature in one set (`settle`), and clears the request's parts.
+ */
+async function settled(context: Turn, state: AttemptState): Promise<void> {
+  for (const [index, pending] of state.parts) {
+    const start = state.starts.get(index);
+
+    if (pending.kind === "thinking" && start !== undefined)
+      pending.thoughts.push({
+        length: pending.markdown.length - start,
+        signature: null,
+        redacted: false,
+      });
+  }
+
+  await settle(context, state.run.id, state.opened);
+  state.opened.length = 0;
+  state.parts.clear();
+  state.starts.clear();
+  state.merging = null;
+}
+
+/** Appends a delta to an open part's markdown and publishes it as a patch. */
+function append(context: Turn, state: AttemptState, target: OpenPart, delta: string): void {
+  target.markdown += delta;
+  publishPatch(context.kernel, context.session, state.run.id, {
+    kind: "patch",
+    part: target.part,
+    append: delta,
+  });
+}
+
+/** Returns a request that fails the run itself. */
+function failedRequest(message: string): Prepared {
+  return { kind: "failed", failure: { class: "runner", message } };
+}
+
+/**
+ * Returns the attempt a drive resumes: the run record's, or the next one when the run still has
+ * live text or thinking parts of its own (the host died mid-stream), which it fails in the same set
+ * as `run retrying` with `until` now. The next part index counts the parts the attempt already
+ * made. Null once the run is gone.
+ */
 async function resumed(context: Turn, run: RunView): Promise<AttemptState | null> {
   const { kernel, session } = context;
 
@@ -418,170 +583,6 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState | null
   return state;
 }
 
-/** Streams one provider request into parts and returns how it ended: the parts it opened settle together once it is done and stay live otherwise, for the caller to fail. */
-async function stream(
-  context: Turn,
-  state: AttemptState,
-  input: {
-    readonly model: Model<Api>;
-    readonly info: ModelInfo;
-    readonly request: ModelRequest;
-    readonly context: Context;
-  },
-): Promise<StreamOutcome> {
-  const { kernel, models, session, signal } = context;
-  const run = state.run.id;
-  const thought = new Map<number, number>();
-  const thinkingLevel = input.request.thinking;
-  let final: AssistantMessage | null = null;
-
-  const events = models.streamSimple(input.model, input.context, {
-    signal,
-    reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
-    samplingParams: { ...input.request.options.sampling },
-    headers: { ...input.request.options.headers },
-    maxTokens: input.info.maxOutput,
-    sessionId: session,
-  });
-
-  const append = (target: OpenPart, delta: string): void => {
-    target.markdown += delta;
-    publishPatch(kernel, session, run, { kind: "patch", part: target.part, append: delta });
-  };
-
-  try {
-    for await (const event of events) {
-      if (stopping(context, run)) return { kind: "stopped" };
-
-      switch (event.type) {
-        case "text_start": {
-          state.merging = null;
-          state.parts.set(event.contentIndex, await open(context, state, "text"));
-          break;
-        }
-
-        case "thinking_start": {
-          const merging = state.merging;
-
-          if (merging === null) {
-            const opened = await open(context, state, "thinking");
-            state.merging = opened;
-            state.parts.set(event.contentIndex, opened);
-            thought.set(event.contentIndex, 0);
-            break;
-          }
-
-          merging.merged += 1;
-          append(merging, THOUGHTS);
-          state.parts.set(event.contentIndex, merging);
-          thought.set(event.contentIndex, merging.markdown.length);
-          break;
-        }
-
-        case "text_delta":
-        case "thinking_delta": {
-          const found = state.parts.get(event.contentIndex);
-
-          if (found !== undefined) append(found, event.delta);
-          break;
-        }
-
-        case "text_end": {
-          const found = state.parts.get(event.contentIndex);
-
-          if (found === undefined) break;
-          const block = event.partial.content[event.contentIndex];
-          found.markdown = event.content;
-          found.textSignature =
-            block?.type === "text" ? (block.textSignature ?? null) : found.textSignature;
-          state.parts.delete(event.contentIndex);
-          break;
-        }
-
-        case "thinking_end": {
-          const found = state.parts.get(event.contentIndex);
-
-          if (found === undefined) break;
-          const block = event.partial.content[event.contentIndex];
-          const start = thought.get(event.contentIndex) ?? 0;
-          found.markdown = found.markdown.slice(0, start) + event.content;
-
-          found.thoughts.push({
-            length: event.content.length,
-            signature: block?.type === "thinking" ? (block.thinkingSignature ?? null) : null,
-            redacted: block?.type === "thinking" && block.redacted === true,
-          });
-
-          thought.delete(event.contentIndex);
-          state.parts.delete(event.contentIndex);
-          break;
-        }
-
-        case "toolcall_start":
-          state.merging = null;
-          break;
-        case "done":
-          final = event.message;
-          break;
-        case "error":
-          final = event.error;
-          break;
-        default:
-          break;
-      }
-    }
-  } catch (error) {
-    if (signal.aborted || stopping(context, run)) return { kind: "stopped" };
-
-    throw error;
-  }
-
-  if (final === null || stopping(context, run) || final.stopReason === "aborted")
-    return { kind: "stopped" };
-  const usage = usageOf(final, input.info);
-
-  if (final.stopReason === "error") {
-    if (isContextOverflow(final)) return { kind: "overflow", message: final, usage };
-
-    return {
-      kind: "failed",
-      message: final,
-      failure: classifyAssistantFailure(final),
-      retryable: isRetryableAssistantError(final),
-      usage,
-    };
-  }
-
-  if (final.stopReason === "length" && isRecoverableLength(final, input.info.maxOutput))
-    return { kind: "overflow", message: final, usage };
-
-  for (const [index, pending] of state.parts) {
-    const start = thought.get(index);
-
-    if (pending.kind === "thinking" && start !== undefined)
-      pending.thoughts.push({
-        length: pending.markdown.length - start,
-        signature: null,
-        redacted: false,
-      });
-  }
-
-  await settle(context, run, state.opened);
-  state.opened.length = 0;
-  state.parts.clear();
-  state.merging = null;
-
-  const calls = final.content.filter((block): block is ModelToolCall => block.type === "toolCall");
-
-  return {
-    kind: "done",
-    message: final,
-    stop: final.stopReason === "length" ? "length" : calls.length > 0 ? "toolUse" : "stop",
-    calls,
-    usage,
-  };
-}
-
 /** Opens a text or thinking part for the attempt's next index, live in the run, and adds it to the request's `opened`. */
 async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]): Promise<OpenPart> {
   const part = asId<"part">(`${state.run.id}:${state.attempt}:${state.index}`);
@@ -619,7 +620,11 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** Settles the parts a request opened, once its stream is done, with their final markdown and signatures in one set: for each in opening order its `part updated`, `part settled` and commit, each commit the parent of the next; a part no longer live (its run's fence failed it) is left out. */
+/**
+ * Settles the parts a request opened, once its stream is done, with their final markdown and
+ * signatures in one set: for each in opening order its `part updated`, `part settled` and commit,
+ * each commit the parent of the next. A part no longer live (its run's fence failed it) is left out.
+ */
 async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
   const { kernel, session, head } = context;
 
@@ -714,7 +719,12 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
   });
 }
 
-/** Fails every part the attempt's current request opened (and `extra`) and publishes `run retrying { attempt + 1, until, reason }` with the run record's `retrying` set, its `view.attempt` bumped and the failed request's `charged` usage added to its `usage` (§38v), in one set; returns the next attempt's state. */
+/**
+ * Lands `turn_retry` (and a resumed run's orphans): fails every part the attempt's current request
+ * opened, and `extra`, and publishes `run retrying { attempt + 1, until, reason }` with the run
+ * record's `retrying` set, its `view.attempt` bumped and the failed request's `charged` usage added
+ * to its `usage` (§38t, v), in one set. Returns the next attempt's state.
+ */
 async function retry(
   context: Turn,
   state: AttemptState,
@@ -758,7 +768,11 @@ async function retry(
   return fresh(view, 0);
 }
 
-/** Fails every part the attempt's current request opened with a failure, in one set. */
+/**
+ * Lands `loop_end failed`, and `stopped` of a stopping run: fails every part the attempt's current
+ * request left open with the failure (`aborted` for a stop; a part the fence already failed is left
+ * out), in one set.
+ */
 async function failOpen(context: Turn, state: AttemptState, failure: Failure): Promise<void> {
   const updates = await failedParts(context, openParts(state), failure);
 
@@ -833,7 +847,12 @@ async function changeRun(
   });
 }
 
-/** Adds a settled request's usage to the run record's `usage` and bumps its `requests` in the same write as its `request` event (§38v, w); returns the run's total and the count that write set, what the response's call ids are namespaced by. The usage alone and a count of 0 when the run is gone. */
+/**
+ * Adds a settled request's usage to the run record's `usage` and bumps its `requests` in the same
+ * write as its `request` event (§38v, w). Returns the run's total and the count that write set,
+ * what the response's call ids are namespaced by; the usage alone and a count of 0 when the run is
+ * gone.
+ */
 async function charge(
   context: Turn,
   run: RunId,
@@ -894,7 +913,15 @@ async function checkpointOf(
 
 /** Returns a fresh attempt's state for a run view, its next part index given. */
 function fresh(run: RunView, index: number): AttemptState {
-  return { run, attempt: run.attempt, index, opened: [], parts: new Map(), merging: null };
+  return {
+    run,
+    attempt: run.attempt,
+    index,
+    opened: [],
+    parts: new Map(),
+    starts: new Map(),
+    merging: null,
+  };
 }
 
 /** Returns every part the attempt's current request opened. */
@@ -907,16 +934,6 @@ function thoughtsOf(thoughts: readonly ThoughtSignature[]): Json {
   return thoughts.some((entry) => entry.signature !== null || entry.redacted)
     ? thoughts.map((entry) => ({ ...entry }))
     : null;
-}
-
-/** Returns whether the run's stop fence is passed or its signal aborted. */
-function stopping(context: Turn, run: RunId): boolean {
-  return context.signal.aborted || context.kernel.runs.isStopping(run);
-}
-
-/** Returns a run end that failed the run itself. */
-function failed(message: string): RunEnd {
-  return { kind: "failed", failure: { class: "runner", message } };
 }
 
 /** Returns a JSON value as the provider's mutable JSON. */

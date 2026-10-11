@@ -24,6 +24,7 @@ import type {
 import { Compile } from "typebox/compile";
 import { isParked, runStep } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
+import { dev } from "./dev-log.ts";
 import { createInvocation } from "./invocation.ts";
 import type { Kernel } from "./kernel.ts";
 import { sessionOfPart } from "./part-handle.ts";
@@ -279,6 +280,7 @@ async function perform(
     principal: where.context.principal,
   };
 
+  dev("tool", "call", { session, run, call, tool: where.name });
   const planned = await plan(kernel, where, intent);
 
   if (planned.kind === "parked") return PARKED;
@@ -315,6 +317,8 @@ async function perform(
     },
     decode: decodeOutcome,
   });
+
+  dev("tool", step.kind, { session, run, call });
 
   if (step.kind === "parked") return PARKED;
   const recorded = (await readCall(kernel, session, call))?.record.result ?? null;

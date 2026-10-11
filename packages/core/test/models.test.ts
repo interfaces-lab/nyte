@@ -3,7 +3,7 @@ import { contentText } from "@nyte-ai/schema/model";
 import type { Configuration, ModelRef } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import { createLogin, modelInfo, settingsVersion, usageOf } from "../src/index.ts";
+import { contributionsOf, createLogin, modelInfo, settingsVersion, usageOf } from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { main, until } from "./harness.ts";
@@ -171,6 +171,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
+        contributions: contributionsOf(host.kernel.pluginsFor(session.id)),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -311,9 +312,18 @@ describe("resolveConfiguration", () => {
     const resolve = (
       patch: Configuration | Parameters<typeof host.kernel.resolveConfiguration>[0]["patch"],
       selected: Configuration | null = null,
-    ) => host.kernel.resolveConfiguration({ session: session.id, head: main, selected, patch });
+    ) =>
+      host.kernel.resolveConfiguration({
+        session: session.id,
+        head: main,
+        selected,
+        patch,
+        contributions: contributionsOf(host.kernel.pluginsFor(session.id)),
+      });
 
-    const version = await settingsVersion(host.kernel, session.id);
+    const version = await settingsVersion(
+      contributionsOf(host.kernel.pluginsFor(session.id)).settings,
+    );
 
     const base = await resolve(null);
 

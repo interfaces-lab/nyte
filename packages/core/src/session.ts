@@ -21,6 +21,7 @@ import type {
   UpdateOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
+import { sendNow } from "./admission.ts";
 import { listSessions } from "./directory.ts";
 import { SdkError } from "./error.ts";
 import { headHandle } from "./head.ts";
@@ -38,7 +39,6 @@ import { sessionRef, workspaceRef } from "./refs.ts";
 import type { Run } from "./run.ts";
 import { runHandle, stopRun } from "./runs.ts";
 import { sessionInfo } from "./session-info.ts";
-import { activateSession, ensureActivated } from "./workspaces.ts";
 import {
   MAIN,
   STALE,
@@ -275,9 +275,9 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     },
     async command(name, args) {
       need("command");
-      await ensureActivated(kernel, id, context);
+      await kernel.pluginsFor(id).ready;
 
-      return kernel.command(id, name, args, context);
+      return kernel.command(id, name, args);
     },
     parts: {
       async create(kind, input) {
@@ -290,7 +290,25 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
   };
 }
 
-/** Updates a session's record; a relocation to another workspace then detaches the session's environment and re-activates it there with its plugins reloaded, so `env.cwd`, resources and every plugin api see the new folder (§37k). */
+/** Returns the session handle of the api a session's activation constructs (§44b): `sessionHandle`'s, with every head's `send` admitting through `sendNow` and `command` running at once, since a plugin calling them from its own `activate` is the activation they would wait on. */
+export function activationSession(
+  kernel: Kernel,
+  context: ConnectionContext,
+  id: SessionId,
+): Session {
+  return {
+    ...sessionHandle(kernel, context, id),
+    ...headHandle(kernel, context, id, MAIN, sendNow),
+    head: (name) => headHandle(kernel, context, id, name, sendNow),
+    async command(name, args) {
+      requireAuthority(context.authority, "participant", "session.command");
+
+      return kernel.command(id, name, args);
+    },
+  };
+}
+
+/** Updates a session's record; a relocation to another workspace then detaches the session's environment and installs a new plugin runtime there (`kernel.reloadPlugins`, §44c), so `env.cwd`, resources and every plugin api see the new folder (§37k). */
 async function update(
   kernel: Kernel,
   session: SessionId,
@@ -339,7 +357,7 @@ async function update(
 
   if (moved) {
     await kernel.environments.detach(session);
-    await activateSession(kernel, session, { reload: true });
+    await kernel.reloadPlugins(session);
   }
 
   return outcome;

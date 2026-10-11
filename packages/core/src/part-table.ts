@@ -91,7 +91,7 @@ export function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly
 }
 
 /** Settles the local `answer()` promises of every modal part another instance may have answered or closed (§42ac), parked here or not: for each part with a pending `answer()`, reads its record once, and when its live status names the call `waiting` on it, reads that call's record and settles the answer it shows; a part whose record is gone resolves null, as a local close does. What `pollStore` runs each pass. */
-export async function recheckAnswers(kernel: Kernel): Promise<void> {
+export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
   const table = tableOf(kernel);
 
   for (const name of Array.from(table.waiters.keys())) {

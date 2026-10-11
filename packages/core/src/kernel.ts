@@ -37,6 +37,7 @@ import { createBus } from "./bus.ts";
 import type { SessionBus } from "./bus.ts";
 import { toolSource } from "./catalog.ts";
 import { runCommand } from "./commands.ts";
+import type { Contributions } from "./configuration.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
@@ -76,7 +77,7 @@ import type { WaitRegistry } from "./wait-registry.ts";
 import { createFoldCache } from "./watch.ts";
 import type { FoldCache } from "./watch.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
-import { activateSession, createWorkspaces, workspaceHandle } from "./workspaces.ts";
+import { createWorkspaces, workspaceHandle } from "./workspaces.ts";
 
 /** Returns the in-process context every kernel operation closes over; later work orders add fields, none are removed. */
 export interface Kernel {
@@ -175,8 +176,10 @@ export interface Kernel {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** Returns a session's plugin runtime, created empty on first use and kept until `closePlugins`; creating it starts `activateSession` for the session, which loads the session's list (`sessionPlugins`) into a known session that has loaded nothing in this process (§36c). */
+  /** Returns a session's plugin runtime: the one place a session activates in this process (§44a). Created on first use, which starts its activation (`ready`: the session's list loaded, `sessionPlugins`, §36c, and its environment attached), and kept until `closePlugins` or a reload installs another. */
   pluginsFor(session: SessionId): PluginRuntime;
+  /** Installs a new runtime for a session in place of the one held (§44c): its activation closes the old one once that settled, then loads the session's full list again (its own list kept) over freshly resolved resources and attaches its environment, so a plugin a failed activation rejected is retried (§37l); callers holding the old runtime finish on it. Resolves with the new runtime's `ready`. What `Workspace.reload()` and a relocation run. */
+  reloadPlugins(session: SessionId): Promise<void>;
   /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
   /** Deactivates a session's plugins and forgets its runtime: what removing the session does. */
@@ -265,13 +268,14 @@ export interface Compactor {
   >;
 }
 
-/** Resolves a head's stored selection and an optional patch or exact configuration to the `Configuration` admission records, or the `configure` failure. */
+/** Resolves a head's stored selection and an optional patch or exact configuration, against the contributions the caller read, to the `Configuration` admission records, or the `configure` failure. */
 export interface ConfigurationResolver {
   (input: {
     readonly session: SessionId;
     readonly head: HeadName;
     readonly selected: Configuration | null;
     readonly patch: Configuration | ConfigurationPatch | null;
+    readonly contributions: Contributions;
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
 }
 
@@ -289,14 +293,9 @@ export interface AdmissionGate {
   ): Promise<Decision<Submission>>;
 }
 
-/** Runs a core command by name in a session; `context` is the caller's, so a plugin running a command from its own session's activation sends its prompt without waiting on that activation (§37j). */
+/** Runs a core command by name in a session; its caller has awaited the session's activation, or is that activation (§44b). */
 export interface CommandRunner {
-  (
-    session: SessionId,
-    name: string,
-    args?: Json,
-    context?: ConnectionContext,
-  ): Promise<CommandOutcome>;
+  (session: SessionId, name: string, args?: Json): Promise<CommandOutcome>;
 }
 
 /** Creates parts and binds part handles for a connection's principal in a session. */
@@ -366,7 +365,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional (absent, its default), and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it — the fold cache and `sessionEvents` read `refs.log` after the last seen seq of each open session, and the wait registry re-checks its parked waits against targets settled elsewhere — so an API instance sees what a step instance wrote and a wait parked elsewhere still wakes (§42h; the Vercel deploy sets 1000, a Durable Object and a local host none; absent, the kernel reads only what it writes itself). */
+/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional (absent, its default), and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it — the fold cache and `sessionEvents` read `refs.log` after the last seen seq of each open session, and the wait registry settles its parked waits from targets settled elsewhere — so an API instance sees what a step instance wrote and a wait parked elsewhere still wakes (§42h; the Vercel deploy sets 1000, a Durable Object and a local host none; absent, the kernel reads only what it writes itself). */
 export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
@@ -415,7 +414,7 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
     readonly poll?: number;
   };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. A random `instance` is minted and `poll` recorded (null when absent); on a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use, which starts its activation, and `reloadPlugins` installs another in its place. A random `instance` is minted and `poll` recorded (null when absent); on a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const revisions = new Map<string, Revision>();
@@ -428,6 +427,14 @@ export function createKernel(input: KernelOptions): Kernel {
     catalogs.get(session) ?? EMPTY_CATALOG;
 
   const runtimes = new Map<SessionId, PluginRuntime>();
+
+  const install = (session: SessionId, previous: PluginRuntime | null): PluginRuntime => {
+    const created = createPluginRuntime(kernel, session, previous);
+    runtimes.set(session, created);
+
+    return created;
+  };
+
   let waits = input.waits ?? null;
   let definitions = input.partDefinitions ?? null;
   let settings = input.settings ?? null;
@@ -481,9 +488,7 @@ export function createKernel(input: KernelOptions): Kernel {
     resolveConfiguration:
       input.resolveConfiguration ?? (async () => unavailable("resolveConfiguration")),
     admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
-    command:
-      input.command ??
-      ((session, name, args, context) => runCommand(kernel, session, name, args, context)),
+    command: input.command ?? ((session, name, args) => runCommand(kernel, session, name, args)),
     get waits() {
       waits ??= createWaitRegistry(kernel);
 
@@ -557,16 +562,8 @@ export function createKernel(input: KernelOptions): Kernel {
     builtins: input.builtins ?? [],
     hostPlugins: input.hostPlugins ?? [],
     pluginSources: input.pluginSources ?? new Map(),
-    pluginsFor(session) {
-      const known = runtimes.get(session);
-
-      if (known !== undefined) return known;
-      const created = createPluginRuntime(kernel, session);
-      runtimes.set(session, created);
-      void activateSession(kernel, session);
-
-      return created;
-    },
+    pluginsFor: (session) => runtimes.get(session) ?? install(session, null),
+    reloadPlugins: (session) => install(session, runtimes.get(session) ?? null).ready,
     runtimes: () => runtimes,
     async closePlugins(session) {
       const runtime = runtimes.get(session);

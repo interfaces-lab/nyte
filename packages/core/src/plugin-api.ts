@@ -9,16 +9,19 @@ import { createPluginStorage } from "./plugin-storage.ts";
 import { CORE_CONTEXT } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { RegistrySet } from "./registry.ts";
-import { sessionHandle } from "./session.ts";
+import { activationSession, sessionHandle } from "./session.ts";
+import type { Session } from "./session.ts";
 
-const pluginContexts = new WeakMap<ConnectionContext, SessionId>();
-
-/** Returns the session whose plugin api a connection context belongs to, or undefined for any other context: how `ensureActivated` tells a plugin sending from its own session's activation (re-entrant, never waited on) from everyone else. */
-export function pluginSessionOf(context: ConnectionContext): SessionId | undefined {
-  return pluginContexts.get(context);
-}
-
-/** Returns one plugin's api in a session. `side` core; `sdk` a connection as a copy of `CORE_CONTEXT` (`LOCAL` with participant and owner authority, no maintenance) that `pluginSessionOf` maps to the session, and `session` the session handle over the same context; `contribute` the session's registries as this owner writes to them, emptied of its items when `signal` aborts (`registries.owned(owner, signal)`); `storage` `createPluginStorage` under the owner; `signal`; `hook` registers with `hooks` under the owner, removed when `signal` aborts; `report` hands the issue, its `source.plugin` set to the owner, to `report`; `reload` schedules a reload pass; `env` and `inputs` as resolved, a null one throwing `SdkError("unavailable")` when read; `wrapEnv` is `kernel.wrapEnv(session, wrap)`, removed when `signal` aborts; `request` is `kernel.request(session, input)`. */
+/**
+ * Returns one plugin's api in a session, as the session's activation constructs it: `side` core,
+ * `sdk` a connection as `CORE_CONTEXT`, and `session` the activation's own handle
+ * (`activationSession`), whose sends and commands do not wait on the activation (§44b). A send to
+ * the plugin's own session from `activate` must use `api.session`: `api.sdk` waits on `ready`,
+ * which waits on `activate`. `contribute`, `hook` and `wrapEnv` are undone when `signal` aborts;
+ * `storage` is under the owner and `report` tags each issue with it. `env` and `inputs` are as
+ * resolved, a null one throwing `SdkError("unavailable")` when read; `reload` schedules a reload
+ * pass and `request` is `kernel.request(session, input)`.
+ */
 export function createPluginApi(
   kernel: Kernel,
   input: {
@@ -47,13 +50,14 @@ export function createPluginApi(
 
   return build(kernel, {
     ...input,
+    handle: activationSession(kernel, CORE_CONTEXT, input.session),
     hook: (name, entry) => untilDeactivated(input.hooks.register(owner, name, entry)),
     report: (issue) => input.report({ ...issue, source: { ...issue.source, plugin: owner } }),
     reload: () => input.registries.reload(),
   });
 }
 
-/** Returns core's own minimal api in a session (§31f), what an ownerless part definition's action receives: `side` core, `sdk` and `session` over a copy of `CORE_CONTEXT` as `createPluginApi` builds them, `contribute` the session's registries (written as `core`), `storage` under owner `core`, a `signal` that never aborts, `hook`, `report` and `reload` no-ops, and `env`, `wrapEnv`, `inputs` and `request` as `createPluginApi` builds them. */
+/** Returns core's own minimal api in a session (§31f), what an ownerless part definition's action receives: `side` core, `sdk` and `session` (`sessionHandle`) as `CORE_CONTEXT`, `contribute` the session's registries (written as `core`), `storage` under owner `core`, a `signal` that never aborts, `hook`, `report` and `reload` no-ops, and `env`, `wrapEnv`, `inputs` and `request` as `createPluginApi` builds them. */
 export function corePluginApi(
   kernel: Kernel,
   input: {
@@ -65,6 +69,7 @@ export function corePluginApi(
 ): PluginApi<"core"> {
   return build(kernel, {
     ...input,
+    handle: sessionHandle(kernel, CORE_CONTEXT, input.session),
     owner: "core",
     signal: new AbortController().signal,
     hook: () => () => {},
@@ -101,12 +106,13 @@ export function stepPluginApi(
   };
 }
 
-/** Returns a core plugin api from what differs between a plugin's and core's own: the owner, its signal, and how `hook`, `report` and `reload` act. */
+/** Returns a core plugin api from what differs between a plugin's and core's own: the owner, its session handle, its signal, and how `hook`, `report` and `reload` act. */
 function build(
   kernel: Kernel,
   input: {
     readonly owner: string;
     readonly session: SessionId;
+    readonly handle: Session;
     readonly signal: AbortSignal;
     readonly registries: RegistrySet;
     readonly env: ExecutionEnv | null;
@@ -117,19 +123,17 @@ function build(
   },
 ): PluginApi<"core"> {
   const { owner, session, env, inputs } = input;
-  const context: ConnectionContext = { ...CORE_CONTEXT };
-  pluginContexts.set(context, session);
 
   return {
     side: "core",
-    sdk: createConnection(kernel, context),
+    sdk: createConnection(kernel, CORE_CONTEXT),
     contribute: input.registries.owned(owner, input.signal),
     storage: createPluginStorage(kernel, { owner, session }),
     signal: input.signal,
     hook: input.hook,
     report: (issue) => input.report(issue),
     reload: () => input.reload(),
-    session: sessionHandle(kernel, context, session),
+    session: input.handle,
     get env() {
       if (env === null)
         throw new SdkError("unavailable", `Session ${session} has no environment attached.`);

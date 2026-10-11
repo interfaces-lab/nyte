@@ -15,6 +15,7 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import { landing } from "./admission.ts";
+import { dev } from "./dev-log.ts";
 import { listSessions } from "./directory.ts";
 import type { FoldInput } from "./fold.ts";
 import type { Kernel, LandedInput } from "./kernel.ts";
@@ -41,7 +42,6 @@ import type { Found } from "./session-state.ts";
 import { drivenBy } from "./driving.ts";
 import { executeCall, owedCalls } from "./tool-runner.ts";
 import { loadWaits } from "./wait-registry.ts";
-import { ensureActivated } from "./workspaces.ts";
 
 const LEASE_MS = 30_000;
 
@@ -119,7 +119,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head: activates a session this process has not loaded yet (§36c), claims or renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. A head this instance is already stepping answers `busy` until its own lease expires and releases nothing (§42y). The lease it claims is owned by the open covers of its session; the advance releases it in `finally` when its turn ends by abort, a throw or any report but `continue`, and `continue` keeps it for the drive to go on at once, unless no open cover owns it any more, when it is released too (§42ac). */
+/** Runs one leased kernel step on a head: awaits the session's activation in this process (its runtime's `ready`, §36c, §44a), claims or renews the lease, re-runs the live run's tool calls whose waits completed or whose host died mid-call, lands due inputs, runs a turn when one is owed, and reports what comes next: `waiting` until the head's next timer or deadline while a call is parked. A head this instance is already stepping answers `busy` until its own lease expires and releases nothing (§42y). The lease it claims is owned by the open covers of its session; the advance releases it in `finally` when its turn ends by abort, a throw or any report but `continue`, and `continue` keeps it for the drive to go on at once, unless no open cover owns it any more, when it is released too (§42ac). */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
@@ -139,7 +139,7 @@ export async function advance(
 
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
-    await ensureActivated(kernel, session);
+    await kernel.pluginsFor(session).ready;
     const refused = await claim(kernel, session, head);
 
     if (refused !== null) return refused;
@@ -150,6 +150,7 @@ export async function advance(
       if (await covers(kernel, coverage, session)) owners?.add(handle);
 
     report = await step(kernel, session, head);
+    dev("execution", "advance", { session, head, report: report.kind });
 
     return report;
   } finally {
@@ -206,6 +207,7 @@ export async function repair(
   }
 
   for (const entry of runnable) dispatchHead(kernel, entry.session, entry.head);
+  dev("execution", "repair", { sessions: page.items.length, runnable: runnable.length });
 
   return { runnable, next: page.next };
 }
@@ -363,6 +365,8 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
 
 /** Renews the leases open cover handles own; a lease only an advance holds is renewed by its drive. */
 async function renew(kernel: Kernel): Promise<void> {
+  dev("execution", "renew", { held: leasesOf(kernel).held.size });
+
   for (const entry of Array.from(leasesOf(kernel).held.values()))
     if (entry.owners.size > 0) await claim(kernel, entry.session, entry.head);
 }
@@ -419,6 +423,8 @@ async function claimNow(
     },
   ]);
 
+  dev("execution", "claim", { session, head, outcome: outcome.kind });
+
   if (outcome.kind === "stale") {
     held.delete(name);
 
@@ -443,6 +449,7 @@ async function releaseNow(kernel: Kernel, session: SessionId, head: HeadName): P
 
   if (mine === undefined) return;
   held.delete(name);
+  dev("execution", "release", { session, head });
   await commit(kernel, [{ name, target: null, expect: mine }]);
 }
 

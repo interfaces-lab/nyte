@@ -556,7 +556,14 @@ export type HookEntry<S extends Side, N extends HookName<S>> =
 export type PluginApi<S extends Side> = S extends Side
   ? {
       readonly side: S;
-      /** Core: the host; client: the app's own connection. */
+      /**
+       * Core: the host; client: the app's own connection.
+       *
+       * **Gotchas**
+       *
+       * On core, a send to the plugin's own session from `activate` goes through `api.session`:
+       * through `sdk` it waits on that session's activation, which is waiting on `activate`.
+       */
       readonly sdk: Connection;
       /** One registry per contribution kind on this side. */
       readonly contribute: Registries<S>;

@@ -16,7 +16,9 @@ import type {
   Submission,
   UserContent,
 } from "@nyte-ai/schema";
+import { contributionsOf } from "./configuration.ts";
 import { objectId } from "./content.ts";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import type { ConnectionContext } from "./principals.ts";
@@ -49,9 +51,8 @@ import {
   writeReceipt,
 } from "./session-state.ts";
 import type { Inbox, Tip } from "./session-state.ts";
-import { ensureActivated } from "./workspaces.ts";
 
-/** Returns one send as admission sees it: where it goes, who sends it, what, and the head's stored selection. */
+/** Returns one send as admission sees it: where it goes, who sends it, what, the head's stored selection, and what `before_send` waits on first. */
 interface Sending {
   readonly kernel: Kernel;
   readonly session: SessionId;
@@ -60,20 +61,35 @@ interface Sending {
   readonly content: UserContent;
   readonly options: SendOptions;
   readonly selected: Configuration | null;
+  /** Resolves once the session's plugins may gate the send: its runtime's `ready` for `send`, at once for `sendNow` (§44a, b). */
+  activated(): Promise<void>;
 }
+
+/** Returns what a send names: the session, head, sending connection, content and options. */
+type SendInput = {
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly context: ConnectionContext;
+  readonly content: UserContent;
+  readonly options?: SendOptions;
+};
 
 const USER: MessageSource = { kind: "user" };
 
-/** Admits user content to a head for a connection and returns its receipt: replays a known id, waits for the session's activation in this process (`ensureActivated`, §37j; not for a plugin of the session sending from its own activation), runs `before_send` with the context's principal and origin run, resolves the configuration, schedules, and publishes `input admitted` in one set, then wakes the head's `untilInput` waits when the user sent it; a `replace` revises a pending input in place or edits a landed one (stop, move, admit) in one set. */
-export async function send(
+/** Admits user content to a head for a connection and returns its receipt: replays a known id, waits for the session's activation in this process (`await kernel.pluginsFor(session).ready`, §44a), runs `before_send` with the context's principal and origin run, resolves the configuration, schedules, and publishes `input admitted` in one set, then wakes the head's `untilInput` waits when the user sent it; a `replace` revises a pending input in place or edits a landed one (stop, move, admit) in one set. */
+export function send(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
+  return sendAfter(kernel, input, () => kernel.pluginsFor(input.session).ready);
+}
+
+/** Admits as `send` does without waiting on the session's activation: the send path of the api a session's activation constructs, which a plugin calls from its own `activate` while that activation waits on it, and of a command's prompt, whose caller awaited the activation or is it (§44b). */
+export function sendNow(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
+  return sendAfter(kernel, input, async () => undefined);
+}
+
+async function sendAfter(
   kernel: Kernel,
-  input: {
-    readonly session: SessionId;
-    readonly head: HeadName;
-    readonly context: ConnectionContext;
-    readonly content: UserContent;
-    readonly options?: SendOptions;
-  },
+  input: SendInput,
+  activated: () => Promise<void>,
 ): Promise<SendReceipt> {
   const found = await requireSession(kernel, input.session);
   const head = found.record.heads.find((entry) => entry.name === input.head);
@@ -89,6 +105,7 @@ export async function send(
     content: input.content,
     options: input.options ?? {},
     selected: head.selected,
+    activated,
   };
 
   const target = sending.options.replace;
@@ -205,6 +222,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   const replayed = await replay(kernel, session, id, digest);
 
   if (replayed !== null) return replayed;
+  dev("admission", "send", { session, head, receipt: id });
 
   const submission = await gate(sending, asId<"message">(id), {
     content: sending.content,
@@ -250,6 +268,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
       kernel.wakes.notify(session, head);
 
     if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
+    dev("admission", "admitted", { session, head, message: message.id, covered });
 
     return sendReceipt(kernel, session, id);
   });
@@ -331,6 +350,7 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
 
     if (run === null && message.delivery !== "attach" && covered)
       kernel.wakes.notify(session, head);
+    dev("admission", "revised", { session, head, message: target });
 
     return sendReceipt(kernel, session, id);
   });
@@ -440,6 +460,8 @@ async function edit(sending: Sending, target: MessageId): Promise<SendReceipt> {
       await pendingReceipt(kernel, session, id, digest, "absent"),
     ]);
 
+    dev("admission", "edit", { session, head, target, outcome: outcome.kind });
+
     if (outcome.kind === "set") return { receipt: sendReceipt(kernel, session, id), stopped };
 
     if (outcome.name !== receiptRef(session, id)) return STALE;
@@ -539,7 +561,7 @@ async function gate(
   message: MessageId,
   submission: Submission,
 ): Promise<Submission> {
-  await ensureActivated(sending.kernel, sending.session, sending.context);
+  await sending.activated();
 
   const decision = await sending.kernel.admit(submission, {
     session: sending.session,
@@ -555,6 +577,8 @@ async function gate(
     case "modify":
       return decision.value;
     case "reject":
+      dev("admission", "refused", { session: sending.session, message });
+
       throw new SdkError("invalid", decision.reason);
     case "error":
       throw new SdkError("internal", decision.message);
@@ -570,6 +594,7 @@ async function resolve(
     head: sending.head,
     selected: sending.selected,
     patch,
+    contributions: contributionsOf(sending.kernel.pluginsFor(sending.session)),
   });
 
   if (result.kind === "exact") return result;

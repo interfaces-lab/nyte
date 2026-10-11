@@ -282,6 +282,53 @@ describe("turn", () => {
     expect(settledText((await session.view()).messages)).toEqual(["Rested."]);
   });
 
+  it("runs each request's hooks on the session's current runtime: a reload between two requests of one run takes effect", async () => {
+    const fake = fakeModels();
+    const seen: number[] = [];
+    let activations = 0;
+    let reload = async (): Promise<void> => undefined;
+
+    const reloading: ToolDefinition<Infer<typeof nothing>> = {
+      name: "reload",
+      description: "Reload the session's plugins.",
+      parameters: nothing,
+      class: () => ({ kind: "custom", label: "Reloading" }),
+      replay: "safe",
+      async execute() {
+        await reload();
+
+        return { content: [{ kind: "text", text: "reloaded" }] };
+      },
+    };
+
+    const counted: Plugin<"core"> = {
+      id: "counted",
+      contribute: { tools: [reloading] },
+      activate(api) {
+        activations += 1;
+        const activation = activations;
+
+        api.hook("before_request", (request) => {
+          seen.push(activation);
+
+          return request;
+        });
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "call-1", name: "reload", arguments: {} }] },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+
+    await using host = await open(fake, { plugins: [counted] });
+    const session = await host.sessions.create();
+    reload = () => host.kernel.reloadPlugins(session.id);
+
+    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    expect(seen).toEqual([1, 2]);
+  });
+
   it("namespaces call ids by run and response, replays the provider's own ids, and leaves nested calls out", async () => {
     const fake = fakeModels();
     const gated: string[] = [];

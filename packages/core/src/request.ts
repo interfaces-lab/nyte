@@ -13,6 +13,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { jsonSchemaOf } from "./catalog.ts";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import { check } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
@@ -67,6 +68,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
             .join("\n\n");
 
     const started = Date.now();
+    dev("request", "start", { session, model: input.model.id, thinking });
 
     const message = await retryAssistantCall(
       () =>
@@ -84,9 +86,11 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
         ),
       RETRY_POLICY,
       input.signal,
+      { onRetryScheduled: (attempt, _max, ms) => dev("request", "retry", { attempt, ms }) },
     );
 
     const usage = usageOf(message, info);
+    dev("request", "end", { session, stop: message.stopReason, tokens: usage.total });
 
     void kernel
       .runtimes()
@@ -102,8 +106,11 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
 
     if (refusal !== null) return { kind: "refused", reason: refusal };
 
-    if (message.stopReason === "error" || message.stopReason === "aborted")
+    if (message.stopReason === "error" || message.stopReason === "aborted") {
+      dev("request", "failed", { session, class: classifyAssistantFailure(message).class });
+
       return { kind: "failed", failure: classifyAssistantFailure(message) };
+    }
 
     const stop = message.stopReason === "length" ? "length" : "end";
     const text = textOf(message);
