@@ -25,7 +25,7 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   protobufjs: false
-  react-native-enriched-markdown@1.0.2: true
+  react-native-enriched-markdown@1.2.0-nightly-20261011-678a5a99a: true
   workerd: true
   core-js-pure: false
 minimumReleaseAge: 0
