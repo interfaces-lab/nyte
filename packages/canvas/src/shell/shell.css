@@ -1,0 +1,48 @@
+/*
+ * The shell's resets, in a `base` layer pinned below StyleX's priority
+ * layers; `index.html` declares `base` first so the order holds whichever
+ * sheet loads first. The page is transparent: it sits on the chat's
+ * background, and its own scrollbar stays hidden because the client fits the
+ * frame to the reported height until the cap.
+ */
+@layer base, priority1, priority2, priority3, priority4, priority5, priority6;
+
+@layer base {
+  html {
+    background: transparent;
+    color: var(--nyte-content-primary);
+    font-family: var(--nyte-font-family-sans);
+    font-size: var(--nyte-font-size-base);
+    line-height: var(--nyte-line-height-base);
+    font-weight: 400;
+    font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
+    font-synthesis: none;
+    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
+    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar {
+    display: none;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  a {
+    color: var(--nyte-content-interactive-primary);
+    text-decoration-color: var(--nyte-border-strong);
+    text-underline-offset: 2px;
+  }
+
+  :where(:focus-visible) {
+    outline: 2px solid var(--nyte-focus-ring);
+    outline-offset: -2px;
+  }
+}
