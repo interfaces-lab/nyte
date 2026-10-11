@@ -2,7 +2,6 @@ import { Box, Text } from "@opentui/core";
 import type { VNode } from "@opentui/core";
 import { branchSummary, compaction, text, thinking, tool } from "@nyte-ai/core";
 import type { Renderer } from "@nyte-ai/core";
-import { canvas } from "../canvas.ts";
 import type { Plugin } from "../client.ts";
 import { question } from "../question.ts";
 import { view } from "./view.ts";
@@ -12,8 +11,7 @@ const unreadable = (kind: string): VNode => Text({ content: `This ${kind} part c
 
 /**
  * Renderers for the terminal client, as OpenTUI nodes: the five built-in
- * part kinds, `ask/question` and `canvas`. A click on a question's choice
- * answers it; a click on the canvas's add line draws a box.
+ * part kinds and `ask/question`. A click on a question's choice answers it.
  *
  * @category plugins
  * @since 0.1.0
@@ -34,8 +32,19 @@ export const tuiRenderers: readonly Renderer[] = [
       ),
     unreadable,
   ),
-  view(compaction, "tui", (state) => Text({ content: state.summary ?? `Context compacted at ${state.tokensBefore} tokens.` }), unreadable),
-  view(branchSummary, "tui", (state) => Text({ content: `Branch summary: ${state.markdown}` }), unreadable),
+  view(
+    compaction,
+    "tui",
+    (state) =>
+      Text({ content: state.summary ?? `Context compacted at ${state.tokensBefore} tokens.` }),
+    unreadable,
+  ),
+  view(
+    branchSummary,
+    "tui",
+    (state) => Text({ content: `Branch summary: ${state.markdown}` }),
+    unreadable,
+  ),
   view(
     question,
     "tui",
@@ -43,24 +52,11 @@ export const tuiRenderers: readonly Renderer[] = [
       Box(
         { border: true, title: state.prompt, flexDirection: "column" },
         ...state.options.map((choice, index) =>
-          Text({ content: `${index + 1}. ${choice}`, onMouseDown: () => void act("answer", { choice }) }),
+          Text({
+            content: `${index + 1}. ${choice}`,
+            onMouseDown: () => void act("answer", { choice }),
+          }),
         ),
-      ),
-    unreadable,
-  ),
-  view(
-    canvas,
-    "tui",
-    (state, act) =>
-      Box(
-        { border: true, title: "Canvas", flexDirection: "column" },
-        ...state.shapes.map((shape) =>
-          Text({ content: `${shape.kind} at ${shape.x},${shape.y} ${shape.width}×${shape.height}${shape.label === undefined ? "" : ` ${shape.label}`}` }),
-        ),
-        Text({
-          content: "[add box]",
-          onMouseDown: () => void act("draw", { shapes: [{ kind: "rect", x: 10 * (state.shapes.length % 9), y: 10, width: 10, height: 10 }] }),
-        }),
       ),
     unreadable,
   ),

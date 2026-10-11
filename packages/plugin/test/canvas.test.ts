@@ -1,58 +1,134 @@
-import { memoryStore } from "@nyte-ai/core";
+import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
-import canvas from "../src/canvas.ts";
+import canvasPlugin, { CANVAS_DESCRIPTION, canvas } from "../src/canvas.ts";
+import { KIT_EXPORTS, KIT_SPECIFIER } from "../src/canvas-protocol.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
-const box = { kind: "rect", x: 0, y: 0, width: 10, height: 10, label: "box" } as const;
+const first = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>1</Text>;`;
 
-const circle = { kind: "ellipse", x: 5, y: 5, width: 4, height: 4 } as const;
+const second = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>2</Text>;`;
 
-const line = { kind: "line", x: 0, y: 0, width: 10, height: 0, label: "edge" } as const;
-
-it("draws a new canvas from the tool, then adds shapes through its draw action, by a person and by the tool", async () => {
+it("renders a canvas from the tool as an answer part, then replaces it in place and takes a client's error report", async () => {
   const fake = fakeModels();
 
   fake.reply(
-    { content: [{ type: "toolCall", id: "d1", name: "canvas_draw", arguments: { shapes: [box] } }] },
-    { content: [{ type: "text", text: "Drawn." }] },
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "r1",
+          name: "canvas_render",
+          arguments: { title: "Totals", source: first, height: 120 },
+        },
+      ],
+    },
+    { content: [{ type: "text", text: "Rendered." }] },
   );
 
-  await using host = await open(fake, [canvas]);
+  await using host = await open(fake, [canvasPlugin]);
   const session = await host.sessions.create();
-  await (await session.send("Draw a box.")).settled();
+  await (await session.send("Show totals.")).settled();
 
-  const drawn = await until(async () => (await session.view()).parts.find((part) => part.partKind === "canvas"));
+  const drawn = await until(async () =>
+    (await session.view()).messages.find((message) => isPart(message, canvas)),
+  );
 
-  expect(drawn).toMatchObject({ placement: { kind: "panel" }, state: { shapes: [box] }, owner: "canvas" });
-  expect(await session.part(drawn.id).act("draw", { shapes: [circle] })).toEqual({ kind: "ok", output: undefined });
+  expect(drawn).toMatchObject({
+    role: "answer",
+    state: { runtime: 1, title: "Totals", height: 120, error: null },
+  });
+  expect(drawn.state.code).toContain("const { Text } = globalThis.__nyteCanvas.kit;");
+  expect(drawn.state.code).toContain("export default");
+  expect(
+    canvas.fallback(
+      { runtime: 1, title: "Totals", code: "", height: null, error: null },
+      { id: drawn.part },
+    ),
+  ).toBe(`Canvas ${drawn.part}: Totals.`);
+
+  expect(
+    await session.part(drawn.part).act("report", { message: "View is not a function" }),
+  ).toEqual({ kind: "ok", output: undefined });
+  expect(
+    (await session.view()).messages.find(
+      (message) => message.kind === "part" && message.part === drawn.part,
+    ),
+  ).toMatchObject({ state: { error: "View is not a function" } });
+  expect(
+    canvas.fallback(
+      { runtime: 1, title: "Totals", code: "", height: null, error: "View is not a function" },
+      { id: drawn.part },
+    ),
+  ).toBe(`Canvas ${drawn.part}: Totals. It failed to render: View is not a function`);
 
   fake.reply(
-    { content: [{ type: "toolCall", id: "d2", name: "canvas_draw", arguments: { canvas: drawn.id, shapes: [line] } }] },
-    { content: [{ type: "text", text: "Added." }] },
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "r2",
+          name: "canvas_render",
+          arguments: { title: "Totals by month", source: second, canvas: drawn.part },
+        },
+      ],
+    },
+    { content: [{ type: "text", text: "Replaced." }] },
   );
-  await (await session.send("Add an edge.")).settled();
+  await (await session.send("By month.")).settled();
 
-  const after = (await session.view()).parts.find((part) => part.id === drawn.id);
+  const after = (await session.view()).messages.find(
+    (message) => message.kind === "part" && message.part === drawn.part,
+  );
 
-  expect(after).toMatchObject({ state: { shapes: [box, circle, line] }, version: 3 });
+  expect(after).toMatchObject({
+    state: { title: "Totals by month", height: null, error: null },
+    version: 3,
+  });
+  expect(after !== undefined && isPart(after, canvas) ? after.state.code : "").toContain('"2"');
+  expect((await session.view()).messages.filter((message) => isPart(message, canvas))).toHaveLength(
+    1,
+  );
 });
 
-it("draws on a canvas from a cold host sharing the store, which resolves the canvas's owner (§48h)", async () => {
-  const store = memoryStore();
+it("answers the model with the compiler's diagnostics, positioned per line, and creates no part", async () => {
   const fake = fakeModels();
 
   fake.reply(
-    { content: [{ type: "toolCall", id: "d1", name: "canvas_draw", arguments: { shapes: [box] } }] },
-    { content: [{ type: "text", text: "Drawn." }] },
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "r1",
+          name: "canvas_render",
+          arguments: {
+            title: "Broken",
+            source: `import { Nope } from "${KIT_SPECIFIER}";\nexport const a = <Nope />;`,
+          },
+        },
+      ],
+    },
+    { content: [{ type: "text", text: "Fixing." }] },
   );
 
-  await using warm = await open(fake, [canvas], { store });
-  const session = await warm.sessions.create();
-  await (await session.send("Draw a box.")).settled();
-  const drawn = await until(async () => (await session.view()).parts.find((part) => part.partKind === "canvas"));
+  await using host = await open(fake, [canvasPlugin]);
+  const session = await host.sessions.create();
+  await (await session.send("Show it.")).settled();
 
-  await using cold = await open(fakeModels(), [canvas], { store, execution: { kind: "admit-only" } });
+  const view = await session.view();
 
-  expect(await cold.session(session.id).part(drawn.id).act("draw", { shapes: [circle] })).toEqual({ kind: "ok", output: undefined });
-  expect((await cold.session(session.id).view()).parts.find((part) => part.id === drawn.id)).toMatchObject({ state: { shapes: [box, circle] } });
+  expect(view.messages.filter((message) => isPart(message, canvas))).toEqual([]);
+  const result = fake.requests
+    .at(-1)
+    ?.context.messages.find((message) => message.role === "toolResult");
+
+  expect(JSON.stringify(result)).toContain(
+    `The canvas did not compile:\\ncanvas.tsx:1:0 \\"${KIT_SPECIFIER}\\" has no export named \\"Nope\\".\\nThe module must \`export default\` a component.`,
+  );
+});
+
+it("describes the tool with every kit export and the two imports", () => {
+  expect(CANVAS_DESCRIPTION).toContain(`\`react\` and \`${KIT_SPECIFIER}\``);
+  expect(CANVAS_DESCRIPTION).toContain("`eval` and `new Function` are unavailable");
+
+  for (const name of KIT_EXPORTS) expect(CANVAS_DESCRIPTION).toContain(`- ${name} `);
 });

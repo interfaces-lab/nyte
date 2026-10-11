@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 import reactPlugin, { reactRenderers } from "../src/renderers/react.tsx";
 import tuiPlugin, { tuiRenderers } from "../src/renderers/tui.ts";
 
-const call = { call: "c1", name: "bash", args: { command: "ls" }, class: { kind: "shell", command: "ls" } };
+const call = {
+  call: "c1",
+  name: "bash",
+  args: { command: "ls" },
+  class: { kind: "shell", command: "ls" },
+};
 
 /** One valid state per kind the renderers draw. */
 const states: Readonly<Record<string, Json>> = {
@@ -16,7 +21,6 @@ const states: Readonly<Record<string, Json>> = {
   compaction: { summary: "Earlier work.", material: null, tokensBefore: 90_000, usage: null },
   branchSummary: { markdown: "Tried another parser." },
   "ask/question": { prompt: "Deploy?", options: ["yes", "no"] },
-  canvas: { shapes: [{ kind: "rect", x: 0, y: 0, width: 10, height: 10 }] },
 };
 
 /** Returns an `act` that records each call and answers closed. */
@@ -55,28 +59,51 @@ function press(node: unknown): void {
 }
 
 /** Renders a kind's sample state through the renderer for it. */
-function draw(renderers: readonly Renderer[], kind: string, act: Part<PartDefinition>["act"], state: Json | undefined = states[kind]): unknown {
+function draw(
+  renderers: readonly Renderer[],
+  kind: string,
+  act: Part<PartDefinition>["act"],
+  state: Json | undefined = states[kind],
+): unknown {
   const renderer = renderers.find((candidate) => candidate.kind.kind === kind);
 
   if (renderer === undefined) throw new Error(`No renderer for ${kind}.`);
 
-  return renderer.render({ state, version: 1, placement: { kind: "transcript", role: "answer" } }, act);
+  return renderer.render(
+    { state, version: 1, placement: { kind: "transcript", role: "answer" } },
+    act,
+  );
 }
 
 describe.each([
-  { framework: "react", renderers: reactRenderers, plugin: reactPlugin, isView: (value: unknown) => isValidElement(value) },
-  { framework: "tui", renderers: tuiRenderers, plugin: tuiPlugin, isView: (value: unknown) => isVNode(value) },
+  {
+    framework: "react",
+    renderers: reactRenderers,
+    plugin: reactPlugin,
+    isView: (value: unknown) => isValidElement(value),
+  },
+  {
+    framework: "tui",
+    renderers: tuiRenderers,
+    plugin: tuiPlugin,
+    isView: (value: unknown) => isVNode(value),
+  },
 ])("$framework renderers", ({ framework, renderers, plugin, isView }) => {
   it("render a view for every kind, and an unreadable note for a state the schema rejects", () => {
     expect(plugin.contribute.renderers).toBe(renderers);
-    expect(renderers.map((renderer) => [renderer.kind.kind, renderer.framework])).toEqual(Object.keys(states).map((kind) => [kind, framework]));
+    expect(renderers.map((renderer) => [renderer.kind.kind, renderer.framework])).toEqual(
+      Object.keys(states).map((kind) => [kind, framework]),
+    );
 
-    for (const kind of Object.keys(states)) expect(isView(draw(renderers, kind, recorder().act))).toBe(true);
+    for (const kind of Object.keys(states))
+      expect(isView(draw(renderers, kind, recorder().act))).toBe(true);
 
-    expect(JSON.stringify(draw(renderers, "ask/question", recorder().act, { prompt: 1 }))).toContain("cannot be shown");
+    expect(
+      JSON.stringify(draw(renderers, "ask/question", recorder().act, { prompt: 1 })),
+    ).toContain("cannot be shown");
   });
 
-  it("wire act: a question's choices answer it, the canvas draws a box, a running tool stops", () => {
+  it("wire act: a question's choices answer it, a running tool stops", () => {
     const question = recorder();
     press(draw(renderers, "ask/question", question.act));
 
@@ -84,11 +111,6 @@ describe.each([
       { action: "answer", input: { choice: "yes" } },
       { action: "answer", input: { choice: "no" } },
     ]);
-
-    const canvas = recorder();
-    press(draw(renderers, "canvas", canvas.act));
-
-    expect(canvas.acted).toEqual([{ action: "draw", input: { shapes: [{ kind: "rect", x: 10, y: 10, width: 10, height: 10 }] } }]);
 
     const running = recorder();
     press(draw(renderers, "tool", running.act));
