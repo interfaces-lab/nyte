@@ -45,6 +45,7 @@ export const CapabilityWireType = Type.Union([
 
 /** The TypeBox schema of an `IdentityChallenge`. */
 export const IdentityChallengeType = Type.Object({
+  hostId: idSchema<"host">(),
   nonce: Type.String(),
   signature: Type.String(),
   publicKey: Type.String(),

@@ -472,7 +472,12 @@ describe("listen", () => {
         sign: async (nonce) => {
           signed.push(nonce);
 
-          return { nonce, signature: `signed:${nonce}`, publicKey: "key" };
+          return {
+            hostId: asId("elsewhere"),
+            nonce,
+            signature: `signed:${nonce}`,
+            publicKey: "key",
+          };
         },
       },
       describe: () => ({ name: "desk", platform: "darwin", version: "1.2.3" }),
@@ -489,11 +494,14 @@ describe("listen", () => {
     );
 
     expect(await identity.json()).toEqual({
+      hostId: host.hostId,
       nonce: "n1",
       signature: "signed:n1",
       publicKey: "key",
     });
     expect(identity.headers.get("Access-Control-Allow-Origin")).toBe("https://app.nyte.dev");
+    expect(identity.headers.get("X-Nyte-Host")).toBe(host.hostId);
+    expect(identity.headers.get("Access-Control-Expose-Headers")).toContain("X-Nyte-Host");
     expect(signed).toEqual(["n1"]);
     expect((await listener.fetch(new Request("http://host.test/.nyte/identity"))).status).toBe(404);
     expect(

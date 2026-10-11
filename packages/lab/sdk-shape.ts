@@ -975,6 +975,16 @@ interface Host extends Connection {
 }
 
 /**
+ * Returns a host's answer to `GET /.nyte/identity?nonce=`, so a client can
+ * pin it: the host's id, the nonce, an Ed25519 signature over
+ * `nyte/identity\n<hostId>\n<nonce>` and the raw public key, both base64url.
+ *
+ * @category host
+ * @since 0.1.0
+ */
+type IdentityChallenge = { readonly hostId: HostId; readonly nonce: string; readonly signature: string; readonly publicKey: string };
+
+/**
  * Describes how a host listens: transport, authentication, execution and
  * request limits.
  *

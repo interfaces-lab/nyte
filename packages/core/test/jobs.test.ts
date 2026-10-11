@@ -1,17 +1,19 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import {
   LOCAL,
   callRef,
   createHost,
   decodeCallRecord,
   jobHandle,
+  loadWaits,
+  memoryStore,
   runStep,
   viewHead,
 } from "../src/index.ts";
 import type { ConnectionContext, Durable, Kernel } from "../src/index.ts";
-import { kernelOver, world } from "./fake-env.ts";
+import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
 import { main, until } from "./harness.ts";
 
@@ -21,6 +23,13 @@ const caller: ConnectionContext = {
   credential: { kind: "token", token: "x" },
   origin: null,
 };
+
+/** Returns a call's record as the store holds it. */
+async function readCall(kernel: Kernel, session: SessionId, call: CallId) {
+  const ref = await kernel.store.refs.get(callRef(session, call));
+
+  return decodeCallRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
+}
 
 /** Returns the process the provider started `count`-th, once it has. */
 function started(processes: readonly Process[], count: number): Promise<Process> {
@@ -310,5 +319,82 @@ describe("jobs", () => {
     await expect(lost.write(new Uint8Array(1))).rejects.toMatchObject({ code: "unknown" });
     expect(await fresh.workspace(workspace).jobs.list()).toEqual([]);
     expect(jobHandle(second, caller, job.id).key).toBeNull();
+  });
+
+  it("keeps a job end the store refuses for repair: no unhandled rejection, the call still waiting", async () => {
+    const inner = await memoryStore().open();
+    let refusing = false;
+
+    const store = {
+      ...inner,
+      refs: {
+        ...inner.refs,
+        set: (updates: Parameters<typeof inner.refs.set>[0]) =>
+          refusing ? Promise.reject(new Error("The store went away.")) : inner.refs.set(updates),
+      },
+    };
+
+    const disk = createDisk();
+    disk.directories.add("/work/project");
+    const provider = fakeProvider(disk);
+    const kernel = kernelOver(store, provider);
+    const host = createHost(kernel, { credential: { kind: "token", token: "x" } });
+    const workspace = await addWorkspace(host);
+    const session = await host.sessions.create({ workspace });
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const call: CallId = asId("c1");
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+
+    expect(
+      await parkOn(
+        kernel,
+        session.id,
+        call,
+        async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
+      ),
+    ).toEqual({ kind: "parked" });
+
+    refusing = true;
+    (await started(provider.processes, 1)).exit(2);
+    await job.settled();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    refusing = false;
+    process.off("unhandledRejection", unhandled);
+
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(await readCall(kernel, session.id, call)).toMatchObject({
+      waiting: { kind: "job", job: job.id },
+      waits: [],
+    });
+  });
+
+  it("settles a wait on a job this instance does not hold as lost when another kernel loads it", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const session = await host.sessions.create({ workspace });
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const call: CallId = asId("c1");
+
+    await parkOn(
+      kernel,
+      session.id,
+      call,
+      async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
+    );
+
+    const second = kernelOver(kernel.store, provider);
+    const woken: string[] = [];
+    second.wakes.subscribe((woke, head) => woken.push(`${woke}/${head}`));
+    await loadWaits(second);
+
+    expect(await readCall(second, session.id, call)).toMatchObject({
+      waiting: null,
+      waits: [{ kind: "job", job: job.id, end: { kind: "lost" } }],
+    });
+    expect(woken).toEqual([`${session.id}/${main}`]);
   });
 });

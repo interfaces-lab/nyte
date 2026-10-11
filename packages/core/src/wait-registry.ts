@@ -27,6 +27,9 @@ import { endOf } from "./runs.ts";
 import { changeCall, load, put, readCall, runWaiting } from "./session-state.ts";
 import type { CallChange } from "./session-state.ts";
 
+/** How a job this instance does not hold ends for a wait on it: its process went with another instance or a previous one (§42w, §43k). */
+const LOST: JobEnd = { kind: "lost" };
+
 /** Returns one parked durable wait: the step's call, where it runs (`head` null for an action or hook outside a head), and the whole target or combination it waits on. */
 export interface ParkedWait {
   readonly session: SessionId;
@@ -38,7 +41,7 @@ export interface ParkedWait {
 
 /** Holds the durable waits parked in this process, by what wakes them. Each wake method finds the parked entries the event settles and records the outcome in their call record. A per-target outcome of a pending `all` fills its slot in `CallRecord.partial` and shows the next unsettled target with `call waiting` and `run waiting`. A step whose wait completes (`all` once every slot is filled, `any` and a single target on the first outcome, or a deadline, an input or a stop) gets its `WaitOutcome` appended to `CallRecord.waits` with `waiting` cleared, and its run leaves `waiting` with `run phase executing` in the same set, unless another of the run's calls is still parked. Then `kernel.wakes.notify(session, head)` runs, so `advance` re-runs the step. Each method resolves whether a step woke, a filled slot alone not being a wake, except `runEnded` and `jobEnded`, which resolve whether a wait consumed the end, a filled slot included. A head-less entry notifies no head; its step re-runs through the act that runs it. */
 export interface WaitRegistry {
-  /** Parks a step on its target; a target that already has its outcome (a run ended, a part answered in this process or closed, a job this registry saw end, a timer or deadline passed) settles at once. */
+  /** Parks a step on its target; a target that already has its outcome (a run ended, a part answered in this process or closed, a job this registry saw end, a timer or deadline passed) settles at once. A job this instance's table does not hold settles `lost` (§42w, §43k): after a restart, or on another instance, its process is gone. */
   park(entry: ParkedWait): Promise<void>;
   /** Wakes the waits on a run that ended, with `run { end }`, and resolves whether a wait consumed the end: a step woke or a pending `all` filled its slot. `endRun` hands the answer to the child report, so a consumed end attaches no report. */
   runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
@@ -271,9 +274,9 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       }
 
       case "job": {
-        const end = jobs.get(target.job);
+        const state = jobs.get(target.job) ?? kernel.jobs.get(target.job)?.view.state ?? LOST;
 
-        return end === undefined ? null : { kind: "job", job: target.job, end };
+        return state.kind === "running" ? null : { kind: "job", job: target.job, end: state };
       }
 
       case "timer":

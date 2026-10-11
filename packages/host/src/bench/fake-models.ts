@@ -183,7 +183,7 @@ export function fakeModels(input?: {
 
     const reply: Reply =
       next === undefined
-        ? { error: "No reply was scripted for this request." }
+        ? (input?.fallback ?? { error: "No reply was scripted for this request." })
         : typeof next === "function"
           ? next(request)
           : next;
@@ -237,7 +237,50 @@ export interface FakeModel {
 
 /** Returns the bench's `FakeModel` over `fake`, which the bench makes with a `fallback` of one short text (what an unscripted request answers): `ref` the provider's first model; `script(turn)` queues one reply streaming `turn.text` in `turn.tokens` deltas (no text block when the text is empty) followed by a `toolCall` block per `turn.tools` entry (ids `bench-<n>`, counted across the model's life), and, when `turn.tools` is non-empty and `turn.after` is set, a second reply streaming `after` as one text block for the request that carries their results. Every scripted reply taps its stream: `pauseAfter(count)` arms one gate, and the first response to stream a text delta at or past `count` (one streaming already, or a later one; with two streaming, whichever gets there first) holds after that delta, resolves the promise, and stays held until `release()`; `release()` with no response held does nothing. */
 export function scriptedModel(fake: FakeModels): FakeModel {
-  throw new Error("not implemented");
+  const [first] = fake.provider.getModels();
+
+  if (first === undefined) throw new Error("The bench provider has no model.");
+  let calls = 0;
+  let gate: { readonly count: number; readonly reached: PromiseWithResolvers<void> } | null = null;
+  let held: PromiseWithResolvers<void> | null = null;
+
+  const tap = async (streamed: number): Promise<void> => {
+    if (gate === null || streamed < gate.count) return;
+    const armed = gate;
+    gate = null;
+    const hold = Promise.withResolvers<void>();
+    held = hold;
+    armed.reached.resolve();
+    await hold.promise;
+  };
+
+  return {
+    ref: { provider: fake.provider.id, id: first.id },
+    script(turn) {
+      const tools = (turn.tools ?? []).map((tool): Block => {
+        calls += 1;
+
+        return { type: "toolCall", id: `bench-${calls}`, name: tool.name, arguments: tool.args };
+      });
+
+      const text: readonly Block[] = turn.text === "" ? [] : [{ type: "text", text: turn.text }];
+      fake.reply({ content: [...text, ...tools], tokens: turn.tokens, tap });
+
+      if (tools.length > 0 && turn.after !== undefined)
+        fake.reply({ content: [{ type: "text", text: turn.after }], tap });
+    },
+    pauseAfter(count) {
+      const reached = Promise.withResolvers<void>();
+      gate = { count, reached };
+
+      return reached.promise;
+    },
+    release() {
+      const hold = held;
+      held = null;
+      hold?.resolve();
+    },
+  };
 }
 
 /** An environment whose files and processes refuse: enough for a chat. */
@@ -357,6 +400,7 @@ function streamOf(
     });
 
   void (async () => {
+    let streamed = 0;
     await Promise.resolve();
     stream.push({ type: "start", partial: message });
 
@@ -399,9 +443,16 @@ function streamOf(
         message.content.push(content);
         stream.push({ type: "text_start", contentIndex: index, partial: message });
 
-        for (const delta of [body.slice(0, half), body.slice(half)]) {
+        const deltas =
+          reply.tokens === undefined
+            ? [body.slice(0, half), body.slice(half)]
+            : piecesOf(body, reply.tokens);
+
+        for (const delta of deltas) {
           content.text += delta;
           stream.push({ type: "text_delta", contentIndex: index, delta, partial: message });
+          streamed += 1;
+          await reply.tap?.(streamed);
 
           if (reply.hold === true) await held();
 
@@ -454,6 +505,18 @@ function streamOf(
   })();
 
   return stream;
+}
+
+/** Splits a text into `count` consecutive pieces as even as its length allows (at least one). */
+function piecesOf(text: string, count: number): readonly string[] {
+  const pieces = Math.max(1, count);
+
+  return Array.from({ length: pieces }, (_, index) =>
+    text.slice(
+      Math.floor((index * text.length) / pieces),
+      Math.floor(((index + 1) * text.length) / pieces),
+    ),
+  );
 }
 
 async function refuse(): Promise<never> {

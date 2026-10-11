@@ -123,7 +123,11 @@ export * from "./utils/validation.ts";
 
 export { anthropicProvider } from "./providers/anthropic.ts";
 
-export { createNyteModels, defaultModelPerProvider } from "./providers/nyte-catalog.ts";
+export {
+  createNyteModels,
+  defaultModelPerProvider,
+  nyteProviders,
+} from "./providers/nyte-catalog.ts";
 
 export { githubCopilotProvider } from "./providers/github-copilot.ts";
 

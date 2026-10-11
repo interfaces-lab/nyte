@@ -18,7 +18,7 @@ import type {
   PatchEntry,
   PatchSet,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, GitApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { run } from "./command.ts";
@@ -79,7 +79,20 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     cwd: string,
     args: readonly string[],
     extra?: { readonly input?: string; readonly limit?: number },
-  ): Promise<Ran> => run(binary, [...CONFIG, ...args], { cwd, env: ENV, ...extra });
+  ): Promise<Ran> => {
+    const started = Date.now();
+
+    return run(binary, [...CONFIG, ...args], { cwd, env: ENV, ...extra }).then((ran) => {
+      dev("git", "run", {
+        command: args[0],
+        args: args.length,
+        code: ran.code,
+        ms: Date.now() - started,
+      });
+
+      return ran;
+    });
+  };
 
   const repository = async (): Promise<Repository | null> => {
     const ran = await git(env.cwd, [

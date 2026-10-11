@@ -91,6 +91,9 @@ const BUILT_IN: ReadonlySet<string> = new Set([
 
 const NEVER = new AbortController().signal;
 
+/** The plugin ids the host owns (§43b): `models` for `kv/secret/models/*`, `settings` for the seeded settings' report row. */
+const RESERVED_IDS: ReadonlySet<string> = new Set(["models", "settings"]);
+
 const holds = new WeakMap<Kernel, Map<PartDefinition, Hold>>();
 
 /** Returns a session's plugin runtime, its registries and hook dispatch empty, and starts its activation as `ready`: once `previous` (the runtime this one replaces on a reload, whose own list it keeps) settled and closed, `activateSession` loads `sessionPlugins` into it and attaches the session's environment. `kernel.pluginsFor(session)` creates it on first use and `kernel.reloadPlugins(session)` in place of the one held; both record it among `kernel.runtimes()`. After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` with owners (a non-built-in plugin contributing a reserved kind is reported as a collision, §34b), publishes the catalog and republishes `HostView.plugins`. */
@@ -531,7 +534,7 @@ function publishPlugins(kernel: Kernel): void {
   kernel.host.update({ plugins: [...merged.values()] });
 }
 
-/** Checks each plugin before anything loads: a duplicate id (in the list or among `loaded`), a second environment provider of one kind (the later one), and every schema it contributes converting to JSON Schema. */
+/** Checks each plugin before anything loads: a duplicate id (in the list or among `loaded`), a reserved id (`models`, `settings`, §43b), a second environment provider of one kind (the later one), and every schema it contributes converting to JSON Schema. */
 function preflight(
   plugins: readonly Plugin<"core">[],
   loaded: readonly Plugin<"core">[],
@@ -551,6 +554,9 @@ function preflight(
 
     if (taken.has(plugin.id) || plugins.filter((other) => other.id === plugin.id).length > 1)
       error(["id"], `More than one plugin is named ${plugin.id}.`);
+
+    if (RESERVED_IDS.has(plugin.id))
+      error(["id"], `The plugin id ${plugin.id} is reserved for the host.`);
 
     const kind = plugin.environment?.kind;
 

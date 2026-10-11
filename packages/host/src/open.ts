@@ -1,4 +1,12 @@
+import { readFile } from "node:fs/promises";
+import { homedir, hostname } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
 import type { Models } from "@nyte-ai/ai";
+import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
+import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
+import { createModels } from "@nyte-ai/ai/models";
+import { isJson } from "@nyte-ai/schema";
 import type {
   HostDescription,
   HostView,
@@ -6,7 +14,24 @@ import type {
   ValidationIssue,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import type { ComposeOptions, Host, OpenOptions, Plugin, Store } from "@nyte-ai/core";
+import { composeHost, dev } from "@nyte-ai/core";
+import type {
+  ComposeOptions,
+  Host,
+  ListenOptions,
+  Listener,
+  OpenOptions,
+  Plugin,
+  Store,
+} from "@nyte-ai/core";
+import { operations } from "@nyte-ai/protocol";
+import manifest from "../package.json" with { type: "json" };
+import { credentialStore } from "./credentials.ts";
+import { identitySigner } from "./identity.ts";
+import { codeOf } from "./local/tree.ts";
+import { listen } from "./listen.ts";
+import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
+import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
 
 /**
@@ -41,7 +66,77 @@ export type OpenHostOptions = Omit<OpenOptions, "models" | "plugins"> & {
  * host.
  */
 export async function openHost(options: OpenHostOptions): Promise<Host> {
-  throw new Error("not implemented");
+  const home = options.home ?? homedir();
+  const secrets = options.secrets ?? defaultSecrets(home);
+  const description = hostDescription();
+  const [files, settings] = await Promise.all([
+    filePlugins(home, options.workspace),
+    settingsSeed(home),
+  ]);
+
+  const host = await composeHost({
+    ...options,
+    models: options.models ?? nyteModels({ store: options.store, secrets, home }),
+    plugins: [...(options.plugins ?? []), ...files.plugins],
+    pluginSources: files.sources,
+    secrets,
+    home,
+    operations: operations(),
+    description,
+    ...(settings.seed === null ? {} : { seed: settings.seed }),
+  });
+
+  for (const row of files.failed) host.kernel.host.report(row);
+
+  if (settings.issue !== null)
+    host.kernel.host.report({
+      id: "settings",
+      source: "user",
+      path: settingsPath(home),
+      issues: [settings.issue],
+    });
+
+  dev("open", "host", {
+    home,
+    seedIds: Object.keys(settings.seed?.settings ?? {}).length,
+    pluginFiles: files.plugins.length + files.failed.length,
+    failedFiles: files.failed.length,
+  });
+
+  const listeners = new Set<Listener>();
+  const loader = pluginLoader(files.dirs);
+  let identity: ReturnType<typeof identitySigner> | null = null;
+
+  const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
+    const listener = await listen(
+      host,
+      {
+        describe: () => description,
+        ...listenOptions,
+        identity:
+          listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, secrets))),
+      },
+      loader,
+    );
+
+    listeners.add(listener);
+    dev("open", "listen", { address: listener.address });
+
+    return listener;
+  };
+
+  let closing: Promise<void> | null = null;
+
+  const close = (): Promise<void> => {
+    closing ??= (async () => {
+      for (const listener of listeners) await listener.close();
+      await host.close();
+    })();
+
+    return closing;
+  };
+
+  return { ...host, listen: attach, close, [Symbol.asyncDispose]: close };
 }
 
 /**
@@ -51,8 +146,8 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
  * `<home>/.nyte/models-store.json`, ai's `defaultProviderAuthContext()` and
  * `catalog.url` from `NYTE_MODELS_URL`.
  *
- * Its providers are those `createNyteModels()` registers, re-registered in its
- * order (ai exports no provider list). Nothing is imported from
+ * Its providers are ai's `nyteProviders()`, the list `createNyteModels()`
+ * registers, in its order, with no second `Models` built (§43k). Nothing is imported from
  * `~/.nyte/auth.json`: this is a rewrite, not a migration, so users log in
  * again (§43j).
  */
@@ -61,7 +156,16 @@ function nyteModels(input: {
   readonly secrets: SecretsSource;
   readonly home: string;
 }): Models {
-  throw new Error("not implemented");
+  const models = createModels({
+    credentials: credentialStore(input.store, input.secrets),
+    modelsStore: new FileModelsStore(join(input.home, ".nyte", "models-store.json")),
+    authContext: defaultProviderAuthContext(),
+    catalog: { url: process.env.NYTE_MODELS_URL },
+  });
+
+  for (const provider of nyteProviders()) models.setProvider(provider);
+
+  return models;
 }
 
 /**
@@ -83,7 +187,30 @@ async function filePlugins(
   readonly dirs: readonly string[];
   readonly failed: readonly HostView["plugins"][number][];
 }> {
-  throw new Error("not implemented");
+  const scopes = [
+    { source: "user" as const, dir: join(home, ".nyte", "plugins") },
+    ...(workspace.kind === "local" && "path" in workspace
+      ? [{ source: "project" as const, dir: join(workspace.path, ".nyte", "plugins") }]
+      : []),
+  ];
+
+  const plugins: Plugin<"core">[] = [];
+  const sources = new Map<Plugin<"core">, { source: "user" | "project"; path: string }>();
+  const failed: HostView["plugins"][number][] = [];
+
+  for (const { source, dir } of scopes) {
+    const found = await loadPluginDirectory(dir);
+
+    for (const { plugin, path } of found.loaded) {
+      plugins.push(plugin);
+      sources.set(plugin, { source, path });
+    }
+
+    for (const { path, issue } of found.failed)
+      failed.push({ id: path, source, path, issues: [issue] });
+  }
+
+  return { plugins, sources, dirs: scopes.map((scope) => scope.dir), failed };
 }
 
 /**
@@ -95,8 +222,9 @@ async function filePlugins(
  * `composeHost` applies a file value only when no value is stored for that id,
  * so a value changed over the wire survives restarts (§43j), and reports
  * unknown or invalid ids as warnings under owner `settings`. A missing file is
- * no seed; a file that is not a JSON object is no seed and one `warning`,
- * which `openHost` reports on the `settings` row after the compose.
+ * no seed; a file that cannot be read or is not a JSON object is no seed and
+ * one `warning`, which `openHost` reports on the `settings` row after the
+ * compose.
  */
 async function settingsSeed(home: string): Promise<{
   readonly seed: {
@@ -105,7 +233,37 @@ async function settingsSeed(home: string): Promise<{
   } | null;
   readonly issue: ValidationIssue | null;
 }> {
-  throw new Error("not implemented");
+  const path = settingsPath(home);
+  const text = await readFile(path, "utf8").catch((error: unknown) =>
+    codeOf(error) === "ENOENT" ? null : error instanceof Error ? error : new Error(String(error)),
+  );
+
+  if (text === null) return { seed: null, issue: null };
+
+  if (text instanceof Error)
+    return {
+      seed: null,
+      issue: { severity: "warning", path: [], message: `${path} cannot be read: ${text.message}` },
+    };
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return {
+      seed: null,
+      issue: { severity: "warning", path: [], message: `${path} is not a JSON object.` },
+    };
+
+  const settings: Record<string, Json> = {};
+
+  for (const [id, value] of Object.entries(parsed)) if (isJson(value)) settings[id] = value;
+
+  return { seed: { settings, path }, issue: null };
 }
 
 /**
@@ -114,5 +272,9 @@ async function settingsSeed(home: string): Promise<{
  * `composeHost`'s `description` and the listener's `describe`.
  */
 function hostDescription(): HostDescription {
-  throw new Error("not implemented");
+  return { name: hostname(), platform: process.platform, version: manifest.version };
+}
+
+function settingsPath(home: string): string {
+  return join(home, ".nyte", "settings.json");
 }

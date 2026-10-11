@@ -379,6 +379,20 @@ describe("plugin runtime", () => {
     expect(kernel.host.current().plugins).toEqual([]);
   });
 
+  it("rejects the reserved plugin ids models and settings", async () => {
+    const { host } = await setup();
+    const report = await host.plugins.check([{ id: "models" }, { id: "settings" }, { id: "ok" }]);
+
+    expect(report.plugins.map((outcome) => [outcome.kind, outcome.id])).toEqual([
+      ["rejected", "models"],
+      ["rejected", "settings"],
+      ["activated", "ok"],
+    ]);
+    expect(report.plugins[0].issues).toEqual([
+      expect.objectContaining({ severity: "error", path: ["id"] }),
+    ]);
+  });
+
   it("closes a removed session's plugins and forgets its runtime", async () => {
     let signal: AbortSignal | undefined;
 

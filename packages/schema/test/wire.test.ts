@@ -355,6 +355,7 @@ import type {
   FileChange,
   HeadInfo,
   Hunk,
+  IdentityChallenge,
   Json,
   Message,
   ModelInfo,
@@ -1501,8 +1502,8 @@ const cases = {
   ),
   IdentityChallengeSchema: sample(
     IdentityChallengeSchema,
+    { hostId: asId<"host">("h1"), nonce: "n", signature: "s", publicKey: "k" },
     { nonce: "n", signature: "s", publicKey: "k" },
-    { nonce: "n" },
   ),
   HostDescriptionSchema: sample(
     HostDescriptionSchema,
@@ -2240,6 +2241,23 @@ describe("wire schemas", () => {
     expect(await SessionEventSchema["~standard"].validate(wire)).toEqual({ value: event });
     expect(
       (await SessionEventSchema["~standard"].validate({ ...event, call: 7 })).issues?.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("round-trips an identity challenge with its host id and rejects one without it (§43k)", async () => {
+    const challenge: IdentityChallenge = {
+      hostId: asId("h1"),
+      nonce: "n1",
+      signature: "sig",
+      publicKey: "key",
+    };
+
+    const wire: unknown = JSON.parse(JSON.stringify(challenge));
+
+    expect(await IdentityChallengeSchema["~standard"].validate(wire)).toEqual({ value: challenge });
+    expect(
+      (await IdentityChallengeSchema["~standard"].validate({ ...challenge, hostId: 1 })).issues
+        ?.length,
     ).toBeGreaterThan(0);
   });
 

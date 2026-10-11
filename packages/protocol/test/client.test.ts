@@ -1,6 +1,6 @@
 import { SdkError } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
-import { createTransport, decodeOutput } from "../src/index.ts";
+import { HOST_HEADER, createTransport, decodeOutput } from "../src/index.ts";
 import type { SseFrame } from "../src/index.ts";
 import { served } from "./fakes.ts";
 
@@ -215,6 +215,32 @@ describe("transport", () => {
     expect(pairing.credential()).toBeNull();
     await pairing.invoke("sessions.list", {});
     expect(pairing.credential()).toEqual({ kind: "token", token: "device-token" });
+  });
+
+  it("reads the answering host from X-Nyte-Host, error answers included", async () => {
+    let status = 200;
+
+    const transport = createTransport({
+      url: "http://host.test",
+      headers: async () => ({}),
+      fetch: async () =>
+        new Response(
+          status === 200 ? "{}" : JSON.stringify({ code: "unauthenticated", message: "No." }),
+          {
+            status,
+            headers: { "Content-Type": "application/json", [HOST_HEADER]: `host-${status}` },
+          },
+        ),
+    });
+
+    expect(transport.host()).toBeNull();
+    await transport.invoke("sessions.list", {});
+    expect(transport.host()).toBe("host-200");
+    status = 401;
+    await expect(transport.invoke("sessions.list", {})).rejects.toMatchObject({
+      code: "unauthenticated",
+    });
+    expect(transport.host()).toBe("host-401");
   });
 
   it("answers a network failure as unavailable", async () => {

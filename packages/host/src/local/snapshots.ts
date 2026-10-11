@@ -20,7 +20,7 @@ import type {
   RunId,
   SnapshotId,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, SnapshotsApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { run } from "./command.ts";
@@ -180,9 +180,12 @@ export function localSnapshots(
   };
 
   const take = async (): Promise<SnapshotId> => {
+    const started = Date.now();
     const repo = await repository();
+    const id = await (repo === null ? walkSnapshot() : gitSnapshot(repo));
+    dev("snapshots", "take", { kind: repo === null ? "tree" : "git", ms: Date.now() - started });
 
-    return repo === null ? walkSnapshot() : gitSnapshot(repo);
+    return id;
   };
 
   const pair = async (
@@ -290,7 +293,11 @@ export function localSnapshots(
     },
     after: () => take(),
     async diff(from, to): Promise<ChangeSet> {
-      return { revision: to, files: await changed(from, to) };
+      const started = Date.now();
+      const files = await changed(from, to);
+      dev("snapshots", "diff", { entries: files.length, ms: Date.now() - started });
+
+      return { revision: to, files };
     },
     async patches(from, to, paths, diff?: DiffOptions) {
       const compared = await pair(from, to);

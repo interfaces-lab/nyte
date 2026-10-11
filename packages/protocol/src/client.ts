@@ -3,13 +3,14 @@ import type {
   ByteReader,
   CredentialSource,
   FileVersion,
+  HostId,
   Json,
   RequestOptions,
 } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
 import { parseJson } from "./json.ts";
-import { decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
+import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
 import type { SseFrame } from "./wire.ts";
 
 /** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
@@ -22,7 +23,7 @@ export type TransportOptions = {
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
-/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`), and `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the last response that carried one, error answers included, §43j); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
 export type Transport = {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   stream(name: OperationName, input: Json): AsyncIterable<Uint8Array | Json>;
@@ -34,6 +35,7 @@ export type Transport = {
     body: Uint8Array | ReadableStream<Uint8Array>,
   ): Promise<Json>;
   credential(): CredentialSource | null;
+  host(): HostId | null;
 };
 
 const DONE = { done: true, value: undefined } as const;
@@ -43,6 +45,7 @@ export function createTransport(options: TransportOptions): Transport {
   const base = options.url.replace(/\/+$/, "");
   const send = options.fetch ?? fetch;
   let credential: CredentialSource | null = null;
+  let host: HostId | null = null;
 
   const post = async (
     name: OperationName,
@@ -62,6 +65,9 @@ export function createTransport(options: TransportOptions): Transport {
     const token = response.headers.get("X-Nyte-Credential");
 
     if (token !== null) credential = { kind: "token", token };
+    const answered = response.headers.get(HOST_HEADER);
+
+    if (answered !== null) host = asId<"host">(answered);
 
     if (response.ok) return response;
 
@@ -128,6 +134,7 @@ export function createTransport(options: TransportOptions): Transport {
       return parseJson(await response.text());
     },
     credential: () => credential,
+    host: () => host,
   };
 }
 

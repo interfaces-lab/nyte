@@ -1,5 +1,5 @@
 import { standard } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
+import type { HostView, Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -285,6 +285,124 @@ describe("composeHost", () => {
 
     await expect(refused).rejects.toBeInstanceOf(SdkError);
     await expect(refused).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("seeds settings once: a stored value wins, an unknown id or invalid value is reported with the file's path", async () => {
+    const store = memoryStore();
+
+    const looks: Plugin<"core"> = {
+      id: "looks",
+      contribute: {
+        settings: [
+          {
+            id: "theme",
+            label: "Theme",
+            schema: standard(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
+            default: "light",
+            scope: "host",
+          },
+          {
+            id: "size",
+            label: "Size",
+            schema: standard(Type.Integer()),
+            default: 1,
+            scope: "host",
+          },
+          {
+            id: "tone",
+            label: "Tone",
+            schema: standard(Type.String()),
+            default: "plain",
+            scope: "session",
+          },
+        ],
+      },
+    };
+
+    const seeded = (settings: Record<string, Json>) =>
+      composeHost({
+        store,
+        models: fakeModels().models,
+        plugins: [chatOnly, looks],
+        workspace: { kind: "chat-only", locator: null },
+        home: null,
+        operations: [],
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+        seed: { settings, path: "/home/.nyte/settings.json" },
+      });
+
+    const first = await seeded({ theme: "dark", size: "big", nope: 1, tone: "warm" });
+    const value = (id: string) =>
+      first.kernel.host.current().settings.find((setting) => setting.id === id)?.value;
+
+    expect([value("theme"), value("size")]).toEqual(["dark", 1]);
+    expect(first.kernel.host.current().plugins.find((row) => row.id === "settings")).toEqual({
+      id: "settings",
+      source: "user",
+      path: "/home/.nyte/settings.json",
+      issues: [
+        expect.objectContaining({ severity: "warning", path: ["size"] }),
+        expect.objectContaining({ severity: "warning", path: ["nope"] }),
+        expect.objectContaining({
+          severity: "warning",
+          path: ["tone"],
+          message: expect.stringContaining("session-scope"),
+        }),
+      ],
+    });
+    expect(await first.settings.apply("theme", "light")).toEqual({ kind: "applied" });
+    await first.close();
+
+    await using second = await seeded({ theme: "dark" });
+
+    expect(
+      second.kernel.host.current().settings.find((setting) => setting.id === "theme")?.value,
+    ).toBe("light");
+    expect(second.kernel.host.current().plugins.some((row) => row.id === "settings")).toBe(false);
+  });
+
+  it("drops and reports a rejected plugin that came from a file; an inline one still fails the open", async () => {
+    const bad: Plugin<"core"> = { id: "models" };
+    const good: Plugin<"core"> = { id: "good" };
+
+    const compose = (sources: Map<Plugin<"core">, { source: "user"; path: string }>) =>
+      composeHost({
+        store: memoryStore(),
+        models: fakeModels().models,
+        plugins: [chatOnly, bad, good],
+        workspace: { kind: "chat-only", locator: null },
+        home: null,
+        operations: [],
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+        pluginSources: sources,
+      });
+
+    await using host = await compose(
+      new Map([
+        [bad, { source: "user", path: "/home/.nyte/plugins/bad.ts" }],
+        [good, { source: "user", path: "/home/.nyte/plugins/good.ts" }],
+      ]),
+    );
+    const rows = host.kernel.host.current().plugins;
+
+    expect(host.kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
+    expect(rows.find((row) => row.id === "good")).toMatchObject({
+      source: "user",
+      path: "/home/.nyte/plugins/good.ts",
+    });
+    expect(rows.find((row) => row.id === "/home/.nyte/plugins/bad.ts")).toEqual({
+      id: "/home/.nyte/plugins/bad.ts",
+      source: "user",
+      path: "/home/.nyte/plugins/bad.ts",
+      issues: [expect.objectContaining({ severity: "error", path: ["id"] })],
+    });
+
+    await host.sessions.create();
+
+    expect(
+      host.kernel.host.current().plugins.some((row) => row.id === "/home/.nyte/plugins/bad.ts"),
+    ).toBe(true);
+    await expect(compose(new Map())).rejects.toMatchObject({ code: "invalid" });
   });
 
   it("registers the workspace once and makes it the default", async () => {

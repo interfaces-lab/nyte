@@ -19,6 +19,7 @@ import type { OperationName } from "./declarations.ts";
 import { isRecord, parseJson } from "./json.ts";
 import { abortable, mapped } from "./streams.ts";
 import {
+  HOST_HEADER,
   INPUT_HEADER,
   asSdkError,
   encodeError,
@@ -62,7 +63,7 @@ const UPLOADS: ReadonlySet<string> = new Set([
 
 const ALLOWED_HEADERS = `Authorization, Content-Type, Last-Event-ID, ${INPUT_HEADER}`;
 
-const EXPOSED_HEADERS = "X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential";
+const EXPOSED_HEADERS = `X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential, ${HOST_HEADER}`;
 
 const tooLarge = new WeakSet<SdkError>();
 

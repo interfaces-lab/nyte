@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { composeHost, memoryStore } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { loadPluginFiles, pluginLoader } from "../src/index.ts";
+import { loadPluginDirectory, loadPluginFiles, pluginLoader } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 
 const folders: string[] = [];
@@ -71,6 +71,30 @@ describe("loadPluginFiles", () => {
       expect.objectContaining({ path: [join(dir, "number.mjs")] }),
       expect.objectContaining({ path: [join(dir, "provider.mjs")] }),
     ]);
+  });
+});
+
+describe("loadPluginDirectory", () => {
+  it("loads file by file: a good file loads, a bad one is reported by path, a missing directory has neither", async () => {
+    const dir = await folder();
+    await writeFile(join(dir, "good.mjs"), 'export default { id: "good" };\n');
+    await writeFile(join(dir, "bad.mjs"), "export default {;\n");
+    const { loaded, failed } = await loadPluginDirectory(dir);
+
+    expect(loaded.map(({ plugin, path }) => [plugin.id, path])).toEqual([
+      ["good", join(dir, "good.mjs")],
+    ]);
+    expect(failed).toEqual([
+      {
+        path: join(dir, "bad.mjs"),
+        issue: expect.objectContaining({
+          severity: "error",
+          path: [join(dir, "bad.mjs")],
+          source: { plugin: join(dir, "bad.mjs"), file: join(dir, "bad.mjs") },
+        }),
+      },
+    ]);
+    expect(await loadPluginDirectory(join(dir, "missing"))).toEqual({ loaded: [], failed: [] });
   });
 });
 

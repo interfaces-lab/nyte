@@ -15,6 +15,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/schema";
 import { send } from "./admission.ts";
+import { dev } from "./dev-log.ts";
 import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
@@ -65,14 +66,22 @@ export interface Jobs {
    *
    * @authority participant
    */
-  start(input: { readonly command?: string; readonly session?: SessionId; readonly title?: string; readonly pty?: { readonly columns: number; readonly rows: number }; readonly id?: JobId }): Promise<Job>;
+  start(input: {
+    readonly command?: string;
+    readonly session?: SessionId;
+    readonly title?: string;
+    readonly pty?: { readonly columns: number; readonly rows: number };
+    readonly id?: JobId;
+  }): Promise<Job>;
   /**
    * Reclaims a pty job by the key its handle carried, never a second shell;
    * or says it ended or is missing.
    *
    * @authority participant
    */
-  recover(key: JobKey): Promise<Job | { readonly kind: "ended"; readonly end: JobEnd } | { readonly kind: "missing" }>;
+  recover(
+    key: JobKey,
+  ): Promise<Job | { readonly kind: "ended"; readonly end: JobEnd } | { readonly kind: "missing" }>;
   /**
    * Returns every job in the workspace.
    *
@@ -132,7 +141,12 @@ export interface Job {
    *
    * @authority participant
    */
-  resize(size: { readonly columns: number; readonly rows: number }): Promise<{ readonly kind: "resized" } | { readonly kind: "not-pty" } | { readonly kind: "missing" }>;
+  resize(size: {
+    readonly columns: number;
+    readonly rows: number;
+  }): Promise<
+    { readonly kind: "resized" } | { readonly kind: "not-pty" } | { readonly kind: "missing" }
+  >;
   /**
    * Returns whether a pty job's shell is at a prompt, so stop needs no
    * confirmation. Answered by the pty driver (prompt markers), never by core.
@@ -554,7 +568,7 @@ async function startJob(
   return jobHandle(kernel, context, id);
 }
 
-/** Reads a process's output into its fan-out and tail until it exits, then ends the job with how the process settled (`lost` when it cannot say). */
+/** Reads a process's output into its fan-out and tail until it exits, then ends the job with how the process settled (`lost` when it cannot say). A store failure while ending it is logged and leaves the parked call for `repair` (§43k); this task never rejects. */
 async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput): Promise<void> {
   try {
     for await (const frame of process.output()) {
@@ -572,7 +586,10 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
   } catch {}
 
   const end = await process.settled().catch((): JobEnd => ({ kind: "lost" }));
-  await endJob(kernel, id, end);
+
+  await endJob(kernel, id, end).catch((error: unknown) => {
+    dev("jobs", "end not recorded", { job: id, end: end.kind, error });
+  });
 }
 
 /** Returns an output fan-out with nothing read yet. */

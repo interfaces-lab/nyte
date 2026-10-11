@@ -5,11 +5,18 @@ import {
   TOKEN_AUTHORITY,
   authenticateToken,
   createConnection,
+  dev,
   driveInProcess,
   redeemPairing,
 } from "@nyte-ai/core";
 import type { Connection, Host, Kernel, ListenOptions, Listener } from "@nyte-ai/core";
-import { asSdkError, createHandler, encodeError, errorStatus } from "@nyte-ai/protocol";
+import {
+  HOST_HEADER,
+  asSdkError,
+  createHandler,
+  encodeError,
+  errorStatus,
+} from "@nyte-ai/protocol";
 import type { HandlerOptions } from "@nyte-ai/protocol";
 
 /** Returns one cached connection: what it serves and how it leaves the cache. */
@@ -35,19 +42,9 @@ type Device = {
 
 const DEVICE_TTL_MS = 60_000;
 
-/**
- * The response header naming the host that answered, `X-Nyte-Host: <hostId>`,
- * on every response the listener sends, `before`'s included, so a client
- * compares it with `expect.hostId` on its first answer (§43a, §43j).
- *
- * It moves to protocol's `wire.ts` at implement, beside its CORS exposure in
- * `server.ts` and a `host()` read on the client; it lives here until then.
- */
-export const HOST_HEADER = "X-Nyte-Host";
-
 const encoder = new TextEncoder();
 
-/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): everything `listen` does, and in the same order, for the `fetch` transport — `before` first, the unauthenticated `GET /.nyte/identity?nonce=` route (answering `{ hostId, publicKey, nonce, signature }`: the host's id with what `identity.sign(nonce)` answers, §43a) and `GET /.nyte/describe` route, then protocol's `createHandler` with the same `connection(request)` (pairing redeemed under either auth kind with the device token in `X-Nyte-Credential`; under `token` the listener token as `TOKEN` with `TOKEN_AUTHORITY`, any other bearer a device token for `authenticateToken` remembered for 60 s and until its principal's connection drops, a remembered token no principal holds any more revoking that principal through `kernel.connections`; under `custom` a known device token first, then `authorize(request)`), one connection per principal and authority registered with `kernel.connections` (a revoke aborts that principal's open requests and streams), CORS for `origins`, `maxBodyBytes` (default 8 MiB), `execution` (default run covering all: `driveInProcess` when the kernel is `admit-only`, else `host.execution.cover`; `admit-only` takes nothing, and a `dispatch` kernel is treated as `admit-only` whatever `execution` says, with no in-process driver and no cover, §42v), `disconnectClients()` and `close()` (once; every later request answers `unavailable`) — except that the listener token is compared in constant time over Web Crypto SHA-256 digests (`crypto.subtle.digest`, every byte pair XOR-folded into one accumulator, so neither length nor content leaks) and device tokens are remembered by their Web Crypto hex digest. A `token` auth shorter than 16 characters throws `SdkError("invalid")` before anything is set up; `address` is null; `plugins` is the file loader `plugins.replace`/`plugins.check` load their wire paths through, as for `listen`. Every response carries `HOST_HEADER` with the host's id, `before`'s, error responses and the identity and describe routes included, and CORS exposes it to an allowed origin (§43a, §43j). What `listen` delegates its `fetch` transport to. */
+/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): everything `listen` does, and in the same order, for the `fetch` transport — `before` first, the unauthenticated `GET /.nyte/identity?nonce=` route (answering what `identity.sign(nonce)` answers with `hostId` set to `kernel.hostId`, the id `X-Nyte-Host` carries, §43a, §43k) and `GET /.nyte/describe` route, then protocol's `createHandler` with the same `connection(request)` (pairing redeemed under either auth kind with the device token in `X-Nyte-Credential`; under `token` the listener token as `TOKEN` with `TOKEN_AUTHORITY`, any other bearer a device token for `authenticateToken` remembered for 60 s and until its principal's connection drops, a remembered token no principal holds any more revoking that principal through `kernel.connections`; under `custom` a known device token first, then `authorize(request)`), one connection per principal and authority registered with `kernel.connections` (a revoke aborts that principal's open requests and streams), CORS for `origins`, `maxBodyBytes` (default 8 MiB), `execution` (default run covering all: `driveInProcess` when the kernel is `admit-only`, else `host.execution.cover`; `admit-only` takes nothing, and a `dispatch` kernel is treated as `admit-only` whatever `execution` says, with no in-process driver and no cover, §42v), `disconnectClients()` and `close()` (once; every later request answers `unavailable`) — except that the listener token is compared in constant time over Web Crypto SHA-256 digests (`crypto.subtle.digest`, every byte pair XOR-folded into one accumulator, so neither length nor content leaks) and device tokens are remembered by their Web Crypto hex digest. A `token` auth shorter than 16 characters throws `SdkError("invalid")` before anything is set up; `address` is null; `plugins` is the file loader `plugins.replace`/`plugins.check` load their wire paths through, as for `listen`. Every response carries `HOST_HEADER` with the host's id, `before`'s, error responses and the identity and describe routes included, and CORS exposes it to an allowed origin (§43a, §43j). What `listen` delegates its `fetch` transport to. */
 export async function listenFetch(
   host: Omit<Host, "listen"> & { readonly kernel: Kernel },
   options: ListenOptions & { readonly transport: { readonly kind: "fetch" } },
@@ -210,11 +207,18 @@ export async function listenFetch(
     const origin = request.headers.get("Origin");
 
     return origin !== null && (options.origins ?? []).includes(origin)
-      ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
+      ? {
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Expose-Headers": HOST_HEADER,
+          Vary: "Origin",
+        }
       : {};
   };
 
-  const serve = async (request: Request): Promise<Response> => {
+  const serve = async (
+    request: Request,
+    trace: { principal: PrincipalId | null },
+  ): Promise<Response> => {
     if (closed) return failure(new SdkError("unavailable", "This listener is closed."), {});
     const early = await options.before?.(request);
 
@@ -230,7 +234,10 @@ export async function listenFetch(
           cors(request),
         );
 
-      return json(await options.identity.sign(nonce), cors(request));
+      return json(
+        { ...(await options.identity.sign(nonce)), hostId: kernel.hostId },
+        cors(request),
+      );
     }
 
     if (request.method === "GET" && url.pathname === "/.nyte/describe") {
@@ -249,16 +256,29 @@ export async function listenFetch(
     const flight: Flight = { request: forwarded, controller, principal: null };
     flights.set(forwarded, flight);
     const response = await handler(forwarded);
+    trace.principal = flight.principal;
 
     return flight.principal === null ? response : landing(response, () => land(flight));
   };
 
   const fetch = async (request: Request): Promise<Response> => {
-    try {
-      return await serve(request);
-    } catch (error) {
-      return failure(asSdkError(error), cors(request));
-    }
+    const started = Date.now();
+    const trace: { principal: PrincipalId | null } = { principal: null };
+
+    const response = await serve(request, trace).catch((error: unknown) =>
+      failure(asSdkError(error), cors(request)),
+    );
+
+    dev("listen", "request", {
+      method: request.method,
+      path: new URL(request.url).pathname,
+      status: response.status,
+      principal:
+        trace.principal === null ? "none" : trace.principal === TOKEN ? "token" : "principal",
+      ms: Date.now() - started,
+    });
+
+    return withHost(response, kernel.hostId);
   };
 
   const execution = options.execution ?? { kind: "run", coverage: { kind: "all" } };
@@ -306,6 +326,18 @@ function landing(response: Response, done: () => void): Response {
     ),
     { status: response.status, statusText: response.statusText, headers: response.headers },
   );
+}
+
+/** Returns the response with `X-Nyte-Host` set to the host's id, rebuilt around the same body because a `Response` from elsewhere may hold immutable headers. */
+function withHost(response: Response, hostId: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set(HOST_HEADER, hostId);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function json(value: unknown, headers: Readonly<Record<string, string>>): Response {

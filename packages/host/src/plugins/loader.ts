@@ -2,7 +2,7 @@ import { readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ValidationIssue } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError, dev } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core";
 import type { HandlerOptions } from "@nyte-ai/protocol";
 import { codeOf } from "../local/tree.ts";
@@ -13,36 +13,7 @@ const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
 export async function loadPluginFiles(
   dir: string,
 ): Promise<readonly { readonly plugin: Plugin<"core">; readonly path: string }[]> {
-  const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
-    if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
-
-    throw error;
-  });
-
-  const files = (
-    await Promise.all(
-      entries
-        .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
-        .map(async (entry) => {
-          const path = join(dir, entry.name);
-
-          if (entry.isFile())
-            return EXTENSIONS.some((extension) => entry.name.endsWith(extension)) ? [path] : [];
-
-          if (!entry.isDirectory()) return [];
-
-          for (const extension of EXTENSIONS) {
-            const index = join(path, `index${extension}`);
-
-            if ((await stat(index).catch(() => null))?.isFile() === true) return [index];
-          }
-
-          return [];
-        }),
-    )
-  ).flat();
-
-  return loadAll(files);
+  return loadAll(await pluginFilesIn(dir));
 }
 
 /** Returns a plugin directory's plugins as `loadPluginFiles` finds and imports them, but file by file: every file that loads, with its path, and every file that does not, with its path and one `error` issue (its `path` the file, `source.file` the file, the message `loadPluginFiles` would have put in its `invalid`), never rejecting for a bad file; a missing directory has neither. What `openHost` loads `~/.nyte/plugins` and a local workspace's `.nyte/plugins` through, so one bad file is reported on `HostView.plugins` instead of failing the open (§41j); `loadPluginFiles` becomes this, throwing its one `invalid` when anything failed. */
@@ -50,7 +21,7 @@ export async function loadPluginDirectory(dir: string): Promise<{
   readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
   readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
 }> {
-  throw new Error("not implemented");
+  return importEach(await pluginFilesIn(dir));
 }
 
 /** Returns the loader protocol's handler calls with the paths of `plugins.replace` and `plugins.check` (§40b): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
@@ -81,24 +52,77 @@ export function pluginLoader(dirs: readonly string[]): NonNullable<HandlerOption
 async function loadAll(
   files: readonly string[],
 ): Promise<readonly { readonly plugin: Plugin<"core">; readonly path: string }[]> {
-  const loaded: { readonly plugin: Plugin<"core">; readonly path: string }[] = [];
-  const issues: ValidationIssue[] = [];
-
-  for (const path of files) {
-    const outcome = await importPlugin(path);
-
-    if ("plugin" in outcome) loaded.push({ plugin: outcome.plugin, path });
-    else issues.push({ severity: "error", path: [path], message: outcome.reason });
-  }
+  const { loaded, failed } = await importEach(files);
+  const issues = failed.map((entry) => entry.issue);
 
   if (issues.length > 0)
     throw new SdkError(
       "invalid",
-      `${issues.length === 1 ? "A plugin file" : `${issues.length} plugin files`} did not load: ${issues.map((issue) => `${issue.path.join("")}: ${issue.message}`).join("; ")}`,
+      `${issues.length === 1 ? "A plugin file" : `${issues.length} plugin files`} did not load: ${failed.map((entry) => `${entry.path}: ${entry.issue.message}`).join("; ")}`,
       { issues },
     );
 
   return loaded;
+}
+
+/** Imports each file in order: the plugins that loaded with their paths, and one `error` issue per file that did not, naming the file. */
+async function importEach(files: readonly string[]): Promise<{
+  readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
+  readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
+}> {
+  const loaded: { readonly plugin: Plugin<"core">; readonly path: string }[] = [];
+  const failed: { readonly path: string; readonly issue: ValidationIssue }[] = [];
+
+  for (const path of files) {
+    const outcome = await importPlugin(path);
+    dev("plugins", "file", { path, outcome: "plugin" in outcome ? "loaded" : "failed" });
+
+    if ("plugin" in outcome) loaded.push({ plugin: outcome.plugin, path });
+    else
+      failed.push({
+        path,
+        issue: {
+          severity: "error",
+          path: [path],
+          message: outcome.reason,
+          source: { plugin: path, file: path },
+        },
+      });
+  }
+
+  return { loaded, failed };
+}
+
+/** Returns the plugin files directly in a directory, by name: each `.ts`, `.mts`, `.js` or `.mjs` file and each subdirectory's `index` of those; a missing directory has none. */
+async function pluginFilesIn(dir: string): Promise<readonly string[]> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
+    if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
+
+    throw error;
+  });
+
+  return (
+    await Promise.all(
+      entries
+        .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+        .map(async (entry) => {
+          const path = join(dir, entry.name);
+
+          if (entry.isFile())
+            return EXTENSIONS.some((extension) => entry.name.endsWith(extension)) ? [path] : [];
+
+          if (!entry.isDirectory()) return [];
+
+          for (const extension of EXTENSIONS) {
+            const index = join(path, `index${extension}`);
+
+            if ((await stat(index).catch(() => null))?.isFile() === true) return [index];
+          }
+
+          return [];
+        }),
+    )
+  ).flat();
 }
 
 async function importPlugin(

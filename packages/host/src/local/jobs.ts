@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
 import { asId } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
-import { SdkError, closable } from "@nyte-ai/core";
+import { SdkError, closable, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 
 /** What `@lydell/node-pty` exports that a pty job uses. */
@@ -82,6 +82,7 @@ export function localExec(
     const finish = (code: number | null): void => {
       if (finished !== null) return;
       finished = { kind: "exited", code, reason: stopping ? "terminated" : "exited" };
+      dev("jobs", "exit", { code, reason: finished.reason });
       log.end(code);
       settle(finished);
     };
@@ -95,6 +96,12 @@ export function localExec(
             log,
             finish,
           );
+
+    dev("jobs", "start", {
+      program: typeof command === "string" ? command.split(/\s/, 1)[0] : (command[0] ?? null),
+      args: typeof command === "string" ? null : command.length - 1,
+      pty: driver.pty,
+    });
 
     let stopped: Promise<JobEnd> | null = null;
 

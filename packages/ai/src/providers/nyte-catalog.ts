@@ -49,7 +49,12 @@ export function createNyteModels(): MutableModels {
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
-  for (const provider of NYTE_PROVIDERS) models.setProvider(provider());
+  for (const provider of nyteProviders()) models.setProvider(provider);
 
   return models;
+}
+
+/** Returns a fresh instance of every provider a Nyte client composes, in fallback order: what `createNyteModels` registers, for a host that builds its own `Models` over other stores. */
+export function nyteProviders(): readonly Provider[] {
+  return NYTE_PROVIDERS.map((provider) => provider());
 }

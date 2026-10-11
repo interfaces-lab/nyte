@@ -4,6 +4,7 @@ import { decodeSeenRecord, definePart, headRef, seenRef } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
+  HOST_HEADER,
   decodeError,
   decodeOutput,
   parseOutputFrames,
@@ -256,6 +257,14 @@ describe("handler", () => {
     expect(unwatched.status).toBe(404);
     expect((await errorOf(strict)).issues.map((issue) => issue.path)).toEqual([["extra"]]);
     expect(await errorOf(large)).toMatchObject({ code: "invalid" });
+  });
+
+  it("exposes X-Nyte-Host to an allowed origin", async () => {
+    const { handler } = await served();
+    const listed = await post(handler, "sessions.list", {}, { Origin: "https://app.nyte.dev" });
+
+    expect(HOST_HEADER).toBe("X-Nyte-Host");
+    expect(listed.headers.get("Access-Control-Expose-Headers")).toContain(HOST_HEADER);
   });
 
   it("answers CORS for the allowed origins and denies the rest", async () => {
