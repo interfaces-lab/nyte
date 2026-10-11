@@ -35,11 +35,15 @@ import { settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { createTurnDriver } from "./turn.ts";
 
-/** Describes what `composeHost` needs: `OpenOptions`, plus what the platform host supplies: the home directory `Resources.user` attaches at (null on a host without one), the operations catalog `HostView.operations` serves (protocol's), and the host's name, platform and version. */
+/** Describes what `composeHost` needs: `OpenOptions`, plus what the platform host supplies: the home directory `Resources.user` attaches at (null on a host without one), the operations catalog `HostView.operations` serves (protocol's), the host's name, platform and version, and where each of `plugins` loaded from a plugin file came from (§41e; absent, every one is `inline`). */
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
   readonly operations: HostView["operations"];
   readonly description: HostDescription;
+  readonly pluginSources?: ReadonlyMap<
+    Plugin<"core">,
+    { readonly source: "user" | "project"; readonly path: string }
+  >;
 };
 
 /** The core plugins every session loads first, in decision 13's order: what `kernel.builtins` holds. */
@@ -51,7 +55,7 @@ export const BUILTINS: readonly Plugin<"core">[] = [
   partsPlugin,
 ];
 
-/** Composes the in-process host `sdk.open` serves: the composition root. Runs the preflight first, touching nothing: `checkPlugins` over `BUILTINS` then `options.plugins`, any `rejected` plugin throwing `SdkError("invalid")` with its issues (collisions stay warnings, as a load reports them). Opens a store connection, reads the host's identity (`hostIdentity`), and builds the host state (`createHostState`: a fresh catalog generation, no settings yet, `options.operations`), its `HostView.plugins` seeded with `hostPluginRows`: one row per built-in (`source: "builtin"`) then per `options.plugins` entry (`source: "inline"`), each with a null path and no issues, merged later with the runtimes' live issues (§38x). Creates the kernel with every slot: `turn` (`createTurnDriver`), `summarize` (`createSummarizer`), `compact` (`createCompactor`), `resolveConfiguration` (`createConfigurationResolver`), `request` (`createRequest`), `models` (`createModelsApi`), each over `options.models`; `builtins` `BUILTINS`; `hostPlugins` `options.plugins`; `secrets`, `home`, `execution` (default run, covering all) and `description` as given. Registers `options.workspace` through `kernel.workspaces` as `LOCAL` (decision 5: `projectResources` true, no `expect`; `exists` when registered) and makes it the kernel's default workspace; a workspace no provider serves throws `SdkError("unavailable")` after releasing what was opened. Seeds `HostView.settings` from `settingInfos(kernel, null)`. Under `execution.kind === "run"` starts `driveInProcess(kernel, coverage)`. Returns `createHost(kernel, { credential: { kind: "token", token: "" } })` with `kernel`, its `close()` (and `[Symbol.asyncDispose]`) closing the host connection's streams, releasing the driver and its leases without waiting on the turns in flight (the driver aborts them with the host-closing signal and leaves their runs live for the next open, §38y), closing every session's plugins (`kernel.closePlugins`), detaching every attached environment, session and workspace, and closing the store connection; the `Store` itself is the caller's. */
+/** Composes the in-process host `sdk.open` serves: the composition root. Runs the preflight first, touching nothing: `checkPlugins` over `BUILTINS` then `options.plugins`, any `rejected` plugin throwing `SdkError("invalid")` with its issues (collisions stay warnings, as a load reports them). Opens a store connection, reads the host's identity (`hostIdentity`), and builds the host state (`createHostState`: a fresh catalog generation, no settings yet, `options.operations`), its `HostView.plugins` seeded with `hostPluginRows`: one row per built-in (`source: "builtin"`) then per `options.plugins` entry (`user` or `project` with its path when `options.pluginSources` names it, else `inline` with a null path), each with no issues, merged later with the runtimes' live issues (§38x). Creates the kernel with every slot: `turn` (`createTurnDriver`), `summarize` (`createSummarizer`), `compact` (`createCompactor`), `resolveConfiguration` (`createConfigurationResolver`), `request` (`createRequest`), `models` (`createModelsApi`), each over `options.models`; `builtins` `BUILTINS`; `hostPlugins` `options.plugins`; `pluginSources`, `secrets`, `home`, `execution` (default run, covering all) and `description` as given. Registers `options.workspace` through `kernel.workspaces` as `LOCAL` (decision 5: `projectResources` true, no `expect`; `exists` when registered) and makes it the kernel's default workspace; a workspace no provider serves throws `SdkError("unavailable")` after releasing what was opened. Seeds `HostView.settings` from `settingInfos(kernel, null)`. Under `execution.kind === "run"` starts `driveInProcess(kernel, coverage)`. Returns `createHost(kernel, { credential: { kind: "token", token: "" } })` with `kernel`, its `close()` (and `[Symbol.asyncDispose]`) closing the host connection's streams, releasing the driver and its leases without waiting on the turns in flight (the driver aborts them with the host-closing signal and leaves their runs live for the next open, §38y), closing every session's plugins (`kernel.closePlugins`), detaching every attached environment, session and workspace, and closing the store connection; the `Store` itself is the caller's. */
 export async function composeHost(
   options: ComposeOptions,
 ): Promise<Omit<Host, "listen"> & { readonly kernel: Kernel }> {
@@ -194,6 +198,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     models: catalog,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
+    pluginSources: options.pluginSources,
     secrets: options.secrets,
     home: options.home,
   });

@@ -2,6 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type {
   CallId,
   CommitId,
+  Disposer,
   DurableEvent,
   ExecutionCoverage,
   HeadInfo,
@@ -458,9 +459,29 @@ export async function covers(
   return false;
 }
 
-/** Returns whether this host runs a session: execution is `run` and its coverage includes it. */
+const driven = new WeakMap<Kernel, Set<ExecutionCoverage>>();
+
+/** Records a coverage an in-process driver runs while it is open (what `driveInProcess` registers), so `isCovered` counts it on a kernel whose own execution is `admit-only` (§41b); the disposer removes it. */
+export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer {
+  const coverages = driven.get(kernel) ?? new Set<ExecutionCoverage>();
+  const entry = { ...coverage };
+  coverages.add(entry);
+  driven.set(kernel, coverages);
+
+  return () => {
+    coverages.delete(entry);
+  };
+}
+
+/** Returns whether this host runs a session: execution is `run` and its coverage includes it, or an open in-process driver's coverage includes it. */
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
-  return kernel.execution.kind === "run" && covers(kernel, kernel.execution.coverage, session);
+  if (kernel.execution.kind === "run" && (await covers(kernel, kernel.execution.coverage, session)))
+    return true;
+
+  for (const coverage of driven.get(kernel) ?? [])
+    if (await covers(kernel, coverage, session)) return true;
+
+  return false;
 }
 
 /** Returns the `session` event for a record about to be written: the current directory row with the record's fields and heads, and `rows` laid over named heads. */

@@ -1,11 +1,162 @@
-import type { EnvironmentProvider } from "@nyte-ai/core";
+import { constants } from "node:fs";
+import { access, readdir, realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { asId } from "@nyte-ai/schema";
+import type { WorkspaceTarget } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/core";
+import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
+import { sha256 } from "../hash.ts";
+import { localFiles } from "./files.ts";
+import { localGit } from "./git.ts";
+import { folderIdentity } from "./identity.ts";
+import { localExec } from "./jobs.ts";
+import { localSnapshots } from "./snapshots.ts";
 
-/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity`, `available` when the path is a readable directory (else `unavailable { unreachable }`; any other target kind `unavailable { unsupported }`), and the project sources present under it, relative to it (`.nyte/plugins/*`, `.nyte/skills`, `.nyte/prompts`, `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md`, `.agents/skills`, `AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`). `attach` resolves the real path and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its watchers and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`); no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
+const PLUGIN_FILE = /\.(?:ts|mts|js|mjs)$/;
+
+const ROOT_SOURCES = [
+  ".nyte/SYSTEM.md",
+  ".nyte/APPEND_SYSTEM.md",
+  "AGENTS.override.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+];
+
+/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md`, `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md`. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`); no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
 export function localProvider(options?: {
   readonly home?: string;
   readonly git?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
 }): EnvironmentProvider {
-  throw new Error("not implemented");
+  const store = join(options?.home ?? homedir(), ".nyte", "snapshots");
+
+  return {
+    kind: "local",
+    async inspect(target) {
+      const path = pathOf(target);
+
+      if (path === null)
+        return {
+          identity: asId<"environment-identity">(sha256(JSON.stringify(target))),
+          availability: { kind: "unavailable", reason: "unsupported" },
+          projectSources: [],
+        };
+
+      const identity = await folderIdentity(path);
+
+      if (!(await readableDirectory(path)))
+        return {
+          identity,
+          availability: { kind: "unavailable", reason: "unreachable" },
+          projectSources: [],
+        };
+
+      return {
+        identity,
+        availability: { kind: "available" },
+        projectSources: await projectSources(path),
+      };
+    },
+    async attach(target) {
+      const path = pathOf(target);
+
+      if (path === null) throw new SdkError("unavailable", "A local workspace needs a path.");
+      const real = await realpath(path).catch(() => null);
+
+      if (real === null || !(await readableDirectory(real)))
+        throw new SdkError("unavailable", `${path} is not a readable directory.`);
+      const detached = new AbortController();
+
+      const env: ExecutionEnv = {
+        identity: await folderIdentity(real),
+        cwd: real,
+        files: localFiles(real, {
+          ripgrep: options?.ripgrep,
+          formatter: options?.formatter,
+          signal: detached.signal,
+        }),
+        exec: localExec(real, { signal: detached.signal }),
+        close: async () => detached.abort(),
+      };
+
+      return env;
+    },
+    git: (env) => localGit(env, { git: options?.git }),
+    snapshots: (env) => localSnapshots(env, { store, git: options?.git }),
+    async destroy() {
+      throw new SdkError("unavailable", "A local folder is never torn down.");
+    },
+  };
+}
+
+/** Returns a local target's path, or null for a target without one. */
+function pathOf(target: WorkspaceTarget): string | null {
+  return "path" in target && typeof target.path === "string" ? target.path : null;
+}
+
+async function readableDirectory(path: string): Promise<boolean> {
+  const stats = await stat(path).catch(() => null);
+
+  return (
+    stats !== null &&
+    stats.isDirectory() &&
+    (await access(path, constants.R_OK | constants.X_OK).then(
+      () => true,
+      () => false,
+    ))
+  );
+}
+
+/** Returns the project sources present under a folder, relative to it, as `localProvider` lists them. */
+async function projectSources(root: string): Promise<readonly string[]> {
+  const names = async (directory: string): Promise<readonly string[]> =>
+    (await readdir(join(root, directory)).catch(() => [])).sort((left, right) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    );
+
+  const isFile = async (path: string): Promise<boolean> =>
+    (await stat(join(root, path)).catch(() => null))?.isFile() === true;
+
+  const plugins = (
+    await Promise.all(
+      (await names(".nyte/plugins")).map(async (name) => {
+        const path = `.nyte/plugins/${name}`;
+
+        if (PLUGIN_FILE.test(name) && (await isFile(path))) return [path];
+
+        for (const index of ["index.ts", "index.mts", "index.js", "index.mjs"])
+          if (await isFile(`${path}/${index}`)) return [`${path}/${index}`];
+
+        return [];
+      }),
+    )
+  ).flat();
+
+  const skills = (
+    await Promise.all(
+      [".nyte/skills", ".agents/skills"].map(async (directory) =>
+        (
+          await Promise.all(
+            (await names(directory)).map(async (name) => {
+              const path = `${directory}/${name}/SKILL.md`;
+
+              return (await isFile(path)) ? [path] : [];
+            }),
+          )
+        ).flat(),
+      ),
+    )
+  ).flat();
+
+  const prompts = (await names(".nyte/prompts"))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => `.nyte/prompts/${name}`);
+
+  const present = await Promise.all(
+    ROOT_SOURCES.map(async (path) => ((await isFile(path)) ? [path] : [])),
+  );
+
+  return [...plugins, ...skills, ...prompts, ...present.flat()];
 }

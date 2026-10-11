@@ -480,18 +480,22 @@ export async function replacePlugins(
   return { generation: bumpGeneration(kernel), plugins: outcomes };
 }
 
-/** Returns `HostView.plugins` before any session's issues: one row per plugin id, `kernel.builtins` (`builtin`) then `kernel.hostPlugins` (`inline`), each with a null path and no issues; what `composeHost` seeds at open (§38x). */
+/** Returns `HostView.plugins` before any session's issues: one row per plugin id, `kernel.builtins` (`builtin`) then `kernel.hostPlugins`, each with no issues; a host plugin `kernel.pluginSources` holds carries its `source` (`user` or `project`) and `path` (§41e), any other is `inline` with a null path. What `composeHost` seeds at open (§38x). */
 export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
   const rows = new Map<string, HostView["plugins"][number]>();
 
-  for (const plugin of [...kernel.builtins, ...kernel.hostPlugins])
-    if (!rows.has(plugin.id))
-      rows.set(plugin.id, {
-        id: plugin.id,
-        source: BUILT_IN.has(plugin.id) ? "builtin" : "inline",
-        path: null,
-        issues: [],
-      });
+  for (const plugin of [...kernel.builtins, ...kernel.hostPlugins]) {
+    if (rows.has(plugin.id)) continue;
+    const builtin = BUILT_IN.has(plugin.id);
+    const loaded = builtin ? undefined : kernel.pluginSources.get(plugin);
+
+    rows.set(plugin.id, {
+      id: plugin.id,
+      source: builtin ? "builtin" : (loaded?.source ?? "inline"),
+      path: loaded?.path ?? null,
+      issues: [],
+    });
+  }
 
   return [...rows.values()];
 }

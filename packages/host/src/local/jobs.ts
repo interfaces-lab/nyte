@@ -1,9 +1,499 @@
-import type { ExecutionEnv } from "@nyte-ai/core";
+import { spawn } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
+import { asId } from "@nyte-ai/schema";
+import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
+import { SdkError, closable } from "@nyte-ai/core";
+import type { ExecutionEnv, Job } from "@nyte-ai/core";
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell`, else `$SHELL`, else `/bin/sh`, as a login shell; §37h). Without `pty` the process is piped through `node:child_process`, stdout and stderr interleaved in `output` and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty` at the given size. `output()` opens a reader over a bounded buffer that yields `bytes`, a `gap` where the reader fell behind (the process never stalls), and `exit { code }` last. `resize` resizes a pty (`not-pty` for a pipe); `idle` answers whether a pty's shell sits at a prompt by its OSC 133 prompt markers (false for a pipe, and before any marker); `stop` sends SIGTERM to the process group, SIGKILL after 5 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }`, `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`; `close` detaches this handle's readers. An aborted `signal` stops the process. */
+/** What `@lydell/node-pty` exports that a pty job uses. */
+type PtyModule = {
+  spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
+};
+
+/** Returns what drives one process for its `Job`: stdin, resize, the prompt state, the signal that ends it, and the shared output and end. */
+type Driver = {
+  write(bytes: Uint8Array): Promise<void>;
+  resize(size: { readonly columns: number; readonly rows: number }): boolean;
+  idle(): boolean;
+  kill(signal: NodeJS.Signals): void;
+  readonly pty: boolean;
+};
+
+/** The bytes of output a job keeps for readers that fall behind or open late: 1 MiB. */
+const OUTPUT_LIMIT = 1024 * 1024;
+
+const STOP_GRACE_MS = 2_000;
+
+const CLOSE_GRACE_MS = 2_000;
+
+const QUIET_MS = 300;
+
+const DONE = { done: true, value: undefined } as const;
+
+const ESC = "\u001b";
+
+const BEL = "\u0007";
+
+const PROMPT_MARKER = `${ESC}]133;`;
+
+let loaded: PtyModule | null | undefined;
+
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell`, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped (the process never stalls), and `exit { code }` last. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
-  options?: { readonly shell?: string },
+  options?: {
+    readonly shell?: string;
+    readonly signal?: AbortSignal;
+    readonly loadPty?: () => unknown;
+  },
 ): ExecutionEnv["exec"] {
-  throw new Error("not implemented");
+  const readers = new Set<() => void>();
+  const custom = options?.loadPty;
+  const load = custom === undefined ? loadPty : () => ptyFrom(custom);
+
+  options?.signal?.addEventListener(
+    "abort",
+    () => {
+      for (const close of readers) close();
+    },
+    { once: true },
+  );
+
+  return async (command, input) => {
+    if (input?.signal?.aborted === true) throw new SdkError("unavailable", "aborted");
+
+    if (typeof command !== "string" && command.length === 0 && input?.pty === undefined)
+      throw new SdkError("invalid", "An empty command runs only in a pty, as the login shell.");
+    const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
+    const env = { ...process.env, ...input?.env };
+    const log = createOutputLog(OUTPUT_LIMIT);
+    let settle: (end: JobEnd) => void = () => undefined;
+
+    const ended = new Promise<JobEnd>((done) => {
+      settle = done;
+    });
+
+    let stopping = false;
+    let finished: JobEnd | null = null;
+
+    const finish = (code: number | null): void => {
+      if (finished !== null) return;
+      finished = { kind: "exited", code, reason: stopping ? "terminated" : "exited" };
+      log.end(code);
+      settle(finished);
+    };
+
+    const driver =
+      input?.pty === undefined
+        ? await pipe(command, { cwd, env }, log, finish)
+        : await terminal(
+            command,
+            { cwd, env, size: input.pty, shell: options?.shell, load },
+            log,
+            finish,
+          );
+
+    let stopped: Promise<JobEnd> | null = null;
+
+    const stop = (): Promise<JobEnd> => {
+      stopped ??= (async () => {
+        if (finished !== null) return finished;
+        stopping = true;
+        driver.kill(driver.pty ? "SIGHUP" : "SIGTERM");
+        const timer = setTimeout(() => driver.kill("SIGKILL"), STOP_GRACE_MS);
+
+        try {
+          return await ended;
+        } finally {
+          clearTimeout(timer);
+        }
+      })();
+
+      return stopped;
+    };
+
+    input?.signal?.addEventListener("abort", () => void stop(), { once: true });
+    const own = new Set<() => void>();
+
+    const close = async (): Promise<void> => {
+      for (const detach of own) detach();
+    };
+
+    const job: Job = {
+      id: asId<"job">(crypto.randomUUID()),
+      key: null,
+      write: (bytes) => driver.write(bytes),
+      output: () =>
+        closable<OutputFrame>(() => {
+          const reader = log.reader();
+
+          const detach = (): void => {
+            own.delete(detach);
+            readers.delete(detach);
+            reader.close();
+          };
+
+          own.add(detach);
+          readers.add(detach);
+
+          return { pull: () => reader.next(), close: detach };
+        }),
+      async resize(size) {
+        if (!driver.pty) return { kind: "not-pty" };
+
+        return finished === null && driver.resize(size) ? { kind: "resized" } : { kind: "missing" };
+      },
+      idle: async () => finished === null && driver.idle(),
+      stop: async () => ({ kind: "settled", outcome: await stop() }),
+      settled: (request) => waitEnd(ended, request),
+      close,
+      [Symbol.asyncDispose]: close,
+    };
+
+    return job;
+  };
+}
+
+/** Starts a piped process, as `localExec` describes. */
+async function pipe(
+  command: string | readonly string[],
+  options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
+  log: OutputLog,
+  finish: (code: number | null) => void,
+): Promise<Driver> {
+  const group = process.platform !== "win32";
+  const [file, ...args] = typeof command === "string" ? [command] : command;
+
+  const settings: SpawnOptions = {
+    cwd: options.cwd,
+    env: options.env,
+    detached: group,
+    stdio: "pipe",
+    windowsHide: true,
+  };
+
+  const child: ChildProcess =
+    typeof command === "string"
+      ? spawn(command, { ...settings, shell: true })
+      : spawn(file ?? "", args, settings);
+
+  await new Promise<void>((started, failed) => {
+    child.once("spawn", started);
+    child.once("error", (error) =>
+      failed(new SdkError("unavailable", `Cannot start ${file ?? ""}: ${error.message}`)),
+    );
+  });
+
+  child.stdout?.on("data", (chunk: Buffer) => log.push(chunk));
+  child.stderr?.on("data", (chunk: Buffer) => log.push(chunk));
+  child.stdin?.on("error", () => undefined);
+  child.on("close", (code) => finish(code));
+  child.on("exit", (code) => {
+    setTimeout(() => {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      finish(code);
+    }, CLOSE_GRACE_MS).unref();
+  });
+
+  return {
+    pty: false,
+    async write(bytes) {
+      const stdin = child.stdin;
+
+      if (stdin === null || !stdin.writable)
+        throw new SdkError("unavailable", "The process no longer reads its input.");
+      await new Promise<void>((written) => stdin.write(bytes, () => written()));
+    },
+    resize: () => false,
+    idle: () => false,
+    kill(signal) {
+      try {
+        if (group && child.pid !== undefined) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch {
+        child.kill(signal);
+      }
+    },
+  };
+}
+
+/** Starts a process in a pty, as `localExec` describes. */
+async function terminal(
+  command: string | readonly string[],
+  options: {
+    readonly cwd: string;
+    readonly env: NodeJS.ProcessEnv;
+    readonly size: { readonly columns: number; readonly rows: number };
+    readonly shell: string | undefined;
+    readonly load: () => PtyModule | null;
+  },
+  log: OutputLog,
+  finish: (code: number | null) => void,
+): Promise<Driver> {
+  const pty = options.load();
+
+  if (pty === null)
+    throw new SdkError(
+      "unavailable",
+      "Terminals need @lydell/node-pty, which does not load on this platform.",
+    );
+  const windows = process.platform === "win32";
+
+  const shell =
+    options.shell ??
+    (windows ? (process.env.COMSPEC ?? "cmd.exe") : (process.env.SHELL ?? "/bin/sh"));
+
+  const [file, ...args] =
+    typeof command === "string"
+      ? windows
+        ? [shell, "/d", "/s", "/c", command]
+        : ["/bin/sh", "-c", command]
+      : command.length === 0
+        ? windows
+          ? [shell]
+          : [shell, "-l"]
+        : command;
+
+  let term: IPty;
+
+  try {
+    term = pty.spawn(file ?? shell, args, {
+      name: "xterm-256color",
+      cols: options.size.columns,
+      rows: options.size.rows,
+      cwd: options.cwd,
+      env: { ...options.env, TERM: "xterm-256color" },
+    });
+  } catch (error) {
+    throw new SdkError(
+      "unavailable",
+      `Cannot start ${file ?? shell} in a pty: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const encoder = new TextEncoder();
+  let marker: string | null = null;
+  let line = "";
+  let quietSince = 0;
+
+  term.onData((text) => {
+    log.push(encoder.encode(text));
+    quietSince = Date.now();
+
+    marker = lastMarker(text) ?? marker;
+    const plain = withoutEscapes(text);
+    const broken = plain.lastIndexOf("\n");
+    line = (broken < 0 ? line + plain : plain.slice(broken + 1)).slice(-1024);
+    const returned = line.replace(/\r+$/, "").lastIndexOf("\r");
+
+    if (returned >= 0) line = line.slice(returned + 1);
+  });
+  term.onExit(({ exitCode, signal }) => finish(signal ? null : exitCode));
+
+  return {
+    pty: true,
+    async write(bytes) {
+      term.write(Buffer.from(bytes));
+    },
+    resize(size) {
+      term.resize(size.columns, size.rows);
+
+      return true;
+    },
+    idle() {
+      if (marker !== null) return marker !== "C";
+
+      return quietSince > 0 && Date.now() - quietSince >= QUIET_MS && line.trim() !== "";
+    },
+    kill(signal) {
+      try {
+        term.kill(windows ? undefined : signal);
+      } catch {}
+    },
+  };
+}
+
+/** Returns the last OSC 133 prompt marker (`A` prompt, `B` input, `C` output, `D` done) a chunk of terminal output carries, or null. */
+function lastMarker(text: string): string | null {
+  let found: string | null = null;
+
+  for (let at = text.indexOf(PROMPT_MARKER); at >= 0; at = text.indexOf(PROMPT_MARKER, at + 1)) {
+    const letter = text[at + PROMPT_MARKER.length] ?? "";
+
+    if ("ABCD".includes(letter) && letter !== "") found = letter;
+  }
+
+  return found;
+}
+
+/** Returns terminal output without its escape sequences: CSI (`ESC [` … final byte), OSC (`ESC ]` … BEL or `ESC \\`) and two-byte escapes. */
+function withoutEscapes(text: string): string {
+  let plain = "";
+  let at = 0;
+
+  while (at < text.length) {
+    const char = text[at] ?? "";
+
+    if (char !== ESC) {
+      plain += char;
+      at += 1;
+      continue;
+    }
+
+    const kind = text[at + 1] ?? "";
+    at += 2;
+
+    if (kind === "[") {
+      while (at < text.length && !/[@-~]/.test(text[at] ?? "")) at += 1;
+      at += 1;
+    } else if (kind === "]") {
+      while (at < text.length && text[at] !== BEL && !(text[at] === ESC && text[at + 1] === "\\"))
+        at += 1;
+      at += text[at] === BEL ? 1 : 2;
+    }
+  }
+
+  return plain;
+}
+
+/** Returns `@lydell/node-pty`, required once on first use; null when it does not load here. */
+function loadPty(): PtyModule | null {
+  if (loaded === undefined)
+    loaded = ptyFrom(() => createRequire(import.meta.url)("@lydell/node-pty"));
+
+  return loaded;
+}
+
+/** Returns what `load` answers when it is a pty module; null when it throws or answers anything else. */
+function ptyFrom(load: () => unknown): PtyModule | null {
+  try {
+    const required = load();
+
+    return isPtyModule(required) ? required : null;
+  } catch {
+    return null;
+  }
+}
+
+function isPtyModule(value: unknown): value is PtyModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "spawn" in value &&
+    typeof value.spawn === "function"
+  );
+}
+
+/** Resolves a job's end, or rejects `SdkError("unavailable")` when the wait's signal aborts first. */
+function waitEnd(ended: Promise<JobEnd>, request: RequestOptions | undefined): Promise<JobEnd> {
+  const signal = request?.signal;
+
+  if (signal === undefined) return ended;
+
+  if (signal.aborted) return Promise.reject(new SdkError("unavailable", "aborted"));
+
+  return new Promise((settled, failed) => {
+    const abort = (): void => failed(new SdkError("unavailable", "aborted"));
+    signal.addEventListener("abort", abort, { once: true });
+    ended.then((end) => {
+      signal.removeEventListener("abort", abort);
+      settled(end);
+    }, failed);
+  });
+}
+
+/** Returns a process's output as its readers see it: the newest bytes up to a bound, then the exit. */
+type OutputLog = {
+  push(bytes: Uint8Array): void;
+  end(code: number | null): void;
+  reader(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
+};
+
+function createOutputLog(limit: number): OutputLog {
+  const state: {
+    readonly chunks: Uint8Array[];
+    first: number;
+    size: number;
+    exit: { readonly code: number | null } | null;
+  } = { chunks: [], first: 0, size: 0, exit: null };
+
+  const waiters = new Set<() => void>();
+
+  const wake = (): void => {
+    const pending = [...waiters];
+    waiters.clear();
+
+    for (const resolve of pending) resolve();
+  };
+
+  return {
+    push(bytes) {
+      state.chunks.push(bytes);
+      state.size += bytes.byteLength;
+
+      while (state.size > limit && state.chunks.length > 1) {
+        state.size -= state.chunks.shift()?.byteLength ?? 0;
+        state.first += 1;
+      }
+
+      wake();
+    },
+    end(code) {
+      state.exit ??= { code };
+      wake();
+    },
+    reader() {
+      let cursor = 0;
+      let done = false;
+      let waiting: (() => void) | null = null;
+
+      return {
+        async next() {
+          for (;;) {
+            if (done) return DONE;
+
+            if (cursor < state.first) {
+              cursor = state.first;
+
+              return { done: false, value: { kind: "gap" } };
+            }
+
+            const data = state.chunks[cursor - state.first];
+
+            if (data !== undefined) {
+              cursor += 1;
+
+              return { done: false, value: { kind: "bytes", data } };
+            }
+
+            if (state.exit !== null) {
+              done = true;
+
+              return { done: false, value: { kind: "exit", code: state.exit.code } };
+            }
+
+            await new Promise<void>((woken) => {
+              waiting = woken;
+              waiters.add(woken);
+            });
+            waiting = null;
+          }
+        },
+        close() {
+          done = true;
+          const resolve = waiting;
+          waiting = null;
+
+          if (resolve !== null) {
+            waiters.delete(resolve);
+            resolve();
+          }
+        },
+      };
+    },
+  };
 }

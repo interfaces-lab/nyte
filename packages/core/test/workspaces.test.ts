@@ -11,6 +11,7 @@ import {
   prune,
   reachableObjects,
   createHost,
+  driveInProcess,
   environmentPlugin,
   headRef,
   isPart,
@@ -635,6 +636,20 @@ describe("activation (§37j–m)", () => {
     expect(seen).toEqual(["unavailable", "unavailable"]);
     expect(provider.attaches).toBe(0);
     expect((await session.info()).activation).toEqual({ kind: "inactive" });
+  });
+
+  it("attaches an admit-only kernel's session while an in-process driver covers it, as a listener drives it (§41b, §41h)", async () => {
+    const { kernel, host, provider, workspace } = await world({
+      execution: { kind: "admit-only" },
+    });
+
+    const driver = driveInProcess(kernel, { kind: "workspace", workspace });
+    const session = await host.sessions.create({ workspace });
+
+    expect((await session.info()).activation).toEqual({ kind: "active" });
+    expect(provider.attaches).toBe(1);
+    expect((await kernel.env(session.id)).cwd).toBe("/work/project");
+    await driver.close();
   });
 });
 

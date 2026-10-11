@@ -25,6 +25,7 @@ import { leaseRef, runRef } from "./refs.ts";
 import type { Lease } from "./refs.ts";
 import { endRun, startRun } from "./runs.ts";
 import {
+  addDriven,
   commit,
   covers,
   isJsonObject,
@@ -183,8 +184,9 @@ export async function repair(
   return { runnable, next: page.next };
 }
 
-/** Drives covered heads in process: on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then, and one reported `retry` is stepped again at its `until`. Closing the handle stops it without waiting on the turns in flight: it aborts them with the kernel's host-closing signal, so each returns at once and its drive leaves the run live in the store for the next open or another host to resume through `advance` (§38y), then releases the leases. */
+/** Drives covered heads in process, its coverage counted by `isCovered` while it is open (so admission wakes it and activation attaches environments even on an `admit-only` kernel, §41b): on each wake, advances the head until idle, waiting, retry, busy or fenced, one advance in flight per head; a head reported waiting until a time gets a timer that ticks `kernel.waits` then, and one reported `retry` is stepped again at its `until`. Closing the handle stops it without waiting on the turns in flight: it aborts them with the kernel's host-closing signal, so each returns at once and its drive leaves the run live in the store for the next open or another host to resume through `advance` (§38y), then releases the leases. */
 export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Owned {
+  const undrive = addDriven(kernel, coverage);
   const covering = cover(kernel, coverage);
   const inflight = new Map<string, Promise<void>>();
   const again = new Set<string>();
@@ -285,6 +287,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
     closing ??= (async () => {
       closed = true;
       dispose();
+      undrive();
 
       if (timer !== null) clearTimeout(timer);
 

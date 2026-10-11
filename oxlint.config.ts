@@ -316,6 +316,14 @@ export default defineConfig({
       },
     },
     {
+      // The pty driver loads lazily so a platform without its prebuilt binary
+      // still loads the host (Part 2 §41a). Node only; nothing bundles it.
+      files: ["packages/host/src/local/jobs.ts"],
+      rules: {
+        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+      },
+    },
+    {
       files: ["packages/core/src/plugins/builtin/**"],
       rules: {
         "eslint/no-restricted-imports": [

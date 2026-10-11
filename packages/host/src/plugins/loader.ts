@@ -1,14 +1,157 @@
+import { readdir, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
+import type { ValidationIssue } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core";
 import type { HandlerOptions } from "@nyte-ai/protocol";
+import { codeOf } from "../local/tree.ts";
 
-/** Returns the core plugins in a plugin directory (`~/.nyte/plugins`, a workspace's `.nyte/plugins`), by file name: each `.ts`, `.mts`, `.js` or `.mjs` file directly in it and each subdirectory's `index` of those, loaded with a dynamic `import()` of its file URL. That `import()` is the one dynamic import the rewrite allows, host-only, because a plugin file is code the owner placed there and its path is known only at run time; Node strips `.ts` types natively (erasable syntax only). The URL carries the file's modification time and size as a query, so a replaced file loads fresh instead of from the module cache. The default export must be a core plugin (an object with a string `id`), else `SdkError("invalid")` naming the file; a missing directory has none. */
-export function loadPluginFiles(
+const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
+
+/** Returns the core plugins in a plugin directory (`~/.nyte/plugins`, a workspace's `.nyte/plugins`), by file name: each `.ts`, `.mts`, `.js` or `.mjs` file directly in it and each subdirectory's `index` of those, loaded with a dynamic `import()` of its file URL. That `import()` is one of the two dynamic loads the rewrite allows (§41a), host-only, because a plugin file is code the owner placed there and its path is known only at run time; Node strips `.ts` types natively (erasable syntax only). The URL carries the file's modification time and size as a query, so a replaced file loads fresh instead of from the module cache. The default export must be a core plugin (an object with a string `id`, and, where present, `contribute` and `hooks` objects, an `activate` function and an `environment` with a string `kind` and `inspect` and `attach` functions); every file that does not load or export one is reported, together, as `SdkError("invalid")` with an issue per file naming it. A missing directory has none. */
+export async function loadPluginFiles(
   dir: string,
 ): Promise<readonly { readonly plugin: Plugin<"core">; readonly path: string }[]> {
-  throw new Error("not implemented");
+  const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
+    if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
+
+    throw error;
+  });
+
+  const files = (
+    await Promise.all(
+      entries
+        .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+        .map(async (entry) => {
+          const path = join(dir, entry.name);
+
+          if (entry.isFile())
+            return EXTENSIONS.some((extension) => entry.name.endsWith(extension)) ? [path] : [];
+
+          if (!entry.isDirectory()) return [];
+
+          for (const extension of EXTENSIONS) {
+            const index = join(path, `index${extension}`);
+
+            if ((await stat(index).catch(() => null))?.isFile() === true) return [index];
+          }
+
+          return [];
+        }),
+    )
+  ).flat();
+
+  return loadAll(files);
 }
 
 /** Returns the loader protocol's handler calls with the paths of `plugins.replace` and `plugins.check` (§40b): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
 export function pluginLoader(dirs: readonly string[]): NonNullable<HandlerOptions["plugins"]> {
-  throw new Error("not implemented");
+  return async (paths) => {
+    const roots = (await Promise.all(dirs.map((dir) => realpath(dir).catch(() => null)))).filter(
+      (root) => root !== null,
+    );
+
+    const files = await Promise.all(
+      paths.map(async (path) => {
+        const real = await realpath(path).catch(() => null);
+
+        if (real === null) throw new SdkError("invalid", `No plugin file is at ${path}.`);
+
+        if (!roots.some((root) => inside(root, real)))
+          throw new SdkError("denied", `${path} is not in a plugin directory this host loads.`);
+
+        return real;
+      }),
+    );
+
+    return (await loadAll(files)).map((loaded) => loaded.plugin);
+  };
+}
+
+/** Imports each file in order and returns its plugin, or throws one `invalid` naming every file that failed. */
+async function loadAll(
+  files: readonly string[],
+): Promise<readonly { readonly plugin: Plugin<"core">; readonly path: string }[]> {
+  const loaded: { readonly plugin: Plugin<"core">; readonly path: string }[] = [];
+  const issues: ValidationIssue[] = [];
+
+  for (const path of files) {
+    const outcome = await importPlugin(path);
+
+    if ("plugin" in outcome) loaded.push({ plugin: outcome.plugin, path });
+    else issues.push({ severity: "error", path: [path], message: outcome.reason });
+  }
+
+  if (issues.length > 0)
+    throw new SdkError(
+      "invalid",
+      `${issues.length === 1 ? "A plugin file" : `${issues.length} plugin files`} did not load: ${issues.map((issue) => `${issue.path.join("")}: ${issue.message}`).join("; ")}`,
+      { issues },
+    );
+
+  return loaded;
+}
+
+async function importPlugin(
+  path: string,
+): Promise<{ readonly plugin: Plugin<"core"> } | { readonly reason: string }> {
+  try {
+    const stats = await stat(path);
+    const url = pathToFileURL(path);
+    url.searchParams.set("nyte", `${stats.mtimeMs}-${stats.size}`);
+    const imported: unknown = await import(url.href);
+
+    const exported =
+      typeof imported === "object" && imported !== null && "default" in imported
+        ? imported.default
+        : undefined;
+
+    return isCorePlugin(exported)
+      ? { plugin: exported }
+      : { reason: "Its default export is not a core plugin (an object with a string id)." };
+  } catch (error) {
+    return { reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Returns whether a value has the shape of a core plugin: a string `id`, and, where present, `contribute` and `hooks` objects, an `activate` function and an `environment` provider with a string `kind` and `inspect` and `attach` functions. */
+function isCorePlugin(value: unknown): value is Plugin<"core"> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("id" in value) ||
+    typeof value.id !== "string"
+  )
+    return false;
+
+  const object = (field: unknown): boolean =>
+    field === undefined || (typeof field === "object" && field !== null);
+
+  if ("contribute" in value && !object(value.contribute)) return false;
+
+  if ("hooks" in value && !object(value.hooks)) return false;
+
+  if ("activate" in value && value.activate !== undefined && typeof value.activate !== "function")
+    return false;
+
+  if (!("environment" in value) || value.environment === undefined) return true;
+  const environment = value.environment;
+
+  return (
+    typeof environment === "object" &&
+    environment !== null &&
+    "kind" in environment &&
+    typeof environment.kind === "string" &&
+    "inspect" in environment &&
+    typeof environment.inspect === "function" &&
+    "attach" in environment &&
+    typeof environment.attach === "function"
+  );
+}
+
+function inside(root: string, path: string): boolean {
+  const within = relative(root, path);
+
+  return within !== "" && !within.startsWith("..") && !isAbsolute(within);
 }

@@ -169,6 +169,11 @@ export interface Kernel {
   readonly builtins: readonly Plugin<"core">[];
   /** The core plugins every session loads after the built-ins, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
   hostPlugins: readonly Plugin<"core">[];
+  /** Where each host plugin loaded from a file came from: its `.nyte/plugins` scope and path, read by `hostPluginRows` for `HostView.plugins` (§41e); a plugin it does not hold is `inline`. Default empty. */
+  readonly pluginSources: ReadonlyMap<
+    Plugin<"core">,
+    { readonly source: "user" | "project"; readonly path: string }
+  >;
   /** Returns a session's plugin runtime, created empty on first use and kept until `closePlugins`; creating it starts `activateSession` for the session, which loads the session's list (`sessionPlugins`) into a known session that has loaded nothing in this process (§36c). */
   pluginsFor(session: SessionId): PluginRuntime;
   /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
@@ -377,7 +382,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. */
+/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use and starts `activateSession` for it. */
 export function createKernel(
   input: Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     Partial<
@@ -417,6 +422,7 @@ export function createKernel(
         | "secrets"
         | "builtins"
         | "hostPlugins"
+        | "pluginSources"
         | "pluginApi"
         | "plugins"
         | "principals"
@@ -561,6 +567,7 @@ export function createKernel(
     secrets: input.secrets ?? null,
     builtins: input.builtins ?? [],
     hostPlugins: input.hostPlugins ?? [],
+    pluginSources: input.pluginSources ?? new Map(),
     pluginsFor(session) {
       const known = runtimes.get(session);
 
