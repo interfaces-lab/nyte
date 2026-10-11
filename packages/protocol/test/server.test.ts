@@ -1,6 +1,6 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
-import { decodeSeenRecord, definePart, headRef, seenRef } from "@nyte-ai/core";
+import { decodeSeenRecord, definePart, headRef, memoryStore, seenRef } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -383,6 +383,27 @@ describe("handler", () => {
     });
 
     expect(await errorOf(missing)).toMatchObject({ code: "unknown" });
+  });
+
+  it("resolves a plugin's part kind for parts.create on a host that has not loaded the session yet (§48h)", async () => {
+    const store = memoryStore();
+    const plugins = [{ id: "asker", contribute: { parts: [question] } }];
+    const warm = await served({ store, plugins });
+    const { session } = decodeOutput(
+      "sessions.create",
+      await (await post(warm.handler, "sessions.create", {})).json(),
+    );
+    const cold = await served({ store, plugins });
+
+    const created = await post(cold.handler, "parts.create", {
+      session,
+      kind: "test/question",
+      input: { state: { title: "Pick" }, placement: { kind: "modal" } },
+    });
+
+    expect(created.status).toBe(200);
+    await cold.host.close();
+    await warm.host.close();
   });
 
   it("answers invalid when files.batch or browser.open replays its id with another input (§40x)", async () => {

@@ -371,8 +371,36 @@ export type Available<Table, S extends Side> = {
  * @since 0.1.0
  */
 export type Registries<S extends Side> = {
-  readonly [K in keyof Available<ContributionTable, S>]: Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
+  readonly [K in keyof Available<ContributionTable, S>]: K extends "settings"
+    ? SettingsRegistry<S>
+    : Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
 };
+
+/**
+ * Returns the settings registry: a registry that also reads the settings
+ * this plugin declared, statically in `contribute.settings` or through
+ * `add`, so no plugin declares a setting twice to hold its handle (§48b).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export interface SettingsRegistry<S extends Side = Side> extends Registry<SettingDefinition, S, Setting<unknown>> {
+  /**
+   * Returns the current value of a setting this plugin declared: the
+   * session layer, else the host value, else the default.
+   *
+   * @throws {SdkError} unknown when this plugin declares no setting with this id.
+   */
+  value(id: string): Promise<unknown>;
+  /**
+   * Yields the value of a setting this plugin declared, then each change,
+   * until the plugin deactivates.
+   *
+   * @stream watch
+   * @throws {SdkError} unknown when this plugin declares no setting with this id.
+   */
+  watch(id: string): AsyncIterable<unknown>;
+}
 
 /**
  * Returns the static contribution arrays a plugin may declare for a side.

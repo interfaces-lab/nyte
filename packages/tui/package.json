@@ -24,7 +24,6 @@
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/serve": "workspace:*",
-    "@nyte-ai/telemetry": "workspace:*",
     "@opentui/core": "^0.5.12",
     "@opentui/keymap": "^0.5.12",
     "@opentui/solid": "^0.5.12",

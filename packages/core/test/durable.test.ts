@@ -564,7 +564,7 @@ describe("durable steps", () => {
     });
   });
 
-  it("wakes at once a wait whose target already settled, whatever its kind", async () => {
+  it("wakes at once a wait whose target already settled, whatever its kind; a modal answered before the park settles the step without parking (§48i)", async () => {
     const { kernel, host } = await setup();
     const session = await host.sessions.create();
 
@@ -616,9 +616,9 @@ describe("durable steps", () => {
     for (const [name, target, outcome] of targets) {
       const call: CallId = asId(name);
 
-      expect(await step(kernel, { session: session.id, call, body: waiting(target) })).toEqual({
-        kind: "parked",
-      });
+      expect(await step(kernel, { session: session.id, call, body: waiting(target) })).toEqual(
+        name === "answered" ? { kind: "done", value: "part" } : { kind: "parked" },
+      );
       expect(await readCall(kernel, session.id, call)).toMatchObject({
         waiting: null,
         waits: [outcome],

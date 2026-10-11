@@ -1,4 +1,5 @@
 import type { Disposer, ValidationIssue } from "@nyte-ai/schema";
+import { SdkError } from "./error.ts";
 import type {
   ContributionTable,
   Registries,
@@ -6,6 +7,7 @@ import type {
   RegistryDraft,
   Setting,
   SettingDefinition,
+  SettingsRegistry,
 } from "./plugin.ts";
 
 /** Returns one registry as a session holds it: the `Registry` every plugin reads, plus writes on behalf of one plugin, the materialised items with their owners, and its step of the reload pass. Its own `add` writes as owner `core`. */
@@ -14,18 +16,21 @@ export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", 
   owned(owner: string, signal?: AbortSignal): Registry<T, "core", Handle>;
   /** Returns the materialised items with the plugin that owns each, in `list` order: a static item is its adder's, an item a derive sets is the deriver's, a wrapped item keeps its owner. */
   entries(): readonly { readonly item: T; readonly owner: string }[];
+  /** Returns the static items one owner has added and not removed, in add order, whether or not a reload pass has materialised them yet. */
+  declared(owner: string): readonly T[];
   /** Runs this registry's step of a reload pass: seeds a draft with the static items by key in add order (a later add under a key replaces the earlier one, and one from another owner is a collision warning unless the kind overrides on purpose), runs every derive in registration order against it with `siblings`, and makes the result what `list` and `entries` return. A derive that throws has its edits discarded and comes back as an error issue against its owner. Issue paths start at the item's key. */
   materialize(
     siblings: Registries<"core">,
   ): readonly { readonly owner: string; readonly issue: ValidationIssue }[];
 }
 
-/** Returns one `CoreRegistry` per contribution kind a core plugin may write. */
+/** Returns one `CoreRegistry` per contribution kind a core plugin may write; the settings one also reads the settings declared as `core` (`SettingsRegistry`). */
 export type CoreRegistries = {
   readonly [K in keyof Registries<"core">]: CoreRegistry<
     ContributionTable[K & keyof ContributionTable]["item"],
     ContributionTable[K & keyof ContributionTable]["handle"]
-  >;
+  > &
+    (K extends "settings" ? Pick<SettingsRegistry<"core">, "value" | "watch"> : {});
 };
 
 /** Holds one session's core registries and runs their reload pass. */
@@ -59,7 +64,7 @@ const ORDER = [
   "settings",
 ] as const satisfies readonly (keyof CoreRegistries)[];
 
-/** Returns a session's empty registry set: one `createRegistry` per kind, keyed by tool name, prompt section id (a later source overrides on purpose), agent id, `<provider>/<id>` of the model ref, skill name, part kind, `<owner>/<name>` for commands and setting id; `settings.add` returns `setting(definition, owner)` joined with its disposer; every write schedules a reload; `report` receives collisions and derive failures by owner; `onChange` runs after every pass. */
+/** Returns a session's empty registry set: one `createRegistry` per kind, keyed by tool name, prompt section id (a later source overrides on purpose), agent id, `<provider>/<id>` of the model ref, skill name, part kind, `<owner>/<name>` for commands and setting id; `settings.add` returns `setting(definition, owner)` joined with its disposer, and `settings.value(id)`/`watch(id)` read the setting an owner declared under `id` through the same handle (§48b); every write schedules a reload; `report` receives collisions and derive failures by owner; `onChange` runs after every pass. */
 export function createRegistrySet(input: {
   onChange(): void;
   setting(definition: SettingDefinition, owner: string): Setting<unknown>;
@@ -77,6 +82,30 @@ export function createRegistrySet(input: {
     });
   };
 
+  const settings = createRegistry<SettingDefinition, Setting<unknown>>({
+    key: (definition) => definition.id,
+    handle: (definition, owner) => input.setting(definition, owner),
+    onChange: reload,
+  });
+
+  /** Returns the handle on the setting `owner` declared last under `id`; throws `unknown` when it declared none. */
+  const declared = (owner: string, id: string): Setting<unknown> => {
+    const definition = settings.declared(owner).findLast((candidate) => candidate.id === id);
+
+    if (definition === undefined)
+      throw new SdkError("unknown", `${owner} declares no setting ${id}.`);
+
+    return input.setting(definition, owner);
+  };
+
+  /** Returns `value` and `watch` over the settings `owner` declared (§48b). */
+  const reading = (owner: string): Pick<SettingsRegistry<"core">, "value" | "watch"> => ({
+    value: async (id) => declared(owner, id).get(),
+    async *watch(id) {
+      yield* declared(owner, id).watch();
+    },
+  });
+
   const registries: CoreRegistries = {
     tools: createRegistry({ key: (tool) => tool.name, onChange: reload }),
     prompt: createRegistry({ key: (section) => section.id, overrides: true, onChange: reload }),
@@ -91,11 +120,7 @@ export function createRegistrySet(input: {
       key: (command, owner) => `${owner}/${command.name}`,
       onChange: reload,
     }),
-    settings: createRegistry({
-      key: (definition) => definition.id,
-      handle: (definition, owner) => input.setting(definition, owner),
-      onChange: reload,
-    }),
+    settings: { ...settings, ...reading("core") },
   };
 
   const set: RegistrySet = {
@@ -108,7 +133,7 @@ export function createRegistrySet(input: {
       skills: registries.skills.owned(owner, signal),
       parts: registries.parts.owned(owner, signal),
       commands: registries.commands.owned(owner, signal),
-      settings: registries.settings.owned(owner, signal),
+      settings: { ...registries.settings.owned(owner, signal), ...reading(owner) },
     }),
     async materialize() {
       if (passing) {
@@ -205,6 +230,7 @@ export function createRegistry<T, Handle = Disposer>(input: {
     ...owned("core"),
     owned,
     entries: () => materialized,
+    declared: (owner) => statics.flatMap((entry) => (entry.owner === owner ? [entry.item] : [])),
     materialize(siblings) {
       const draft = new Map<string, Entry<T>>();
       const issues: { readonly owner: string; readonly issue: ValidationIssue }[] = [];

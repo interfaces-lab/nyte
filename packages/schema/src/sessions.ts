@@ -142,6 +142,8 @@ export type AgentInfo = {
 export type ToolInfo = {
   readonly name: string;
   readonly owner: string;
+  /** "github", "mcp/linear": groups listings and codemode's search; null when the tool names none (§48d). */
+  readonly namespace: string | null;
   readonly description: string;
   readonly parameters: JsonSchema;
   readonly output: JsonSchema | null;

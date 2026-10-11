@@ -282,15 +282,33 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     parts: {
       async create(kind, input) {
         need("parts.create");
+        await kernel.pluginsFor(id).ready;
 
         return kernel.parts.create(context, id, kind, input);
       },
     },
-    part: (part) => kernel.parts.part(context, id, part),
+    part: (part) => activated(kernel, kernel.parts.part(context, id, part), id),
   };
 }
 
-/** Returns the session handle of the api a session's activation constructs (§44b): `sessionHandle`'s, with every head's `send` admitting through `sendNow` and `command` running at once, since a plugin calling them from its own `activate` is the activation they would wait on. */
+/** Returns a part handle whose `update` and `act` first await the session's activation in this process (§44a, §48h), so the part's definition is read with its owner's plugins loaded: an answer from a kernel that had not loaded them resolves the owner instead of `no-owner`. */
+function activated(kernel: Kernel, part: Part<PartDefinition>, session: SessionId): Part<PartDefinition> {
+  return {
+    ...part,
+    async update(next) {
+      await kernel.pluginsFor(session).ready;
+
+      return part.update(next);
+    },
+    async act(action, input) {
+      await kernel.pluginsFor(session).ready;
+
+      return part.act(action, input);
+    },
+  };
+}
+
+/** Returns the session handle of the api a session's activation constructs (§44b): `sessionHandle`'s, with every head's `send` admitting through `sendNow`, and `command`, `parts.create` and the part handles' `update` and `act` running at once, since a plugin calling them from its own `activate` is the activation they would wait on. */
 export function activationSession(
   kernel: Kernel,
   context: ConnectionContext,
@@ -305,6 +323,14 @@ export function activationSession(
 
       return kernel.command(id, name, args);
     },
+    parts: {
+      async create(kind, input) {
+        requireAuthority(context.authority, "participant", "session.parts.create");
+
+        return kernel.parts.create(context, id, kind, input);
+      },
+    },
+    part: (part) => kernel.parts.part(context, id, part),
   };
 }
 

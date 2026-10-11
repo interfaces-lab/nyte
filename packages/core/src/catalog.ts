@@ -101,7 +101,7 @@ export function bumpGeneration(kernel: Kernel): CatalogGeneration {
   return generation;
 }
 
-/** Returns a session's tools for one run, from its tools registry: `get` resolves any tool by name with its owner, whatever its exposure; `list` returns each as `ToolInfo` (parameters and output through `jsonSchemaOf`, a tool whose schemas have none left out), a deferred tool activated for this run listed as `model`; `activate` marks deferred tools for this run alone (a no-op when `run` is null), kept in memory until `endRun` drops them (§35f). What `kernel.tools` returns. */
+/** Returns a session's tools for one run, from its tools registry: `get` resolves any tool by name with its owner, whatever its exposure; `list` returns each as `ToolInfo` (`namespace` the definition's or null, §48d; parameters and output through `jsonSchemaOf`, a tool whose schemas have none left out), a deferred tool activated for this run listed as `model`; `activate` marks deferred tools for this run alone (a no-op when `run` is null), kept in memory until `endRun` drops them (§35f). What `kernel.tools` returns. */
 export function toolSource(kernel: Kernel, session: SessionId, run: RunId | null): ToolSource {
   const registry = kernel.pluginsFor(session).registries.tools;
 
@@ -125,6 +125,7 @@ export function toolSource(kernel: Kernel, session: SessionId, run: RunId | null
           {
             name: item.name,
             owner,
+            namespace: item.namespace ?? null,
             description: item.description,
             parameters,
             output,

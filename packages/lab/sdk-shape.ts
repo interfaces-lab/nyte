@@ -2220,6 +2220,8 @@ interface AgentInfo {
 interface ToolInfo {
   readonly name: string;
   readonly owner: string;
+  /** "github", "mcp/linear": groups listings and codemode's search; null when the tool names none (§48d). */
+  readonly namespace: string | null;
   readonly description: string;
   readonly parameters: JsonSchema;
   readonly output: JsonSchema | null;
@@ -2709,7 +2711,8 @@ type Schedule =
  * - `live`: being written: streaming text, a running tool, an open modal.
  *   `run` is null for a part created outside a run (a modal a client opened).
  *   `waiting` is the durable step parked on a modal's answer, which `act`
- *   writes the answer to.
+ *   writes the answer to; `answer` is an answer that came before any step
+ *   parked, which the first step to wait on the part takes (§48i).
  * - `waiting`: parked on a durable wait.
  * - `settled`: committed.
  * - `failed`: its run failed or was stopped; `run` null when closed by a
@@ -2719,7 +2722,7 @@ type Schedule =
  * @since 0.1.0
  */
 type PartStatus =
-  | { readonly kind: "live"; readonly run: RunId | null; readonly waiting?: CallId }
+  | { readonly kind: "live"; readonly run: RunId | null; readonly waiting?: CallId; readonly answer?: { readonly action: string; readonly input: Json } }
   | { readonly kind: "waiting"; readonly run: RunId; readonly on: WaitTarget }
   | { readonly kind: "settled"; readonly commit: CommitId; readonly endedAt: number }
   | { readonly kind: "failed"; readonly run: RunId | null; readonly failure: Failure };
@@ -4944,8 +4947,36 @@ type Available<Table, S extends Side> = {
  * @since 0.1.0
  */
 type Registries<S extends Side> = {
-  readonly [K in keyof Available<ContributionTable, S>]: Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
+  readonly [K in keyof Available<ContributionTable, S>]: K extends "settings"
+    ? SettingsRegistry<S>
+    : Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
 };
+
+/**
+ * Returns the settings registry: a registry that also reads the settings
+ * this plugin declared, statically in `contribute.settings` or through
+ * `add`, so no plugin declares a setting twice to hold its handle (§48b).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+interface SettingsRegistry<S extends Side = Side> extends Registry<SettingDefinition, S, Setting<unknown>> {
+  /**
+   * Returns the current value of a setting this plugin declared: the
+   * session layer, else the host value, else the default.
+   *
+   * @throws {SdkError} unknown when this plugin declares no setting with this id.
+   */
+  value(id: string): Promise<unknown>;
+  /**
+   * Yields the value of a setting this plugin declared, then each change,
+   * until the plugin deactivates.
+   *
+   * @stream watch
+   * @throws {SdkError} unknown when this plugin declares no setting with this id.
+   */
+  watch(id: string): AsyncIterable<unknown>;
+}
 /**
  * Returns the static contribution arrays a plugin may declare for a side.
  *

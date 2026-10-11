@@ -303,6 +303,9 @@ function durableOf(
         return STOPPED;
       }
 
+      const early = target.kind === "part" ? await takeAnswer(kernel, place, target.part, index) : null;
+
+      if (early !== null) return early;
       await park(kernel, place, target, index);
 
       return parkStep(durable);
@@ -330,6 +333,42 @@ function durableOf(
   };
 
   return durable;
+}
+
+/** Settles a wait on one modal part at once when the part already holds an answer that came before any step parked (§48i): records `part { answer }` as the wait's outcome at `index` and clears the answer from the part's status, in one set. Null when the part holds none, or the wait at `index` is already recorded or parked. */
+async function takeAnswer(kernel: Kernel, place: Place, part: PartId, index: number): Promise<WaitOutcome | null> {
+  const name = partRef(place.session, part);
+
+  const taken = await changeCall(kernel, place.session, place.call, async (current) => {
+    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const status = found?.record.status;
+
+    if (
+      current === null ||
+      current.result !== null ||
+      current.waiting !== null ||
+      current.waits.length !== index ||
+      found === null ||
+      status?.kind !== "live" ||
+      status.answer === undefined
+    )
+      return null;
+
+    const { answer, ...kept } = status;
+
+    return {
+      record: { ...current, waits: [...current.waits, { kind: "part", part, answer }] },
+      updates: [
+        {
+          name,
+          target: await put(kernel, "part", { ...found.record, status: kept }),
+          expect: found.ref.revision,
+        },
+      ],
+    };
+  });
+
+  return taken.wrote ? (taken.record?.waits.at(index) ?? null) : null;
 }
 
 /** Writes a step's wait at `index` to its record, with an empty outcome slot per target of a combination, with `call waiting`, inside a run the run's `waiting` with `run waiting`, the step in the `waitedBy` of every run it waits on, and `waiting: <call>` on the live status of every modal part it waits on with its `part waiting { call }` event (§42z, §42ac: the fold and every view show it, and `act` finds the one call its answer goes to), all in one set; then parks it in the kernel's registry. A record already waiting is parked as it stands. */

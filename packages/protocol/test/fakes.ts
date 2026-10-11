@@ -21,6 +21,7 @@ import type {
   Job,
   Page,
   Plugin,
+  Store,
 } from "@nyte-ai/core";
 import { createHandler, createTransport, operations } from "../src/index.ts";
 import type { HandlerOptions, Transport } from "../src/index.ts";
@@ -195,15 +196,24 @@ export function localProvider(
 }
 
 /** Returns a composed host over a memory store with the fake models, the chat-only and local providers, and a handler whose connections are `ada` (participant and owner, `Bearer owner`), `bob` (participant, `Bearer guest`) and a pairing exchange (`Pairing 123-456`) that returns `X-Nyte-Credential`. */
-export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyBytes">>) {
+export async function served(
+  options?: Partial<Pick<HandlerOptions, "maxBodyBytes">> & {
+    readonly store?: Store;
+    readonly plugins?: readonly Plugin<"core">[];
+  },
+) {
   const fake = fakeModels();
   const disk = new Map<string, DiskFile>();
   const pages = { opened: new Array<PageId>(), closed: new Array<PageId>() };
 
   const host = await composeHost({
-    store: memoryStore(),
+    store: options?.store ?? memoryStore(),
     models: fake.models,
-    plugins: [chatOnly, { id: "local", environment: localProvider(disk, pages) }],
+    plugins: [
+      chatOnly,
+      { id: "local", environment: localProvider(disk, pages) },
+      ...(options?.plugins ?? []),
+    ],
     workspace: { kind: "chat-only", locator: null },
     home: null,
     operations: operations(),
@@ -231,7 +241,7 @@ export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyByte
   const handler = createHandler({
     kernel: host.kernel,
     origins: ["https://app.nyte.dev"],
-    ...options,
+    maxBodyBytes: options?.maxBodyBytes,
     connection: async (request) => {
       const authorization = request.headers.get("Authorization");
 
@@ -255,7 +265,7 @@ export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyByte
 
   const workspace = await host.workspaces.add({ kind: "local", path: "/work" });
 
-  if (workspace.kind !== "added")
+  if (workspace.kind !== "added" && workspace.kind !== "exists")
     throw new Error(`The local workspace was not added: ${workspace.kind}.`);
 
   return {

@@ -938,7 +938,7 @@ describe("plugin api", () => {
           skills: [
             { name: "lint", description: "Lints.", location: "/skills/lint", load: async () => "" },
           ],
-          tools: [{ ...echo, exposure: "deferred" }],
+          tools: [{ ...echo, namespace: "demo", exposure: "deferred" }],
         },
       },
     ];
@@ -972,6 +972,7 @@ describe("plugin api", () => {
         {
           name: "echo",
           owner: "greeter",
+          namespace: "demo",
           description: echo.description,
           parameters: expect.objectContaining({ type: "object" }),
           output: null,
@@ -1152,6 +1153,31 @@ describe("settings", () => {
     await runtime.replace([]);
 
     expect(await values.next()).toEqual({ done: true, value: undefined });
+  });
+
+  it("reads a statically declared setting through settings.value and watch, and sees a settings.apply change (§48b)", async () => {
+    let api: PluginApi<"core"> | undefined;
+
+    const { host } = await loaded([
+      {
+        id: "mixer",
+        contribute: { settings: [volume] },
+        activate(given) {
+          api = given;
+        },
+      },
+    ]);
+
+    assert(api !== undefined);
+    const values = api.contribute.settings.watch("volume")[Symbol.asyncIterator]();
+
+    expect(await api.contribute.settings.value("volume")).toBe(3);
+    expect(await values.next()).toEqual({ done: false, value: 3 });
+    expect(await host.settings.apply("volume", 5)).toEqual({ kind: "applied" });
+    expect(await values.next()).toEqual({ done: false, value: 5 });
+    expect(await api.contribute.settings.value("volume")).toBe(5);
+    await expect(api.contribute.settings.value("theme")).rejects.toMatchObject({ code: "unknown" });
+    await values.return?.();
   });
 
   it("reads a session-scope value from the session's configuration", async () => {

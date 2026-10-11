@@ -75,7 +75,7 @@ export interface Sessions {
   }): Promise<Paged<SessionInfo>>;
 }
 
-/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin` as its lineage when the origin has a run and head, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call before the session is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. A session this call writes is activated (its runtime's `ready`: its plugins loaded, its environment attached, §44a) before `create` resolves. */
+/** Returns the session directory for a connection; every session it creates records the run, head and call of `context.origin` as its lineage when the origin has a run and head, the step a tool invocation creates children from. From a step, `create` is an acquisition recorded on that step's call before the session is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the session it already created. A session this call writes logs a `configured` event whose `effective` is its selection, or the defaults resolved for it when nothing is selected (§48c), and is activated (its runtime's `ready`: its plugins loaded, its environment attached, §44a) before `create` resolves. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   const need = (operation: string): void =>
     requireAuthority(context.authority, "participant", `sessions.${operation}`);
@@ -151,14 +151,16 @@ async function create(
 
   const target = await put(kernel, "session", record, at);
 
+  const effective = selected ?? (await defaultsOf(kernel, id));
+
   const configured: readonly RefUpdate[] =
-    selected === null
+    effective === null
       ? []
       : [
           {
             name: sessionRef(id),
             target,
-            event: { head: MAIN, kind: "configured", selected, effective: selected },
+            event: { head: MAIN, kind: "configured", selected, effective },
           },
         ];
 
@@ -170,6 +172,19 @@ async function create(
   if (outcome.kind === "set") await kernel.pluginsFor(id).ready;
 
   return id;
+}
+
+/** Returns what admission would resolve for a new session with nothing selected: the defaults (§48c), so its view's `configuration.effective` is set from creation. Null only when the host has nothing to resolve to, such as no model in its catalog. */
+async function defaultsOf(kernel: Kernel, session: SessionId): Promise<Configuration | null> {
+  const result = await kernel.resolveConfiguration({
+    session,
+    head: MAIN,
+    selected: null,
+    patch: null,
+    contributions: staticContributions(kernel),
+  });
+
+  return result.kind === "exact" ? result : null;
 }
 
 async function selectedOf(

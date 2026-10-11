@@ -16,7 +16,6 @@ import type {
   ThinkingLevel,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type { AnthropicOptions } from "./api/anthropic-messages.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
 import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
@@ -133,8 +132,6 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
   /** Request the model's advertised fast inference mode; each API maps it to its own field. */
   fast?: boolean;
-  /** Explicit parent context for telemetry produced by this logical request. */
-  telemetryContext?: TelemetryContext;
   apiKey?: string;
   /**
    * Optional fetch implementation for provider HTTP requests.

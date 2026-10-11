@@ -97,6 +97,7 @@ export const AgentInfoType = Type.Object({
 export const ToolInfoType = Type.Object({
   name: Type.String(),
   owner: Type.String(),
+  namespace: nullable(Type.String()),
   description: Type.String(),
   parameters: JsonObjectType,
   output: nullable(JsonObjectType),

@@ -137,7 +137,7 @@ const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
 
 const holds = new WeakMap<Kernel, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions (§40c); `plugins.*` and `principals.*` go to the connection's (its plugin files load through `kernel.loadPlugins`, §47m); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions once the session's activation in this process settled (§40c, §48h); `plugins.*` and `principals.*` go to the connection's (its plugin files load through `kernel.loadPlugins`, §47m); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { kernel } = options;
   const { principal } = connection;
@@ -355,6 +355,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       ).landed(),
 
     "parts.create": async ({ session: id, kind, input }) => {
+      await kernel.pluginsFor(id).ready;
       const registered = kernel.partDefinitions.get(kind);
 
       if (registered === undefined) fail("unknown", `No part definition has the kind ${kind}.`);

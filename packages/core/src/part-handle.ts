@@ -1,5 +1,6 @@
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
+  CallId,
   HeadName,
   Json,
   PartId,
@@ -346,16 +347,9 @@ function partHandleFor<K extends PartDefinition>(
 
       if (record.placement.kind === "modal") {
         settle(table, name, { action: named, input: accepted.value });
+        const answer = { action: named, input: isJson(accepted.value) ? accepted.value : null };
 
-        const status = (await load(kernel, await kernel.store.refs.get(name), decodePartRecord))
-          ?.record.status;
-
-        await kernel.waits.partAnswered(
-          session,
-          id,
-          { action: named, input: isJson(accepted.value) ? accepted.value : null },
-          status?.kind === "live" ? (status.waiting ?? null) : null,
-        );
+        await kernel.waits.partAnswered(session, id, answer, await keepAnswer(kernel, name, id, answer));
       }
 
       return { kind: "ok", output };
@@ -397,6 +391,35 @@ function partHandleFor<K extends PartDefinition>(
   boundIn.set(handle, session);
 
   return handle;
+}
+
+/** Returns the step a live modal part's status names as waiting on it; with none yet, writes `answer` onto the status first (§48i), so an answer that comes before the park is durable and the step that parks takes it from the record. A part already holding an answer keeps its first. Null when no step waits yet or the part is no longer live. */
+async function keepAnswer(
+  kernel: Kernel,
+  name: string,
+  id: PartId,
+  answer: { readonly action: string; readonly input: Json },
+): Promise<CallId | null> {
+  return attempt(`Answering part ${id}`, async () => {
+    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const status = found?.record.status;
+
+    if (found === null || status?.kind !== "live") return null;
+
+    if (status.waiting !== undefined) return status.waiting;
+
+    if (status.answer !== undefined) return null;
+
+    const outcome = await commit(kernel, [
+      {
+        name,
+        target: await put(kernel, "part", { ...found.record, status: { ...status, answer } }),
+        expect: found.ref.revision,
+      },
+    ]);
+
+    return outcome.kind === "set" ? null : STALE;
+  });
 }
 
 /** Returns the first answer a modal part had in this process, its input when JSON, or null when it has none. */

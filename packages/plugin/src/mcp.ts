@@ -1,1094 +1,376 @@
-/**
- * The process owns MCP connections; a session owns the choice of which to use.
- * `McpServers` pools one connection per server config for every session, and
- * `mcpPlugin` turns a session's on/off settings into acquire and release on
- * that pool, offering whatever is connected as tools.
- *
- * A server therefore outlives any one session, and a plugin reload that leaves
- * its config alone never reconnects: the plugin's version is the config's hash.
- */
-import { createHash, randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import {
-  McpClient,
-  StdioTransport,
-  StreamableHttpTransport,
-  toLlmContent,
-} from "@earendil-works/pi-mcp";
-import type { AuthProvider, ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
-import {
-  McpOAuthProvider,
-  OAuthCallbackServer,
-  adaptOAuthProvider,
-  authorizeMcp,
-} from "@earendil-works/pi-mcp/oauth";
+import { McpClient, StdioTransport, StreamableHttpTransport } from "@earendil-works/pi-mcp";
+import type { CallToolResult, McpTransport, Tool } from "@earendil-works/pi-mcp";
+import { McpOAuthProvider, OAuthCallbackServer, adaptOAuthProvider, authorizeMcp } from "@earendil-works/pi-mcp/oauth";
 import type { McpOAuthStateStore } from "@earendil-works/pi-mcp/oauth";
-
-export type { McpOAuthState } from "@earendil-works/pi-mcp/oauth";
-import { ToolError, definePlugin, formatSize } from "@nyte-ai/core/plugins";
-import type { AgentTool, Disposer, ExecutionEnv } from "@nyte-ai/core/plugins";
-import { contentText } from "@nyte-ai/schema";
-import type { JsonValue } from "@nyte-ai/schema";
-import { Type, Unsafe } from "typebox";
-import type { Static, TUnsafe } from "typebox";
+import { dev } from "@nyte-ai/core";
+import type { ExecutionEnv, PluginStorage, SettingDefinition, ToolDefinition } from "@nyte-ai/core";
+import { isJson, standard } from "@nyte-ai/schema";
+import type { Json, Schema, ToolContent } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import type { Plugin } from "./core.ts";
 
-export const MCP_PLUGIN_ID = "mcp";
-
-const McpExposure = Type.Union([
-  Type.Literal("direct"),
-  Type.Literal("codemode"),
-  Type.Literal("deferred"),
-  Type.Literal("hidden"),
+const serverConfig = Type.Union([
+  Type.Object({
+    command: Type.String(),
+    args: Type.Optional(Type.Array(Type.String())),
+    env: Type.Optional(Type.Record(Type.String(), Type.String())),
+    cwd: Type.Optional(Type.String()),
+  }),
+  Type.Object({ url: Type.String(), headers: Type.Optional(Type.Record(Type.String(), Type.String())) }),
 ]);
 
-const exposureProperties = {
-  exposure: Type.Optional(McpExposure),
-  toolExposure: Type.Optional(Type.Record(Type.String(), McpExposure)),
-  description: Type.Optional(Type.String()),
-};
-
-/** A server the host starts over stdio, or one it reaches over streamable HTTP. */
-export const McpServerConfig = Type.Union([
-  Type.Object(
-    {
-      command: Type.String({ minLength: 1 }),
-      args: Type.Optional(Type.Array(Type.String())),
-      env: Type.Optional(Type.Record(Type.String(), Type.String())),
-      /** Relative paths resolve from the session's working directory. */
-      cwd: Type.Optional(Type.String()),
-      disabled: Type.Optional(Type.Boolean()),
-      ...exposureProperties,
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      url: Type.String({ minLength: 1 }),
-      headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-      disabled: Type.Optional(Type.Boolean()),
-      ...exposureProperties,
-    },
-    { additionalProperties: false },
-  ),
-]);
-
-export type McpServerConfig = Static<typeof McpServerConfig>;
-
-export type McpConfig = Readonly<Record<string, McpServerConfig>>;
-
-const STARTUP_TIMEOUT_MS = 30_000;
+const serversSchema = Type.Record(Type.String(), serverConfig);
 
 /**
- * How long session activation waits for servers to connect. A healthy server answers
- * well inside it; past it the session opens without those tools rather than holding the
- * first message behind a slow or broken server, and they arrive with its status change.
+ * Describes one MCP server: a command run over stdio, or a streamable HTTP
+ * url with optional headers.
+ *
+ * @category plugins
+ * @since 0.1.0
  */
-const ACTIVATION_WAIT_MS = 2_000;
+export type McpServerConfig = Static<typeof serverConfig>;
 
-const CATALOG_TIMEOUT_MS = 30_000;
+/**
+ * Opens the transport to one configured server; the default runs stdio
+ * commands in the session's working directory and connects to urls.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export type McpConnector = (server: string, config: McpServerConfig, context: { readonly cwd: string; readonly storage: PluginStorage; signIn(url: URL): void }) => McpTransport;
 
-/** Tool calls run as long as the model's turn does; the turn's signal ends them. */
-const CALL_TIMEOUT_MS = 12 * 60 * 60 * 1_000;
+const servers: SettingDefinition<Static<typeof serversSchema>> = {
+  id: "mcp.servers",
+  label: "MCP servers",
+  schema: standard(serversSchema),
+  default: {},
+  scope: "host",
+};
 
-/** A reload disposes a session's handle just before the next one acquires it. */
-const LINGER_MS = 1_000;
+const tokens = Type.Object({
+  access_token: Type.String(),
+  token_type: Type.String(),
+  expires_in: Type.Optional(Type.Number()),
+  scope: Type.Optional(Type.String()),
+  refresh_token: Type.Optional(Type.String()),
+  id_token: Type.Optional(Type.String()),
+});
 
-const STDERR_TAIL_BYTES = 2_048;
+const oauthState = Type.Object({
+  serverUrl: Type.String(),
+  clientInformation: Type.Optional(
+    Type.Object({
+      client_id: Type.String(),
+      client_secret: Type.Optional(Type.String()),
+      client_id_issued_at: Type.Optional(Type.Number()),
+      client_secret_expires_at: Type.Optional(Type.Number()),
+    }),
+  ),
+  tokens: Type.Optional(tokens),
+  tokensExpireAt: Type.Optional(Type.Number()),
+  codeVerifier: Type.Optional(Type.String()),
+  oauthState: Type.Optional(Type.String()),
+});
 
-/** The registry validates arguments against the server's `inputSchema`, an object schema. */
-type BridgedTool = AgentTool<
-  TUnsafe<Record<string, JsonValue>>,
-  {
-    server: string;
-    tool: string;
-    fullOutputPath?: string;
-  }
->;
+const CALLBACK = { port: 19876, path: "/mcp/oauth/callback" } as const;
 
-export type McpServerStatus =
-  | { readonly kind: "connecting" }
-  | {
-      readonly kind: "connected";
-      readonly tools: readonly BridgedTool[];
-      readonly instructions: string | undefined;
-    }
-  | { readonly kind: "failed"; readonly error: string };
+/** The sign-in each server url is waiting on, so a reconnect while the user signs in does not open a second one. */
+const signIns = new Map<string, Promise<void>>();
 
-export interface McpServerHandle {
-  readonly name: string;
-  status(): McpServerStatus;
-  /** Resolves once the server is connected or has failed; never rejects. */
-  ready(): Promise<void>;
-  /** Fires on every status change until the handle is released. */
-  subscribe(listener: () => void): Disposer;
-  release(): void;
+/**
+ * Returns one live connection to an MCP server, the link the plugin keeps
+ * per configured server: it connects, lists the server's tools, follows
+ * `tools/list_changed`, and reconnects with backoff after the link drops.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export interface McpLink {
+  readonly server: string;
+  /** The server's tools as session tools; empty until connected and after a drop. */
+  tools(): readonly ToolDefinition[];
+  /** Closes the link for good. */
+  close(): Promise<void>;
 }
 
-interface Connection {
-  status: McpServerStatus;
-  /** Undefined while connecting, the client once open, `"ended"` once closed for good. */
-  client: McpClient | "ended" | undefined;
-  readonly ready: Promise<void>;
-  settle: () => void;
-}
+/**
+ * Opens a link over `connect`. `changed` runs whenever the tool set moves
+ * (connected, listed again, dropped); `failed` runs with a message when
+ * connecting or the link fails, before the next attempt. `env` is read only
+ * when a tool result carries an image to upload.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export function openLink(input: {
+  readonly server: string;
+  readonly env: () => ExecutionEnv;
+  connect(): McpTransport;
+  changed(): void;
+  failed(message: string): void;
+}): McpLink {
+  const { server } = input;
+  let listed: readonly ToolDefinition[] = [];
+  let client: McpClient | null = null;
+  let closed = false;
+  let delay = 1000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
-/** One configured server: sessions hold it; its connection is replaced on retry. */
-class Slot {
-  readonly name: string;
-  readonly config: McpServerConfig;
-  readonly cwd: string;
-  readonly toolOwners: Map<string, string>;
-  readonly oauth: McpOAuth | undefined;
-  refs = 0;
-  linger: ReturnType<typeof setTimeout> | undefined;
-  readonly listeners = new Set<() => void>();
-  connection: Connection;
+  const retry = (message: string): void => {
+    dev("mcp", "link failed", { server, retryIn: closed ? null : delay });
+    listed = [];
+    client = null;
+    input.changed();
+    input.failed(message);
 
-  constructor(
-    name: string,
-    config: McpServerConfig,
-    cwd: string,
-    toolOwners: Map<string, string>,
-    oauth: McpOAuth | undefined,
-  ) {
-    this.name = name;
-    this.config = config;
-    this.cwd = cwd;
-    this.toolOwners = toolOwners;
-    this.oauth = oauth;
-    this.connection = openConnection(this);
-  }
-}
-
-export function connectionKey(name: string, config: McpServerConfig, cwd: string): string {
-  const resolved =
-    "command" in config ? { ...config, cwd: resolve(cwd, config.cwd ?? ".") } : config;
-
-  return `${name}\u0000${JSON.stringify(resolved)}`;
-}
-
-export class McpServers {
-  private readonly slots = new Map<string, Slot>();
-  private readonly toolOwners = new Map<string, string>();
-  private readonly oauth: McpOAuth | undefined;
-
-  /** Without `oauth`, a server that asks for sign-in fails with its 401. */
-  constructor(options: { readonly oauth?: McpOAuth } = {}) {
-    this.oauth = options.oauth;
-  }
-
-  acquire(name: string, config: McpServerConfig, cwd: string): McpServerHandle {
-    const key = connectionKey(name, config, cwd);
-    const held = this.slots.get(key) ?? new Slot(name, config, cwd, this.toolOwners, this.oauth);
-    this.slots.set(key, held);
-
-    // A config change re-acquires; give a failed server another try then.
-    if (held.connection.status.kind === "failed") {
-      held.connection = openConnection(held);
-      notify(held);
-    }
-    held.refs += 1;
-    clearTimeout(held.linger);
-    held.linger = undefined;
-    let released = false;
-    const listeners = new Set<() => void>();
-
-    return {
-      name,
-      status: () => held.connection.status,
-      ready: () => held.connection.ready,
-      subscribe: (listener) => {
-        held.listeners.add(listener);
-        listeners.add(listener);
-
-        return () => {
-          held.listeners.delete(listener);
-        };
-      },
-      release: () => {
-        if (released) return;
-        released = true;
-
-        for (const listener of listeners) held.listeners.delete(listener);
-        held.refs -= 1;
-
-        if (held.refs > 0) return;
-        held.linger = setTimeout(() => {
-          if (held.refs > 0) return;
-
-          if (this.slots.get(key) === held) this.slots.delete(key);
-          void closeConnection(held.connection);
-        }, LINGER_MS);
-        held.linger.unref();
-      },
-    };
-  }
-
-  /** Reopen every failed connection in place; sessions keep their handles. */
-  reconnectFailed(): void {
-    for (const slot of this.slots.values()) {
-      if (slot.connection.status.kind === "failed") {
-        slot.connection = openConnection(slot);
-        notify(slot);
-      }
-    }
-  }
-
-  async close(): Promise<void> {
-    const all = [...this.slots.values()];
-    this.slots.clear();
-
-    for (const slot of all) clearTimeout(slot.linger);
-    await Promise.all(all.map((slot) => closeConnection(slot.connection)));
-  }
-}
-
-function openConnection(slot: Slot): Connection {
-  const { promise: ready, resolve: settle } = Promise.withResolvers<void>();
-
-  const connection: Connection = {
-    status: { kind: "connecting" },
-    client: undefined,
-    ready,
-    settle,
+    if (closed) return;
+    timer = setTimeout(() => void connect(), delay);
+    delay = Math.min(delay * 2, 30_000);
   };
 
-  void connectServer(slot, connection)
-    .catch((cause: unknown) => {
-      fail(slot, connection, errorMessage(cause));
-    })
-    .finally(() => connection.settle());
-
-  return connection;
-}
-
-/** Terminal: a connect still in flight sees `"ended"` and closes the client it opened. */
-async function closeConnection(connection: Connection): Promise<void> {
-  const { client } = connection;
-  connection.client = "ended";
-
-  if (client === undefined || client === "ended") return;
-  await client.close().catch(() => undefined);
-}
-
-function notify(slot: Slot): void {
-  for (const listener of slot.listeners) listener();
-}
-
-function fail(slot: Slot, connection: Connection, error: string): void {
-  // The transport closing and the request it failed both report; the first says why.
-  if (connection.status.kind === "failed") return;
-  connection.status = { kind: "failed", error };
-  void closeConnection(connection);
-  connection.settle();
-
-  if (slot.connection === connection) notify(slot);
-}
-
-async function connectServer(slot: Slot, connection: Connection, signedIn = false): Promise<void> {
-  const { config, cwd } = slot;
-  await Promise.resolve();
-  if (connection.client === "ended") return;
-
-  const client = new McpClient({
-    name: "nyte",
-    version: "0",
-    requestTimeoutMs: STARTUP_TIMEOUT_MS,
-  });
-  const signIn =
-    "url" in config && slot.oauth !== undefined ? new McpSignIn(config.url, slot.oauth) : undefined;
-  const transport =
-    "command" in config
-      ? new StdioTransport({
-          command: config.command,
-          args: config.args ?? [],
-          env: { ...stdioEnvironment(), ...config.env },
-          inheritEnv: false,
-          cwd: resolve(cwd, config.cwd ?? "."),
-          stderr: "pipe",
-          maxStderrBytes: STDERR_TAIL_BYTES,
-        })
-      : new StreamableHttpTransport({
-          url: config.url,
-          headers: config.headers,
-          authProvider: signIn?.authProvider,
-        });
-
-  const describe = (message: string): string => {
-    const stderr = transport instanceof StdioTransport ? transport.stderr.trim() : "";
-    return stderr === "" ? message : `${message}\n${stderr}`;
-  };
-
-  connection.client = client;
-  let initializing = true;
-  client.onClose(() => {
-    if (connection.client !== client || initializing) return;
-    fail(slot, connection, describe("connection closed"));
-  });
-
-  try {
-    await client.connect(transport);
-    if (!Value.Check(McpServerCapabilities, client.serverCapabilities)) {
-      throw new Error("Invalid MCP server capabilities");
-    }
-  } catch (cause) {
-    if (signIn?.required() && !signedIn) {
-      await client.close().catch(() => undefined);
-      if (connection.client !== client) return;
-      connection.client = undefined;
-      await signIn.complete();
-      return connectServer(slot, connection, true);
-    }
-    throw new Error(describe(errorMessage(cause)), { cause });
-  }
-  initializing = false;
-  if (connection.client !== client) return;
-
-  const refresh = async (): Promise<void> => {
-    if (connection.client !== client) return;
-    const tools = await listTools(client, slot);
-
-    if (connection.client !== client) return;
-    connection.status = {
-      kind: "connected",
-      tools,
-      instructions: client.instructions?.trim() || undefined,
-    };
-
-    if (slot.connection === connection) notify(slot);
-  };
-
-  let refreshing = refresh();
-  client.onNotification("notifications/tools/list_changed", () => {
-    refreshing = refreshing.then(refresh).catch((cause: unknown) => {
-      if (connection.client === client) fail(slot, connection, describe(errorMessage(cause)));
+  const connect = async (): Promise<void> => {
+    const next = new McpClient({ name: "nyte", version: "0.1.0", requestTimeoutMs: 30_000 });
+    next.onClose(() => {
+      if (!closed && client === next) retry(`The link to ${server} closed.`);
     });
-  });
-  await refreshing;
-}
 
-/** Where a host keeps OAuth state for remote servers and how it shows the sign-in page. */
-export interface McpOAuth {
-  store(serverUrl: string): McpOAuthStateStore;
-  open(url: URL): void;
-}
-
-/** Fixed so a client registered with the server keeps a valid redirect across restarts. */
-const OAUTH_CALLBACK_PORT = 19876;
-
-const OAUTH_TIMEOUT_MS = 5 * 60 * 1_000;
-
-/** One connection's OAuth: stored tokens first, a browser sign-in when the server wants one. */
-class McpSignIn {
-  readonly authProvider: AuthProvider;
-  private readonly serverUrl: string;
-  private readonly oauth: McpOAuth;
-  private readonly provider: McpOAuthProvider;
-  private authorizationUrl: URL | undefined;
-
-  constructor(serverUrl: string, oauth: McpOAuth) {
-    this.serverUrl = serverUrl;
-    this.oauth = oauth;
-    this.provider = new McpOAuthProvider({
-      serverUrl,
-      redirectUrl: `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/mcp/oauth/callback`,
-      clientMetadata: { client_name: "Nyte" },
-      store: oauth.store(serverUrl),
-      onRedirect: (url) => {
-        this.authorizationUrl = url;
-      },
-    });
-    this.authProvider = adaptOAuthProvider(this.provider);
-  }
-
-  required(): boolean {
-    return this.authorizationUrl !== undefined;
-  }
-
-  async complete(): Promise<void> {
-    const { authorizationUrl } = this;
-    if (authorizationUrl === undefined) return;
-
-    const callback = await OAuthCallbackServer.listen({
-      port: OAUTH_CALLBACK_PORT,
-      path: "/mcp/oauth/callback",
-      timeoutMs: OAUTH_TIMEOUT_MS,
-    });
     try {
-      const result = callback.waitForCallback(await this.provider.state());
-      this.oauth.open(authorizationUrl);
-      const { code } = await result;
-      await authorizeMcp(this.provider, { serverUrl: this.serverUrl, authorizationCode: code });
-    } finally {
-      await callback.close();
+      await next.connect(input.connect());
+
+      if (closed) {
+        await next.close();
+
+        return;
+      }
+
+      const refresh = async (): Promise<void> => {
+        const listedTools = await next.listTools();
+
+        if (closed || client !== next) return;
+        listed = listedTools.map((tool) => bridge(server, tool, next, input.env));
+        dev("mcp", "tools listed", { server, tools: listed.length });
+        input.changed();
+      };
+
+      client = next;
+      delay = 1000;
+      next.onNotification("notifications/tools/list_changed", () => void refresh().catch((error: unknown) => retry(messageOf(error))));
+      await refresh();
+    } catch (error) {
+      if (client === next) client = null;
+      await next.close().catch(() => undefined);
+
+      if (!closed) retry(`${server} failed to connect: ${messageOf(error)}`);
     }
-  }
+  };
+
+  void connect();
+
+  return {
+    server,
+    tools: () => listed,
+    async close() {
+      closed = true;
+      clearTimeout(timer);
+      listed = [];
+      await client?.close();
+    },
+  };
 }
 
-function stdioEnvironment(): Record<string, string> {
-  const names =
-    process.platform === "win32"
-      ? [
-          "APPDATA",
-          "HOMEDRIVE",
-          "HOMEPATH",
-          "LOCALAPPDATA",
-          "PATH",
-          "PROCESSOR_ARCHITECTURE",
-          "SYSTEMDRIVE",
-          "SYSTEMROOT",
-          "TEMP",
-          "USERNAME",
-          "USERPROFILE",
-          "PROGRAMFILES",
-        ]
-      : ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
-  const env: Record<string, string> = {};
-  for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined && !value.startsWith("()")) env[name] = value;
-  }
-  return env;
+/** Returns an MCP tool as a session tool named `<server>_<tool>` in namespace `mcp/<server>`, called over the link's client. */
+function bridge(server: string, tool: Tool, client: McpClient, env: () => ExecutionEnv): ToolDefinition {
+  const output = tool.outputSchema;
+
+  return {
+    name: `${server}_${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64),
+    namespace: `mcp/${server}`,
+    description: tool.description ?? tool.title ?? tool.name,
+    parameters: passthrough(tool.inputSchema),
+    ...(output === undefined ? {} : { output: passthrough(output) }),
+    class: () => ({ kind: "custom", label: `${server}: ${tool.title ?? tool.name}` }),
+    replay: tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true ? "safe" : "never",
+    async execute(args, invocation) {
+      const result = await client.callTool(tool.name, isObject(args) ? args : {}, { signal: invocation.signal, timeoutMs: 12 * 60 * 60 * 1000 });
+      const content = await contentOf(result, env);
+
+      if (result.isError === true)
+        throw new Error(content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n") || `${tool.name} failed.`);
+
+      const structured = result.structuredContent;
+
+      return { content, ...(output !== undefined && isJson(structured) ? { output: structured } : {}) };
+    },
+  };
 }
 
-const McpServerCapabilities = Type.Object(
-  {
-    tools: Type.Optional(
-      Type.Object({ listChanged: Type.Optional(Type.Boolean()) }, { additionalProperties: true }),
-    ),
-  },
-  { additionalProperties: true },
-);
+/** Returns an MCP result's content as tool content: text as text, images uploaded through the environment, anything else as its JSON. */
+async function contentOf(result: CallToolResult, env: () => ExecutionEnv): Promise<ToolContent[]> {
+  const content: ToolContent[] = [];
 
-const McpIcons = Type.Optional(
-  Type.Array(
-    Type.Object(
-      {
-        src: Type.String(),
-        mimeType: Type.Optional(Type.String()),
-        sizes: Type.Optional(Type.Array(Type.String())),
-        theme: Type.Optional(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
-      },
-      { additionalProperties: true },
-    ),
-  ),
-);
-
-const SchemaObject = Type.Object(
-  {
-    type: Type.Optional(Type.Literal("object")),
-    properties: Type.Optional(
-      Type.Record(Type.String(), Type.Record(Type.String(), Type.Unknown())),
-    ),
-    required: Type.Optional(Type.Array(Type.String())),
-  },
-  { additionalProperties: true },
-);
-
-const McpTool = Type.Object(
-  {
-    name: Type.String(),
-    title: Type.Optional(Type.String()),
-    icons: McpIcons,
-    description: Type.Optional(Type.String()),
-    inputSchema: SchemaObject,
-    outputSchema: Type.Optional(SchemaObject),
-    annotations: Type.Optional(
-      Type.Object(
-        {
-          title: Type.Optional(Type.String()),
-          readOnlyHint: Type.Optional(Type.Boolean()),
-          destructiveHint: Type.Optional(Type.Boolean()),
-          idempotentHint: Type.Optional(Type.Boolean()),
-          openWorldHint: Type.Optional(Type.Boolean()),
-        },
-        { additionalProperties: true },
-      ),
-    ),
-    execution: Type.Optional(
-      Type.Object(
-        {
-          taskSupport: Type.Optional(
-            Type.Union([
-              Type.Literal("forbidden"),
-              Type.Literal("optional"),
-              Type.Literal("required"),
-            ]),
-          ),
-        },
-        { additionalProperties: true },
-      ),
-    ),
-    _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-  },
-  { additionalProperties: true },
-);
-
-const contentMetadata = {
-  annotations: Type.Optional(
-    Type.Object(
-      {
-        audience: Type.Optional(
-          Type.Array(Type.Union([Type.Literal("user"), Type.Literal("assistant")])),
-        ),
-        priority: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-        lastModified: Type.Optional(Type.String({ format: "date-time" })),
-      },
-      { additionalProperties: true },
-    ),
-  ),
-  _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-};
-
-const resourceProperties = {
-  uri: Type.String(),
-  mimeType: Type.Optional(Type.String()),
-  _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-};
-
-const McpContent = Type.Union([
-  Type.Object(
-    { type: Type.Literal("text"), text: Type.String(), ...contentMetadata },
-    { additionalProperties: true },
-  ),
-  Type.Object(
-    {
-      type: Type.Literal("image"),
-      data: Type.String(),
-      mimeType: Type.String(),
-      ...contentMetadata,
-    },
-    { additionalProperties: true },
-  ),
-  Type.Object(
-    {
-      type: Type.Literal("audio"),
-      data: Type.String(),
-      mimeType: Type.String(),
-      ...contentMetadata,
-    },
-    { additionalProperties: true },
-  ),
-  Type.Object(
-    {
-      type: Type.Literal("resource"),
-      resource: Type.Union([
-        Type.Object({ ...resourceProperties, text: Type.String() }, { additionalProperties: true }),
-        Type.Object({ ...resourceProperties, blob: Type.String() }, { additionalProperties: true }),
-      ]),
-      ...contentMetadata,
-    },
-    { additionalProperties: true },
-  ),
-  Type.Object(
-    {
-      type: Type.Literal("resource_link"),
-      uri: Type.String(),
-      name: Type.String(),
-      title: Type.Optional(Type.String()),
-      description: Type.Optional(Type.String()),
-      mimeType: Type.Optional(Type.String()),
-      size: Type.Optional(Type.Number()),
-      icons: McpIcons,
-      ...contentMetadata,
-    },
-    { additionalProperties: true },
-  ),
-]);
-
-const McpCallResult = Type.Object(
-  {
-    content: Type.Array(McpContent),
-    structuredContent: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-    isError: Type.Optional(Type.Boolean()),
-    _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-  },
-  { additionalProperties: true },
-);
-
-function parseMcpResult(result: unknown) {
-  if (!isJsonObject(result) || !Value.Check(McpCallResult, result)) {
-    throw new Error("Invalid MCP tools/call result");
-  }
   for (const block of result.content) {
-    const data =
-      block.type === "image" || block.type === "audio"
-        ? block.data
-        : block.type === "resource" && "blob" in block.resource
-          ? block.resource.blob
-          : undefined;
-    if (data === undefined) continue;
-    try {
-      atob(data);
-    } catch (cause) {
-      throw new Error("Invalid MCP tools/call base64 content", { cause });
-    }
+    if (block.type === "text") content.push({ kind: "text", text: block.text });
+    else if (block.type === "image")
+      content.push({ kind: "file", blob: await env().files.upload(once(Uint8Array.fromBase64(block.data))), mime: block.mimeType });
+    else content.push({ kind: "text", text: JSON.stringify(block) });
   }
-  return result;
+
+  return content;
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isJsonObject(value);
+/** Returns a schema that declares a server's JSON Schema as given and accepts any JSON object; the server validates its own arguments. */
+function passthrough(json: Record<string, unknown>): Schema<Json> {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "mcp",
+      validate: (value) => (isJson(value) && isObject(value) ? { value } : { issues: [{ message: "Expected a JSON object." }] }),
+      jsonSchema: { input: () => json, output: () => json },
+    },
+  };
 }
 
-function isJsonObject(value: unknown): value is Record<string, JsonValue> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every(isJsonValue)
-  );
+/** Returns true for a plain object. */
+function isObject(value: unknown): value is { readonly [key: string]: Json } {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && isJson(value);
 }
 
-async function listTools(client: McpClient, slot: Slot): Promise<BridgedTool[]> {
-  if (client.serverCapabilities?.tools === undefined) return [];
-  const tools = await client.listTools({ timeoutMs: CATALOG_TIMEOUT_MS });
-  const names = new Set<string>();
-  for (const tool of tools) {
-    if (!isJsonValue(tool) || !Value.Check(McpTool, tool))
-      throw new Error("Invalid MCP tools/list entry");
-    if (names.has(tool.name)) throw new Error(`Duplicate MCP tool ${tool.name}`);
-    names.add(tool.name);
-  }
-  const plain = tools.map((tool) => bridgedToolName(slot.name, tool.name));
-  const current = new Set<string>();
-  return tools.map((tool) => {
-    const owner = `${slot.name}\0${tool.name}`;
-    const name = bridgedToolName(slot.name, tool.name, (candidate) => {
-      const existing = slot.toolOwners.get(candidate);
-      return (
-        (existing !== undefined && existing !== owner) ||
-        current.has(candidate) ||
-        plain.indexOf(candidate) !== plain.lastIndexOf(candidate)
-      );
-    });
-    slot.toolOwners.set(name, owner);
-    current.add(name);
-    return bridgeTool(client, slot, tool, name);
+/** Returns an error's message. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Returns one chunk as a stream, for `files.upload`. */
+async function* once(bytes: Uint8Array): AsyncIterable<Uint8Array> {
+  yield bytes;
+}
+
+/** Returns an OAuth state store over the plugin's secrets, one entry per server; discovery is not kept and is found again. */
+function oauthStore(storage: PluginStorage, server: string): McpOAuthStateStore {
+  const key = `oauth:${server}`;
+
+  return {
+    async load() {
+      const text = await storage.secrets.get(key);
+      const parsed: unknown = text === undefined ? undefined : JSON.parse(text);
+
+      return Value.Check(oauthState, parsed) ? parsed : undefined;
+    },
+    save: (state) => storage.secrets.set(key, JSON.stringify({ ...state, discovery: undefined })),
+  };
+}
+
+/**
+ * Opens stdio servers with their command in the session's working directory
+ * and url servers over streamable HTTP, signing in with OAuth when the
+ * server asks: the tokens live in the plugin's secrets.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export const connectServer: McpConnector = (server, config, context) => {
+  if ("command" in config)
+    return new StdioTransport({ command: config.command, args: config.args, env: config.env, cwd: config.cwd ?? context.cwd, stderr: "pipe" });
+
+  const provider = new McpOAuthProvider({
+    serverUrl: config.url,
+    redirectUrl: `http://127.0.0.1:${CALLBACK.port}${CALLBACK.path}`,
+    clientMetadata: { client_name: "Nyte" },
+    store: oauthStore(context.storage, server),
+    onRedirect(url) {
+      if (signIns.has(config.url)) return;
+      dev("mcp", "sign-in", { server });
+      context.signIn(url);
+
+      const signedIn = (async () => {
+        const callback = await OAuthCallbackServer.listen({ ...CALLBACK, timeoutMs: 5 * 60 * 1000 });
+
+        try {
+          const { code } = await callback.waitForCallback(await provider.state());
+          await authorizeMcp(provider, { serverUrl: config.url, authorizationCode: code });
+        } finally {
+          await callback.close();
+        }
+      })();
+
+      signIns.set(config.url, signedIn.catch(() => undefined).finally(() => signIns.delete(config.url)));
+    },
   });
-}
 
-export function bridgedToolName(
-  server: string,
-  tool: string,
-  isTaken: (name: string) => boolean = () => false,
-): string {
-  const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
-  if (name.length <= 64 && !isTaken(name)) return name;
-  const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
-  return `${name.slice(0, 64 - hash.length - 1)}_${hash}`;
-}
+  return new StreamableHttpTransport({ url: config.url, headers: config.headers, authProvider: adaptOAuthProvider(provider) });
+};
 
-function toolExposure(config: McpServerConfig, name: string): Static<typeof McpExposure> {
-  const overrides = config.toolExposure ?? {};
-  const exact = Object.hasOwn(overrides, name) ? overrides[name] : undefined;
-  if (exact !== undefined) return exact;
-  for (const [pattern, exposure] of Object.entries(overrides)) {
-    if (!pattern.includes("*")) continue;
-    const source = pattern
-      .split("*")
-      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-      .join(".*");
-    if (new RegExp(`^${source}$`).test(name)) return exposure;
-  }
-  return config.exposure ?? "codemode";
-}
-
-function bridgeTool(
-  client: McpClient,
-  slot: Slot,
-  tool: Awaited<ReturnType<McpClient["listTools"]>>[number],
-  name: string,
-): BridgedTool {
-  const server = slot.name;
-  const description = slot.config.description?.trim();
-  const instructions = client.instructions?.trim();
+/**
+ * Returns the MCP plugin over a connector; the default export uses
+ * `connectServer`. Each server in the host setting `mcp.servers` gets a
+ * link whose tools a derive puts in the session as `<server>_<tool>`; a link
+ * that connects, drops or lists again calls `api.reload()`, and a failure is
+ * reported on `HostView.plugins[].issues`.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export function mcpPlugin(connect: McpConnector): Plugin {
   return {
-    name,
-    label: `${server}: ${tool.name}`,
-    description:
-      tool.description?.trim() ||
-      tool.title ||
-      tool.annotations?.title ||
-      `MCP tool ${tool.name} from server ${server}`,
-    parameters: Unsafe<Record<string, JsonValue>>({
-      ...tool.inputSchema,
-      type: tool.inputSchema.type ?? "object",
-      properties: tool.inputSchema.properties ?? {},
-    }),
-    outputSchema: Unsafe<JsonValue>({
-      type: "object",
-      properties: {
-        content: { type: "array", items: { type: "object" } },
-        ...(tool.outputSchema === undefined ? {} : { structuredContent: tool.outputSchema }),
-        isError: { type: "boolean" },
-        _meta: { type: "object" },
-      },
-      required: ["content"],
-    }),
-    exposure: toolExposure(slot.config, tool.name),
-    namespace: {
-      name: `mcp__${server.replace(/[^A-Za-z0-9_]/g, "_")}`,
-      ...(description ? { description } : {}),
-      ...(instructions ? { instructions } : {}),
-    },
-    replay: "never",
-    async execute(input, call) {
-      const result = parseMcpResult(
-        await client.callTool(tool.name, input, {
-          signal: call.signal,
-          timeoutMs: CALL_TIMEOUT_MS,
-          onProgress: (progress) => {
-            if (
-              typeof progress.progress !== "number" ||
-              !Number.isFinite(progress.progress) ||
-              (progress.total !== undefined &&
-                (typeof progress.total !== "number" || !Number.isFinite(progress.total))) ||
-              (progress.message !== undefined && typeof progress.message !== "string")
-            )
-              return;
-            const total = progress.total === undefined ? "" : `/${String(progress.total)}`;
-            call.update({
-              content: [
-                {
-                  type: "text",
-                  text: progress.message ?? `Progress ${String(progress.progress)}${total}`,
-                },
-              ],
-              details: { server, tool: tool.name },
-            });
-          },
-        }),
-      );
-      const convertedContent =
-        result.content.length > 0
-          ? (
-              await Promise.all(result.content.map((block) => blockToContent(block, call.env)))
-            ).flat()
-          : toLlmContent(result);
-      if (result.isError === true && contentText(convertedContent) === "") {
-        convertedContent.push({
-          type: "text",
-          text: `MCP tool ${server}/${tool.name} returned an error`,
-        });
-      }
-      const { content, fullOutputPath } = await limitMcpContent(convertedContent, call.env);
-      const { _meta: _ignored, ...structuredContent } = result;
-      const converted = {
-        content,
-        structuredContent,
-        details: { server, tool: tool.name, ...(fullOutputPath ? { fullOutputPath } : {}) },
-        title: tool.name,
-      };
-      if (result.isError === true) throw new ToolError(converted);
-      return converted;
-    },
-  };
-}
+    id: "mcp",
+    contribute: { settings: [servers] },
+    activate(api) {
+      const links = new Map<string, { readonly config: string; readonly link: McpLink }>();
 
-const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
+      api.contribute.tools.add((draft) => {
+        for (const { link } of links.values()) for (const tool of link.tools()) draft.set(tool.name, tool);
+      });
 
-async function saveOutput(data: string | Uint8Array, extension: string): Promise<string> {
-  const path = join(tmpdir(), `nyte-mcp-${randomBytes(8).toString("hex")}${extension}`);
-  await writeFile(path, data, { mode: 0o600 });
-  return path;
-}
+      const sync = (value: unknown): void => {
+        const wanted = Value.Check(serversSchema, value) ? value : {};
 
-async function blockToContent(block: ContentBlock, env: ExecutionEnv): Promise<LlmContent[]> {
-  if (block.type === "resource_link") {
-    const details = [
-      block.mimeType,
-      block.size === undefined ? undefined : formatSize(block.size),
-    ].filter(Boolean);
-    const description = block.description ? `: ${block.description}` : "";
-    return [
-      {
-        type: "text",
-        text: `[Resource ${block.uri} "${block.title ?? block.name}"${details.length > 0 ? ` (${details.join(", ")})` : ""}${description}]`,
-      },
-    ];
-  }
-  if (
-    block.type === "resource" &&
-    "blob" in block.resource &&
-    !block.resource.mimeType?.startsWith("image/")
-  ) {
-    const { uri, mimeType, blob } = block.resource;
-    const data = Buffer.from(blob, "base64");
-    const type = mimeType?.split(";", 1)[0]?.trim().toLowerCase();
-    if (
-      type &&
-      (type.startsWith("text/") ||
-        type === "application/json" ||
-        type.endsWith("+json") ||
-        type.endsWith("+xml"))
-    ) {
-      return [{ type: "text", text: data.toString("utf8") }];
-    }
-    const kind = `${mimeType ?? "unknown type"}, ${formatSize(data.length)}`;
-    try {
-      const uriPath = URL.canParse(uri) ? new URL(uri).pathname : uri;
-      const path = await saveOutput(data, /\.[A-Za-z0-9]{1,8}$/.exec(uriPath)?.[0] ?? ".bin");
-      const visible = (await env.stat(path).catch(() => undefined))?.kind === "file";
-
-      return [
-        {
-          type: "text",
-          text: `[Binary resource ${uri} (${kind})${visible ? ` saved to ${path}` : ""}]`,
-        },
-      ];
-    } catch (cause) {
-      return [
-        {
-          type: "text",
-          text: `[Binary resource ${uri} (${kind}) could not be saved: ${errorMessage(cause)}]`,
-        },
-      ];
-    }
-  }
-  return toLlmContent({ content: [block] });
-}
-
-function truncateMiddle(content: string, maxBytes: number) {
-  const buf = Buffer.from(content, "utf-8");
-  const totalLines =
-    content === "" ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
-  if (buf.length <= maxBytes) {
-    return { content, truncated: false, totalBytes: buf.length, totalLines };
-  }
-  const isBoundary = (index: number) => index >= buf.length || (buf[index] & 0xc0) !== 0x80;
-  let headEnd = Math.floor(maxBytes / 2);
-  while (headEnd > 0 && !isBoundary(headEnd)) headEnd--;
-  let tailStart = buf.length - (maxBytes - Math.floor(maxBytes / 2));
-  while (tailStart < buf.length && !isBoundary(tailStart)) tailStart++;
-  const head = buf.subarray(0, headEnd).toString("utf-8");
-  const tail = buf.subarray(tailStart).toString("utf-8");
-  const removedChars = Array.from(buf.subarray(headEnd, tailStart).toString("utf-8")).length;
-  return {
-    content: `${head}…${String(removedChars)} chars truncated…${tail}`,
-    truncated: true,
-    totalBytes: buf.length,
-    totalLines,
-  };
-}
-
-async function limitMcpContent(
-  content: LlmContent[],
-  env: ExecutionEnv,
-): Promise<{ content: LlmContent[]; fullOutputPath?: string }> {
-  const combined = contentText(content);
-  const truncation = truncateMiddle(combined, MCP_OUTPUT_MAX_BYTES);
-  if (!truncation.truncated) return { content };
-  let fullOutputPath: string | undefined;
-  let where = "";
-  try {
-    const saved = await saveOutput(combined, ".txt");
-
-    if ((await env.stat(saved).catch(() => undefined))?.kind === "file") {
-      fullOutputPath = saved;
-      where = `\n\n[Full output: ${saved} (read it with offset/limit)]`;
-    }
-  } catch (cause) {
-    where = `\n\n[Could not save the full output: ${errorMessage(cause)}]`;
-  }
-  const tokens = Math.ceil(truncation.totalBytes / 4);
-  const text = `Warning: truncated output (original token count: ${String(tokens)})\nTotal output lines: ${String(truncation.totalLines)}\n\n${truncation.content}${where}`;
-  return {
-    content: [{ type: "text", text }, ...content.filter((block) => block.type === "image")],
-    ...(fullOutputPath ? { fullOutputPath } : {}),
-  };
-}
-
-function firstLine(text: string): string {
-  return text.split("\n", 1)[0] ?? text;
-}
-
-function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-/** Stable across processes and hosts: the same config gives the same version. */
-export function mcpConfigVersion(config: McpConfig): string {
-  const names = Object.keys(config).toSorted();
-  const canonical = JSON.stringify(names.map((name) => [name, config[name]]));
-
-  return `mcp:${createHash("sha256").update(canonical).digest("hex").slice(0, 16)}`;
-}
-
-/** The session setting that turns one configured server on or off. */
-export function mcpServerSettingId(name: string): string {
-  return `mcp:${name}`;
-}
-
-/** The manifest's `disabled` is only the choice a session starts from. */
-function defaultChoice(config: McpServerConfig): "on" | "off" {
-  return config.disabled === true ? "off" : "on";
-}
-
-export function mcpPlugin(input: { readonly servers: McpServers; readonly config: McpConfig }) {
-  return definePlugin({
-    id: MCP_PLUGIN_ID,
-    async session(api) {
-      const configured = Object.entries(input.config);
-
-      // 1. Each server is a setting; the manifest's `disabled` is its default.
-      const settings = configured.map(([name, config]) => ({
-        name,
-        config,
-        setting: api.settings.add(mcpServerSettingId(name), {
-          label: `MCP · ${name}`,
-          default: defaultChoice(config),
-          choices: [
-            { id: "on", label: "on", description: "Connected; its tools are offered" },
-            { id: "off", label: "off", description: "Disconnected; its tools are hidden" },
-          ],
-        }),
-      }));
-
-      // 2. One pool handle per server that is on; a failure is warned once.
-      const active = new Map<string, McpServerHandle>();
-      const reported = new Map<string, string>();
-
-      const refresh = (): void => {
-        for (const handle of active.values()) {
-          const status = handle.status();
-
-          if (status.kind !== "failed" || reported.get(handle.name) === status.error) continue;
-          reported.set(handle.name, status.error);
-          api.diagnostics.warn(`MCP server ${handle.name}: ${status.error}`);
+        for (const [server, held] of links) {
+          if (held.config === JSON.stringify(wanted[server])) continue;
+          links.delete(server);
+          void held.link.close();
         }
 
-        api.refresh();
-      };
+        for (const [server, config] of Object.entries(wanted)) {
+          if (links.has(server)) continue;
 
-      const apply = (name: string, config: McpServerConfig, enabled: boolean): void => {
-        const current = active.get(name);
-
-        if (enabled && current === undefined) {
-          const handle = input.servers.acquire(name, config, api.env.cwd);
-          handle.subscribe(refresh);
-          active.set(name, handle);
-        } else if (!enabled && current !== undefined) {
-          active.delete(name);
-          reported.delete(name);
-          current.release();
-        }
-      };
-
-      // 3. A choice changed on any host takes effect once this session is between tool cycles.
-      for (const { name, config, setting } of settings) {
-        setting.subscribe((choice) => {
-          api.defer(() => {
-            apply(name, config, choice === "on");
-            refresh();
+          const link = openLink({
+            server,
+            env: () => api.env,
+            connect: () =>
+              connect(server, config, {
+                cwd: api.env.cwd,
+                storage: api.storage,
+                signIn: (url) =>
+                  api.report({ severity: "warning", path: ["mcp.servers", server], message: `Sign in to ${server}: ${url.href}`, source: { plugin: "mcp" } }),
+              }),
+            changed: () => api.reload(),
+            failed: (message) => api.report({ severity: "warning", path: ["mcp.servers", server], message, source: { plugin: "mcp" } }),
           });
-        });
-      }
+
+          links.set(server, { config: JSON.stringify(config), link });
+        }
+
+        api.reload();
+      };
+
       api.signal.addEventListener("abort", () => {
-        for (const handle of active.values()) handle.release();
+        for (const { link } of links.values()) void link.close();
+        links.clear();
       });
 
-      // 4. What the session sees: connected servers' tools and instructions, and `/mcp`.
-      api.tools.add((draft) => {
-        for (const handle of active.values()) {
-          const status = handle.status();
-
-          if (status.kind !== "connected") continue;
-
-          for (const tool of status.tools) draft.set(tool.name, tool);
-        }
-      });
-      api.prompt.add((draft) => {
-        for (const handle of active.values()) {
-          const status = handle.status();
-
-          if (
-            status.kind !== "connected" ||
-            status.instructions === undefined ||
-            status.tools.every((tool) => tool.exposure === "hidden")
-          )
-            continue;
-          draft.set(`mcp:${handle.name}`, {
-            text: `## ${handle.name} (MCP)\n\n${status.instructions}`,
-            order: 200,
-          });
-        }
-      });
-      api.status.add((draft) => {
-        const handles = [...active.values()];
-        const connected = handles.filter((handle) => handle.status().kind === "connected").length;
-
-        if (connected === handles.length) return;
-        draft.set("mcp", { text: `MCP ${String(connected)}/${String(handles.length)}` });
-      });
-      api.commands.add((draft) => {
-        draft.set("mcp", {
-          description: "MCP servers and their status; `reconnect` retries failed ones",
-          selection: "run",
-          run: (argument) => {
-            if (argument.trim() === "reconnect") {
-              input.servers.reconnectFailed();
-
-              return "Reconnecting failed MCP servers.";
-            }
-
-            if (configured.length === 0) return "No MCP servers configured.";
-
-            return configured
-              .map(([name]) => {
-                const handle = active.get(name);
-
-                return handle === undefined ? `${name}: off` : describeStatus(handle);
-              })
-              .join("\n");
-          },
-        });
-      });
-
-      // 5. Start from the stored choices, waiting briefly so a healthy server's tools are
-      //    in the first request. A slower one joins the session when it connects.
-      await Promise.all(
-        settings.map(async ({ name, config, setting }) => {
-          apply(name, config, (await setting.get()) === "on");
-        }),
-      );
-      await Promise.race([
-        Promise.all(Array.from(active.values(), (handle) => handle.ready())),
-        activationDeadline(),
-      ]);
-      refresh();
+      void (async () => {
+        for await (const value of api.contribute.settings.watch(servers.id)) sync(value);
+      })();
     },
-  });
+  };
 }
 
-/** Resolves after the activation budget without holding the process open. */
-function activationDeadline(): Promise<void> {
-  return new Promise((settle) => {
-    const timer = setTimeout(settle, ACTIVATION_WAIT_MS);
-    timer.unref();
-  });
-}
-
-function describeStatus(handle: McpServerHandle): string {
-  const status = handle.status();
-
-  switch (status.kind) {
-    case "connecting":
-      return `${handle.name}: connecting`;
-    case "connected":
-      return `${handle.name}: ${String(status.tools.length)} ${status.tools.length === 1 ? "tool" : "tools"}`;
-    case "failed":
-      return `${handle.name}: failed (${firstLine(status.error)})`;
-    default: {
-      const _exhaustive: never = status;
-
-      return _exhaustive;
-    }
-  }
-}
+/**
+ * The MCP plugin over stdio and streamable HTTP.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export default mcpPlugin(connectServer) satisfies Plugin;

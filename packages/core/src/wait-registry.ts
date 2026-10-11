@@ -20,7 +20,7 @@ import { dev } from "./dev-log.ts";
 import type { Kernel } from "./kernel.ts";
 import { answerOf } from "./part-handle.ts";
 import { answeredElsewhere, partAnswers } from "./part-table.ts";
-import { decodeCallRecord, decodeRunRecord } from "./records.ts";
+import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
 import { endOf } from "./runs.ts";
@@ -266,9 +266,12 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       }
 
       case "part": {
-        if ((await kernel.store.refs.get(partRef(session, target.part))) === null)
-          return { kind: "part", part: target.part, answer: null };
-        const answer = answerOf(kernel, session, target.part);
+        const ref = await kernel.store.refs.get(partRef(session, target.part));
+
+        if (ref === null) return { kind: "part", part: target.part, answer: null };
+        const status = (await load(kernel, ref, decodePartRecord))?.record.status;
+        const kept = status?.kind === "live" ? (status.answer ?? null) : null;
+        const answer = answerOf(kernel, session, target.part) ?? kept;
 
         return answer === null ? null : { kind: "part", part: target.part, answer };
       }

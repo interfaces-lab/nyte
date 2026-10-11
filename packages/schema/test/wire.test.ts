@@ -374,6 +374,7 @@ import type {
   SessionInfo,
   SettingInfo,
   StopOutcome,
+  ToolInfo,
   ToolOutcome,
   TurnInfo,
   Usage,
@@ -518,6 +519,7 @@ const catalog: SessionCatalogView = {
     {
       name: "read",
       owner: "environment",
+      namespace: null,
       description: "Reads a file.",
       parameters: { type: "object" },
       output: null,
@@ -2243,6 +2245,29 @@ describe("wire schemas", () => {
     expect(
       (await SessionEventSchema["~standard"].validate({ ...event, call: 7 })).issues?.length,
     ).toBeGreaterThan(0);
+  });
+
+  it("round-trips a live part status holding an early answer and rejects an answer without an action (§48i)", async () => {
+    const status: PartStatus = { kind: "live", run: null, answer: { action: "answer", input: { choice: "yes" } } };
+    const wire: unknown = JSON.parse(JSON.stringify(status));
+
+    expect(await PartStatusSchema["~standard"].validate(wire)).toEqual({ value: status });
+    expect((await PartStatusSchema["~standard"].validate({ ...status, answer: { input: null } })).issues?.length).toBeGreaterThan(0);
+  });
+
+  it("round-trips a tool's namespace through JSON, null or named, and rejects one that is neither (§48d)", async () => {
+    const named: ToolInfo = { ...catalog.tools[0], name: "linear_search", owner: "mcp", namespace: "mcp/linear" };
+
+    for (const info of [catalog.tools[0], named]) {
+      const wire: unknown = JSON.parse(JSON.stringify(info));
+
+      expect(await ToolInfoSchema["~standard"].validate(wire)).toEqual({ value: info });
+    }
+
+    const unnamed = { name: named.name, owner: named.owner, description: named.description, parameters: named.parameters, output: named.output, exposure: named.exposure };
+
+    expect((await ToolInfoSchema["~standard"].validate(unnamed)).issues?.length).toBeGreaterThan(0);
+    expect((await ToolInfoSchema["~standard"].validate({ ...named, namespace: 7 })).issues?.length).toBeGreaterThan(0);
   });
 
   it("round-trips an identity challenge with its host id and rejects one without it (§43k)", async () => {

@@ -26,6 +26,7 @@ export const PartStatusType = Type.Union([
     kind: Type.Literal("live"),
     run: nullable(idSchema<"run">()),
     waiting: Type.Optional(idSchema<"call">()),
+    answer: Type.Optional(Type.Object({ action: Type.String(), input: JsonType })),
   }),
   Type.Object({ kind: Type.Literal("waiting"), run: idSchema<"run">(), on: WaitTargetType }),
   Type.Object({
@@ -100,7 +101,7 @@ export function actOutcomeSchema<T extends TSchema>(output: T) {
 export const PlacementSchema: Schema<Placement> = standard(withJson(PlacementType));
 
 /** Validates a `PartStatus`. */
-export const PartStatusSchema: Schema<PartStatus> = standard(PartStatusType);
+export const PartStatusSchema: Schema<PartStatus> = standard(withJson(PartStatusType));
 
 /** Validates a `PartView`. */
 export const PartViewSchema: Schema<PartView> = standard(withJson(PartViewType));
