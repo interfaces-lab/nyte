@@ -1,13 +1,29 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, net, protocol, session } from "electron";
-import { rendererContentSecurityPolicy, resolveRendererFile } from "../account/policy.ts";
-import { ACCOUNT_HOST } from "../account/scheme.ts";
+import {
+  rendererContentSecurityPolicy,
+  resolveRendererFile,
+  shellContentSecurityPolicy,
+} from "../account/policy.ts";
+import { ACCOUNT_HOST, CANVAS_HOST } from "../account/scheme.ts";
 import type { accountScheme } from "../account/scheme.ts";
 
+/** Where a renderer loads the canvas shell page from. */
+export function canvasShellUrl(scheme: ReturnType<typeof accountScheme>): string {
+  return `${scheme}://${CANVAS_HOST}/index.html`;
+}
+
+/**
+ * Serves the renderer and the canvas shell on the privileged scheme. The
+ * renderer page comes from the dev server in development, with its policy
+ * added to the dev server's response; the shell is a static build in both.
+ */
 export function registerRenderer(input: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly frontendApiHost: string | undefined;
+  /** The built shell: `packages/canvas/dist/shell`, or `canvas` beside the packaged resources. */
+  readonly shellRoot: string;
 }): string {
   protocol.registerSchemesAsPrivileged([
     {
@@ -27,43 +43,61 @@ export function registerRenderer(input: {
 
   const developmentUrl = process.env.ELECTRON_RENDERER_URL;
 
-  const policy = rendererContentSecurityPolicy({
-    frontendApiHost: input.frontendApiHost,
-    developmentOrigin: developmentUrl === undefined ? undefined : new URL(developmentUrl).origin,
-  });
+  const developmentOrigin =
+    developmentUrl === undefined ? undefined : new URL(developmentUrl).origin;
+
+  const rendererOrigin = developmentOrigin ?? `${input.scheme}://${ACCOUNT_HOST}`;
+
+  const policies = {
+    [ACCOUNT_HOST]: rendererContentSecurityPolicy({
+      frontendApiHost: input.frontendApiHost,
+      developmentOrigin,
+      canvasOrigin: `${input.scheme}://${CANVAS_HOST}`,
+    }),
+    [CANVAS_HOST]: shellContentSecurityPolicy({ frameAncestor: rendererOrigin }),
+  };
 
   void app.whenReady().then(() => {
-    if (developmentUrl !== undefined) {
+    if (developmentOrigin !== undefined) {
       session.defaultSession.webRequest.onHeadersReceived(
-        { urls: [`${new URL(developmentUrl).origin}/*`] },
+        { urls: [`${developmentOrigin}/*`] },
         (details, callback) => {
           callback({
             responseHeaders:
               details.resourceType === "mainFrame"
-                ? { ...details.responseHeaders, "Content-Security-Policy": [policy] }
+                ? {
+                    ...details.responseHeaders,
+                    "Content-Security-Policy": [policies[ACCOUNT_HOST]],
+                  }
                 : details.responseHeaders,
           });
         },
       );
-
-      return;
     }
 
-    const root = join(import.meta.dirname, "../renderer");
+    const roots = {
+      [ACCOUNT_HOST]:
+        developmentOrigin === undefined ? join(import.meta.dirname, "../renderer") : undefined,
+      [CANVAS_HOST]: input.shellRoot,
+    };
 
     protocol.handle(input.scheme, async (request) => {
       if (request.method !== "GET") return new Response(null, { status: 405 });
-      const target = resolveRendererFile(root, request.url);
+      const target = resolveRendererFile(roots, request.url);
 
       if (target.kind === "refused") return new Response(null, { status: target.status });
 
       try {
         const response = await net.fetch(pathToFileURL(target.path).toString());
 
-        if (!target.html) return response;
+        if (!target.html && target.host === ACCOUNT_HOST) return response;
         const headers = new Headers(response.headers);
 
-        headers.set("Content-Security-Policy", policy);
+        // The sandboxed frame's origin is opaque, so the shell's module
+        // script, stylesheet and fonts are CORS requests.
+        if (target.host === CANVAS_HOST) headers.set("Access-Control-Allow-Origin", "*");
+
+        if (target.html) headers.set("Content-Security-Policy", policies[target.host]);
 
         return new Response(response.body, { status: response.status, headers });
       } catch {

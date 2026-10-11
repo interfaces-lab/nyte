@@ -23,6 +23,9 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
+/** The window argument main hands the preload: `<name>=<url>` of the canvas shell page. */
+export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
+
 /** Host operations beside the sdk, one path per bridge method. */
 export const HOST_OPERATION_PATHS = [
   "host.endpoint",
@@ -89,6 +92,7 @@ export type CallPath = HostOperationPath;
  */
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
+  readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,
     | "onMenuCommand"

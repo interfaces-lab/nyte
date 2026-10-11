@@ -161,7 +161,11 @@ async function run(): Promise<void> {
 
   process.env.ELECTRON_RENDERER_URL = origin;
   const scheme = ACCOUNT_SCHEMES.development;
-  const rendererUrl = registerRenderer({ scheme, frontendApiHost: "clerk.example.com" });
+  const rendererUrl = registerRenderer({
+    scheme,
+    frontendApiHost: "clerk.example.com",
+    shellRoot: join(app.getPath("temp"), "nyte-account-test-shell"),
+  });
   let window: BrowserWindow | undefined;
 
   const account = registerAccount({

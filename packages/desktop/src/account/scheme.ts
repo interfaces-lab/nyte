@@ -7,6 +7,9 @@
  */
 export const ACCOUNT_HOST = "account";
 
+/** The second host on the renderer's scheme: the inline canvas runtime shell. */
+export const CANVAS_HOST = "canvas";
+
 export const ACCOUNT_SCHEMES = {
   production: "nyte-desktop",
   updateTest: "nyte-desktop-test",

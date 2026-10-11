@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import browserToolsPlugin from "@nyte-ai/plugin/browser-tools";
+import canvasPlugin from "@nyte-ai/plugin/canvas";
 import { codemodePlugin } from "@nyte-ai/plugin/codemode";
 import { asId } from "@nyte-ai/schema";
 import { SdkError, sdk } from "@nyte-ai/sdk";
@@ -273,6 +274,7 @@ export class DesktopHost {
         desktopBrowserPlugin(this.#deps.browser.agent, home),
         browserToolsPlugin,
         codemodePlugin(codemodeRuntimeOptions()),
+        canvasPlugin,
       ],
     });
 

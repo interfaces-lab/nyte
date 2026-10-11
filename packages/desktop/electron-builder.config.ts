@@ -43,6 +43,8 @@ export default {
     { from: "resources/adblock.bin", to: "adblock.bin" },
     // The web app Remote access serves beside the API; scripts/build.mjs builds it first.
     { from: "../app/dist", to: "app" },
+    // The canvas runtime shell, served on the renderer scheme's `canvas` host.
+    { from: "../canvas/dist/shell", to: "canvas" },
   ],
   // Squirrel.Mac installs only an update signed by the running app's Developer ID.
   mac: updateTest ? { ...mac, notarize: false } : mac,

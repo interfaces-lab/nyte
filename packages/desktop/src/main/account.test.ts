@@ -16,6 +16,7 @@ import {
   accountAnswer,
   accountReport,
   resolveRendererFile,
+  shellContentSecurityPolicy,
 } from "../account/policy.ts";
 import { accountScheme } from "../account/scheme.ts";
 import { AccountCancelled } from "./account-session.ts";
@@ -63,11 +64,13 @@ describe("account configuration", () => {
     const policy = rendererContentSecurityPolicy({
       frontendApiHost: HOST,
       developmentOrigin: undefined,
+      canvasOrigin: "nyte-desktop://canvas",
     });
 
     expect(policy).toContain(
       `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://${HOST} `,
     );
+    expect(policy).toContain("frame-src 'self' nyte-desktop://canvas ");
     expect(policy).toContain(`connect-src 'self' https://${HOST} `);
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("frame-ancestors 'none'");
@@ -81,10 +84,19 @@ describe("account configuration", () => {
     const policy = rendererContentSecurityPolicy({
       frontendApiHost: HOST,
       developmentOrigin: "http://127.0.0.1:5174",
+      canvasOrigin: "nyte-desktop-dev://canvas",
     });
 
     expect(policy).toContain("'unsafe-eval'");
     expect(policy).toContain("ws://127.0.0.1:5174");
+  });
+
+  test("the shell policy allows its own assets, blob modules and the renderer as its only ancestor", () => {
+    const policy = shellContentSecurityPolicy({ frameAncestor: "nyte-desktop://account" });
+
+    expect(policy).toBe(
+      "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; frame-ancestors nyte-desktop://account; base-uri 'none'; form-action 'none'",
+    );
   });
 });
 
@@ -100,20 +112,46 @@ describe("packaged renderer files", () => {
   });
 
   test("serves the page at its root and the built assets", () => {
-    expect(resolveRendererFile(root, "nyte-desktop://account/")).toEqual({
+    const roots = { account: root, canvas: join(root, "shell") };
+
+    expect(resolveRendererFile(roots, "nyte-desktop://account/")).toEqual({
       kind: "file",
+      host: "account",
       path: join(root, "index.html"),
       html: true,
     });
-    expect(resolveRendererFile(root, "nyte-desktop://account/assets/account-1.js")).toEqual({
+    expect(resolveRendererFile(roots, "nyte-desktop://account/assets/account-1.js")).toEqual({
       kind: "file",
+      host: "account",
       path: join(root, "assets", "account-1.js"),
       html: false,
     });
   });
 
+  test("serves the canvas shell from its own root, in development too", () => {
+    const roots = { account: undefined, canvas: join(root, "shell") };
+
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/index.html")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "index.html"),
+      html: true,
+    });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/assets/main-1.js")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "assets", "main-1.js"),
+      html: false,
+    });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://account/")).toEqual({
+      kind: "refused",
+      status: 404,
+    });
+  });
+
   test("refuses unknown pages, other hosts, and paths out of assets", () => {
-    const refused = (url: string) => resolveRendererFile(root, url);
+    const refused = (url: string) =>
+      resolveRendererFile({ account: root, canvas: join(root, "shell") }, url);
 
     expect(refused("nyte-desktop://account/account.html")).toEqual({
       kind: "refused",

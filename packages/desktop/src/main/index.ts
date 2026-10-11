@@ -18,6 +18,7 @@ import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
+  CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
@@ -45,7 +46,7 @@ import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
 import type { SecretCipher } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
-import { registerRenderer } from "./renderer.ts";
+import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
@@ -78,6 +79,9 @@ let desktopHost: DesktopHost | undefined;
 let connect: ConnectRuntime | undefined;
 
 let rendererUrl: string;
+
+/** Where the renderer loads the canvas shell; handed to the preload as a window argument. */
+let canvasShell: string;
 
 registerBunOAuthFlows();
 
@@ -498,6 +502,7 @@ function createWindow(): NyteWindow {
     backgroundColor: windowBackgroundColor(),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.js"),
+      additionalArguments: [`${CANVAS_SHELL_ARGUMENT}=${canvasShell}`],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -610,7 +615,14 @@ if (!hasSingleInstanceLock) {
   const config = readConnectConfig(import.meta.env);
   const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
 
-  rendererUrl = registerRenderer({ scheme, frontendApiHost: config?.clerk.frontendApiHost });
+  rendererUrl = registerRenderer({
+    scheme,
+    frontendApiHost: config?.clerk.frontendApiHost,
+    shellRoot: app.isPackaged
+      ? join(process.resourcesPath, "canvas")
+      : join(app.getAppPath(), "..", "canvas", "dist", "shell"),
+  });
+  canvasShell = canvasShellUrl(scheme);
   connect = createConnect(config);
 
   app.on("second-instance", (_event, argv) => {

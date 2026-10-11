@@ -45,6 +45,7 @@
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
+    "@nyte-ai/canvas": "workspace:*",
     "@stylexjs/stylex": "0.19.0",
     "@stylexjs/unplugin": "0.19.0",
     "@tanstack/react-devtools": "0.10.13",

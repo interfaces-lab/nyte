@@ -57,13 +57,22 @@ if (!compiled) {
   );
 }
 
-// The package ships the web app for Remote access. Under Turbo, ^build made it.
+// The package ships the web app for Remote access and the canvas shell both
+// clients load. Under Turbo, ^build made them.
 if (shouldPackage && !compiled) {
-  stages.push({ title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") });
+  stages.push(
+    { title: "Canvas shell", tail: true, run: () => pnpm("--dir", "../canvas", "build") },
+    { title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") },
+  );
 }
 
 if (compiled && !existsSync(join(desktopRoot, "..", "app", "dist", "index.html"))) {
   failure("packages/app/dist is missing. Run `pnpm --dir packages/app build` first.");
+  process.exit(1);
+}
+
+if (compiled && !existsSync(join(desktopRoot, "..", "canvas", "dist", "shell", "index.html"))) {
+  failure("packages/canvas/dist/shell is missing. Run `pnpm --dir packages/canvas build` first.");
   process.exit(1);
 }
 

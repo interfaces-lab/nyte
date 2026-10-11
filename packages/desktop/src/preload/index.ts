@@ -16,6 +16,7 @@ import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
+  CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
@@ -82,8 +83,14 @@ function object<P extends Exclude<CallPath, NoneCallPath>>(
   return (input) => call(path, input);
 }
 
+/** Main names the shell page per window; a window without one (a test fixture) shows no canvases. */
+const canvasShell = process.argv
+  .find((argument) => argument.startsWith(`${CANVAS_SHELL_ARGUMENT}=`))
+  ?.slice(CANVAS_SHELL_ARGUMENT.length + 1);
+
 const bridge = {
   clientSurface: "desktop",
+  ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
     onMenuCommand(listener: (command: AppMenuCommand) => void) {
       // Only the main process sends this private channel; never expose the IPC event.

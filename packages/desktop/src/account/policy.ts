@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Type } from "typebox";
 import type { TProperties } from "typebox";
 import { Compile } from "typebox/compile";
-import { ACCOUNT_HOST } from "./scheme.ts";
+import { ACCOUNT_HOST, CANVAS_HOST } from "./scheme.ts";
 
 const PUBLISHABLE_KEY = /^pk_(?:test|live)_([A-Za-z0-9+/_-]+={0,2})$/u;
 
@@ -38,6 +38,8 @@ export function checkedFrontendApiHost(config: {
 export function rendererContentSecurityPolicy(input: {
   readonly frontendApiHost: string | undefined;
   readonly developmentOrigin: string | undefined;
+  /** Where the canvas shell loads from, so the renderer may frame it. */
+  readonly canvasOrigin: string;
 }): string {
   const api = input.frontendApiHost === undefined ? "" : ` https://${input.frontendApiHost}`;
 
@@ -58,7 +60,7 @@ export function rendererContentSecurityPolicy(input: {
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
-    `frame-src 'self'${challenges}`,
+    `frame-src 'self' ${input.canvasOrigin}${challenges}`,
     "form-action 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -66,14 +68,52 @@ export function rendererContentSecurityPolicy(input: {
   ].join("; ");
 }
 
+/**
+ * The canvas shell's policy, as the inline-render contract specifies: its
+ * own assets plus the `blob:` module import, nothing else. `'self'` cannot
+ * name the ancestor here, since the shell and the renderer are different
+ * hosts on the scheme, so the renderer's origin is passed in.
+ */
+export function shellContentSecurityPolicy(input: { readonly frameAncestor: string }): string {
+  return [
+    "default-src 'none'",
+    "script-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src data: blob:",
+    "font-src 'self'",
+    "connect-src 'none'",
+    `frame-ancestors ${input.frameAncestor}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+}
+
 export type RendererFile =
-  | { readonly kind: "file"; readonly path: string; readonly html: boolean }
+  | {
+      readonly kind: "file";
+      readonly host: typeof ACCOUNT_HOST | typeof CANVAS_HOST;
+      readonly path: string;
+      readonly html: boolean;
+    }
   | { readonly kind: "refused"; readonly status: 400 | 403 | 404 };
 
-export function resolveRendererFile(root: string, requestUrl: string): RendererFile {
+/**
+ * Both hosts serve one page at their root and hashed files under `assets/`.
+ * The renderer root is absent in development, where the dev server serves
+ * the page; the shell is a static build in both.
+ */
+export function resolveRendererFile(
+  roots: { readonly account: string | undefined; readonly canvas: string },
+  requestUrl: string,
+): RendererFile {
   const url = new URL(requestUrl);
 
-  if (url.host !== ACCOUNT_HOST) return { kind: "refused", status: 404 };
+  const host =
+    url.host === ACCOUNT_HOST ? ACCOUNT_HOST : url.host === CANVAS_HOST ? CANVAS_HOST : undefined;
+
+  const root = host === undefined ? undefined : roots[host];
+
+  if (host === undefined || root === undefined) return { kind: "refused", status: 404 };
   let pathname: string;
 
   try {
@@ -83,7 +123,7 @@ export function resolveRendererFile(root: string, requestUrl: string): RendererF
   }
 
   if (pathname === "/" || pathname === "/index.html") {
-    return { kind: "file", path: join(root, "index.html"), html: true };
+    return { kind: "file", host, path: join(root, "index.html"), html: true };
   }
 
   if (!pathname.startsWith("/assets/")) return { kind: "refused", status: 404 };
@@ -95,7 +135,7 @@ export function resolveRendererFile(root: string, requestUrl: string): RendererF
     return { kind: "refused", status: 403 };
   }
 
-  return { kind: "file", path: target, html: false };
+  return { kind: "file", host, path: target, html: false };
 }
 
 const strict = <P extends TProperties>(properties: P) =>
