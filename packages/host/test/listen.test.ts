@@ -279,7 +279,7 @@ describe("listen", () => {
       1_000,
     );
 
-    expect(await renamed).toBe("2");
+    expect(await renamed).toBe("3");
     await kept.return?.(undefined);
   });
 
