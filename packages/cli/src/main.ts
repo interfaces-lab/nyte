@@ -3,6 +3,7 @@ import process from "node:process";
 import { buffer } from "node:stream/consumers";
 import { parseArgs } from "node:util";
 import { sqliteStore } from "@nyte-ai/host";
+import canvasPlugin from "@nyte-ai/plugin/canvas";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 import type { Host, OpenHostOptions } from "@nyte-ai/sdk";
@@ -85,7 +86,10 @@ async function print(args: readonly string[], options: MainOptions): Promise<num
   await using opened = await open(values.store, options);
 
   if (values.provider !== undefined && values.model !== undefined) {
-    const set = await opened.host.models.setDefault({ provider: values.provider, id: values.model });
+    const set = await opened.host.models.setDefault({
+      provider: values.provider,
+      id: values.model,
+    });
 
     if (set.kind === "unknown-model") {
       err(`Unknown model: ${values.provider}/${values.model}.\n`);
@@ -129,10 +133,10 @@ async function print(args: readonly string[], options: MainOptions): Promise<num
 }
 
 /**
- * Serves a host over the working directory on HTTP until interrupted:
- * `--port` (default 0, any free port), `--token` (default a fresh one,
- * printed to stderr) and `--store`. Writes the listener's address to stdout
- * once it is bound.
+ * Serves a host over the working directory on HTTP until interrupted, with
+ * the canvas plugin for the clients that draw canvases: `--port` (default 0,
+ * any free port), `--token` (default a fresh one, printed to stderr) and
+ * `--store`. Writes the listener's address to stdout once it is bound.
  */
 async function serve(args: readonly string[], options: MainOptions): Promise<number> {
   const { values } = parseArgs({
@@ -157,7 +161,7 @@ async function serve(args: readonly string[], options: MainOptions): Promise<num
 
   const token = values.token ?? crypto.randomUUID();
   const signal = options.signal ?? interruption();
-  await using opened = await open(values.store, options);
+  await using opened = await open(values.store, options, [canvasPlugin]);
 
   const listener = await opened.host.listen({
     transport: { kind: "http", port },
@@ -182,6 +186,7 @@ async function serve(args: readonly string[], options: MainOptions): Promise<num
 async function open(
   path: string | undefined,
   options: MainOptions,
+  plugins: OpenHostOptions["plugins"] = [],
 ): Promise<{ readonly host: Host; [Symbol.asyncDispose](): Promise<void> }> {
   const cwd = options.cwd ?? process.cwd();
   const store = path === undefined ? undefined : sqliteStore({ path: resolve(cwd, path) });
@@ -194,6 +199,7 @@ async function open(
       models: options.models,
       workspace: { kind: "local", path: cwd },
       home: options.home,
+      plugins,
     });
   } catch (error) {
     await store?.close();
