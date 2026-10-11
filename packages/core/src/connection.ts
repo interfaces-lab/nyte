@@ -13,7 +13,10 @@ import type {
   LoginMethod,
   ModelCatalogView,
   ModelRef,
+  PluginCheckReport,
+  PluginReplacementReport,
   PrincipalId,
+  PrincipalView,
   ReceiptId,
   SessionId,
   SettingOutcome,
@@ -118,6 +121,8 @@ export interface ConnectOptions {
   readonly expect?: { readonly hostId: HostId };
   /** Default memory; persistent only to survive your own restart mid-request. */
   readonly journal?: RequestJournal;
+  /** The `fetch` every request goes through; default the global. For tests, React Native and relays (§47b). */
+  readonly fetch?: typeof fetch;
 }
 
 /**
@@ -249,6 +254,10 @@ export interface Connection {
   readonly models: ModelsApi;
   /** Host-scope settings, builtin and plugin. */
   readonly settings: SettingsApi;
+  /** Hot plugin replacement and preflight over plugin files the host loads, the only kind the wire carries. A participant is answered `denied`; a client hides the controls by `HostView.authority` (§47e, §47l). */
+  readonly plugins: PluginsApi<PluginFile>;
+  /** Who may connect. A participant is answered `denied` (§47e). */
+  readonly principals: PrincipalsApi;
 
   /** Closes the link and drops its streams; accepted work continues on the host. */
   close(): Promise<void>;
@@ -368,6 +377,72 @@ export interface Login {
   answer(code: string): Promise<void>;
 }
 
+/**
+ * Names a plugin file a host loads with its own loader: what a connection
+ * passes to {@link PluginsApi}, since only paths cross the wire (§40b, §47l).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export type PluginFile = { readonly path: string };
+
+/**
+ * Replaces and preflights a host's plugins, given as `Entry`.
+ *
+ * **Details**
+ *
+ * A connection takes {@link PluginFile}s; the in-process host takes plugin
+ * objects and files alike (§47l).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export interface PluginsApi<Entry> {
+  /**
+   * Replaces the host's plugins, or one session's.
+   *
+   * **Details**
+   *
+   * Per plugin: `activated`, `rejected` or `kept-previous`.
+   *
+   * @authority maintenance
+   */
+  replace(plugins: readonly Entry[], scope?: { readonly session: SessionId }): Promise<PluginReplacementReport>;
+  /**
+   * Runs the preflight `open` runs; touches nothing.
+   *
+   * @authority maintenance
+   */
+  check(plugins: readonly Entry[]): Promise<PluginCheckReport>;
+}
+
+/**
+ * Lists, pairs and revokes the principals that may connect to a host.
+ *
+ * @category connection
+ * @since 0.1.0
+ */
+export interface PrincipalsApi {
+  /**
+   * Returns every paired principal.
+   *
+   * @authority maintenance
+   */
+  list(): Promise<readonly PrincipalView[]>;
+  /**
+   * Mints a pairing code; a device presents it to connect and becomes a
+   * principal with the given authority.
+   *
+   * @authority maintenance
+   */
+  pair(input: { readonly authority: ReadonlySet<Authority>; readonly label?: string }): Promise<{ readonly code: string; readonly expiresAt: number }>;
+  /**
+   * Revokes a principal: open streams drop; accepted work continues.
+   *
+   * @authority maintenance
+   */
+  revoke(id: PrincipalId): Promise<void>;
+}
 /**
  * Writes host-scope settings, builtin and plugin.
  *
@@ -506,12 +581,41 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
         return kernel.settings.apply(id, value);
       },
     },
+    plugins: {
+      async replace(plugins, scope) {
+        need("maintenance", "plugins.replace");
+
+        return kernel.plugins.replace(await kernel.loadPlugins(pathsOf(plugins)), scope);
+      },
+      async check(plugins) {
+        need("maintenance", "plugins.check");
+
+        return kernel.plugins.check(await kernel.loadPlugins(pathsOf(plugins)));
+      },
+    },
+    principals: {
+      async list() {
+        need("maintenance", "principals.list");
+
+        return kernel.principals.list();
+      },
+      async pair(request) {
+        need("maintenance", "principals.pair");
+
+        return kernel.principals.pair(request);
+      },
+      async revoke(id) {
+        need("maintenance", "principals.revoke");
+
+        return kernel.principals.revoke(id);
+      },
+    },
     close,
     [Symbol.asyncDispose]: close,
   };
 }
 
-/** Returns the in-process host: a connection as `LOCAL` with every authority, plus plugins, principals, prune, inspect and execution. */
+/** Returns the in-process host: a connection as `LOCAL` with every authority, its `plugins` taking plugin objects and files alike (§47l), plus prune, inspect and execution. */
 export function createHost(
   kernel: Kernel,
   input: { readonly credential: CredentialSource },
@@ -523,41 +627,25 @@ export function createHost(
     origin: null,
   };
 
+  const connection = createConnection(kernel, context);
   const need = (operation: string): void =>
     requireAuthority(context.authority, "maintenance", operation);
 
   return {
-    ...createConnection(kernel, context),
+    ...connection,
     plugins: {
       async replace(plugins, scope) {
         need("plugins.replace");
 
-        return kernel.plugins.replace(plugins, scope);
+        return kernel.plugins.replace(await loaded(kernel, plugins), scope);
       },
       async check(plugins) {
         need("plugins.check");
 
-        return kernel.plugins.check(plugins);
+        return kernel.plugins.check(await loaded(kernel, plugins));
       },
     },
     prune: () => kernel.prune(),
-    principals: {
-      async list() {
-        need("principals.list");
-
-        return kernel.principals.list();
-      },
-      async pair(request) {
-        need("principals.pair");
-
-        return kernel.principals.pair(request);
-      },
-      async revoke(id) {
-        need("principals.revoke");
-
-        return kernel.principals.revoke(id);
-      },
-    },
     inspect: (session) => inspect(kernel, session),
     execution: {
       cover: (coverage) => cover(kernel, coverage),
@@ -565,4 +653,26 @@ export function createHost(
       repair: (page) => repair(kernel, page),
     },
   };
+}
+
+/** Returns the paths of plugin files, in order. */
+function pathsOf(files: readonly PluginFile[]): readonly string[] {
+  return files.map((file) => file.path);
+}
+
+/** Returns plugin objects and files as the kernel takes them, in order: each file loaded through `kernel.loadPlugins`. */
+async function loaded(
+  kernel: Kernel,
+  plugins: readonly (Plugin<"core"> | PluginFile)[],
+): Promise<readonly Plugin<"core">[]> {
+  const each = await Promise.all(
+    plugins.map((plugin) => (isPluginFile(plugin) ? kernel.loadPlugins([plugin.path]) : [plugin])),
+  );
+
+  return each.flat();
+}
+
+/** Returns whether a plugin entry names a file rather than being a plugin: a plugin has an `id` and no `path`. */
+function isPluginFile(plugin: Plugin<"core"> | PluginFile): plugin is PluginFile {
+  return "path" in plugin && !("id" in plugin);
 }

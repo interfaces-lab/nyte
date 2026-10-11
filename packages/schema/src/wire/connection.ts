@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { CredentialSource, HostView, JournalEntry, SettingOutcome } from "../connection.ts";
 import type { Authority } from "../declaration.ts";
+import type { PrincipalId } from "../ids.ts";
 import { standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
 import { ValidationIssueType } from "./errors.ts";
@@ -12,9 +13,10 @@ import { UserContentType } from "./messages.ts";
 import { nullable } from "./nullable.ts";
 import { SettingInfoType } from "./sessions.ts";
 
-/** Returns the wire form of a `HostView`: the principal's authority as an array. */
+/** Returns the wire form of a `HostView`: the principal's authority as an array, and the principal the connection acts as, which the sdk reads into `Connection.principal` (wire-only, §47a). */
 export type HostViewWire = Omit<HostView, "authority"> & {
   readonly authority: readonly Authority[];
+  readonly principal: PrincipalId;
 };
 
 /** Returns the wire form of a `CredentialSource`: a token or a pairing code; `custom` never crosses. */
@@ -49,6 +51,7 @@ export const HostViewWireType = Type.Object({
   ),
   settings: Type.Array(SettingInfoType),
   authority: Type.Array(AuthorityType),
+  principal: idSchema<"principal">(),
   operations: Type.Array(
     Type.Object({
       name: Type.String(),

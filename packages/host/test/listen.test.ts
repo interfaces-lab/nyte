@@ -42,16 +42,12 @@ async function compose(
   return host;
 }
 
-async function serve(
-  host: Composed,
-  options?: Partial<ListenOptions>,
-  plugins?: Parameters<typeof listen>[2],
-): Promise<Listener> {
-  const listener = await listen(
-    host,
-    { transport: { kind: "fetch" }, auth: { kind: "token", token: TOKEN }, ...options },
-    plugins,
-  );
+async function serve(host: Composed, options?: Partial<ListenOptions>): Promise<Listener> {
+  const listener = await listen(host, {
+    transport: { kind: "fetch" },
+    auth: { kind: "token", token: TOKEN },
+    ...options,
+  });
 
   cleanups.push(() => listener.close());
 
@@ -385,32 +381,32 @@ describe("listen", () => {
     expect([response.status, await codeOf(response)]).toEqual([403, "denied"]);
   });
 
-  it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through its loader", async () => {
-    const host = await compose(fakeModels());
+  it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
+    const host = await open(fakeModels(), {
+      operations: operations(),
+      loadPlugins: pluginLoader([dir]),
+    });
+    cleanups.push(() => host.close());
     await writeFile(join(dir, "extra.mjs"), 'export default { id: "extra" };\n');
     const maintainer: PrincipalId = asId("maintainer");
 
-    const listener = await serve(
-      host,
-      {
-        auth: {
-          kind: "custom",
-          authorize: (request) => {
-            const who = request.headers.get("X-Who");
+    const listener = await serve(host, {
+      auth: {
+        kind: "custom",
+        authorize: (request) => {
+          const who = request.headers.get("X-Who");
 
-            return who === "admin"
-              ? {
-                  principal: maintainer,
-                  authority: new Set<Authority>(["participant", "owner", "maintenance"]),
-                }
-              : { deny: who === null ? "unauthorized" : "forbidden" };
-          },
+          return who === "admin"
+            ? {
+                principal: maintainer,
+                authority: new Set<Authority>(["participant", "owner", "maintenance"]),
+              }
+            : { deny: who === null ? "unauthorized" : "forbidden" };
         },
       },
-      pluginLoader([dir]),
-    );
+    });
 
     const checked = await post(
       listener,

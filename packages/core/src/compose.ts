@@ -53,6 +53,8 @@ export type ComposeOptions = OpenOptions & {
   readonly poll?: number;
   /** Host values applied inside `composeHost` before any driver attaches (§43c): each `settings` entry, in key order, through `kernel.settings.apply`, skipping an id that already has a value stored at `kvRef("host", "settings", id)` so a value changed over the wire survives restarts (§43j). An `unknown` answer is a `warning` at `[id]` and an `invalid` one its issues as warnings under `[id]`, all reported on one `HostState.report` row `{ id: "settings", source: "user", path, issues }` naming the file they came from. `openHost` fills it from `~/.nyte/settings.json`. */
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
+  /** Loads plugin files by path for `PluginsApi` (`KernelOptions.loadPlugins`, §47l); `openHost` passes its plugin loader. Absent, a file answers `unavailable`. */
+  readonly loadPlugins?: Kernel["loadPlugins"];
 };
 
 /** The core plugins every session loads first, in decision 13's order: what `kernel.builtins` holds. */
@@ -287,6 +289,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     secrets: options.secrets,
     home: options.home,
     poll: options.poll,
+    loadPlugins: options.loadPlugins,
   });
 
   composed.host.update({ plugins: hostPluginRows(composed) });

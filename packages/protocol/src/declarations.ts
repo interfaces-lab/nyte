@@ -307,6 +307,7 @@ import type {
   Page,
   Part,
   PartDefinition,
+  PluginFile,
   Receipt,
   SendReceipt,
   Session,
@@ -903,13 +904,13 @@ export type Signatures = {
   };
   "plugins.replace": {
     readonly input: {
-      readonly plugins: readonly { readonly path: string }[];
+      readonly plugins: readonly PluginFile[];
       readonly scope?: Parameters<Host["plugins"]["replace"]>[1];
     };
     readonly output: PluginReplacementReport;
   };
   "plugins.check": {
-    readonly input: { readonly plugins: readonly { readonly path: string }[] };
+    readonly input: { readonly plugins: readonly PluginFile[] };
     readonly output: PluginCheckReport;
   };
   "principals.list": { readonly input: object; readonly output: readonly PrincipalViewWire[] };

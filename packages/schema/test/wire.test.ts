@@ -2045,6 +2045,7 @@ const cases = {
       plugins: [{ id: "parts", source: "builtin", path: null, issues: [issue] }],
       settings: [settingInfo],
       authority: ["participant", "owner"],
+      principal,
       operations: [
         {
           name: "session.send",

@@ -195,7 +195,7 @@ export function localProvider(
 }
 
 /** Returns a composed host over a memory store with the fake models, the chat-only and local providers, and a handler whose connections are `ada` (participant and owner, `Bearer owner`), `bob` (participant, `Bearer guest`) and a pairing exchange (`Pairing 123-456`) that returns `X-Nyte-Credential`. */
-export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyBytes" | "plugins">>) {
+export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyBytes">>) {
   const fake = fakeModels();
   const disk = new Map<string, DiskFile>();
   const pages = { opened: new Array<PageId>(), closed: new Array<PageId>() };
@@ -230,7 +230,6 @@ export async function served(options?: Partial<Pick<HandlerOptions, "maxBodyByte
 
   const handler = createHandler({
     kernel: host.kernel,
-    host,
     origins: ["https://app.nyte.dev"],
     ...options,
     connection: async (request) => {

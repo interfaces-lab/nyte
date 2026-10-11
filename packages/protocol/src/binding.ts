@@ -35,12 +35,10 @@ import type {
   Connection,
   FilesApi,
   GitApi,
-  Host,
   Job,
   Kernel,
   Login,
   Page,
-  Plugin,
   Receipt,
 } from "@nyte-ai/core";
 import type {
@@ -120,11 +118,9 @@ export type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the kernel (for the rows that carry a wire-only id, §40o, `head.watch` and `parts.create`), the maintenance surface, and the host's plugin loader. */
+/** Describes what a binding needs beyond the connection: the kernel, for the rows that carry a wire-only id (§40o), `head.watch` and `parts.create`. */
 export type BindingOptions = {
   readonly kernel: Kernel;
-  readonly host?: Pick<Host, "plugins" | "principals">;
-  readonly plugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -141,7 +137,7 @@ const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
 
 const holds = new WeakMap<Kernel, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions (§40c); `plugins.*` load paths through `plugins` and go to `host`, `principals.*` to `host` (absent, `unavailable`); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions (§40c); `plugins.*` and `principals.*` go to the connection's (its plugin files load through `kernel.loadPlugins`, §47m); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { kernel } = options;
   const { principal } = connection;
@@ -161,14 +157,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
-
-  const host = (): Pick<Host, "plugins" | "principals"> =>
-    options.host ?? unavailable("This host serves no maintenance surface.");
-
-  const load = (paths: readonly { readonly path: string }[]) =>
-    (options.plugins ?? unavailable("This host loads no plugin files."))(
-      paths.map((plugin) => plugin.path),
-    );
 
   const attemptOf = (provider: string): Attempt =>
     logins.get(keyOf(principal, provider)) ??
@@ -224,7 +212,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   });
 
   return {
-    "connection.watch": async () => mapped(connection.watch(), hostWire),
+    "connection.watch": async () => mapped(connection.watch(), (view) => hostWire(view, principal)),
     "connection.blob": async ({ id }) => ({ reader: await connection.blob(id) }),
 
     "models.list": () => connection.models.list(),
@@ -535,16 +523,18 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return null;
     },
 
-    "plugins.replace": async ({ plugins, scope }) =>
-      host().plugins.replace(await load(plugins), scope),
-    "plugins.check": async ({ plugins }) => host().plugins.check(await load(plugins)),
+    "plugins.replace": ({ plugins, scope }) => connection.plugins.replace(plugins, scope),
+    "plugins.check": ({ plugins }) => connection.plugins.check(plugins),
 
     "principals.list": async () =>
-      (await host().principals.list()).map((view) => ({ ...view, authority: [...view.authority] })),
+      (await connection.principals.list()).map((view) => ({
+        ...view,
+        authority: [...view.authority],
+      })),
     "principals.pair": ({ authority, label }) =>
-      host().principals.pair({ authority: new Set(authority), label }),
+      connection.principals.pair({ authority: new Set(authority), label }),
     "principals.revoke": async ({ id }) => {
-      await host().principals.revoke(id);
+      await connection.principals.revoke(id);
 
       return null;
     },
@@ -704,8 +694,8 @@ async function bytesOf(body: ReadableStream<Uint8Array> | null): Promise<Uint8Ar
   return bytes;
 }
 
-function hostWire(view: HostView): HostViewWire {
-  return { ...view, authority: [...view.authority] };
+function hostWire(view: HostView, principal: PrincipalId): HostViewWire {
+  return { ...view, authority: [...view.authority], principal };
 }
 
 function patchesWire(set: PatchSet): PatchSetWire {
@@ -732,10 +722,6 @@ function jsonOf(value: unknown): Json {
 
 function keyOf(principal: PrincipalId, name: string): string {
   return JSON.stringify([principal, name]);
-}
-
-function unavailable(message: string): never {
-  throw new SdkError("unavailable", message);
 }
 
 function fail(code: "unknown" | "invalid" | "denied" | "unavailable", message: string): never {

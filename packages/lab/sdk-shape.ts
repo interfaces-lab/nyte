@@ -272,6 +272,8 @@ interface ConnectOptions {
   readonly expect?: { readonly hostId: HostId };
   /** Default memory; persistent only to survive your own restart mid-request. */
   readonly journal?: RequestJournal;
+  /** The `fetch` every request goes through; default the global. For tests, React Native and relays (§47b). */
+  readonly fetch?: typeof fetch;
 }
 
 
@@ -471,6 +473,10 @@ interface Connection {
   readonly models: ModelsApi;
   /** Host-scope settings, builtin and plugin. */
   readonly settings: SettingsApi;
+  /** Hot plugin replacement and preflight over plugin files the host loads, the only kind the wire carries. A participant is answered `denied`; a client hides the controls by `HostView.authority` (§47e, §47l). */
+  readonly plugins: PluginsApi<PluginFile>;
+  /** Who may connect. A participant is answered `denied` (§47e). */
+  readonly principals: PrincipalsApi;
 
   /** Closes the link and drops its streams; accepted work continues on the host. */
   close(): Promise<void>;
@@ -694,6 +700,70 @@ interface Usage {
 }
 
 /**
+ * Names a plugin file a host loads with its own loader: what a connection
+ * passes to {@link PluginsApi}, since only paths cross the wire (§40b, §47l).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+type PluginFile = { readonly path: string };
+/**
+ * Replaces and preflights a host's plugins, given as `Entry`.
+ *
+ * **Details**
+ *
+ * A connection takes {@link PluginFile}s; the in-process host takes plugin
+ * objects and files alike (§47l).
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+interface PluginsApi<Entry> {
+  /**
+   * Replaces the host's plugins, or one session's.
+   *
+   * **Details**
+   *
+   * Per plugin: `activated`, `rejected` or `kept-previous`.
+   *
+   * @authority maintenance
+   */
+  replace(plugins: readonly Entry[], scope?: { readonly session: SessionId }): Promise<PluginReplacementReport>;
+  /**
+   * Runs the preflight `open` runs; touches nothing.
+   *
+   * @authority maintenance
+   */
+  check(plugins: readonly Entry[]): Promise<PluginCheckReport>;
+}
+/**
+ * Lists, pairs and revokes the principals that may connect to a host.
+ *
+ * @category connection
+ * @since 0.1.0
+ */
+interface PrincipalsApi {
+  /**
+   * Returns every paired principal.
+   *
+   * @authority maintenance
+   */
+  list(): Promise<readonly PrincipalView[]>;
+  /**
+   * Mints a pairing code; a device presents it to connect and becomes a
+   * principal with the given authority.
+   *
+   * @authority maintenance
+   */
+  pair(input: { readonly authority: ReadonlySet<Authority>; readonly label?: string }): Promise<{ readonly code: string; readonly expiresAt: number }>;
+  /**
+   * Revokes a principal: open streams drop; accepted work continues.
+   *
+   * @authority maintenance
+   */
+  revoke(id: PrincipalId): Promise<void>;
+}
+/**
  * Writes host-scope settings, builtin and plugin.
  *
  * @category connection
@@ -899,49 +969,10 @@ interface Host extends Connection {
    * @throws {SdkError} unavailable when the port cannot be bound.
    */
   listen(options: ListenOptions): Promise<Listener>;
-  /** Hot plugin replacement and preflight. */
-  readonly plugins: {
-    /**
-     * Replaces the host's plugins, or one session's.
-     *
-     * **Details**
-     *
-     * Per plugin: `activated`, `rejected` or `kept-previous`.
-     *
-     * @authority maintenance
-     */
-    replace(plugins: readonly Plugin<"core">[], scope?: { readonly session: SessionId }): Promise<PluginReplacementReport>;
-    /**
-     * Runs the preflight `open` runs; touches nothing.
-     *
-     * @authority maintenance
-     */
-    check(plugins: readonly Plugin<"core">[]): Promise<PluginCheckReport>;
-  };
+  /** Hot plugin replacement and preflight: plugin objects and plugin files alike (§47l). */
+  readonly plugins: PluginsApi<Plugin<"core"> | PluginFile>;
   /** Collects unreachable history. The only GC entry point. In-process only. */
   prune(): Promise<PruneReport>;
-  /** Who may connect. */
-  readonly principals: {
-    /**
-     * Returns every paired principal.
-     *
-     * @authority maintenance
-     */
-    list(): Promise<readonly PrincipalView[]>;
-    /**
-     * Mints a pairing code; a device presents it to connect and becomes a
-     * principal with the given authority.
-     *
-     * @authority maintenance
-     */
-    pair(input: { readonly authority: ReadonlySet<Authority>; readonly label?: string }): Promise<{ readonly code: string; readonly expiresAt: number }>;
-    /**
-     * Revokes a principal: open streams drop; accepted work continues.
-     *
-     * @authority maintenance
-     */
-    revoke(id: PrincipalId): Promise<void>;
-  };
   /**
    * Returns raw store reads for one session, for maintenance and tests; never
    * served remotely.

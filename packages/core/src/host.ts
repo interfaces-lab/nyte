@@ -12,10 +12,7 @@ import type {
   IntegrityReport,
   Owned,
   Paged,
-  PluginCheckReport,
-  PluginReplacementReport,
   PrincipalId,
-  PrincipalView,
   PruneReport,
   Ref,
   RepairPage,
@@ -23,7 +20,7 @@ import type {
   SessionEvent,
   SessionId,
 } from "@nyte-ai/schema";
-import type { Connection } from "./connection.ts";
+import type { Connection, PluginFile, PluginsApi } from "./connection.ts";
 import type { Plugin } from "./plugin.ts";
 
 /**
@@ -49,49 +46,10 @@ export interface Host extends Connection {
    * @throws {SdkError} unavailable when the port cannot be bound.
    */
   listen(options: ListenOptions): Promise<Listener>;
-  /** Hot plugin replacement and preflight. */
-  readonly plugins: {
-    /**
-     * Replaces the host's plugins, or one session's.
-     *
-     * **Details**
-     *
-     * Per plugin: `activated`, `rejected` or `kept-previous`.
-     *
-     * @authority maintenance
-     */
-    replace(plugins: readonly Plugin<"core">[], scope?: { readonly session: SessionId }): Promise<PluginReplacementReport>;
-    /**
-     * Runs the preflight `open` runs; touches nothing.
-     *
-     * @authority maintenance
-     */
-    check(plugins: readonly Plugin<"core">[]): Promise<PluginCheckReport>;
-  };
+  /** Hot plugin replacement and preflight: plugin objects and plugin files alike (§47l). */
+  readonly plugins: PluginsApi<Plugin<"core"> | PluginFile>;
   /** Collects unreachable history. The only GC entry point. In-process only. */
   prune(): Promise<PruneReport>;
-  /** Who may connect. */
-  readonly principals: {
-    /**
-     * Returns every paired principal.
-     *
-     * @authority maintenance
-     */
-    list(): Promise<readonly PrincipalView[]>;
-    /**
-     * Mints a pairing code; a device presents it to connect and becomes a
-     * principal with the given authority.
-     *
-     * @authority maintenance
-     */
-    pair(input: { readonly authority: ReadonlySet<Authority>; readonly label?: string }): Promise<{ readonly code: string; readonly expiresAt: number }>;
-    /**
-     * Revokes a principal: open streams drop; accepted work continues.
-     *
-     * @authority maintenance
-     */
-    revoke(id: PrincipalId): Promise<void>;
-  };
   /**
    * Returns raw store reads for one session, for maintenance and tests; never
    * served remotely.

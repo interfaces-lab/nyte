@@ -14,7 +14,8 @@ import { cuttableLink } from "./link.ts";
 import { severableStore } from "./store.ts";
 import { benchTools } from "./tools.ts";
 
-export type { FakeModel, ScriptedTurn } from "./fake-models.ts";
+export { chatOnly, fakeModels } from "./fake-models.ts";
+export type { FakeModel, FakeModels, ScriptedTurn } from "./fake-models.ts";
 
 /** One open bench fixture (`BenchHost` in `packages/bench/src/driver.ts`): the host, its model and store, crash and restart, a cuttable client link, counters and id constructors. */
 export interface BenchHost {

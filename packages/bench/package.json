@@ -8,7 +8,8 @@
     "bench": "node --conditions=nyte-source src/main.ts"
   },
   "dependencies": {
-    "@nyte-ai/host": "workspace:*"
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.3"

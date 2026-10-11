@@ -1,0 +1,175 @@
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { HeadName, SessionId, SessionView } from "@nyte-ai/schema";
+import { TOKEN, TOKEN_AUTHORITY, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
+import type { Connection, Kernel, Listener, Plugin } from "@nyte-ai/core";
+import { identitySigner, listenFetch, localProvider } from "@nyte-ai/host";
+import { operations } from "@nyte-ai/protocol";
+import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
+import type { FakeModels } from "@nyte-ai/host/bench";
+
+/** The listener token every test host accepts. */
+export const TOKEN_SECRET = "a-token-of-at-least-16";
+
+/** The URL every test connects to; the listener's `fetch` answers it in process. */
+export const BASE = "http://host.test";
+
+/** Rewrites one request on its way to the listener; `next` forwards it. */
+export type Intercept = (
+  request: Request,
+  next: (request: Request) => Promise<Response>,
+) => Promise<Response>;
+
+/** One composed host served by `listenFetch` with no socket, and a `fetch` that reaches it. */
+export interface Served {
+  readonly fake: FakeModels;
+  readonly host: Awaited<ReturnType<typeof composeHost>>;
+  readonly listener: Listener;
+  readonly fetch: typeof fetch;
+  readonly root: string | null;
+  /** Routes every later request through `next`, or straight to the listener when null. */
+  intercept(next: Intercept | null): void;
+  /** The host's own view of a head for the token principal: what a client's fold must equal. */
+  view(session: SessionId, head?: HeadName): Promise<SessionView>;
+  close(): Promise<void>;
+}
+
+/** Composes a host over a memory store with a scripted provider, on the chat-only workspace or, with `local`, a git repository in a temp folder, and serves it under token auth, with an identity signer when asked. */
+export async function served(options?: {
+  readonly local?: boolean;
+  readonly identity?: boolean;
+  readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
+}): Promise<Served> {
+  const fake = fakeModels();
+  const root = options?.local === true ? await repository() : null;
+  const secret = crypto.getRandomValues(new Uint8Array(32));
+
+  const host = await composeHost({
+    store: memoryStore(),
+    models: fake.models,
+    plugins:
+      root === null
+        ? [chatOnly]
+        : [{ id: "local", environment: localProvider({ home: join(root, "home") }) }],
+    workspace:
+      root === null
+        ? { kind: "chat-only", locator: null }
+        : { kind: "local", path: join(root, "workspace") },
+    home: null,
+    operations: operations(),
+    description: { name: "test", platform: "darwin", version: "0.1.0" },
+    secrets: { key: async () => secret },
+    loadPlugins: options?.loadPlugins,
+  });
+
+  const listener = await listenFetch(host, {
+    transport: { kind: "fetch" },
+    auth: { kind: "token", token: TOKEN_SECRET },
+    ...(options?.identity === true
+      ? { identity: await identitySigner(host.kernel.hostId, { key: async () => secret }) }
+      : {}),
+  });
+
+  let route: Intercept | null = null;
+  const forward = (request: Request): Promise<Response> => listener.fetch(request);
+  const local: Connection = tokenConnection(host.kernel);
+
+  return {
+    fake,
+    host,
+    listener,
+    root,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      const answer = route === null ? forward(request) : route(request, forward);
+
+      return Promise.race([answer, aborted(request.signal)]);
+    },
+    intercept(next) {
+      route = next;
+    },
+    view: (session, head) =>
+      head === undefined ? local.session(session).view() : local.session(session).head(head).view(),
+    async close() {
+      await listener.close();
+      await host.close();
+
+      if (root !== null) await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Rejects with the signal's reason when it aborts, as `fetch` does for a request still waiting on its answer. */
+function aborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) reject(signal.reason);
+    else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
+
+/** Returns the operation a request names: its path without the leading slash. */
+export function operationOf(request: Request): string {
+  return new URL(request.url).pathname.slice(1);
+}
+
+/** Returns the first value a stream yields that `done` accepts, failing after `ms`. */
+export async function until<T>(
+  source: AsyncIterable<T>,
+  done: (value: T) => boolean | Promise<boolean>,
+  ms = 5_000,
+): Promise<T> {
+  const iterator = source[Symbol.asyncIterator]();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`No value was accepted within ${ms} ms.`)), ms);
+  });
+
+  try {
+    for (;;) {
+      const next = await Promise.race([iterator.next(), expired]);
+
+      if (next.done === true) throw new Error("The stream ended first.");
+
+      if (await done(next.value)) return next.value;
+    }
+  } finally {
+    clearTimeout(timer);
+    await iterator.return?.();
+  }
+}
+
+function tokenConnection(kernel: Kernel): Connection {
+  return createConnection(kernel, {
+    principal: TOKEN,
+    authority: TOKEN_AUTHORITY,
+    credential: { kind: "token", token: TOKEN_SECRET },
+    origin: null,
+  });
+}
+
+/** Returns a temp folder holding `home/` and `workspace/`, the latter a git repository with one commit of `a.txt`. */
+async function repository(): Promise<string> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-sdk-")));
+  const workspace = join(root, "workspace");
+  await Promise.all([mkdir(join(root, "home")), mkdir(workspace)]);
+
+  const git = (...args: string[]): void => {
+    execFileSync("git", args, {
+      cwd: workspace,
+      env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+    });
+  };
+
+  git("init", "-q", "-b", "main");
+  git("config", "user.name", "Ada");
+  git("config", "user.email", "ada@example.com");
+  git("config", "commit.gpgsign", "false");
+  await writeFile(join(workspace, "a.txt"), "one\ntwo\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "first");
+
+  return root;
+}

@@ -23,7 +23,7 @@ export type TransportOptions = {
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
-/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the last response that carried one, error answers included, §43j); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the last response that carried one, error answers included, §43j); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
 export type Transport = {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   stream(name: OperationName, input: Json): AsyncIterable<Uint8Array | Json>;
@@ -33,6 +33,7 @@ export type Transport = {
     name: OperationName,
     input: Json,
     body: Uint8Array | ReadableStream<Uint8Array>,
+    options?: RequestOptions,
   ): Promise<Json>;
   credential(): CredentialSource | null;
   host(): HostId | null;
@@ -128,8 +129,11 @@ export function createTransport(options: TransportOptions): Transport {
         if (response.body !== null) yield* parseSse(response.body);
       });
     },
-    async upload(name, input, body) {
-      const response = await post(name, withInputHeader(input, body));
+    async upload(name, input, body, request) {
+      const response = await post(name, {
+        ...withInputHeader(input, body),
+        signal: request?.signal,
+      });
 
       return parseJson(await response.text());
     },

@@ -6,7 +6,8 @@
  *   pnpm --dir packages/bench bench -- stop-fence edit-mid-stream
  */
 import { fileURLToPath } from "node:url";
-import { benchDriver } from "@nyte-ai/host/bench";
+import { createBenchDriver } from "@nyte-ai/host/bench";
+import { sdk } from "@nyte-ai/sdk";
 import { report } from "./report.ts";
 import type { Scenario } from "./scenario.ts";
 import { durableToolReplay } from "./scenarios/durable-tool-replay.ts";
@@ -33,6 +34,7 @@ const scenarios: readonly Scenario[] = [
   sessionsDirectory,
 ];
 
+const benchDriver = createBenchDriver({ connect: sdk.connect });
 const selected = new Set(process.argv.slice(2));
 const toRun = selected.size === 0 ? scenarios : scenarios.filter((scenario) => selected.has(scenario.name));
 const results = [];

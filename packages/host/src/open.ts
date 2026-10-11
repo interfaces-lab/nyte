@@ -61,8 +61,8 @@ export type OpenHostOptions = Omit<OpenOptions, "models" | "plugins"> & {
  * `hostDescription()`, and each file that did not load becomes a
  * `kernel.host.report` row. `listen(options)` is h1's `listen` with `identity`
  * defaulting to `identitySigner(host.hostId, secrets)` (derived on the first
- * `listen`), `describe` to the same description and `pluginLoader` over the
- * plugin directories; `close()` closes this host's open listeners, then the
+ * `listen`) and `describe` to the same description; the kernel's
+ * `loadPlugins` is `pluginLoader` over the plugin directories (§47l, §47m); `close()` closes this host's open listeners, then the
  * host.
  */
 export async function openHost(options: OpenHostOptions): Promise<Host> {
@@ -76,6 +76,7 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
 
   const host = await composeHost({
     ...options,
+    loadPlugins: pluginLoader(files.dirs),
     models: options.models ?? nyteModels({ store: options.store, secrets, home }),
     plugins: [...(options.plugins ?? []), ...files.plugins],
     pluginSources: files.sources,
@@ -104,20 +105,15 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
   });
 
   const listeners = new Set<Listener>();
-  const loader = pluginLoader(files.dirs);
   let identity: ReturnType<typeof identitySigner> | null = null;
 
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
-    const listener = await listen(
-      host,
-      {
-        describe: () => description,
-        ...listenOptions,
-        identity:
-          listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, secrets))),
-      },
-      loader,
-    );
+    const listener = await listen(host, {
+      describe: () => description,
+      ...listenOptions,
+      identity:
+        listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, secrets))),
+    });
 
     listeners.add(listener);
     dev("open", "listen", { address: listener.address });

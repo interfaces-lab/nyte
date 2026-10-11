@@ -405,6 +405,39 @@ describe("composeHost", () => {
     await expect(compose(new Map())).rejects.toMatchObject({ code: "invalid" });
   });
 
+  it("checks plugin objects and files alike in-process, each file through loadPlugins in order (§47l)", async () => {
+    const loaded: string[] = [];
+
+    await using host = await composeHost({
+      store: memoryStore(),
+      models: fakeModels().models,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      home: null,
+      operations: [],
+      description: { name: "test", platform: "darwin", version: "0.1.0" },
+      loadPlugins: async (paths) => {
+        loaded.push(...paths);
+
+        return paths.map((path) => ({ id: `file:${path}` }));
+      },
+    });
+
+    const report = await host.plugins.check([{ path: "a.ts" }, { id: "inline" }, { path: "b.ts" }]);
+
+    expect(loaded).toEqual(["a.ts", "b.ts"]);
+    expect(report.plugins.map((outcome) => outcome.id)).toEqual([
+      "file:a.ts",
+      "inline",
+      "file:b.ts",
+    ]);
+    await using other = await open(fakeModels());
+
+    await expect(other.plugins.check([{ path: "c.ts" }])).rejects.toMatchObject({
+      code: "unavailable",
+    });
+  });
+
   it("registers the workspace once and makes it the default", async () => {
     const store = memoryStore();
     const first = await open(fakeModels(), { store });

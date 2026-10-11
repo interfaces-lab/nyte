@@ -321,7 +321,7 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
-/** Composes a host over a memory store (or `store`) with the fake models, the chat-only environment and `plugins`. */
+/** Composes a host over a memory store (or `store`) with the fake models, the chat-only environment, `plugins` and the plugin file loader `loadPlugins`. */
 export async function open(
   fake: FakeModels,
   options?: {
@@ -329,6 +329,7 @@ export async function open(
     readonly store?: Store;
     readonly operations?: HostView["operations"];
     readonly execution?: ComposeOptions["execution"];
+    readonly loadPlugins?: ComposeOptions["loadPlugins"];
   },
 ): ReturnType<typeof composeHost> {
   return composeHost({
@@ -337,6 +338,7 @@ export async function open(
     plugins: [chatOnly, ...(options?.plugins ?? [])],
     workspace: { kind: "chat-only", locator: null },
     execution: options?.execution,
+    loadPlugins: options?.loadPlugins,
     home: null,
     operations: options?.operations ?? [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },

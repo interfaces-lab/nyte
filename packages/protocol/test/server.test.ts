@@ -341,7 +341,7 @@ describe("handler", () => {
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
   });
 
-  it("serves the host view with its authority as an array, and an act without output as null", async () => {
+  it("serves the host view with its authority as an array and its principal, and an act without output as null", async () => {
     const { handler, host } = await served();
     host.kernel.partDefinitions.register(question, null);
     const view = await until(await post(handler, "connection.watch", {}), () => true);
@@ -351,6 +351,7 @@ describe("handler", () => {
       authority: ["participant", "owner", "maintenance"],
     });
     expect(view[0]?.data).toHaveProperty("operations");
+    expect(view[0]?.data).toHaveProperty("principal");
 
     const { session } = decodeOutput(
       "sessions.create",

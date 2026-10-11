@@ -190,8 +190,16 @@ export interface Kernel {
   setCatalog(session: SessionId, catalog: SessionCatalogView): void;
   /** Returns the api of the plugin that owns a part definition, in a session: the active plugin's, or core's own for `core`; throws `unavailable` when no such plugin is active there. */
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
-  /** Hot plugin replacement and preflight. */
-  readonly plugins: Host["plugins"];
+  /** Hot plugin replacement and preflight over plugin objects; the connection's `PluginsApi` hands it what it loaded. */
+  readonly plugins: {
+    replace(
+      plugins: readonly Plugin<"core">[],
+      scope?: { readonly session: SessionId },
+    ): ReturnType<Host["plugins"]["replace"]>;
+    check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
+  };
+  /** Loads plugin files by path, in path order: what `PluginsApi` hands the files it is given. Default answers `unavailable`; `openHost` passes its plugin loader (§47l). */
+  loadPlugins(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
   /** Who may connect. Default `createPrincipals`, built on first use. */
   readonly principals: Host["principals"];
   /** Collects unreachable history. Default `prune`, which reports reachability and leaves collection to the store driver (§37e). */
@@ -407,6 +415,7 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
       | "pluginSources"
       | "pluginApi"
       | "plugins"
+      | "loadPlugins"
       | "principals"
       | "prune"
     >
@@ -593,6 +602,10 @@ export function createKernel(input: KernelOptions): Kernel {
       replace: (plugins, scope) => replacePlugins(kernel, plugins, scope),
       check: async (plugins) => checkPlugins(plugins),
     },
+    loadPlugins:
+      input.loadPlugins ??
+      (async (paths) =>
+        paths.length === 0 ? [] : unavailable("plugin files: this host has no plugin loader")),
     get principals() {
       principals ??= createPrincipals(kernel);
 
