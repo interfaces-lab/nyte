@@ -7,7 +7,7 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Toolbar } from "@nyte-ai/ui/toolbar";
 import { iconReferences } from "../../ui/test/icon-references.ts";
-import { applyDisplayMode } from "../src/theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../src/theme/tokens.stylex.ts";
 
 const styles = create({

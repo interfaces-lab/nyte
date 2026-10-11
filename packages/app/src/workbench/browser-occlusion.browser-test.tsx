@@ -14,7 +14,7 @@ import type { ReactElement } from "react";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import type { BrowserBoundsMessage } from "../bridge.ts";
 import { BrowserPanel } from "./browser-panel.tsx";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 const URL_UNDER_TEST = "https://example.com/";

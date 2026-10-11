@@ -14,7 +14,7 @@ import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
 import { ThreadScreen } from "./thread.tsx";
 import { createAppRouter } from "../router.tsx";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";

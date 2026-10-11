@@ -1,4 +1,4 @@
-import { applyDisplayMode } from "./appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { createRoot } from "react-dom/client";
 import "./tokens.stylex.ts";
 import "./global.css";

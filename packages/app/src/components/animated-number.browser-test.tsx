@@ -4,7 +4,7 @@ import { role } from "@nyte-ai/ui/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { AnimatedNumber } from "./animated-number.tsx";
 

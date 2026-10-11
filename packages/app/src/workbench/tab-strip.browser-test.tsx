@@ -6,7 +6,7 @@ import { WorkbenchTabStrip } from "./tab-strip.tsx";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 import { fileActions } from "./file-store.ts";
 import { terminalActions } from "./terminal-store.ts";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 function check(condition: boolean, message: string): void {

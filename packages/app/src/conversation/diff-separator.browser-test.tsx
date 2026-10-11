@@ -2,7 +2,7 @@ import "../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { DiffView } from "./diff-view.tsx";
 import { createDiffFilesLoader } from "./diff-expansion.ts";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 const PATCH =

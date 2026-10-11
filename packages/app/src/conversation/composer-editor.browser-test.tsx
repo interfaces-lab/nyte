@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { ComposerEditor } from "./composer-editor.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";

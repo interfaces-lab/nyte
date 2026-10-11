@@ -4,7 +4,7 @@ import { flushSync } from "react-dom";
 import { ComposerEditor } from "./composer-editor.tsx";
 import { UserMessageText } from "./message-content.tsx";
 import { ReferenceOpenerProvider } from "./reference-opener.tsx";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 declare global {

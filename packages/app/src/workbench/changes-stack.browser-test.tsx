@@ -5,7 +5,7 @@ import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { patchDigest } from "./changes-viewed.ts";
 import { parsePatchFiles } from "@pierre/diffs";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 function patchOf(path: string, prefix: string): string {

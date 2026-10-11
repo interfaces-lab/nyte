@@ -3,12 +3,11 @@
  * paint, and again whenever one changes in any window. Keeping it in the boot
  * entry avoids an inline script that the CSP would block.
  */
+import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { nyte } from "../nyte.ts";
 import { preferences } from "../preferences/index.ts";
 import {
-  applyDisplayMode,
   applyPointerCursors,
-  applyTint,
   applyTransparency,
   subscribeSystemTransparency,
   systemReducesTransparency,
