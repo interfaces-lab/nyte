@@ -1,8 +1,10 @@
+import { canvas } from "@nyte-ai/plugin/canvas";
 import { branchSummary, compaction, isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
 import type {
   Execution,
   Failure,
   Message,
+  PartId,
   PartStatus,
   SessionView,
   ToolPartState,
@@ -17,6 +19,16 @@ export type ActivityPart =
 export type ChatRow =
   | { kind: "user"; id: string; content: UserContent; delivery: "sent" | "queued" }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
+  | {
+      kind: "canvas";
+      id: string;
+      part: PartId;
+      title: string;
+      runtime: number;
+      code: string;
+      height: number | null;
+      error: string | null;
+    }
   | { kind: "activity"; id: string; parts: readonly ActivityPart[] }
   | { kind: "status"; id: string; execution: Exclude<Execution, { kind: "idle" }> }
   | { kind: "failure"; id: string; failure: Failure }
@@ -28,7 +40,7 @@ const STOPPED: Failure = { class: "aborted", message: "" };
 /** Rows of one message, by the message object: the view keeps an unchanged message's identity, so its row keeps its own. */
 const rowsOf = new WeakMap<Message, ChatRow>();
 
-/** Returns the row a user, text, summary or compaction message draws as, or undefined for a step. */
+/** Returns the row a user, text, canvas, summary or compaction message draws as, or undefined for a step. */
 function messageRow(message: Message): ChatRow | undefined {
   const cached = rowsOf.get(message);
 
@@ -49,11 +61,13 @@ function messageRow(message: Message): ChatRow | undefined {
             text: message.state.markdown,
             streaming: message.status.kind === "live",
           }
-        : isPart(message, branchSummary)
-          ? { kind: "summary", id: message.id, text: message.state.markdown }
-          : isPart(message, compaction)
-            ? { kind: "marker", id: message.id, text: "Earlier context summarized" }
-            : undefined;
+        : isPart(message, canvas)
+          ? { kind: "canvas", id: message.id, part: message.part, ...message.state }
+          : isPart(message, branchSummary)
+            ? { kind: "summary", id: message.id, text: message.state.markdown }
+            : isPart(message, compaction)
+              ? { kind: "marker", id: message.id, text: "Earlier context summarized" }
+              : undefined;
 
   if (row !== undefined) rowsOf.set(message, row);
 

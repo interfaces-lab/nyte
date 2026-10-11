@@ -29,6 +29,20 @@ function filePath(url: string): string {
   }
 }
 
+/** Opens an http(s) link in the system browser; resolves false for any other URL or when the system refused it. */
+export function openExternalLink(url: string): Promise<boolean> {
+  if (!/^https?:\/\//i.test(url)) return Promise.resolve(false);
+
+  return Linking.openURL(url).then(
+    () => true,
+    () => {
+      toast.error("Couldn't open link", url);
+
+      return false;
+    },
+  );
+}
+
 function openLink(url: string): void {
   if (url.startsWith("agent:")) {
     const session = sessionIdOf(url.slice("agent:".length));
@@ -38,9 +52,7 @@ function openLink(url: string): void {
     return;
   }
 
-  if (!/^https?:\/\//i.test(url)) return;
-
-  void Linking.openURL(url).catch(() => toast.error("Couldn't open link", url));
+  void openExternalLink(url);
 }
 
 export function Markdown({

@@ -168,6 +168,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           onSend={chat.send}
           onStop={chat.stop}
           onReply={chat.reply}
+          onReport={chat.report}
           onChooseHead={setHead}
           delegateNames={delegateNames}
           changes={review}

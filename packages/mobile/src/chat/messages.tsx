@@ -5,12 +5,13 @@ import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { BlobId, Connection, Failure, SessionId } from "@nyte-ai/sdk";
+import type { BlobId, Connection, Failure, PartId, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
 import type { ChatRow } from "./transcript-rows.ts";
 import { ActivityIcon, activitySummary } from "./tool-activity-sheet.tsx";
+import { CanvasFrame } from "./canvas-frame.tsx";
 import { Markdown } from "./markdown.tsx";
 import { Bubble } from "./bubble.tsx";
 import { Marker } from "./marker.tsx";
@@ -157,6 +158,27 @@ function AssistantMessage({
   );
 }
 
+/** A canvas takes the whole column: charts and tables want the width a bubble gives up. */
+function CanvasRow({
+  item,
+  layout,
+  onReport,
+}: {
+  item: Extract<ChatRow, { kind: "canvas" }>;
+  layout: ConversationLayout;
+  onReport: (part: PartId, message: string) => void;
+}) {
+  return (
+    <Row layout={layout}>
+      <Message>
+        <View style={{ width: layout.contentWidth }}>
+          <CanvasFrame item={item} onReport={(message) => onReport(item.part, message)} />
+        </View>
+      </Message>
+    </Row>
+  );
+}
+
 function failureLabel(failure: Failure): string {
   switch (failure.class) {
     case "aborted":
@@ -271,15 +293,19 @@ export const MessageRow = memo(function MessageRow({
   layout,
   delegateNames,
   onOpenActivity,
+  onReport,
 }: {
   item: ChatRow;
   layout: ConversationLayout;
   delegateNames: ReadonlyMap<SessionId, string>;
   onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
+  onReport: (part: PartId, message: string) => void;
 }) {
   if (item.kind === "user") return <UserMessage item={item} layout={layout} />;
 
   if (item.kind === "assistant") return <AssistantMessage item={item} layout={layout} />;
+
+  if (item.kind === "canvas") return <CanvasRow item={item} layout={layout} onReport={onReport} />;
 
   return (
     <Row layout={layout}>

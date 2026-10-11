@@ -151,6 +151,7 @@ function PreviewContent({ onClose }: { onClose: () => void }) {
             layout={layout}
             delegateNames={delegateNames}
             onOpenActivity={activity.openActivity}
+            onReport={() => undefined}
           />
         ))}
       </ScrollView>

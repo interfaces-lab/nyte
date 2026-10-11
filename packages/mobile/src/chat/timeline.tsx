@@ -17,6 +17,7 @@ type TimelineProps = {
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
   onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onReport: (part: PartId, message: string) => void;
   layout: ConversationLayout;
   headerHeight: number;
 };
@@ -26,6 +27,7 @@ export function Timeline({
   sessionId,
   delegateNames,
   onReply,
+  onReport,
   layout,
   headerHeight,
 }: TimelineProps) {
@@ -62,6 +64,7 @@ export function Timeline({
             layout={layout}
             delegateNames={delegateNames}
             onOpenActivity={activity.openActivity}
+            onReport={onReport}
           />
         )}
         contentContainerStyle={{ paddingTop: headerHeight + spacing.md, paddingBottom: spacing.md }}

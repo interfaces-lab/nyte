@@ -39,6 +39,7 @@ type ChatScreenProps = {
   getSubmissionKey: () => string | undefined;
   onStop: () => void;
   onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onReport: (part: PartId, message: string) => void;
   onChooseHead: (head: HeadName) => void;
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: SessionView["changes"] | undefined;
@@ -58,6 +59,7 @@ export function ChatScreen({
   getSubmissionKey,
   onStop,
   onReply,
+  onReport,
   onChooseHead,
   delegateNames,
   changes,
@@ -99,6 +101,7 @@ export function ChatScreen({
             sessionId={sessionId}
             delegateNames={delegateNames}
             onReply={onReply}
+            onReport={onReport}
             layout={layout}
             headerHeight={headerHeight}
           />

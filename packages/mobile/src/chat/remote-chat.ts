@@ -121,6 +121,17 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     [session],
   );
 
+  /** Records a canvas failure on its part; a host that cannot be told is left alone. */
+  const report = useCallback(
+    (part: PartId, message: string): void => {
+      void session
+        .part(part)
+        .act("report", { message })
+        .catch(() => undefined);
+    },
+    [session],
+  );
+
   const [stopError, setStopError] = useState<string>();
 
   const stop = async (): Promise<void> => {
@@ -154,6 +165,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     send,
     getSubmissionKey: () => submission.current,
     reply,
+    report,
     selectedModel,
     selectingModel: modelSelection?.kind === "saving",
     modelError: modelSelection?.kind === "failed" ? modelSelection.message : undefined,
