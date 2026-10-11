@@ -1,28 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Miniflare } from "miniflare";
+import { describe, expect, it } from "vitest";
+import { durableObjectStore } from "../src/durable-object.ts";
+import { doSqlStub } from "./do-sql-stub.ts";
 import { storeConformance } from "./store-conformance.ts";
-import { bundle, remoteStore, startWorker } from "./workerd.ts";
 
-let worker: Miniflare | null = null;
-
-beforeAll(async () => {
-  worker = await startWorker(await bundle(new URL("./fixtures/store-worker.ts", import.meta.url)), {
-    STORE: { kind: "durable-object", className: "StoreHost" },
-  });
-}, 120_000);
-
-afterAll(async () => {
-  await worker?.dispose();
-});
-
-/** Returns a fresh store: a new `StoreHost` object in workerd, its SQLite empty. */
+/** Returns a fresh store: `durableObjectStore` over a new, empty `node:sqlite` stand-in of a Durable Object's SQL storage (§43i). */
 async function fresh() {
-  if (worker === null) throw new Error("workerd did not start.");
-
-  return remoteStore(worker, crypto.randomUUID());
+  return durableObjectStore(doSqlStub());
 }
 
-storeConformance("durableObjectStore under workerd (§42g)", fresh);
+storeConformance("durableObjectStore over the node:sqlite stand-in (§43i)", fresh);
 
 describe("durableObjectStore limits (§42k)", () => {
   it("answers invalid for an object or a blob past 2 MB and writes nothing", async () => {

@@ -7,9 +7,9 @@ if either breaks.
 
 It is isolated from the rewrite: it imports only `@nyte-ai/sdk` and a
 `BenchDriver` from `@nyte-ai/host/bench`, has no `typecheck` or `test` script,
-and never reaches into core. Until those two exist it declares no workspace
-dependency, so `pnpm install` is unaffected; add `"@nyte-ai/sdk": "workspace:*"`
-and `"@nyte-ai/host": "workspace:*"` when they land.
+and never reaches into core. It depends on `@nyte-ai/host`; add
+`"@nyte-ai/sdk": "workspace:*"` when the sdk lands, and pass its `connect` to
+`createBenchDriver({ connect })` so `reconnect-resume` can dial the host.
 
 ## Run
 

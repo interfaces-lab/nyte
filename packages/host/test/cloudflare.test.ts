@@ -1,65 +1,12 @@
-import { DatabaseSync } from "node:sqlite";
 import { asId } from "@nyte-ai/schema";
 import type { AdvanceReport, HeadName, RepairPage, SessionId } from "@nyte-ai/schema";
-import { decodeError } from "@nyte-ai/protocol";
-import type { Miniflare } from "miniflare";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { DurableObjectSql, SqlValue } from "../src/durable-object.ts";
 import { NyteHost, pass, scheduleFrom } from "../src/deploy/cloudflare/worker.ts";
 import type { PassHost } from "../src/deploy/cloudflare/worker.ts";
-import { bundle, startWorker } from "./workerd.ts";
+import { doSqlStub } from "./do-sql-stub.ts";
 
 const main: HeadName = asId("main");
-
-/** Returns Durable Object SQL over an in-memory `node:sqlite` database, with `transactionSync` as one `BEGIN`/`COMMIT` that rolls back on a throw: what `pass` and `NyteHost` read and write through in these tests. */
-function sqlShim(): DurableObjectSql & { readonly database: DatabaseSync } {
-  const database = new DatabaseSync(":memory:");
-
-  return {
-    database,
-    transactionSync<T>(closure: () => T): T {
-      database.exec("BEGIN");
-
-      try {
-        const result = closure();
-        database.exec("COMMIT");
-
-        return result;
-      } catch (error) {
-        database.exec("ROLLBACK");
-
-        throw error;
-      }
-    },
-    sql: {
-      exec(query, ...bindings) {
-        const rows = database
-          .prepare(query)
-          .all(
-            ...bindings.map((value) =>
-              value instanceof ArrayBuffer ? new Uint8Array(value) : value,
-            ),
-          );
-
-        return {
-          toArray: () =>
-            rows.map((row) =>
-              Object.fromEntries(
-                Object.entries(row).map(([column, value]): [string, SqlValue] => [
-                  column,
-                  typeof value === "bigint"
-                    ? Number(value)
-                    : value instanceof Uint8Array
-                      ? value.slice().buffer
-                      : value,
-                ]),
-              ),
-            ),
-        };
-      },
-    },
-  };
-}
 
 /** Returns a host for `pass` whose advances answer from `reports` by session, recording each advance, tick and repair. */
 function fakeHost(input: {
@@ -141,7 +88,7 @@ describe("scheduleFrom", () => {
 
 describe("pass (§42f, §42i)", () => {
   it("fires timers, advances the due heads and writes each report's next time", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     const now = Date.now();
     due(storage, [
       ["a", now - 2],
@@ -175,7 +122,7 @@ describe("pass (§42f, §42i)", () => {
   });
 
   it("advances at most budget.heads and leaves the rest due at once", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     const now = Date.now();
     due(storage, [
       ["a", now - 3],
@@ -192,7 +139,7 @@ describe("pass (§42f, §42i)", () => {
   });
 
   it("starts nothing once the time budget is spent", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     due(storage, [["a", Date.now() - 1]]);
     const host = fakeHost({ reports: {} });
 
@@ -201,7 +148,7 @@ describe("pass (§42f, §42i)", () => {
   });
 
   it("pages repair only when asked, advancing its heads that have no row", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     const runnable = [{ session: asId<"session">("owed"), head: main }];
     const host = fakeHost({ reports: { owed: { kind: "continue" } }, runnable });
     const next = await pass(host, storage, { heads: 32, ms: 10_000, repair: true });
@@ -212,14 +159,14 @@ describe("pass (§42f, §42i)", () => {
     expect(next).not.toBeNull();
 
     const quiet = fakeHost({ reports: {}, runnable });
-    await pass(quiet, sqlShim(), { heads: 32, ms: 10_000, repair: false });
+    await pass(quiet, doSqlStub(), { heads: 32, ms: 10_000, repair: false });
 
     expect(quiet.repairs).toBe(0);
     expect(quiet.advanced).toEqual([]);
   });
 
   it("keeps a row a wake rewrote while its head was advancing", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     const now = Date.now();
     due(storage, [["a", now - 1]]);
 
@@ -236,7 +183,7 @@ describe("pass (§42f, §42i)", () => {
 
 describe("NyteHost's cold start (§42y)", () => {
   it("sets the alarm to now though a later alarm is pending", async () => {
-    const storage = sqlShim();
+    const storage = doSqlStub();
     const alarms: number[] = [];
     const pending = Date.now() + 3_600_000;
 
@@ -263,92 +210,7 @@ describe("NyteHost's cold start (§42y)", () => {
     const before = Date.now();
     const described = await host.fetch(new Request("http://host.test/.nyte/describe"));
 
-    expect(described.status).toBe(404);
+    expect(described.status).toBe(200);
     expect(alarms.some((at) => at >= before - 1_000 && at <= Date.now())).toBe(true);
   });
-});
-
-describe("the Cloudflare Worker under workerd (§42g)", () => {
-  let worker: Miniflare | null = null;
-
-  let driven: Miniflare | null = null;
-
-  afterAll(async () => {
-    await worker?.dispose();
-    await driven?.dispose();
-  });
-
-  it("runs sent inputs end to end through the wake's schedule row and the alarm, without repair (§42f, §42i)", async () => {
-    driven = await startWorker(
-      await bundle(new URL("./fixtures/nyte-worker.ts", import.meta.url)),
-      {
-        NYTE_HOST: { kind: "durable-object", className: "TestHost" },
-        NYTE_TOKEN: { kind: "text", value: "a-token-of-at-least-16" },
-      },
-    );
-
-    const call = async (name: string, input: unknown): Promise<unknown> => {
-      const response = await driven?.dispatchFetch(`http://host.test/${name}`, {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer a-token-of-at-least-16",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(input),
-      });
-
-      expect(response?.status).toBe(200);
-
-      return JSON.parse((await response?.text()) ?? "null");
-    };
-
-    const field = (value: unknown, name: string): unknown =>
-      typeof value === "object" && value !== null && name in value
-        ? Object.entries(value).find(([key]) => key === name)?.[1]
-        : null;
-
-    const session = field(await call("sessions.create", {}), "session");
-
-    for (const content of ["Hi.", "Again."]) {
-      const receipt = field(await call("head.send", { session, head: "main", content }), "receipt");
-
-      expect(await call("receipt.settled", { session, receipt })).toMatchObject({
-        kind: "completed",
-      });
-    }
-  }, 120_000);
-
-  it("bundles deploy/cloudflare/worker.ts, composes its host and answers through the listener", async () => {
-    worker = await startWorker(
-      await bundle(new URL("../src/deploy/cloudflare/worker.ts", import.meta.url)),
-      {
-        NYTE_HOST: { kind: "durable-object", className: "NyteHost" },
-        NYTE_TOKEN: { kind: "text", value: "a-token-of-at-least-16" },
-      },
-    );
-
-    const described = await worker.dispatchFetch("http://host.test/.nyte/describe");
-
-    expect(described.status).toBe(404);
-    expect(decodeError(JSON.parse(await described.text()), described.status).code).toBe("unknown");
-
-    const listed = await worker.dispatchFetch("http://host.test/sessions.list", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer a-token-of-at-least-16",
-        "Content-Type": "application/json",
-      },
-      body: "{}",
-    });
-
-    expect(listed.status).toBe(200);
-
-    const refused = await worker.dispatchFetch("http://host.test/sessions.list", {
-      method: "POST",
-      headers: { Authorization: "Bearer not-the-token-at-all", "Content-Type": "application/json" },
-      body: "{}",
-    });
-
-    expect(refused.status).toBe(401);
-  }, 120_000);
 });

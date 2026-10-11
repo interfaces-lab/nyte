@@ -17,8 +17,8 @@ import { createTransport, decodeError, operations, parseSse } from "@nyte-ai/pro
 import type { SseFrame } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
-import { fakeModels, open } from "./fake-models.ts";
-import type { FakeModels } from "./fake-models.ts";
+import { fakeModels, open } from "../src/bench/fake-models.ts";
+import type { FakeModels } from "../src/bench/fake-models.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 

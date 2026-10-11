@@ -45,6 +45,14 @@ export async function loadPluginFiles(
   return loadAll(files);
 }
 
+/** Returns a plugin directory's plugins as `loadPluginFiles` finds and imports them, but file by file: every file that loads, with its path, and every file that does not, with its path and one `error` issue (its `path` the file, `source.file` the file, the message `loadPluginFiles` would have put in its `invalid`), never rejecting for a bad file; a missing directory has neither. What `openHost` loads `~/.nyte/plugins` and a local workspace's `.nyte/plugins` through, so one bad file is reported on `HostView.plugins` instead of failing the open (§41j); `loadPluginFiles` becomes this, throwing its one `invalid` when anything failed. */
+export async function loadPluginDirectory(dir: string): Promise<{
+  readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
+  readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
+}> {
+  throw new Error("not implemented");
+}
+
 /** Returns the loader protocol's handler calls with the paths of `plugins.replace` and `plugins.check` (§40b): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
 export function pluginLoader(dirs: readonly string[]): NonNullable<HandlerOptions["plugins"]> {
   return async (paths) => {

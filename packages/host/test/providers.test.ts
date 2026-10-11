@@ -5,7 +5,7 @@ import type { GitApi, Plugin } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { chatOnlyProvider, sandboxProvider } from "../src/providers.ts";
 import type { SandboxHandle } from "../src/providers.ts";
-import { fakeModels } from "./fake-models.ts";
+import { fakeModels } from "../src/bench/fake-models.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 

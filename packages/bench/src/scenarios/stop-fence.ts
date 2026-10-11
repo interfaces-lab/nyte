@@ -4,7 +4,7 @@ import { collect, invariant, timed } from "../scenario.ts";
 /** §2 Run.stop fence: stop() resolves synchronously in effect; the next yield already shows stopped; no later yield appends to that run. */
 export const stopFence: Scenario = {
   name: "stop-fence",
-  guarantee: "After stop() the very next view shows the run's parts failed { stopped } and no later view carries more of its text.",
+  guarantee: "After stop() the very next view shows the run's parts failed { class: aborted } and no later view carries more of its text.",
   async run(driver) {
     const bench = await driver.open();
     const session = await bench.host.sessions.create();
@@ -18,7 +18,7 @@ export const stopFence: Scenario = {
     const stop = await timed(() => session.run(run).stop());
     bench.model.release();
     const { views } = await collect(session.watch(), (view) => view.execution.kind === "idle");
-    const firstStopped = views.findIndex((view) => view.messages.some((message) => message.kind === "part" && message.status.kind === "failed" && message.status.failure.kind === "stopped"));
+    const firstStopped = views.findIndex((view) => view.messages.some((message) => message.kind === "part" && message.status.kind === "failed" && message.status.failure.class === "aborted"));
     const grewAfterStop = views.some((view) => textLength(view) > lengthAtStop);
     await bench.close();
 

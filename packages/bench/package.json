@@ -2,10 +2,13 @@
   "name": "@nyte-ai/bench",
   "version": "0.0.0",
   "private": true,
-  "description": "Benchmarks and invariants for the baseline guarantees in packages/lab/sdk-shape.ts. Imports @nyte-ai/sdk and @nyte-ai/host/bench once they exist; carries no workspace dependency until then so install never breaks.",
+  "description": "Benchmarks and invariants for the baseline guarantees in packages/lab/sdk-shape.ts. Imports @nyte-ai/sdk and @nyte-ai/host/bench; @nyte-ai/sdk joins the dependencies when it exists.",
   "type": "module",
   "scripts": {
     "bench": "node --conditions=nyte-source src/main.ts"
+  },
+  "dependencies": {
+    "@nyte-ai/host": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.3"

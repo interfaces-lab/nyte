@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { composeHost, memoryStore } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadPluginFiles, pluginLoader } from "../src/index.ts";
-import { chatOnly, fakeModels } from "./fake-models.ts";
+import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 
 const folders: string[] = [];
 

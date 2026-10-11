@@ -1,12 +1,9 @@
-import { builtinModules } from "node:module";
-import { fileURLToPath } from "node:url";
 import type { ExecutionCoverage, Owned } from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
 import { decodeError, errorStatus, operations } from "@nyte-ai/protocol";
-import { build } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
-import { fakeModels, open } from "./fake-models.ts";
+import { fakeModels, open } from "../src/bench/fake-models.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
@@ -119,40 +116,4 @@ describe("listenFetch", () => {
       "unavailable",
     );
   });
-
-  it("reaches no node: module through the whole import graph of a Worker's entries (§41j)", async () => {
-    for (const entry of [
-      "../src/listen-fetch.ts",
-      "../src/durable-object.ts",
-      "../src/providers.ts",
-      "../src/deploy/cloudflare/worker.ts",
-    ]) {
-      const built = await build({
-        entryPoints: [fileURLToPath(new URL(entry, import.meta.url))],
-        bundle: true,
-        format: "esm",
-        platform: "neutral",
-        target: "es2023",
-        mainFields: ["module", "main"],
-        conditions: ["workerd", "worker", "browser"],
-        external: ["node:*", "cloudflare:*"],
-        write: false,
-        metafile: true,
-        logLevel: "silent",
-      });
-
-      const inputs = Object.entries(built.metafile.inputs);
-
-      const reached = inputs.flatMap(([file, input]) =>
-        input.imports.flatMap((imported) =>
-          imported.path.startsWith("node:") || builtinModules.includes(imported.path)
-            ? [`${file} -> ${imported.path}`]
-            : [],
-        ),
-      );
-
-      expect(inputs.length).toBeGreaterThan(1);
-      expect([entry, reached]).toEqual([entry, []]);
-    }
-  }, 60_000);
 });

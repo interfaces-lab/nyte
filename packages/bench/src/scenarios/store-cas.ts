@@ -21,7 +21,7 @@ export const storeCas: Scenario = {
     const outcomes = [a.kind, b.kind].toSorted();
     const batch = await timed(async () => {
       for (let i = 0; i < 2_000; i += 1) {
-        await store.refs.set([{ name: `sessions/${session}/parts/p${i}`, target, event: { head: null, kind: "part", part: bench.ids.part(`p${i}`), change: "created", partKind: "bench", placement: { kind: "modal" }, state: {}, version: 1, run: null } }]);
+        await store.refs.set([{ name: `sessions/${session}/parts/p${i}`, target, event: { head: null, kind: "part", part: bench.ids.part(`p${i}`), change: "created", partKind: "bench", placement: { kind: "modal" }, state: {}, version: 1, run: null, owner: null } }]);
       }
     });
     const tail = await store.refs.tail(session);

@@ -1,3 +1,5 @@
+export * from "./credentials.ts";
+export * from "./identity.ts";
 export * from "./listen.ts";
 export * from "./listen-fetch.ts";
 export * from "./local/files.ts";
@@ -6,6 +8,8 @@ export * from "./local/identity.ts";
 export * from "./local/jobs.ts";
 export * from "./local/provider.ts";
 export * from "./local/snapshots.ts";
+export * from "./open.ts";
 export * from "./plugins/loader.ts";
 export * from "./postgres.ts";
+export * from "./secrets.ts";
 export * from "./sqlite.ts";

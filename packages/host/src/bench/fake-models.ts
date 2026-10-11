@@ -8,7 +8,7 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
+import type { HostView, ModelRef } from "@nyte-ai/schema";
 import type {
   Api,
   AssistantMessage,
@@ -60,6 +60,10 @@ export interface Reply {
   readonly until?: Promise<void>;
   /** Account windows reported on the response. */
   readonly limits?: readonly AccountLimitWindow[];
+  /** Streams each text block in this many deltas, as even as the text allows, instead of two halves. */
+  readonly tokens?: number;
+  /** Called after each text delta with the count of text deltas this response has streamed so far; the stream waits for what it returns before the next event. */
+  readonly tap?: (streamed: number) => Promise<void> | void;
 }
 
 /** One request the fake provider received. */
@@ -99,13 +103,14 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
   };
 }
 
-/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. */
+/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback`, else the provider error "No reply was scripted for this request.". */
 export function fakeModels(input?: {
   readonly id?: string;
   readonly name?: string;
   readonly models?: readonly Model<Api>[];
   readonly into?: MutableModels;
   readonly verify?: boolean;
+  readonly fallback?: Reply;
 }): FakeModels {
   const id = input?.id ?? "test";
   const catalog = input?.models ?? [testModel("model", { provider: id })];
@@ -208,6 +213,31 @@ export function fakeModels(input?: {
   };
 
   return fake;
+}
+
+/** One scripted model response the bench asks for: `text` streamed in `tokens` pieces, then the `tools` calls, then, on the request after their results, `after` (the bench's `ScriptedTurn`). */
+export interface ScriptedTurn {
+  readonly text: string;
+  readonly tokens: number;
+  readonly tools?: readonly { readonly name: string; readonly args: Record<string, unknown> }[];
+  readonly after?: string;
+}
+
+/** The bench's model (`FakeModel` in `packages/bench/src/driver.ts`): a ref to pick it, a script of the next responses, and a pause in the middle of one. */
+export interface FakeModel {
+  /** The model the bench host uses by default. */
+  readonly ref: ModelRef;
+  /** The next request answers with this turn. Unscripted requests answer with one short text. */
+  script(turn: ScriptedTurn): void;
+  /** Resolves when the model has emitted `count` tokens of the current response; the response then pauses until `release()`. */
+  pauseAfter(count: number): Promise<void>;
+  /** Lets a paused response go on. */
+  release(): void;
+}
+
+/** Returns the bench's `FakeModel` over `fake`, which the bench makes with a `fallback` of one short text (what an unscripted request answers): `ref` the provider's first model; `script(turn)` queues one reply streaming `turn.text` in `turn.tokens` deltas (no text block when the text is empty) followed by a `toolCall` block per `turn.tools` entry (ids `bench-<n>`, counted across the model's life), and, when `turn.tools` is non-empty and `turn.after` is set, a second reply streaming `after` as one text block for the request that carries their results. Every scripted reply taps its stream: `pauseAfter(count)` arms one gate, and the first response to stream a text delta at or past `count` (one streaming already, or a later one; with two streaming, whichever gets there first) holds after that delta, resolves the promise, and stays held until `release()`; `release()` with no response held does nothing. */
+export function scriptedModel(fake: FakeModels): FakeModel {
+  throw new Error("not implemented");
 }
 
 /** An environment whose files and processes refuse: enough for a chat. */
