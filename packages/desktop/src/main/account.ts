@@ -70,7 +70,7 @@ export function registerAccount(options: {
     setState({ kind: "signed_in", label: saved.label });
   });
 
-  /** Open the restored token. One the keychain will not open signs out and leaves the store. */
+  /** Open the restored token. One the secrets key will not open signs out and leaves the store. */
   const unseal = async (): Promise<void> => {
     const restored = sealed;
 

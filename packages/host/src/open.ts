@@ -62,8 +62,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
  * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
  * the plugin directories (§47l), which `watchPlugins` watches for hot reload
  * (§49a). `listen` defaults `identity` to `identitySigner(host.hostId, home)`
- * and `describe` to the description; nothing here reads the secrets key
- * unless a credential is stored (§50d). `close()` stops the watch, closes the
+ * and `describe` to the description; nothing here reads the secrets key, even
+ * with a credential stored (§50d, §55). `close()` stops the watch, closes the
  * open listeners, the host, then a store it opened.
  */
 export async function openHost(options: OpenHostOptions): Promise<Host> {
@@ -209,18 +209,11 @@ async function composeOpen(
 
 /**
  * Returns the catalog a host gets when `OpenHostOptions.models` is absent:
- * `createModels` (`@nyte-ai/ai/models`) with `credentials:
- * credentialStore(store, secrets)` (§42e), a `FileModelsStore` at
- * `<home>/.nyte/models-store.json`, ai's `defaultProviderAuthContext()` and
- * `catalog.url` from `NYTE_MODELS_URL`.
- *
- * Its providers are ai's `nyteProviders()`, the list `createNyteModels()`
- * registers, in its order, with no second `Models` built (§43k). Each
- * provider with a stored credential is then refreshed, which restores its
- * saved catalog and fetches one only when that is stale, so a relaunch lists
- * its models (§51d); a provider whose refresh fails opens with no models.
- * Nothing is imported from `~/.nyte/auth.json`: this is a rewrite, not a
- * migration, so users log in again (§43j).
+ * `createModels` over `credentialStore(store, secrets)` (§42e), a
+ * `FileModelsStore` at `<home>/.nyte/models-store.json` and ai's
+ * `nyteProviders()`, with `catalog.url` from `NYTE_MODELS_URL`. Each provider
+ * the credential listing names gets its saved catalog restored, with no network
+ * and no secrets key; a credential is decrypted only by a provider request (§55).
  */
 async function nyteModels(input: {
   readonly store: Store;
@@ -238,11 +231,15 @@ async function nyteModels(input: {
 
   for (const provider of nyteProviders()) models.setProvider(provider);
   const stored = await credentials.list();
-  const refreshed = await models.refresh({ providers: stored.map((row) => row.providerId) });
+
+  const restored = await models.refresh({
+    providers: stored.map((row) => row.providerId),
+    allowNetwork: false,
+  });
 
   dev("open", "models restored", {
     providers: stored.length,
-    failed: [...refreshed.errors.keys()],
+    failed: [...restored.errors.keys()],
   });
 
   return models;

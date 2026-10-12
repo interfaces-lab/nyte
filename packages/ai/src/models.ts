@@ -207,10 +207,15 @@ export interface Models {
   /**
    * Refresh selected providers concurrently (all when `providers` is omitted). Provider errors
    * and cancellation are returned without rejecting; static and unknown providers are skipped.
+   * With `allowNetwork: false` it restores the cached catalogs without reading any credential.
    */
   refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>;
 
-  /** Check whether a provider has complete auth configuration without refreshing OAuth. */
+  /**
+   * Check whether a provider has complete auth configuration without refreshing OAuth. A stored
+   * credential answers from `CredentialStore.list()`, so no secret is read unless the provider's
+   * `apiKey.check` needs it.
+   */
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined>;
 
   /**
@@ -516,7 +521,9 @@ class ModelsImpl implements MutableModels {
           let credentialError: unknown;
 
           try {
-            storedCredential = await this.readCredential(provider.id, signal);
+            storedCredential = allowNetwork
+              ? await this.readCredential(provider.id, signal)
+              : undefined;
           } catch (error) {
             credentialError = error;
           }
@@ -645,6 +652,22 @@ class ModelsImpl implements MutableModels {
     }
   }
 
+  /** The stored credential's type from the store's listing, which reads no secret. */
+  private async storedType(
+    providerId: string,
+    signal: AbortSignal,
+  ): Promise<Credential["type"] | undefined> {
+    try {
+      const rows = await this.credentials.list({ signal });
+
+      return rows.find((row) => row.providerId === providerId)?.type;
+    } catch (error) {
+      throw new ModelsError("auth", `Credential store list failed for ${providerId}`, {
+        cause: error,
+      });
+    }
+  }
+
   private async checkProviderAuth(
     provider: Provider,
     credential: Credential | undefined,
@@ -686,15 +709,22 @@ class ModelsImpl implements MutableModels {
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
     const signal = operationSignal(options?.signal);
 
-    const check = (async () => {
+    const check = (async (): Promise<AuthCheck | undefined> => {
       signal.throwIfAborted();
       const provider = this.providers.get(providerId);
 
       if (!provider) return undefined;
+      const stored = await this.storedType(providerId, signal);
+
+      if (stored === "oauth")
+        return provider.auth.oauth ? { source: "OAuth", type: "oauth" } : undefined;
+
+      if (stored === "api_key" && provider.auth.apiKey?.check === undefined)
+        return provider.auth.apiKey ? { source: "stored credential", type: "api_key" } : undefined;
 
       return this.checkProviderAuth(
         provider,
-        await this.readCredential(providerId, signal),
+        stored === undefined ? undefined : await this.readCredential(providerId, signal),
         signal,
       );
     })();

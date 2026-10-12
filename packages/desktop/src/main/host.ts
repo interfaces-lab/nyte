@@ -67,8 +67,6 @@ export interface DesktopHostDependencies {
   readonly home: string;
   /** The provider catalog; absent, the host's own over its credential store. Tests inject an offline one. */
   readonly models?: OpenHostOptions["models"];
-  /** The key core seals secrets with; the app passes one sealed by the OS keychain. Absent, the 0600 key file. */
-  readonly secrets?: OpenHostOptions["secrets"];
   /** The renderer's origin, the one the loopback listener lets through CORS. */
   readonly rendererOrigin: string;
   /**
@@ -266,7 +264,6 @@ export class DesktopHost {
 
     const host = await sdk.open({
       models: this.#deps.models,
-      secrets: this.#deps.secrets,
       home,
       workspace: { kind: "local", path: home },
       plugins: [

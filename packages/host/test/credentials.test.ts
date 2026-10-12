@@ -1,7 +1,7 @@
 import { SdkError, kvRef, memoryStore } from "@nyte-ai/core";
 import type { Store } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
-import { credentialStore } from "../src/credentials.ts";
+import { credentialStore, openSecret, sealSecret } from "../src/credentials.ts";
 
 const key = (fill: number) => ({ key: async () => new Uint8Array(32).fill(fill) });
 
@@ -136,6 +136,34 @@ describe("credentialStore", () => {
     await credentials.modify("p", async () => ({ type: "api_key", key: "k" }));
 
     expect(reads).toBe(1);
+  });
+
+  it("never calls key() to list, nor to read a provider without a record, while other records exist (§55)", async () => {
+    const store = memoryStore();
+    await credentialStore(store, key(5)).modify("p", async () => ({ type: "api_key", key: "k" }));
+    let reads = 0;
+
+    const credentials = credentialStore(store, {
+      key: async () => {
+        reads += 1;
+
+        return new Uint8Array(32).fill(5);
+      },
+    });
+
+    expect(await credentials.list()).toEqual([{ providerId: "p", type: "api_key" }]);
+    expect(await credentials.read("q")).toBeUndefined();
+    expect(reads).toBe(0);
+    expect(await credentials.read("p")).toEqual({ type: "api_key", key: "k" });
+    expect(reads).toBe(1);
+  });
+
+  it("seals a secret under the key and opens it only with that key", async () => {
+    const sealed = await sealSecret(key(1), "client.token");
+
+    expect(sealed).not.toContain("client.token");
+    expect(await openSecret(key(1), sealed)).toBe("client.token");
+    await expect(openSecret(key(2), sealed)).rejects.toThrow();
   });
 
   it("reads the key again after a rejection instead of keeping it", async () => {

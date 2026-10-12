@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules, createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +9,7 @@ import { build, defaultClientConditions } from "vite";
 import { stylex } from "@nyte-ai/app/vite";
 import { deferredClerk } from "../../account.vite.ts";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { defaultSecrets, sealSecret } from "@nyte-ai/host";
 import { AccountOperations } from "../account/operations.ts";
 import {
   rendererContentSecurityPolicy,
@@ -272,21 +273,16 @@ describe("account operations", () => {
 
 const execute = promisify(execFile);
 
-test("a keychain that will not seal leaves no sign-in on disk", async () => {
+test("a secrets key that cannot be read leaves no sign-in on disk", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
   const path = join(directory, "account.json");
-  const sealed: string[] = [];
 
   const store = new AccountStore({
     path,
-    cipher: {
-      available: async () => false,
-      seal: async (plain) => {
-        sealed.push(plain);
-
-        return plain;
+    secrets: {
+      key: async () => {
+        throw new Error("No key.");
       },
-      open: async (text) => text,
     },
   });
 
@@ -294,11 +290,60 @@ test("a keychain that will not seal leaves no sign-in on disk", async () => {
     await writeFile(path, JSON.stringify({ sealed: "older", label: "ada@example.com" }));
     await store.save({ token: "client.one", label: "ada@example.com" });
     await expect(readFile(path, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect(sealed).toEqual([]);
     expect(await store.open("older")).toBeUndefined();
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("a saved sign-in loads at boot without the secrets key, which is read when the token is opened", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
+  const path = join(directory, "account.json");
+  const file = defaultSecrets(directory);
+  let reads = 0;
+
+  const store = () =>
+    new AccountStore({
+      path,
+      secrets: {
+        key: () => {
+          reads += 1;
+
+          return file.key();
+        },
+      },
+    });
+
+  try {
+    await store().save({ token: "client.one", label: "ada@example.com" });
+    expect(await readFile(path, "utf8")).not.toContain("client.one");
+    reads = 0;
+    const booted = store();
+    const saved = await booted.load();
+
+    expect(saved?.label).toBe("ada@example.com");
+    expect(reads).toBe(0);
+    expect(await booted.open(saved?.sealed ?? "")).toBe("client.one");
+    expect(reads).toBe(1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("no desktop module references the OS keychain (safeStorage)", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const self = fileURLToPath(import.meta.url);
+  const files = await readdir(root, { recursive: true });
+
+  const referencing = await Promise.all(
+    files
+      .filter((file) => /\.tsx?$/u.test(file) && join(root, file) !== self)
+      .map(async (file) =>
+        (await readFile(join(root, file), "utf8")).includes("safeStorage") ? [file] : [],
+      ),
+  );
+
+  expect(referencing.flat()).toEqual([]);
 });
 
 test("sign-in uses the existing Nyte window, in real Electron", async () => {
@@ -306,6 +351,11 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
 
   try {
     await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(directory, name))));
+    const sealed = await sealSecret({ key: async () => new Uint8Array(32).fill(7) }, "client.zero");
+    await writeFile(
+      join(directory, "profile", "account.json"),
+      JSON.stringify({ sealed, label: "grace@example.com" }),
+    );
 
     for (const entry of [
       { source: "./fixtures/account-main.ts", output: "main.cjs", outDir: directory },

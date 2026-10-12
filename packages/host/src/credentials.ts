@@ -33,9 +33,9 @@ const RETRIES = 5;
  * the caller's. `read` is `unsealCredential` over the record, `list` answers
  * `{ providerId, type }` per ref under `kv/secret/models/`, `modify` is
  * `modifyCredential`, and `delete` sets the ref to null, serialised as
- * `modify` is. Building it touches nothing, and `read` and `list` call no
- * `key()` while no record exists (§50b); the imported key is kept once
- * `key()` resolves, a rejection is not (§43k). While `key()` rejects (a deploy
+ * `modify` is. Building it touches nothing, `list` never calls `key()` and
+ * `read` calls it only when that provider's record exists (§50b, §55); the
+ * imported key is kept once `key()` resolves, a rejection is not (§43k). While `key()` rejects (a deploy
  * without `NYTE_SECRET_KEY`), `read` answers undefined, `list` and `delete`
  * work (they need no key) and `modify` rejects that error, so provider keys
  * from the environment still resolve and logins answer `unavailable`. Web
@@ -46,20 +46,7 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
   const chains = new Map<string, Promise<unknown>>();
 
   const keyOf = (): Promise<CryptoKey> => {
-    const known =
-      key ??
-      secrets.key().then((bytes) => {
-        if (bytes.length !== 32)
-          throw new SdkError(
-            "invalid",
-            `The secrets key is ${bytes.length} bytes; AES-256 needs 32.`,
-          );
-
-        return crypto.subtle.importKey("raw", new Uint8Array(bytes), "AES-GCM", false, [
-          "encrypt",
-          "decrypt",
-        ]);
-      });
+    const known = key ?? importedKey(secrets);
 
     key = known;
     known.catch(() => {
@@ -136,6 +123,45 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
       );
     },
   };
+}
+
+/** Returns `plain` sealed under the secrets key as `<iv>.<ciphertext>`, both base64; a desktop keeps its account token this way (§55). */
+export async function sealSecret(secrets: SecretsSource, plain: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    await importedKey(secrets),
+    new TextEncoder().encode(plain),
+  );
+
+  return `${iv.toBase64()}.${new Uint8Array(ciphertext).toBase64()}`;
+}
+
+/** Returns the text `sealSecret` sealed; rejects when it was sealed under another key or is not such a text. */
+export async function openSecret(secrets: SecretsSource, sealed: string): Promise<string> {
+  const [iv = "", ciphertext = ""] = sealed.split(".");
+
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: Uint8Array.fromBase64(iv) },
+    await importedKey(secrets),
+    Uint8Array.fromBase64(ciphertext),
+  );
+
+  return new TextDecoder().decode(plain);
+}
+
+/** Returns the secrets key imported for AES-256-GCM; rejects `invalid` when it is not 32 bytes. */
+async function importedKey(secrets: SecretsSource): Promise<CryptoKey> {
+  const bytes = await secrets.key();
+
+  if (bytes.length !== 32)
+    throw new SdkError("invalid", `The secrets key is ${bytes.length} bytes; AES-256 needs 32.`);
+
+  return crypto.subtle.importKey("raw", new Uint8Array(bytes), "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 /**

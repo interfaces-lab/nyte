@@ -20,23 +20,22 @@ export interface TestDesktop {
 
 /**
  * Opens a `DesktopHost` over a fresh temp home with the scripted `test`
- * provider as its default model, a fixed secrets key and a browser whose
- * panels do nothing; `agent` replaces the browser agent and `overrides` any
- * other dependency. `close()` closes the host and removes the home.
+ * provider as its default model and a browser whose panels do nothing;
+ * `agent` replaces the browser agent and `overrides` any other dependency.
+ * `close()` closes the host and removes the home unless `overrides.home` named it.
  */
 export async function testDesktop(
   overrides: Partial<DesktopHostDependencies> & { readonly agent?: BrowserAgent } = {},
 ): Promise<TestDesktop> {
   const { agent, ...dependencies } = overrides;
-  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-")));
+  const home =
+    dependencies.home ?? (await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-"))));
   const fake = fakeModels();
   const events: HostEvent[] = [];
-  const key = crypto.getRandomValues(new Uint8Array(32));
 
   const host = new DesktopHost({
     home,
     models: fake.models,
-    secrets: { key: async () => key },
     rendererOrigin: "nyte://app",
     emitHostEvent: (event) => events.push(event),
     openExternal: () => undefined,
@@ -83,7 +82,8 @@ export async function testDesktop(
     events,
     close: async () => {
       await host.close();
-      await rm(home, { recursive: true, force: true });
+
+      if (dependencies.home === undefined) await rm(home, { recursive: true, force: true });
     },
   };
 }

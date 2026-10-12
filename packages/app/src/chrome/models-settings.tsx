@@ -193,8 +193,12 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       setKeyFormOpen(false);
       toast.add({ type: "success", title: `Connected to ${provider.name}` });
     },
-    onError: () =>
-      toast.add({ type: "error", title: `Couldn't sign in to ${provider.name}. Try again.` }),
+    onError: (error) =>
+      toast.add({
+        type: "error",
+        title: `Couldn't sign in to ${provider.name}. Try again.`,
+        description: error.message,
+      }),
   });
 
   const logout = useMutation({

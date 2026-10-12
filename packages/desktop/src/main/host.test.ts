@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
+import { createModels } from "@nyte-ai/ai/models";
+import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
+import { fakeModels } from "@nyte-ai/host/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection } from "@nyte-ai/sdk";
@@ -149,4 +153,64 @@ test("picking a folder registers it and selects it for that window only; cancell
 
   await made.host.call(1, "host.closeWorkspace", undefined);
   assert.equal((await made.host.call(1, "host.state", undefined)).workspace, undefined);
+});
+
+test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
+  const store = sqliteStore({ path: join(home, "credentials.db") });
+  const file = defaultSecrets(home);
+  let reads = 0;
+
+  const secrets = {
+    key: () => {
+      reads += 1;
+
+      return file.key();
+    },
+  };
+
+  const models = () => {
+    const fake = fakeModels({
+      into: createModels({ credentials: credentialStore(store, secrets) }),
+    });
+
+    fake.configured = false;
+
+    return fake.models;
+  };
+
+  const credential = async (connection: Connection) =>
+    (await connection.models.list()).providers.find((row) => row.id === "test")?.credential;
+
+  try {
+    const first = await desktop({ home, models: models() });
+    const connection = await sdk.connect(await first.host.call(1, "host.endpoint", undefined));
+    assert.equal(await credential(connection), "missing");
+
+    const login = connection.models.login({ provider: "test", method: { kind: "key" } });
+    const steps: string[] = [];
+
+    for await (const step of login.steps()) {
+      steps.push(step.kind);
+
+      if (step.kind === "paste") await login.answer("sk-test");
+    }
+
+    assert.deepEqual(steps, ["paste", "done"]);
+    assert.notEqual(await credential(connection), "missing");
+    await connection.close();
+    await first.close();
+    const written = reads;
+    assert.ok(written > 0);
+    assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
+
+    const second = await desktop({ home, models: models() });
+    const again = await connectLocal(second);
+
+    assert.equal(await credential(again), "configured");
+    assert.equal(reads, written);
+  } finally {
+    await store.close();
+    await rm(home, { recursive: true, force: true });
+  }
 });

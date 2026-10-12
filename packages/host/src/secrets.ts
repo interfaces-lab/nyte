@@ -10,9 +10,8 @@ export type SecretsSource = NonNullable<OpenOptions["secrets"]>;
  * raw bytes read or minted by `readKeyFile` (decision 10; §43d as amended by
  * §43i). The source memoises a resolved answer itself; a rejected one is not
  * kept, so the next call reads again (§43k). The key is for secrets only: the
- * host's identity has its own file (§50a). There is no keychain here: a
- * desktop supplies its own `OpenOptions.secrets.key()` (Electron
- * `safeStorage`).
+ * host's identity has its own file (§50a). There is no keychain here, and
+ * the desktop uses this file as the tui and cli do (§55).
  */
 export function defaultSecrets(home: string): SecretsSource {
   const path = join(home, ".nyte", "secret.key");

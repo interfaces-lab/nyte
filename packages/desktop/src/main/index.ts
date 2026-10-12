@@ -7,7 +7,6 @@ import {
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
-  safeStorage,
   screen,
   shell,
 } from "electron";
@@ -44,16 +43,15 @@ import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
-import type { SecretCipher } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
 import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
+import { defaultSecrets } from "@nyte-ai/host";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
-import { sealedSecretsKey } from "./secrets-key.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 
@@ -343,7 +341,7 @@ const hostDependencies = {
 
     return result.canceled ? undefined : result.filePaths[0];
   },
-} satisfies Omit<DesktopHostDependencies, "rendererOrigin" | "secrets" | "connect">;
+} satisfies Omit<DesktopHostDependencies, "rendererOrigin" | "connect">;
 
 /** Returns the renderer's origin as Chromium sends it, `scheme://host`; Node reports a custom scheme's `URL.origin` as opaque. */
 function rendererOrigin(url: string): string {
@@ -357,26 +355,10 @@ function getHost(): DesktopHost {
     ...hostDependencies,
     connect,
     rendererOrigin: rendererOrigin(rendererUrl),
-    secrets: sealedSecretsKey(join(home, ".nyte", "secret.sealed"), keychain),
   });
 
   return desktopHost;
 }
-
-/**
- * The account sign-in is sealed by the OS keychain; refused where Electron would fall back to plain text. The async
- * API keeps the main process running while macOS asks for Keychain access, and opens what the
- * synchronous API sealed.
- */
-const keychain: SecretCipher = {
-  available: async () =>
-    (await safeStorage.isAsyncEncryptionAvailable()) &&
-    (process.platform !== "linux" ||
-      !["basic_text", "unknown"].includes(safeStorage.getSelectedStorageBackend())),
-  seal: async (plain) => (await safeStorage.encryptStringAsync(plain)).toString("base64"),
-  open: async (sealed) =>
-    (await safeStorage.decryptStringAsync(Buffer.from(sealed, "base64"))).result,
-};
 
 function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
   let account: AccountSession | undefined;
@@ -388,17 +370,10 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
         scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
         onChange: () => connect?.accountChanged(),
-        // macOS lets an app read its Keychain item without asking only while the app's
-        // signature meets the requirement recorded with the item. Development builds are
-        // ad-hoc signed, which names the exact binary, so they and the throwaway update-test
-        // builds keep the sign-in for one run.
-        store:
-          app.isPackaged && !updateTest
-            ? new AccountStore({
-                path: join(app.getPath("userData"), "account.json"),
-                cipher: keychain,
-              })
-            : undefined,
+        store: new AccountStore({
+          path: join(app.getPath("userData"), "account.json"),
+          secrets: defaultSecrets(home),
+        }),
       });
     } catch {
       account = undefined;

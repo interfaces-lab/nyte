@@ -6,6 +6,7 @@ import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
+import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 
@@ -202,7 +203,12 @@ describe("openHost", () => {
       type: "api_key",
       key: "saved-key",
     }));
-    const options = { store, plugins: [chatOnly], workspace: { kind: "chat-only", locator: null }, home };
+    const options = {
+      store,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      home,
+    };
 
     try {
       await (await openHost(options)).close();
@@ -236,7 +242,10 @@ describe("openHost", () => {
     const home = await folder();
     const workspace = await folder();
     await mkdir(join(workspace, ".nyte", "plugins"), { recursive: true });
-    await writeFile(join(workspace, ".nyte", "plugins", "mine.mjs"), 'export default { id: "mine" };\n');
+    await writeFile(
+      join(workspace, ".nyte", "plugins", "mine.mjs"),
+      'export default { id: "mine" };\n',
+    );
 
     await using host = await openHost({
       store: memoryStore(),
@@ -330,6 +339,56 @@ describe("openHost", () => {
       (await listener.fetch(new Request("http://host.test/.nyte/identity?nonce=n1"))).status,
     ).toBe(200);
     expect(reads).toBe(0);
+  });
+
+  it("with a credential stored, reads no secrets key at open, listen, models.list() or the identity route; a model request reads it once (§55)", async () => {
+    const home = await folder();
+    const store = memoryStore();
+    let reads = 0;
+
+    const secrets = {
+      key: async () => {
+        reads += 1;
+
+        return new Uint8Array(32).fill(9);
+      },
+    };
+
+    for (const provider of ["opencode", "test"])
+      await credentialStore(store, secrets).modify(provider, async () => ({
+        type: "api_key",
+        key: "saved-key",
+      }));
+    reads = 0;
+    const workspace = { kind: "chat-only", locator: null } as const;
+    const options = { store, plugins: [chatOnly], workspace, home, secrets };
+
+    const restored = await openHost(options);
+    const listener = await restored.listen({
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token: TOKEN },
+    });
+    const listed = await restored.models.list();
+
+    expect(listed.providers.find((row) => row.id === "opencode")?.credential).toBe("configured");
+    expect(
+      (await listener.fetch(new Request("http://host.test/.nyte/identity?nonce=n1"))).status,
+    ).toBe(200);
+    await restored.close();
+    expect(reads).toBe(0);
+
+    const fake = fakeModels({
+      into: createModels({ credentials: credentialStore(store, secrets) }),
+    });
+    await using host = await openHost({ ...options, models: fake.models });
+
+    expect((await host.models.list()).providers[0]?.credential).toBe("configured");
+    expect(reads).toBe(0);
+    fake.reply({ content: [{ type: "text", text: "hi" }] });
+    await (await (await host.sessions.create()).send("Hello")).settled();
+
+    expect(fake.requests).toHaveLength(1);
+    expect(reads).toBe(1);
   });
 
   it("reloads plugin files when one lands in the watched directory, and withdraws a failure once the file loads", async () => {
