@@ -49,13 +49,11 @@ export interface LoopResponse {
   readonly settled: Promise<void>;
 }
 
-/** Returns one tool call as the provider streamed it. */
 export type ModelToolCall = Extract<
   AssistantMessage["content"][number],
   { readonly type: "toolCall" }
 >;
 
-/** Returns one progress report a tool sends while it runs. */
 export type ToolProgress = Json;
 
 /** Returns how a tool call ended in the loop: its outcome, or parked until something wakes it. */
@@ -94,12 +92,22 @@ export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   boundary(signal: AbortSignal): Promise<readonly LoopInput[]>;
 }
 
-/** Returns how a loop ended. */
-export type LoopEnd =
+/** Returns a response that failed, with the request it answered: what the config charges and observes. */
+export interface FailedResponse<P extends PreparedRequest = PreparedRequest> {
+  readonly usage: Usage;
+  readonly prepared: P;
+}
+
+/** Returns how a loop ended; a failed end carries the response it failed on, not yet charged, or null when none came. */
+export type LoopEnd<P extends PreparedRequest = PreparedRequest> =
   | { readonly reason: "done"; readonly usage: Usage }
   | { readonly reason: "parked"; readonly usage: Usage }
   | { readonly reason: "stopped" }
-  | { readonly reason: "failed"; readonly failure: Failure };
+  | {
+      readonly reason: "failed";
+      readonly failure: Failure;
+      readonly response: FailedResponse<P> | null;
+    };
 
 /** Returns one thing the loop did; `message_end` comes for a done response only, a failed one ends in `turn_retry` or `loop_end`. */
 export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
@@ -116,8 +124,7 @@ export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
       readonly attempt: number;
       readonly until: number;
       readonly failure: Failure;
-      readonly usage: Usage;
-      readonly prepared: P;
+      readonly response: FailedResponse<P>;
     }
   | { readonly type: "tool_start"; readonly call: ModelToolCall }
   | { readonly type: "tool_update"; readonly call: ModelToolCall; readonly progress: ToolProgress }
@@ -128,16 +135,15 @@ export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
       readonly calls: readonly ModelToolCall[];
       readonly usage: Usage;
     }
-  | { readonly type: "loop_end"; readonly end: LoopEnd };
+  | { readonly type: "loop_end"; readonly end: LoopEnd<P> };
 
 /** Returns the loop's events, each taken before the loop goes on, and how it ended once they are consumed. */
 export interface LoopStream<P extends PreparedRequest = PreparedRequest> extends AsyncIterable<
   LoopEvent<P>
 > {
-  result(): Promise<LoopEnd>;
+  result(): Promise<LoopEnd<P>>;
 }
 
-/** Returns how one response ended. */
 type Outcome =
   | {
       readonly kind: "done";
@@ -155,7 +161,7 @@ type Outcome =
   | { readonly kind: "unfinished" }
   | { readonly kind: "stopped" };
 
-const STOPPED: LoopEnd = { reason: "stopped" };
+const STOPPED = { reason: "stopped" } as const;
 
 const UNFINISHED: Failure = {
   class: "provider",
@@ -172,7 +178,7 @@ export function agentLoop<P extends PreparedRequest>(
   signal: AbortSignal,
 ): LoopStream<P> {
   const events = run(config, signal);
-  const ended = Promise.withResolvers<LoopEnd>();
+  const ended = Promise.withResolvers<LoopEnd<P>>();
   ended.promise.catch(() => undefined);
 
   return {
@@ -193,16 +199,12 @@ export function agentLoop<P extends PreparedRequest>(
 async function* run<P extends PreparedRequest>(
   config: LoopConfig<P>,
   signal: AbortSignal,
-): AsyncGenerator<LoopEvent<P>, LoopEnd> {
+): AsyncGenerator<LoopEvent<P>, LoopEnd<P>> {
   let attempt = config.attempt;
   let retries = 0;
   let overflowed = false;
 
-  let overflow: {
-    readonly failure: Failure;
-    readonly usage: Usage;
-    readonly prepared: P;
-  } | null = null;
+  let overflow: { readonly failure: Failure; readonly response: FailedResponse<P> } | null = null;
 
   for (;;) {
     const next = overflow === null ? attempt : attempt + 1;
@@ -216,7 +218,11 @@ async function* run<P extends PreparedRequest>(
     );
 
     if (prepared.kind === "failed")
-      return yield* end({ reason: "failed", failure: prepared.failure });
+      return yield* end({
+        reason: "failed",
+        failure: prepared.failure,
+        response: overflow?.response ?? null,
+      });
 
     if (overflow !== null) {
       attempt = next;
@@ -230,15 +236,17 @@ async function* run<P extends PreparedRequest>(
       case "stopped":
         return yield* end(STOPPED);
       case "unfinished":
-        return yield* end({ reason: "failed", failure: UNFINISHED });
+        return yield* end({ reason: "failed", failure: UNFINISHED, response: null });
       case "failed": {
+        const { failure } = outcome;
+        const response = { usage: outcome.usage, prepared };
+
         if (!outcome.retryable || retries >= config.retry.maxRetries)
-          return yield* end({ reason: "failed", failure: outcome.failure });
+          return yield* end({ reason: "failed", failure, response });
         retries += 1;
         attempt += 1;
         const until = Date.now() + retryDelayMs(config.retry, retries);
-        const { failure, usage } = outcome;
-        yield { type: "turn_retry", attempt, until, failure, usage, prepared };
+        yield { type: "turn_retry", attempt, until, failure, response };
 
         const slept = await abortableSleep(until - Date.now(), signal).then(
           () => true,
@@ -250,9 +258,10 @@ async function* run<P extends PreparedRequest>(
       }
 
       case "overflow":
-        if (overflowed) return yield* end({ reason: "failed", failure: outcome.failure });
+        overflow = { failure: outcome.failure, response: { usage: outcome.usage, prepared } };
+
+        if (overflowed) return yield* end({ reason: "failed", ...overflow });
         overflowed = true;
-        overflow = { failure: outcome.failure, usage: outcome.usage, prepared };
         continue;
       case "done":
         break;
@@ -373,8 +382,8 @@ async function* execute<P extends PreparedRequest>(
 }
 
 async function* end<P extends PreparedRequest>(
-  loopEnd: LoopEnd,
-): AsyncGenerator<LoopEvent<P>, LoopEnd> {
+  loopEnd: LoopEnd<P>,
+): AsyncGenerator<LoopEvent<P>, LoopEnd<P>> {
   yield { type: "loop_end", end: loopEnd };
 
   return loopEnd;

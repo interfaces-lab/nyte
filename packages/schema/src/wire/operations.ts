@@ -593,12 +593,6 @@ export const JobStopOutputSchema = stopOutcomeSchema(JobEndType);
 /** Validates `job.settled`'s input. */
 export const JobSettledInputSchema = ON_JOB;
 
-/** Validates `job.close`'s input. */
-export const JobCloseInputSchema = ON_JOB;
-
-/** Validates `job.close`'s output: nothing. */
-export const JobCloseOutputSchema = NOTHING;
-
 /** Validates `files.read`'s input. */
 export const FilesReadInputSchema = ON_PATH;
 

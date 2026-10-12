@@ -128,13 +128,12 @@ function collect(start: Node, scope: Definitions, value: unknown, path: Path, fo
   }
 
   if (typeof value !== "object" || value === null) return;
-  const properties = isNode(node.properties) ? node.properties : {};
   const rest = restOf(node);
 
   for (const [key, field] of Object.entries(value)) {
-    const known = properties[key];
+    const known = propertyOf(node, key);
 
-    if (isNode(known)) collect(known, definitions, field, [...path, key], found);
+    if (known !== null) collect(known, definitions, field, [...path, key], found);
     else if (rest !== null) collect(rest, definitions, field, [...path, key], found);
     else found.push([...path, key]);
   }
@@ -159,29 +158,26 @@ function strip(start: Node, scope: Definitions, value: Json): Json {
     return isNode(items) ? value.map((item) => strip(items, definitions, item)) : value;
 
   if (!isRecord(value)) return value;
-  const properties = isNode(node.properties) ? node.properties : null;
   const rest = restOf(node);
 
-  if (properties === null && rest === null) return value;
-  const kept: { [key: string]: Json } = {};
+  if (!isNode(node.properties) && rest === null) return value;
 
-  for (const [key, field] of Object.entries(value)) {
-    const known = properties?.[key];
+  const kept = Object.entries(value).flatMap(([key, field]): [string, Json][] => {
+    const known = propertyOf(node, key) ?? rest;
 
-    if (isNode(known)) kept[key] = strip(known, definitions, field);
-    else if (rest !== null) kept[key] = strip(rest, definitions, field);
-  }
+    return known === null ? [] : [[key, strip(known, definitions, field)]];
+  });
 
   const required = Array.isArray(node.required) ? node.required : [];
 
-  for (const key of required) {
-    const known = properties?.[key];
+  const absent = required.flatMap((key): [string, Json][] => {
+    if (typeof key !== "string" || Object.hasOwn(value, key)) return [];
+    const known = propertyOf(node, key);
 
-    if (typeof key === "string" && !(key in kept) && isNode(known) && nullable(known, definitions))
-      kept[key] = null;
-  }
+    return known !== null && nullable(known, definitions) ? [[key, null]] : [];
+  });
 
-  return kept;
+  return Object.fromEntries([...kept, ...absent]);
 }
 
 function known(start: Node, scope: Definitions, value: unknown): unknown {
@@ -209,13 +205,12 @@ function known(start: Node, scope: Definitions, value: unknown): unknown {
   }
 
   if (typeof value !== "object" || value === null || !isNode(node.properties)) return value;
-  const properties = node.properties;
 
   return Object.fromEntries(
     Object.entries(value).map(([key, field]) => {
-      const property = properties[key];
+      const property = propertyOf(node, key);
 
-      return [key, isNode(property) ? known(property, definitions, field) : field];
+      return [key, property === null ? field : known(property, definitions, field)];
     }),
   );
 }
@@ -358,15 +353,22 @@ function toJson(value: unknown): Json | undefined {
   if (Array.isArray(value)) return value.map((item) => toJson(item) ?? null);
 
   if (typeof value !== "object") return undefined;
-  const out: { [key: string]: Json } = {};
 
-  for (const [key, item] of Object.entries(value)) {
-    const json = toJson(item);
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, item]) => {
+      const json = toJson(item);
 
-    if (json !== undefined) out[key] = json;
-  }
+      return json === undefined ? [] : [[key, json]];
+    }),
+  );
+}
 
-  return out;
+/** Returns the schema a node declares for one of its own properties, so an inherited name such as `__proto__` is never a declared field. */
+function propertyOf(node: Node, key: string): Node | null {
+  const properties = node.properties;
+  const property = isNode(properties) && Object.hasOwn(properties, key) ? properties[key] : null;
+
+  return isNode(property) ? property : null;
 }
 
 function isNode(value: unknown): value is Node {

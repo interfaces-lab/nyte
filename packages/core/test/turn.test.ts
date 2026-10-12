@@ -1,5 +1,5 @@
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
-import { asId, standard } from "@nyte-ai/schema";
+import { asId, asSeq, standard } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import type { DurableEvent, Infer, Message, RunId, SessionId } from "@nyte-ai/schema";
@@ -1148,8 +1148,9 @@ describe("turn findings (CORE-DIET D3)", () => {
     });
   });
 
-  it("leaves a stop that lands while a retry is landing to its fence: no overwrite, no retrying after stopping (D5)", async () => {
+  it("leaves a stop that lands while a retry is landing to its fence: no overwrite, no retrying after stopping, the response still charged once (D5; audit D2 item 2)", async () => {
     const fake = fakeModels();
+    const observed: number[] = [];
     let stop: ((run: RunId) => Promise<unknown>) | null = null;
     const base = memoryStore();
 
@@ -1183,8 +1184,19 @@ describe("turn findings (CORE-DIET D3)", () => {
     fake.reply({
       content: [{ type: "text", text: "Half an answer" }],
       error: "503 Service Unavailable",
+      usage: { input: 100, output: 10 },
     });
-    await using host = await open(fake, { store });
+
+    const observer: Plugin<"core"> = {
+      id: "observer",
+      hooks: {
+        after_request: (event) => {
+          observed.push(event.usage.total);
+        },
+      },
+    };
+
+    await using host = await open(fake, { store, plugins: [observer] });
     const session = await host.sessions.create();
     const logged = events(host.kernel, session.id);
     stop = (run) => session.run(run).stop();
@@ -1201,6 +1213,12 @@ describe("turn findings (CORE-DIET D3)", () => {
       logged.filter((event) => event.kind === "part" && event.change === "failed"),
     ).toHaveLength(1);
     expect(logged.map(label)).not.toContain("run:retrying");
+    expect(observed).toEqual([110]);
+    expect(
+      (await host.kernel.store.refs.log(session.id, asSeq(0), 1000)).flatMap((event) =>
+        event.kind === "request" ? [event.usage.total] : [],
+      ),
+    ).toEqual([110]);
   });
 
   it("charges every provider request: a failed one with its request event, a material compaction with one (D6)", async () => {
@@ -1322,6 +1340,60 @@ describe("turn findings (CORE-DIET D3)", () => {
       ),
     ).toEqual(charged);
     expect(observed).toEqual(charged);
+  });
+
+  it("charges and observes a terminal failure, and an overflow whose recovery preparation throws, on the request's runtime (D3b, audit 2 item 1)", async () => {
+    const fake = fakeModels();
+    const observed: string[] = [];
+
+    const plugin: Plugin<"core"> = {
+      id: "observer",
+      hooks: {
+        after_request: (event) => {
+          observed.push(`${event.step}:${event.usage.total}`);
+        },
+        before_compaction: () => {
+          throw new Error("The compactor is down.");
+        },
+      },
+    };
+
+    fake.reply(
+      {
+        content: [{ type: "text", text: "Half" }],
+        error: "401 Invalid API key",
+        usage: { input: 90, output: 9 },
+      },
+      {
+        error: "prompt is too long: 213462 tokens > 200000 maximum",
+        usage: { input: 40, output: 4 },
+      },
+    );
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+    const logged = events(host.kernel, session.id);
+    const unauthorized = await (await session.send("First?")).settled();
+    const overflowed = await (await session.send("Second?")).settled();
+
+    expect(unauthorized).toMatchObject({ kind: "failed" });
+    expect(overflowed).toMatchObject({ kind: "failed", failure: { class: "runner" } });
+    expect(
+      logged.flatMap((event) =>
+        event.kind === "request" ? [`${event.step}:${event.usage.total}`] : [],
+      ),
+    ).toEqual(["assistant:99", "assistant:44"]);
+    expect(observed).toEqual(["assistant:99", "assistant:44"]);
+
+    const runs = (await session.view()).messages.flatMap((message) =>
+      message.kind === "user" && message.status.kind === "landed" && message.status.run !== null
+        ? [message.status.run]
+        : [],
+    );
+
+    expect(await storedStatus(host.kernel, session.id, `${runs[0]}:1:0`)).toMatchObject({
+      kind: "failed",
+    });
   });
 
   it("validates a before_compaction result once, failing the compaction, never dropping history at read (D9)", async () => {

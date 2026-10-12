@@ -11,36 +11,34 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { createCompactor, createSummarizer } from "./compaction.ts";
-import { createConfigurationResolver } from "./configuration.ts";
 import { createHost } from "./connection.ts";
 import type { ModelsApi, OpenOptions } from "./connection.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import { driveInProcess } from "./execution.ts";
+import { createHostState } from "./host.ts";
 import type { Host } from "./host.ts";
-import { createHostState } from "./host-view.ts";
 import { createKernel } from "./kernel.ts";
 import type { Kernel } from "./kernel.ts";
-import { createModelsApi } from "./models.ts";
-import { pollStore } from "./watch.ts";
+import { createConfigurationResolver, createModelsApi } from "./models.ts";
+import { checkPlugins, hostPluginRows, readKv } from "./plugin-runtime.ts";
 import type { Plugin } from "./plugin.ts";
-import { checkPlugins, hostPluginRows } from "./plugin-runtime.ts";
-import { readKv } from "./plugin-storage.ts";
 import { delegationPlugin } from "./plugins/delegation.ts";
 import { environmentPlugin } from "./plugins/environment.ts";
 import { partsPlugin } from "./plugins/parts.ts";
-import { resourcesPlugin } from "./plugins/resources.ts";
 import { systemPromptPlugin } from "./plugins/system-prompt.ts";
 import { envelope } from "./records.ts";
 import { hostIdentityRef, kvRef } from "./refs.ts";
 import type { HostIdentity } from "./refs.ts";
+import { createRequest } from "./request.ts";
+import { resourcesPlugin } from "./resources.ts";
 import { isJsonObject } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
-import { createRequest } from "./request.ts";
 import { createTurnDriver } from "./turn.ts";
+import { pollStore } from "./watch.ts";
 
-/** Describes what `composeHost` needs: `OpenOptions`, plus what the platform host supplies: the home directory `Resources.user` attaches at (null on a host without one), the operations catalog `HostView.operations` serves (protocol's), the host's name, platform and version, and where each of `plugins` loaded from a plugin file came from (§41e; absent, every one is `inline`). */
+/** Describes what `composeHost` needs: `OpenOptions` plus what the platform host supplies: the home `Resources.user` attaches at, protocol's operations catalog, the host's description, and where each file-loaded plugin came from (§41e). */
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
   readonly operations: HostView["operations"];
@@ -49,11 +47,11 @@ export type ComposeOptions = OpenOptions & {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** The interval in ms at which this host re-reads a store it shares with other instances, passed to the kernel as `KernelOptions.poll` (§42h): the Vercel deploy sets 1000; a Durable Object and a local host leave it unset. */
+  /** The interval in ms at which this host re-reads a store it shares with other instances (§42h); the Vercel deploy sets 1000. */
   readonly poll?: number;
-  /** Host values applied inside `composeHost` before any driver attaches (§43c): each `settings` entry, in key order, through `kernel.settings.apply`, skipping an id that already has a value stored at `kvRef("host", "settings", id)` so a value changed over the wire survives restarts (§43j). An `unknown` answer is a `warning` at `[id]` and an `invalid` one its issues as warnings under `[id]`, all reported on one `HostState.report` row `{ id: "settings", source: "user", path, issues }` naming the file they came from. `openHost` fills it from `~/.nyte/settings.json`. */
+  /** Host settings applied before any driver attaches, skipping an id already stored so a value set over the wire survives (§43c, §43j); what did not apply is reported on one `settings` row naming `path`. */
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
-  /** Loads plugin files by path for `PluginsApi` (`KernelOptions.loadPlugins`, §47l); `openHost` passes its plugin loader. Absent, a file answers `unavailable`. */
+  /** Loads plugin files by path for `PluginsApi` (§47l); absent, a file answers `unavailable`. */
   readonly loadPlugins?: Kernel["loadPlugins"];
 };
 
@@ -66,7 +64,7 @@ export const BUILTINS: readonly Plugin<"core">[] = [
   partsPlugin,
 ];
 
-/** Composes the in-process host `sdk.open` serves: the composition root. Runs the preflight first, touching nothing: `checkPlugins` over `BUILTINS` then `options.plugins`; a `rejected` plugin that `options.pluginSources` names (it came from a file) is dropped and reported by path (§43g), any other throws `SdkError("invalid")` with its issues (collisions stay warnings, as a load reports them). Opens a store connection, reads the host's identity (`hostIdentity`), and builds the host state (`createHostState`: a fresh catalog generation, no settings yet, `options.operations`), its `HostView.plugins` seeded with `hostPluginRows`: one row per built-in (`source: "builtin"`) then per kept plugin (`user` or `project` with its path when `options.pluginSources` names it, else `inline` with a null path), each with no issues, merged later with the runtimes' live issues (§38x). Creates the kernel with every slot: `turn` (`createTurnDriver`), `summarize` (`createSummarizer`), `compact` (`createCompactor`), `resolveConfiguration` (`createConfigurationResolver`), `request` (`createRequest`), `models` (`createModelsApi`), each over `options.models`; `builtins` `BUILTINS`; `hostPlugins` the kept plugins; `pluginSources`, `secrets`, `home`, `execution` (default run, covering all) and `description` as given. Registers `options.workspace` through `kernel.workspaces` as `LOCAL` (decision 5: `projectResources` true, no `expect`; `exists` when registered) and makes it the kernel's default workspace; a workspace no provider serves throws `SdkError("unavailable")` after releasing what was opened. Applies `options.seed` (`applySeed`), then seeds `HostView.settings` from `settingInfos(kernel, null)`. Under `execution.kind === "run"` starts `driveInProcess(kernel, coverage)`; with `poll`, starts `pollStore` (§42h). Returns `createHost(kernel, { credential: { kind: "token", token: "" } })` with `kernel`, its `close()` (and `[Symbol.asyncDispose]`) stopping the poll, closing the host connection's streams, releasing the driver and its leases without waiting on the turns in flight (the driver aborts them with the host-closing signal and leaves their runs live for the next open, §38y), closing every session's plugins (`kernel.closePlugins`), detaching every attached environment, session and workspace, and closing the store connection; the `Store` itself is the caller's. */
+/** Composes the in-process host `sdk.open` serves: preflights `BUILTINS` and `options.plugins` (a rejected file plugin is dropped and reported, any other throws `invalid`), opens the store, creates the kernel, registers `options.workspace` as the default, applies the seed and starts the in-process driver and the poll. `close()` stops them, releases the leases without waiting on turns in flight (§38y), closes every session's plugins and environments, then the store connection. */
 export async function composeHost(
   options: ComposeOptions,
 ): Promise<Omit<Host, "listen"> & { readonly kernel: Kernel }> {
@@ -154,7 +152,7 @@ export async function composeHost(
   return { ...host, kernel, close, [Symbol.asyncDispose]: close };
 }
 
-/** Returns the host's identity at `host/identity`: the stored one, or on first open a minted `HostId` with the time, written once as an `identity` envelope with `expect: "absent"`, a lost race reading the winner. Never moved after. */
+/** Returns the host's identity at `host/identity`, minting and writing it once on first open; a lost race reads the winner. */
 export async function hostIdentity(store: StoreConnection): Promise<HostIdentity> {
   const known = await storedIdentity(store);
 
@@ -183,7 +181,7 @@ export async function hostIdentity(store: StoreConnection): Promise<HostIdentity
   return winner;
 }
 
-/** Applies a settings seed (§43c, §43j): each id in key order through `kernel.settings.apply`, unless a value is already stored for it, so a value set over the wire wins. Unknown ids (a session-scope id says so: its values go through `configure`, §36e, §43k) and invalid values become warnings on one `settings` report row carrying the seed's path; nothing is reported when every id applied or was skipped. */
+/** Applies a settings seed (§43c, §43j) through `kernel.settings.apply`, skipping ids already stored; unknown ids and invalid values become warnings on one `settings` report row. */
 async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"]>): Promise<void> {
   const issues: ValidationIssue[] = [];
   let applied = 0;

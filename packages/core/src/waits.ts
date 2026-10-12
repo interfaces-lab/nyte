@@ -21,7 +21,7 @@ import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import { answerOf } from "./part-handle.ts";
-import { answeredElsewhere, partAnswers } from "./part-table.ts";
+import { answeredElsewhere, partAnswers } from "./parts.ts";
 import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, RunRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
@@ -48,8 +48,13 @@ export interface ParkedWait {
 export interface WaitRegistry {
   /** Parks a step; a target that already has its outcome settles at once, a job this instance does not hold as `lost` (§42w, §43k). */
   park(entry: ParkedWait): Promise<void>;
-  /** Wakes the waits on a run that ended and resolves whether one consumed the end. */
-  runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
+  /** Wakes the waits on a run that ended and resolves whether one consumed the end; each call in `waitedBy` not parked here is offered only the run's outcome, as `partAnswered` offers its call. */
+  runEnded(
+    session: SessionId,
+    run: RunId,
+    end: RunEnd,
+    waitedBy: RunRecord["waitedBy"],
+  ): Promise<boolean>;
   /** Wakes the waits on a job that ended and resolves whether one consumed the end; a refused write is retried, the write being idempotent. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
   /** Wakes the waits on an answered part; `call`, the step its live status names, is offered only the part's outcome when it is not parked here (§42x, §42z). */
@@ -296,6 +301,27 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     };
   };
 
+  const offerCold = async (
+    session: SessionId,
+    call: CallId,
+    on: (target: WaitTarget) => boolean,
+    outcome: WaitOutcome,
+  ): Promise<readonly Taken[]> => {
+    if (slots.has(keyOf(session, call))) return [];
+    const entry = parkedOf(session, (await readCall(kernel, session, call))?.record ?? null);
+
+    if (entry === null) return [];
+    const slot = slotOf(entry);
+
+    return Promise.all(
+      slot.targets.flatMap((target, index) =>
+        on(target) && (slot.outcomes.at(index) ?? null) === null
+          ? [offer(slot, index, outcome)]
+          : [],
+      ),
+    );
+  };
+
   const park = async (entry: ParkedWait): Promise<void> => {
     const key = keyOf(entry.session, entry.call);
 
@@ -328,15 +354,18 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
   return {
     park,
-    async runEnded(session, run, end) {
-      const taken = await Promise.all(
-        offers(
-          (target) => target.kind === "run" && target.session === session && target.run === run,
-          { kind: "run", session, run, end },
-        ),
+    async runEnded(session, run, end, waitedBy) {
+      const on = (target: WaitTarget): boolean =>
+        target.kind === "run" && target.session === session && target.run === run;
+      const outcome: WaitOutcome = { kind: "run", session, run, end };
+
+      const cold = await Promise.all(
+        waitedBy.map((waiter) => offerCold(waiter.session, waiter.call, on, outcome)),
       );
 
-      return taken.some((found) => found !== "none");
+      const taken = await Promise.all(offers(on, outcome));
+
+      return [...cold.flat(), ...taken].some((found) => found !== "none");
     },
     async jobEnded(job, end) {
       jobs.set(job, end);
@@ -368,22 +397,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       const on = (target: WaitTarget): boolean => target.kind === "part" && target.part === part;
       const outcome: WaitOutcome = { kind: "part", part, answer };
 
-      if (call !== null && !slots.has(keyOf(session, call))) {
-        const entry = parkedOf(session, (await readCall(kernel, session, call))?.record ?? null);
-
-        if (entry !== null) {
-          const slot = slotOf(entry);
-
-          await Promise.all(
-            slot.targets.flatMap((target, index) =>
-              on(target) && (slot.outcomes.at(index) ?? null) === null
-                ? [offer(slot, index, outcome)]
-                : [],
-            ),
-          );
-        }
-      }
-
+      if (call !== null) await offerCold(session, call, on, outcome);
       await Promise.all(offers(on, outcome));
     },
     async partClosed(part) {

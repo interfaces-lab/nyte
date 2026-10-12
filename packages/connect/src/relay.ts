@@ -187,7 +187,6 @@ export const RELAY_OPERATIONS = [
   "job.idle",
   "job.stop",
   "job.settled",
-  "job.close",
   "files.read",
   "files.bytes",
   "files.stat",

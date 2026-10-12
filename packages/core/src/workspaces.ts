@@ -1,27 +1,36 @@
 import { asId } from "@nyte-ai/schema";
 import type {
   Activation,
+  AddOutcome,
+  Capability,
+  ChangeSet,
   DiffOptions,
-  Disposer,
+  EnvironmentIdentity,
   FileStatus,
   ForgetOutcome,
+  JobId,
   PatchEntry,
   PatchSet,
+  ReceiptId,
   RunId,
   SessionId,
   SnapshotId,
   WorkspaceId,
   WorkspaceInfo,
+  WorkspaceInspection,
+  WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { availabilityOf, readWorkspace } from "./environment-registry.ts";
-import type { SnapshotsApi } from "./environment.ts";
+import type { BrowserApi, PageHolder } from "./browser.ts";
+import { UnavailableError, availabilityOf, readWorkspace } from "./environment.ts";
+import type { Resources, SnapshotsApi } from "./environment.ts";
 import { SdkError } from "./error.ts";
+import type { FilesApi, HeldBatch } from "./files.ts";
+import type { GitApi } from "./git.ts";
 import { createJobs, jobHandle } from "./jobs.ts";
-import type { PageHolder } from "./pages.ts";
+import type { Job, Jobs } from "./jobs.ts";
+import type { Kernel } from "./kernel.ts";
 import { sessionPlugins } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
-import type { Kernel } from "./kernel.ts";
-import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodeRunRecord, decodeSessionRecord, decodeWorkspaceRecord } from "./records.ts";
 import type { WorkspaceRecord } from "./records.ts";
@@ -30,67 +39,108 @@ import { invalidateResources } from "./resources.ts";
 import {
   MAIN,
   STALE,
-  attachesHere,
+  isCovered,
   attempt,
   commit,
   liveRuns,
   load,
   put,
   readSession,
+  requireSession,
 } from "./session-state.ts";
 import { closable, coalesce, latest } from "./watch.ts";
-import type { Workspace, Workspaces } from "./workspace.ts";
 
-/** Carries workspace changes in this process: registering, forgetting, `update`, `reload` and an activation announce them; `Workspace.watch` listens, alongside the bus's `session` and `run` events that move `sessions` and `writers`. One per kernel, created on first use. */
-interface WorkspaceBus {
-  /** Calls every listener with the workspace that changed. */
-  changed(id: WorkspaceId): void;
-  /** Calls the listener on every change; the disposer stops it. */
-  subscribe(listener: (id: WorkspaceId) => void): Disposer;
+export interface Workspaces {
+  list(): Promise<readonly WorkspaceInfo[]>;
+  inspect(target: WorkspaceTarget): Promise<WorkspaceInspection>;
+  add(
+    target: WorkspaceTarget,
+    options?: {
+      readonly projectResources?: boolean;
+      readonly expect?: { readonly identity: EnvironmentIdentity };
+    },
+  ): Promise<AddOutcome>;
+  forget(id: WorkspaceId): Promise<ForgetOutcome>;
 }
 
-/** Returns one path's patch as `patches` yields it: `fresh` false while it is the previous revision's, held until the fresh read lands. */
+export interface Workspace {
+  readonly id: WorkspaceId;
+  info(): Promise<WorkspaceInfo>;
+  watch(): AsyncIterable<WorkspaceInfo>;
+  update(patch: {
+    readonly projectResources?: boolean;
+  }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
+  reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
+  readonly jobs: Jobs;
+  job(id: JobId): Job;
+  changes(run: RunId): Promise<ChangeSet>;
+  patches(run: RunId, paths: readonly string[], options?: DiffOptions): AsyncIterable<PatchSet>;
+  files(): Promise<Capability<FilesApi>>;
+  git(): Promise<Capability<GitApi>>;
+  browser(): Promise<Capability<BrowserApi>>;
+}
+
+/** Returns one path's patch: `fresh` false while it is the previous revision's. */
 type HeldEntry = PatchEntry & { readonly fresh: boolean };
 
-/** Returns one path's read at a revision: whether it landed, and the entry, null when the revision does not report the path. */
+/** Returns one path's read at a revision; `value` null when the revision does not report the path. */
 type PatchSlot = {
   done: boolean;
   value: HeldEntry | null;
   readonly read: Promise<HeldEntry | null>;
 };
 
-/** Returns the patch cache of one run under one set of diff options: the revision it was read at and each path's read. */
+/** Returns the patch cache of one run under one set of diff options. */
 type PatchCache = { readonly revision: SnapshotId; readonly slots: Map<string, PatchSlot> };
 
 const PATCH_READ_MAX = 32;
 
 const PATCH_READS = 4;
 
-const buses = new WeakMap<Kernel, WorkspaceBus>();
-
-const patchCaches = new WeakMap<Kernel, Map<string, PatchCache>>();
-
 const staleEntries = new WeakMap<HeldEntry, HeldEntry>();
+
+/** Holds a kernel's workspace-side memory (§52): `Workspace.watch` listeners, patch reads, session scans, the home's files and file batches. */
+export interface WorkspaceState {
+  readonly listeners: Set<(id: WorkspaceId) => void>;
+  readonly patches: Map<string, PatchCache>;
+  readonly scans: Map<
+    SessionId,
+    { readonly workspace: WorkspaceId; readonly resources: Promise<Resources> }
+  >;
+  home: Promise<FilesApi | null> | null;
+  readonly batches: Map<ReceiptId, AbortController>;
+  readonly held: Map<ReceiptId, HeldBatch>;
+}
+
+/** Returns an empty workspace state, what `createKernel` puts on `kernel.workspaceState`. */
+export function createWorkspaceState(): WorkspaceState {
+  return {
+    listeners: new Set(),
+    patches: new Map(),
+    scans: new Map(),
+    home: null,
+    batches: new Map(),
+    held: new Map(),
+  };
+}
 
 const ACTIVE: Activation = { kind: "active" };
 
 const INACTIVE: Activation = { kind: "inactive" };
 
-/** Returns the workspaces registered on this host for a connection; every member checks its `@authority` tag against the context's authority. `list` reads every `workspaces/` ref through `workspaceInfo`. `inspect` asks the provider of the target's kind (`SdkError("unavailable")` when none serves it) and names the registered workspace with the same identity, if any. `add` answers `unavailable { reason }` when no provider serves the kind (`unsupported`) or its `inspect` says unavailable (`unreachable` when it throws), `stale { identity }` when `expect.identity` differs from the inspected one, `exists` when a workspace with that identity is registered, and otherwise writes a `WorkspaceRecord` under a minted id (`expect: "absent"`; `projectResources` default true, `projectSources` as inspected, `addedBy` the context's principal) and answers `added`. `forget` answers `missing` without a record and `busy { sessions }` while sessions use it; otherwise it deletes the ref, detaches the workspace's own environment, drops its cached resources and answers `forgotten`. Each change is announced on the workspace bus. What `kernel.workspaces` holds as `CORE_CONTEXT`; a connection binds its own. */
-export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Workspaces {
-  const need = (authority: "participant" | "owner", operation: string): void =>
-    requireAuthority(context.authority, authority, `workspaces.${operation}`);
-
+/** Returns the workspaces registered on this host; `add` records `context.principal` as `addedBy`. */
+export function createWorkspaces(
+  kernel: Kernel,
+  context: Pick<ConnectionContext, "principal">,
+): Workspaces {
   return {
     async list() {
-      need("participant", "list");
       const records = await workspaceRecords(kernel);
       const infos = await Promise.all(records.map((record) => workspaceInfo(kernel, record.id)));
 
       return infos.flatMap((info) => (info === null ? [] : [info]));
     },
     async inspect(target) {
-      need("owner", "inspect");
       const provider = kernel.environments.provider(target.kind);
 
       if (provider === undefined)
@@ -107,7 +157,6 @@ export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Wo
       };
     },
     async add(target, options) {
-      need("owner", "add");
       const provider = kernel.environments.provider(target.kind);
 
       if (provider === undefined) return { kind: "unavailable", reason: "unsupported" };
@@ -144,13 +193,11 @@ export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Wo
       ]);
 
       if (outcome.kind === "stale") throw new SdkError("stale", `Workspace ${id} already exists.`);
-      busOf(kernel).changed(id);
+      changed(kernel, id);
 
       return { kind: "added", workspace: id };
     },
     async forget(id) {
-      need("owner", "forget");
-
       return attempt<ForgetOutcome>(`Forgetting ${id}`, async () => {
         const ref = await kernel.store.refs.get(workspaceRef(id));
 
@@ -166,7 +213,7 @@ export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Wo
         if (outcome.kind === "stale") return STALE;
         await kernel.environments.detachWorkspace(id);
         invalidateResources(kernel, id);
-        busOf(kernel).changed(id);
+        changed(kernel, id);
 
         return { kind: "forgotten" };
       });
@@ -174,26 +221,12 @@ export function createWorkspaces(kernel: Kernel, context: ConnectionContext): Wo
   };
 }
 
-/**
- * Returns a handle on a workspace for a connection; binds synchronously, no I/O, and checks each
- * member's `@authority` tag against the context's authority. A context whose `origin` names a
- * session on this workspace (a tool invocation's) is that session's view: its capabilities,
- * snapshots and jobs go through the session's environment, otherwise the workspace's own serves
- * them (§37f). `update` rewrites `projectResources`; `reload` drops the cached resources, detaches
- * the workspace's own environment and installs a new plugin runtime for every session on it
- * (`kernel.reloadPlugins`, §44c); both answer `missing` without a record. `patches` is `patchesOf`,
- * and pages opened through `browser()` are held by the origin's head when the context acts from a
- * step, by no head for a client (§37i). What `kernel.workspace(id)` returns as `CORE_CONTEXT`; a
- * connection and an invocation bind their own.
- */
+/** Returns a handle on a workspace; binds synchronously. An origin in a session on this workspace views it through the session's environment (§37f), and pages opened through `browser()` are held by the origin's head (§37i). */
 export function workspaceHandle(
   kernel: Kernel,
-  context: ConnectionContext,
+  context: Pick<ConnectionContext, "origin">,
   id: WorkspaceId,
 ): Workspace {
-  const need = (authority: "participant" | "owner", operation: string): void =>
-    requireAuthority(context.authority, authority, `workspace.${operation}`);
-
   const viewing = async (): Promise<SessionId | null> => {
     const origin = context.origin;
 
@@ -234,8 +267,8 @@ export function workspaceHandle(
     const session = await viewing();
 
     return session === null
-      ? kernel.environments.workspaceCapabilities(id, context.authority, holder)
-      : kernel.environments.capabilities(session, context.authority, holder);
+      ? kernel.environments.workspaceCapabilities(id, holder)
+      : kernel.environments.capabilities(session, holder);
   };
 
   const rewrite = (what: string, change: (record: WorkspaceRecord) => WorkspaceRecord) =>
@@ -261,19 +294,14 @@ export function workspaceHandle(
 
   return {
     id,
-    /** Returns `workspaceInfo`; `SdkError("unknown")` when the record is gone. */
     async info() {
-      need("participant", "info");
       const info = await workspaceInfo(kernel, id);
 
       if (info === null) throw new SdkError("unknown", `Workspace ${id} is not registered.`);
 
       return info;
     },
-    /** Yields `info` coalesced on workspace-bus changes and on `session` and `run` events, ending when the record is gone. */
     watch() {
-      need("participant", "watch");
-
       return closable<WorkspaceInfo>(() => {
         let changes = 0;
         let shown: string | null = null;
@@ -285,16 +313,18 @@ export function workspaceHandle(
               push(changes);
             };
 
-            const stopWorkspaces = busOf(kernel).subscribe((changed) => {
+            const listener = (changed: WorkspaceId): void => {
               if (changed === id) bump();
-            });
+            };
+
+            kernel.workspaceState.listeners.add(listener);
 
             const stopSessions = kernel.bus.subscribeAll((_session, event) => {
               if (event.kind === "session" || event.kind === "run") bump();
             });
 
             return () => {
-              stopWorkspaces();
+              kernel.workspaceState.listeners.delete(listener);
               stopSessions();
             };
           }),
@@ -324,8 +354,6 @@ export function workspaceHandle(
       });
     },
     async update(patch) {
-      need("owner", "update");
-
       const outcome = await rewrite(`Updating ${id}`, (record) => ({
         ...record,
         projectResources: patch.projectResources ?? record.projectResources,
@@ -333,36 +361,34 @@ export function workspaceHandle(
 
       if (outcome.kind === "updated") {
         invalidateResources(kernel, id);
-        busOf(kernel).changed(id);
+        changed(kernel, id);
       }
 
       return outcome;
     },
     async reload() {
-      need("owner", "reload");
-
       if ((await readWorkspace(kernel, id)) === null) return { kind: "missing" };
       invalidateResources(kernel, id);
       await kernel.environments.detachWorkspace(id);
 
-      for (const session of await sessionsOn(kernel, id)) await kernel.reloadPlugins(session);
-      busOf(kernel).changed(id);
+      for (const session of await sessionsOn(kernel, id)) {
+        if (kernel.activation(session).kind !== "active") await kernel.environments.detach(session);
+        await Promise.allSettled([kernel.reloadPlugins(session)]);
+      }
+
+      changed(kernel, id);
 
       return { kind: "updated" };
     },
     jobs: createJobs(kernel, context, id),
-    job: (job) => jobHandle(kernel, context, job),
-    /** Diffs the run's first snapshot (`RunRecord.snapshot` while the run is live, else the provider's `before(run)`) to `after(run)`; `SdkError("unavailable")` when the environment takes none. */
+    job: (job) => jobHandle(kernel, job),
     async changes(run) {
-      need("participant", "changes");
       const found = await snapshots();
       const from = (await runStart(kernel, id, run)) ?? (await found.before(run));
 
       return found.diff(from, await found.after(run));
     },
     patches(run, paths, options) {
-      need("participant", "patches");
-
       return patchesOf(kernel, { workspace: id, run, paths, options, snapshots });
     },
     files: async () => (await capabilities()).files,
@@ -371,36 +397,33 @@ export function workspaceHandle(
   };
 }
 
-/**
- * Runs a session's activation over the runtime `createPluginRuntime` made for it: what that
- * runtime's `ready` settles with (§44a). An unknown session activates nothing. The session's
- * plugins load into the runtime (`sessionPlugins`, §36c), so a runtime a reload installed
- * re-activates every plugin and retries one a failed activation rejected (§37l). Then its
- * environment attaches (`attach`) and the activation is set and announced (`settle`). A load that
- * throws sets `failed { message }` through the same code and rejects.
- */
+/** Runs a session's activation over its new runtime: what `ready` settles with (§44a); an unknown session rejects `unknown`. The environment attaches once and the activation is derived from that one settled attach, which the plugins share (E7). */
 export async function activateSession(
   kernel: Kernel,
   session: SessionId,
   runtime: PluginRuntime,
 ): Promise<void> {
-  const found = await readSession(kernel, session);
+  const workspace = (await requireSession(kernel, session)).record.workspace;
 
-  if (found === null) return;
-  const workspace = found.record.workspace;
+  const attached = (await isCovered(kernel, session))
+    ? kernel.env(session).then(
+        () => ACTIVE,
+        (error: unknown) => activationOf(workspace, error),
+      )
+    : INACTIVE;
 
   try {
     await runtime.load(sessionPlugins(kernel, runtime));
   } catch (error) {
-    settle(kernel, session, workspace, failed(error));
+    settle(kernel, session, workspace, activationOf(workspace, error));
 
     throw error;
   }
 
-  settle(kernel, session, workspace, await attach(kernel, session, workspace));
+  settle(kernel, session, workspace, await attached);
 }
 
-/** Returns a registered workspace's record with its live fields, or null when `workspaces/<id>` is absent: `availability` from its provider's `inspect` (`unavailable { reason: "unsupported" }` when no provider serves the kind), `sessions` the number of session records naming it, and `writers` the live runs of those sessions. */
+/** Returns a registered workspace's record with its live fields, or null. */
 export async function workspaceInfo(
   kernel: Kernel,
   id: WorkspaceId,
@@ -449,36 +472,7 @@ export async function sessionsOn(
   );
 }
 
-/**
- * Returns how a session whose plugins loaded stands once its environment attached or failed to. A
- * session this host's execution does not cover stays `inactive` and attaches nothing, its plugins
- * resolving no environment or resources (§37m); on a `dispatch` kernel every session attaches, as
- * for `run` (§42p). Otherwise `kernel.env` attaches it: `active`; `unavailable { workspace, reason }`
- * when no provider serves the workspace's kind or its `inspect` says unavailable; `failed { message }`
- * when attaching throws otherwise.
- */
-async function attach(
-  kernel: Kernel,
-  session: SessionId,
-  workspace: WorkspaceId,
-): Promise<Activation> {
-  if (!(await attachesHere(kernel, session))) return INACTIVE;
-
-  try {
-    await kernel.env(session);
-
-    return ACTIVE;
-  } catch (error) {
-    const record = await readWorkspace(kernel, workspace);
-    const availability = record === null ? null : await availabilityOf(kernel, record.target);
-
-    return availability?.kind === "unavailable"
-      ? { kind: "unavailable", workspace, reason: availability.reason }
-      : failed(error);
-  }
-}
-
-/** Sets a session's activation with `kernel.setActivation` when it changed and announces it on the workspace bus. */
+/** Sets a session's activation when it changed and announces it on the workspace bus. */
 function settle(
   kernel: Kernel,
   session: SessionId,
@@ -487,23 +481,16 @@ function settle(
 ): void {
   if (JSON.stringify(kernel.activation(session)) === JSON.stringify(activation)) return;
   kernel.setActivation(session, activation);
-  busOf(kernel).changed(workspace);
+  changed(kernel, workspace);
 }
 
-function failed(error: unknown): Activation {
-  return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+function activationOf(workspace: WorkspaceId, error: unknown): Activation {
+  return error instanceof UnavailableError
+    ? { kind: "unavailable", workspace, reason: error.reason }
+    : { kind: "failed", message: error instanceof Error ? error.message : String(error) };
 }
 
-/**
- * Yields a run's patches for `paths` as full `PatchSet`s over one revision. Paths not yet read at
- * it are read through the provider's `snapshots.patches` in batches of at most 32, at most 4 in
- * flight, each landing batch yielding the map again. A batch whose read throws yields its paths as
- * `failed { reason }` (the status the diff gives, `modified` when it cannot say; left out when the
- * diff no longer reports them) and leaves them uncached for a later call. Reads are cached by
- * workspace, run, options, revision and path across calls; while the revision moved, the previous
- * revision's entry is held with `fresh: false` until its fresh read lands, and a path the new
- * revision no longer reports leaves.
- */
+/** Yields a run's patches for `paths` as full `PatchSet`s over one revision, read in batches of at most 32, 4 in flight, and cached by workspace, run, options, revision and path; a failed batch yields its paths as `failed` and stays uncached, and the previous revision's entries are held `fresh: false` until their fresh reads land. */
 async function* patchesOf(
   kernel: Kernel,
   input: {
@@ -529,8 +516,7 @@ async function* patchesOf(
     return statuses;
   };
 
-  const caches = patchCaches.get(kernel) ?? new Map<string, PatchCache>();
-  patchCaches.set(kernel, caches);
+  const caches = kernel.workspaceState.patches;
   const key = JSON.stringify([input.workspace, run, options?.ignoreWhitespace === true]);
   const previous = caches.get(key);
 
@@ -627,7 +613,7 @@ async function* patchesOf(
   }
 }
 
-/** Returns a held entry marked `fresh: false`, the same object each time for the same entry. */
+/** Returns a held entry marked `fresh: false`, the same object for the same entry. */
 function staleOf(entry: HeldEntry): HeldEntry {
   const known = staleEntries.get(entry);
 
@@ -638,7 +624,7 @@ function staleOf(entry: HeldEntry): HeldEntry {
   return stale;
 }
 
-/** Returns a runner that starts at most `size` pieces of work at once, the rest in call order. */
+/** Returns a runner that starts at most `size` pieces of work at once. */
 function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
   let active = 0;
   const queue: (() => void)[] = [];
@@ -661,7 +647,7 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
     });
 }
 
-/** Returns the snapshot a live run took before its first write-class call (`RunRecord.snapshot`), looked up in the sessions on a workspace; null when no live run there has one. */
+/** Returns the snapshot a live run on the workspace took before its first write (`RunRecord.snapshot`), or null. */
 async function runStart(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -696,26 +682,7 @@ async function byIdentity(
   return (await workspaceRecords(kernel)).find((record) => record.identity === identity) ?? null;
 }
 
-function busOf(kernel: Kernel): WorkspaceBus {
-  const known = buses.get(kernel);
-
-  if (known !== undefined) return known;
-  const listeners = new Set<(id: WorkspaceId) => void>();
-
-  const created: WorkspaceBus = {
-    changed(id) {
-      for (const listener of listeners) listener(id);
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-
-  buses.set(kernel, created);
-
-  return created;
+/** Announces a workspace change to this kernel's `Workspace.watch` listeners. */
+function changed(kernel: Kernel, id: WorkspaceId): void {
+  for (const listener of kernel.workspaceState.listeners) listener(id);
 }

@@ -1,5 +1,23 @@
-import type { Disposer, ValidationIssue } from "@nyte-ai/schema";
+import { asId, isJson } from "@nyte-ai/schema";
+import type {
+  CatalogGeneration,
+  CommandInfo,
+  CommandOutcome,
+  Disposer,
+  Json,
+  JsonSchema,
+  RunId,
+  Schema,
+  SessionCatalogView,
+  SessionId,
+  ValidationIssue,
+} from "@nyte-ai/schema";
+import { sendNow } from "./admission.ts";
 import { SdkError } from "./error.ts";
+import { check } from "./json-schema.ts";
+import type { Kernel } from "./kernel.ts";
+import { pluginState } from "./plugin-runtime.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import type {
   ContributionTable,
   Registries,
@@ -9,22 +27,26 @@ import type {
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
+import { CORE_CONTEXT } from "./principals.ts";
+import { MAIN, isJsonObject } from "./session-state.ts";
+import { settingInfos } from "./settings.ts";
+import type { ToolSource } from "./tool-runner.ts";
 
-/** Returns one registry as a session holds it: the `Registry` every plugin reads, plus writes on behalf of one plugin, the materialised items with their owners, and its step of the reload pass. Its own `add` writes as owner `core`. */
+/** One registry as a session holds it; its own `add` writes as owner `core`. */
 export interface CoreRegistry<T, Handle = Disposer> extends Registry<T, "core", Handle> {
-  /** Returns this registry as one plugin writes to it: the items and derives it adds are that owner's, and are removed when `signal` aborts; `list` is the shared materialised set. */
+  /** Returns this registry as one plugin writes to it, its additions removed when `signal` aborts. */
   owned(owner: string, signal?: AbortSignal): Registry<T, "core", Handle>;
-  /** Returns the materialised items with the plugin that owns each, in `list` order: a static item is its adder's, an item a derive sets is the deriver's, a wrapped item keeps its owner. */
+  /** Returns the materialised items with their owners; a wrapped item keeps its owner. */
   entries(): readonly { readonly item: T; readonly owner: string }[];
-  /** Returns the static items one owner has added and not removed, in add order, whether or not a reload pass has materialised them yet. */
+  /** Returns the static items one owner has added, materialised or not. */
   declared(owner: string): readonly T[];
-  /** Runs this registry's step of a reload pass: seeds a draft with the static items by key in add order (a later add under a key replaces the earlier one, and one from another owner is a collision warning unless the kind overrides on purpose), runs every derive in registration order against it with `siblings`, and makes the result what `list` and `entries` return. A derive that throws has its edits discarded and comes back as an error issue against its owner. Issue paths start at the item's key. */
+  /** Runs this registry's step of a reload pass: the static items by key (a later owner's is a collision warning unless the kind overrides), then every derive with `siblings`. A derive that throws has its edits discarded and is an error issue against its owner. */
   materialize(
     siblings: Registries<"core">,
   ): readonly { readonly owner: string; readonly issue: ValidationIssue }[];
 }
 
-/** Returns one `CoreRegistry` per contribution kind a core plugin may write; the settings one also reads the settings declared as `core` (`SettingsRegistry`). */
+/** One `CoreRegistry` per contribution kind a core plugin may write. */
 export type CoreRegistries = {
   readonly [K in keyof Registries<"core">]: CoreRegistry<
     ContributionTable[K & keyof ContributionTable]["item"],
@@ -35,24 +57,22 @@ export type CoreRegistries = {
 
 /** Holds one session's core registries and runs their reload pass. */
 export interface RegistrySet extends CoreRegistries {
-  /** Returns every registry as one plugin writes to it (`CoreRegistry.owned`): a plugin api's `contribute`, emptied of that plugin's items when `signal` aborts. */
+  /** Returns every registry as one plugin writes to it: a plugin api's `contribute`. */
   owned(owner: string, signal?: AbortSignal): Registries<"core">;
-  /** Runs a reload pass now: tools → agents → prompt → modelContext, skills, parts, commands, settings; each derive sees as `siblings` the registries materialised earlier in this pass and the previous pass's sets for the rest. Collisions and derive failures go to `report` with the kind first in their path; `onChange` runs once the pass finished. A pass requested from inside a pass runs after it, on a microtask. */
+  /** Runs a reload pass now in `ORDER`, each derive seeing the registries materialised earlier in the pass. A pass requested from inside a pass runs after it, on a microtask. */
   materialize(): Promise<void>;
-  /** Schedules a reload pass on a microtask, coalescing every write and `reload` before it into one: what an add, a disposer and `PluginApi.reload` do. */
+  /** Schedules one reload pass on a microtask for every write and `reload` before it. */
   reload(): void;
 }
 
-/** Returns a derivation: what `add(derive)` keeps and each reload pass runs against a draft. */
 type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
 
-/** Returns one item with the plugin that owns it. */
 interface Entry<T> {
   readonly item: T;
   readonly owner: string;
 }
 
-/** Names the kinds in reload order. */
+/** The kinds in reload order. */
 const ORDER = [
   "tools",
   "agents",
@@ -64,7 +84,7 @@ const ORDER = [
   "settings",
 ] as const satisfies readonly (keyof CoreRegistries)[];
 
-/** Returns a session's empty registry set: one `createRegistry` per kind, keyed by tool name, prompt section id (a later source overrides on purpose), agent id, `<provider>/<id>` of the model ref, skill name, part kind, `<owner>/<name>` for commands and setting id; `settings.add` returns `setting(definition, owner)` joined with its disposer, and `settings.value(id)`/`watch(id)` read the setting an owner declared under `id` through the same handle (§48b); every write schedules a reload; `report` receives collisions and derive failures by owner; `onChange` runs after every pass. */
+/** Returns a session's empty registry set. `settings.add` returns `setting(definition, owner)` with its disposer, and `settings.value`/`watch` read the setting the owner declared through the same handle (§48b). `report` receives collisions and derive failures; `onChange` runs after every pass. */
 export function createRegistrySet(input: {
   onChange(): void;
   setting(definition: SettingDefinition, owner: string): Setting<unknown>;
@@ -88,7 +108,7 @@ export function createRegistrySet(input: {
     onChange: reload,
   });
 
-  /** Returns the handle on the setting `owner` declared last under `id`; throws `unknown` when it declared none. */
+  /** Returns the handle on the setting `owner` declared last under `id`. */
   const declared = (owner: string, id: string): Setting<unknown> => {
     const definition = settings.declared(owner).findLast((candidate) => candidate.id === id);
 
@@ -98,7 +118,6 @@ export function createRegistrySet(input: {
     return input.setting(definition, owner);
   };
 
-  /** Returns `value` and `watch` over the settings `owner` declared (§48b). */
   const reading = (owner: string): Pick<SettingsRegistry<"core">, "value" | "watch"> => ({
     value: async (id) => declared(owner, id).get(),
     async *watch(id) {
@@ -166,7 +185,7 @@ export function createRegistrySet(input: {
   return set;
 }
 
-/** Returns an empty registry: `add(item)` keeps a static item under `key(item, owner)` and returns `handle(item, owner)` joined with its disposer (the disposer alone without `handle`); `add(derive)` keeps a derivation and returns its disposer; every add and disposer calls `onChange`. With `overrides`, a static item from another owner under a taken key replaces it without a collision. Nothing shows in `list` until `materialize`. */
+/** Returns an empty registry keyed by `key(item, owner)`; an add returns `handle(item, owner)` joined with its disposer. With `overrides`, another owner's item under a taken key replaces it without a collision. Nothing shows in `list` until `materialize`. */
 export function createRegistry<T, Handle = Disposer>(input: {
   key(item: T, owner: string): string;
   handle?(item: T, owner: string): Handle;
@@ -282,7 +301,7 @@ export function createRegistry<T, Handle = Disposer>(input: {
   };
 }
 
-/** Returns the draft one derivation edits: what it sets is its own, what it wraps keeps its owner. */
+/** Returns the draft one derivation edits: what it sets is its own. */
 function draftOf<T>(draft: Map<string, Entry<T>>, owner: string): RegistryDraft<T> {
   return {
     set(id, item) {
@@ -301,7 +320,213 @@ function draftOf<T>(draft: Map<string, Entry<T>>, owner: string): RegistryDraft<
   };
 }
 
-/** Returns whether an add is a derivation: every contribution item is a plain object, so a function is one. */
+/** Returns whether an add is a derivation: contribution items are plain objects. */
 function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
   return typeof value === "function";
+}
+
+const schemas = new WeakMap<
+  object,
+  { readonly input?: JsonSchema; readonly output?: JsonSchema }
+>();
+
+/** Returns what a session's plugins contributed, from its materialised registries, each item with its owner; commands are named `<owner>/<name>` (§35d). An item whose schema has no JSON Schema is left out. */
+export async function sessionCatalog(
+  kernel: Kernel,
+  session: SessionId,
+): Promise<SessionCatalogView> {
+  const runtime = kernel.pluginsFor(session);
+  const { registries } = runtime;
+
+  return {
+    commands: registries.commands.entries().flatMap(({ item, owner }): readonly CommandInfo[] => {
+      const args = item.arguments === undefined ? null : converted(item.arguments, "input");
+
+      if (args === undefined) return [];
+
+      return [
+        {
+          name: `${owner}/${item.name}`,
+          owner,
+          side: "core",
+          title: item.title,
+          description: item.description,
+          arguments: args,
+          category: item.category,
+          keywords: item.keywords,
+        },
+      ];
+    }),
+    settings: await settingInfos(kernel, session),
+    skills: registries.skills.entries().map(({ item, owner }) => ({
+      name: item.name,
+      owner,
+      description: item.description,
+      location: item.location,
+    })),
+    agents: registries.agents.entries().map(({ item, owner }) => ({
+      id: item.id,
+      owner,
+      description: item.description ?? null,
+      model: item.model ?? null,
+      mode: item.mode ?? "all",
+    })),
+    tools: toolSource(kernel, runtime, null).list(),
+  };
+}
+
+/** Computes the session's catalog and, when it changed, sets it with `kernel.setCatalog` and bumps the catalog generation. One session's publishes run one after another. */
+export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void> {
+  const queues = pluginState(kernel).publishing;
+
+  const next = (queues.get(session) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const catalog = await sessionCatalog(kernel, session);
+
+      if (JSON.stringify(catalog) === JSON.stringify(kernel.catalog(session))) return;
+      kernel.setCatalog(session, catalog);
+      bumpGeneration(kernel);
+    });
+
+  queues.set(session, next);
+
+  void next
+    .finally(() => {
+      if (queues.get(session) === next) queues.delete(session);
+    })
+    .catch(() => undefined);
+
+  return next;
+}
+
+/** Moves `HostView.catalog` to a fresh generation and returns it. */
+export function bumpGeneration(kernel: Kernel): CatalogGeneration {
+  const generation = asId<"catalog-generation">(crypto.randomUUID());
+  kernel.host.update({ catalog: generation });
+
+  return generation;
+}
+
+/** Returns a runtime's tools for one run: `get` resolves any tool with its owner, `list` answers `ToolInfo`s, and `activate` lists deferred tools as `model` for this run alone until `endRun` drops them (§35f). */
+export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | null): ToolSource {
+  const registry = runtime.registries.tools;
+
+  return {
+    get(name) {
+      const found = registry.entries().find((entry) => entry.item.name === name);
+
+      return found === undefined ? undefined : { definition: found.item, owner: found.owner };
+    },
+    list() {
+      const active = run === null ? undefined : pluginState(kernel).activated.get(run);
+
+      return registry.entries().flatMap(({ item, owner }) => {
+        const parameters = converted(item.parameters, "input");
+        const output = item.output === undefined ? null : converted(item.output, "output");
+
+        if (parameters === undefined || output === undefined) return [];
+        const exposure = item.exposure ?? "model";
+
+        return [
+          {
+            name: item.name,
+            owner,
+            namespace: item.namespace ?? null,
+            description: item.description,
+            parameters,
+            output,
+            exposure:
+              exposure === "deferred" && active?.has(item.name) === true ? "model" : exposure,
+          },
+        ];
+      });
+    },
+    async activate(names) {
+      if (run === null) return;
+      const runs = pluginState(kernel).activated;
+      runs.set(run, new Set([...(runs.get(run) ?? []), ...names]));
+    },
+  };
+}
+
+/** Forgets the deferred tools a run activated (§35f). */
+export function dropActivations(kernel: Kernel, run: RunId): void {
+  pluginState(kernel).activated.delete(run);
+}
+
+/** Returns a schema's JSON Schema in one direction, cached per schema object: `input` for what a caller sends, `output` for what is shown. Throws what the schema throws, or `invalid` when the result is not a JSON object; preflight calls it, so a throw is a load-time issue. */
+export function jsonSchemaOf(schema: Schema<unknown>, direction: "input" | "output"): JsonSchema {
+  const cached = schemas.get(schema) ?? {};
+  const known = cached[direction];
+
+  if (known !== undefined) return known;
+  const result = schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" });
+
+  if (!isJson(result) || !isJsonObject(result))
+    throw new SdkError("invalid", `The schema's ${direction} JSON Schema is not a JSON object.`);
+
+  schemas.set(
+    schema,
+    direction === "input" ? { ...cached, input: result } : { ...cached, output: result },
+  );
+
+  return result;
+}
+
+/** Returns a schema's JSON Schema, or undefined when it has none. */
+function converted(schema: Schema<unknown>, direction: "input" | "output"): JsonSchema | undefined {
+  try {
+    return jsonSchemaOf(schema, direction);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Runs a core command by its `<owner>/<name>`, or its bare name when exactly one command has it (§35d), validating `args` against `arguments`. A string answers `ran`; a `{ prompt }` is sent to the main head through `sendNow`, the caller having awaited the activation (§44b), and answers `sent`; a throw answers `failed`. */
+export async function runCommand(
+  kernel: Kernel,
+  session: SessionId,
+  name: string,
+  args: Json | undefined,
+): Promise<CommandOutcome> {
+  const runtime = kernel.pluginsFor(session);
+  const entries = runtime.registries.commands.entries();
+  const qualified = entries.filter((entry) => `${entry.owner}/${entry.item.name}` === name);
+  const bare = entries.filter((entry) => entry.item.name === name);
+  const [found] = qualified.length === 1 ? qualified : bare.length === 1 ? bare : [];
+  const api = found === undefined ? undefined : runtime.api(found.owner);
+
+  if (found === undefined || api === undefined) return { kind: "unknown" };
+  const { item: command, owner } = found;
+  let input: unknown = args;
+
+  if (command.arguments !== undefined) {
+    const checked = await check(command.arguments, args);
+
+    if (checked.kind === "invalid") return { kind: "invalid", issues: checked.issues };
+    input = checked.value;
+  }
+
+  try {
+    const result = await command.run(input, { signal: api.signal, api });
+
+    if (typeof result === "string") return { kind: "ran", output: result };
+
+    if (result === undefined) return { kind: "ran", output: null };
+
+    const receipt = await sendNow(kernel, {
+      session,
+      head: MAIN,
+      context: CORE_CONTEXT,
+      content: result.prompt,
+      options: {
+        source: { kind: "action", label: command.title, command: `${owner}/${command.name}` },
+      },
+    });
+
+    return { kind: "sent", receipt: receipt.id };
+  } catch (error) {
+    return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+  }
 }

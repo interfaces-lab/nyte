@@ -1,9 +1,13 @@
+import { standard } from "@nyte-ai/schema";
 import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { filesOf, readWorkspace } from "./environment.ts";
 import type { Resources } from "./environment.ts";
-import { readWorkspace } from "./environment-registry.ts";
+import { SdkError } from "./error.ts";
 import type { FilesApi } from "./files.ts";
 import type { Kernel } from "./kernel.ts";
-import { readKv } from "./plugin-storage.ts";
+import type { Plugin, PluginApi } from "./plugin.ts";
+import { readKv } from "./plugin-runtime.ts";
 import { kvRef } from "./refs.ts";
 import { requireSession } from "./session-state.ts";
 
@@ -13,30 +17,22 @@ type Prompt = Resources["prompts"][number];
 
 type ContextFile = Resources["contextFiles"][number];
 
-/** Returns one session's scan and the workspace it was scanned for. */
-type Cached = { readonly workspace: WorkspaceId; readonly resources: Promise<Resources> };
-
 const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"];
 
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
-const caches = new WeakMap<Kernel, Map<SessionId, Cached>>();
-
-const homes = new WeakMap<Kernel, Promise<FilesApi | null>>();
-
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Resolves what core scanned for a session (baseline §4c-bis), through `FilesApi` only, scanned once and cached until `invalidateResources` drops its workspace or the session moves to another. `user` is the files of the `"local"` provider attached once per kernel at `kernel.home` (decision 9, §37d), so `.nyte/…` and `.agents/skills/…` are paths under it; null without a home or a `"local"` provider, and then no user or path source is read. `project` is the session's environment files (`kernel.env`), rooted at the workspace, when its workspace has `projectResources`; otherwise null and every project and ancestor source is hidden. Skills: each `<dir>/<name>/SKILL.md` under `.nyte/skills` and `.agents/skills` of project and user, plus each path of the host setting `skills.paths` (a directory scanned the same way, or one `.md`; `~/` is the home), read through `user`, named and described by the file's frontmatter `name` and `description` (the directory or file name when `name` is absent), `location` the path as read through its scope's files; one per name, project over user over path, sorted by name; each dropped duplicate is a warning `resourceIssues` returns, also reported on the `resources` plugin's row when that plugin is active in the session at scan time. Context files, in prompt order: `.nyte/AGENTS.md` of user; then from `/` down to the workspace root's parent, the first of `AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md` per directory, read by absolute path through the workspace's own files, never the host's (ancestor; none when those files reject a path outside their root, §37g); then the same in the workspace root (project); each `path` absolute where the root is known. Prompt: `SYSTEM.md` and `APPEND_SYSTEM.md` from `.nyte`, each the project's file over the user's, `scope` project when either came from the project, user when either came from the user, else null. Prompts: each `.md` directly under `.nyte/prompts`, named by its file name without `.md`, project over user, sorted by name. What `kernel.resources(session)` resolves; throws `unknown` when the session is gone. */
+/** Resolves what core scanned for a session (§4c-bis, §37d, §37g) through `FilesApi` only, cached until `invalidateResources` drops its workspace or the session moves. A failure to attach the session's environment or the home's rejects, never answering "no resources" (D 13). */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const workspace = (await requireSession(kernel, session)).record.workspace;
-  const table = caches.get(kernel) ?? new Map<SessionId, Cached>();
-  caches.set(kernel, table);
+  const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
   if (cached !== undefined && cached.workspace === workspace) return cached.resources;
-  const entry: Cached = { workspace, resources: scan(kernel, session, workspace) };
+  const entry = { workspace, resources: scan(kernel, session, workspace) };
   table.set(session, entry);
 
   entry.resources.catch(() => {
@@ -46,18 +42,95 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   return entry.resources;
 }
 
-/** Drops the cached resources of every session on a workspace, so the next `scanResources` reads again: what `Workspace.update`, `reload` and `forget` do. */
+/** Drops the cached resources of every session on a workspace. */
 export function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {
-  const table = caches.get(kernel);
-
-  if (table === undefined) return;
+  const table = kernel.workspaceState.scans;
 
   for (const [session, cached] of table) if (cached.workspace === workspace) table.delete(session);
 }
 
-/** Returns the warnings a scan found: one per skill dropped as a duplicate name. The `resources` plugin reports them at activation. */
+/** Returns a scan's warnings: one per skill dropped as a duplicate name. */
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
   return scanIssues.get(resources) ?? [];
+}
+
+/** Contributes what core scanned for a session (decision 13): the `project-context` and `skills` prompt sections, the skills themselves, the scan's duplicate-skill warnings, and the host setting `skills.paths`. A session with no scan here (inactive) contributes only the setting. */
+export const resourcesPlugin: Plugin<"core"> = {
+  id: "resources",
+  contribute: {
+    settings: [
+      {
+        id: "skills.paths",
+        label: "Skill paths",
+        schema: standard(Type.Array(Type.String())),
+        default: [],
+        scope: "host",
+      },
+    ],
+  },
+  activate(api) {
+    const inputs = inputsOf(api);
+
+    if (inputs === null) return;
+
+    for (const issue of resourceIssues(inputs)) api.report(issue);
+
+    if (inputs.contextFiles.length > 0)
+      api.contribute.prompt.add({
+        id: "project-context",
+        order: 10,
+        text: [
+          "Instructions from the user and the project, in order; later files are more specific:",
+          ...inputs.contextFiles.map((file) => `# ${file.path}\n\n${file.content.trim()}`),
+        ].join("\n\n"),
+      });
+
+    if (inputs.skills.length > 0)
+      api.contribute.prompt.add({
+        id: "skills",
+        order: 90,
+        text: [
+          "Skills: read a skill's file when its description matches the task.",
+          ...inputs.skills.map(
+            (skill) =>
+              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.scope === "user" ? `~/${skill.location}` : skill.location})`,
+          ),
+        ].join("\n"),
+      });
+
+    api.contribute.skills.add((draft) => {
+      for (const skill of inputs.skills)
+        draft.set(skill.name, {
+          name: skill.name,
+          description: skill.description,
+          location: skill.location,
+          load: () => loadSkill(inputs, skill),
+        });
+    });
+  },
+};
+
+/** Returns the plugin's scanned resources, or null when the session is not attached here. */
+function inputsOf(api: PluginApi<"core">): Resources | null {
+  try {
+    return api.inputs;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads a skill's file through the files of its scope. */
+async function loadSkill(inputs: Resources, skill: Resources["skills"][number]): Promise<string> {
+  const files = skill.scope === "project" ? inputs.project : inputs.user;
+
+  if (files === null)
+    throw new SdkError("unavailable", `The ${skill.scope} files of skill ${skill.name} are gone.`);
+  const document = await files.read(skill.location);
+
+  if (document.kind !== "text")
+    throw new SdkError("unknown", `Skill ${skill.name} has no text at ${skill.location}.`);
+
+  return document.contents;
 }
 
 async function scan(
@@ -69,7 +142,10 @@ async function scan(
   const user = await userFiles(kernel);
 
   const env =
-    record?.projectResources === true ? await kernel.env(session).catch(() => null) : null;
+    record?.projectResources === true &&
+    filesOf(kernel.environments.provider(record.target.kind)) === "available"
+      ? await kernel.env(session)
+      : null;
 
   const project = env?.files ?? null;
   const root = env !== null && env.cwd.startsWith("/") ? env.cwd : null;
@@ -150,26 +226,21 @@ async function scan(
   return resources;
 }
 
-/** Resolves the host home's files through the `"local"` provider, attached once per kernel; null without a home, a `"local"` provider, or when it does not attach (and then tried again next time). */
+/** Resolves the host home's files through the `"local"` provider, attached once per kernel; null without a home or a `"local"` provider. */
 function userFiles(kernel: Kernel): Promise<FilesApi | null> {
-  const known = homes.get(kernel);
+  const state = kernel.workspaceState;
 
-  if (known !== undefined) return known;
+  if (state.home !== null) return state.home;
   const home = kernel.home;
   const local = home === null ? undefined : kernel.environments.provider("local");
 
   if (home === null || local === undefined) return Promise.resolve(null);
+  const attached = local.attach({ kind: "local", path: home }).then((env) => env.files);
+  state.home = attached;
 
-  const attached = local.attach({ kind: "local", path: home }).then(
-    (env) => env.files,
-    () => {
-      if (homes.get(kernel) === attached) homes.delete(kernel);
-
-      return null;
-    },
-  );
-
-  homes.set(kernel, attached);
+  attached.catch(() => {
+    if (state.home === attached) state.home = null;
+  });
 
   return attached;
 }
@@ -253,7 +324,7 @@ function skillOf(
   };
 }
 
-/** Returns the ancestor context files of a workspace root, root first: per directory from `/` to the root's parent, the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md`, read by absolute path through the workspace's own files (§37g). None at all when those files reject a path (a sandbox confined to its root). */
+/** Returns the ancestor context files of a workspace root, root first, read through the workspace's own files; none when those files reject a path (§37g). */
 async function ancestorFiles(files: FilesApi, root: string): Promise<readonly ContextFile[]> {
   const found: ContextFile[] = [];
 
@@ -276,7 +347,7 @@ async function ancestorFiles(files: FilesApi, root: string): Promise<readonly Co
   return found;
 }
 
-/** Returns the first context file among `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` at the paths `at` gives, with that path. */
+/** Returns the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` at the paths `at` gives. */
 async function firstContext(
   files: FilesApi,
   at: (name: string) => string,
@@ -291,7 +362,7 @@ async function firstContext(
   return null;
 }
 
-/** Returns the names of a directory's direct children of one kind, as its scan reports them; none when it cannot be scanned. */
+/** Returns the names of a directory's direct children of one kind. */
 async function childrenOf(
   files: FilesApi,
   directory: string,
@@ -299,34 +370,26 @@ async function childrenOf(
 ): Promise<readonly string[]> {
   const names = new Set<string>();
 
-  try {
-    for await (const frame of files.scan({ directory })) {
-      if (frame.kind !== "entries") continue;
+  for await (const frame of files.scan({ directory })) {
+    if (frame.kind !== "entries") continue;
 
-      for (const entry of frame.entries) {
-        const relative = entry.path.startsWith(`${directory}/`)
-          ? entry.path.slice(directory.length + 1)
-          : entry.path;
+    for (const entry of frame.entries) {
+      const relative = entry.path.startsWith(`${directory}/`)
+        ? entry.path.slice(directory.length + 1)
+        : entry.path;
 
-        if (entry.kind === kind && relative !== "" && !relative.includes("/")) names.add(relative);
-      }
+      if (entry.kind === kind && relative !== "" && !relative.includes("/")) names.add(relative);
     }
-  } catch {
-    return [];
   }
 
   return [...names].sort();
 }
 
-/** Returns a file's text, or null when it is missing, not text, or unreadable. */
+/** Returns a file's text, or null when it is missing or not text; a failed read rejects (D 13). */
 async function readText(files: FilesApi, path: string): Promise<string | null> {
-  try {
-    const document = await files.read(path);
+  const document = await files.read(path);
 
-    return document.kind === "text" ? document.contents : null;
-  } catch {
-    return null;
-  }
+  return document.kind === "text" ? document.contents : null;
 }
 
 /** Returns the `key: value` lines of a leading `---` block, values unquoted. */
@@ -346,7 +409,7 @@ function frontmatter(content: string): ReadonlyMap<string, string> {
   return fields;
 }
 
-/** Returns one item per name, the first of each in priority order, sorted by name, and each later one dropped with the item it lost to. */
+/** Returns the first item per name, sorted by name, and each later one with the item it lost to. */
 function byName<T extends { readonly name: string }>(
   items: readonly T[],
 ): {

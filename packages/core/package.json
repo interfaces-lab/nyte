@@ -22,7 +22,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build core"
   },
@@ -34,7 +34,7 @@
   "devDependencies": {
     "@cfworker/json-schema": "4.1.1",
     "@types/node": "^26.6.3",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   },
   "engines": {

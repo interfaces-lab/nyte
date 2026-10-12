@@ -5,6 +5,7 @@ import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
 import type {
   Authority,
+  ByteReader,
   FileVersion,
   JobEnd,
   OutputFrame,
@@ -12,7 +13,7 @@ import type {
   PrincipalId,
 } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model, TextContent } from "@nyte-ai/schema/model";
-import { composeHost, createConnection, memoryStore } from "@nyte-ai/core";
+import { SdkError, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
 import type {
   BrowserApi,
   EnvironmentProvider,
@@ -114,6 +115,7 @@ export function localProvider(
   return {
     kind: "local",
     browser: () => fakeBrowser(pages),
+    snapshots: () => undefined,
     inspect: async (target) => ({
       identity: asId(`local:${"path" in target ? String(target.path) : "?"}`),
       availability: { kind: "available" },
@@ -252,7 +254,7 @@ export async function served(
       if (authorization === "Pairing 123-456")
         return { ...guest, headers: { "X-Nyte-Credential": "device-token" } };
 
-      return new Response(null, { status: 401 });
+      throw new SdkError("unauthenticated", "The request is not authorized.");
     },
   });
 
@@ -475,4 +477,25 @@ async function refuse(): Promise<never> {
 
 function refuseStream(): AsyncIterable<never> {
   return { [Symbol.asyncIterator]: () => ({ next: refuse }) };
+}
+
+/** Returns a reader that yields byte 7 and then waits until it is closed, counting its closes. */
+export function endless(): ByteReader & { closes(): number } {
+  let closes = 0;
+  const closed = Promise.withResolvers<void>();
+
+  return {
+    size: null,
+    mime: null,
+    async *chunks() {
+      yield Uint8Array.of(7);
+      await closed.promise;
+    },
+    close: async () => {
+      closes += 1;
+      closed.resolve();
+    },
+    closes: () => closes,
+    [Symbol.asyncDispose]: async () => undefined,
+  };
 }

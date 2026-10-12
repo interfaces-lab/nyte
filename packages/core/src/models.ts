@@ -1,32 +1,37 @@
-import { getSupportedThinkingLevels } from "@nyte-ai/ai/models";
 import type { AuthEvent, AuthInteraction, AuthPrompt, Models, Provider } from "@nyte-ai/ai";
+import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai/models";
 import type {
+  Configuration,
+  ConfigurationPatch,
+  ConfigureOutcome,
+  Json,
   LoginMethod,
   ModelCatalogView,
   ModelInfo,
   ModelRef,
+  Thinking,
+  ValidationIssue,
 } from "@nyte-ai/schema";
 import type { Api, Model } from "@nyte-ai/schema/model";
-import { bumpGeneration } from "./catalog.ts";
 import type { Login, ModelsApi } from "./connection.ts";
+import { objectId } from "./content.ts";
 import { SdkError } from "./error.ts";
-import type { Kernel } from "./kernel.ts";
+import { check } from "./json-schema.ts";
+import type { ConfigurationResolver, Kernel } from "./kernel.ts";
+import { pluginState, readKv } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
-import type { ModelContextPolicy } from "./plugin.ts";
-import { decodeKvValue } from "./records.ts";
+import type { Agent, ModelContextPolicy, SettingDefinition } from "./plugin.ts";
 import { kvRef } from "./refs.ts";
+import { bumpGeneration, jsonSchemaOf } from "./registry.ts";
 import { commit, isJsonObject, put } from "./session-state.ts";
 
-/** Returns one step a login yields. */
 type LoginStep = Login["steps"] extends () => AsyncIterable<infer Step> ? Step : never;
 
-/** Returns a provider row of the catalog. */
 type ProviderRow = ModelCatalogView["providers"][number];
 
-/** Returns what `verify` last proved about a provider's credential, kept per kernel. */
 type Verdict = "verified" | "failed";
 
-/** Returns the prompt a login is waiting on: what `answer` resolves it with, and the option ids a `choose` step accepts (null for `paste`). */
+/** The prompt a login waits on, with the option ids a `choose` step accepts (null for `paste`). */
 interface Pending {
   readonly options: readonly string[] | null;
   resolve(value: string): void;
@@ -34,12 +39,10 @@ interface Pending {
 
 const DEFAULT_MODEL = kvRef("host", "models", "default");
 
-const verdicts = new WeakMap<Kernel, Map<string, Verdict>>();
-
-/** Returns the host's models api over `@nyte-ai/ai`'s `Models`: what `kernel.models` holds and every connection's `models` checks authority over. `list` is `modelCatalog`. `refresh(provider?)` runs `models.refresh({ providers })` for one provider or all, throws `SdkError("unavailable")` naming each provider whose refresh failed, and bumps the catalog generation (`bumpGeneration`). `setDefault(ref)` answers `unknown-model` when `models.getModel(ref.provider, ref.id)` has no such model, else stores the ref as a `kv` envelope at `kvRef("host", "models", "default")`, bumps the generation and answers `set`. `verify(provider)` runs `models.verifyAuth(provider)` and caches the verdict per kernel for the catalog's `credential`: `ok` and `verified` → `verified`, cached; `ok` without a provider check (`verified: false`) → `unverified` (§38d), caching nothing, so the catalog keeps `configured`; not `ok` → `failed { reason: message }`, cached `failed` unless the reason is `unconfigured`; it bumps the generation when the cached state changed. `login(input)` is `createLogin`. `logout(provider)` runs `models.logout(provider)`, drops the cached verdict and bumps the generation. */
+/** Returns the host's models api over `@nyte-ai/ai`'s `Models`. `verify` caches a proven verdict per kernel for the catalog's `credential` (an unverified `ok` caches nothing, §38d); `refresh`, `setDefault`, `verify`, `login` and `logout` bump the catalog generation when what the catalog shows moved. `refresh` throws `unavailable` naming each provider that failed. */
 export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
   const remember = (provider: string, verdict: Verdict): void => {
-    const known = verdictsOf(kernel);
+    const known = pluginState(kernel).verdicts;
 
     if (known.get(provider) === verdict) return;
     known.set(provider, verdict);
@@ -102,17 +105,17 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
     login: (input) => createLogin(kernel, models, input),
     async logout(provider) {
       await models.logout(provider);
-      verdictsOf(kernel).delete(provider);
+      pluginState(kernel).verdicts.delete(provider);
       bumpGeneration(kernel);
     },
   };
 }
 
-/** Projects `Models` as the host's catalog. `generation` is `kernel.host.current().catalog`; `default` is `defaultModel`. One provider row per `models.getProviders()` entry, in that order: `id` and `name` from the provider; `credential` from `models.checkAuth(id)` (undefined → `missing`, a rejection → `failed`) refined by the per-kernel verdict `verify` cached (`verified` or `failed`, else `configured`); `methods` from the provider's auth (`{ kind: "key" }` when `auth.apiKey.login` exists, `{ kind: "oauth" }` when `auth.oauth` exists; a device-code flow is an oauth login whose `open` step carries a code, §38a); `limits` from `models.getAccountLimits(id)` (`limitsOf`), one per window with `label` its id, `used` its `usedPercent`, `limit` 100 and `resetsAt` its reset time or null when the provider gave none (§38c), empty before any request, and moving `generation` whenever a request changes them (`withLimits`); `models` the provider's base models (`models.getModels(id)` without a `variant`), each through the same projection as `modelInfo`, with the `ModelContextPolicy` overrides of the static `contribute.modelContext` of `kernel.builtins` then `kernel.hostPlugins` (a later entry for a ref wins). */
+/** Projects `Models` as the host's catalog: one row per provider, its credential refined by the cached verdict, its login methods, account limits (§38c) and base models. Models are projected as `modelInfo` does under the static `ModelContextPolicy` contributions of the built-ins and host plugins. */
 export async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
-  const cached = verdictsOf(kernel);
+  const cached = pluginState(kernel).verdicts;
 
   const [preferred, providers] = await Promise.all([
     defaultModel(kernel, models),
@@ -134,7 +137,7 @@ export async function modelCatalog(kernel: Kernel, models: Models): Promise<Mode
   return { generation, default: preferred, providers };
 }
 
-/** Returns one catalog model as `ModelInfo`, or null when `models.getModel(ref.provider, ref.id)` has none; a fast sibling (`<id>-fast`, a `variant` of mode `fast`) resolves to its own row. `name`, `reasoning`, `input` and `cost` (the base rates; tiers are priced at settlement) come from the model; `maxOutput` is `maxTokens`; `thinking` is `getSupportedThinkingLevels(model)` from `@nyte-ai/ai/models` (§38i; `["off"]` when the model does not reason, else every level its `thinkingLevelMap` does not mark null, `xhigh` and `max` only when mapped), `"off"` first; `fast` is the sibling `models.getModels(provider)` lists with `variant: { mode: "fast", base: id }`, else null; `contextWindow` and `compactAt` are the model's window and 80 % of it unless a `ModelContextPolicy` names the ref: the `modelContext` registry of `runtime` when given, else the host's static ones as `modelCatalog` folds them. */
+/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels` (§38i), `fast` its fast sibling, and `compactAt` 80 % of the window. A `ModelContextPolicy` from `runtime`'s registry, else the host's static ones, overrides the window and threshold. */
 export async function modelInfo(
   kernel: Kernel,
   models: Models,
@@ -155,7 +158,7 @@ export async function modelInfo(
   return projectModel(models, model, policy);
 }
 
-/** Returns one login attempt. Nothing runs until `steps()` is iterated; then `models.login(provider, type, interaction)` starts, `type` being `"api_key"` for `key` and `"oauth"` for `oauth`, under an `AbortController` the iterator's `return()` aborts (the attempt is cancelled; a saved credential is never removed). The `AuthInteraction` yields steps in order (§38b): `auth_url` → `open { url }`; `device_code` → `open { url: verificationUri, code: userCode }` (a device-code flow, §38a); `progress` and `info` → `waiting`; a `text`, `secret` or `manual_code` prompt → `paste { message, secret }`, `secret` true for a `secret` prompt; a `select` prompt → `choose { message, options }` with each option's `id` and `label`. A prompt resolves with the next `answer(value)` and rejects when the attempt is cancelled or the prompt's own `signal` aborts (the step is then stale; the flow goes on). The flow resolving yields `done`, drops the cached verdict and bumps the catalog generation; rejecting yields `failed { reason }` with the error's message. `answer` throws `SdkError("invalid")` with no prompt pending, or after a `choose` with an id not among its options. */
+/** Returns one login attempt: iterating `steps()` starts `models.login` and yields its events and prompts as steps (§38a, §38b); the iterator's `return()` cancels it. `answer` resolves the pending prompt and throws `invalid` when none is pending or a `choose` gets an unknown id. A finished login drops the cached verdict and bumps the catalog generation. */
 export function createLogin(
   kernel: Kernel,
   models: Models,
@@ -213,7 +216,7 @@ export function createLogin(
       .login(input.provider, input.method.kind === "key" ? "api_key" : "oauth", interaction)
       .then(
         () => {
-          verdictsOf(kernel).delete(input.provider);
+          pluginState(kernel).verdicts.delete(input.provider);
           bumpGeneration(kernel);
           push({ kind: "done" });
         },
@@ -257,7 +260,7 @@ export function createLogin(
   };
 }
 
-/** Sends one provider request through `send` and bumps the catalog generation (`bumpGeneration`) when the provider's account limits as the catalog shows them (`limitsOf`) differ after it, whether it resolved or threw; a response that observed the same windows again moves nothing. Every request core sends to a provider goes through it: the turn's, `request`'s, and compaction's and summaries'. */
+/** Sends one provider request and bumps the catalog generation when the provider's account limits changed, whether it resolved or threw. Every request core sends to a provider goes through it. */
 export async function withLimits<T>(
   kernel: Kernel,
   models: Models,
@@ -273,13 +276,9 @@ export async function withLimits<T>(
   }
 }
 
-/** Returns the model `sessions.create` uses when nothing is chosen: the ref stored at `kvRef("host", "models", "default")` while the catalog still has it; else the first base model of the first provider in `models.getProviders()` order whose `checkAuth` is configured; null when no provider is configured. */
+/** Returns the model used when nothing is chosen: the stored default while the catalog has it, else the first base model of the first configured provider; null when none is configured. */
 export async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | null> {
-  const ref = await kernel.store.refs.get(DEFAULT_MODEL);
-
-  const stored = ref?.target
-    ? decodeKvValue(await kernel.store.objects.get(ref.target))
-    : undefined;
+  const stored = await readKv(kernel, DEFAULT_MODEL);
 
   if (
     isJsonObject(stored) &&
@@ -299,7 +298,6 @@ export async function defaultModel(kernel: Kernel, models: Models): Promise<Mode
   return null;
 }
 
-/** Returns a catalog model as `ModelInfo` under an optional context policy. */
 function projectModel(
   models: Models,
   model: Model<Api>,
@@ -328,7 +326,7 @@ function projectModel(
   };
 }
 
-/** Returns the static `ModelContextPolicy` contributions of the built-ins then the host plugins by `<provider>/<id>`, a later entry winning. */
+/** Returns the static `ModelContextPolicy` contributions by `<provider>/<id>`, a later entry winning. */
 function staticPolicies(kernel: Kernel): ReadonlyMap<string, ModelContextPolicy> {
   const policies = new Map<string, ModelContextPolicy>();
 
@@ -339,7 +337,7 @@ function staticPolicies(kernel: Kernel): ReadonlyMap<string, ModelContextPolicy>
   return policies;
 }
 
-/** Returns a provider's credential state: `missing` without auth, `failed` when the check rejects, else what `verify` cached, else `configured`. */
+/** Returns a provider's credential state: `missing`, `failed` when the check rejects, else the cached verdict or `configured`. */
 async function credentialOf(
   models: Models,
   provider: string,
@@ -352,7 +350,6 @@ async function credentialOf(
   }
 }
 
-/** Returns how a provider's credential can be obtained. */
 function methodsOf(provider: Provider): readonly LoginMethod[] {
   const methods: LoginMethod[] = [];
 
@@ -363,7 +360,7 @@ function methodsOf(provider: Provider): readonly LoginMethod[] {
   return methods;
 }
 
-/** Returns a provider's account limits as its catalog row shows them: one per window of `models.getAccountLimits(provider)`, `label` its id, `used` its `usedPercent`, `limit` 100, `resetsAt` its reset time or null (§38c); empty before any request. */
+/** Returns a provider's account limits as its catalog row shows them (§38c). */
 function limitsOf(models: Models, provider: string): ProviderRow["limits"] {
   return (models.getAccountLimits(provider)?.windows ?? []).map((window) => ({
     label: window.id,
@@ -373,7 +370,6 @@ function limitsOf(models: Models, provider: string): ProviderRow["limits"] {
   }));
 }
 
-/** Returns the step a login event shows. */
 function stepOf(event: AuthEvent): LoginStep {
   switch (event.type) {
     case "auth_url":
@@ -386,7 +382,6 @@ function stepOf(event: AuthEvent): LoginStep {
   }
 }
 
-/** Returns the step a login prompt shows. */
 function promptStep(prompt: AuthPrompt): LoginStep {
   if (prompt.type === "select")
     return {
@@ -398,20 +393,169 @@ function promptStep(prompt: AuthPrompt): LoginStep {
   return { kind: "paste", message: prompt.message, secret: prompt.type === "secret" };
 }
 
-/** Returns `<provider>/<id>`: how policies are keyed. */
 function keyOf(ref: Pick<ModelRef, "provider" | "id">): string {
   return `${ref.provider}/${ref.id}`;
 }
 
-/** Returns the kernel's cached verdicts, created on first use. */
-function verdictsOf(kernel: Kernel): Map<string, Verdict> {
-  const known = verdicts.get(kernel) ?? new Map<string, Verdict>();
-  verdicts.set(kernel, known);
-
-  return known;
-}
-
-/** Returns an error's message, or the thrown value as text. */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** What a configuration resolves against: the agents and setting definitions a session's plugins contribute. */
+export type Contributions = {
+  readonly agents: readonly Agent[];
+  readonly settings: readonly SettingDefinition[];
+};
+
+type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
+
+/** Returns the configuration resolver (`kernel.resolveConfiguration`). An exact `Configuration` is checked, never re-resolved: its model, its agent and its `settingsVersion` must still hold. A patch resolves field by field over `selected`: agent, then model (patch, selected, the agent's pin, `defaultModel`), thinking (the model's default, or a kept level clamped by ai's `clampThinkingLevel`), and settings merged per key and checked against the session-scope definitions. */
+export function createConfigurationResolver(kernel: Kernel, models: Models): ConfigurationResolver {
+  return async ({ selected, patch, contributions }) => {
+    const version = await settingsVersion(contributions.settings);
+    const { agents } = contributions;
+
+    if (patch !== null && "kind" in patch) {
+      if (models.getModel(patch.model.provider, patch.model.id) === undefined)
+        return { kind: "unknown-model", model: patch.model };
+
+      if (patch.agent !== null && !agents.some((agent) => agent.id === patch.agent))
+        return { kind: "unknown-agent", agent: patch.agent };
+
+      if (patch.settingsVersion !== version)
+        return invalid([
+          issue(["settingsVersion"], "The host's session settings changed since it was resolved."),
+        ]);
+
+      return patch;
+    }
+
+    return resolvePatch(kernel, models, {
+      selected,
+      patch: patch ?? {},
+      version,
+      contributions,
+    });
+  };
+}
+
+/** Returns the version of a session's setting schemas: `objectId` of the session-scope definitions' `{ id, schema }` sorted by id. */
+export function settingsVersion(settings: readonly SettingDefinition[]): Promise<string> {
+  const schemas = sessionScoped(settings)
+    .flatMap((definition) => {
+      try {
+        return [{ id: definition.id, schema: jsonSchemaOf(definition.schema, "output") }];
+      } catch {
+        return [];
+      }
+    })
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+
+  return objectId(schemas);
+}
+
+async function resolvePatch(
+  kernel: Kernel,
+  models: Models,
+  input: {
+    readonly selected: Configuration | null;
+    readonly patch: ConfigurationPatch;
+    readonly version: string;
+    readonly contributions: Contributions;
+  },
+): Promise<Configuration | Refusal> {
+  const { selected, patch } = input;
+  const agent = patch.agent === undefined ? (selected?.agent ?? null) : patch.agent;
+  const pinned =
+    agent === null ? undefined : input.contributions.agents.find((entry) => entry.id === agent);
+
+  if (agent !== null && pinned === undefined) return { kind: "unknown-agent", agent };
+
+  const ref =
+    patch.model ?? selected?.model ?? pinned?.model ?? (await defaultModel(kernel, models));
+
+  if (ref === null)
+    return invalid([issue(["model"], "No model was chosen and no provider is configured.")]);
+  const model = models.getModel(ref.provider, ref.id);
+
+  if (model === undefined) return { kind: "unknown-model", model: ref };
+  const issues: ValidationIssue[] = [];
+  const thinking = thinkingOf(model, patch.thinking, selected?.thinking);
+
+  if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
+  const settings: Record<string, Json> = { ...selected?.settings, ...patch.settings };
+  const definitions = sessionScoped(input.contributions.settings);
+
+  for (const [id, value] of Object.entries(settings)) {
+    const definition = definitions.find((entry) => entry.id === id);
+
+    if (definition === undefined) {
+      issues.push(issue(["settings", id], `No session setting is named ${id}.`));
+      continue;
+    }
+
+    const checked = await check(definition.schema, value);
+
+    if (checked.kind === "invalid")
+      issues.push(
+        ...checked.issues.map((found) => ({ ...found, path: ["settings", id, ...found.path] })),
+      );
+  }
+
+  if (thinking === null || issues.length > 0) return invalid(issues);
+
+  return {
+    kind: "exact",
+    model: ref,
+    thinking,
+    agent,
+    settings,
+    settingsVersion: input.version,
+  };
+}
+
+/** Returns the thinking level a resolution lands on, or null when the model does not accept the level given. */
+function thinkingOf(
+  model: Model<Api>,
+  given: Thinking | null | undefined,
+  kept: Thinking | undefined,
+): Thinking | null {
+  const accepted: readonly Thinking[] = [
+    "off",
+    ...getSupportedThinkingLevels(model).filter((level) => level !== "off"),
+  ];
+
+  if (given !== undefined && given !== null) return accepted.includes(given) ? given : null;
+
+  if (given === undefined && kept !== undefined)
+    return accepted.includes(kept) ? kept : clampThinkingLevel(model, kept);
+
+  return model.reasoning ? (accepted.find((level) => level !== "off") ?? "off") : "off";
+}
+
+function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {
+  return settings.filter((definition) => definition.scope === "session");
+}
+
+/** Returns a session runtime's contributions. */
+export function contributionsOf(runtime: PluginRuntime): Contributions {
+  return { agents: runtime.registries.agents.list(), settings: runtime.registries.settings.list() };
+}
+
+/** Returns the static contributions of `kernel.builtins` then `kernel.hostPlugins`, so a session's configuration resolves before it has a runtime. */
+export function staticContributions(kernel: Kernel): Contributions {
+  const plugins = [...kernel.builtins, ...kernel.hostPlugins];
+
+  return {
+    agents: plugins.flatMap((plugin) => plugin.contribute?.agents ?? []),
+    settings: plugins.flatMap((plugin) => plugin.contribute?.settings ?? []),
+  };
+}
+
+function invalid(issues: readonly ValidationIssue[]): Refusal {
+  return { kind: "invalid", issues };
+}
+
+function issue(path: readonly (string | number)[], message: string): ValidationIssue {
+  return { severity: "error", path, message };
 }

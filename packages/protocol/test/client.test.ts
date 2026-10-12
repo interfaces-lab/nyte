@@ -214,7 +214,7 @@ describe("transport", () => {
 
     expect(pairing.credential()).toBeNull();
     await pairing.invoke("sessions.list", {});
-    expect(pairing.credential()).toEqual({ kind: "token", token: "device-token" });
+    expect(pairing.credential()).toBe("device-token");
   });
 
   it("reads the answering host from X-Nyte-Host, error answers included", async () => {

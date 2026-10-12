@@ -3,7 +3,6 @@ import type {
   Configuration,
   HeadInfo,
   HeadName,
-  PartId,
   PatchEvent,
   RefUpdate,
   RunEnd,
@@ -13,32 +12,46 @@ import type {
   StopOutcome,
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
-import { dropActivations } from "./catalog.ts";
-import { deliverChildReport } from "./child-report.ts";
+import { send } from "./admission.ts";
+import { dropActivations } from "./registry.ts";
 import { SdkError } from "./error.ts";
+import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
-import { LOCAL } from "./principals.ts";
+import { CORE_CONTEXT, LOCAL } from "./principals.ts";
 import { settleReceipt } from "./receipts.ts";
-import { decodeRunRecord } from "./records.ts";
+import { decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { RunRecord, SessionRecord } from "./records.ts";
-import { partRef, runRef, sessionRef } from "./refs.ts";
+import { inboxRef, runRef, sessionRef } from "./refs.ts";
 import type { Run } from "./run.ts";
 import {
+  MAIN,
   STALE,
   attempt,
   commit,
+  expectOf,
+  isJsonObject,
   landedIn,
   load,
   put,
+  readInbox,
   readSession,
   sessionEvent,
   withFold,
 } from "./session-state.ts";
+import { failedParts } from "./transcript.ts";
 import { waitFor } from "./waits.ts";
 
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
 
-/** Starts a run on a head: mints its id, writes its `RunRecord` with `run started`, opens its controller in `kernel.runs`, and observes `run_started` with the logged view through the session's hooks when its plugin runtime is loaded here (§38q; not awaited, never rejects). */
+const REPORT_LIMIT = 4096;
+
+/** A run's stop fence as its record reads: ended, already stopping, or live with the updates that fence it. */
+type Fence =
+  | { readonly kind: "ended" }
+  | { readonly kind: "stopping"; readonly head: HeadName }
+  | { readonly kind: "live"; readonly head: HeadName; readonly updates: readonly RefUpdate[] };
+
+/** Starts a run on a head: writes its record with `run started`, opens its controller in `kernel.runs` and observes `run_started` (§38q). */
 export async function startRun(
   kernel: Kernel,
   session: SessionId,
@@ -88,88 +101,67 @@ export async function startRun(
   return view;
 }
 
-/** Stops one run at the fence (§30): marks it stopping in `kernel.runs` before any await, so its patches drop; publishes `run stopping` and fails its live parts in one set; then aborts its signal as cleanup, wakes the waits its steps parked with `stopped`, and wakes its head, so the driver ends it. Resolves `requested`, or `settled` when the run ended before its fence. */
+/** Stops one run at the fence (§30): a run live here drops its patches from now on; `run stopping` and its live parts' failures land in one set; then its signal aborts, its parked waits wake `stopped` and its head wakes. */
 export async function stopRun(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
 ): Promise<StopOutcome<RunEnd>> {
-  const here = kernel.runs.get(run) !== undefined;
-  kernel.runs.markStopping(run);
+  if (kernel.runs.get(run) !== undefined) kernel.runs.markStopping(run);
 
-  const stopped = await attempt<{
-    readonly head: HeadName | null;
-    readonly outcome: StopOutcome<RunEnd>;
-  }>(`Stopping run ${run}`, async () => {
-    const fence = await fenceUpdates(kernel, session, run);
+  const stopped = await attempt<
+    | Exclude<StopOutcome<RunEnd>, { readonly kind: "requested" }>
+    | { readonly kind: "requested"; readonly head: HeadName }
+  >(`Stopping run ${run}`, async () => {
+    const fenced = await fence(kernel, session, run);
 
-    if (fence === null) {
+    if (fenced.kind === "ended") {
       const end = await endOf(kernel, session, run);
 
-      return {
-        head: null,
-        outcome: end === null ? { kind: "missing" } : { kind: "settled", outcome: end },
-      };
+      return end === null ? { kind: "missing" } : { kind: "settled", outcome: end };
     }
 
-    if (fence.updates.length > 0 && (await commit(kernel, fence.updates)).kind === "stale")
+    if (fenced.kind === "live" && (await commit(kernel, fenced.updates)).kind === "stale")
       return STALE;
 
-    return { head: fence.head, outcome: { kind: "requested" } };
+    return { kind: "requested", head: fenced.head };
   });
 
-  if (stopped.head === null) {
-    if (!here) kernel.runs.end(run);
-
-    return stopped.outcome;
-  }
-
+  if (stopped.kind !== "requested") return stopped;
   kernel.runs.abort(run);
   await kernel.waits.runStopped(session, run);
   kernel.wakes.notify(session, stopped.head);
 
-  return stopped.outcome;
+  return { kind: "requested" };
 }
 
-/** Returns a live run's fence as ref updates, `run stopping` then `part failed` for each live or waiting part it owns, for the caller's one set; empty when the run is already stopping, null when it has ended. */
-export async function fenceUpdates(
-  kernel: Kernel,
-  session: SessionId,
-  run: RunId,
-): Promise<{
-  readonly head: HeadName;
-  readonly updates: readonly RefUpdate[];
-  readonly parts: readonly PartId[];
-} | null> {
+/** Returns a run's fence for the caller's one set: `run stopping`, then `part failed` for each part of the run the store holds live, each expecting the revision it read. */
+export async function fence(kernel: Kernel, session: SessionId, run: RunId): Promise<Fence> {
   const found = await load(
     kernel,
     await kernel.store.refs.get(runRef(session, run)),
     decodeRunRecord,
   );
 
-  if (found === null) return null;
+  if (found === null) return { kind: "ended" };
   const head = found.record.view.head;
 
-  if (found.record.stopping) return { head, updates: [], parts: [] };
+  if (found.record.stopping) return { kind: "stopping", head };
 
-  const parts = await withFold(kernel, session, (state) =>
-    [...state.parts.values()].filter(
-      (part) => part.run === run && (part.status.kind === "live" || part.status.kind === "waiting"),
+  const parts = await Promise.all(
+    (await kernel.store.refs.list(`${sessionRef(session)}/parts/`)).map((ref) =>
+      load(kernel, ref, decodePartRecord),
     ),
   );
 
-  const failed = await Promise.all(
-    parts.map(async (part): Promise<RefUpdate> => ({
-      name: partRef(session, part.id),
-      target: await put(kernel, "part", {
-        ...part,
-        status: { kind: "failed", run, failure: STOPPED },
-      }),
-      event: { head, kind: "part", part: part.id, change: "failed", failure: STOPPED },
-    })),
+  const live = parts.flatMap((part) =>
+    part !== null && part.record.run === run && part.record.status.kind === "live"
+      ? [part.record.id]
+      : [],
   );
 
   return {
+    kind: "live",
     head,
     updates: [
       {
@@ -178,13 +170,12 @@ export async function fenceUpdates(
         expect: found.ref.revision,
         event: { head, kind: "run", run, change: "stopping" },
       },
-      ...failed,
+      ...(await failedParts(kernel, session, head, live, STOPPED)),
     ],
-    parts: parts.map((part) => part.id),
   };
 }
 
-/** Ends a run: deletes its ref, records the head's `lastRun`, publishes `run ended`, forgets the deferred tools it activated (§35f), observes `run_ended` with the logged end through the session's hooks when its plugin runtime is loaded here (§38n; not awaited, never rejects), settles every send receipt whose message landed in this run, wakes the durable waits parked on it, delivers a child's report unless one of them took its end, and wakes the head when input is queued. */
+/** Ends a run: deletes its ref, records the head's `lastRun` and rewrites the head's inbox in one set, so an input admitted against the live run loses its compare-and-set and reads again. Then it settles the receipts of the inputs that landed in the run, parks the waits listed in `waitedBy` here, delivers a child's report when no wait took the end, and wakes the head when input is due (§38n, §42s). */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -199,6 +190,7 @@ export async function endRun(
 
     if (found === null || current === null) return null;
     const head = found.record.view.head;
+    const inbox = await readInbox(kernel, session, head);
     const endedAt = Date.now();
     const lastRun = { id: run, end, endedAt };
 
@@ -227,10 +219,15 @@ export async function endRun(
         expect: current.ref.revision,
         event: await sessionEvent(kernel, record, rows),
       },
+      {
+        name: inboxRef(session, head),
+        target: await put(kernel, "inbox", { messages: inbox.messages }),
+        expect: expectOf(inbox.ref),
+      },
     ]);
 
     return outcome.kind === "set"
-      ? { head, parent: record.parent, waitedBy: found.record.waitedBy ?? [] }
+      ? { head, parent: record.parent, waitedBy: found.record.waitedBy, pending: inbox.messages }
       : STALE;
   });
 
@@ -251,20 +248,15 @@ export async function endRun(
     folded: [...state.inputs.values()].flatMap((input) =>
       input.landed?.run === run ? [input.id] : [],
     ),
-    runnable: (state.heads.get(ended.head)?.pending ?? []).some((id) => {
-      const input = state.inputs.get(id);
-
-      return input !== undefined && input.delivery !== "attach";
-    }),
+    runnable: ended.pending.some((id) => state.inputs.get(id)?.delivery !== "attach"),
   }));
 
   for (const message of new Set([...landed, ...folded]))
     await settleReceipt(kernel, session, asId<"receipt">(message), end);
 
-  const woke = await kernel.waits.runEnded(session, run, end);
+  const woke = await kernel.waits.runEnded(session, run, end, ended.waitedBy);
 
-  if (ended.parent !== null)
-    await deliverChildReport(kernel, session, run, end, woke, ended.waitedBy);
+  if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, end);
 
   if (runnable) kernel.wakes.notify(session, ended.head);
 }
@@ -322,4 +314,72 @@ export async function endOf(
 
     return null;
   });
+}
+
+/** Marks a run stopping and aborts its signal when it is live here; another instance driving it reads its fence from the store. */
+export function abortHere(kernel: Kernel, run: RunId): void {
+  if (kernel.runs.get(run) === undefined) return;
+  kernel.runs.markStopping(run);
+  kernel.runs.abort(run);
+}
+
+/** Attaches a bounded report of a child's run to the parent's originating head. */
+async function deliverChildReport(
+  kernel: Kernel,
+  child: SessionId,
+  run: RunId,
+  end: RunEnd,
+): Promise<void> {
+  const found = await readSession(kernel, child);
+  const parent = found?.record.parent ?? null;
+
+  if (found === null || parent === null) return;
+  const target = await readSession(kernel, parent);
+
+  if (target === null) return;
+  const origin = found.record.origin?.head ?? MAIN;
+  const head = target.record.heads.some((entry) => entry.name === origin) ? origin : MAIN;
+
+  const answer = capped(
+    (await withFold(kernel, child, (state) => answerOf(state, run))).trim(),
+    REPORT_LIMIT,
+  );
+
+  const title = `Child ${child} ${end.kind}:`;
+
+  await send(kernel, {
+    session: parent,
+    head,
+    context: CORE_CONTEXT,
+    content: answer === "" ? title : `${title}\n\n${answer}`,
+    options: { source: { kind: "child", session: child }, delivery: "attach" },
+  });
+}
+
+function answerOf(state: FoldState, run: RunId): string {
+  const messages = state.heads.get(MAIN)?.messages ?? [];
+  const turn = state.runs.get(run)?.turn ?? messages.at(-1)?.turn;
+
+  return messages
+    .flatMap((message) => {
+      if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn)
+        return [];
+      const part = state.parts.get(message.part)?.state;
+
+      return isJsonObject(part) && typeof part.markdown === "string" && part.markdown !== ""
+        ? [part.markdown]
+        : [];
+    })
+    .join("\n\n");
+}
+
+function capped(text: string, limit: number): string {
+  const bytes = new TextEncoder().encode(text);
+
+  if (bytes.length <= limit) return text;
+  let end = limit;
+
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
+
+  return new TextDecoder().decode(bytes.subarray(0, end));
 }

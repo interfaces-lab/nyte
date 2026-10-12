@@ -138,11 +138,11 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
   }
 }
 
-/** Returns an `application/octet-stream` response over a byte reader: its mime in `X-Nyte-Mime` and its size as `Content-Length` when known (§40w), plus `headers`; cancelling the body closes the reader. */
-export function octetStream(body: {
-  readonly reader: ByteReader;
-  readonly headers?: Readonly<Record<string, string>>;
-}): Response {
+/** Returns an `application/octet-stream` response over a byte reader: its mime in `X-Nyte-Mime`, its size as `Content-Length` when known (§40w), plus `headers`. The reader closes once, when the body ends, is cancelled, or `signal` aborts; an abort also errors the body. */
+export function octetStream(
+  body: { readonly reader: ByteReader; readonly headers?: Readonly<Record<string, string>> },
+  signal: AbortSignal,
+): Response {
   const { reader } = body;
   const chunks = reader.chunks()[Symbol.asyncIterator]();
   const headers = new Headers(body.headers);
@@ -151,15 +151,34 @@ export function octetStream(body: {
   if (reader.mime !== null) headers.set("X-Nyte-Mime", reader.mime);
 
   if (reader.size !== null) headers.set("Content-Length", String(reader.size));
+  let closing: Promise<void> | null = null;
+
+  const close = (): Promise<void> => {
+    closing ??= (async () => {
+      await reader.close();
+      await chunks.return?.();
+    })();
+
+    return closing;
+  };
 
   const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const abort = (): void => {
+        controller.error(signal.reason);
+        void close();
+      };
+
+      if (signal.aborted) abort();
+      else signal.addEventListener("abort", abort, { once: true });
+    },
     async pull(controller) {
       try {
         const next = await chunks.next();
 
         if (next.done === true) {
           controller.close();
-          await reader.close();
+          await close();
 
           return;
         }
@@ -167,13 +186,10 @@ export function octetStream(body: {
         controller.enqueue(next.value);
       } catch (error) {
         controller.error(error);
-        await reader.close();
+        await close();
       }
     },
-    async cancel() {
-      await chunks.return?.();
-      await reader.close();
-    },
+    cancel: close,
   });
 
   return new Response(stream, { status: 200, headers });

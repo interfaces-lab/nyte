@@ -74,7 +74,7 @@ const bashParameters = standard(
   }),
 );
 
-/** Reads a file through `env.files.read`: text as numbered lines from `offset` for `limit` lines (at most 2000 lines and 50 KiB, noting where to continue); a binary or large file streamed through `files.bytes`, stored with the wrapped files' `upload` and returned as `file` content after a line naming its kind and size; a missing file as text saying so. */
+/** Reads a file: text as numbered lines (at most 2000 lines and 50 KiB, noting where to continue), a binary or large file uploaded and returned as `file` content. */
 const read: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read",
   description:
@@ -99,7 +99,7 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
   },
 };
 
-/** Writes a whole file through `env.files.write` with `parents`; replaying writes the same content again. */
+/** Writes a whole file with `parents`; replaying writes the same content again. */
 const write: ToolDefinition<Infer<typeof writeParameters>> = {
   name: "write",
   description:
@@ -118,7 +118,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>> = {
   },
 };
 
-/** Edits a text file by exact replacement against the version it read: every `oldText` must occur exactly once in the current contents and no two may overlap, else `failed` naming the edit and nothing is written; the result is written with `expect` set to that version, a `stale` answer failing the call. An `oldText` that does not occur is `failed` (no match), replays included: whether an earlier run already made the edit cannot be known. */
+/** Edits a text file by unique, non-overlapping exact replacements written against the version read; a replay whose `oldText` no longer occurs fails, since an earlier run's edit cannot be told apart. */
 const edit: ToolDefinition<Infer<typeof editParameters>> = {
   name: "edit",
   description:
@@ -176,7 +176,7 @@ const edit: ToolDefinition<Infer<typeof editParameters>> = {
   },
 };
 
-/** Lists one directory through `env.files.scan` with ignored entries excluded: one entry per line, directories ending in `/`, at most `limit`, noting when more remain. */
+/** Lists one directory, ignored entries excluded: one entry per line, directories ending in `/`. */
 const list: ToolDefinition<Infer<typeof listParameters>> = {
   name: "list",
   description: "List a directory in the workspace, one entry per line; directories end in /.",
@@ -225,7 +225,7 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   },
 };
 
-/** Runs a command through `env.exec` in the workspace root, tied to the call's signal: output and exit code, the output bounded to its last 32 KiB with the cut noted. While it runs, each output frame publishes the last 4 KiB of output as the part's progress `text` (§34, §51h), so a client draws it live. Never replayed: after a crash the call settles `interrupted`. */
+/** Runs a command in the workspace root: its last 32 KiB of output and exit code, the last 4 KiB published as progress while it runs (§51h); never replayed, so a crash settles it `interrupted`. */
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
   description:
@@ -297,7 +297,7 @@ function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
   return joined;
 }
 
-/** Returns the last `limit` bytes of the chunks as text, starting at the first whole line when it had to cut, without trailing whitespace. */
+/** Returns the last `limit` bytes of the chunks as text, from a whole line when it had to cut. */
 function tailOf(chunks: readonly Uint8Array[], limit: number): string {
   const tail: Uint8Array[] = [];
   let size = 0;
@@ -313,7 +313,7 @@ function tailOf(chunks: readonly Uint8Array[], limit: number): string {
   return (size > limit ? text.slice(text.indexOf("\n") + 1) : text).trimEnd();
 }
 
-/** Contributes the workspace tools (decision 13): `read` (class read), `write` and `edit` (class edit), `list` (class list) and `bash` (class shell); and, at activation, the prompt section `cwd` (order 100) naming the session environment's `cwd`, left out when the session has no environment. */
+/** Contributes the workspace tools `read`, `write`, `edit`, `list` and `bash` (decision 13), and the `cwd` prompt section when the session has an environment here. */
 export const environmentPlugin: Plugin<"core"> = {
   id: "environment",
   contribute: { tools: [read, write, edit, list, bash] },
@@ -334,7 +334,7 @@ function text(value: string): { readonly content: readonly ToolContent[] } {
   return { content: [{ kind: "text", text: value }] };
 }
 
-/** Returns the environment's cwd, or null when reading the environment throws (the session has none). */
+/** Returns the environment's cwd, or null when the session has none here. */
 function cwdOf(env: () => { readonly cwd: string }): string | null {
   try {
     return env().cwd;
@@ -343,7 +343,7 @@ function cwdOf(env: () => { readonly cwd: string }): string | null {
   }
 }
 
-/** Returns text as `cat -n` style lines from `offset` for `limit` lines, bounded, with a note on where to continue. */
+/** Returns text as `cat -n` style lines, bounded, with a note on where to continue. */
 function numbered(
   path: string,
   contents: string,
@@ -377,7 +377,7 @@ function numbered(
     : shown.join("\n");
 }
 
-/** Streams a file through the wrapped files' `upload` and returns it as `file` content. */
+/** Uploads a file and returns it as `file` content. */
 async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   const reader = await files.bytes(path);
 
@@ -396,7 +396,7 @@ async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   }
 }
 
-/** Returns how many places `needle` matches in `haystack`, overlapping matches included; 0 for an empty needle. */
+/** Returns how many places `needle` matches in `haystack`, overlaps included. */
 function count(haystack: string, needle: string): number {
   if (needle === "") return 0;
   let found = 0;

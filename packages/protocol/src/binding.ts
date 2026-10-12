@@ -22,6 +22,7 @@ import {
   SdkError,
   advanceSeen,
   applyBatch,
+  dev,
   headRef,
   heldReceipt,
   move,
@@ -136,7 +137,7 @@ const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
 
 const holds = new WeakMap<Kernel, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms. `head.move`, `files.batch` and `browser.open` call core's kernel-level functions with their wire id (§40o), which answer `invalid` when the id is replayed with another input (§40x); `head.watch` streams `sessionEvents` after `after`, with each head's revision first and after each of its `commit` and `head` events (§40s), and writes the connection's principal's seen mark for each tip change it forwards from the live feed, never for replayed history (§40a, §40x); `parts.create` resolves the kind through the kernel's part definitions once the session's activation in this process settled (§40c, §48h); `plugins.*` and `principals.*` go to the connection's (its plugin files load through `kernel.loadPlugins`, §47m); `models.login` holds the attempt per principal and provider until its steps end, it is answered done or failed, or ten minutes pass (§40q). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through core's kernel-level functions with their wire id (§40o, §40x). `head.watch` sends the watched head's pair first, then `sessionEvents` after `after` with each head-moving event's pair behind it, and marks the principal's seen tip from the live feed only (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { kernel } = options;
   const { principal } = connection;
@@ -301,13 +302,17 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "head.configure": ({ session: id, head, patch }) => session(id).head(head).configure(patch),
     "head.view": ({ session: id, head, options }) => session(id).head(head).view(options),
     "head.watch": async ({ session: id, head, after }) => {
-      const info = await session(id).info();
+      await session(id).info();
+      const ref = await kernel.store.refs.get(headRef(id, head));
       const events = sessionEvents(kernel, id, after ?? asSeq(0));
 
+      const pair =
+        ref === null || ref.target === null
+          ? { tip: null, revision: asId<"revision">("") }
+          : { tip: asId<"commit">(ref.target), revision: ref.revision };
+
       return revisions(
-        kernel,
-        id,
-        info.heads.map((entry) => entry.name),
+        { kind: "revision", head, ...pair },
         seeing(kernel, principal, id, head, events),
       );
     },
@@ -414,11 +419,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "job.stop": ({ workspace: id, job }) => workspace(id).job(job).stop(),
     "job.settled": ({ workspace: id, job }, { signal }) =>
       workspace(id).job(job).settled({ signal }),
-    "job.close": async ({ workspace: id, job }) => {
-      await workspace(id).job(job).close();
-
-      return null;
-    },
 
     "files.read": async ({ workspace: id, path }) => (await files(id)).read(path),
     "files.bytes": async ({ workspace: id, path }) => {
@@ -541,7 +541,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-/** Forwards a session's events and writes the principal's seen mark for the head's tip only once the feed is live (§40x): replayed history (the log before the first seed or patch) moves the tracked tip and writes nothing, so a watch closed mid-replay leaves the mark where it was. On the first live frame the tip the history reached is written one frame later, and after that each tip change one frame after it lands, or when the stream closes first, unless the principal's own seen event already names it (§40a). */
+/** Forwards a session's events and, once the feed is live (the first seed or patch), writes the principal's seen mark for each tip change one frame after it lands or when the stream closes (§40a, §40x). Replayed history moves the tracked tip and writes nothing, so a watch closed mid-replay leaves the mark where it was. A failed write is a `dev` line. */
 function seeing(
   kernel: Kernel,
   principal: PrincipalId,
@@ -568,7 +568,7 @@ function seeing(
 
         writing = writing
           .then(() => advanceSeen(kernel, { session, principal, head, commit }))
-          .catch(() => undefined);
+          .catch(() => dev("binding", "seen failed", { session, head }));
 
         return writing;
       };
@@ -616,37 +616,18 @@ function seeing(
   };
 }
 
-/** Yields each head's ref as a pair first, then the session's events, each `commit` or `head` event followed at once by the pair its feed item carries, so the client applies tip and revision together (§40s, §54a). */
+/** Yields the watched head's pair first, then the session's events, each `commit` or `head` event followed at once by the pair its feed item carries, so the client applies tip and revision together (§40s, §54a). */
 function revisions(
-  kernel: Kernel,
-  session: SessionId,
-  heads: readonly HeadName[],
+  first: OperationOutput<"head.watch">,
   source: AsyncIterable<FeedItem>,
 ): AsyncIterable<OperationOutput<"head.watch">> {
   return {
     [Symbol.asyncIterator]() {
       const iterator = source[Symbol.asyncIterator]();
-      const pending = [...heads];
-      let after: OperationOutput<"head.watch"> | null = null;
+      let after: OperationOutput<"head.watch"> | null = first;
 
       return {
         async next(): Promise<IteratorResult<OperationOutput<"head.watch">>> {
-          const head = pending.shift();
-
-          if (head !== undefined) {
-            const ref = await kernel.store.refs.get(headRef(session, head));
-
-            return {
-              done: false,
-              value: {
-                kind: "revision",
-                head,
-                tip: ref?.target === undefined || ref.target === null ? null : asId<"commit">(ref.target),
-                revision: ref?.revision ?? asId<"revision">(""),
-              },
-            };
-          }
-
           if (after !== null) {
             const value = after;
             after = null;
@@ -659,7 +640,11 @@ function revisions(
           if (next.done === true) return next;
           const { event, head: pair } = next.value;
 
-          if ((event.kind === "commit" || event.kind === "head") && event.head !== null && pair !== null)
+          if (
+            (event.kind === "commit" || event.kind === "head") &&
+            event.head !== null &&
+            pair !== null
+          )
             after = { kind: "revision", head: event.head, ...pair };
 
           return { done: false, value: event };

@@ -86,10 +86,8 @@ interface Settled {
   readonly files: readonly FileChange[];
 }
 
-/** Returns the `tool` built-in's actions. */
 type ToolActions = (typeof tool)["actions"];
 
-/** Returns where one call runs and what stops it. */
 interface Where {
   readonly session: SessionId;
   readonly head: HeadName;
@@ -301,7 +299,7 @@ async function perform(
         updates: await settlement(kernel, where, planned, settled),
       };
     },
-    decode: decodeOutcome,
+    decode: (value) => (outcomes.Check(value) ? outcomes.Decode(value) : null),
   });
 
   dev("tool", step.kind, { session, run, call });
@@ -717,11 +715,6 @@ function classOf(definition: ToolDefinition, args: unknown, call: CallId): ToolC
 /** Returns whether a call of this class may change files, so its changes are diffed. */
 function writes(klass: ToolClass): boolean {
   return klass.kind !== "read" && klass.kind !== "list";
-}
-
-/** Returns the outcome a tool step's result holds, or null when it holds another shape. */
-function decodeOutcome(value: Json): ToolOutcome | null {
-  return outcomes.Check(value) ? outcomes.Decode(value) : null;
 }
 
 /** Returns the tool call a step record belongs to: a `before_tool` hook's call, else its own id. */

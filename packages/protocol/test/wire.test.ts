@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ByteReader, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { SdkErrorCode } from "@nyte-ai/core";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   decodeError,
   encodeError,
@@ -18,6 +18,7 @@ import {
 } from "../src/index.ts";
 import type { SseFrame } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
+import { endless } from "./fakes.ts";
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
@@ -254,7 +255,8 @@ describe("byte bodies", () => {
       },
       [Symbol.asyncDispose]: async () => undefined,
     };
-    const response = octetStream({ reader, headers: { "X-Nyte-Version": "v1" } });
+    const live = new AbortController().signal;
+    const response = octetStream({ reader, headers: { "X-Nyte-Version": "v1" } }, live);
 
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(response.headers.get("X-Nyte-Mime")).toBe("image/png");
@@ -263,12 +265,27 @@ describe("byte bodies", () => {
     expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2, 3, 4, 5, 6]);
     expect(closed).toBe(1);
 
-    const cancelled = octetStream({ reader: { ...reader, mime: null, size: null } });
+    const cancelled = octetStream({ reader: { ...reader, mime: null, size: null } }, live);
 
     expect(cancelled.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(cancelled.headers.get("X-Nyte-Mime")).toBeNull();
     expect(cancelled.headers.get("Content-Length")).toBeNull();
     await cancelled.body?.cancel();
     expect(closed).toBe(2);
+  });
+
+  it("closes the reader once and errors the body when the request aborts mid-read (ADV G P5)", async () => {
+    const reader = endless();
+    const controller = new AbortController();
+    const body = octetStream({ reader }, controller.signal).body?.getReader();
+
+    assert(body !== undefined);
+    expect((await body.read()).value).toEqual(Uint8Array.of(7));
+    const pending = body.read();
+    controller.abort();
+
+    await expect(pending).rejects.toThrow();
+    await expect(body.read()).rejects.toThrow();
+    expect(reader.closes()).toBe(1);
   });
 });

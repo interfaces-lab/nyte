@@ -34,6 +34,7 @@ import type {
   Kernel,
   StepOutcome,
 } from "../src/index.ts";
+import { kernelOver, world } from "./fake-env.ts";
 import { completed, configuration, label, livePart, main, setup, until } from "./harness.ts";
 
 const timedState = standard(Type.Object({}));
@@ -216,7 +217,7 @@ describe("durable steps", () => {
     expect(await readCall(kernel, session.id, call)).toMatchObject({ waiting: target, waits: [] });
     expect(await runWaiting(kernel, session.id, run)).toEqual(target);
     expect((await session.view()).execution).toMatchObject({ kind: "waiting", on: target });
-    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed)).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed, [])).toBe(true);
 
     const outcome: WaitOutcome = {
       kind: "run",
@@ -262,7 +263,7 @@ describe("durable steps", () => {
       waits: [],
       partial: [{ kind: "timer" }, null],
     });
-    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed)).toBe(true);
+    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed, [])).toBe(true);
 
     const ended: WaitOutcome = {
       kind: "run",
@@ -540,7 +541,7 @@ describe("durable steps", () => {
       }),
     });
 
-    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed)).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed, [])).toBe(true);
     expect(await readCall(kernel, parent.id, other)).toMatchObject({
       waiting: { kind: "all" },
       waits: [],
@@ -696,6 +697,123 @@ describe("durable steps", () => {
 
     expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
     expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
+  });
+
+  it("rejects an action's output that is not JSON at settlement and on replay, recording nothing; undefined replays as undefined (D3b, audit 2 item 2)", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+    let ran = 0;
+
+    const act = (call: string, big: boolean) =>
+      kernel.durable.run({
+        session: session.id,
+        part: asId("p1"),
+        action: "count",
+        call: asId(call),
+        signal: new AbortController().signal,
+        body: async () => {
+          ran += 1;
+
+          return big ? 12n : undefined;
+        },
+      });
+
+    for (let replay = 0; replay < 2; replay += 1)
+      await expect(act("big", true)).rejects.toMatchObject({
+        code: "invalid",
+        message: expect.stringMatching(/count action on part p1/),
+      });
+
+    expect(ran).toBe(2);
+    expect((await readCall(kernel, session.id, asId("big"))).result).toBeNull();
+
+    ran = 0;
+    expect(await act("void", false)).toEqual({ kind: "done", value: undefined });
+    expect(await act("void", false)).toEqual({ kind: "done", value: undefined });
+    expect(ran).toBe(1);
+    expect((await readCall(kernel, session.id, asId("void"))).result).toEqual({ kind: "done" });
+
+    const counterActions = {
+      count: { input: standard(Type.Object({})), output: standard(Type.Unknown()) },
+    };
+
+    const counting: {
+      readonly [A in keyof typeof counterActions]: () => Promise<
+        ActionOutput<(typeof counterActions)[A]>
+      >;
+    } = { count: async () => 12n };
+
+    const counter = definePart({
+      kind: "test/counter",
+      state: standard(Type.Object({})),
+      actions: counterActions,
+      fallback: (_state, { id }) => `Counter ${id}`,
+      onAction: (action) => counting[action](),
+    });
+
+    kernel.partDefinitions.register(counter, "plugin");
+    const part = await session.parts.create(counter, { state: {}, placement: { kind: "panel" } });
+
+    expect(await part.act("count", {})).toEqual({
+      kind: "rejected",
+      reason: `The count action on part ${part.id} returned output that is not JSON.`,
+    });
+  });
+
+  it("records a cold child end on an all() whose job another instance holds, which completes once the job ends there (audit D2 item 1, mixed wait)", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const parent = await host.sessions.create({ workspace });
+    const child = await host.sessions.create({ parent: parent.id });
+
+    const job = await host
+      .workspace((await parent.info()).workspace)
+      .jobs.start({ command: "sleep 600", session: parent.id });
+
+    const own = await startRun(
+      kernel,
+      parent.id,
+      main,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
+    const run = await startRun(
+      kernel,
+      child.id,
+      main,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
+    const call: CallId = asId("mixed");
+    const targets: readonly WaitTarget[] = [
+      { kind: "job", job: job.id },
+      { kind: "run", session: child.id, run: run.id },
+    ];
+
+    expect(
+      await step(kernel, {
+        session: parent.id,
+        call,
+        run: own.id,
+        body: waiting({ kind: "all", targets }),
+      }),
+    ).toEqual({ kind: "parked" });
+
+    const cold = kernelOver(kernel.store, provider);
+    await endRun(cold, child.id, run.id, completed);
+    const ran: WaitOutcome = { kind: "run", session: child.id, run: run.id, end: completed };
+
+    expect(await readCall(cold, parent.id, call)).toMatchObject({
+      waiting: { kind: "all", targets },
+      partial: [null, ran],
+      waits: [],
+    });
+
+    const exited = { kind: "exited", code: 0, reason: "exited" } as const;
+    expect(await kernel.waits.jobEnded(job.id, exited)).toBe(true);
+    expect(await readCall(kernel, parent.id, call)).toMatchObject({
+      waiting: null,
+      waits: [{ kind: "all", outcomes: [{ kind: "job", job: job.id, end: exited }, ran] }],
+    });
   });
 
   it("keeps the run waiting while another of its calls is parked, when a host that parked neither settles one (B F3)", async () => {

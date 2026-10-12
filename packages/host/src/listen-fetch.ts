@@ -26,12 +26,15 @@ type Cached = {
   dispose: Disposer;
 };
 
-/** Returns one request on its way through the handler: the request as forwarded, the controller tied into its signal and, once it authenticated, its principal. The flight holds the request because undici's `Request` follows the signal it was given only while the request object lives, and the handler lets go of it once a streamed response starts. */
+/** Returns one request on its way through the handler: the request as forwarded, the controller tied into its signal and, for the dev line, the principal it authenticated as. The flight holds the request because undici's `Request` follows the signal it was given only while the request object lives. */
 type Flight = {
   readonly request: Request;
   readonly controller: AbortController;
   principal: PrincipalId | null;
 };
+
+/** Returns who a request is when no token of this listener names it: the principal and authority `authorize` gave. */
+type Verdict = { readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> };
 
 /** Returns a device token remembered by digest: its principal and authority until `expiresAt`. */
 type Device = {
@@ -44,7 +47,7 @@ const DEVICE_TTL_MS = 60_000;
 
 const encoder = new TextEncoder();
 
-/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): everything `listen` does, and in the same order, for the `fetch` transport — `before` first, the unauthenticated `GET /.nyte/identity?nonce=` route (answering what `identity.sign(nonce)` answers with `hostId` set to `kernel.hostId`, the id `X-Nyte-Host` carries, §43a, §43k) and `GET /.nyte/describe` route, then protocol's `createHandler` with the same `connection(request)` (pairing redeemed under either auth kind with the device token in `X-Nyte-Credential`; under `token` the listener token as `TOKEN` with `TOKEN_AUTHORITY`, any other bearer a device token for `authenticateToken` remembered for 60 s and until its principal's connection drops, a remembered token no principal holds any more revoking that principal through `kernel.connections`; under `custom` a known device token first, then `authorize(request)`), one connection per principal and authority registered with `kernel.connections` (a revoke aborts that principal's open requests and streams), CORS for `origins`, `maxBodyBytes` (default 8 MiB), `execution` (default run covering all: `driveInProcess` when the kernel is `admit-only`, else `host.execution.cover`; `admit-only` takes nothing, and a `dispatch` kernel is treated as `admit-only` whatever `execution` says, with no in-process driver and no cover, §42v), `disconnectClients()` and `close()` (once; every later request answers `unavailable`) — except that the listener token is compared in constant time over Web Crypto SHA-256 digests (`crypto.subtle.digest`, every byte pair XOR-folded into one accumulator, so neither length nor content leaks) and device tokens are remembered by their Web Crypto hex digest. A `token` auth shorter than 16 characters throws `SdkError("invalid")` before anything is set up; `address` is null; `plugins.replace`/`plugins.check` load their wire paths through the kernel's `loadPlugins` (§47m). Every response carries `HOST_HEADER` with the host's id, `before`'s, error responses and the identity and describe routes included, and CORS exposes it to an allowed origin (§43a, §43j). What `listen` delegates its `fetch` transport to. */
+/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): `before`, the unauthenticated identity and describe routes, then protocol's `createHandler` over one cached connection per principal and authority, every response carrying `X-Nyte-Host` (§43a, §43j). A request authenticates by a pairing code, then the listener token (compared in constant time over SHA-256 digests) or a device token remembered for 60 s, then `authorize` under `custom`; a revoke aborts that principal's open requests and streams. A `token` shorter than 16 characters throws `SdkError("invalid")`; `execution` (default: run covering all) drives covered sessions in process on an `admit-only` kernel, covers their leases otherwise and takes nothing on a `dispatch` kernel (§42v); `close()` disconnects the clients and releases the execution once, after which every request answers `unavailable`. */
 export async function listenFetch(
   host: Omit<Host, "listen"> & { readonly kernel: Kernel },
   options: ListenOptions & { readonly transport: { readonly kind: "fetch" } },
@@ -59,7 +62,7 @@ export async function listenFetch(
   const flights = new WeakMap<Request, Flight>();
   const streams = new Map<PrincipalId, Set<Flight>>();
   let generation = new AbortController();
-  let closed = false;
+  let closing: Promise<void> | null = null;
 
   const drop = (key: string, entry: Cached): void => {
     if (cache.get(key) === entry) cache.delete(key);
@@ -78,10 +81,8 @@ export async function listenFetch(
   };
 
   const land = (flight: Flight): void => {
-    const open = flight.principal === null ? undefined : streams.get(flight.principal);
-    open?.delete(flight);
-
-    if (open?.size === 0 && flight.principal !== null) streams.delete(flight.principal);
+    for (const [principal, open] of streams)
+      if (open.delete(flight) && open.size === 0) streams.delete(principal);
   };
 
   const connectionFor = (
@@ -90,20 +91,26 @@ export async function listenFetch(
     authority: ReadonlySet<Authority>,
     token: string,
   ): Connection => {
+    const key = JSON.stringify([principal, [...authority].sort()]);
+    const entry = cache.get(key) ?? admit(key, principal, authority, token);
     const flight = flights.get(request);
 
-    if (flight !== undefined && flight.principal === null) {
+    if (flight !== undefined) {
       flight.principal = principal;
       const open = streams.get(principal) ?? new Set<Flight>();
       open.add(flight);
       streams.set(principal, open);
     }
 
-    const key = JSON.stringify([principal, [...authority].sort()]);
-    const known = cache.get(key);
+    return entry.connection;
+  };
 
-    if (known !== undefined) return known.connection;
-
+  const admit = (
+    key: string,
+    principal: PrincipalId,
+    authority: ReadonlySet<Authority>,
+    token: string,
+  ): Cached => {
     const connection = createConnection(kernel, {
       principal,
       authority,
@@ -112,17 +119,23 @@ export async function listenFetch(
     });
 
     const entry: Cached = { connection, principal, dispose: () => undefined };
-    cache.set(key, entry);
-    entry.dispose = kernel.connections.register(principal, () => drop(key, entry));
+    const admitted = kernel.connections.register(principal, () => drop(key, entry));
 
-    return connection;
+    if (admitted.kind === "revoked")
+      throw new SdkError("unauthenticated", "The principal was revoked.");
+    entry.dispose = admitted.dispose;
+    cache.set(key, entry);
+
+    return entry;
   };
 
-  const deviceOf = async (token: string): Promise<Device | null> => {
+  const deviceOf = async (
+    token: string,
+  ): Promise<{ readonly digest: string; readonly device: Device } | null> => {
     const digest = hex(await sha256(token));
     const known = devices.get(digest);
 
-    if (known !== undefined && known.expiresAt > Date.now()) return known;
+    if (known !== undefined && known.expiresAt > Date.now()) return { digest, device: known };
     const found = await authenticateToken(kernel, token);
 
     if (found === null) {
@@ -133,11 +146,32 @@ export async function listenFetch(
       return null;
     }
 
-    const device = { ...found, expiresAt: Date.now() + DEVICE_TTL_MS };
-    devices.set(digest, device);
-
-    return device;
+    return { digest, device: { ...found, expiresAt: Date.now() + DEVICE_TTL_MS } };
   };
+
+  const isListenerToken: (token: string) => Promise<boolean> =
+    auth.kind === "token" ? (token) => sameSecret(token, auth.token) : async () => false;
+
+  const fallback: (request: Request, token: string | undefined) => Promise<Verdict> =
+    auth.kind === "custom"
+      ? async (request) => {
+          const verdict = await auth.authorize(request);
+
+          if ("deny" in verdict)
+            throw verdict.deny === "forbidden"
+              ? new SdkError("denied", "This principal may not call the host.")
+              : new SdkError("unauthenticated", "The request is not authorized.");
+
+          return verdict;
+        }
+      : async (_request, token) => {
+          throw new SdkError(
+            "unauthenticated",
+            token === undefined
+              ? "Send Authorization: Bearer <token>."
+              : "The token is not accepted.",
+          );
+        };
 
   const authenticate: HandlerOptions["connection"] = async (request) => {
     const header = request.headers.get("Authorization") ?? "";
@@ -159,38 +193,28 @@ export async function listenFetch(
     const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
 
     if (token !== undefined) {
-      if (auth.kind === "token" && (await sameSecret(token, auth.token)))
+      if (await isListenerToken(token))
         return {
           connection: connectionFor(request, TOKEN, TOKEN_AUTHORITY, token),
           authority: TOKEN_AUTHORITY,
         };
-      const device = await deviceOf(token);
+      const remembered = await deviceOf(token);
 
-      if (device !== null)
-        return {
-          connection: connectionFor(request, device.principal, device.authority, token),
-          authority: device.authority,
-        };
+      if (remembered !== null) {
+        const { digest, device } = remembered;
+        const connection = connectionFor(request, device.principal, device.authority, token);
+        devices.set(digest, device);
+
+        return { connection, authority: device.authority };
+      }
     }
 
-    if (auth.kind === "custom") {
-      const verdict = await auth.authorize(request);
+    const verdict = await fallback(request, token);
 
-      if ("deny" in verdict)
-        throw verdict.deny === "forbidden"
-          ? new SdkError("denied", "This principal may not call the host.")
-          : new SdkError("unauthenticated", "The request is not authorized.");
-
-      return {
-        connection: connectionFor(request, verdict.principal, verdict.authority, ""),
-        authority: verdict.authority,
-      };
-    }
-
-    throw new SdkError(
-      "unauthenticated",
-      token === undefined ? "Send Authorization: Bearer <token>." : "The token is not accepted.",
-    );
+    return {
+      connection: connectionFor(request, verdict.principal, verdict.authority, ""),
+      authority: verdict.authority,
+    };
   };
 
   const handler = createHandler({
@@ -216,7 +240,8 @@ export async function listenFetch(
     request: Request,
     trace: { principal: PrincipalId | null },
   ): Promise<Response> => {
-    if (closed) return failure(new SdkError("unavailable", "This listener is closed."), {});
+    if (closing !== null)
+      return failure(new SdkError("unavailable", "This listener is closed."), {});
     const early = await options.before?.(request);
 
     if (early !== undefined) return early;
@@ -255,7 +280,7 @@ export async function listenFetch(
     const response = await handler(forwarded);
     trace.principal = flight.principal;
 
-    return flight.principal === null ? response : landing(response, () => land(flight));
+    return landing(response, () => land(flight));
   };
 
   const fetch = async (request: Request): Promise<Response> => {
@@ -294,11 +319,8 @@ export async function listenFetch(
     generation = new AbortController();
   };
 
-  let closing: Promise<void> | null = null;
-
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      closed = true;
       disconnectClients();
       await coverage?.close();
     })();

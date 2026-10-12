@@ -16,56 +16,16 @@ import type {
 } from "@nyte-ai/schema";
 import { send } from "./admission.ts";
 import { dev } from "./dev-log.ts";
-import { recordAcquisition } from "./durable.ts";
+import { recordAcquisition, recordedAcquisition } from "./durable.ts";
 import { waitFor } from "./waits.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
-import { CORE_CONTEXT, requireAuthority } from "./principals.ts";
+import { CORE_CONTEXT } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { MAIN, readSession } from "./session-state.ts";
 import { closable, coalesce, latest } from "./watch.ts";
 
-/**
- * Starts, lists and watches a workspace's background processes.
- *
- * @category jobs
- * @since 0.1.0
- */
 export interface Jobs {
-  /**
-   * Starts a process that outlives the caller: a background command, or an
-   * interactive shell when `pty` is given.
-   *
-   * **Details**
-   *
-   * `session` is the session whose head the exit report attaches to; omit it
-   * for a job nothing waits on (the terminal panel's dev server). Started
-   * from an invocation, the report goes to the starting run's head;
-   * otherwise to main.
-   *
-   * With `pty`, the job is a terminal: omitted `command` runs the configured
-   * login shell, and the returned `Job` carries `key` for `recover`. No
-   * arbitrary host cwd: a job runs in its workspace. Pass `id` only to retry
-   * across your own restart; same id + same input returns the existing job.
-   *
-   * **Example** (Starting a dev server for a session)
-   *
-   * ```ts
-   * declare const workspace: Workspace;
-   * declare const session: Session;
-   *
-   * const job = await workspace.jobs.start({
-   *   command: "pnpm dev",
-   *   session: session.id,
-   *   title: "Dev server",
-   * });
-   * for await (const frame of job.output()) {
-   *   if (frame.kind === "exit") break;
-   * }
-   * ```
-   *
-   * @authority participant
-   */
   start(input: {
     readonly command?: string;
     readonly session?: SessionId;
@@ -73,111 +33,32 @@ export interface Jobs {
     readonly pty?: { readonly columns: number; readonly rows: number };
     readonly id?: JobId;
   }): Promise<Job>;
-  /**
-   * Reclaims a pty job by the key its handle carried, never a second shell;
-   * or says it ended or is missing.
-   *
-   * @authority participant
-   */
   recover(
     key: JobKey,
   ): Promise<Job | { readonly kind: "ended"; readonly end: JobEnd } | { readonly kind: "missing" }>;
-  /**
-   * Returns every job in the workspace.
-   *
-   * @authority participant
-   */
   list(): Promise<readonly JobView[]>;
-  /**
-   * Yields the job list as it changes.
-   *
-   * @stream watch
-   * @authority participant
-   */
   watch(): AsyncIterable<readonly JobView[]>;
 }
 
-/**
- * Returns a handle on one job: stdin, output, stop and settlement.
- *
- * **Details**
- *
- * A job belongs to the workspace, not to a chat. It outlives the session
- * that started it, the tab that showed it and the client that asked: an
- * agent told to run a local server leaves a server running. Only `stop()`,
- * the process exiting or the host going away end it. On exit, if it has a
- * session, a bounded report (command, code, tail) attaches to that head; a
- * long-lived job streams nothing into the chat while it runs. A job is
- * background the moment nobody waits on it; a tool that waits uses
- * `wait({ kind: "job" })`.
- *
- * @category jobs
- * @since 0.1.0
- */
 export interface Job {
   readonly id: JobId;
-  /** Pass to `recover` to reclaim a pty job after a reconnect. Null for a pipe job. */
   readonly key: JobKey | null;
-  /**
-   * Writes stdin, for a pipe or a pty job. An MCP stdio server is a job; a
-   * terminal's keystrokes are this. Volatile, never replayed.
-   *
-   * @authority participant
-   */
   write(bytes: Uint8Array): Promise<void>;
-  /**
-   * Yields bytes, gaps and the exit.
-   *
-   * **Gotchas**
-   *
-   * A slow reader gets `gap`, never stalls the process.
-   *
-   * @stream frames
-   * @authority participant
-   */
   output(): AsyncIterable<OutputFrame>;
-  /**
-   * Resizes a pty job; answers `not-pty` for a pipe job.
-   *
-   * @authority participant
-   */
   resize(size: {
     readonly columns: number;
     readonly rows: number;
   }): Promise<
     { readonly kind: "resized" } | { readonly kind: "not-pty" } | { readonly kind: "missing" }
   >;
-  /**
-   * Returns whether a pty job's shell is at a prompt, so stop needs no
-   * confirmation. Answered by the pty driver (prompt markers), never by core.
-   * False for a pipe job.
-   *
-   * @authority participant
-   */
   idle(): Promise<boolean>;
-  /**
-   * Stops the process and awaits cleanup.
-   *
-   * @authority participant
-   */
   stop(): Promise<StopOutcome<JobEnd>>;
-  /**
-   * Waits for the process to end.
-   *
-   * @authority participant
-   */
   settled(options?: RequestOptions): Promise<JobEnd>;
-  /**
-   * Detaches this handle's output stream; the process keeps running.
-   *
-   * @authority participant
-   */
   close(): Promise<void>;
-  /** Detaches; for `await using`. */
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-/** Returns one job this process started: its row, its workspace, the key a pty job is recovered by, the process its environment's `exec` returned, the session and head its exit report and background item go to with the call that started it, the digest of its start input, which a retry under the same id must match, and the fan-out of its output. */
+/** Returns one job this process started: its owner gets the exit report and the background item, and a retry under its id must match `digest`. */
 export interface JobEntry {
   readonly view: JobView;
   readonly workspace: WorkspaceId;
@@ -192,35 +73,25 @@ export interface JobEntry {
   readonly output: JobOutput;
 }
 
-/** Fans one process's output out to readers without ever stalling it, and keeps its tail. */
+/** Fans one process's output out to readers without ever stalling it, and keeps its last 4 KiB. A reader whose unread frames would pass 64 KiB reads one `gap` where it dropped bytes. */
 export interface JobOutput {
-  /** Opens a reader: a `gap` when earlier output fell out of the kept tail, the kept tail, then every frame from now, `exit` last. A reader whose unread frames would pass 64 KiB drops bytes and reads one `gap` where it did. */
   open(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
-  /** Keeps bytes in the tail (the last 4 KiB) and hands them to every open reader. */
   push(bytes: Uint8Array): void;
-  /** Marks a gap the process itself reported: every open reader reads one before its next bytes. */
   gap(): void;
-  /** Hands `exit` to every open reader, after a `gap` to one that missed bytes, and ends them; later readers get the tail and `exit`. */
   end(code: number | null): void;
-  /** Returns the kept tail as text, from its first whole line when earlier output was cut and a whole line follows the cut one. */
   tail(): string;
 }
 
-/** Holds the jobs this process started, in memory: jobs are not stored, so a restart loses them and an id the table does not hold reads `lost`. One per kernel (`kernel.jobs`), built on first use. */
+/** Holds the jobs this process started, in memory: a restart loses them, and an id the table does not hold reads `lost`. A change announces the workspace's views and publishes an owned job's `background` item unlogged when it changed (§37c). */
 export interface JobTable {
-  /** Returns a job by id, or undefined when this process did not start it. */
   get(id: JobId): JobEntry | undefined;
-  /** Returns the pty job a key names, or undefined. */
   byKey(key: JobKey): JobEntry | undefined;
-  /** Returns a workspace's jobs in start order. */
   list(workspace: WorkspaceId): readonly JobEntry[];
-  /** Records a started job and announces it as `update` does. */
+  /** Starts a job once per id: `spawn` adds it, and a start with the same digest while it spawns or runs awaits that one, another digest rejecting `invalid`. */
+  start(id: JobId, digest: string, spawn: () => Promise<void>): Promise<void>;
   add(entry: JobEntry): void;
-  /** Replaces a job's view with what `change` returns (a new tail, its end) and announces it: the workspace's listeners get its views, and a job with an owner publishes `background { item }` unlogged (seq 0, §37c) to the owning head when its item changed (kind `job`, id and title the job's, `startedBy` the owner's call; `working` while running, `done` after a zero exit, `failed` after any other end). A job the table does not hold is ignored. */
   update(id: JobId, change: (view: JobView) => JobView): void;
-  /** Calls the listener with a workspace's views, in start order, whenever one of its jobs is added or changes; the disposer stops it. */
   subscribe(workspace: WorkspaceId, listener: (views: readonly JobView[]) => void): Disposer;
-  /** Returns the background items of the jobs a session owns, each with its owning head: what a cold fold seeds after its log (§37c). */
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
@@ -232,9 +103,10 @@ const READER_BYTES = 64 * 1024;
 
 const REPORT_BYTES = 4096;
 
-/** Returns an empty job table over a kernel: what `kernel.jobs` holds, built on first use once the kernel object exists. */
+/** Returns an empty job table over a kernel. */
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
+  const starts = new Map<JobId, { readonly digest: string; readonly started: Promise<void> }>();
   const listeners = new Map<WorkspaceId, Set<(views: readonly JobView[]) => void>>();
 
   const list = (workspace: WorkspaceId): readonly JobEntry[] =>
@@ -264,6 +136,19 @@ export function createJobTable(kernel: Kernel): JobTable {
     get: (id) => entries.get(id),
     byKey: (key) => [...entries.values()].find((entry) => entry.key === key),
     list,
+    start(id, digest, spawn) {
+      const pending = starts.get(id);
+      const known = pending ?? entries.get(id);
+
+      if (known !== undefined)
+        return known.digest === digest
+          ? (pending?.started ?? Promise.resolve())
+          : Promise.reject(new SdkError("invalid", `Job ${id} was started with another input.`));
+      const started = spawn().finally(() => starts.delete(id));
+      starts.set(id, { digest, started });
+
+      return started;
+    },
     add(entry) {
       entries.set(entry.view.id, entry);
       announce(entry, null);
@@ -298,25 +183,17 @@ export function createJobTable(kernel: Kernel): JobTable {
   };
 }
 
-/** Returns a workspace's jobs for a connection; each member checks participant authority. `start` takes its id from `input.id`, else, when the context's `origin` names a step, the acquisition recorded on that step keyed `acq:<n>` (§33a), else a fresh one; an id the table holds returns that job when the input's digest matches and throws `SdkError("invalid")` otherwise. Its owner is `input.session` (which must be on this workspace, else `invalid`) with the origin's head when the origin runs in that session, else `main`, and the origin's call as `startedBy`; none without `input.session`. The process starts through `exec` of the environment of `input.session`, else of the origin's session when it is on this workspace (`kernel.env`), else of the workspace's own (`attachWorkspace`), in the environment's `cwd`, with `pty` when given and no signal: a job outlives its caller. An omitted command runs the environment's login shell, as `exec([], { pty })`; without `pty` it throws `SdkError("invalid")`. A pty job gets a fresh `JobKey`. The table records the job; one reader of the process output keeps `tail` (the last 4 KiB, cut at a line start), fans the output out, and calls `endJob` once the process settles. `recover` returns the job a key names in this workspace while it runs, `ended { end }` once it ended in this process, and `missing` otherwise. `list` reads the table; `watch` yields the views on every table change, coalesced. */
+/** Returns a workspace's jobs; a start from a step is an acquisition (`acquire`), so a re-run answers the recorded job, `lost` once this process no longer holds it (B F1). */
 export function createJobs(
   kernel: Kernel,
-  context: ConnectionContext,
+  context: Pick<ConnectionContext, "origin">,
   workspace: WorkspaceId,
 ): Jobs {
-  const need = (operation: string): void =>
-    requireAuthority(context.authority, "participant", `jobs.${operation}`);
-
   const views = (): readonly JobView[] => kernel.jobs.list(workspace).map((entry) => entry.view);
 
   return {
-    async start(input) {
-      need("start");
-
-      return startJob(kernel, context, workspace, input);
-    },
+    start: (input) => startJob(kernel, context.origin, workspace, input),
     async recover(key) {
-      need("recover");
       const entry = kernel.jobs.byKey(key);
 
       if (entry === undefined || entry.workspace !== workspace) return { kind: "missing" };
@@ -324,26 +201,17 @@ export function createJobs(
 
       if (state.kind !== "running") return { kind: "ended", end: state };
 
-      return jobHandle(kernel, context, entry.view.id);
+      return jobHandle(kernel, entry.view.id);
     },
-    async list() {
-      need("list");
-
-      return views();
-    },
+    list: async () => views(),
     watch() {
-      need("watch");
-
       return coalesce(latest(views(), (push) => kernel.jobs.subscribe(workspace, push)));
     },
   };
 }
 
-/** Returns a handle on a job by id for a connection; binds synchronously, no I/O, and each member checks participant authority. `key` is the job's (null for a pipe job or an id the table does not hold). `write`, `resize` and `idle` go to the process (`not-pty` and false for a pipe job); `output` opens a reader of the job's output fan-out; `close` detaches this handle's open `output` streams and leaves the process running. `stop` stops the process, awaits `endJob` and answers `settled { outcome }` (also for a job already ended). `settled` waits until the table shows the job ended. For an id the table does not hold (one this instance never started, or another instance's, §42w): `write` throws `SdkError("unknown")`, `output` throws `SdkError("unavailable")` as it is called, before any stream opens, so a request for it fails (§42aa), `resize` answers `missing`, `idle` false, `stop` `missing` and `settled` `lost`. */
-export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId): Job {
-  const need = (operation: string): void =>
-    requireAuthority(context.authority, "participant", `job.${operation}`);
-
+/** Returns a handle on a job by id; binds synchronously. For an id the table does not hold (§42w) `output` throws `unavailable` as it is called (§42aa), `write` throws `unknown`, `resize` and `stop` answer `missing` and `settled` `lost`. */
+export function jobHandle(kernel: Kernel, id: JobId): Job {
   const readers = new Set<() => void>();
 
   const settled = (options?: RequestOptions): Promise<JobEnd> =>
@@ -373,14 +241,12 @@ export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId)
     id,
     key: kernel.jobs.get(id)?.key ?? null,
     async write(bytes) {
-      need("write");
       const entry = kernel.jobs.get(id);
 
       if (entry === undefined) throw new SdkError("unknown", `No job has the id ${id}.`);
       await entry.process.write(bytes);
     },
     output() {
-      need("output");
       const entry = kernel.jobs.get(id);
 
       if (entry === undefined)
@@ -404,29 +270,25 @@ export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId)
       });
     },
     async resize(size) {
-      need("resize");
       const entry = kernel.jobs.get(id);
 
       if (entry === undefined) return { kind: "missing" };
+      const pty = entry.view.pty;
 
-      if (entry.view.pty === null) return { kind: "not-pty" };
+      if (pty === null) return { kind: "not-pty" };
       const outcome = await entry.process.resize(size);
 
       if (outcome.kind === "resized")
-        kernel.jobs.update(id, (view) =>
-          view.pty === null ? view : { ...view, pty: { ...view.pty, ...size } },
-        );
+        kernel.jobs.update(id, (view) => ({ ...view, pty: { ...pty, ...size } }));
 
       return outcome;
     },
     async idle() {
-      need("idle");
       const entry = kernel.jobs.get(id);
 
       return entry === undefined || entry.view.pty === null ? false : entry.process.idle();
     },
     async stop() {
-      need("stop");
       const entry = kernel.jobs.get(id);
 
       if (entry === undefined) return { kind: "missing" };
@@ -437,17 +299,13 @@ export function jobHandle(kernel: Kernel, context: ConnectionContext, id: JobId)
 
       return { kind: "settled", outcome: await settled() };
     },
-    async settled(options) {
-      need("settled");
-
-      return settled(options);
-    },
+    settled,
     close,
     [Symbol.asyncDispose]: close,
   };
 }
 
-/** Ends a job this process started, once: sets its view's `state` to `end` and `endedAt` (`kernel.jobs.update`), hands `exit` to its readers, then calls `kernel.waits.jobEnded(id, end)`. Unless a wait consumed the end, a job with an owner sends a bounded report (its title and command, how it ended, its tail; at most 4 KiB) to the owning head as `CORE_CONTEXT` with `source: { kind: "job", job }` and `delivery: "attach"`, exactly one of wake or attach as for a child report; a report the session no longer takes is dropped. What the table's output reader calls once the process settles. */
+/** Ends a job this process started, once: records its end, hands `exit` to its readers and offers the end to the waits. Unless a wait consumed it, an owned job attaches a bounded report (at most 4 KiB) to the owning head; a report the session no longer takes is dropped. */
 export async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const entry = kernel.jobs.get(id);
 
@@ -477,12 +335,10 @@ export async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<vo
 
 async function startJob(
   kernel: Kernel,
-  context: ConnectionContext,
+  origin: ConnectionContext["origin"],
   workspace: WorkspaceId,
   input: Parameters<Jobs["start"]>[0],
 ): Promise<Job> {
-  const origin = context.origin;
-
   const digest = JSON.stringify([
     input.command ?? null,
     input.session ?? null,
@@ -490,31 +346,36 @@ async function startJob(
     input.pty ?? null,
   ]);
 
-  const minted = input.id ?? asId<"job">(crypto.randomUUID());
-
-  const acquired =
-    origin === null || origin.call === null
-      ? minted
-      : await recordAcquisition(
-          kernel,
-          { session: origin.session, call: origin.call },
-          input.id ?? `acq:${origin.sequence.next()}`,
-          minted,
-        );
-
-  const id = typeof acquired === "string" ? asId<"job">(acquired) : minted;
-  const known = kernel.jobs.get(id);
-
-  if (known !== undefined) {
-    if (known.digest !== digest)
-      throw new SdkError("invalid", `Job ${id} was started with another input.`);
-
-    return jobHandle(kernel, context, id);
-  }
-
   if (input.command === undefined && input.pty === undefined)
     throw new SdkError("invalid", "A job without a pty needs a command.");
 
+  const held = (id: JobId): Job => {
+    if ((kernel.jobs.get(id)?.digest ?? digest) !== digest)
+      throw new SdkError("invalid", `Job ${id} was started with another input.`);
+
+    return jobHandle(kernel, id);
+  };
+
+  const acquired = await acquire(kernel, origin, input.id, async () => ({
+    id: input.id ?? asId<"job">(crypto.randomUUID()),
+  }));
+
+  if (acquired.kind === "recorded") return held(asId<"job">(acquired.id));
+  const id = acquired.value.id;
+  await kernel.jobs.start(id, digest, () => spawn(kernel, origin, workspace, input, id, digest));
+
+  return jobHandle(kernel, id);
+}
+
+/** Starts a job's process through the environment of its session, else the origin's on this workspace, else the workspace's own, and adds it to the table. */
+async function spawn(
+  kernel: Kernel,
+  origin: ConnectionContext["origin"],
+  workspace: WorkspaceId,
+  input: Parameters<Jobs["start"]>[0],
+  id: JobId,
+  digest: string,
+): Promise<void> {
   const on = async (session: SessionId): Promise<boolean> =>
     (await readSession(kernel, session))?.record.workspace === workspace;
 
@@ -564,11 +425,39 @@ async function startJob(
   });
 
   void pump(kernel, id, process, output);
-
-  return jobHandle(kernel, context, id);
 }
 
-/** Reads a process's output into its fan-out and tail until it exits, then ends the job with how the process settled (`lost` when it cannot say). A store failure while ending it is logged and leaves the parked call for `repair` (§43k); this task never rejects. */
+/** Runs a durable step's acquisition keyed `key`, else `acq:<n>` (§33a): what the step recorded, else `create()` recorded once; a loser to a concurrent run releases what it created and answers the winner's id. Outside a step it creates. Jobs and pages acquire through it. */
+export async function acquire<T extends { readonly id: string }>(
+  kernel: Kernel,
+  step: {
+    readonly session: SessionId;
+    readonly call: CallId | null;
+    readonly sequence: { next(): number };
+  } | null,
+  key: string | undefined,
+  create: () => Promise<T>,
+  release?: (lost: T) => Promise<void>,
+): Promise<
+  | { readonly kind: "recorded"; readonly id: string }
+  | { readonly kind: "created"; readonly value: T }
+> {
+  if (step === null || step.call === null) return { kind: "created", value: await create() };
+  const at = { session: step.session, call: step.call };
+  const name = key ?? `acq:${step.sequence.next()}`;
+  const recorded = await recordedAcquisition(kernel, at, name);
+
+  if (typeof recorded === "string") return { kind: "recorded", id: recorded };
+  const value = await create();
+  const winner = await recordAcquisition(kernel, at, name, value.id);
+
+  if (typeof winner !== "string" || winner === value.id) return { kind: "created", value };
+  await release?.(value);
+
+  return { kind: "recorded", id: winner };
+}
+
+/** Reads a process's output into its fan-out until it exits, then ends the job; never rejects. */
 async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput): Promise<void> {
   try {
     for await (const frame of process.output()) {

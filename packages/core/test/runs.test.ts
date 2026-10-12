@@ -7,7 +7,6 @@ import {
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
-  deliverChildReport,
   driveInProcess,
   endRun,
   envelope,
@@ -206,12 +205,39 @@ describe("runs", () => {
     });
   });
 
-  it("attaches no report when a parked wait took the child's end", async () => {
-    const { kernel, host } = await setup();
+  it("attaches no report when a wait parked here took the child's end", async () => {
+    const { kernel, host } = await setup({ execution: { kind: "admit-only" } });
     const parent = await host.sessions.create();
     const child = await host.sessions.create({ parent: parent.id });
+    const run = await startRun(
+      kernel,
+      child.id,
+      main,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
 
-    await deliverChildReport(kernel, child.id, asId("r1"), completed, true, []);
+    const waited = runStep<Json>(kernel, {
+      session: parent.id,
+      head: main,
+      run: null,
+      call: asId("wait-here"),
+      kind: "hook",
+      replay: "safe",
+      intent: { test: true },
+      part: null,
+      signal: new AbortController().signal,
+      body: async (durable) =>
+        (await durable.wait({ kind: "run", session: child.id, run: run.id })).kind,
+      settle: async (ended) => ({
+        result: ended.kind === "done" ? ended.value : null,
+        updates: [],
+      }),
+      decode: (result) => result,
+    });
+
+    expect(await waited).toEqual({ kind: "parked" });
+    await endRun(kernel, child.id, run.id, completed);
 
     expect((await parent.view()).messages).toEqual([]);
   });

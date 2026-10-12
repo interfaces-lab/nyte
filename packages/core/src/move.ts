@@ -10,34 +10,31 @@ import type {
   SessionId,
   UserContent,
 } from "@nyte-ai/schema";
+import { guard } from "./admission.ts";
 import { summarize, summaryUpdates } from "./branch-summary.ts";
 import { objectId } from "./content.ts";
-import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
-import { isMoveOutcome, typedReceipt } from "./receipt-handles.ts";
+import { isMoveOutcome, known, reserve, typedReceipt } from "./receipt-handles.ts";
 import { settleReceipt } from "./receipts.ts";
 import type { CommitRecord } from "./records.ts";
-import { headRef } from "./refs.ts";
-import { fenceUpdates, stopRun } from "./runs.ts";
+import { headRef, inboxRef, receiptRef } from "./refs.ts";
+import { abortHere, fence, stopRun } from "./runs.ts";
 import {
   EMPTY_REVISION,
   STALE,
   attempt,
   commit,
   expectOf,
-  guardHead,
   objectOf,
   pathOf,
   positionOf,
-  readReceipt,
-  readTip,
+  put,
   requireSession,
   staleHead,
   withFold,
-  writeReceipt,
 } from "./session-state.ts";
-import type { Tip } from "./session-state.ts";
+import type { MoveFailure, Tip } from "./session-state.ts";
 
 /** Returns where a move lands, what it hands back, and the commits it leaves behind. */
 interface Plan {
@@ -46,14 +43,20 @@ interface Plan {
   readonly abandoned: readonly CommitId[];
 }
 
-/** Returns a move that only its branch summary still decides: the tip it saw, its plan and the instructions. */
-interface Summarizing {
-  readonly tip: Tip;
-  readonly plan: Plan;
-  readonly instructions: string | null;
-}
+/** Returns what a move decided: a guard failure, a branch summary still to write, a move written with its receipt, or the receipt another request with the same id wrote first. */
+type Decided =
+  | { readonly kind: "failed"; readonly outcome: MoveFailure }
+  | {
+      readonly kind: "summarize";
+      readonly tip: Tip;
+      readonly plan: Plan;
+      readonly run: RunId | null;
+      readonly instructions: string | null;
+    }
+  | { readonly kind: "moved"; readonly outcome: MoveOutcome; readonly stopped: RunId | null }
+  | { readonly kind: "replayed" };
 
-/** Moves a head to a position as a durable command and returns its receipt: guards, the stop fence and the move are decided before it returns, a fenced run's head move in the same set; only a branch summary settles later, as moved, `stale` or `summary-failed`. `id` is the receipt's id (minted when absent): a move whose id the session already holds with the same digest replays that receipt and moves nothing, another digest throws `invalid` (§40e). */
+/** Moves a head to a position as a durable command and returns its receipt (§40e). The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing; only a branch summary settles later. */
 export async function move(
   kernel: Kernel,
   session: SessionId,
@@ -72,34 +75,50 @@ export async function move(
     expect: options?.expect ?? null,
   });
 
-  const known = await readReceipt(kernel, session, id);
+  const receipt = typedReceipt(kernel, session, id, isMoveOutcome);
 
-  if (known !== null) {
-    if (known.record.kind !== "move" || known.record.digest !== digest)
-      throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+  if (await known(kernel, session, id, "move", digest)) return receipt;
+  const decided = await decide(kernel, session, head, position, options ?? {}, id, digest);
 
-    return typedReceipt(kernel, session, id, isMoveOutcome);
+  switch (decided.kind) {
+    case "replayed":
+      return receipt;
+
+    case "failed":
+      if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: decided.outcome })))
+        await known(kernel, session, id, "move", digest);
+
+      return receipt;
+
+    case "moved":
+      if (decided.stopped !== null) {
+        abortHere(kernel, decided.stopped);
+        kernel.wakes.notify(session, head);
+      }
+
+      await settleReceipt(kernel, session, id, decided.outcome);
+
+      return receipt;
+
+    case "summarize":
+      if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: null }))) {
+        await known(kernel, session, id, "move", digest);
+
+        return receipt;
+      }
+
+      if (decided.run !== null) await stopRun(kernel, session, decided.run);
+
+      void summarized(kernel, session, head, decided)
+        .catch((error: unknown): MoveOutcome => ({
+          kind: "summary-failed",
+          reason: error instanceof Error ? error.message : String(error),
+        }))
+        .then((outcome) => settleReceipt(kernel, session, id, outcome))
+        .catch(() => undefined);
+
+      return receipt;
   }
-
-  const decided = await decide(kernel, session, head, position, options ?? {});
-
-  if ("kind" in decided) {
-    await writeReceipt(kernel, session, { id, kind: "move", digest, outcome: decided });
-
-    return typedReceipt(kernel, session, id, isMoveOutcome);
-  }
-
-  await writeReceipt(kernel, session, { id, kind: "move", digest, outcome: null });
-
-  void summarized(kernel, session, head, decided)
-    .catch((error: unknown): MoveOutcome => ({
-      kind: "summary-failed",
-      reason: error instanceof Error ? error.message : String(error),
-    }))
-    .then((outcome) => settleReceipt(kernel, session, id, outcome))
-    .catch(() => undefined);
-
-  return typedReceipt(kernel, session, id, isMoveOutcome);
 }
 
 async function decide(
@@ -108,36 +127,71 @@ async function decide(
   head: HeadName,
   position: Position,
   options: MoveOptions,
-): Promise<MoveOutcome | Summarizing> {
-  const checked = await guardHead(
-    kernel,
-    session,
-    head,
-    options.expect,
-    options.running ?? "refuse",
-  );
+  id: ReceiptId,
+  digest: string,
+): Promise<Decided> {
+  return attempt<Decided>(`Moving ${head}`, async () => {
+    const checked = await guard(kernel, session, head, options.expect, options.running ?? "refuse");
 
-  if ("kind" in checked) return checked;
+    if ("kind" in checked) return { kind: "failed", outcome: checked };
 
-  if (
-    position.kind === "commit" &&
-    !(await withFold(kernel, session, (state) => state.commits.has(position.id)))
-  )
-    return { kind: "missing-target" };
+    const plan = await withFold(kernel, session, (state) =>
+      planOf(state.commits, checked.tip.id, position),
+    );
 
-  const abandoned = options.abandoned;
+    if (plan === null) return { kind: "failed", outcome: { kind: "missing-target" } };
+    const abandoned = options.abandoned;
 
-  if (typeof abandoned !== "object") return keep(kernel, session, head, position, checked.run);
+    if (typeof abandoned === "object" && plan.abandoned.length > 0)
+      return {
+        kind: "summarize",
+        tip: checked.tip,
+        plan,
+        run: checked.run,
+        instructions: abandoned.summarize.instructions ?? null,
+      };
 
-  if (checked.run !== null) await stopRun(kernel, session, checked.run);
-  const tip = await readTip(kernel, session, head);
-  const plan = await withFold(kernel, session, (state) => planOf(state.commits, tip.id, position));
+    const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
 
-  if (plan === null) return { kind: "missing-target" };
+    const outcome = await commit(kernel, [
+      ...(fenced?.kind === "live" ? fenced.updates : []),
+      {
+        name: inboxRef(session, head),
+        target: checked.inbox.ref?.target ?? null,
+        expect: expectOf(checked.inbox.ref),
+      },
+      {
+        name: receiptRef(session, id),
+        target: await put(kernel, "receipt", { id, kind: "move", digest, outcome: null }),
+        expect: "absent",
+      },
+      {
+        name: headRef(session, head),
+        target: plan.landing === null ? null : objectOf(plan.landing),
+        expect: expectOf(checked.tip.ref),
+        event: { head, kind: "head", from: checked.tip.id, to: plan.landing, reason: "moved" },
+      },
+    ]);
 
-  if (plan.abandoned.length === 0) return keep(kernel, session, head, position, null);
+    if (outcome.kind === "stale")
+      return outcome.name === receiptRef(session, id) &&
+        (await known(kernel, session, id, "move", digest))
+        ? { kind: "replayed" }
+        : STALE;
 
-  return { tip, plan, instructions: abandoned.summarize.instructions ?? null };
+    return {
+      kind: "moved",
+      stopped: fenced === null || fenced.kind === "ended" ? null : checked.run,
+      outcome: {
+        kind: "moved",
+        revision:
+          plan.landing === null ? EMPTY_REVISION : (outcome.revisions.at(-1) ?? EMPTY_REVISION),
+        position: positionOf(plan.landing),
+        summary: null,
+        handback: plan.handback,
+      },
+    };
+  });
 }
 
 function planOf(
@@ -161,68 +215,11 @@ function planOf(
     : plan(position.id, null);
 }
 
-async function keep(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  position: Position,
-  run: RunId | null,
-): Promise<MoveOutcome> {
-  const kept = await attempt<{ readonly outcome: MoveOutcome; readonly fenced: boolean }>(
-    `Moving ${head}`,
-    async () => {
-      const fence = run === null ? null : await fenceUpdates(kernel, session, run);
-      const tip = await readTip(kernel, session, head);
-
-      const plan = await withFold(kernel, session, (state) =>
-        planOf(state.commits, tip.id, position),
-      );
-
-      if (plan === null) return { outcome: { kind: "missing-target" }, fenced: false };
-
-      const outcome = await commit(kernel, [
-        ...(fence?.updates ?? []),
-        {
-          name: headRef(session, head),
-          target: plan.landing === null ? null : objectOf(plan.landing),
-          expect: expectOf(tip.ref),
-          event: { head, kind: "head", from: tip.id, to: plan.landing, reason: "moved" },
-        },
-      ]);
-
-      if (outcome.kind === "stale")
-        return outcome.name === headRef(session, head)
-          ? { outcome: await staleHead(kernel, session, head), fenced: false }
-          : STALE;
-
-      return {
-        outcome: {
-          kind: "moved",
-          revision:
-            plan.landing === null ? EMPTY_REVISION : (outcome.revisions.at(-1) ?? EMPTY_REVISION),
-          position: positionOf(plan.landing),
-          summary: null,
-          handback: plan.handback,
-        },
-        fenced: fence !== null,
-      };
-    },
-  );
-
-  if (run !== null && kept.fenced) {
-    kernel.runs.markStopping(run);
-    kernel.runs.abort(run);
-    kernel.wakes.notify(session, head);
-  }
-
-  return kept.outcome;
-}
-
 async function summarized(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
-  pending: Summarizing,
+  pending: Extract<Decided, { readonly kind: "summarize" }>,
 ): Promise<MoveOutcome> {
   const { tip, plan } = pending;
 

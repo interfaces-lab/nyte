@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { asId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   createHost,
@@ -6,7 +8,9 @@ import {
   resourcesPlugin,
   scanResources,
 } from "../src/index.ts";
+import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
+import { env } from "./harness.ts";
 
 /** Returns a disk with user, ancestor and project resources, some colliding. */
 function seeded() {
@@ -96,6 +100,93 @@ describe("resources", () => {
       { name: "ship", location: ".nyte/prompts/ship.md", scope: "project" },
     ]);
     expect(await kernel.resources(session.id)).toBe(resources);
+  });
+
+  it("rejects a scan while the session's environment does not attach, never answering no resources (D 13)", async () => {
+    const { kernel, host, provider, workspace } = await world({
+      disk: seeded(),
+      home: "/home/ada",
+    });
+    provider.failure = "Offline.";
+    const session = await host.sessions.create({ workspace });
+
+    await expect(scanResources(kernel, session.id)).rejects.toThrow("Offline.");
+  });
+
+  it("rejects a scan whose resource file read fails, never caching a null prompt (audit D4-D5 #5, resource-file-read-failure)", async () => {
+    const { kernel, host, disk, provider, workspace } = await world();
+    disk.put("/work/project/.nyte/SYSTEM.md", "MUST REMAIN");
+    const attach = provider.attach.bind(provider);
+    let failing = true;
+
+    provider.attach = async (target) => {
+      const attached = await attach(target);
+
+      return {
+        ...attached,
+        files: {
+          ...attached.files,
+          read: async (path) => {
+            if (failing && path === ".nyte/SYSTEM.md") throw new Error("Transient read failure.");
+
+            return attached.files.read(path);
+          },
+        },
+      };
+    };
+
+    const session = await host.sessions.create({ workspace });
+
+    await expect(scanResources(kernel, session.id)).rejects.toThrow("Transient read failure.");
+    failing = false;
+    expect((await scanResources(kernel, session.id)).prompt.system).toBe("MUST REMAIN");
+  });
+
+  it("keeps scans, the home's files and file batches on the kernel's state, in no module table (audit D4-D5 #6, D6 #2)", async () => {
+    const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
+    const session = await host.sessions.create({ workspace });
+    const files = await host.workspace(workspace).files();
+    assert(files.kind === "available");
+    const receipt = await files.api.batch().put({ path: "a.md", contents: "a" }).apply();
+
+    await scanResources(kernel, session.id);
+    expect(kernel.workspaceState.scans.has(session.id)).toBe(true);
+    expect(kernel.workspaceState.home).not.toBeNull();
+    expect(kernel.workspaceState.held.get(receipt.id)?.receipt).toBe(receipt);
+
+    for (const file of ["workspaces.ts", "resources.ts", "files.ts"])
+      expect(readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8")).not.toMatch(
+        /new WeakMap<Kernel/,
+      );
+  });
+
+  it("gives a chat-only workspace, whose provider serves no files, no resources and a successful activation (§59)", async () => {
+    const chatOnly: Plugin<"core"> = {
+      id: "chat-only",
+      environment: {
+        kind: "chat-only",
+        inspect: async () => ({
+          identity: asId("chat-only"),
+          availability: { kind: "available" },
+          projectSources: [],
+        }),
+        attach: async () => env,
+      },
+    };
+
+    const { kernel, host } = await world({ plugins: [chatOnly] });
+    const added = await host.workspaces.add({ kind: "chat-only", locator: null });
+    assert(added.kind === "added");
+    const session = await host.sessions.create({ workspace: added.workspace });
+    await kernel.pluginsFor(session.id).ready;
+
+    expect((await session.info()).activation).toEqual({ kind: "active" });
+    expect(await scanResources(kernel, session.id)).toMatchObject({
+      project: null,
+      skills: [],
+      contextFiles: [],
+      prompt: { system: null, append: null, scope: null },
+    });
   });
 
   it("hides every project and ancestor source when projectResources is false", async () => {

@@ -1,7 +1,8 @@
-import type { ExecutionCoverage, Owned } from "@nyte-ai/schema";
-import type { Listener } from "@nyte-ai/core";
+import type { ByteReader, ExecutionCoverage, Owned } from "@nyte-ai/schema";
+import { memoryStore } from "@nyte-ai/core";
+import type { Listener, Store } from "@nyte-ai/core";
 import { decodeError, errorStatus, operations } from "@nyte-ai/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
 
@@ -21,6 +22,27 @@ function post(listener: Listener, name: string, authorization: string): Promise<
       body: "{}",
     }),
   );
+}
+
+/** Returns a reader that yields byte 7 and then waits until it is closed, counting its closes. */
+function endless(): ByteReader & { closes(): number } {
+  let closes = 0;
+  const closed = Promise.withResolvers<void>();
+
+  return {
+    size: null,
+    mime: null,
+    async *chunks() {
+      yield Uint8Array.of(7);
+      await closed.promise;
+    },
+    close: async () => {
+      closes += 1;
+      closed.resolve();
+    },
+    closes: () => closes,
+    [Symbol.asyncDispose]: async () => undefined,
+  };
 }
 
 describe("listenFetch", () => {
@@ -115,5 +137,43 @@ describe("listenFetch", () => {
     expect(decodeError(JSON.parse(await response.text()), response.status).code).toBe(
       "unavailable",
     );
+  });
+
+  it("ends a raw byte body and closes its provider reader when the listener closes (ADV G P5)", async () => {
+    const reader = endless();
+    const base = memoryStore();
+
+    const store: Store = {
+      ...base,
+      open: async () => {
+        const opened = await base.open();
+
+        return { ...opened, objects: { ...opened.objects, blob: async () => reader } };
+      },
+    };
+
+    const host = await open(fakeModels(), { store, operations: operations() });
+    cleanups.push(() => host.close());
+
+    const listener = await listenFetch(host, {
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token: TOKEN },
+    });
+
+    const response = await listener.fetch(
+      new Request("http://host.test/connection.blob", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "b1" }),
+      }),
+    );
+    const body = response.body?.getReader();
+
+    assert(body !== undefined);
+    expect((await body.read()).value).toEqual(Uint8Array.of(7));
+    await listener.close();
+
+    await expect(body.read()).rejects.toThrow();
+    expect(reader.closes()).toBe(1);
   });
 });

@@ -1,46 +1,28 @@
 import { isJson } from "@nyte-ai/schema";
-import type { Disposer, Json, SessionId, SettingInfo } from "@nyte-ai/schema";
-import { jsonSchemaOf, publishCatalog } from "./catalog.ts";
+import type { Json, SessionId, SettingInfo } from "@nyte-ai/schema";
 import type { SettingsApi } from "./connection.ts";
 import { SdkError } from "./error.ts";
 import { headHandle } from "./head.ts";
 import { check } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
+import { pluginRuntimes, pluginState, readKv } from "./plugin-runtime.ts";
 import type { Setting, SettingDefinition } from "./plugin.ts";
-import { pluginRuntimes } from "./plugin-runtime.ts";
-import { readKv } from "./plugin-storage.ts";
 import { CORE_CONTEXT } from "./principals.ts";
 import { kvRef } from "./refs.ts";
+import { jsonSchemaOf, publishCatalog } from "./registry.ts";
 import { MAIN, commit, put, readSession } from "./session-state.ts";
 
-/** Names the layer a setting change landed in: the host value, or one session's. */
-type SettingScope =
-  | { readonly kind: "host" }
-  | { readonly kind: "session"; readonly session: SessionId };
-
-/** Carries setting changes in this process: `apply` and `Setting.set` announce them; `Setting.watch` listens. One per kernel, created on first use. */
-interface SettingsBus {
-  /** Calls every listener with the setting and the layer it changed in. */
-  changed(id: string, scope: SettingScope): void;
-  /** Calls the listener on every change; the disposer stops it. */
-  subscribe(listener: (id: string, scope: SettingScope) => void): Disposer;
-}
-
-/** Returns one setting's definition with the plugin that contributed it. */
 interface Defined {
   readonly definition: SettingDefinition;
   readonly owner: string;
 }
 
-/** Returns a value stored for a setting with the layer it came from. */
 interface Layer {
   readonly value: Json;
   readonly from: "host" | "session";
 }
 
-const buses = new WeakMap<Kernel, SettingsBus>();
-
-/** Returns the host's settings api. `apply(id, value)` finds the definition (§35c: the static host-scope `contribute.settings` of `kernel.builtins` and `kernel.hostPlugins` first, then what a live session's plugins contributed; `unknown` when none has the id), validates `value` against its schema (`invalid` with the issues), stores it at `kvRef("host", "settings", id)` as a `kv` envelope, announces it on the settings bus, and republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. What `kernel.settings` holds. */
+/** Returns the host's settings api: `apply` finds the definition (§35c), validates the value and stores it at `kvRef("host", "settings", id)`, then republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. */
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
     async apply(id, value) {
@@ -57,7 +39,7 @@ export function createSettingsApi(kernel: Kernel): SettingsApi {
   };
 }
 
-/** Returns a plugin's handle on its own setting, what `contribute.settings.add` returns. `get` resolves the session layer (a session-scope setting's value in the session's main head configuration, `settings[id]`), else the host value, else `definition.default`, skipping a stored value the schema no longer accepts; `set` validates, then stores a host-scope value as `apply` does, or configures the session's main head with `{ settings: { [id]: value } }` and republishes its catalog, and announces it; `watch` yields the current value, then the value after each change the bus announces for this id, until `signal` aborts (the plugin's deactivation). With `session` null only the host and default layers apply. */
+/** Returns a plugin's handle on its own setting. `get` resolves the session layer (the main head configuration's `settings[id]`), else the host value, else the default, skipping a stored value the schema no longer accepts; a session-scope `set` configures the main head. `watch` yields the value, then each change, until `signal` aborts. */
 export function settingHandle<T>(
   kernel: Kernel,
   definition: SettingDefinition<T>,
@@ -106,17 +88,20 @@ export function settingHandle<T>(
           issues: outcome.kind === "invalid" ? outcome.issues : [],
         });
 
-      busOf(kernel).changed(id, { kind: "session", session });
+      changed(kernel, id, session);
       await publishCatalog(kernel, session);
     },
     watch: () => ({
       async *[Symbol.asyncIterator]() {
         let changed = Promise.withResolvers<void>();
 
-        const stop = busOf(kernel).subscribe((setting, scope) => {
-          if (setting === id && (scope.kind === "host" || scope.session === session))
-            changed.resolve();
-        });
+        const { settings } = pluginState(kernel);
+
+        const listener = (setting: string, scope: SessionId | null): void => {
+          if (setting === id && (scope === null || scope === session)) changed.resolve();
+        };
+
+        settings.add(listener);
 
         const deactivated = Promise.withResolvers<void>();
         const deactivate = (): void => deactivated.resolve();
@@ -136,7 +121,7 @@ export function settingHandle<T>(
             yield await get();
           }
         } finally {
-          stop();
+          settings.delete(listener);
           signal.removeEventListener("abort", deactivate);
         }
       },
@@ -144,7 +129,7 @@ export function settingHandle<T>(
   };
 }
 
-/** Returns every setting with its owner, JSON Schema (`jsonSchemaOf`), choices, current value and the layer that set it; a setting whose schema has no JSON Schema is left out. With a session: the settings its plugins contributed, session layer included (`SessionCatalogView.settings`). With null: the host-scope settings (§35c: the static ones of `kernel.builtins` and `kernel.hostPlugins`, then those the live sessions' plugins added), the first owner per id (`HostView.settings`). */
+/** Returns every setting with its owner, JSON Schema, choices, value and the layer that set it, leaving out one without JSON Schema. With a session: its plugins' settings (`SessionCatalogView.settings`); with null: the host-scope settings, first owner per id (`HostView.settings`, §35c). */
 export async function settingInfos(
   kernel: Kernel,
   session: SessionId | null,
@@ -190,17 +175,17 @@ export async function settingInfos(
   return infos.flatMap((info) => (info === null ? [] : [info]));
 }
 
-/** Republishes `HostView.settings` from `settingInfos(kernel, null)`. */
+/** Republishes `HostView.settings`. */
 export async function publishSettings(kernel: Kernel): Promise<void> {
   kernel.host.update({ settings: await settingInfos(kernel, null) });
 }
 
-/** Stores a setting's host value, announces it, and republishes what depends on it: every live session's catalog and `HostView.settings`. */
+/** Stores a setting's host value, announces it, and republishes every live session's catalog and `HostView.settings`. */
 async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<void> {
   await commit(kernel, [
     { name: kvRef("host", "settings", id), target: await put(kernel, "kv", value) },
   ]);
-  busOf(kernel).changed(id, { kind: "host" });
+  changed(kernel, id, null);
 
   await Promise.all([
     ...[...kernel.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
@@ -208,7 +193,7 @@ async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<
   ]);
 }
 
-/** Returns the values stored for a setting, most specific first: the session's own (for a session-scope setting with a session), then the host's. */
+/** Returns the values stored for a setting, most specific first. */
 async function layersOf(
   kernel: Kernel,
   definition: Pick<SettingDefinition, "id" | "scope">,
@@ -227,7 +212,7 @@ async function layersOf(
   ];
 }
 
-/** Returns a session's own value for a setting: its main head configuration's `settings[id]`, or undefined when it has none. */
+/** Returns a session's own value for a setting from its main head configuration. */
 async function sessionValue(
   kernel: Kernel,
   session: SessionId,
@@ -239,7 +224,7 @@ async function sessionValue(
   return settings !== undefined && Object.hasOwn(settings, id) ? settings[id] : undefined;
 }
 
-/** Returns a setting's definition and owner: a host plugin's static host-scope entry first (§35c), then what a live session's plugins contributed. */
+/** Returns a setting's definition and owner: a host plugin's static host-scope entry first (§35c), then a live session's. */
 function definitionOf(kernel: Kernel, id: string): Defined | undefined {
   return (
     staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
@@ -250,7 +235,7 @@ function definitionOf(kernel: Kernel, id: string): Defined | undefined {
   );
 }
 
-/** Returns the host-scope settings, first owner per id: the static ones of `kernel.builtins` and `kernel.hostPlugins`, then those the live sessions' plugins added. */
+/** Returns the host-scope settings, first owner per id: the static ones, then the live sessions'. */
 function hostDefinitions(kernel: Kernel): readonly Defined[] {
   const seen = new Set<string>();
 
@@ -271,7 +256,7 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   });
 }
 
-/** Returns the static host-scope `contribute.settings` of `kernel.builtins` then `kernel.hostPlugins` with their owners (§35c). */
+/** Returns the static host-scope settings of `kernel.builtins` then `kernel.hostPlugins` (§35c). */
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   return [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
     (plugin.contribute?.settings ?? []).flatMap((definition) =>
@@ -280,27 +265,7 @@ function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   );
 }
 
-/** Returns the kernel's settings bus, created on first use. */
-function busOf(kernel: Kernel): SettingsBus {
-  const known = buses.get(kernel);
-
-  if (known !== undefined) return known;
-  const listeners = new Set<(id: string, scope: SettingScope) => void>();
-
-  const bus: SettingsBus = {
-    changed(id, scope) {
-      for (const listener of listeners) listener(id, scope);
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-
-  buses.set(kernel, bus);
-
-  return bus;
+/** Announces a setting change to its watchers; a null session is the host layer. */
+function changed(kernel: Kernel, id: string, session: SessionId | null): void {
+  for (const listener of pluginState(kernel).settings) listener(id, session);
 }

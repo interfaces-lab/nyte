@@ -33,14 +33,11 @@ import type { SseFrame } from "./wire.ts";
 
 /** Describes the handler: how a request authenticates to a connection (with the headers its answer carries, such as a pairing's `X-Nyte-Credential`, §40j), what the binding needs, the body limit and the allowed origins. */
 export type HandlerOptions = BindingOptions & {
-  connection(request: Request): Promise<
-    | {
-        readonly connection: Connection;
-        readonly authority: ReadonlySet<Authority>;
-        readonly headers?: Readonly<Record<string, string>>;
-      }
-    | Response
-  >;
+  connection(request: Request): Promise<{
+    readonly connection: Connection;
+    readonly authority: ReadonlySet<Authority>;
+    readonly headers?: Readonly<Record<string, string>>;
+  }>;
   readonly maxBodyBytes?: number;
   readonly origins?: readonly string[];
 };
@@ -67,7 +64,7 @@ const EXPOSED_HEADERS = `X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential, ${HOST_
 
 const tooLarge = new WeakSet<SdkError>();
 
-/** Returns the whole protocol as one fetch handler: exactly `POST /<name>` per row, a prefix being the host's mount (§40x; anything else `unknown`, 404), CORS for `origins` (a preflight answered, another origin `denied`), the connection the request authenticates to (its `Response` answered as is), the row's authority (`denied`, 403), the body limit (`invalid`, 413), input decoded strictly from the JSON body or from `X-Nyte-Input` with the bytes as the body, answered as JSON (`query`, `command`, `receipt`), server-sent events (`watch`, with `id: <seq>` on logged session events, `Last-Event-ID` resuming `head.watch` after it, a `: ping` every 15 s; JSON-frame `stream`s without ids), an `application/octet-stream` (byte `stream`s, the reader's mime in `X-Nyte-Mime`, §40w) or framed octets (`job.output`, §40h); the client's abort closes the stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. Platform-neutral: `Request`, `Response` and `ReadableStream` only. */
+/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events (`Last-Event-ID` resuming `head.watch`), byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
 export function createHandler(options: HandlerOptions): (request: Request) => Promise<Response> {
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const bindings = new WeakMap<Connection, Binding>();
@@ -102,8 +99,6 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
     try {
       const name = nameOf(request);
       const authenticated = await options.connection(request);
-
-      if (authenticated instanceof Response) return withHeaders(authenticated, cors);
       const needed = declarations[name].authority;
 
       if (!authenticated.authority.has(needed))
@@ -143,7 +138,7 @@ async function serve(
       { status: 200, headers: { "Content-Type": "application/octet-stream" } },
     );
 
-  if (isBytes(name)) return octetStream(await bytes(binding, name, value, context));
+  if (isBytes(name)) return octetStream(await bytes(binding, name, value, context), request.signal);
 
   const resumed = name === "head.watch" ? resumeOf(value, request) : value;
 

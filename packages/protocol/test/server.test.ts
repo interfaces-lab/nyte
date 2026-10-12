@@ -1,10 +1,19 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
-import { decodeSeenRecord, definePart, headRef, memoryStore, seenRef } from "@nyte-ai/core";
+import {
+  decodeSeenRecord,
+  definePart,
+  dev,
+  headRef,
+  memoryStore,
+  seenRef,
+} from "@nyte-ai/core";
+import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
   HOST_HEADER,
+  declarations,
   decodeError,
   decodeOutput,
   parseOutputFrames,
@@ -13,7 +22,7 @@ import {
 } from "../src/index.ts";
 import type { SseFrame } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
-import { post, served } from "./fakes.ts";
+import { endless, post, served } from "./fakes.ts";
 
 const main: HeadName = asId("main");
 
@@ -54,6 +63,13 @@ function kindOf(frame: SseFrame): string | null {
     typeof data.kind === "string"
     ? data.kind
     : null;
+}
+
+/** Returns a memory store whose opened connection is changed by `change`. */
+function changed(change: (opened: StoreConnection) => StoreConnection): Store {
+  const base = memoryStore();
+
+  return { ...base, open: async () => change(await base.open()) };
 }
 
 async function sent(handler: (request: Request) => Promise<Response>) {
@@ -131,6 +147,29 @@ describe("handler", () => {
     ).toBe(true);
   });
 
+  it("sends the watched head's pair as the first frame, not another head's (§54a)", async () => {
+    const { handler, fake, host } = await served();
+    fake.reply("Landed.");
+    const { session, receipt } = await sent(handler);
+    await post(handler, "receipt.settled", { session, receipt });
+    const side: HeadName = asId("side");
+    await host.session(session).heads.create(side);
+    const ref = await host.kernel.store.refs.get(headRef(session, side));
+    const frames = await until(
+      await post(handler, "head.watch", { session, head: side }),
+      (frame) => kindOf(frame) === "catalog",
+    );
+
+    assert(ref !== null);
+    expect(frames[0]?.data).toEqual({
+      kind: "revision",
+      head: side,
+      tip: ref.target,
+      revision: ref.revision,
+    });
+    expect(kindOf(frames[1] ?? { id: null, data: null })).not.toBe("revision");
+  });
+
   it("resumes a watch after Last-Event-ID from the log", async () => {
     const { handler, fake } = await served();
     fake.reply("One.");
@@ -200,6 +239,60 @@ describe("handler", () => {
 
     expect(replayed.at(-1)?.data).not.toMatchObject({ id: tip });
     expect(await seen()).toBe(tip);
+  });
+
+  it("writes a dev line when a seen mark fails, instead of swallowing it (ADV C 9)", async () => {
+    const store = changed((opened) => ({
+      ...opened,
+      refs: {
+        ...opened.refs,
+        set: async (updates) =>
+          updates.some((update) => update.event?.kind === "seen")
+            ? Promise.reject(new Error("The seen write was refused."))
+            : opened.refs.set(updates),
+      },
+    }));
+    const { handler, fake } = await served({ store });
+    const lines: string[] = [];
+    const sink = dev.sink;
+    dev.on((line) => {
+      lines.push(line);
+    });
+
+    try {
+      fake.reply("Seen.");
+      const { session, receipt } = await sent(handler);
+      await post(handler, "receipt.settled", { session, receipt });
+      await until(
+        await post(handler, "head.watch", { session, head: main }),
+        (frame) => kindOf(frame) === "catalog",
+      );
+
+      await expect
+        .poll(() => lines.filter((line) => line.startsWith("DEV:binding seen failed")))
+        .toEqual([`DEV:binding seen failed {"session":"${session}","head":"main"}`]);
+    } finally {
+      dev.sink = sink;
+    }
+  });
+
+  it("closes a raw byte body and its provider reader when the request aborts (ADV G P5)", async () => {
+    const reader = endless();
+    const store = changed((opened) => ({
+      ...opened,
+      objects: { ...opened.objects, blob: async () => reader },
+    }));
+    const { handler } = await served({ store });
+    const controller = new AbortController();
+    const response = await post(handler, "connection.blob", { id: "b1" }, {}, controller.signal);
+    const body = response.body?.getReader();
+
+    assert(body !== undefined);
+    expect((await body.read()).value).toEqual(Uint8Array.of(7));
+    controller.abort();
+
+    await expect(body.read()).rejects.toThrow();
+    expect(reader.closes()).toBe(1);
   });
 
   it("routes exactly POST /<name>, a prefix being the host's mount (§40x)", async () => {

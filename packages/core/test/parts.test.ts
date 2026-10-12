@@ -1,6 +1,6 @@
 import { Validator } from "@cfworker/json-schema";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import type { Authority, Awaitable, Infer, Json, PartId, SessionId } from "@nyte-ai/schema";
+import type { Awaitable, Infer, Json, PartId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -8,7 +8,6 @@ import {
   SdkError,
   branchSummary,
   compaction,
-  createConnection,
   createPartDefinitions,
   decodePartRecord,
   definePart,
@@ -16,12 +15,20 @@ import {
   memoryStore,
   partRef,
   partsPlugin,
+  runStep,
   text,
   thinking,
   tool,
   viewHead,
 } from "../src/index.ts";
-import type { ActionContext, ActionOutput, Kernel, PartDefinition } from "../src/index.ts";
+import type {
+  ActionContext,
+  ActionOutput,
+  Kernel,
+  PartDefinition,
+  StoreConnection,
+} from "../src/index.ts";
+import { settleAnswersFrom } from "../src/parts.ts";
 import { label, main, recording, setup, until, usage } from "./harness.ts";
 
 const question = definePart({
@@ -509,29 +516,132 @@ describe("parts", () => {
     expect((await session.view()).parts).toEqual([]);
   });
 
-  it("denies every part method to a principal without participant authority", async () => {
-    const { kernel, host } = await setup();
+  it("answers on a cold host the answer the store holds, and poll settles a pending answer() from it (ADV B F5)", async () => {
+    const first = await setup();
+    const cold = await setup({ store: first.kernel.store });
+    const waiting = await setup({ store: first.kernel.store });
+    const session = await first.host.sessions.create();
+
+    const part = await session.parts.create(question, {
+      state: { title: "Deploy?", choices: ["yes", "no"] },
+      placement: { kind: "modal" },
+    });
+
+    const pending = waiting.host.session(session.id).part(part.id).answer();
+
+    expect(await part.act("answer", { choice: "yes" })).toEqual({ kind: "ok", output: undefined });
+    expect(await cold.host.session(session.id).part(part.id).answer()).toEqual({
+      action: "answer",
+      input: { choice: "yes" },
+    });
+
+    await settleAnswersFrom(waiting.kernel);
+
+    expect(await pending).toEqual({ action: "answer", input: { choice: "yes" } });
+  });
+
+  it("publishes the durable winner: a cold host's second act after FIRST settled a parked call answers FIRST everywhere (D6 audit 4)", async () => {
+    const first = await setup();
+    const cold = await setup({ store: first.kernel.store });
+    const other = await setup({ store: first.kernel.store });
+    const session = await first.host.sessions.create();
+
+    const part = await session.parts.create(question, {
+      state: { title: "Deploy?", choices: ["FIRST", "SECOND"] },
+      placement: { kind: "modal" },
+    });
+
+    const parked = await runStep(first.kernel, {
+      session: session.id,
+      head: main,
+      run: null,
+      call: asId("wait-call"),
+      kind: "hook",
+      replay: "safe",
+      intent: { test: true },
+      part: null,
+      signal: new AbortController().signal,
+      body: async (durable) => durable.wait({ kind: "part", part: part.id }),
+      settle: async () => ({ result: null, updates: [] }),
+      decode: () => null,
+    });
+
+    expect(parked.kind).toBe("parked");
+    await part.act("answer", { choice: "FIRST" });
+
+    const second = cold.host.session(session.id).part(part.id);
+    const winner = { action: "answer", input: { choice: "FIRST" } };
+
+    expect(await second.act("answer", { choice: "SECOND" })).toEqual({
+      kind: "ok",
+      output: undefined,
+    });
+    expect(await second.answer()).toEqual(winner);
+    expect(await other.host.session(session.id).part(part.id).answer()).toEqual(winner);
+  });
+
+  it("answers null after another host closes the part, dropping the answer held here (D6 audit 4)", async () => {
+    const first = await setup();
+    const other = await setup({ store: first.kernel.store });
+    const session = await first.host.sessions.create();
+
+    const part = await session.parts.create(question, {
+      state: { title: "Deploy?", choices: ["yes"] },
+      placement: { kind: "modal" },
+    });
+
+    await part.act("answer", { choice: "yes" });
+    expect(await part.answer()).toEqual({ action: "answer", input: { choice: "yes" } });
+    await other.host.session(session.id).part(part.id).close();
+    await settleAnswersFrom(first.kernel);
+
+    expect(await part.answer()).toBeNull();
+    expect(first.kernel.partTable.answered.size).toBe(0);
+  });
+
+  it("publishes no answer when keeping it loses its write twice (ADV B F6)", async () => {
+    const shared = await memoryStore().open();
+    let refused = 0;
+
+    const store: StoreConnection = {
+      ...shared,
+      refs: {
+        ...shared.refs,
+        async set(updates) {
+          const [only] = updates;
+
+          if (updates.length === 1 && only?.event === undefined && only.name.includes("/parts/")) {
+            refused += 1;
+
+            return { kind: "stale", name: only.name, revision: null };
+          }
+
+          return shared.refs.set(updates);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store });
     const session = await host.sessions.create();
 
     const part = await session.parts.create(question, {
-      state: { title: "Deploy?", choices: [] },
-      placement: { kind: "panel" },
+      state: { title: "Deploy?", choices: ["yes", "no"] },
+      placement: { kind: "modal" },
     });
 
-    const authority: ReadonlySet<Authority> = new Set();
+    const answer = part.answer();
 
-    const viewer = createConnection(kernel, {
-      principal: asId("viewer"),
-      authority,
-      credential: { kind: "token", token: "t" },
-      origin: null,
-    })
-      .session(session.id)
-      .part(part.id);
+    await expect(part.act("answer", { choice: "yes" })).rejects.toMatchObject({ code: "stale" });
+    expect(refused).toBe(2);
+    expect(kernel.partTable.answered.size).toBe(0);
+    expect(
+      await Promise.race([answer, new Promise((resolve) => setTimeout(resolve, 20, "pending"))]),
+    ).toBe("pending");
 
-    await expect(viewer.update({})).rejects.toMatchObject({ code: "denied" });
-    await expect(viewer.act("answer", {})).rejects.toMatchObject({ code: "denied" });
-    await expect(viewer.answer()).rejects.toMatchObject({ code: "denied" });
-    await expect(viewer.close()).rejects.toMatchObject({ code: "denied" });
+    const stored = await shared.refs.get(partRef(session.id, part.id));
+
+    expect(
+      decodePartRecord(stored?.target ? await shared.objects.get(stored.target) : null)?.status,
+    ).toEqual({ kind: "live", run: null });
   });
 });

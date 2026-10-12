@@ -34,42 +34,51 @@ import type {
   Usage,
   WorkspaceId,
 } from "@nyte-ai/schema";
+import { createPageTable } from "./browser.ts";
+import type { PageTable } from "./browser.ts";
 import { createBus } from "./bus.ts";
 import type { SessionBus } from "./bus.ts";
-import { toolSource } from "./catalog.ts";
-import { runCommand } from "./commands.ts";
-import type { Contributions } from "./configuration.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { runAction } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
-import type { EnvironmentWrap, ExecutionEnv, Resources, SnapshotsApi } from "./environment.ts";
-import { createEnvironmentRegistry } from "./environment-registry.ts";
-import type { EnvironmentRegistry } from "./environment-registry.ts";
+import { createEnvironmentRegistry } from "./environment.ts";
+import type {
+  EnvironmentRegistry,
+  EnvironmentWrap,
+  ExecutionEnv,
+  Resources,
+  SnapshotsApi,
+} from "./environment.ts";
 import { SdkError } from "./error.ts";
+import { createExecutionState } from "./execution.ts";
+import type { ExecutionState } from "./execution.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
 import { gateSubmission } from "./hooks.ts";
-import type { Host } from "./host.ts";
-import type { HostState } from "./host-view.ts";
+import type { Host, HostState } from "./host.ts";
 import { createJobTable } from "./jobs.ts";
 import type { JobTable } from "./jobs.ts";
+import type { Contributions } from "./models.ts";
 import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
-import { createPageTable } from "./pages.ts";
-import type { PageTable } from "./pages.ts";
 import { createPartsApi } from "./parts-api.ts";
-import type { Part, PartDefinition, PartState } from "./parts.ts";
+import { createPartTable } from "./parts.ts";
+import type { Part, PartDefinition, PartState, PartTable } from "./parts.ts";
+import {
+  checkPlugins,
+  createPluginRuntime,
+  createPluginState,
+  replacePlugins,
+} from "./plugin-runtime.ts";
+import type { PluginRuntime, PluginState } from "./plugin-runtime.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
-import { checkPlugins, createPluginRuntime, replacePlugins } from "./plugin-runtime.ts";
-import type { PluginRuntime } from "./plugin-runtime.ts";
-import { CORE_CONTEXT } from "./principals.ts";
-import type { ConnectionContext } from "./principals.ts";
-import { createConnectionRegistry, createPrincipals } from "./principals-api.ts";
-import type { ConnectionRegistry } from "./principals-api.ts";
+import { CORE_CONTEXT, createConnectionRegistry, createPrincipals } from "./principals.ts";
+import type { ConnectionContext, ConnectionRegistry } from "./principals.ts";
 import { prune } from "./prune.ts";
+import { runCommand, toolSource } from "./registry.ts";
 import { scanResources } from "./resources.ts";
+import { dispatchHead } from "./session-state.ts";
 import { createSettingsApi } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
-import { dispatchHead } from "./session-state.ts";
 import { stoppableTool } from "./tool-runner.ts";
 import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
@@ -77,14 +86,14 @@ import { createWaitRegistry } from "./waits.ts";
 import type { WaitRegistry } from "./waits.ts";
 import { createFoldCache, trackStreams } from "./watch.ts";
 import type { FoldCache, Follow, LiveStream } from "./watch.ts";
-import type { Workspace, Workspaces } from "./workspace.ts";
-import { createWorkspaces, workspaceHandle } from "./workspaces.ts";
+import { createWorkspaceState, createWorkspaces, workspaceHandle } from "./workspaces.ts";
+import type { Workspace, WorkspaceState, Workspaces } from "./workspaces.ts";
 
 /** Returns the in-process context every kernel operation closes over; later work orders add fields, none are removed. */
 export interface Kernel {
   /** The host this kernel runs as. */
   readonly hostId: HostId;
-  /** A random id minted per kernel, written as a lease's `instance` beside its `holder`: `busy` and `fenced` compare both, so two kernels over one store (two processes on one sqlite file, two Vercel instances) never both drive a head, and a lease another instance of the same host holds is `busy` until it expires (§42b, §42j, §42q). */
+  /** A random id minted per kernel, written as a lease's `instance` beside its `holder`, so two kernels over one store never both drive a head (§42b, §42j, §42q). */
   readonly instance: string;
   /** The interval in ms at which `pollStore` re-reads the store this kernel shares with other instances, or null when it reads only what it writes (`KernelOptions.poll`, §42h). */
   readonly poll: number | null;
@@ -104,6 +113,9 @@ export interface Kernel {
   readonly follows: Map<SessionId, Follow>;
   /** The runs a turn drives in this process, each with its session. */
   readonly driving: Map<RunId, SessionId>;
+  readonly executionState: ExecutionState;
+  readonly pluginState: PluginState;
+  readonly workspaceState: WorkspaceState;
   /** The listeners waiting on a receipt in this process, by `<session>/<receipt>`. */
   readonly receipts: Map<string, Set<() => void>>;
   /** The abort controllers of the tool calls running in this process, by call. */
@@ -116,7 +128,7 @@ export interface Kernel {
   activation(session: SessionId): Activation;
   /** Sets a session's activation in memory and publishes an `activation` event to it. */
   setActivation(session: SessionId, activation: Activation): void;
-  /** Where a root session acts when `create` names no workspace (decision 5); null until the composer registers one. Writable: `composeHost` registers `OpenOptions.workspace` through the kernel's own workspaces, whose providers come from `hostPlugins`, and sets it then (§38p). */
+  /** Where a root session acts when `create` names no workspace (decision 5); `composeHost` sets it once it has registered `OpenOptions.workspace` (§38p). */
   defaultWorkspace: WorkspaceId | null;
   /** Whether this host runs the sessions it admits, and which; admission reads it for `covered`. Default run, covering all. */
   readonly execution: NonNullable<OpenOptions["execution"]>;
@@ -150,6 +162,8 @@ export interface Kernel {
   readonly parts: PartProvider;
   /** The part definitions this host knows, by kind, with their owners. */
   readonly partDefinitions: PartDefinitions;
+  /** What this process knows of its parts in memory: creating definitions, closes, stored answers, `answer()` waiters and acts in flight. */
+  readonly partTable: PartTable;
   /** Runs part actions as durable steps; core-e fills it. */
   readonly durable: DurableProvider;
   /** Returns the tools a session's runtime offers, with deferred tools activated for `run` alone. Default `toolSource`, from the runtime's registries. */
@@ -174,7 +188,7 @@ export interface Kernel {
   readonly jobs: JobTable;
   /** The browser pages held through this kernel, in memory, with their holds (§37i). Default `createPageTable`, built on first use. */
   readonly pages: PageTable;
-  /** The open connections by principal, so revoking a principal drops its streams. Default `createConnectionRegistry`, built on first use. */
+  /** The open connections by principal, so revoking a principal drops its streams. Default `createConnectionRegistry`. */
   readonly connections: ConnectionRegistry;
   /** Sends one non-run model request charged to a session: `PluginApi.request`; core-f (f3) fills it. */
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
@@ -189,9 +203,9 @@ export interface Kernel {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** Returns a session's plugin runtime: the one place a session activates in this process (§44a). Created on first use, which starts its activation (`ready`: the session's list loaded, `sessionPlugins`, §36c, and its environment attached), and kept until `closePlugins` or a reload installs another. */
+  /** Returns a session's plugin runtime, the one place a session activates in this process (§44a): created on first use, which starts its activation, and kept until `closePlugins` or a reload installs another. */
   pluginsFor(session: SessionId): PluginRuntime;
-  /** Installs a new runtime for a session in place of the one held (§44c): its activation closes the old one once that settled, then loads the session's full list again (its own list kept) over freshly resolved resources and attaches its environment, so a plugin a failed activation rejected is retried (§37l); callers holding the old runtime finish on it. Resolves with the new runtime's `ready`. What `Workspace.reload()` and a relocation run. */
+  /** Installs a new runtime for a session in place of the one held (§44c) and resolves with its `ready`; callers holding the old runtime finish on it. */
   reloadPlugins(session: SessionId): Promise<void>;
   /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
@@ -251,7 +265,7 @@ export interface LandedInput {
   readonly delivery: Delivery;
 }
 
-/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs that joined since the last boundary, and every attached input waiting, and returns each with its delivery, so the turn can tell a steer that wants an answer from an attach that only rides along. */
+/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs waiting since the last boundary and returns each with its delivery. */
 export interface TurnDriver {
   /** Runs the turn and returns how the run ended, or `parked` when a call parked and the run waits (§34d). */
   run(input: {
@@ -300,7 +314,7 @@ export interface ConfigurationResolver {
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
 }
 
-/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch, waiting in process while a handler is parked. `run` is the sending connection's origin run, null for a client; `message` is the message gated, what its step is keyed by (§35a). */
+/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch, keyed by `message` (§35a); `run` is the sender's origin run, null for a client. */
 export interface AdmissionGate {
   (
     submission: Submission,
@@ -345,7 +359,7 @@ export interface DurableProvider {
   }): Promise<StepOutcome<unknown>>;
 }
 
-/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch. It owns the durable step `hook:before_tool:<call>` (§35a), so a handler may park on `wait`: `parked` returns the call to the turn driver; `signal` is the call's. */
+/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch, which owns the durable step `hook:before_tool:<call>` (§35a) and may park. */
 export interface ToolGate {
   (
     call: ToolCall,
@@ -386,7 +400,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional (absent, its default), and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it — the fold cache and `sessionEvents` read `refs.log` after the last seen seq of each open session, and the wait registry settles its parked waits from targets settled elsewhere — so an API instance sees what a step instance wrote and a wait parked elsewhere still wakes (§42h; the Vercel deploy sets 1000, a Durable Object and a local host none; absent, the kernel reads only what it writes itself). */
+/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional, and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it (§42h). */
 export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
@@ -436,7 +450,7 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
     readonly poll?: number;
   };
 
-/** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use, which starts its activation, and `reloadPlugins` installs another in its place. A random `instance` is minted and `poll` recorded (null when absent); on a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
+/** Returns a kernel over an open store with every slot not given at its default: a slot with no core default answers `unavailable`, and the defaults that need the kernel are built on first use, so spreading a kernel is safe. On a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const streams = trackStreams(bus);
@@ -465,7 +479,6 @@ export function createKernel(input: KernelOptions): Kernel {
   let environments = input.environments ?? null;
   let jobs = input.jobs ?? null;
   let pages = input.pages ?? null;
-  let connections = input.connections ?? null;
   let principals = input.principals ?? null;
 
   const kernel: Kernel = {
@@ -493,6 +506,9 @@ export function createKernel(input: KernelOptions): Kernel {
     streams,
     follows,
     driving: new Map(),
+    executionState: createExecutionState(),
+    pluginState: createPluginState(),
+    workspaceState: createWorkspaceState(),
     receipts: new Map(),
     calls: new Map(),
     marks: new Map(),
@@ -520,20 +536,14 @@ export function createKernel(input: KernelOptions): Kernel {
     admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
     command: input.command ?? ((session, name, args) => runCommand(kernel, session, name, args)),
     get waits() {
-      waits ??= createWaitRegistry(kernel);
-
-      return waits;
+      return (waits ??= createWaitRegistry(kernel));
     },
     models: input.models ?? NO_MODELS,
     get settings() {
-      settings ??= createSettingsApi(kernel);
-
-      return settings;
+      return (settings ??= createSettingsApi(kernel));
     },
     get workspaces() {
-      workspaces ??= createWorkspaces(kernel, CORE_CONTEXT);
-
-      return workspaces;
+      return (workspaces ??= createWorkspaces(kernel, CORE_CONTEXT));
     },
     workspace: input.workspace ?? ((id) => workspaceHandle(kernel, CORE_CONTEXT, id)),
     parts: input.parts ?? {
@@ -542,10 +552,9 @@ export function createKernel(input: KernelOptions): Kernel {
       part: (context, session, id) => createPartsApi(kernel, context, session).part(id),
     },
     get partDefinitions() {
-      definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) });
-
-      return definitions;
+      return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
+    partTable: createPartTable(),
     durable: input.durable ?? { run: (step) => runAction(kernel, step) },
     tools: input.tools ?? ((runtime, run) => toolSource(kernel, runtime, run)),
     beforeTool:
@@ -569,25 +578,15 @@ export function createKernel(input: KernelOptions): Kernel {
     request: input.request ?? (async () => unavailable("request")),
     home: input.home ?? null,
     get environments() {
-      environments ??= createEnvironmentRegistry(kernel);
-
-      return environments;
+      return (environments ??= createEnvironmentRegistry(kernel));
     },
     get jobs() {
-      jobs ??= createJobTable(kernel);
-
-      return jobs;
+      return (jobs ??= createJobTable(kernel));
     },
     get pages() {
-      pages ??= createPageTable(kernel);
-
-      return pages;
+      return (pages ??= createPageTable(kernel));
     },
-    get connections() {
-      connections ??= createConnectionRegistry();
-
-      return connections;
-    },
+    connections: input.connections ?? createConnectionRegistry(),
     secrets: input.secrets ?? null,
     builtins: input.builtins ?? [],
     hostPlugins: input.hostPlugins ?? [],
@@ -625,18 +624,17 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     loadPlugins:
       input.loadPlugins ??
-      (async (paths) =>
-        paths.length === 0 ? [] : unavailable("plugin files: this host has no plugin loader")),
+      (async () => unavailable("plugin files: this host has no plugin loader")),
     get principals() {
-      principals ??= createPrincipals(kernel);
-
-      return principals;
+      return (principals ??= createPrincipals(kernel));
     },
     prune: input.prune ?? (() => prune(kernel)),
   };
 
-  if (kernel.execution.kind === "dispatch")
-    kernel.wakes.subscribe((session, head) => dispatchHead(kernel, session, head));
+  const execution = kernel.execution;
+
+  if (execution.kind === "dispatch")
+    kernel.wakes.subscribe((session, head) => dispatchHead(kernel, execution, session, head));
 
   return kernel;
 }

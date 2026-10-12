@@ -241,7 +241,7 @@ describe("plugin runtime", () => {
     ]);
   });
 
-  it("replaces by id: a new version activates, a failing one keeps the previous, an absent one deactivates", async () => {
+  it("replaces by id in a new runtime: a new version activates, a failing one keeps the previous running without activating it again, an absent one deactivates", async () => {
     let first: AbortSignal | undefined;
     let gone: AbortSignal | undefined;
     let starts = 0;
@@ -297,7 +297,7 @@ describe("plugin runtime", () => {
       },
     ]);
     expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
-    expect(starts).toBe(2);
+    expect(starts).toBe(1);
 
     const unparsable = await host.plugins.replace(
       [{ id: "greeter", contribute: { tools: [{ ...echo, parameters: opaque }] } }],
@@ -305,7 +305,7 @@ describe("plugin runtime", () => {
     );
 
     expect(unparsable.plugins.map((outcome) => outcome.kind)).toEqual(["kept-previous"]);
-    expect(starts).toBe(2);
+    expect(starts).toBe(1);
     expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
 
     const fresh = await host.plugins.replace(
@@ -1127,7 +1127,7 @@ describe("settings", () => {
   it("yields a setting's value, then each change, until its plugin deactivates", async () => {
     let handle: Setting<unknown> | undefined;
 
-    const { host, session, runtime } = await loaded([
+    const { host, session } = await loaded([
       {
         id: "mixer",
         activate(api) {
@@ -1150,7 +1150,7 @@ describe("settings", () => {
       expect.objectContaining({ id: "volume", value: 9, from: "host" }),
     ]);
 
-    await runtime.replace([]);
+    await host.plugins.replace([], { session: session.id });
 
     expect(await values.next()).toEqual({ done: true, value: undefined });
   });

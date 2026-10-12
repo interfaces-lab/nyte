@@ -23,7 +23,7 @@ import { dev } from "./dev-log.ts";
 import { emptyFold, fold, project, withPair } from "./fold.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
-import { settleAnswersFrom } from "./part-table.ts";
+import { settleAnswersFrom } from "./parts.ts";
 import { decodeRunRecord, envelope } from "./records.ts";
 import type { SeenRecord } from "./records.ts";
 import { headOf, headRef, runRef, seenRef, sessionOf } from "./refs.ts";
@@ -818,7 +818,7 @@ export async function rereadFences(kernel: Kernel): Promise<void> {
       decodeRunRecord,
     );
 
-    if (found === null || !found.record.stopping) continue;
+    if (found !== null && !found.record.stopping) continue;
     dev("poll", "fenced", { session, run });
     kernel.runs.markStopping(run);
     kernel.runs.abort(run);

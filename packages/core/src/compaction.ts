@@ -29,13 +29,12 @@ import type {
   Model,
   ProviderCheckpointMaterial,
 } from "@nyte-ai/schema/model";
-import { contributionsOf } from "./configuration.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
 import { check } from "./json-schema.ts";
 import type { Compactor, Kernel, Summarizer } from "./kernel.ts";
-import { modelInfo } from "./models.ts";
+import { contributionsOf, modelInfo } from "./models.ts";
 import { compaction } from "./parts.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import { LOCAL } from "./principals.ts";
@@ -44,8 +43,8 @@ import type { PartRecord } from "./records.ts";
 import { headRef, partRef, runRef, sessionRef } from "./refs.ts";
 import { ZERO_USAGE, charge, complete, requestEvent, rideRef } from "./request.ts";
 import {
-  START,
   STALE,
+  START,
   attempt,
   commit,
   expectOf,
@@ -63,7 +62,6 @@ import {
 import type { Found, Tip } from "./session-state.ts";
 import { failParts, projectedCommit, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
-/** Returns what one summary request answered. */
 type Answer =
   | { readonly kind: "ok"; readonly text: string; readonly usage: Usage; readonly info: ModelInfo }
   | { readonly kind: "failed"; readonly failure: Failure };

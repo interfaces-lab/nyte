@@ -10,12 +10,13 @@ import type {
   StopOutcome,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
-import { stopBatch } from "./files-wrap.ts";
+import { stopBatch } from "./files.ts";
 import type { Kernel } from "./kernel.ts";
 import { LOCAL } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
 import { settleReceipt } from "./receipts.ts";
-import { inboxRef } from "./refs.ts";
+import type { ReceiptRecord } from "./records.ts";
+import { inboxRef, receiptRef } from "./refs.ts";
 import { stopRun } from "./runs.ts";
 import {
   STALE,
@@ -28,6 +29,7 @@ import {
   readReceipt,
   withFold,
 } from "./session-state.ts";
+import type { MoveFailure } from "./session-state.ts";
 import { onReceipt, waitFor } from "./waits.ts";
 
 /** Returns what a send receipt settles with. */
@@ -57,6 +59,41 @@ const MOVE_FAILURES: ReadonlySet<string> = new Set([
 ]);
 
 const RECEIPT_EVENTS: ReadonlySet<string> = new Set(["input", "run", "head"]);
+
+/** Writes a new receipt record; resolves false when the id is already taken. */
+export async function reserve(
+  kernel: Kernel,
+  session: SessionId,
+  record: ReceiptRecord,
+): Promise<boolean> {
+  const outcome = await commit(kernel, [
+    {
+      name: receiptRef(session, record.id),
+      target: await put(kernel, "receipt", record),
+      expect: "absent",
+    },
+  ]);
+
+  return outcome.kind === "set";
+}
+
+/** Returns whether the session holds a receipt id for the same command; throws `invalid` when another command took it (§40e). */
+export async function known(
+  kernel: Kernel,
+  session: SessionId,
+  id: ReceiptId,
+  kind: ReceiptRecord["kind"],
+  digest: string,
+): Promise<boolean> {
+  const found = await readReceipt(kernel, session, id);
+
+  if (found === null) return false;
+
+  if (found.record.kind !== kind || found.record.digest !== digest)
+    throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+  return true;
+}
 
 /** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. */
 export function typedReceipt<O extends Json>(
@@ -181,21 +218,14 @@ export async function withdraw(
   return withdrawn;
 }
 
-/** Returns whether a stored outcome is one a send receipt settles with. */
 export function isSendOutcome(value: Json): value is SendOutcome {
   return isJsonObject(value) && typeof value.kind === "string" && SEND_OUTCOMES.has(value.kind);
 }
 
-/** Returns whether a stored outcome is a move's. */
 export function isMoveOutcome(value: Json): value is MoveOutcome {
-  return (
-    isJsonObject(value) &&
-    typeof value.kind === "string" &&
-    (value.kind === "moved" || MOVE_FAILURES.has(value.kind))
-  );
+  return isJsonObject(value) && (value.kind === "moved" || isMoveFailure(value));
 }
 
-/** Returns whether a stored outcome is any value. */
 export function isAnyOutcome(_value: Json): _value is Json {
   return true;
 }
@@ -241,7 +271,7 @@ function isWithdrawn(value: Json): value is { readonly kind: "withdrawn" } {
   return isJsonObject(value) && value.kind === "withdrawn";
 }
 
-function isMoveFailure(value: Json): value is Exclude<MoveOutcome, { readonly kind: "moved" }> {
+function isMoveFailure(value: Json): value is MoveFailure {
   return isJsonObject(value) && typeof value.kind === "string" && MOVE_FAILURES.has(value.kind);
 }
 

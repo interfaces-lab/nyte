@@ -440,7 +440,7 @@ describe("dispatch (§42p, §42s)", () => {
     await until(() => (attempts === 2 ? true : undefined));
   });
 
-  it("counts a session as covered once a dispatch for it resolved in this instance", async () => {
+  it("counts every session as covered on a dispatch kernel, before any dispatch resolves (§42p)", async () => {
     const gate = deferred();
 
     const { kernel, host } = await setup({
@@ -450,10 +450,8 @@ describe("dispatch (§42p, §42s)", () => {
     const session = await host.sessions.create();
     await session.send("Go.");
 
-    expect(await isCovered(kernel, session.id)).toBe(false);
-
+    expect(await isCovered(kernel, session.id)).toBe(true);
     gate.resolve();
-    await until(async () => ((await isCovered(kernel, session.id)) ? true : undefined));
   });
 });
 

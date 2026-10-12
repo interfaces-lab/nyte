@@ -10,6 +10,7 @@ import {
   definePart,
   jobHandle,
   loadWaits,
+  workspaceHandle,
   memoryStore,
   runStep,
   viewHead,
@@ -26,12 +27,29 @@ const question = definePart({
   fallback: (_state, { id }) => `Ask ${id}`,
 });
 
-const caller: ConnectionContext = {
-  principal: LOCAL,
-  authority: new Set(["participant"]),
-  credential: { kind: "token", token: "x" },
-  origin: null,
-};
+/** Returns the context of a durable step of the session, its acquisitions counted from 0 on each run. */
+function stepOf(session: SessionId, call: CallId): ConnectionContext {
+  let sequence = 0;
+
+  return {
+    principal: LOCAL,
+    authority: new Set(["participant"]),
+    credential: { kind: "token", token: "x" },
+    origin: {
+      session,
+      run: null,
+      head: main,
+      call,
+      sequence: {
+        next: () => {
+          sequence += 1;
+
+          return sequence - 1;
+        },
+      },
+    },
+  };
+}
 
 /** Returns a call's record as the store holds it. */
 async function readCall(kernel: Kernel, session: SessionId, call: CallId) {
@@ -327,7 +345,7 @@ describe("jobs", () => {
     expect(() => lost.output()).toThrow(expect.objectContaining({ code: "unavailable" }));
     await expect(lost.write(new Uint8Array(1))).rejects.toMatchObject({ code: "unknown" });
     expect(await fresh.workspace(workspace).jobs.list()).toEqual([]);
-    expect(jobHandle(second, caller, job.id).key).toBeNull();
+    expect(jobHandle(second, job.id).key).toBeNull();
   });
 
   it("retries a job end the store refused, so the parked call takes the exit without a restart (B F4)", async () => {
@@ -448,5 +466,70 @@ describe("jobs", () => {
       waits: [{ kind: "job", job: job.id, end: { kind: "lost" } }],
     });
     expect(woken).toEqual([`${session.id}/${main}`]);
+  });
+  it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const session = await host.sessions.create({ workspace });
+    const call: CallId = asId("c1");
+    const handles: string[] = [];
+
+    const body =
+      (on: Kernel) =>
+      async (durable: Durable): Promise<Json> => {
+        const job = await workspaceHandle(on, stepOf(session.id, call), workspace).jobs.start({
+          command: "deploy --prod",
+          session: session.id,
+        });
+
+        handles.push(job.id);
+
+        return (await durable.wait({ kind: "job", job: job.id })).kind;
+      };
+
+    expect(await parkOn(kernel, session.id, call, body(kernel))).toEqual({ kind: "parked" });
+
+    const second = kernelOver(kernel.store, provider);
+    await parkOn(second, session.id, call, body(second));
+    const [first, again] = handles;
+    assert(first !== undefined && again !== undefined);
+
+    expect(again).toBe(first);
+    expect(provider.processes.map((process) => process.command)).toEqual(["deploy --prod"]);
+    expect(await jobHandle(second, asId(again)).settled()).toEqual({ kind: "lost" });
+  });
+  it("spawns a concurrent start under one id once and answers both with that job (audit D4-D5 #3, concurrent-explicit-job-id)", async () => {
+    const { host, provider, workspace } = await world();
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const attach = provider.attach.bind(provider);
+
+    provider.attach = async (target) => {
+      const attached = await attach(target);
+
+      return {
+        ...attached,
+        exec: async (command, options) => {
+          entered.resolve();
+          await gate.promise;
+
+          return attached.exec(command, options);
+        },
+      };
+    };
+
+    const jobs = host.workspace(workspace).jobs;
+    const id = asId<"job">("same");
+    const first = jobs.start({ id, command: "deploy --prod" });
+    await entered.promise;
+    const second = jobs.start({ id, command: "deploy --prod" });
+
+    await expect(jobs.start({ id, command: "deploy --staging" })).rejects.toMatchObject({
+      code: "invalid",
+    });
+    gate.resolve();
+
+    expect((await Promise.all([first, second])).map((job) => job.id)).toEqual([id, id]);
+    expect(provider.processes.map((process) => process.command)).toEqual(["deploy --prod"]);
+    expect(await jobs.list()).toHaveLength(1);
   });
 });

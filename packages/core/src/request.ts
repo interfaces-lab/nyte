@@ -22,7 +22,7 @@ import type {
   ProviderCheckpointMaterial,
   Tool,
 } from "@nyte-ai/schema/model";
-import { jsonSchemaOf } from "./catalog.ts";
+import { jsonSchemaOf } from "./registry.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";

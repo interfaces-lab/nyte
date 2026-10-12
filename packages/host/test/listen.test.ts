@@ -188,17 +188,17 @@ describe("listen", () => {
 
     await transport.invoke("sessions.list", {});
     const credential = transport.credential();
-    assert(credential?.kind === "token");
-    expect(credential.token).toMatch(/^[0-9a-f]{64}$/);
+    assert(credential !== null);
+    expect(credential).toMatch(/^[0-9a-f]{64}$/);
     await expect(transport.invoke("sessions.list", {})).rejects.toMatchObject({
       code: "unauthenticated",
     });
 
-    const device = { Authorization: `Bearer ${credential.token}` };
+    const device = { Authorization: `Bearer ${credential}` };
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
     const [paired] = await host.principals.list();
     assert(paired !== undefined);
-    expect(paired.lastSeenAt).not.toBeNull();
+    expect(paired.lastSeenAt).toBeNull();
     expect([...paired.authority].sort()).toEqual(["owner", "participant"]);
 
     await host.principals.revoke(paired.id);
@@ -283,7 +283,7 @@ describe("listen", () => {
     await kept.return?.(undefined);
   });
 
-  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here, and lastSeenAt moves, writing nothing within the minute", async () => {
+  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here, and authenticating writes no lastSeenAt (ADV C 3)", async () => {
     const store = memoryStore();
     const host = await open(fakeModels(), { store, operations: operations() });
     cleanups.push(() => host.close());
@@ -309,13 +309,13 @@ describe("listen", () => {
     const seen = async () => (await other.principals.list())[0]?.lastSeenAt;
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBe(start);
+    expect(await seen()).toBeNull();
     vi.setSystemTime(start + 30_000);
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBe(start);
+    expect(await seen()).toBeNull();
     vi.setSystemTime(start + 61_000);
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBe(start + 61_000);
+    expect(await seen()).toBeNull();
 
     const created = await json(await post(listener, "sessions.create", {}));
     assert(

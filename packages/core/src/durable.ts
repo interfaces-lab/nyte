@@ -26,7 +26,6 @@ export type StepOutcome<T> =
   | { readonly kind: "parked" }
   | { readonly kind: "interrupted" };
 
-/** Returns where a durable step runs and what stops it. */
 interface Place {
   readonly session: SessionId;
   readonly head: HeadName | null;
@@ -110,11 +109,13 @@ export async function runStep<T>(
     replay: input.replay,
   };
 
-  const opened = await changeCall(kernel, session, call, async (current) =>
-    current === null ? { record: created, updates: input.opening } : null,
-  );
+  let record = created;
 
-  const record = opened.record ?? created;
+  const opened = await changeCall(kernel, session, call, async (current) => {
+    record = current ?? created;
+
+    return current === null ? { record, updates: input.opening } : null;
+  });
 
   const read = (result: Json | null): T => {
     const value = result === null ? null : input.decode(result);
@@ -178,7 +179,7 @@ export async function runStep<T>(
   return { kind: "done", value };
 }
 
-/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake until it settles or its signal aborts; its result records the output when it is JSON, and decodes back to it. */
+/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake until it settles or its signal aborts. Its result records the output, absent when undefined; output that is not JSON rejects `invalid` and records nothing. */
 export async function runAction(
   kernel: Kernel,
   input: {
@@ -214,9 +215,17 @@ export async function runAction(
         body: async (durable) => ({ output: await input.body(durable) }),
         async settle(ended) {
           const output = ended.kind === "done" ? ended.value.output : undefined;
-          const result: Json = isJson(output) ? { kind: ended.kind, output } : { kind: ended.kind };
+          const absent: Json = { kind: ended.kind };
 
-          return { result, updates: [] };
+          if (output === undefined) return { result: absent, updates: [] };
+
+          if (!isJson(output))
+            throw new SdkError(
+              "invalid",
+              `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
+            );
+
+          return { result: { kind: ended.kind, output }, updates: [] };
         },
         decode: (result) => (isJsonObject(result) ? { output: result.output } : null),
       });

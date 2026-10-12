@@ -15,7 +15,13 @@ import type {
 } from "@nyte-ai/schema";
 import type { AssistantMessageEvent, Failure } from "@nyte-ai/schema/model";
 import { agentLoop } from "./agent-loop.ts";
-import type { LoopConfig, LoopEvent, Prepared, PreparedRequest } from "./agent-loop.ts";
+import type {
+  FailedResponse,
+  LoopConfig,
+  LoopEvent,
+  Prepared,
+  PreparedRequest,
+} from "./agent-loop.ts";
 import { checkpointOf, compactIfNeeded } from "./compaction.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
@@ -311,7 +317,7 @@ async function turn(
       case "message_end":
         return settled(context, state);
       case "turn_retry":
-        state = await retry(context, state, event.failure, event.until, event);
+        state = await retry(context, state, event.failure, event.until, event.response);
 
         return;
       default:
@@ -334,11 +340,11 @@ async function turn(
     case "parked":
       return { kind: "parked" };
     case "stopped":
-      if (kernel.runs.isStopping(run)) await failOpen(context, state, ABORTED);
+      if (kernel.runs.isStopping(run)) await failOpen(context, state, ABORTED, null);
 
       return STOPPED;
     case "failed":
-      await failOpen(context, state, end.failure);
+      await failOpen(context, state, end.failure, end.response);
 
       return { kind: "failed", failure: end.failure };
   }
@@ -633,13 +639,13 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
   });
 }
 
-/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge (§38t, v, w), none once the run is stopping. */
+/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge (§38t, v, w). Once the run is stopping only the charge lands; the stop fails the parts. */
 async function retry(
   context: Turn,
   state: AttemptState,
   failure: Failure,
   until: number,
-  charged: { readonly usage: Usage; readonly prepared: TurnRequest } | null,
+  charged: FailedResponse<TurnRequest> | null,
   extra: readonly PartId[] = [],
 ): Promise<AttemptState> {
   const { kernel, session, head } = context;
@@ -648,34 +654,52 @@ async function retry(
   const next = state.attempt + 1;
   const reason = failure.message;
   const run = state.run.id;
-  let view = state.run;
+  let retried: RunView | null = null;
 
-  const wrote = await changeRun(context, run, async (record) => {
-    if (record.stopping) return null;
-    view = { ...record.view, attempt: next };
+  await changeRun(context, run, async (record) => {
+    const paid = charge(record, charged?.usage ?? null, charged !== null);
+
+    const request =
+      charged === null
+        ? []
+        : [requestEvent(head, "assistant", charged.usage, charged.prepared.info)];
+
+    retried = null;
+
+    if (record.stopping) return request.length === 0 ? null : { record: paid, events: request };
+    const view = { ...record.view, attempt: next };
+    retried = view;
 
     return {
-      record: {
-        ...charge(record, charged?.usage ?? null, charged !== null),
-        view,
-        retrying: { attempt: next, until, reason },
-      },
+      record: { ...paid, view, retrying: { attempt: next, until, reason } },
       events: [
         { head, kind: "run", run, change: "retrying", attempt: next, until, reason },
-        ...(charged === null
-          ? []
-          : [requestEvent(head, "assistant", charged.usage, charged.prepared.info)]),
+        ...request,
       ],
       updates: await failedParts(kernel, session, head, [...openParts(state), ...extra], failure),
     };
   });
 
-  return wrote ? fresh(view, 0) : state;
+  return retried === null ? state : fresh(retried, 0);
 }
 
-/** Lands `loop_end failed`, and `stopped` of a stopping run: fails the parts the request left open, in one set. */
-async function failOpen(context: Turn, state: AttemptState, failure: Failure): Promise<void> {
-  await failParts(context.kernel, context.session, context.head, openParts(state), failure);
+/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed, and the response the loop failed on charged and observed on its request's runtime (§38v, w). */
+async function failOpen(
+  context: Turn,
+  state: AttemptState,
+  failure: Failure,
+  response: FailedResponse<TurnRequest> | null,
+): Promise<void> {
+  const { kernel, session, head } = context;
+
+  if (response === null) return failParts(kernel, session, head, openParts(state), failure);
+  observe(context, response.prepared, response.usage);
+
+  await changeRun(context, state.run.id, async (record) => ({
+    record: charge(record, response.usage, true),
+    events: [requestEvent(head, "assistant", response.usage, response.prepared.info)],
+    updates: await failedParts(kernel, session, head, openParts(state), failure),
+  }));
 }
 
 /** Writes the run record through `change`, compare-and-set on the run ref; resolves whether it wrote. */

@@ -77,7 +77,7 @@ const stopParameters = standard(
   }),
 );
 
-/** Creates a child session (`invocation.sdk.sessions.create({ parent, name: title, configuration: { agent } })`, an acquisition of the step), sends the prompt to its main head, waits for the run it landed in (`wait({ kind: "run" })`) and returns the child's answer: the last text of that run, bounded, headed by the child id and how the run ended. Replays as a durable step: the child, the send (memoised) and the wait come back on a re-run. */
+/** Creates a child session, sends it the prompt and waits for the run it landed in, returning that run's last text; a re-run replays the child, the send and the wait. */
 const task: ToolDefinition<Infer<typeof taskParameters>> = {
   name: "task",
   description:
@@ -148,7 +148,7 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
   },
 };
 
-/** Waits for a child's live run to end (`wait({ kind: "run", deadline })`, the deadline `timeout` seconds after the step's recorded clock) and returns its answer as `task` does; an idle child returns its last answer at once; a passed deadline returns that it still works. */
+/** Waits for a child's live run to end, up to `timeout` seconds after the step's recorded clock, and returns its answer; an idle child returns its last answer at once. */
 const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   name: "await",
   description: "Wait for a subagent to finish its current work and return its answer.",
@@ -246,7 +246,7 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
-/** Contributes the subagent tools (decision 13 as amended by §38r), each of `ToolClass` `delegate` with its role: `task` (create, send, wait), `create`, `send`, `await`, `read_agent` (role `read`; `read` is the environment's file tool) and `stop`. Every child is a session whose parent is the calling session; a tool naming a session that is not one of its children fails the call. */
+/** Contributes the subagent tools (decision 13, §38r): `task`, `create`, `send`, `await`, `read_agent` and `stop`, each a `delegate` call over the calling session's children. */
 export const delegationPlugin: Plugin<"core"> = {
   id: "delegation",
   contribute: { tools: [task, create, send, awaitChild, readAgent, stop] },

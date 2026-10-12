@@ -5,12 +5,13 @@ import {
   LOCAL,
   SdkError,
   authenticateToken,
-  createConnection,
   envelope,
   hostPrincipalsRef,
   prune,
   reachableObjects,
+  createConnection,
   createHost,
+  createInvocation,
   driveInProcess,
   environmentPlugin,
   headRef,
@@ -22,26 +23,27 @@ import {
   text,
   workspaceRef,
 } from "../src/index.ts";
-import type { ConnectionContext, Durable, Page, Plugin, WorkspaceRecord } from "../src/index.ts";
+import type {
+  ConnectionContext,
+  Durable,
+  Kernel,
+  Page,
+  Plugin,
+  WorkspaceRecord,
+} from "../src/index.ts";
 import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
 import { main, until } from "./harness.ts";
 
-const run: RunId = asId("r1");
-
-/** Returns a connection over the kernel as a principal with only these authorities. */
-function connectionAs(
-  kernel: Parameters<typeof createConnection>[0],
-  authority: readonly Authority[],
-) {
-  const context: ConnectionContext = {
+function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
+  return createConnection(kernel, {
     principal: asId("device"),
     authority: new Set(authority),
     credential: { kind: "token", token: "t" },
     origin: null,
-  };
-
-  return createConnection(kernel, context);
+  });
 }
+
+const run: RunId = asId("r1");
 
 /** Returns the last set a patches stream yields and every set before it. */
 async function patches(source: AsyncIterable<PatchSet>) {
@@ -138,6 +140,38 @@ describe("workspaces", () => {
     });
   });
 
+  it("keeps a participant-only tool from committing through its invocation's workspace (§52 rule 5)", async () => {
+    const { kernel, host, workspace } = await world();
+    const session = await host.sessions.create({ workspace });
+    const memo: Durable["memo"] = async (_name, compute) => compute();
+
+    const invocation = createInvocation(kernel, {
+      session: session.id,
+      head: main,
+      run: asId("r1"),
+      call: asId("c1"),
+      context: {
+        principal: LOCAL,
+        authority: new Set(["participant", "owner", "maintenance"]),
+        credential: { kind: "token", token: "" },
+        origin: null,
+      },
+      signal: new AbortController().signal,
+      workspace,
+      env: await kernel.env(session.id),
+      durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
+    });
+
+    const git = await invocation.workspace.git();
+
+    assert(git.kind === "available");
+    await expect(git.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
+      code: "denied",
+      message: "git.commit needs owner authority.",
+    });
+    expect(await git.api.status()).toEqual({ kind: "none" });
+  });
+
   it("activates a session: active, unavailable while unreachable, failed when attach throws, and reload retries", async () => {
     const { host, provider, workspace } = await world();
     const served = await host.sessions.create({ workspace });
@@ -184,7 +218,59 @@ describe("workspaces", () => {
     await watched.return?.();
   });
 
-  it("serves capabilities: files and git available, browser unsupported, denied without participant, unavailable or unsupported when nothing attaches", async () => {
+  it("attaches a session once per activation: a failed attach is cached until reload, rejects ready and shows failed with its reason (E7)", async () => {
+    const seen: string[] = [];
+
+    const probe: Plugin<"core"> = {
+      id: "probe",
+      activate(api) {
+        try {
+          seen.push(api.env.cwd);
+        } catch {
+          seen.push("none");
+        }
+      },
+    };
+
+    const { kernel, host, provider, workspace } = await world({ plugins: [probe] });
+    const attach = provider.attach.bind(provider);
+    let attempts = 0;
+
+    provider.attach = async (target) => {
+      attempts += 1;
+
+      return attach(target);
+    };
+
+    provider.failure = "The sandbox did not boot.";
+    const session = await host.sessions.create({ workspace });
+    await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The sandbox did not boot.");
+    provider.failure = null;
+
+    expect((await session.info()).activation).toEqual({
+      kind: "failed",
+      message: "The sandbox did not boot.",
+    });
+    expect(seen).toEqual([]);
+    expect(attempts).toBe(1);
+    await expect(kernel.env(session.id)).rejects.toThrow("The sandbox did not boot.");
+    expect(attempts).toBe(1);
+
+    expect(await host.workspace(workspace).reload()).toEqual({ kind: "updated" });
+    expect((await session.info()).activation).toEqual({ kind: "active" });
+    expect(seen).toEqual(["/work/project"]);
+    expect(attempts).toBe(2);
+  });
+
+  it("rejects an unknown session's activation instead of resolving it (E6, P4)", async () => {
+    const { kernel } = await world();
+
+    await expect(kernel.pluginsFor(asId("nobody")).ready).rejects.toMatchObject({
+      code: "unknown",
+    });
+  });
+
+  it("serves capabilities: files and git available, git writes gated by their own rows, browser unsupported, unavailable or unsupported when nothing attaches", async () => {
     const { kernel, host, provider, workspace } = await world();
     const handle = host.workspace(workspace);
     const files = await handle.files();
@@ -208,10 +294,6 @@ describe("workspaces", () => {
     expect(await guarded.api.status()).toEqual({ kind: "none" });
     await expect(guarded.api.commit({ message: "No.", files: "all" })).rejects.toMatchObject({
       code: "denied",
-    });
-
-    expect(await connectionAs(kernel, ["owner"]).workspace(workspace).files()).toMatchObject({
-      kind: "denied",
     });
 
     await kernel.environments.detachWorkspace(workspace);
@@ -288,9 +370,9 @@ describe("workspaces", () => {
     await (await env.exec("echo hi")).settled();
 
     expect(calls).toEqual(["second", "first"]);
-    expect(
-      (await kernel.environments.capabilities(session.id, new Set(["participant"]))).browser,
-    ).toMatchObject({ kind: "available" });
+    expect((await kernel.environments.capabilities(session.id)).browser).toMatchObject({
+      kind: "available",
+    });
 
     dispose();
     calls.length = 0;
@@ -427,7 +509,7 @@ describe("principals", () => {
       principal: redeemed.principal,
       authority: new Set(["participant"]),
     });
-    expect((await host.principals.list())[0]?.lastSeenAt).toEqual(expect.any(Number));
+    expect((await host.principals.list())[0]?.lastSeenAt).toBeNull();
     expect(await authenticateToken(kernel, "forged")).toBeNull();
 
     let dropped = 0;
@@ -439,7 +521,8 @@ describe("principals", () => {
       dropped += 10;
     });
 
-    forgotten();
+    assert(forgotten.kind === "admitted");
+    forgotten.dispose();
 
     await host.principals.revoke(redeemed.principal);
 
@@ -689,6 +772,28 @@ describe("patch reads", () => {
 });
 
 describe("browser pages (§37i)", () => {
+  it("keeps a closed page's id: a replay with another input is invalid, with the same input unknown (G6, P2)", async () => {
+    const { kernel, host, provider, workspace } = await world({ browser: true });
+    const capability = await host.workspace(workspace).browser();
+    assert(capability.kind === "available");
+
+    const open = (url: string) =>
+      kernel.pages.open({
+        id: "replayed",
+        input: { workspace, url },
+        open: () => capability.api.open({ url }),
+      });
+
+    const page = await open("http://localhost:3000");
+
+    await expect(open("http://localhost:4000")).rejects.toMatchObject({ code: "invalid" });
+    expect((await open("http://localhost:3000")).id).toBe(page.id);
+    await page.close();
+    await expect(open("http://localhost:4000")).rejects.toMatchObject({ code: "invalid" });
+    await expect(open("http://localhost:3000")).rejects.toMatchObject({ code: "unknown" });
+    expect(provider.opened).toEqual([page.id]);
+  });
+
   it("counts holds per page and closes the provider's page on the last close", async () => {
     const { host, provider, workspace } = await world({ browser: true });
     const capability = await host.workspace(workspace).browser();

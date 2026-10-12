@@ -44,7 +44,7 @@ import type {
   SessionRecord,
 } from "./records.ts";
 import { callRef, headRef, inboxRef, receiptRef, runRef, sessionRef } from "./refs.ts";
-import { sessionInfo } from "./session-info.ts";
+import { sessionInfo } from "./session.ts";
 import { publishSet } from "./watch.ts";
 
 /** The head every session has; "main" is the session itself. */
@@ -89,10 +89,6 @@ export interface CallChange {
 }
 
 const CALL_TRIES = 8;
-
-const landedRuns = new WeakMap<Kernel, Map<RunId, MessageId[]>>();
-
-const callQueues = new WeakMap<Kernel, Map<string, Promise<unknown>>>();
 
 /** Returns the record a ref's object holds, or null when the ref is absent; throws `internal` when the object is another record. */
 export async function load<T>(
@@ -192,30 +188,6 @@ export function expectOf(ref: Ref | null): Revision | "absent" {
 /** Returns whether a client's `expect` still matches a ref; the empty revision matches only an absent ref. */
 export function sameRevision(expect: Revision, ref: Ref | null): boolean {
   return expect === EMPTY_REVISION ? ref === null : ref?.revision === expect;
-}
-
-/** Checks what a move or an edit needs of a head, in order: `expect` holds, no live run unless `running` is stop, an empty inbox; returns the failure, or the tip and the run to stop. */
-export async function guardHead(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  expect: Revision | undefined,
-  running: "refuse" | "stop",
-): Promise<MoveFailure | { readonly tip: Tip; readonly run: RunId | null }> {
-  const [tip, inbox, run] = await Promise.all([
-    readTip(kernel, session, head),
-    readInbox(kernel, session, head),
-    liveRun(kernel, session, head),
-  ]);
-
-  if (expect !== undefined && !sameRevision(expect, tip.ref))
-    return { kind: "stale", revision: tip.ref?.revision ?? EMPTY_REVISION };
-
-  if (run !== null && running === "refuse") return { kind: "busy", run: run.record.view.id };
-
-  if (inbox.messages.length > 0) return { kind: "pending-input", messages: inbox.messages };
-
-  return { tip, run: run?.record.view.id ?? null };
 }
 
 /** Returns a move's `stale` outcome: the head ref's current revision. */
@@ -350,10 +322,7 @@ export async function readCommit(kernel: Kernel, commit: CommitId): Promise<Comm
 
 /** Returns, by run, the messages this process landed into it; `endRun` settles their receipts. */
 export function landedIn(kernel: Kernel): Map<RunId, MessageId[]> {
-  const known = landedRuns.get(kernel) ?? new Map<RunId, MessageId[]>();
-  landedRuns.set(kernel, known);
-
-  return known;
+  return kernel.executionState.landedRuns;
 }
 
 /** Returns a durable step's call record and its ref, or null when the step has none. */
@@ -406,8 +375,7 @@ export function changeCall(
   change: (current: CallRecord | null) => Promise<CallChange | null>,
 ): Promise<{ readonly record: CallRecord | null; readonly wrote: boolean }> {
   const name = callRef(session, call);
-  const queues = callQueues.get(kernel) ?? new Map<string, Promise<unknown>>();
-  callQueues.set(kernel, queues);
+  const queues = kernel.executionState.callQueues;
 
   const done = (queues.get(name) ?? Promise.resolve()).then(async () => {
     for (let tries = 0; tries < CALL_TRIES; tries += 1) {
@@ -455,11 +423,8 @@ export async function covers(
   let current = await readSession(kernel, session);
 
   if (coverage.kind === "workspace") return current?.record.workspace === coverage.workspace;
-  const seen = new Set<SessionId>();
-
-  while (current !== null && !seen.has(current.record.id)) {
+  while (current !== null) {
     if (coverage.sessions.includes(current.record.id)) return true;
-    seen.add(current.record.id);
     const parent = current.record.parent;
     current = parent === null ? null : await readSession(kernel, parent);
   }
@@ -467,47 +432,38 @@ export async function covers(
   return false;
 }
 
-const driven = new WeakMap<Kernel, Set<ExecutionCoverage>>();
-
-const pending = new WeakMap<Kernel, Set<string>>();
-
-const dispatched = new WeakMap<Kernel, Set<SessionId>>();
-
 /** Records a coverage an in-process driver or an open `cover` runs while it is open, so `isCovered` counts it on a kernel whose own execution is `admit-only` (§41b, §42a); the disposer removes it. */
 export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer {
-  const coverages = driven.get(kernel) ?? new Set<ExecutionCoverage>();
+  const coverages = kernel.executionState.driven;
   const entry = { ...coverage };
   coverages.add(entry);
-  driven.set(kernel, coverages);
 
   return () => {
     coverages.delete(entry);
   };
 }
 
-/** Returns whether this host runs a session: execution is `run` and its coverage includes it, an open driver's or `cover`'s coverage includes it, or a `dispatch` for it resolved in this instance (§42p). */
+/** Returns whether this host runs a session: always on a `dispatch` kernel (§42p), else when its own `run` coverage or an open driver's or `cover`'s coverage includes it. */
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
+  if (kernel.execution.kind === "dispatch") return true;
+
   if (kernel.execution.kind === "run" && (await covers(kernel, kernel.execution.coverage, session)))
     return true;
 
-  for (const coverage of driven.get(kernel) ?? [])
+  for (const coverage of kernel.executionState.driven)
     if (await covers(kernel, coverage, session)) return true;
 
-  return dispatched.get(kernel)?.has(session) ?? false;
+  return false;
 }
 
-/** Returns whether a session's environment attaches here: on a `dispatch` kernel always, as for `run` (§42p), else when `isCovered` says so. What activation and a plugin's `api.env` read. */
-export async function attachesHere(kernel: Kernel, session: SessionId): Promise<boolean> {
-  return kernel.execution.kind === "dispatch" || isCovered(kernel, session);
-}
-
-/** Hands a head owed a step to a `dispatch` kernel's dispatcher (§42s): at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a resolved dispatch makes its session count for `isCovered`, a rejected one is recorded nowhere, the head staying owed for `repair`. Does nothing on any other kernel. */
-export function dispatchHead(kernel: Kernel, session: SessionId, head: HeadName): void {
-  const execution = kernel.execution;
-
-  if (execution.kind !== "dispatch") return;
-  const inFlight = pending.get(kernel) ?? new Set<string>();
-  pending.set(kernel, inFlight);
+/** Hands a head owed a step to a `dispatch` kernel's dispatcher (§42s): at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a rejected one is recorded nowhere, the head staying owed for `repair`. */
+export function dispatchHead(
+  kernel: Kernel,
+  execution: Extract<Kernel["execution"], { readonly kind: "dispatch" }>,
+  session: SessionId,
+  head: HeadName,
+): void {
+  const inFlight = kernel.executionState.pending;
   const key = JSON.stringify([session, head]);
 
   if (inFlight.has(key)) return;
@@ -516,14 +472,7 @@ export function dispatchHead(kernel: Kernel, session: SessionId, head: HeadName)
 
   void Promise.resolve()
     .then(() => execution.dispatch({ session, head }))
-    .then(
-      () => {
-        const sessions = dispatched.get(kernel) ?? new Set<SessionId>();
-        dispatched.set(kernel, sessions);
-        sessions.add(session);
-      },
-      () => undefined,
-    )
+    .catch(() => undefined)
     .finally(() => inFlight.delete(key));
 }
 

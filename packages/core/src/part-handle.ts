@@ -18,15 +18,16 @@ import { check } from "./json-schema.ts";
 import type { Checked } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
 import type { RegisteredDefinition } from "./part-definitions.ts";
+import { release, settle, storedAnswer } from "./parts.ts";
 import type {
   ActionContext,
   ActionSchemas,
+  Answered,
   Part,
   PartActions,
   PartDefinition,
   PartState,
 } from "./parts.ts";
-import { requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord } from "./records.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
@@ -44,8 +45,6 @@ import {
   readTip,
   requireSession,
 } from "./session-state.ts";
-import { release, settle, tableOf } from "./part-table.ts";
-import type { Answered } from "./part-table.ts";
 
 /** Returns what an action handler ended with: its return value, what it threw, or the part closing first. */
 type Performed =
@@ -62,7 +61,7 @@ type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 /** The session each handle this module bound acts in. */
 const boundIn = new WeakMap<object, SessionId>();
 
-/** Creates a part: validates `state` against the definition (`invalid` with issues), writes the `PartRecord` at `parts/<part>` with `part created` (owner from the registry by kind, null when unregistered; `run` default null), and returns its handle. A definition with `onAction` must be registered. An existing id with the same kind and an equal state is a replay and writes nothing; any other existing id is `invalid`. A transcript part outside a run also lands as a commit on `head` (default main) in the same set: `[part created, part settled, commit]`. The kernel remembers the creating definition in memory, so handles bound by id validate against it when the kind is unregistered. From a durable step (`context.origin` naming a call) the creation is an acquisition recorded on the step's call before the part is written, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``, so a re-run returns the part it already created, whatever its state now. */
+/** Creates a part from a definition and returns its handle; an existing id with the same kind and state is a replay, any other is `invalid`. A transcript part outside a run lands as a commit on `head` (default main) in the same set. From a durable step the creation is an acquisition recorded on the step's call first, so a re-run returns the part it created. */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -212,14 +211,14 @@ export async function createPart<K extends PartDefinition>(
     return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
   });
 
-  const table = tableOf(kernel);
+  const table = kernel.partTable;
   table.closed.delete(name);
   table.created.set(name, kind);
 
   return partHandleFor(kernel, context, session, id, kind);
 }
 
-/** Returns a handle on a part by id: `update` validates against the registered definition, else the one that created the part in this process, and compare-and-sets the ref with `part updated`; `act` runs the registered definition's `onAction` as a durable step, or settles `answer()` and returns ok with no output when it has none; an ok act on a modal part wakes the durable waits on it with its answer; `answer()` waits in memory for the first act on a modal part, or null at close; `close` deletes the ref with `part closed` and wakes the waits on it with no answer. Binds synchronously; no I/O. */
+/** Returns a handle on a part by id, binding synchronously with no I/O. */
 export function partHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -229,7 +228,7 @@ export function partHandle(
   return partHandleFor<PartDefinition>(kernel, context, session, id, null);
 }
 
-/** Returns a handle on a part typed by its definition, or untyped when `kind` is null; each method needs participant authority. The governing definition is the registered one for the part's kind, else `kind`, else the one that created the part here. An answer the handle's definition cannot express reads as null. */
+/** Returns a handle on a part typed by `kind`, or untyped when it is null; the governing definition is the registered one, else `kind`, else the one that created the part here. */
 function partHandleFor<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -238,10 +237,7 @@ function partHandleFor<K extends PartDefinition>(
   kind: K | null,
 ): Part<K> {
   const name = partRef(session, id);
-  const table = tableOf(kernel);
-
-  const need = (operation: string): void =>
-    requireAuthority(context.authority, "participant", `part.${operation}`);
+  const table = kernel.partTable;
 
   const definitionOf = (partKind: string): PartDefinition | null =>
     kernel.partDefinitions.get(partKind)?.definition ?? kind ?? table.created.get(name) ?? null;
@@ -249,8 +245,6 @@ function partHandleFor<K extends PartDefinition>(
   const handle: Part<K> = {
     id,
     async update(next) {
-      need("update");
-
       return attempt<PartUpdateOutcome>(`Updating part ${id}`, async () => {
         const found = table.closed.has(name)
           ? null
@@ -291,8 +285,6 @@ function partHandleFor<K extends PartDefinition>(
       });
     },
     async act(action, input) {
-      need("act");
-
       const found = table.closed.has(name)
         ? null
         : await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
@@ -346,23 +338,24 @@ function partHandleFor<K extends PartDefinition>(
         };
 
       if (record.placement.kind === "modal") {
-        settle(table, name, { action: named, input: accepted.value });
-        const answer = { action: named, input: isJson(accepted.value) ? accepted.value : null };
+        const offered = { action: named, input: isJson(accepted.value) ? accepted.value : null };
+        const kept = await keepAnswer(kernel, name, id, offered);
 
-        await kernel.waits.partAnswered(session, id, answer, await keepAnswer(kernel, name, id, answer));
+        if (kept.kind === "waiting") await kernel.waits.partAnswered(session, id, offered, kept.call);
+        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+        const winner = found === null ? null : await storedAnswer(kernel, session, found.record);
+
+        if (winner !== null) settle(table, name, winner);
       }
 
       return { kind: "ok", output };
     },
     async answer() {
-      need("answer");
-      const settled = await firstAnswer(kernel, name);
+      const settled = await firstAnswer(kernel, session, name);
 
       return settled !== null && isAnswerOf(kind, settled) ? settled : null;
     },
     async close() {
-      need("close");
-
       if (table.closed.has(name)) return;
 
       const closed = await attempt(`Closing part ${id}`, async () => {
@@ -393,22 +386,26 @@ function partHandleFor<K extends PartDefinition>(
   return handle;
 }
 
-/** Returns the step a live modal part's status names as waiting on it; with none yet, writes `answer` onto the status first (§48i), so an answer that comes before the park is durable and the step that parks takes it from the record. A part already holding an answer keeps its first. Null when no step waits yet or the part is no longer live. */
+/** Returns what keeps a modal part's answer: the step its status names as waiting, which the answer is offered to, or the status itself, written first when no step waits yet (§48i). A part already holding an answer keeps its first; a part no longer live is gone. */
 async function keepAnswer(
   kernel: Kernel,
   name: string,
   id: PartId,
-  answer: { readonly action: string; readonly input: Json },
-): Promise<CallId | null> {
+  answer: Answered,
+): Promise<
+  | { readonly kind: "waiting"; readonly call: CallId }
+  | { readonly kind: "kept" }
+  | { readonly kind: "gone" }
+> {
   return attempt(`Answering part ${id}`, async () => {
     const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
     const status = found?.record.status;
 
-    if (found === null || status?.kind !== "live") return null;
+    if (found === null || status?.kind !== "live") return { kind: "gone" };
 
-    if (status.waiting !== undefined) return status.waiting;
+    if (status.waiting !== undefined) return { kind: "waiting", call: status.waiting };
 
-    if (status.answer !== undefined) return null;
+    if (status.answer !== undefined) return { kind: "kept" };
 
     const outcome = await commit(kernel, [
       {
@@ -418,21 +415,13 @@ async function keepAnswer(
       },
     ]);
 
-    return outcome.kind === "set" ? null : STALE;
+    return outcome.kind === "set" ? { kind: "kept" } : STALE;
   });
 }
 
-/** Returns the first answer a modal part had in this process, its input when JSON, or null when it has none. */
-export function answerOf(
-  kernel: Kernel,
-  session: SessionId,
-  part: PartId,
-): { readonly action: string; readonly input: Json } | null {
-  const answered = tableOf(kernel).answered.get(partRef(session, part));
-
-  return answered === undefined
-    ? null
-    : { action: answered.action, input: isJson(answered.input) ? answered.input : null };
+/** Returns the answer this process holds for a modal part, or null when it holds none. */
+export function answerOf(kernel: Kernel, session: SessionId, part: PartId): Answered | null {
+  return kernel.partTable.answered.get(partRef(session, part)) ?? null;
 }
 
 /** Returns the session a part handle this module bound acts in, or undefined for any other object. */
@@ -440,7 +429,7 @@ export function sessionOfPart(part: object): SessionId | undefined {
   return boundIn.get(part);
 }
 
-/** Runs a registered definition's `onAction` as a durable step through `kernel.durable.run`, with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending until a wake completes the step in this host's life, or the part closes. An interrupted step fails the act. */
+/** Runs a registered definition's `onAction` as a durable step with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending; an interrupted one fails it. */
 async function perform(
   kernel: Kernel,
   context: ConnectionContext,
@@ -454,7 +443,7 @@ async function perform(
 ): Promise<Performed> {
   const { session, record, registered } = input;
   const name = partRef(session, record.id);
-  const table = tableOf(kernel);
+  const table = kernel.partTable;
 
   if (table.closed.has(name)) return { kind: "closed" };
   const controller = new AbortController();
@@ -515,15 +504,34 @@ async function perform(
   }
 }
 
-/** Returns a part's first answer at once when it has one; otherwise waits for it, or null once the part closes. Null at once when no part has the id. */
-async function firstAnswer(kernel: Kernel, name: string): Promise<Answered | null> {
-  const table = tableOf(kernel);
-  const exists = (await kernel.store.refs.get(name)) !== null;
+/** Returns a part's first answer as the store holds it, else waits for one; null once the part is gone or closes. */
+async function firstAnswer(
+  kernel: Kernel,
+  session: SessionId,
+  name: string,
+): Promise<Answered | null> {
+  const table = kernel.partTable;
+  const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+
+  if (found === null) {
+    table.answered.delete(name);
+
+    return null;
+  }
+
+  const stored = await storedAnswer(kernel, session, found.record);
+
+  if (stored !== null) {
+    settle(table, name, stored);
+
+    return stored;
+  }
+
   const settled = table.answered.get(name);
 
   if (settled !== undefined) return settled;
 
-  if (!exists || table.closed.has(name)) return null;
+  if (table.closed.has(name)) return null;
 
   return new Promise((resolve) => {
     const waiting = table.waiters.get(name) ?? new Set();
@@ -597,7 +605,7 @@ function isAnswerOf<K extends PartDefinition>(
   return spec !== undefined && accepts(spec.input, answer.input);
 }
 
-/** Returns whether a value is what `act` answers for an action: undefined when no handler ran, whatever the action declares (the baseline's rule without `onAction`); otherwise what the action's `output` schema accepts, or undefined when it declares none. The schema is `kind`'s, or the governing definition's on a handle bound without one. */
+/** Returns whether a value is what `act` answers for an action: undefined when no handler ran, else what the action's `output` schema accepts, or undefined when it declares none. */
 function isOutputOf<K extends PartDefinition, A extends keyof PartActions<K>>(
   kind: K | null,
   definition: PartDefinition | null,

@@ -484,6 +484,7 @@ describe("agentLoop", () => {
     expect(end).toEqual({
       reason: "failed",
       failure: { class: "provider", message: "The response ended without a result." },
+      response: null,
     });
     expect(kinds(events)).not.toContain("turn_retry");
     expect(seen.requests).toHaveLength(1);
@@ -500,7 +501,7 @@ describe("agentLoop", () => {
 
       const retry = (await collect(config)).events.find((event) => event.type === "turn_retry");
 
-      expect(retry).toMatchObject({ usage: { total: 1 }, prepared: { info: INFO } });
+      expect(retry).toMatchObject({ response: { usage: { total: 1 }, prepared: { info: INFO } } });
     } finally {
       vi.useRealTimers();
     }

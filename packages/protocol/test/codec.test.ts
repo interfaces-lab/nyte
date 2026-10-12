@@ -174,6 +174,42 @@ describe("codec", () => {
     expect(encodeOutput("workspace.info", info)).not.toHaveProperty("target.inode");
   });
 
+  it("never reads an inherited `__proto__` as a declared field, and keeps it as an own key when encoding (ADV G P3)", () => {
+    const proto = (value: Json) => Object.fromEntries([["__proto__", value]]);
+    const open = invalid(() =>
+      decodeInput("browser.open", { workspace, url: "https://a.test", ...proto({}) }),
+    );
+    const batch = invalid(() =>
+      decodeInput("files.batch", {
+        workspace,
+        entries: [{ kind: "remove", path: "a.ts", ...proto({}) }],
+        ...proto({}),
+      }),
+    );
+    const next = { ...proto({ x: 1 }), normal: 2 };
+    const entry = {
+      path: "a.ts",
+      status: "added",
+      digest: "d",
+      kind: "binary",
+      fresh: true,
+    } as const;
+    const patches: PatchSetWire = {
+      revision: asId("g1"),
+      entries: Object.fromEntries([["__proto__", entry]]),
+    };
+
+    expect(open.issues.map((issue) => issue.path)).toEqual([["__proto__"]]);
+    expect(batch.issues.map((issue) => issue.path)).toEqual([
+      ["entries", 0, "__proto__"],
+      ["__proto__"],
+    ]);
+    expect(JSON.stringify(encodeInput("part.update", { session, part, next }))).toContain(
+      '"next":{"__proto__":{"x":1},"normal":2}',
+    );
+    expect(JSON.stringify(encodeOutput("git.patches", patches))).toContain('"__proto__":{"path"');
+  });
+
   it("skips an array record of an unknown kind and ignores unknown fields when decoding", () => {
     const frame = [
       { path: "a.ts", version: null, kind: "created", rename: "b.ts" },
