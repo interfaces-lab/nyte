@@ -55,7 +55,7 @@ export interface WaitRegistry {
     end: RunEnd,
     waitedBy: RunRecord["waitedBy"],
   ): Promise<boolean>;
-  /** Wakes the waits on a job that ended and resolves whether one consumed the end; a refused write is retried, the write being idempotent. */
+  /** Wakes the waits on a job that ended and resolves whether one consumed the end or still holds it: a wait whose write the store refused stays parked here and takes the end when `repair` or the poll judges it again (§43k). */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
   /** Wakes the waits on an answered part; `call`, the step its live status names, is offered the part's outcome from its stored wait (§42x, §42z). */
   partAnswered(
@@ -80,14 +80,11 @@ export interface WaitRegistry {
   tick(now: number): Promise<void>;
   /** Returns the earliest timer or deadline among a head's parked waits, or null. */
   nextDeadline(session: SessionId, head: HeadName): number | null;
-  /** Judges every wait held here again from its stored call record, dropping those another instance settled (§42h, §42x). */
+  /** Judges every wait held here again from its stored call record, dropping those another instance settled (§42h, §42x), and resumes each act here whose step another runner settled. */
   settleFromStore(): Promise<void>;
   /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again; with none, a wake written here re-runs the action (§33j). */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 }
-
-/** Returns what offering one outcome to one target did. */
-type Taken = "woke" | "filled" | "none";
 
 /** Returns one parked wait with its targets and the outcome each has had so far. */
 interface Slot {
@@ -99,15 +96,14 @@ interface Slot {
 /** How a job this instance does not hold ends for a wait on it (§42w, §43k). */
 const LOST: JobEnd = { kind: "lost" };
 
-const JOB_TRIES = 5;
-
-const JOB_RETRY_MS = 100;
-
 /** Returns an empty wait registry over a kernel: what `kernel.waits` holds. */
 export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const slots = new Map<string, Slot>();
-  const jobs = new Map<JobId, JobEnd>();
-  const resumers = new Map<string, () => void>();
+
+  const resumers = new Map<
+    string,
+    { readonly session: SessionId; readonly call: CallId; readonly resume: () => void }
+  >();
 
   const resumed = async (entry: ParkedWait): Promise<readonly RefUpdate[]> =>
     entry.run === null
@@ -160,29 +156,29 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       return;
     }
 
-    const resume = resumers.get(key);
+    const resumer = resumers.get(key);
 
-    if (resume !== undefined) resume();
+    if (resumer !== undefined) resumer.resume();
     else
       void rerunAction(kernel, entry.session, entry.call).catch((error: unknown) =>
         dev("waits", "rerun failed", { call: entry.call, error: String(error) }),
       );
   };
 
-  const settle = async (slot: Slot, outcome: WaitOutcome): Promise<Taken> => {
+  const settle = async (slot: Slot, outcome: WaitOutcome): Promise<boolean> => {
     const { entry } = slot;
 
     const written = await changeCall(kernel, entry.session, entry.call, async (current) =>
       current !== null && open(current, entry) ? completion(current, entry, outcome) : null,
     );
 
-    if (!written.wrote) return "none";
+    if (!written.wrote) return false;
     woken(slot);
 
-    return "woke";
+    return true;
   };
 
-  const offer = async (slot: Slot, index: number, outcome: WaitOutcome): Promise<Taken> => {
+  const offer = async (slot: Slot, index: number, outcome: WaitOutcome): Promise<boolean> => {
     const { entry } = slot;
 
     if (entry.target.kind !== "all") return settle(slot, outcome);
@@ -227,23 +223,18 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
     const record = written.record;
 
-    if (!written.wrote || record === null) return "none";
+    if (!written.wrote || record === null) return false;
 
-    if (record.waiting !== null) {
-      slot.outcomes = record.partial;
+    if (record.waiting !== null) slot.outcomes = record.partial;
+    else woken(slot);
 
-      return "filled";
-    }
-
-    woken(slot);
-
-    return "woke";
+    return true;
   };
 
   const offers = (
     match: (target: WaitTarget) => boolean,
     outcome: WaitOutcome,
-  ): readonly Promise<Taken>[] =>
+  ): readonly Promise<boolean>[] =>
     [...slots.values()].flatMap((slot) =>
       slot.targets.flatMap((target, index) =>
         (slot.outcomes.at(index) ?? null) === null && match(target)
@@ -292,7 +283,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       }
 
       case "job": {
-        const state = jobs.get(target.job) ?? kernel.jobs.get(target.job)?.view.state ?? LOST;
+        const state = kernel.jobs.get(target.job)?.view.state ?? LOST;
 
         return state.kind === "running" ? null : { kind: "job", job: target.job, end: state };
       }
@@ -335,7 +326,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     call: CallId,
     on: (target: WaitTarget) => boolean,
     outcome: WaitOutcome,
-  ): Promise<readonly Taken[]> => {
+  ): Promise<readonly boolean[]> => {
     const entry = await storedWait(session, call);
 
     if (entry === null) return [];
@@ -405,33 +396,17 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       const taken = await Promise.all(offers(on, outcome));
 
-      return [...cold.flat(), ...taken].some((found) => found !== "none");
+      return [...cold.flat(), ...taken].some(Boolean);
     },
     async jobEnded(job, end) {
-      jobs.set(job, end);
-      let consumed = false;
+      const results = await Promise.allSettled(
+        offers((target) => target.kind === "job" && target.job === job, { kind: "job", job, end }),
+      );
 
-      for (let tries = 1; ; tries += 1) {
-        const results = await Promise.allSettled(
-          offers((target) => target.kind === "job" && target.job === job, {
-            kind: "job",
-            job,
-            end,
-          }),
-        );
+      if (results.some((found) => found.status === "rejected"))
+        dev("waits", "job end refused", { job });
 
-        consumed ||= results.some(
-          (found) => found.status === "fulfilled" && found.value !== "none",
-        );
-        const refused = results.find((found) => found.status === "rejected");
-
-        if (refused === undefined) return consumed;
-        dev("waits", "job end refused", { job, tries });
-        const reason: unknown = refused.reason;
-
-        if (tries === JOB_TRIES) throw reason;
-        await new Promise((resolve) => setTimeout(resolve, JOB_RETRY_MS * tries));
-      }
+      return results.some((found) => found.status === "rejected" || found.value);
     },
     partAnswered: offerPart,
     partClosed: (session, part, call) => offerPart(session, part, null, call),
@@ -493,7 +468,16 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
           if (record === null || record.result !== null) return;
 
           if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
-          else resumers.get(key)?.();
+          else resumers.get(key)?.resume();
+        }),
+      );
+
+      await Promise.all(
+        [...resumers].map(async ([key, resumer]) => {
+          if (slots.has(key)) return;
+          const found = await readCall(kernel, resumer.session, resumer.call);
+
+          if ((found?.record.result ?? null) !== null) resumer.resume();
         }),
       );
     },
@@ -516,10 +500,11 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     },
     onWoken(session, call, resume) {
       const key = keyOf(session, call);
-      resumers.set(key, resume);
+      const resumer = { session, call, resume };
+      resumers.set(key, resumer);
 
       return () => {
-        if (resumers.get(key) === resume) resumers.delete(key);
+        if (resumers.get(key) === resumer) resumers.delete(key);
       };
     },
   };

@@ -127,7 +127,7 @@ async function admit(kernel: Kernel, session: SessionId, message: string): Promi
   await write(kernel, [
     {
       name: inboxRef(session, main),
-      object: envelope("inbox", { messages: [message] }, 0),
+      object: envelope("inbox", { messages: [message], pendingInput: [message] }, 0),
       event: {
         head: main,
         kind: "input",
@@ -170,7 +170,7 @@ async function land(
   await write(kernel, [
     {
       name: inboxRef(session, main),
-      object: envelope("inbox", { messages: [] }, 0),
+      object: envelope("inbox", { messages: [], pendingInput: [] }, 0),
       event: {
         head: main,
         kind: "input",

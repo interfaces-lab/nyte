@@ -205,8 +205,8 @@ export function createRows(transport: Transport, link: Link): Rows {
       ),
     frames: (name, input) =>
       through(
-        transport.stream(name, encodeInput(name, input)),
-        (frame) => (frame instanceof Uint8Array ? null : decoded(name, frame)),
+        transport.frames(name, encodeInput(name, input)),
+        (frame) => decoded(name, frame),
         link.signal,
       ),
     watch: (name, input) =>
@@ -217,11 +217,8 @@ export function createRows(transport: Transport, link: Link): Rows {
       ),
     output: (input) =>
       through(
-        transport.stream("job.output", encodeInput("job.output", input)),
-        (frame) =>
-          frame instanceof Uint8Array
-            ? { value: { kind: "bytes", data: frame } }
-            : decoded("job.output", frame),
+        transport.output(encodeInput("job.output", input)),
+        (frame) => (frame.kind === "bytes" ? { value: frame } : decoded("job.output", frame)),
         link.signal,
       ),
   };

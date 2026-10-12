@@ -367,7 +367,7 @@ describe("durable steps", () => {
     ).toEqual({ kind: "parked" });
     expect(
       await step(kernel, { session: session.id, call, replay: "never", settled, body }),
-    ).toEqual({ kind: "interrupted" });
+    ).toEqual({ kind: "interrupted", value: "interrupted" });
     expect(runs).toBe(1);
     expect(settled).toEqual(["interrupted"]);
     expect(await readCall(kernel, session.id, call)).toMatchObject({
@@ -601,8 +601,6 @@ describe("durable steps", () => {
     const child = await host.sessions.create({ parent: session.id });
     const ended = await liveRun(kernel, child.id);
     await endRun(kernel, child.id, ended, completed);
-    const end = { kind: "exited", code: 0, reason: "exited" } as const;
-    await kernel.waits.jobEnded(asId("j1"), end);
 
     const targets: readonly [string, WaitTarget, WaitOutcome][] = [
       [
@@ -615,7 +613,11 @@ describe("durable steps", () => {
         { kind: "part", part: answered.id },
         { kind: "part", part: answered.id, answer: { action: "answer", input: { choice: "yes" } } },
       ],
-      ["job", { kind: "job", job: asId("j1") }, { kind: "job", job: asId("j1"), end }],
+      [
+        "job",
+        { kind: "job", job: asId("j1") },
+        { kind: "job", job: asId("j1"), end: { kind: "lost" } },
+      ],
       [
         "run",
         { kind: "run", session: child.id, run: ended },

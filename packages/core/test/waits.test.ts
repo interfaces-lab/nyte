@@ -88,6 +88,33 @@ const holding = definePart({
   onAction: (action, input, context) => holdHandlers[action](input, context),
 });
 
+const resumed: string[] = [];
+
+let released = Promise.withResolvers<void>();
+
+const gatedHandlers: {
+  readonly [A in keyof typeof holdActions]: (
+    input: Infer<(typeof holdActions)[A]["input"]>,
+    context: ActionContext<Infer<typeof holdState>, typeof holdActions>,
+  ) => Awaitable<ActionOutput<(typeof holdActions)[A]>>;
+} = {
+  hold: async (input, context) => {
+    const woke = await context.wait({ kind: "timer", until: input.until });
+    resumed.push(context.principal);
+    await released.promise;
+
+    return { woke: woke.kind };
+  },
+};
+
+const gated = definePart({
+  kind: "test/gated",
+  state: holdState,
+  actions: holdActions,
+  fallback: (_state, { id }) => `Gated ${id}`,
+  onAction: (action, input, context) => gatedHandlers[action](input, context),
+});
+
 /** Runs a test step that waits once and returns the outcome; its result records it. */
 function waitStep(
   kernel: Kernel,
@@ -226,6 +253,37 @@ describe("waits as store facts", () => {
 
     expect(notified).toEqual([`${session.id}/${main}`]);
     expect(holder.kernel.waits.nextDeadline(session.id, main)).toBeNull();
+  });
+
+  it("wakes no head when its turn parks: the advance reports waiting itself (ADV E-2 N7)", async () => {
+    const { kernel, host, script } = await setup({ tools: tools(parker) });
+    const session = await host.sessions.create();
+    await session.send("Wait.");
+    const notified: string[] = [];
+    kernel.wakes.subscribe((woken, at) => notified.push(`${woken}/${at}`));
+    const step = host.execution.advance({ session: session.id, head: main });
+    const turn = await script.started(1);
+
+    await executeCall(kernel, {
+      session: session.id,
+      runtime: kernel.pluginsFor(session.id),
+      head: main,
+      run: turn.input.run.id,
+      call: asId("w1"),
+      name: "parker",
+      args: {},
+      context: {
+        principal: LOCAL,
+        authority: ALL_AUTHORITY,
+        credential: { kind: "token", token: "" },
+        origin: null,
+      },
+      signal: new AbortController().signal,
+    });
+    turn.finish({ kind: "parked" });
+
+    expect(await step).toMatchObject({ kind: "waiting" });
+    expect(notified).toEqual([]);
   });
 
   it("answers a modal whose step stopped waiting on it: the answer stays on the part, answer() resolves and a later step takes it; a modal no longer live refuses the act (ADV B N1)", async () => {
@@ -405,6 +463,53 @@ describe("waits as store facts", () => {
     ).toEqual({
       done: true,
     });
+  });
+
+  it("re-runs a woken action step once while its act is live on another instance: the re-run reserves the step in the store before it executes", async () => {
+    const holder = await setup();
+    const other = await setup({ store: holder.kernel.store });
+
+    for (const kernel of [holder.kernel, other.kernel])
+      kernel.partDefinitions.register(gated, "plugin");
+    const session = await holder.host.sessions.create();
+
+    const part = await session.parts.create(gated, {
+      state: { done: false },
+      placement: { kind: "panel" },
+    });
+
+    const at = Date.now() + 60_000;
+    resumed.length = 0;
+    released = Promise.withResolvers();
+    const acting = part.act("hold", { until: at });
+
+    const call = await until(async () => {
+      for (const ref of await holder.kernel.store.refs.list(`sessions/${session.id}/calls/`)) {
+        const record = decodeCallRecord(
+          ref.target ? await holder.kernel.store.objects.get(ref.target) : null,
+        );
+
+        if (record !== null && record.waiting !== null) return record.id;
+      }
+
+      return undefined;
+    });
+
+    await loadWaits(other.kernel, [session.id]);
+    await other.kernel.waits.tick(at);
+    await until(async () => (resumed.length === 1 ? true : undefined));
+    await holder.kernel.waits.settleFromStore();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(resumed).toHaveLength(1);
+    released.resolve();
+    await until(async () =>
+      (await readCall(holder.kernel, session.id, call)).result === null ? undefined : true,
+    );
+    await holder.kernel.waits.settleFromStore();
+
+    expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
+    expect(resumed).toHaveLength(1);
   });
 
   it("wakes an untilInput wait parked on another instance when the user sends here, and a wait on a modal another instance closes (ADV B N6, E N5)", async () => {

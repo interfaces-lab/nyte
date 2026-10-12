@@ -873,6 +873,78 @@ describe("tool calls", () => {
     expect((await session.view()).changes.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
   });
 
+  it("keeps both files when two runs' settlements merge the session's changes at once: the merge expects its record and retries", async () => {
+    const store = await memoryStore().open();
+    const both = Promise.withResolvers<void>();
+    let diffing = 0;
+
+    const touching =
+      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
+      async () => ({
+        before: async () => asId("s0"),
+        after: async () => asId(`after-${path}`),
+        diff: async (_from, to) => {
+          diffing += 1;
+
+          if (diffing === 2) both.resolve();
+          await both.promise;
+
+          return {
+            revision: to,
+            files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
+          };
+        },
+        patches: async () => [],
+      });
+
+    const edit = {
+      ...echo,
+      name: "edit",
+      class: () => ({ kind: "edit", path: "a.ts" }),
+    } satisfies ToolDefinition<{ text: string }>;
+
+    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
+    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
+    const session = await a.host.sessions.create();
+    const side = asId<"head">("side");
+    await session.heads.create(side);
+    const first = await liveRun(a.kernel, session.id);
+
+    const second = await startRun(
+      b.kernel,
+      session.id,
+      side,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
+
+    await Promise.all([
+      call(a.kernel, {
+        session: session.id,
+        run: first,
+        call: "e1",
+        name: "edit",
+        args: { text: "x" },
+      }),
+      executeCall(b.kernel, {
+        session: session.id,
+        runtime: b.kernel.pluginsFor(session.id),
+        head: side,
+        run: second.id,
+        call: asId("e2"),
+        name: "edit",
+        args: { text: "y" },
+        context: caller,
+        signal: new AbortController().signal,
+      }),
+    ]);
+
+    expect((await session.view()).changes.map((file) => file.path).toSorted()).toEqual([
+      "a.ts",
+      "b.ts",
+    ]);
+  });
+
   it("stops a parked call through its part, and its re-run settles stopped", async () => {
     const seen: string[] = [];
 

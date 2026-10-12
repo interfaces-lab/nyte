@@ -2,6 +2,7 @@ import {
   AuthorityType,
   CommitBodyType,
   ConfigurationType,
+  FileChangeType,
   HeadInfoType,
   JsonType,
   PartStatusType,
@@ -25,6 +26,7 @@ import type {
   Configuration,
   Delivery,
   EnvironmentIdentity,
+  FileChange,
   HeadInfo,
   HeadName,
   Json,
@@ -91,8 +93,11 @@ export type CommitRecord = {
   readonly body: CommitBody;
 };
 
-/** What `sessions/<id>/inbox/<head>` holds: the head's admitted inputs, in order. */
-export type InboxRecord = { readonly messages: readonly MessageId[] };
+/** What `sessions/<id>/inbox/<head>` holds: the head's admitted inputs, in order, and those among them a move or an edit must not pass (`pending-input`): a user's message that runs, never a child's, job's or shell's, which only wakes the head. */
+export type InboxRecord = {
+  readonly messages: readonly MessageId[];
+  readonly pendingInput: readonly MessageId[];
+};
 
 /** One admitted input. */
 export type MessageRecord = {
@@ -107,6 +112,9 @@ export type MessageRecord = {
   readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
   readonly position: number;
 };
+
+/** What `sessions/<id>/changes` holds: the files the session's runs changed, latest per path in first-seen order. */
+export type ChangesRecord = { readonly files: readonly FileChange[] };
 
 /** What `sessions/<id>/runs/<run>` holds while the run is live (§38v: `usage` sums every charged request; §38w: `requests` counts its `request` events). */
 export type RunRecord = {
@@ -179,6 +187,8 @@ export type CallRecord = {
   readonly acquisitions: Readonly<Record<string, Json>>;
   readonly result: Json | null;
   readonly replay: "safe" | "never";
+  /** The count of `waits` the step's latest re-run started after: a woken head-less step is re-run by the one runner that writes it (§33j). */
+  readonly reran: number;
 };
 
 /** What `workspaces/<id>` holds. */
@@ -213,6 +223,7 @@ export type RecordKind =
   | "session"
   | "commit"
   | "inbox"
+  | "changes"
   | "message"
   | "run"
   | "part"
@@ -321,7 +332,15 @@ export const decodeSeenRecord: Decode<SeenRecord> = decoder(
 
 export const decodeInboxRecord: Decode<InboxRecord> = decoder(
   "inbox",
-  Type.Object({ messages: Type.Array(idSchema<"message">()) }),
+  Type.Object({
+    messages: Type.Array(idSchema<"message">()),
+    pendingInput: Type.Array(idSchema<"message">()),
+  }),
+);
+
+export const decodeChangesRecord: Decode<ChangesRecord> = decoder(
+  "changes",
+  Type.Object({ files: Type.Array(FileChangeType) }),
 );
 
 export const decodePartRecord: Decode<PartRecord> = decoder(
@@ -379,6 +398,7 @@ export const decodeCallRecord: Decode<CallRecord> = decoder(
     acquisitions: Type.Record(Type.String(), JsonType),
     result: nullable(JsonType),
     replay: Type.Enum(["safe", "never"]),
+    reran: Type.Number(),
   }),
 );
 

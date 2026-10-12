@@ -29,6 +29,7 @@ import {
   attempt,
   commit,
   expectOf,
+  inboxWithout,
   isJsonObject,
   landedIn,
   liveParts,
@@ -176,7 +177,7 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
   const [stopping, failed, rewritten] = await Promise.all([
     put(kernel, "run", { ...found.record, stopping: true }),
     failedParts(kernel, session, head, live, STOPPED),
-    put(kernel, "inbox", { messages: inbox.messages }),
+    put(kernel, "inbox", inboxWithout(inbox, [])),
   ]);
 
   return {
@@ -259,7 +260,7 @@ export async function endRun(
       },
       {
         name: inboxRef(session, head),
-        target: await put(kernel, "inbox", { messages: inbox.messages }),
+        target: await put(kernel, "inbox", inboxWithout(inbox, [])),
         expect: expectOf(inbox.ref),
       },
       ...(final.kind === "completed"

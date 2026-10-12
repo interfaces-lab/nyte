@@ -38,6 +38,7 @@ import {
 import type {
   CallRecord,
   CommitRecord,
+  InboxRecord,
   ReceiptRecord,
   RecordKind,
   RunRecord,
@@ -72,10 +73,9 @@ export interface Tip {
   readonly commit: CommitRecord | null;
 }
 
-/** Returns a head's inbox ref and the admitted inputs it lists, in order. */
-export interface Inbox {
+/** Returns a head's inbox ref and its record. */
+export interface Inbox extends InboxRecord {
   readonly ref: Ref | null;
-  readonly messages: readonly MessageId[];
 }
 
 /** Returns the outcomes a move or an edit settles with when nothing moved. */
@@ -157,7 +157,17 @@ export async function readInbox(
 ): Promise<Inbox> {
   const ref = await kernel.store.refs.get(inboxRef(session, head));
 
-  return { ref, messages: (await load(kernel, ref, decodeInboxRecord))?.record.messages ?? [] };
+  const record = (await load(kernel, ref, decodeInboxRecord))?.record;
+
+  return { ref, messages: record?.messages ?? [], pendingInput: record?.pendingInput ?? [] };
+}
+
+/** Returns an inbox's record once `ids` left it. */
+export function inboxWithout(inbox: Inbox, ids: readonly MessageId[]): InboxRecord {
+  return {
+    messages: inbox.messages.filter((message) => !ids.includes(message)),
+    pendingInput: inbox.pendingInput.filter((message) => !ids.includes(message)),
+  };
 }
 
 /** Returns every run record whose ref exists: the runs live in the session. */

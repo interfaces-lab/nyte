@@ -12,7 +12,7 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { objectId } from "./content.ts";
-import { openAction, recordAcquisition } from "./durable.ts";
+import { openAction, recordAcquisition, reserveRerun } from "./durable.ts";
 import type { ActionIntent } from "./durable.ts";
 import { SdkError } from "./error.ts";
 import { check } from "./json-schema.ts";
@@ -448,7 +448,7 @@ export async function rerunAction(kernel: Kernel, session: SessionId, call: Call
   const intent =
     step?.kind === "action" && step.result === null ? decodeActionIntent(step.intent) : null;
 
-  if (intent === null) return;
+  if (intent === null || !(await reserveRerun(kernel, session, call))) return;
 
   const found = await load(
     kernel,

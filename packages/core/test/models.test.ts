@@ -87,10 +87,15 @@ describe("models", () => {
       input: ["text", "image"],
       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     });
-    expect(
-      await modelInfo(host.kernel, fake.models, { provider: "test", id: "smart-fast" }),
-    ).toMatchObject({ ref: { provider: "test", id: "smart-fast" }, fast: null });
-    expect(await modelInfo(host.kernel, fake.models, { provider: "test", id: "nope" })).toBeNull();
+    const session = await host.sessions.create();
+    const runtime = host.kernel.pluginsFor(session.id);
+    await runtime.ready;
+
+    expect(modelInfo(fake.models, { provider: "test", id: "smart-fast" }, runtime)).toMatchObject({
+      ref: { provider: "test", id: "smart-fast" },
+      fast: null,
+    });
+    expect(modelInfo(fake.models, { provider: "test", id: "nope" }, runtime)).toBeNull();
 
     fake.reply({
       content: [{ type: "text", text: "Hi." }],
@@ -100,7 +105,6 @@ describe("models", () => {
       ],
     });
 
-    const session = await host.sessions.create();
     await host.kernel.request(session.id, {
       model: basic,
       messages: [{ role: "user", content: "Hi.", timestamp: 0 }],

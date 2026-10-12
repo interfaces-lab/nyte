@@ -22,11 +22,16 @@ import { changeCall, isJsonObject, load, put, readCall } from "./session-state.t
 import type { Durable } from "./tools.ts";
 import { parkedOf, runWait, waitingOn } from "./waits.ts";
 
-/** Returns how a durable step ended: its value as recorded, parked on a wait not yet recorded, or interrupted because a `never` step may not run again. */
+/** Returns how one execution of a durable step ended, as its `settle` records it: the body's value, or interrupted because a `never` step may not run again. */
+export type StepEnd<T> =
+  | { readonly kind: "done"; readonly value: T }
+  | { readonly kind: "interrupted" };
+
+/** Returns how a durable step ended: its value as recorded, parked on a wait not yet recorded, or interrupted with the value its settlement recorded. */
 export type StepOutcome<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "parked" }
-  | { readonly kind: "interrupted" };
+  | { readonly kind: "interrupted"; readonly value: T };
 
 /** Returns what a part action's step records as its intent: the part, the action, its input and the principal it acts as. */
 export type ActionIntent = {
@@ -93,7 +98,7 @@ export async function runStep<T>(
     body(durable: Durable): Promise<T>;
     /** Returns what the step's `result` records and the ref updates landing in the same set. */
     settle(
-      ended: Exclude<StepOutcome<T>, { readonly kind: "parked" }>,
+      ended: StepEnd<T>,
     ): Promise<{ readonly result: Json; readonly updates: readonly RefUpdate[] }>;
     /** Returns the value a recorded `result` holds, or null when it holds another shape. */
     decode(result: Json): T | null;
@@ -118,7 +123,7 @@ export async function runStep<T>(
     return value;
   };
 
-  const settle = async (ended: Exclude<StepOutcome<T>, { readonly kind: "parked" }>) => {
+  const settle = async (ended: StepEnd<T>) => {
     const written = await changeCall(kernel, session, call, async (current) => {
       if (current === null || current.result !== null) return null;
       const settled = await input.settle(ended);
@@ -141,9 +146,7 @@ export async function runStep<T>(
   }
 
   if (!opened.wrote && input.replay === "never") {
-    await settle({ kind: "interrupted" });
-
-    return { kind: "interrupted" };
+    return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
   }
 
   const writes: Promise<unknown>[] = [];
@@ -171,7 +174,7 @@ export async function runStep<T>(
   return { kind: "done", value };
 }
 
-/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake until it settles or its signal aborts. Its result records the output, absent when undefined; output that is not JSON rejects `invalid` and records nothing. */
+/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake it reserves until it settles or its signal aborts; a wake another runner reserved is left to it. Its result records the output, absent when undefined; output that is not JSON rejects `invalid` and records nothing. */
 export async function runAction(
   kernel: Kernel,
   input: {
@@ -191,47 +194,67 @@ export async function runAction(
   );
 
   try {
-    for (;;) {
+    for (let reserved = true; ; reserved = await reserveRerun(kernel, input.session, input.call)) {
+      if (reserved) {
+        const outcome = await runStep<{ readonly output: unknown }>(kernel, {
+          session: input.session,
+          head: null,
+          run: null,
+          call: input.call,
+          kind: "action",
+          replay: "safe",
+          intent: { part: input.part, action: input.action },
+          part: input.part,
+          signal: input.signal,
+          body: async (durable) => ({ output: await input.body(durable) }),
+          async settle(ended) {
+            const output = ended.kind === "done" ? ended.value.output : undefined;
+            const absent: Json = { kind: ended.kind };
+
+            if (output === undefined) return { result: absent, updates: [] };
+
+            if (!isJson(output))
+              throw new SdkError(
+                "invalid",
+                `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
+              );
+
+            return { result: { kind: ended.kind, output }, updates: [] };
+          },
+          decode: (result) => (isJsonObject(result) ? { output: result.output } : null),
+        });
+
+        if (outcome.kind === "done") return { kind: "done", value: outcome.value.output };
+
+        if (outcome.kind !== "parked" || input.signal.aborted) return outcome;
+      }
+
+      await Promise.race([woken.promise, aborted]);
       woken = Promise.withResolvers<void>();
 
-      const outcome = await runStep<{ readonly output: unknown }>(kernel, {
-        session: input.session,
-        head: null,
-        run: null,
-        call: input.call,
-        kind: "action",
-        replay: "safe",
-        intent: { part: input.part, action: input.action },
-        part: input.part,
-        signal: input.signal,
-        body: async (durable) => ({ output: await input.body(durable) }),
-        async settle(ended) {
-          const output = ended.kind === "done" ? ended.value.output : undefined;
-          const absent: Json = { kind: ended.kind };
-
-          if (output === undefined) return { result: absent, updates: [] };
-
-          if (!isJson(output))
-            throw new SdkError(
-              "invalid",
-              `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
-            );
-
-          return { result: { kind: ended.kind, output }, updates: [] };
-        },
-        decode: (result) => (isJsonObject(result) ? { output: result.output } : null),
-      });
-
-      if (outcome.kind === "done") return { kind: "done", value: outcome.value.output };
-
-      if (outcome.kind !== "parked" || input.signal.aborted) return outcome;
-      await Promise.race([woken.promise, aborted]);
-
-      if (input.signal.aborted) return outcome;
+      if (input.signal.aborted) return { kind: "parked" };
     }
   } finally {
     dispose();
   }
+}
+
+/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake (§33j). Resolves true when this runner won or the step has a result to replay, false while another runner holds it or the step waits. */
+export async function reserveRerun(
+  kernel: Kernel,
+  session: SessionId,
+  call: CallId,
+): Promise<boolean> {
+  const reserved = await changeCall(kernel, session, call, async (current) =>
+    current === null ||
+    current.result !== null ||
+    current.waiting !== null ||
+    current.reran === current.waits.length
+      ? null
+      : { record: { ...current, reran: current.waits.length } },
+  );
+
+  return reserved.wrote || (reserved.record?.result ?? null) !== null;
 }
 
 /** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as (§33j). */
@@ -551,6 +574,7 @@ function callRecord(input: {
     acquisitions: {},
     result: null,
     replay: input.replay,
+    reran: 0,
   };
 }
 

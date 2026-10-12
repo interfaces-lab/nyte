@@ -47,6 +47,11 @@ export function partRef(id: SessionId, part: PartId): string {
   return `sessions/${id}/parts/${part}`;
 }
 
+/** Returns `sessions/<id>/changes`: the files the session's runs changed, latest per path. */
+export function changesRef(id: SessionId): string {
+  return `sessions/${id}/changes`;
+}
+
 /** Returns `sessions/<id>/receipts/<receipt>`: the durable command's kind, digest and outcome. */
 export function receiptRef(id: SessionId, receipt: ReceiptId): string {
   return `sessions/${id}/receipts/${receipt}`;

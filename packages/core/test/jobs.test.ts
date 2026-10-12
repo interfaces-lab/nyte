@@ -348,7 +348,7 @@ describe("jobs", () => {
     expect(jobHandle(second, job.id).key).toBeNull();
   });
 
-  it("retries a job end the store refused, so the parked call takes the exit without a restart (B F4)", async () => {
+  it("leaves a job end the store refused to the wait holding it: repair settles it with the exit, and no report is sent (B F4, B-2 P5)", async () => {
     const inner = await memoryStore().open();
     let refusing = false;
 
@@ -392,12 +392,13 @@ describe("jobs", () => {
     process.off("unhandledRejection", unhandled);
 
     expect(unhandled).not.toHaveBeenCalled();
-    await until(async () =>
-      (await readCall(kernel, session.id, call))?.waiting === null ? true : undefined,
-    );
+    expect(await readCall(kernel, session.id, call)).toMatchObject({ waits: [] });
+    await host.execution.repair({ limit: 10 });
     expect(await readCall(kernel, session.id, call)).toMatchObject({
+      waiting: null,
       waits: [{ kind: "job", job: job.id, end: { kind: "exited", code: 2 } }],
     });
+    expect((await session.view()).messages).toEqual([]);
   });
 
   it("offers a cold host's answer only to its part: a wait on any of a running job and the part takes the answer (B F2)", async () => {

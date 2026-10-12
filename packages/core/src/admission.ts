@@ -34,10 +34,11 @@ import { abortHere, fence, stopRun, unfenced } from "./runs.ts";
 import {
   EMPTY_REVISION,
   STALE,
-  isCovered,
   attempt,
   commit,
   expectOf,
+  inboxWithout,
+  isCovered,
   landedIn,
   liveRun,
   objectOf,
@@ -192,9 +193,7 @@ export async function landing(
       records.push({ id: await putCommit(kernel, record), record });
     }
 
-    const remaining = await put(kernel, "inbox", {
-      messages: inbox.messages.filter((message) => !due.includes(message)),
-    });
+    const remaining = await put(kernel, "inbox", inboxWithout(inbox, due));
 
     const updates = records.flatMap(({ id, record }, index): readonly RefUpdate[] => [
       {
@@ -239,7 +238,7 @@ export async function landing(
   return landed.map((entry) => entry.message);
 }
 
-/** Checks what a move or an edit needs of a head, in order: `expect` holds, no live run unless `running` is stop, no input but attach ones; returns the failure, or what it read for the write to expect. */
+/** Checks what a move or an edit needs of a head, in order: `expect` holds, no live run unless `running` is stop, no pending input as the inbox records it; returns the failure, or what it read for the write to expect. */
 export async function guard(
   kernel: Kernel,
   session: SessionId,
@@ -258,9 +257,7 @@ export async function guard(
 
   if (run !== null && running === "refuse") return { kind: "busy", run: run.record.view.id };
 
-  const pending = await withFold(kernel, session, (state) =>
-    inbox.messages.filter((message) => state.inputs.get(message)?.delivery !== "attach"),
-  );
+  const pending = inbox.messages.filter((message) => inbox.pendingInput.includes(message));
 
   if (pending.length > 0) return { kind: "pending-input", messages: pending };
 
@@ -748,10 +745,16 @@ async function admitted(
   message: MessageRecord,
 ): Promise<RefUpdate> {
   await kernel.store.objects.put(envelope("message", message, message.at));
+  const input = message.source.kind === "user" && message.delivery !== "attach";
+
+  const pendingInput = [
+    ...inbox.pendingInput.filter((id) => id !== message.id),
+    ...(input ? [message.id] : []),
+  ];
 
   return {
     name: inboxRef(session, head),
-    target: await put(kernel, "inbox", { messages }),
+    target: await put(kernel, "inbox", { messages, pendingInput }),
     expect: expectOf(inbox.ref),
     event: {
       head,

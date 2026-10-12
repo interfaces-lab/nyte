@@ -28,8 +28,8 @@ import type { Rows } from "./rows.ts";
 type BatchEntry = OperationInput<"files.batch">["entries"][number];
 
 type Pending =
-  | { readonly kind: "put"; readonly input: Parameters<FileBatch["put"]>[0] }
-  | { readonly kind: "remove"; readonly input: Parameters<FileBatch["remove"]>[0] };
+  | ({ readonly kind: "put" } & Parameters<FileBatch["put"]>[0])
+  | ({ readonly kind: "remove" } & Parameters<FileBatch["remove"]>[0]);
 
 const encoder = new TextEncoder();
 
@@ -71,21 +71,20 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
     rows.upload("files.upload", { workspace }, streamOf(source));
 
   const plan = (pending: readonly Pending[]): FileBatch => ({
-    put: (input) => plan([...pending, { kind: "put", input }]),
-    remove: (input) => plan([...pending, { kind: "remove", input }]),
+    put: (input) => plan([...pending, { kind: "put", ...input }]),
+    remove: (input) => plan([...pending, { kind: "remove", ...input }]),
     async apply() {
       const entries: BatchEntry[] = [];
 
       for (const entry of pending) {
         if (entry.kind === "remove") {
-          entries.push({ kind: "remove", ...entry.input });
+          entries.push(entry);
           continue;
         }
 
-        const { contents, ...rest } = entry.input;
+        const { contents, ...rest } = entry;
 
         entries.push({
-          kind: "put",
           ...rest,
           contents: typeof contents === "string" ? contents : await upload(once(contents)),
         });

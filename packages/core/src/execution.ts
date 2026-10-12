@@ -469,7 +469,7 @@ async function releaseNow(kernel: Kernel, session: SessionId, head: HeadName): P
   await commit(kernel, [{ name, target: null, expect: mine }]);
 }
 
-/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended. A run no turn drives here first re-runs its owed tool calls; it then reports `waiting` while a call is parked, `retry` until its `until`, or is driven again (§38o). */
+/** Returns what a live run leaves for this step, or null once a stopping run no turn drives here is ended. A run a turn drives here reports what holds it, else `idle`; any other first re-runs its owed tool calls, then reports what holds it or is driven again (§38o). */
 async function settleLive(
   kernel: Kernel,
   session: SessionId,
@@ -477,9 +477,11 @@ async function settleLive(
   live: Found<RunRecord>,
 ): Promise<AdvanceReport | null> {
   const run = live.record.view.id;
-  const driven = kernel.driving.has(run);
 
-  if (!driven && (live.record.stopping || kernel.runs.isStopping(run))) {
+  if (kernel.driving.has(run))
+    return (await holding(kernel, session, head, live.record)) ?? { kind: "idle" };
+
+  if (live.record.stopping || kernel.runs.isStopping(run)) {
     kernel.runs.markStopping(run);
     kernel.runs.abort(run);
     await kernel.waits.runStopped(session, run);
@@ -489,23 +491,34 @@ async function settleLive(
     return null;
   }
 
-  if (!driven) await resume(kernel, session, head, run);
+  await resume(kernel, session, head, run);
 
-  const record = driven
-    ? live.record
-    : (await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord))
-        ?.record;
+  const record = (
+    await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
+  )?.record;
 
   if (record === undefined) return null;
 
+  return (
+    (await holding(kernel, session, head, record)) ??
+    (await drive(kernel, session, head, record.view)) ??
+    next(kernel, session, head)
+  );
+}
+
+/** Returns what holds a live run's turn: `waiting` while a call is parked, `retry` until its `until`; null when nothing does. */
+async function holding(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  record: RunRecord,
+): Promise<AdvanceReport | null> {
   if (record.parked.length > 0 || record.waiting !== null)
     return waitingOn(kernel, session, head, record.waiting);
 
-  if (record.retrying !== null && record.retrying.until > Date.now())
-    return { kind: "retry", until: record.retrying.until };
-
-  if (driven) return { kind: "idle" };
-  return (await drive(kernel, session, head, record.view)) ?? next(kernel, session, head);
+  return record.retrying !== null && record.retrying.until > Date.now()
+    ? { kind: "retry", until: record.retrying.until }
+    : null;
 }
 
 /** Re-runs, one at a time, a run's tool calls owed a re-run with the principal their intent recorded. */
@@ -539,7 +552,7 @@ async function resume(
   }
 }
 
-/** Runs a run's turn here and ends the run with its end; a parked turn wakes its head instead. The turn is abandoned, its run left live, when the host closes or when a lease renewal is refused, which it returns for `advance` to report (§38y, §42q). */
+/** Runs a run's turn here and ends the run with its end; a parked turn leaves its run live. The turn is abandoned, its run left live, when the host closes or when a lease renewal is refused, which it returns for `advance` to report (§38y, §42q). */
 async function drive(
   kernel: Kernel,
   session: SessionId,
@@ -605,11 +618,7 @@ async function drive(
 
   if (ended === null || (closing.aborted && !stopping)) return null;
 
-  if (ended.end.kind === "parked" && !stopping) {
-    kernel.wakes.notify(session, head);
-
-    return null;
-  }
+  if (ended.end.kind === "parked" && !stopping) return null;
 
   await endRun(
     kernel,

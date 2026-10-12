@@ -8,7 +8,6 @@ import type {
   DurableEvent,
   HeadName,
   Json,
-  MessageId,
   ModelInfo,
   ModelRef,
   PartId,
@@ -121,7 +120,7 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
     const runtime = kernel.pluginsFor(session);
     const configuration = await configurationOf(kernel, runtime, session, head);
     const { model } = configuration;
-    const info = await modelInfo(kernel, models, model, runtime);
+    const info = modelInfo(models, model, runtime);
 
     if (info === null)
       throw new SdkError("invalid", `No model ${model.provider}/${model.id} is in the catalog.`);
@@ -188,9 +187,9 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
  * Compacts a run's request body (§38s): splits it into what is summarised and the retained tail
  * (`skipped` when nothing committed precedes it), runs `before_compaction`, and writes its result
  * or one summary request's as a `compaction` part with its commit, `request` event and run charge
- * in one set. A failed summary, an invalid hook result or a throwing hook is `failed`.
+ * in one set. A failed summary or an invalid hook result is `failed`; a hook that throws rejects.
  */
-export async function compactIfNeeded(
+export async function compact(
   kernel: Kernel,
   models: Models,
   runtime: PluginRuntime,
@@ -205,7 +204,7 @@ export async function compactIfNeeded(
     readonly signal: AbortSignal;
   },
 ): Promise<
-  | { readonly kind: "compacted"; readonly message: MessageId }
+  | { readonly kind: "compacted" }
   | { readonly kind: "skipped" }
   | { readonly kind: "failed"; readonly failure: Failure }
 > {
@@ -250,7 +249,7 @@ export async function compactIfNeeded(
 
   dev("compaction", "compacted", { session, run: run.id, part });
 
-  return { kind: "compacted", message: asId<"message">(part) };
+  return { kind: "compacted" };
 }
 
 /**

@@ -1080,6 +1080,17 @@ describe("client", () => {
       code: "ENOENT",
     });
     expect(await readFile(join(host.root, "workspace", "a.txt"), "utf8")).toBe("one\ntwo\n");
+
+    const input = { path: "REVIEWED.txt", contents: "reviewed" };
+    const reviewed = empty.put(input);
+    input.path = "UNREVIEWED.txt";
+    input.contents = "unreviewed";
+
+    expect(await (await reviewed.apply()).settled()).toMatchObject({ kind: "applied" });
+    expect(await readFile(join(host.root, "workspace", "REVIEWED.txt"), "utf8")).toBe("reviewed");
+    await expect(readFile(join(host.root, "workspace", "UNREVIEWED.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("detaches a job handle's open output on close while the process keeps running (ADV G4, probe P4)", async () => {

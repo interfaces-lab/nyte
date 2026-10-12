@@ -15,6 +15,7 @@ import {
   publishPatch,
   runRef,
   runStep,
+  sessionEvents,
   startRun,
 } from "../src/index.ts";
 import type { Kernel } from "../src/index.ts";
@@ -93,6 +94,42 @@ describe("runs", () => {
     });
     expect(await session.run(asId("unknown")).stop()).toEqual({ kind: "missing" });
     hold.release();
+  });
+
+  it("seeds a live text part emptied while a watcher was away, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
+    const { kernel, host, script: turns } = await setup();
+    const session = await host.sessions.create();
+    await session.send("Write it.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    const turn = await turns.started(1);
+    const run = turn.input.run.id;
+    const part = asId<"part">(`${run}:1:0`);
+    await livePart(kernel, session.id, run, part, "A");
+    const resume = await kernel.store.refs.tail(session.id);
+    publishPatch(kernel, session.id, run, { kind: "patch", part, markdown: "" });
+
+    const iterator = sessionEvents(kernel, session.id, resume)[Symbol.asyncIterator]();
+    const patches: PatchEvent[] = [];
+
+    while (patches.length < 2) {
+      const next = await iterator.next();
+      assert(next.done !== true);
+      const event = next.value.event;
+
+      if (event.kind === "catalog")
+        publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
+
+      if (event.kind === "patch") patches.push(event);
+    }
+
+    await iterator.return?.();
+
+    expect(patches).toEqual([
+      { kind: "patch", part, markdown: "" },
+      { kind: "patch", part, append: "B" },
+    ]);
+    turn.finish(completed);
+    await step;
   });
 
   it("ends a waiting run stopped once session.stop() fences it and wakes the driver", async () => {

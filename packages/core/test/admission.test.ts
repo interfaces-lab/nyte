@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { Authority, CommitId, Message } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { TOKEN, createConnection, memoryStore } from "../src/index.ts";
+import { TOKEN, createConnection, decodeInboxRecord, inboxRef, memoryStore } from "../src/index.ts";
 import type { Session } from "../src/index.ts";
 import { completed, label, livePart, main, recording, setup, until, usage } from "./harness.ts";
 
@@ -423,6 +423,40 @@ describe("admission", () => {
 
     expect(await (await session.move({ kind: "start" })).settled()).toMatchObject({
       kind: "moved",
+    });
+  });
+
+  it("counts a child's queued wake as no pending input: the inbox records only a user's message as input an edit or a move must not pass", async () => {
+    const { kernel, host, script } = await setup({ execution: { kind: "admit-only" } });
+    const session = await host.sessions.create();
+    const child = await host.sessions.create({ parent: session.id });
+    const first = await session.send("First.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    (await script.started(1)).finish(completed);
+    await step;
+
+    const wake = await session.send("Child done; wake up.", {
+      delivery: "queue",
+      source: { kind: "child", session: child.id },
+    });
+
+    const ref = await kernel.store.refs.get(inboxRef(session.id, main));
+
+    const inbox = decodeInboxRecord(
+      ref?.target ? await kernel.store.objects.get(ref.target) : null,
+    );
+
+    expect(inbox).toEqual({ messages: [wake.message], pendingInput: [] });
+
+    const edit = await session.send("First v2.", { replace: first.message });
+
+    expect(await edit.status()).toEqual({ kind: "pending" });
+
+    const queued = await session.send("Then this.", { delivery: "queue" });
+
+    expect(await (await session.move({ kind: "start" })).settled()).toEqual({
+      kind: "pending-input",
+      messages: [edit.message, queued.message],
     });
   });
 

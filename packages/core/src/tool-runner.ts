@@ -24,7 +24,7 @@ import type {
 import { Compile } from "typebox/compile";
 import { settling } from "./transcript.ts";
 import { isParked, runStep } from "./durable.ts";
-import type { StepOutcome } from "./durable.ts";
+import type { StepEnd } from "./durable.ts";
 import { dev } from "./dev-log.ts";
 import { createInvocation } from "./invocation.ts";
 import type { Kernel } from "./kernel.ts";
@@ -33,9 +33,9 @@ import type { PluginRuntime } from "./plugin-runtime.ts";
 import { definePart, tool } from "./parts.ts";
 import type { ActionContext, ActionOutput } from "./parts.ts";
 import type { ConnectionContext } from "./principals.ts";
-import { decodePartRecord, decodeRunRecord } from "./records.ts";
+import { decodeChangesRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, PartRecord } from "./records.ts";
-import { partRef, runRef } from "./refs.ts";
+import { changesRef, partRef, runRef } from "./refs.ts";
 import { unfenced } from "./runs.ts";
 import {
   STALE,
@@ -50,7 +50,6 @@ import {
   readCalls,
   readTip,
   requireSession,
-  withFold,
 } from "./session-state.ts";
 import type { Durable, ToolDefinition } from "./tools.ts";
 
@@ -310,7 +309,7 @@ async function perform(
 
   if (step.kind === "parked") return PARKED;
 
-  return step.kind === "done" ? step.value : ((await concluded)?.outcome ?? INTERRUPTED);
+  return step.value;
 }
 
 /** Resolves the definition, runs `before_tool` through `kernel.beforeTool`, and validates the arguments it leaves; parked when the hook parks. */
@@ -534,7 +533,7 @@ async function outcomeOf(
 async function conclude(
   kernel: Kernel,
   where: Where & { readonly runtime: PluginRuntime },
-  ended: Exclude<StepOutcome<ToolOutcome>, { readonly kind: "parked" }>,
+  ended: StepEnd<ToolOutcome>,
   wrote: boolean,
 ): Promise<Settled> {
   const { session, head, run, call } = where;
@@ -607,7 +606,7 @@ async function settlement(
   };
 
   const merged =
-    settled.files.length === 0 ? null : await mergeChanges(kernel, session, settled.files);
+    settled.files.length === 0 ? [] : await mergeChanges(kernel, session, settled.files);
 
   const based =
     settled.snapshot === null ? [] : await nextBase(kernel, session, run, settled.snapshot);
@@ -629,15 +628,10 @@ async function settlement(
     },
   });
 
-  const closing = (target: ObjectId): readonly RefUpdate[] =>
-    merged === null
-      ? []
-      : [{ name, target, event: { head: null, kind: "changes", files: merged } }];
-
   if (found.record.status.kind === "failed") {
     const target = await put(kernel, "part", record, at);
 
-    return [opened(target), ...based, ...closing(target)];
+    return [opened(target), ...based, ...merged];
   }
 
   const landed = await settling(kernel, {
@@ -651,7 +645,7 @@ async function settlement(
     at,
   });
 
-  return [opened(landed.target), ...landed.updates, ...based, ...closing(landed.target)];
+  return [opened(landed.target), ...landed.updates, ...based, ...merged];
 }
 
 /** Takes the run's first snapshot before a call that may write, once per run, into `RunRecord.snapshot`. */
@@ -722,16 +716,29 @@ async function nextBase(
   ];
 }
 
-/** Returns the session's changed files as its log holds them, latest per path in first-seen order, with `files` merged in. */
-function mergeChanges(
+/** Returns the update merging `files` into the session's changes record, latest per path in first-seen order, with `changes` carrying the whole list; it expects the record as read, so a concurrent merge makes the settlement read and merge again. */
+async function mergeChanges(
   kernel: Kernel,
   session: SessionId,
   files: readonly FileChange[],
-): Promise<readonly FileChange[]> {
-  return withFold(kernel, session, (state) => [
-    ...state.changes.map((file) => files.find((next) => next.path === file.path) ?? file),
-    ...files.filter((next) => !state.changes.some((file) => file.path === next.path)),
-  ]);
+): Promise<readonly RefUpdate[]> {
+  const name = changesRef(session);
+  const ref = await kernel.store.refs.get(name);
+  const kept = (await load(kernel, ref, decodeChangesRecord))?.record.files ?? [];
+
+  const merged = [
+    ...kept.map((file) => files.find((next) => next.path === file.path) ?? file),
+    ...files.filter((next) => !kept.some((file) => file.path === next.path)),
+  ];
+
+  return [
+    {
+      name,
+      target: await put(kernel, "changes", { files: merged }),
+      expect: expectOf(ref),
+      event: { head: null, kind: "changes", files: merged },
+    },
+  ];
 }
 
 /** Returns what a tool's class says about its call, or null when the class function throws. */

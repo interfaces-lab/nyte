@@ -23,6 +23,7 @@ import {
   attempt,
   commit,
   expectOf,
+  inboxWithout,
   isJsonObject,
   put,
   readInbox,
@@ -201,9 +202,7 @@ export async function withdraw(
 
     if (due.length === 0) return [];
 
-    const target = await put(kernel, "inbox", {
-      messages: inbox.messages.filter((message) => !due.includes(message)),
-    });
+    const target = await put(kernel, "inbox", inboxWithout(inbox, due));
 
     const outcome = await commit(
       kernel,

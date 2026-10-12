@@ -418,7 +418,7 @@ function openFeed(
       for (const item of buffered.splice(0)) deliver(item);
 
       for (const [part, live] of kernel.streams.get(session) ?? []) {
-        if (live.markdown !== null && live.markdown !== "")
+        if (live.markdown !== null)
           push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
 
         if (live.progress !== null)

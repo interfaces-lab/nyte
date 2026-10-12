@@ -137,23 +137,15 @@ export async function modelCatalog(kernel: Kernel, models: Models): Promise<Mode
   return { generation, default: preferred, providers };
 }
 
-/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels` (§38i), `fast` its fast sibling, and `compactAt` 80 % of the window. A `ModelContextPolicy` from `runtime`'s registry, else the host's static ones, overrides the window and threshold. */
-export async function modelInfo(
-  kernel: Kernel,
-  models: Models,
-  ref: ModelRef,
-  runtime?: PluginRuntime,
-): Promise<ModelInfo | null> {
+/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels` (§38i), `fast` its fast sibling, and `compactAt` 80 % of the window. The last `ModelContextPolicy` for it in `runtime`'s registry overrides the window and threshold. */
+export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime): ModelInfo | null {
   const model = models.getModel(ref.provider, ref.id);
 
   if (model === undefined) return null;
 
-  const policy =
-    runtime === undefined
-      ? staticPolicies(kernel).get(keyOf(ref))
-      : runtime.registries.modelContext
-          .list()
-          .findLast((entry) => keyOf(entry.model) === keyOf(ref));
+  const policy = runtime.registries.modelContext
+    .list()
+    .findLast((entry) => keyOf(entry.model) === keyOf(ref));
 
   return projectModel(models, model, policy);
 }

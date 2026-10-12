@@ -305,7 +305,7 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
   };
 }
 
-/** Ends a job this process started, once: records its end, hands `exit` to its readers and offers the end to the waits. Unless a wait consumed it, an owned job attaches a bounded report (at most 4 KiB) to the owning head; a report the session no longer takes is dropped. */
+/** Ends a job this process started, once: records its end, hands `exit` to its readers and offers the end to the waits. Unless a wait consumed or still holds it, an owned job attaches a bounded report (at most 4 KiB) to the owning head; a report the session no longer takes is dropped. */
 export async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const entry = kernel.jobs.get(id);
 

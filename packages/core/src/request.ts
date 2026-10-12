@@ -183,7 +183,7 @@ export async function complete(
 ): Promise<Completed | null> {
   const { request, where, signal } = input;
   const model = models.getModel(request.model.provider, request.model.id);
-  const info = await modelInfo(kernel, models, request.model, runtime);
+  const info = modelInfo(models, request.model, runtime);
 
   if (model === undefined || info === null) return null;
   dev("request", "start", { session: where.session, model: model.id, step: input.step });

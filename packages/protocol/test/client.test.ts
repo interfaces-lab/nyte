@@ -1,6 +1,6 @@
 import { SdkError } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
-import { HOST_HEADER, createTransport, decodeOutput } from "../src/index.ts";
+import { HOST_HEADER, createTransport, decodeOutput, outputFrames } from "../src/index.ts";
 import type { SseFrame } from "../src/index.ts";
 import { served } from "./fakes.ts";
 
@@ -154,7 +154,7 @@ describe("transport", () => {
       "hello",
     );
 
-    const scanned = await take(owner.stream("files.scan", { workspace }), () => false);
+    const scanned = await take(owner.frames("files.scan", { workspace }), () => false);
 
     expect(scanned).toEqual([
       { kind: "entries", entries: [{ path: "a.txt", kind: "file", size: 5, version: "v1" }] },
@@ -165,15 +165,13 @@ describe("transport", () => {
       "jobs.start",
       await owner.invoke("jobs.start", { workspace, command: "echo hi" }),
     );
-    const output = await take(
-      owner.stream("job.output", { workspace, job: started.id }),
-      () => false,
-    );
+
+    const output = await take(owner.output({ workspace, job: started.id }), () => false);
 
     expect(output.at(-1)).toEqual({ kind: "exit", code: 0 });
     expect(
       output.flatMap((frame) =>
-        frame instanceof Uint8Array ? [new TextDecoder().decode(frame)] : [],
+        frame.kind === "bytes" ? [new TextDecoder().decode(frame.data)] : [],
       ),
     ).toEqual(["hi\n"]);
   });
@@ -185,7 +183,7 @@ describe("transport", () => {
     expect(
       await owner.invoke("models.login", { provider: "test", method: { kind: "key" } }),
     ).toBeNull();
-    const steps = owner.stream("login.steps", { provider: "test" })[Symbol.asyncIterator]();
+    const steps = owner.frames("login.steps", { provider: "test" })[Symbol.asyncIterator]();
     const paste = await steps.next();
 
     expect(paste.value).toEqual({ kind: "paste", message: "Paste your key.", secret: true });
@@ -215,6 +213,28 @@ describe("transport", () => {
     expect(pairing.credential()).toBeNull();
     await pairing.invoke("sessions.list", {});
     expect(pairing.credential()).toBe("device-token");
+  });
+
+  it("reads job output as framed octets whatever Content-Type the answer carries (ADV G8)", async () => {
+    const frames = async function* () {
+      yield { kind: "bytes", data: new TextEncoder().encode("hi") } as const;
+      yield { kind: "exit", code: 0 } as const;
+    };
+
+    const transport = createTransport({
+      url: "http://host.test",
+      headers: async () => ({}),
+      fetch: async () =>
+        new Response(outputFrames(frames()), {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    });
+
+    expect(await take(transport.output({}), () => false)).toEqual([
+      { kind: "bytes", data: new TextEncoder().encode("hi") },
+      { kind: "exit", code: 0 },
+    ]);
   });
 
   it("pins the first X-Nyte-Host, error answers included, and throws stale naming another host, its answer unread (ADV C N5, probe N4)", async () => {

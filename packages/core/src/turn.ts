@@ -23,7 +23,7 @@ import type {
   Prepared,
   PreparedRequest,
 } from "./agent-loop.ts";
-import { checkpointOf, compactIfNeeded } from "./compaction.ts";
+import { checkpointOf, compact } from "./compaction.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
@@ -189,18 +189,18 @@ async function turn(
 
       try {
         await runtime.ready;
-        const configured = await modelInfo(kernel, models, configuration.model, runtime);
+        const configured = modelInfo(models, configuration.model, runtime);
 
         if (configured === null)
           return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
         const input = { session, head, run: state.run, configuration };
         const body = () => requestBody(kernel, models, runtime, input);
 
-        const compact = (
+        const compacting = (
           built: Awaited<ReturnType<typeof body>>,
           reason: "threshold" | "overflow",
         ) =>
-          compactIfNeeded(kernel, models, runtime, {
+          compact(kernel, models, runtime, {
             ...input,
             transcript: built.transcript,
             info: configured,
@@ -211,7 +211,7 @@ async function turn(
         let built = await body();
 
         if (asked.overflow !== null) {
-          const recovered = await compact(built, "overflow");
+          const recovered = await compacting(built, "overflow");
 
           if (recovered.kind === "failed") return recovered;
 
@@ -220,7 +220,7 @@ async function turn(
         }
 
         if (tokenEstimate(built.transcript) > configured.compactAt) {
-          const compacted = await compact(built, "threshold");
+          const compacted = await compacting(built, "threshold");
 
           if (compacted.kind === "failed") return compacted;
 
@@ -240,7 +240,7 @@ async function turn(
         );
 
         const model = models.getModel(request.model.provider, request.model.id);
-        const info = await modelInfo(kernel, models, request.model, runtime);
+        const info = modelInfo(models, request.model, runtime);
 
         if (model === undefined || info === null)
           return failedRequest(
@@ -761,12 +761,12 @@ async function failOpen(
   }));
 }
 
-/** Writes the run record through `change`, compare-and-set on the run ref; resolves whether it wrote. */
+/** Writes the run record through `change`, compare-and-set on the run ref; a null change writes nothing. */
 async function changeRun(
   context: Turn,
   run: RunId,
   change: (record: RunRecord) => Promise<RunChange | null>,
-): Promise<boolean> {
+): Promise<void> {
   const { kernel, session } = context;
 
   return attempt(`Changing run ${run}`, async () => {
@@ -779,7 +779,7 @@ async function changeRun(
     if (found === null) throw new SdkError("internal", `Run ${run} has no record.`);
     const next = await change(found.record);
 
-    if (next === null) return false;
+    if (next === null) return undefined;
     const target = await put(kernel, "run", next.record);
     const [first, ...rest] = next.events;
 
@@ -789,7 +789,7 @@ async function changeRun(
       ...rest.map((event) => ({ name: found.ref.name, target, event })),
     ]);
 
-    return outcome.kind === "set" ? true : STALE;
+    return outcome.kind === "set" ? undefined : STALE;
   });
 }
 
