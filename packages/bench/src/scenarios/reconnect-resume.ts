@@ -12,7 +12,9 @@ export const reconnectResume: Scenario = {
     bench.model.script({ text: "r".repeat(6_000), tokens: 6_000 });
     await session.send("stream");
     await bench.model.pauseAfter(2_000);
-    const watching = collect(session.watch(), (view) => view.messages.filter((message) => message.kind === "user").length === 2 && view.execution.kind === "idle");
+    const stream = session.watch()[Symbol.asyncIterator]();
+    const watch = { [Symbol.asyncIterator]: () => ({ next: () => stream.next() }) };
+    const watching = collect(watch, (view) => view.messages.filter((message) => message.kind === "user").length === 2 && view.execution.kind === "idle");
     link.drop();
     const sendWhileDown = session.send("queued while offline", { delivery: "queue" });
     const reconnect = timed(async () => {
@@ -25,8 +27,11 @@ export const reconnectResume: Scenario = {
     const { ms } = await reconnect;
     const final = views.at(-1);
     const userCount = final?.messages.filter((message) => message.kind === "user").length ?? 0;
-    const seqs = views.map((view) => view.revision);
-    const monotone = seqs.every((seq, index) => index === 0 || seq !== seqs[index - 1]);
+    const tail = await (await bench.store.open()).refs.tail(session.id);
+    const rest = await Promise.race([collect(watch, (view) => view.seq >= tail), new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000))]);
+    await stream.return?.();
+    const seqs = [...views, ...(rest?.views ?? [])].map((view) => view.seq);
+    const ordered = seqs.every((seq, index) => index === 0 || seq >= seqs[index - 1]);
     await link.close();
     await bench.close();
 
@@ -34,7 +39,8 @@ export const reconnectResume: Scenario = {
       name: this.name,
       invariants: [
         invariant("the offline send landed exactly once", userCount === 2),
-        invariant("views after resume never repeat a revision", monotone),
+        invariant("no durable event repeats or reorders after resume: view seqs never fall", ordered),
+        invariant("no durable event is missed after resume: a view folds the log's tail", (seqs.at(-1) ?? 0) >= tail),
         invariant("the stream text is complete after resume", final?.messages.some((message) => message.kind === "part" && typeof message.state === "object" && message.state !== null && "markdown" in message.state && message.state.markdown === "r".repeat(6_000)) === true),
       ],
       metrics: { resumeMs: ms - 300 },

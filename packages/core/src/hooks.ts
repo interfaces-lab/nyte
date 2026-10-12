@@ -26,7 +26,6 @@ import type { ConnectionContext } from "./principals.ts";
 import { callRef } from "./refs.ts";
 import { commit, isJsonObject, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
-import { onStepWoken } from "./wait-registry.ts";
 
 /** Names the core hooks of one phase. */
 export type CoreHook<Phase extends HookTable[keyof HookTable]["phase"]> = {
@@ -342,7 +341,7 @@ export async function gateSubmission(
   }
 
   let woken = Promise.withResolvers<void>();
-  const dispose = onStepWoken(kernel, session, call, () => woken.resolve());
+  const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
 
   try {
     for (;;) {

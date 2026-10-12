@@ -1,8 +1,25 @@
+import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, HostId, PartId, PrincipalId, ReceiptId, RunId, SessionId, WorkspaceId } from "@nyte-ai/schema";
 
 /** Returns `sessions/<id>`: the session record. */
 export function sessionRef(id: SessionId): string {
   return `sessions/${id}`;
+}
+
+/** Returns the session a ref name lives under, or null for a ref outside every session. */
+export function sessionOf(name: string): SessionId | null {
+  const [root, id] = name.split("/");
+
+  return root === "sessions" && id ? asId<"session">(id) : null;
+}
+
+/** Returns the session and head a head ref names, or null for any other ref. */
+export function headOf(name: string): { readonly session: SessionId; readonly head: HeadName } | null {
+  const [root, id, kind, head, ...rest] = name.split("/");
+
+  return root === "sessions" && id && kind === "heads" && head && rest.length === 0
+    ? { session: asId<"session">(id), head: asId<"head">(head) }
+    : null;
 }
 
 /** Returns `sessions/<id>/heads/<name>`: the head's tip commit. */

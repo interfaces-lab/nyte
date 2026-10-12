@@ -13,7 +13,12 @@ export const durableToolReplay: Scenario = {
     const session = await bench.host.sessions.create();
     bench.model.script({ text: "", tokens: 0, tools: [{ name: "bench_wait_job", args: { command: "sleep 2" } }, { name: "bench_never", args: {} }], after: "done" });
     const receipt = await session.send("run both");
-    await waitFor(async () => (await session.view()).execution.kind === "waiting");
+    await waitFor(async () => {
+      const view = await session.view();
+      const never = view.messages.find((message) => message.kind === "part" && isTool(message.state, "bench_never"));
+
+      return view.execution.kind === "waiting" && never?.kind === "part" && phaseOf(never.state) === "running";
+    });
     await bench.crash();
     const restart = await timed(() => bench.restart());
     const resumed = restart.value.session(session.id);

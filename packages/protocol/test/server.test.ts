@@ -105,12 +105,12 @@ describe("handler", () => {
       .not.toBeNull();
   });
 
-  it("sends each head's revision first and after a landing's commit, with no id (§40s)", async () => {
+  it("sends each head's ref pair first and after each commit, with no id (§40s, §54a)", async () => {
     const { handler, fake, host } = await served();
     fake.reply("Landed.");
     const { session, receipt } = await sent(handler);
     await post(handler, "receipt.settled", { session, receipt });
-    const current = (await host.kernel.store.refs.get(headRef(session, main)))?.revision;
+    const ref = await host.kernel.store.refs.get(headRef(session, main));
     const frames = await until(
       await post(handler, "head.watch", { session, head: main }),
       (frame) => kindOf(frame) === "catalog",
@@ -118,16 +118,11 @@ describe("handler", () => {
     const landing = frames.findIndex(
       (frame) => kindOf(frame) === "commit" && JSON.stringify(frame.data).includes('"kind":"user"'),
     );
+    const pair = { kind: "revision", head: main, tip: ref?.target, revision: ref?.revision };
 
-    assert(current !== undefined && landing > 0);
-    expect(frames[0]).toEqual({
-      id: null,
-      data: { kind: "revision", head: main, revision: current },
-    });
-    expect(frames[landing + 1]).toEqual({
-      id: null,
-      data: { kind: "revision", head: main, revision: current },
-    });
+    assert(ref !== null && landing > 0);
+    expect(frames[0]).toEqual({ id: null, data: pair });
+    expect(frames[landing + 1]).toEqual({ id: null, data: pair });
     expect(
       frames.every(
         (frame, index) =>

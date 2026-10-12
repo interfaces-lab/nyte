@@ -1,3 +1,22 @@
+import {
+  AuthorityType,
+  CommitBodyType,
+  ConfigurationType,
+  HeadInfoType,
+  JsonType,
+  PartStatusType,
+  PlacementType,
+  PromptOverrideType,
+  RunEndType,
+  RunViewType,
+  ToolOutcomeType,
+  UsageType,
+  WaitOutcomeType,
+  WaitTargetType,
+  WorkspaceTargetType,
+  cyclicWithJson,
+  idSchema,
+} from "@nyte-ai/schema";
 import type {
   Authority,
   CallId,
@@ -31,13 +50,17 @@ import type {
   WorkspaceId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import type { TSchema } from "typebox";
+import { Compile } from "typebox/compile";
+import { isJsonObject } from "./session-state.ts";
 
-/** Returns what `sessions/<id>` holds: identity, lineage, workspace, flags, heads and the session's own prompt. */
+/** What `sessions/<id>` holds. */
 export type SessionRecord = {
   readonly id: SessionId;
   readonly name: string | null;
   readonly parent: SessionId | null;
-  /** The run, head and call that spawned it through a tool invocation; null when a client created it. */
+  /** The run, head and call that spawned it through a tool; null when a client created it. */
   readonly origin: {
     readonly run: RunId;
     readonly head: HeadName;
@@ -52,7 +75,7 @@ export type SessionRecord = {
   readonly prompt: PromptOverride | null;
 };
 
-/** Returns one head inside a `SessionRecord`: its stack, stored selection and how its last run ended. */
+/** One head inside a `SessionRecord`. */
 export type HeadRecord = {
   readonly name: HeadName;
   readonly stack: HeadInfo["stack"];
@@ -60,7 +83,7 @@ export type HeadRecord = {
   readonly lastRun: { readonly id: RunId; readonly end: RunEnd; readonly endedAt: number } | null;
 };
 
-/** Returns what a head ref targets: one commit in the session's DAG. A commit's id is its object id. */
+/** What a head ref targets: one commit, whose id is its object id. */
 export type CommitRecord = {
   readonly parent: CommitId | null;
   readonly at: number;
@@ -68,10 +91,10 @@ export type CommitRecord = {
   readonly body: CommitBody;
 };
 
-/** Returns what `sessions/<id>/inbox/<head>` holds: the head's admitted inputs, in order. */
+/** What `sessions/<id>/inbox/<head>` holds: the head's admitted inputs, in order. */
 export type InboxRecord = { readonly messages: readonly MessageId[] };
 
-/** Returns one admitted input: the content-addressed object an inbox names. */
+/** One admitted input. */
 export type MessageRecord = {
   readonly id: MessageId;
   readonly at: number;
@@ -85,7 +108,7 @@ export type MessageRecord = {
   readonly position: number;
 };
 
-/** Returns what `sessions/<id>/runs/<run>` holds while the run is live: its metadata, phase, fence, wait, retry, the snapshot taken before its first write-class call, the usage every request it was charged adds up to (§38v: null before the first; the turn writes it with each `request` event, so `RunEnd.completed.usage` survives parks, re-drives and restarts), and how many `request` events it published (§38w: 0 at start, bumped in the same write as each; a response's calls are namespaced by the count its own write set). */
+/** What `sessions/<id>/runs/<run>` holds while the run is live (§38v: `usage` sums every charged request; §38w: `requests` counts its `request` events). */
 export type RunRecord = {
   readonly view: RunView;
   readonly phase: "responding" | "executing";
@@ -99,11 +122,13 @@ export type RunRecord = {
   readonly snapshot: SnapshotId | null;
   readonly usage: Usage | null;
   readonly requests: number;
-  /** The durable steps parked on this run, by session and call, each written by its park in the same set as its wait: what `deliverChildReport` reads, through `endRun`, to leave the end to a durable wait parked on another instance. */
-  readonly waitedBy?: readonly { readonly session: SessionId; readonly call: CallId }[];
+  /** The durable steps parked on this run, each written by its park in the same set as its wait. */
+  readonly waitedBy: readonly { readonly session: SessionId; readonly call: CallId }[];
+  /** This run's own calls parked on a wait: written by the park, cleared by completion (§54f). */
+  readonly parked: readonly CallId[];
 };
 
-/** Returns what `sessions/<id>/parts/<part>` holds: the part's kind, placement, current state version and status. */
+/** What `sessions/<id>/parts/<part>` holds. */
 export type PartRecord = {
   readonly id: PartId;
   readonly partKind: string;
@@ -115,7 +140,7 @@ export type PartRecord = {
   readonly status: PartStatus;
 };
 
-/** Returns what `sessions/<id>/receipts/<receipt>` holds: the command's kind, digest and outcome once settled. */
+/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. */
 export type ReceiptRecord = {
   readonly id: ReceiptId;
   readonly kind: "send" | "move" | "batch";
@@ -123,10 +148,10 @@ export type ReceiptRecord = {
   readonly outcome: Json | null;
 };
 
-/** Returns what `sessions/<id>/seen/<principal>/<head>` holds: the tip the principal last saw. */
+/** What `sessions/<id>/seen/<principal>/<head>` holds: the tip the principal last saw. */
 export type SeenRecord = { readonly commit: CommitId | null };
 
-/** Returns what `sessions/<id>/calls/<call>` holds: one durable step (a tool call, a part action or a decide hook), where it runs (`head` null for an action or hook outside a head), its intent and replay policy, and everything it recorded so a re-run replays it: memos by name, clock readings and wait outcomes in call order, nested tool outcomes and acquisitions by key, the whole target it is parked on with one outcome slot per target of a pending combination (`partial`, empty otherwise), and its result once settled. */
+/** What `sessions/<id>/calls/<call>` holds: one durable step and everything it recorded so a re-run replays it. */
 export type CallRecord = {
   readonly id: CallId;
   readonly kind: "tool" | "action" | "hook";
@@ -146,6 +171,7 @@ export type CallRecord = {
         readonly untilInput?: boolean;
       }
     | null;
+  /** One outcome slot per target of a pending combination; empty otherwise. */
   readonly partial: readonly (WaitOutcome | null)[];
   readonly nested: Readonly<Record<string, ToolOutcome>>;
   readonly acquisitions: Readonly<Record<string, Json>>;
@@ -153,7 +179,7 @@ export type CallRecord = {
   readonly replay: "safe" | "never";
 };
 
-/** Returns what `workspaces/<id>` holds: the registered workspace without its live fields. */
+/** What `workspaces/<id>` holds. */
 export type WorkspaceRecord = {
   readonly id: WorkspaceId;
   readonly target: WorkspaceTarget;
@@ -164,7 +190,7 @@ export type WorkspaceRecord = {
   readonly createdAt: number;
 };
 
-/** Returns what `host/principals` holds, as an envelope of kind `principals`: every paired principal with its authority, when it paired and was last seen, and `tokenDigest`, the SHA-256 hex digest of its device token (the token itself is never stored); and the pairing codes not yet redeemed, each with the authority and label it grants and when it expires. */
+/** What `host/principals` holds: the paired principals, each with the SHA-256 hex digest of its device token, and the unredeemed pairing codes. */
 export type PrincipalRecord = {
   readonly principals: readonly {
     readonly id: PrincipalId;
@@ -182,7 +208,6 @@ export type PrincipalRecord = {
   }[];
 };
 
-/** Names the record a stored object's envelope carries. */
 export type RecordKind =
   | "session"
   | "commit"
@@ -199,7 +224,9 @@ export type RecordKind =
   | "principals"
   | "identity";
 
-/** Returns a record in the stored-object envelope `{ kind, parent, at, body }`; `parent` is a commit's parent and null for every other record. */
+type Decode<T> = (object: Json | null) => T | null;
+
+/** Returns a record in the stored-object envelope; `parent` is a commit's parent and null for every other record. */
 export function envelope(
   kind: RecordKind,
   body: Json,
@@ -209,199 +236,189 @@ export function envelope(
   return { kind, parent, at, body };
 }
 
-/** Returns the session record a stored object holds, or null when it holds another record. */
-export function decodeSessionRecord(object: Json | null): SessionRecord | null {
-  return decode(object, "session", isSessionRecord);
-}
+const RetryingType = Type.Object({
+  attempt: Type.Number(),
+  until: Type.Number(),
+  reason: Type.String(),
+});
 
-/** Returns the commit record a stored object holds, or null when it holds another record. */
-export function decodeCommitRecord(object: Json | null): CommitRecord | null {
-  return decode(object, "commit", isCommitRecord);
-}
+const WaitOutcomeRef = Type.Unsafe<WaitOutcome>(Type.Ref("WaitOutcome"));
 
-/** Returns the run record a stored object holds, or null when it holds another record. */
-export function decodeRunRecord(object: Json | null): RunRecord | null {
-  return decode(object, "run", isRunRecord);
-}
+const WaitingType = Type.Union([
+  WaitTargetType,
+  Type.Object({
+    kind: Type.Enum(["any", "all"]),
+    targets: Type.Array(WaitTargetType),
+    deadline: Type.Optional(Type.Number()),
+    untilInput: Type.Optional(Type.Boolean()),
+  }),
+]);
 
-/** Returns the seen record a stored object holds, or null when it holds another record. */
-export function decodeSeenRecord(object: Json | null): SeenRecord | null {
-  return decode(object, "seen", isSeenRecord);
-}
+export const decodeSessionRecord: Decode<SessionRecord> = decoder(
+  "session",
+  Type.Object({
+    id: idSchema<"session">(),
+    name: nullable(Type.String()),
+    parent: nullable(idSchema<"session">()),
+    origin: nullable(
+      Type.Object({
+        run: idSchema<"run">(),
+        head: idSchema<"head">(),
+        call: nullable(idSchema<"call">()),
+      }),
+    ),
+    workspace: idSchema<"workspace">(),
+    pinned: Type.Boolean(),
+    archived: Type.Boolean(),
+    createdAt: Type.Number(),
+    lastActivityAt: Type.Number(),
+    heads: Type.Array(
+      Type.Object({
+        name: idSchema<"head">(),
+        stack: HeadInfoType.properties.stack,
+        selected: nullable(ConfigurationType),
+        lastRun: nullable(
+          Type.Object({ id: idSchema<"run">(), end: RunEndType, endedAt: Type.Number() }),
+        ),
+      }),
+    ),
+    prompt: nullable(PromptOverrideType),
+  }),
+);
 
-/** Returns the inbox record a stored object holds, or null when it holds another record. */
-export function decodeInboxRecord(object: Json | null): InboxRecord | null {
-  return decode(object, "inbox", isInboxRecord);
-}
+export const decodeCommitRecord: Decode<CommitRecord> = decoder(
+  "commit",
+  Type.Object({
+    parent: nullable(idSchema<"commit">()),
+    at: Type.Number(),
+    run: nullable(idSchema<"run">()),
+    body: CommitBodyType,
+  }),
+);
 
-/** Returns the message record a stored object holds, or null when it holds another record. */
-export function decodeMessageRecord(object: Json | null): MessageRecord | null {
-  return decode(object, "message", isMessageRecord);
-}
+export const decodeRunRecord: Decode<RunRecord> = decoder(
+  "run",
+  Type.Object({
+    view: RunViewType,
+    phase: Type.Enum(["responding", "executing"]),
+    stopping: Type.Boolean(),
+    waiting: nullable(WaitTargetType),
+    retrying: nullable(RetryingType),
+    snapshot: nullable(idSchema<"snapshot">()),
+    usage: nullable(UsageType),
+    requests: Type.Number(),
+    waitedBy: Type.Array(Type.Object({ session: idSchema<"session">(), call: idSchema<"call">() })),
+    parked: Type.Array(idSchema<"call">()),
+  }),
+);
 
-/** Returns the part record a stored object holds, or null when it holds another record. */
-export function decodePartRecord(object: Json | null): PartRecord | null {
-  return decode(object, "part", isPartRecord);
-}
+export const decodeSeenRecord: Decode<SeenRecord> = decoder(
+  "seen",
+  Type.Object({ commit: nullable(idSchema<"commit">()) }),
+);
 
-/** Returns the receipt record a stored object holds, or null when it holds another record. */
-export function decodeReceiptRecord(object: Json | null): ReceiptRecord | null {
-  return decode(object, "receipt", isReceiptRecord);
-}
+export const decodeInboxRecord: Decode<InboxRecord> = decoder(
+  "inbox",
+  Type.Object({ messages: Type.Array(idSchema<"message">()) }),
+);
 
-/** Returns the workspace record a stored object holds, or null when it holds another record. */
-export function decodeWorkspaceRecord(object: Json | null): WorkspaceRecord | null {
-  return decode(object, "workspace", isWorkspaceRecord);
-}
+export const decodePartRecord: Decode<PartRecord> = decoder(
+  "part",
+  Type.Object({
+    id: idSchema<"part">(),
+    partKind: Type.String(),
+    placement: PlacementType,
+    state: JsonType,
+    version: Type.Number(),
+    owner: nullable(Type.String()),
+    run: nullable(idSchema<"run">()),
+    status: PartStatusType,
+  }),
+);
 
-/** Returns the call record a stored object holds, or null when it holds another record. */
-export function decodeCallRecord(object: Json | null): CallRecord | null {
-  return decode(object, "call", isCallRecord);
-}
+export const decodeReceiptRecord: Decode<ReceiptRecord> = decoder(
+  "receipt",
+  Type.Object({
+    id: idSchema<"receipt">(),
+    kind: Type.Enum(["send", "move", "batch"]),
+    digest: Type.String(),
+    outcome: nullable(JsonType),
+  }),
+);
 
-/** Returns the principal record a stored object holds, or null when it holds another record. */
-export function decodePrincipalRecord(object: Json | null): PrincipalRecord | null {
-  return decode(object, "principals", isPrincipalRecord);
-}
+export const decodeWorkspaceRecord: Decode<WorkspaceRecord> = decoder(
+  "workspace",
+  Type.Object({
+    id: idSchema<"workspace">(),
+    target: WorkspaceTargetType,
+    identity: idSchema<"environment-identity">(),
+    projectResources: Type.Boolean(),
+    projectSources: Type.Array(Type.String()),
+    addedBy: idSchema<"principal">(),
+    createdAt: Type.Number(),
+  }),
+);
+
+export const decodeCallRecord: Decode<CallRecord> = decoder(
+  "call",
+  Type.Object({
+    id: idSchema<"call">(),
+    kind: Type.Enum(["tool", "action", "hook"]),
+    run: nullable(idSchema<"run">()),
+    head: nullable(idSchema<"head">()),
+    part: nullable(idSchema<"part">()),
+    intent: JsonType,
+    memos: Type.Record(Type.String(), JsonType),
+    clock: Type.Array(Type.Number()),
+    waits: Type.Array(WaitOutcomeRef),
+    waiting: nullable(WaitingType),
+    partial: Type.Array(nullable(WaitOutcomeRef)),
+    nested: Type.Record(Type.String(), ToolOutcomeType),
+    acquisitions: Type.Record(Type.String(), JsonType),
+    result: nullable(JsonType),
+    replay: Type.Enum(["safe", "never"]),
+  }),
+);
+
+export const decodePrincipalRecord: Decode<PrincipalRecord> = decoder(
+  "principals",
+  Type.Object({
+    principals: Type.Array(
+      Type.Object({
+        id: idSchema<"principal">(),
+        label: Type.String(),
+        authority: Type.Array(AuthorityType),
+        pairedAt: Type.Number(),
+        lastSeenAt: nullable(Type.Number()),
+        tokenDigest: Type.String(),
+      }),
+    ),
+    codes: Type.Array(
+      Type.Object({
+        code: Type.String(),
+        authority: Type.Array(AuthorityType),
+        label: Type.String(),
+        expiresAt: Type.Number(),
+      }),
+    ),
+  }),
+);
 
 /** Returns the value a stored `kv` object holds (a setting, a plugin's stored value, a sealed secret), or undefined when it holds another record. */
 export function decodeKvValue(object: Json | null): Json | undefined {
   return isJsonObject(object) && object.kind === "kv" ? object.body : undefined;
 }
 
-function decode<T extends Json>(
-  object: Json | null,
-  kind: RecordKind,
-  is: (body: Json | undefined) => body is T,
-): T | null {
-  if (!isJsonObject(object) || object.kind !== kind) return null;
-  const body = object.body;
+/** Returns the decoder of one record kind: the body of an envelope of that kind that its schema accepts, compiled once. */
+function decoder<S extends TSchema>(kind: RecordKind, schema: S) {
+  const validator = Compile(cyclicWithJson({ Root: schema, WaitOutcome: WaitOutcomeType }, "Root"));
 
-  return is(body) ? body : null;
+  return (object: Json | null) =>
+    isJsonObject(object) && object.kind === kind && validator.Check(object.body)
+      ? validator.Decode(object.body)
+      : null;
 }
 
-function isJsonObject(value: Json | undefined): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSessionRecord(value: Json | undefined): value is SessionRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    typeof value.workspace === "string" &&
-    typeof value.pinned === "boolean" &&
-    typeof value.archived === "boolean" &&
-    typeof value.createdAt === "number" &&
-    typeof value.lastActivityAt === "number" &&
-    Array.isArray(value.heads)
-  );
-}
-
-function isCommitRecord(value: Json | undefined): value is CommitRecord {
-  return (
-    isJsonObject(value) &&
-    (value.parent === null || typeof value.parent === "string") &&
-    typeof value.at === "number" &&
-    isJsonObject(value.body)
-  );
-}
-
-function isRunRecord(value: Json | undefined): value is RunRecord {
-  return (
-    isJsonObject(value) &&
-    isJsonObject(value.view) &&
-    typeof value.phase === "string" &&
-    typeof value.stopping === "boolean"
-  );
-}
-
-function isSeenRecord(value: Json | undefined): value is SeenRecord {
-  return isJsonObject(value) && (value.commit === null || typeof value.commit === "string");
-}
-
-function isInboxRecord(value: Json | undefined): value is InboxRecord {
-  return (
-    isJsonObject(value) &&
-    Array.isArray(value.messages) &&
-    value.messages.every((message) => typeof message === "string")
-  );
-}
-
-function isMessageRecord(value: Json | undefined): value is MessageRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    typeof value.at === "number" &&
-    typeof value.delivery === "string" &&
-    isJsonObject(value.schedule) &&
-    isJsonObject(value.configuration) &&
-    typeof value.position === "number"
-  );
-}
-
-function isPartRecord(value: Json | undefined): value is PartRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    typeof value.partKind === "string" &&
-    isJsonObject(value.placement) &&
-    typeof value.version === "number" &&
-    isJsonObject(value.status)
-  );
-}
-
-function isReceiptRecord(value: Json | undefined): value is ReceiptRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    typeof value.kind === "string" &&
-    typeof value.digest === "string" &&
-    value.outcome !== undefined
-  );
-}
-
-function isWorkspaceRecord(value: Json | undefined): value is WorkspaceRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    isJsonObject(value.target) &&
-    typeof value.identity === "string" &&
-    typeof value.projectResources === "boolean"
-  );
-}
-
-function isCallRecord(value: Json | undefined): value is CallRecord {
-  return (
-    isJsonObject(value) &&
-    typeof value.id === "string" &&
-    typeof value.kind === "string" &&
-    "intent" in value &&
-    isJsonObject(value.memos) &&
-    Array.isArray(value.clock) &&
-    Array.isArray(value.waits) &&
-    Array.isArray(value.partial) &&
-    isJsonObject(value.nested) &&
-    isJsonObject(value.acquisitions) &&
-    "result" in value &&
-    typeof value.replay === "string"
-  );
-}
-
-function isPrincipalRecord(value: Json | undefined): value is PrincipalRecord {
-  return (
-    isJsonObject(value) &&
-    Array.isArray(value.principals) &&
-    value.principals.every(
-      (principal) =>
-        isJsonObject(principal) &&
-        typeof principal.id === "string" &&
-        typeof principal.tokenDigest === "string" &&
-        Array.isArray(principal.authority),
-    ) &&
-    Array.isArray(value.codes) &&
-    value.codes.every(
-      (code) =>
-        isJsonObject(code) && typeof code.code === "string" && typeof code.expiresAt === "number",
-    )
-  );
+function nullable<T extends TSchema>(schema: T) {
+  return Type.Union([schema, Type.Null()]);
 }

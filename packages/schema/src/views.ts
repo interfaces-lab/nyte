@@ -1,6 +1,6 @@
 import type { Configuration } from "./configuration.ts";
 import type { FileChange } from "./files.ts";
-import type { CommitId, MessageId, PartId, Revision, RunId, TurnId } from "./ids.ts";
+import type { CommitId, MessageId, PartId, Revision, RunId, Seq, TurnId } from "./ids.ts";
 import type { Delivery, MessageSource, Schedule, UserContent } from "./messages.ts";
 import type { ContextView } from "./models.ts";
 import type { PartStatus, PartView } from "./parts.ts";
@@ -53,6 +53,8 @@ export type ViewOptions = {
 export type SessionView = {
   /** The head revision this view reflects; pass as `expect`. */
   readonly revision: Revision;
+  /** The seq of the last durable event this view folded (§54g). */
+  readonly seq: Seq;
   
   readonly activation: Activation;
   /** Conversation order, including this client's unsent and the live tail. */

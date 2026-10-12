@@ -1,8 +1,508 @@
-import type { Disposer, RequestOptions, SessionId } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
+import type {
+  CallId,
+  Disposer,
+  HeadName,
+  JobEnd,
+  JobId,
+  Json,
+  MessageId,
+  PartId,
+  Ref,
+  RefUpdate,
+  RequestOptions,
+  RunEnd,
+  RunId,
+  SessionId,
+  WaitOutcome,
+  WaitTarget,
+} from "@nyte-ai/schema";
+import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import { answerOf } from "./part-handle.ts";
+import { answeredElsewhere, partAnswers } from "./part-table.ts";
+import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
+import type { CallRecord, RunRecord } from "./records.ts";
+import { partRef, runRef } from "./refs.ts";
+import { endOf } from "./runs.ts";
+import { changeCall, load, put, readCall } from "./session-state.ts";
+import type { CallChange } from "./session-state.ts";
 
-const receiptListeners = new WeakMap<Kernel, Map<string, Set<() => void>>>();
+/** Returns one parked durable wait as its call record holds it: where the step runs, the target, the outcome per target so far, and the index of the wait in the step's `waits`. */
+export interface ParkedWait {
+  readonly session: SessionId;
+  readonly head: HeadName | null;
+  readonly run: RunId | null;
+  readonly call: CallId;
+  readonly target: NonNullable<CallRecord["waiting"]>;
+  readonly partial: CallRecord["partial"];
+  readonly index: number;
+}
+
+/**
+ * Holds the durable waits parked in this process, by what wakes them. A wake records the outcome
+ * in the step's call record, clearing `waiting`, and moves its run to `executing` unless another of
+ * the run's calls is parked in the store; then the head is notified so `advance` re-runs the step.
+ */
+export interface WaitRegistry {
+  /** Parks a step; a target that already has its outcome settles at once, a job this instance does not hold as `lost` (§42w, §43k). */
+  park(entry: ParkedWait): Promise<void>;
+  /** Wakes the waits on a run that ended and resolves whether one consumed the end. */
+  runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
+  /** Wakes the waits on a job that ended and resolves whether one consumed the end; a refused write is retried, the write being idempotent. */
+  jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
+  /** Wakes the waits on an answered part; `call`, the step its live status names, is offered only the part's outcome when it is not parked here (§42x, §42z). */
+  partAnswered(
+    session: SessionId,
+    part: PartId,
+    answer: { readonly action: string; readonly input: Json },
+    call: CallId | null,
+  ): Promise<void>;
+  partClosed(part: PartId): Promise<void>;
+  inputAdmitted(session: SessionId, head: HeadName, message: MessageId): Promise<void>;
+  runStopped(session: SessionId, run: RunId): Promise<void>;
+  /** Wakes the wait parked by one call, and by the calls nested under it, with `stopped`. */
+  callStopped(session: SessionId, call: CallId): Promise<void>;
+  /** Fires the timers and deadlines due at `now`. */
+  tick(now: number): Promise<void>;
+  /** Returns the earliest timer or deadline among a head's parked waits, or null. */
+  nextDeadline(session: SessionId, head: HeadName): number | null;
+  /** Settles every parked wait from what the store shows, for waits another instance settled (§42h, §42x). */
+  settleFromStore(): Promise<void>;
+  /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again. */
+  onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
+}
+
+/** Returns what offering one outcome to one target did. */
+type Taken = "woke" | "filled" | "none";
+
+/** Returns one parked wait with its targets and the outcome each has had so far. */
+interface Slot {
+  readonly entry: ParkedWait;
+  readonly targets: readonly WaitTarget[];
+  outcomes: readonly (WaitOutcome | null)[];
+}
+
+/** How a job this instance does not hold ends for a wait on it (§42w, §43k). */
+const LOST: JobEnd = { kind: "lost" };
+
+const JOB_TRIES = 5;
+
+const JOB_RETRY_MS = 100;
+
+/** Returns an empty wait registry over a kernel: what `kernel.waits` holds. */
+export function createWaitRegistry(kernel: Kernel): WaitRegistry {
+  const slots = new Map<string, Slot>();
+  const jobs = new Map<JobId, JobEnd>();
+  const resumers = new Map<string, () => void>();
+
+  const resumed = async (entry: ParkedWait): Promise<readonly RefUpdate[]> =>
+    entry.run === null
+      ? []
+      : runWait(kernel, entry.session, entry.run, async (record) => {
+          if (!record.parked.includes(entry.call) && record.waiting === null) return null;
+
+          const others = await Promise.all(
+            record.parked
+              .filter((call) => call !== entry.call)
+              .map((call) => readCall(kernel, entry.session, call)),
+          );
+
+          const still = others.flatMap((found) => {
+            const waited = found?.record;
+
+            return waited === undefined || waited.result !== null || waited.waiting === null
+              ? []
+              : [{ call: waited.id, on: waitingOn(waited.waiting, waited.partial) }];
+          });
+
+          return {
+            parked: still.map((other) => other.call),
+            waiting: still.find((other) => other.on !== null)?.on ?? null,
+          };
+        });
+
+  const completion = async (
+    current: CallRecord,
+    entry: ParkedWait,
+    outcome: WaitOutcome,
+  ): Promise<CallChange> => ({
+    record: { ...current, waits: [...current.waits, outcome], waiting: null, partial: [] },
+    updates: await resumed(entry),
+  });
+
+  const open = (current: CallRecord, entry: ParkedWait): boolean =>
+    current.result === null && current.waiting !== null && current.waits.length === entry.index;
+
+  const woken = (slot: Slot): void => {
+    const { entry } = slot;
+    const key = keyOf(entry.session, entry.call);
+    dev("waits", "wake", { session: entry.session, call: entry.call });
+
+    if (slots.get(key) === slot) slots.delete(key);
+
+    if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
+    else resumers.get(key)?.();
+  };
+
+  const settle = async (slot: Slot, outcome: WaitOutcome): Promise<Taken> => {
+    const { entry } = slot;
+
+    const written = await changeCall(kernel, entry.session, entry.call, async (current) =>
+      current !== null && open(current, entry) ? completion(current, entry, outcome) : null,
+    );
+
+    if (!written.wrote) return "none";
+    woken(slot);
+
+    return "woke";
+  };
+
+  const offer = async (slot: Slot, index: number, outcome: WaitOutcome): Promise<Taken> => {
+    const { entry } = slot;
+
+    if (entry.target.kind !== "all") return settle(slot, outcome);
+
+    const written = await changeCall(kernel, entry.session, entry.call, async (current) => {
+      if (current === null || !open(current, entry) || (current.partial.at(index) ?? null) !== null)
+        return null;
+
+      const partial = slot.targets.map((_target, at) =>
+        at === index ? outcome : (current.partial.at(at) ?? null),
+      );
+
+      const outcomes = partial.flatMap((found) => (found === null ? [] : [found]));
+
+      if (outcomes.length === slot.targets.length)
+        return completion(current, entry, { kind: "all", outcomes });
+
+      const on = waitingOn(entry.target, partial);
+
+      return {
+        record: { ...current, partial },
+        event:
+          on === null || current.part === null
+            ? undefined
+            : {
+                head: current.head,
+                kind: "call",
+                call: current.id,
+                part: current.part,
+                change: "waiting",
+                on,
+              },
+        updates:
+          on === null || entry.run === null
+            ? []
+            : await runWait(kernel, entry.session, entry.run, async (record) => ({
+                parked: record.parked,
+                waiting: on,
+              })),
+      };
+    });
+
+    const record = written.record;
+
+    if (!written.wrote || record === null) return "none";
+
+    if (record.waiting !== null) {
+      slot.outcomes = record.partial;
+
+      return "filled";
+    }
+
+    woken(slot);
+
+    return "woke";
+  };
+
+  const offers = (
+    match: (target: WaitTarget) => boolean,
+    outcome: WaitOutcome,
+  ): readonly Promise<Taken>[] =>
+    [...slots.values()].flatMap((slot) =>
+      slot.targets.flatMap((target, index) =>
+        (slot.outcomes.at(index) ?? null) === null && match(target)
+          ? [offer(slot, index, outcome)]
+          : [],
+      ),
+    );
+
+  const expire = async (slot: Slot, now: number): Promise<void> => {
+    const deadline = deadlineOf(slot.entry.target);
+
+    if (deadline !== null && deadline <= now) {
+      await settle(slot, { kind: "deadline" });
+
+      return;
+    }
+
+    await Promise.all(
+      slot.targets.flatMap((target, index) =>
+        target.kind === "timer" && target.until <= now && (slot.outcomes.at(index) ?? null) === null
+          ? [offer(slot, index, { kind: "timer" })]
+          : [],
+      ),
+    );
+  };
+
+  const settled = async (session: SessionId, target: WaitTarget): Promise<WaitOutcome | null> => {
+    switch (target.kind) {
+      case "run": {
+        const end = await endOf(kernel, target.session, target.run);
+
+        return end === null ? null : { kind: "run", session: target.session, run: target.run, end };
+      }
+
+      case "part": {
+        const ref = await kernel.store.refs.get(partRef(session, target.part));
+
+        if (ref === null) return { kind: "part", part: target.part, answer: null };
+        const status = (await load(kernel, ref, decodePartRecord))?.record.status;
+        const kept = status?.kind === "live" ? (status.answer ?? null) : null;
+        const answer = answerOf(kernel, session, target.part) ?? kept;
+
+        return answer === null ? null : { kind: "part", part: target.part, answer };
+      }
+
+      case "job": {
+        const state = jobs.get(target.job) ?? kernel.jobs.get(target.job)?.view.state ?? LOST;
+
+        return state.kind === "running" ? null : { kind: "job", job: target.job, end: state };
+      }
+
+      case "timer":
+        return null;
+    }
+  };
+
+  const stop = async (match: (entry: ParkedWait) => boolean): Promise<void> => {
+    await Promise.all(
+      [...slots.values()].flatMap((slot) =>
+        match(slot.entry) ? [settle(slot, { kind: "stopped" })] : [],
+      ),
+    );
+  };
+
+  const slotOf = (entry: ParkedWait): Slot => {
+    const target = entry.target;
+    const targets = "targets" in target ? target.targets : [target];
+
+    return {
+      entry,
+      targets,
+      outcomes: targets.map((_target, index) => entry.partial.at(index) ?? null),
+    };
+  };
+
+  const park = async (entry: ParkedWait): Promise<void> => {
+    const key = keyOf(entry.session, entry.call);
+
+    if (slots.get(key)?.entry.index === entry.index) return;
+    const slot = slotOf(entry);
+    slots.set(key, slot);
+    dev("waits", "park", {
+      session: entry.session,
+      call: entry.call,
+      targets: slot.targets.length,
+    });
+
+    if (entry.target.kind === "all" && slot.targets.length === 0) {
+      await settle(slot, { kind: "all", outcomes: [] });
+
+      return;
+    }
+
+    await expire(slot, Date.now());
+
+    for (const [index, waited] of slot.targets.entries()) {
+      if (slots.get(key) !== slot) return;
+
+      if ((slot.outcomes.at(index) ?? null) !== null) continue;
+      const outcome = await settled(entry.session, waited);
+
+      if (outcome !== null) await offer(slot, index, outcome);
+    }
+  };
+
+  return {
+    park,
+    async runEnded(session, run, end) {
+      const taken = await Promise.all(
+        offers(
+          (target) => target.kind === "run" && target.session === session && target.run === run,
+          { kind: "run", session, run, end },
+        ),
+      );
+
+      return taken.some((found) => found !== "none");
+    },
+    async jobEnded(job, end) {
+      jobs.set(job, end);
+      let consumed = false;
+
+      for (let tries = 1; ; tries += 1) {
+        const results = await Promise.allSettled(
+          offers((target) => target.kind === "job" && target.job === job, {
+            kind: "job",
+            job,
+            end,
+          }),
+        );
+
+        consumed ||= results.some(
+          (found) => found.status === "fulfilled" && found.value !== "none",
+        );
+        const refused = results.find((found) => found.status === "rejected");
+
+        if (refused === undefined) return consumed;
+        dev("waits", "job end refused", { job, tries });
+        const reason: unknown = refused.reason;
+
+        if (tries === JOB_TRIES) throw reason;
+        await new Promise((resolve) => setTimeout(resolve, JOB_RETRY_MS * tries));
+      }
+    },
+    async partAnswered(session, part, answer, call) {
+      const on = (target: WaitTarget): boolean => target.kind === "part" && target.part === part;
+      const outcome: WaitOutcome = { kind: "part", part, answer };
+
+      if (call !== null && !slots.has(keyOf(session, call))) {
+        const entry = parkedOf(session, (await readCall(kernel, session, call))?.record ?? null);
+
+        if (entry !== null) {
+          const slot = slotOf(entry);
+
+          await Promise.all(
+            slot.targets.flatMap((target, index) =>
+              on(target) && (slot.outcomes.at(index) ?? null) === null
+                ? [offer(slot, index, outcome)]
+                : [],
+            ),
+          );
+        }
+      }
+
+      await Promise.all(offers(on, outcome));
+    },
+    async partClosed(part) {
+      await Promise.all(
+        offers((target) => target.kind === "part" && target.part === part, {
+          kind: "part",
+          part,
+          answer: null,
+        }),
+      );
+    },
+    async inputAdmitted(session, head, message) {
+      await Promise.all(
+        [...slots.values()].flatMap((slot) => {
+          const { entry } = slot;
+
+          return entry.session === session &&
+            entry.head === head &&
+            "targets" in entry.target &&
+            entry.target.untilInput === true
+            ? [settle(slot, { kind: "input", message })]
+            : [];
+        }),
+      );
+    },
+    runStopped: (session, run) => stop((entry) => entry.session === session && entry.run === run),
+    callStopped: (session, call) =>
+      stop(
+        (entry) =>
+          entry.session === session && (entry.call === call || entry.call.startsWith(`${call}:`)),
+      ),
+    async tick(now) {
+      dev("waits", "tick", { parked: slots.size });
+      await Promise.all([...slots.values()].map((slot) => expire(slot, now)));
+    },
+    async settleFromStore() {
+      await Promise.all(
+        [...slots.values()].map(async (slot) => {
+          const { entry } = slot;
+          const key = keyOf(entry.session, entry.call);
+          const record = (await readCall(kernel, entry.session, entry.call))?.record;
+
+          if (record !== undefined)
+            for (const answered of partAnswers([...record.waits, ...record.partial]))
+              answeredElsewhere(kernel, entry.session, answered.part, answered.answer);
+
+          if (record === undefined || !open(record, entry)) {
+            if (slots.get(key) !== slot) return;
+            slots.delete(key);
+
+            if (record !== undefined && record.result === null) woken(slot);
+
+            return;
+          }
+
+          slot.outcomes = slot.targets.map(
+            (_target, index) => record.partial.at(index) ?? slot.outcomes.at(index) ?? null,
+          );
+
+          await Promise.all(
+            slot.targets.map(async (target, index) => {
+              if (slots.get(key) !== slot || (slot.outcomes.at(index) ?? null) !== null) return;
+              const outcome = await settled(entry.session, target);
+
+              if (outcome !== null) await offer(slot, index, outcome);
+            }),
+          );
+        }),
+      );
+    },
+    nextDeadline(session, head) {
+      const due = [...slots.values()].flatMap((slot) => {
+        if (slot.entry.session !== session || slot.entry.head !== head) return [];
+        const deadline = deadlineOf(slot.entry.target);
+
+        return [
+          ...(deadline === null ? [] : [deadline]),
+          ...slot.targets.flatMap((target, index) =>
+            target.kind === "timer" && (slot.outcomes.at(index) ?? null) === null
+              ? [target.until]
+              : [],
+          ),
+        ];
+      });
+
+      return due.length === 0 ? null : Math.min(...due);
+    },
+    onWoken(session, call, resume) {
+      const key = keyOf(session, call);
+      resumers.set(key, resume);
+
+      return () => {
+        if (resumers.get(key) === resume) resumers.delete(key);
+      };
+    },
+  };
+}
+
+/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions' (§42p); `cover` calls it. */
+export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
+  const refs: readonly Ref[] =
+    sessions === undefined
+      ? await kernel.store.refs.list("sessions/")
+      : (
+          await Promise.all(
+            sessions.map((session) => kernel.store.refs.list(`sessions/${session}/calls/`)),
+          )
+        ).flat();
+
+  for (const ref of refs) {
+    const [root, session, kind] = ref.name.split("/");
+
+    if (root !== "sessions" || session === undefined || kind !== "calls") continue;
+    const found = await load(kernel, ref, decodeCallRecord);
+    const entry = parkedOf(asId<"session">(session), found?.record ?? null);
+
+    if (entry !== null) await kernel.waits.park(entry);
+  }
+}
 
 /** Calls the listener whenever a receipt is settled in this process; the disposer stops it. */
 export function onReceipt(
@@ -11,23 +511,21 @@ export function onReceipt(
   id: string,
   listener: () => void,
 ): Disposer {
-  const byReceipt = receiptListeners.get(kernel) ?? new Map<string, Set<() => void>>();
   const key = `${session}/${id}`;
-  const listeners = byReceipt.get(key) ?? new Set<() => void>();
+  const listeners = kernel.receipts.get(key) ?? new Set<() => void>();
   listeners.add(listener);
-  byReceipt.set(key, listeners);
-  receiptListeners.set(kernel, byReceipt);
+  kernel.receipts.set(key, listeners);
 
   return () => {
     listeners.delete(listener);
 
-    if (listeners.size === 0 && byReceipt.get(key) === listeners) byReceipt.delete(key);
+    if (listeners.size === 0 && kernel.receipts.get(key) === listeners) kernel.receipts.delete(key);
   };
 }
 
 /** Wakes every in-process wait on a receipt. */
 export function notifyReceipt(kernel: Kernel, session: SessionId, id: string): void {
-  for (const listener of receiptListeners.get(kernel)?.get(`${session}/${id}`) ?? []) listener();
+  for (const listener of kernel.receipts.get(`${session}/${id}`) ?? []) listener();
 }
 
 /** Resolves with the first value `check` finds, checking once now and again on every trigger; abort rejects `unavailable` and stops the wait, never the work. */
@@ -103,4 +601,78 @@ export function waitFor<T>(input: {
     dispose = input.subscribe(check);
     check();
   });
+}
+
+/** Returns the update writing a live run's parked calls and wait (§54f) with `run waiting`, or `run phase executing` once it waits on nothing; none once the run has ended or `change` keeps it. */
+export async function runWait(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+  change: (record: RunRecord) => Promise<Pick<RunRecord, "parked" | "waiting"> | null>,
+): Promise<readonly RefUpdate[]> {
+  const name = runRef(session, run);
+  const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+  const next = found === null ? null : await change(found.record);
+
+  if (found === null || next === null) return [];
+  const { record } = found;
+  const head = record.view.head;
+  const resumed = next.waiting === null && record.waiting !== null;
+
+  return [
+    {
+      name,
+      target: await put(kernel, "run", {
+        ...record,
+        ...next,
+        phase: resumed ? "executing" : record.phase,
+      }),
+      expect: found.ref.revision,
+      event:
+        next.waiting !== null
+          ? { head, kind: "run", run, change: "waiting", on: next.waiting }
+          : resumed
+            ? { head, kind: "run", run, change: "phase", phase: "executing" }
+            : undefined,
+    },
+  ];
+}
+
+/** Returns the parked wait a call record holds, or null when it has a result or waits on nothing. */
+export function parkedOf(session: SessionId, record: CallRecord | null): ParkedWait | null {
+  if (record === null || record.result !== null || record.waiting === null) return null;
+
+  return {
+    session,
+    head: record.head,
+    run: record.run,
+    call: record.id,
+    target: record.waiting,
+    partial: record.partial,
+    index: record.waits.length,
+  };
+}
+
+/** Returns what a wait shows as waiting on: the target, or a combination's first target with an empty slot. */
+export function waitingOn(
+  target: NonNullable<CallRecord["waiting"]>,
+  partial: readonly (WaitOutcome | null)[],
+): WaitTarget | null {
+  if (!("targets" in target)) return target;
+
+  return target.targets.find((_waited, index) => (partial.at(index) ?? null) === null) ?? null;
+}
+
+/** Returns the earliest deadline bounding a wait, its own or any of its targets', or null. */
+function deadlineOf(target: NonNullable<CallRecord["waiting"]>): number | null {
+  const bounds = [
+    target.deadline,
+    ...("targets" in target ? target.targets.map((waited) => waited.deadline) : []),
+  ].flatMap((deadline) => (deadline === undefined ? [] : [deadline]));
+
+  return bounds.length === 0 ? null : Math.min(...bounds);
+}
+
+function keyOf(session: SessionId, call: CallId): string {
+  return `${session}/${call}`;
 }

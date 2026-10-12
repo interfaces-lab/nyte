@@ -84,7 +84,7 @@ export const env: ExecutionEnv = {
 /** One call the scripted turn received, and how to end it. */
 export interface Turn {
   readonly input: Parameters<TurnDriver["run"]>[0];
-  finish(end?: RunEnd): void;
+  finish(end?: Awaited<ReturnType<TurnDriver["run"]>>): void;
 }
 
 /** A turn driver that records each call and ends it when the test says, or when its run is stopped. */
@@ -103,7 +103,7 @@ export function script(): Script {
     turns,
     driver: {
       run(input) {
-        return new Promise<RunEnd>((resolve) => {
+        return new Promise((resolve) => {
           turns.push({ input, finish: (end = completed) => resolve(end) });
 
           if (input.signal.aborted) resolve({ kind: "stopped" });

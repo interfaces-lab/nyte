@@ -1,25 +1,42 @@
+import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId, standard } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
+import type { AssistantMessage } from "@nyte-ai/schema/model";
 import type { DurableEvent, Infer, Message, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import {
   compaction,
+  createPluginRuntime,
   decodePartRecord,
   decodeRunRecord,
+  envelope,
   isPart,
+  memoryStore,
   partRef,
+  publishSet,
+  requestBody,
   runRef,
   text,
   thinking,
   tool,
 } from "../src/index.ts";
-import type { Kernel, Plugin, ToolDefinition } from "../src/index.ts";
+import type { Kernel, Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import type { FakeModels, Reply } from "./fake-models.ts";
-import { label, until } from "./harness.ts";
+import { configuration, label, main, until } from "./harness.ts";
 
 const nothing = standard(Type.Object({}));
+
+const ZERO_TEST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  reasoning: null,
+  total: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 
 const echo: ToolDefinition<{ readonly text: string }> = {
   name: "echo",
@@ -920,6 +937,40 @@ describe("turn", () => {
     ]);
   });
 
+  it("shows a watch that starts mid-stream the text streamed before it", async () => {
+    const fake = fakeModels({ models: [testModel("model")] });
+    fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const early = session.watch()[Symbol.asyncIterator]();
+    const receipt = await session.send("Go.");
+    let live: Message | undefined;
+
+    while (live === undefined) {
+      const next = await early.next();
+
+      assert(next.done !== true);
+      live = next.value.messages.find(
+        (entry) => isPart(entry, text) && entry.state.markdown !== "",
+      );
+    }
+
+    await early.return?.();
+    const late = session.watch()[Symbol.asyncIterator]();
+    const first = await late.next();
+    await late.return?.();
+
+    assert(first.done !== true);
+    expect(first.value.messages.find((message) => message.id === live?.id)).toMatchObject({
+      status: { kind: "live" },
+      state: { markdown: "A partia" },
+    });
+
+    assert(live.kind === "part" && live.status.kind === "live" && live.status.run !== null);
+    await session.run(live.status.run).stop();
+    expect(await receipt.settled()).toEqual({ kind: "stopped" });
+  });
+
   it("ends stopped when stopped mid-stream, its live part failed", async () => {
     const fake = fakeModels({ models: [testModel("model")] });
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
@@ -952,5 +1003,496 @@ describe("turn", () => {
       status: { kind: "failed", failure: { class: "aborted" } },
     });
     expect(fake.requests[0].options?.signal?.aborted).toBe(true);
+  });
+});
+
+describe("turn findings (CORE-DIET D3)", () => {
+  /** Returns a part's status as the store holds it. */
+  async function storedStatus(kernel: Kernel, session: SessionId, part: string) {
+    const ref = await kernel.store.refs.get(partRef(session, asId(part)));
+
+    return decodePartRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null)
+      ?.status;
+  }
+
+  it("builds each request on the session's runtime once it is ready, so a reload still activating holds the request (D1)", async () => {
+    const fake = fakeModels();
+    const seen: string[] = [];
+    const gate = Promise.withResolvers<void>();
+    let activations = 0;
+    let reload = (): void => undefined;
+
+    const reloading: ToolDefinition<Infer<typeof nothing>> = {
+      name: "reload",
+      description: "Reload the session's plugins without waiting.",
+      parameters: nothing,
+      class: () => ({ kind: "custom", label: "Reloading" }),
+      replay: "safe",
+      async execute() {
+        reload();
+
+        return { content: [{ kind: "text", text: "reloading" }] };
+      },
+    };
+
+    const slow: Plugin<"core"> = {
+      id: "slow",
+      contribute: { tools: [reloading] },
+      async activate(api) {
+        activations += 1;
+        const activation = activations;
+
+        if (activation === 2) await gate.promise;
+
+        api.hook("before_request", (request) => {
+          seen.push(`before_request:${activation}`);
+
+          return request;
+        });
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "call-1", name: "reload", arguments: {} }] },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+
+    await using host = await open(fake, { plugins: [slow] });
+    const session = await host.sessions.create();
+
+    reload = () => {
+      void host.kernel.reloadPlugins(session.id);
+      setTimeout(() => gate.resolve(), 20);
+    };
+
+    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    expect(seen).toEqual(["before_request:1", "before_request:2"]);
+
+    const system = fake.requests[1].context.messages[0];
+
+    assert(system?.role === "system");
+    expect(system.toolsAdded?.map((entry) => entry.name)).toContain("reload");
+  });
+
+  it("lists a request's tools from the runtime it was given, never the session's current one (D1, audit)", async () => {
+    const fake = fakeModels();
+
+    const marker: ToolDefinition<Infer<typeof nothing>> = {
+      name: "marker",
+      description: "A tool only the given runtime lists.",
+      parameters: nothing,
+      class: () => ({ kind: "custom", label: "Marking" }),
+      replay: "safe",
+      execute: async () => ({ content: [{ kind: "text", text: "marked" }] }),
+    };
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    await host.kernel.pluginsFor(session.id).ready;
+    const given = createPluginRuntime(host.kernel, session.id, null);
+    await given.ready;
+    await given.load([{ id: "marker", contribute: { tools: [marker] } }]);
+
+    const { transcript } = await requestBody(host.kernel, fake.models, given, {
+      session: session.id,
+      head: main,
+      run: null,
+      configuration,
+    });
+
+    expect(transcript.tools.map((info) => info.name)).toContain("marker");
+    expect(
+      host.kernel
+        .tools(host.kernel.pluginsFor(session.id), null)
+        .list()
+        .map((info) => info.name),
+    ).not.toContain("marker");
+  });
+
+  it("fails the request, not the loop, when compaction throws: the overflowed response's parts fail (D4)", async () => {
+    const fake = fakeModels();
+
+    const failing: Plugin<"core"> = {
+      id: "failing",
+      hooks: {
+        before_compaction: () => {
+          throw new Error("The compactor is down.");
+        },
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      {
+        content: [{ type: "text", text: "Streamed before the overflow." }],
+        error: "prompt is too long: 213462 tokens > 200000 maximum",
+      },
+    );
+
+    await using host = await open(fake, { plugins: [failing] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    const end = await (await session.send("Second?")).settled();
+
+    expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });
+
+    const second = (await session.view()).messages.find(
+      (message) => message.kind === "user" && message.content === "Second?",
+    );
+
+    assert(
+      second?.kind === "user" && second.status.kind === "landed" && second.status.run !== null,
+    );
+    expect(await storedStatus(host.kernel, session.id, `${second.status.run}:1:0`)).toMatchObject({
+      kind: "failed",
+    });
+  });
+
+  it("leaves a stop that lands while a retry is landing to its fence: no overwrite, no retrying after stopping (D5)", async () => {
+    const fake = fakeModels();
+    let stop: ((run: RunId) => Promise<unknown>) | null = null;
+    const base = memoryStore();
+
+    const store: Store = {
+      ...base,
+      async open() {
+        const opened = await base.open();
+
+        return {
+          ...opened,
+          refs: {
+            ...opened.refs,
+            async set(updates) {
+              const retrying = updates.find(
+                (update) => update.event?.kind === "run" && update.event.change === "retrying",
+              )?.event;
+
+              if (retrying?.kind === "run" && stop !== null) {
+                const stopping = stop;
+                stop = null;
+                await stopping(retrying.run);
+              }
+
+              return opened.refs.set(updates);
+            },
+          },
+        };
+      },
+    };
+
+    fake.reply({
+      content: [{ type: "text", text: "Half an answer" }],
+      error: "503 Service Unavailable",
+    });
+    await using host = await open(fake, { store });
+    const session = await host.sessions.create();
+    const logged = events(host.kernel, session.id);
+    stop = (run) => session.run(run).stop();
+
+    expect(await (await session.send("Go.")).settled()).toEqual({ kind: "stopped" });
+
+    const run = runOf((await session.view()).messages);
+
+    expect(await storedStatus(host.kernel, session.id, `${run}:1:0`)).toMatchObject({
+      kind: "failed",
+      failure: { class: "aborted" },
+    });
+    expect(
+      logged.filter((event) => event.kind === "part" && event.change === "failed"),
+    ).toHaveLength(1);
+    expect(logged.map(label)).not.toContain("run:retrying");
+  });
+
+  it("charges every provider request: a failed one with its request event, a material compaction with one (D6)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const fake = fakeModels();
+
+    const material: Plugin<"core"> = {
+      id: "material",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+        ],
+      },
+      hooks: {
+        before_compaction: (plan) => ({
+          ...plan,
+          result: {
+            kind: "material",
+            provider: "test",
+            api: "test-api",
+            model: "model",
+            data: { opaque: true },
+            usage: { ...ZERO_TEST, input: 7, total: 7 },
+          },
+        }),
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      {
+        content: [{ type: "text", text: "Half" }],
+        error: "503 Service Unavailable",
+        usage: { input: 100, output: 10 },
+      },
+      { content: [{ type: "text", text: "Recovered." }], usage: { input: 200, output: 20 } },
+    );
+
+    await using host = await open(fake, { plugins: [material] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    const logged = events(host.kernel, session.id);
+    const receipt = await session.send("Second?");
+
+    await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
+    await vi.advanceTimersByTimeAsync(2_000);
+    const end = await receipt.settled();
+
+    assert(end.kind === "completed");
+    expect(end.usage).toMatchObject({ input: 7 + 100 + 200, output: 10 + 20 });
+    expect(
+      logged.flatMap((event) =>
+        event.kind === "request" ? [`${event.step}:${event.usage.total}`] : [],
+      ),
+    ).toEqual(["compaction:7", "assistant:110", "assistant:220"]);
+  });
+
+  it("charges and observes every request: overflow, summary, 503, 503, then a stop in the sleep (D6, audit)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const fake = fakeModels();
+    const observed: string[] = [];
+
+    const observer: Plugin<"core"> = {
+      id: "observer",
+      hooks: {
+        after_request: (event) => {
+          observed.push(`${event.step}:${event.usage.total}`);
+        },
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      {
+        error: "prompt is too long: 213462 tokens > 200000 maximum",
+        usage: { input: 40, output: 4 },
+      },
+      { content: [{ type: "text", text: "Summary." }], usage: { input: 180, output: 20 } },
+      {
+        content: [{ type: "text", text: "Half" }],
+        error: "503 Service Unavailable",
+        usage: { input: 100, output: 10 },
+      },
+      {
+        content: [{ type: "text", text: "Half again" }],
+        error: "503 Service Unavailable",
+        usage: { input: 150, output: 15 },
+      },
+    );
+
+    await using host = await open(fake, { plugins: [observer] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    observed.length = 0;
+    const logged = events(host.kernel, session.id);
+    const receipt = await session.send("Second?");
+    const retries = (count: number) =>
+      logged.filter((event) => label(event) === "run:retrying").length >= count ? true : undefined;
+
+    await until(() => retries(2));
+    await vi.advanceTimersByTimeAsync(2_000);
+    await until(() => retries(3));
+
+    const second = (await session.view()).messages.find(
+      (message) => message.kind === "user" && message.content === "Second?",
+    );
+
+    assert(
+      second?.kind === "user" && second.status.kind === "landed" && second.status.run !== null,
+    );
+    await session.run(second.status.run).stop();
+
+    const charged = ["compaction:200", "assistant:44", "assistant:110", "assistant:165"];
+
+    expect(await receipt.settled()).toEqual({ kind: "stopped" });
+    expect(
+      logged.flatMap((event) =>
+        event.kind === "request" ? [`${event.step}:${event.usage.total}`] : [],
+      ),
+    ).toEqual(charged);
+    expect(observed).toEqual(charged);
+  });
+
+  it("validates a before_compaction result once, failing the compaction, never dropping history at read (D9)", async () => {
+    const fake = fakeModels();
+
+    const broken: Plugin<"core"> = {
+      id: "broken",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 2_000, compactAt: 100 },
+        ],
+      },
+      hooks: {
+        before_compaction: (plan) => ({
+          ...plan,
+          result: {
+            kind: "material",
+            provider: "test",
+            api: "test-api",
+            model: "model",
+            data: null,
+            usage: { ...ZERO_TEST, total: Number.NaN },
+          },
+        }),
+      },
+    };
+
+    fake.reply({ content: [{ type: "text", text: "First answer." }] });
+    await using host = await open(fake, { plugins: [broken] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    const end = await (await session.send("Second?")).settled();
+
+    expect(end).toMatchObject({
+      kind: "failed",
+      failure: { class: "runner", message: expect.stringContaining("before_compaction") },
+    });
+    expect((await session.view()).messages.some((message) => isPart(message, compaction))).toBe(
+      false,
+    );
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("fails a stream that ends without a result as a provider failure, its streamed text failed in the store (D7, audit)", async () => {
+    const fake = fakeModels();
+
+    const partial: AssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Half" }],
+      api: "test-api",
+      provider: "test",
+      model: "model",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 0,
+    };
+
+    fake.models.streamSimple = () => {
+      const stream = new AssistantMessageEventStream();
+      stream.push({ type: "start", partial });
+      stream.push({ type: "text_start", contentIndex: 0, partial });
+      stream.push({ type: "text_delta", contentIndex: 0, delta: "Half", partial });
+      stream.end();
+
+      return stream;
+    };
+
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+    const end = await (await session.send("Go.")).settled();
+
+    expect(end).toMatchObject({ kind: "failed", failure: { class: "provider" } });
+    expect(
+      await storedStatus(host.kernel, session.id, `${runOf((await session.view()).messages)}:1:0`),
+    ).toMatchObject({
+      kind: "failed",
+      failure: { class: "provider" },
+    });
+  });
+
+  it("fails a request whose head holds a corrupt compaction, before sending anything (D9, audit)", async () => {
+    const fake = fakeModels();
+
+    const material: Plugin<"core"> = {
+      id: "material",
+      hooks: {
+        before_compaction: (plan) => ({
+          ...plan,
+          result: {
+            kind: "material",
+            provider: "test",
+            api: "test-api",
+            model: "model",
+            data: { opaque: true },
+            usage: null,
+          },
+        }),
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      { error: "prompt is too long: 213462 tokens > 200000 maximum" },
+      { content: [{ type: "text", text: "Second answer." }] },
+    );
+
+    await using host = await open(fake, { plugins: [material] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    expect((await (await session.send("Second?")).settled()).kind).toBe("completed");
+    expect(fake.requests[2].context.checkpoint).toMatchObject({ provider: "test" });
+
+    const note = (await session.view()).messages.find((message) => isPart(message, compaction));
+    assert(note !== undefined);
+    const name = partRef(session.id, asId(note.id));
+    const ref = await host.kernel.store.refs.get(name);
+    const record = decodePartRecord(
+      ref?.target ? await host.kernel.store.objects.get(ref.target) : null,
+    );
+    assert(ref !== null && record !== null);
+    const corrupt = { summary: null, material: null, tokensBefore: "many", usage: null };
+    const version = record.version + 1;
+
+    const updates = [
+      {
+        name,
+        target: await host.kernel.store.objects.put(
+          envelope("part", { ...record, state: corrupt, version }, Date.now()),
+        ),
+        expect: ref.revision,
+        event: {
+          head: main,
+          kind: "part",
+          part: asId<"part">(note.id),
+          change: "updated",
+          state: corrupt,
+          version,
+        } as const,
+      },
+    ];
+
+    await publishSet(host.kernel, updates, await host.kernel.store.refs.set(updates));
+
+    expect(await (await session.send("Third?")).settled()).toMatchObject({
+      kind: "failed",
+      failure: { message: expect.stringContaining("corrupt") },
+    });
+    expect(fake.requests).toHaveLength(3);
+  });
+
+  it("fails the request when the session's resources cannot be read, never sending without them (D13)", async () => {
+    const fake = fakeModels();
+    fake.reply({ content: [{ type: "text", text: "Never sent." }] });
+    await using host = await open(fake);
+    const session = await host.sessions.create();
+
+    host.kernel.resources = async () => {
+      throw new Error("The workspace is unreachable.");
+    };
+
+    expect(await (await session.send("Go.")).settled()).toMatchObject({
+      kind: "failed",
+      failure: { message: "The workspace is unreachable." },
+    });
+    expect(fake.requests).toHaveLength(0);
   });
 });

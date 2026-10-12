@@ -410,14 +410,16 @@ describe("watch", () => {
       const next = await iterator.next();
 
       assert(next.done !== true);
-      kinds.push(next.value.kind === "patch" ? "patch" : `${next.value.kind}:${next.value.seq}`);
+      const event = next.value.event;
+      kinds.push(event.kind === "patch" ? "patch" : `${event.kind}:${event.seq}`);
 
-      if (next.value.kind === "catalog") break;
+      if (event.kind === "catalog") break;
     }
 
     await admit(kernel, first, "m3");
-    const live = await iterator.next();
+    const next = await iterator.next();
     await iterator.return?.();
+    const live = next.done === true ? next : { done: false, value: next.value.event };
 
     expect(kinds).toEqual([
       `input:${resume + 1}`,

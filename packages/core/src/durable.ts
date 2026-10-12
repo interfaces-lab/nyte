@@ -16,17 +16,17 @@ import type { Kernel } from "./kernel.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
-import { changeCall, load, put, readCall, runWaiting } from "./session-state.ts";
+import { changeCall, isJsonObject, load, put, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
-import { onStepWoken, waitingOn } from "./wait-registry.ts";
+import { parkedOf, runWait, waitingOn } from "./waits.ts";
 
-/** Returns how a durable step ended: its body's value, parked on a wait not yet recorded, or interrupted because a `never` step may not run again. */
+/** Returns how a durable step ended: its value as recorded, parked on a wait not yet recorded, or interrupted because a `never` step may not run again. */
 export type StepOutcome<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "parked" }
   | { readonly kind: "interrupted" };
 
-/** Returns where a durable step runs and what stops it: what its `Durable` records against. */
+/** Returns where a durable step runs and what stops it. */
 interface Place {
   readonly session: SessionId;
   readonly head: HeadName | null;
@@ -38,29 +38,35 @@ interface Place {
 
 const STOPPED: WaitOutcome = { kind: "stopped" };
 
-/** The executions that parked: each step execution's `Durable`, once it wrote or found its wait, or a nested step it awaits parked. */
+/** The step executions that parked, by their `Durable`. */
 const parkedExecutions = new WeakSet<Durable>();
 
-/** What a durable step's `wait()` throws on its first wait not yet recorded, so the step unwinds and parks; a wake re-runs it. */
+/** What a durable step's `wait()` throws on its first wait not yet recorded, so the step unwinds and parks. */
 class Parked extends Error {
   constructor() {
     super("The durable step parked on a wait.");
   }
 }
 
-/** Returns whether an error is the sentinel a durable step's `wait()` throws to park it; whatever catches it inside a step rethrows it untouched. */
+/** Returns whether an error is the sentinel a durable step's `wait()` throws to park it. */
 export function isParked(error: unknown): boolean {
   return error instanceof Parked;
 }
 
-/** Marks the step execution that `durable` belongs to as parked and throws the parked sentinel: how a step unwinds when it, or a nested step it awaits, parked. */
+/** Marks the step execution `durable` belongs to as parked and throws the parked sentinel. */
 export function parkStep(durable: Durable): never {
   parkedExecutions.add(durable);
 
   throw new Parked();
 }
 
-/** Runs one durable step (a tool call, a part action or a decide hook) and returns how it ended. Creates the step's `CallRecord` with its intent, or loads it on a re-run. A record with a `result` returns `done` with `decode(result)` without running `body`; a result `decode` rejects throws `SdkError("internal")`. A record without a result under `replay: "never"` (parked, or the host died mid-step) is settled through `settle({ kind: "interrupted" })` and returns `interrupted`. Otherwise `body` runs with a `Durable` whose `wait()` replays recorded outcomes in call order and, on the first unrecorded wait, writes the whole target to `waiting` with `call waiting { on }` (and `run waiting { on }` when `run` is set), where `on` is the target itself or a composite's first unsettled target, parks the entry in `kernel.waits` and throws the parked sentinel; a wait reached once `signal` has aborted records and returns `stopped` instead. `memo(name, compute)` returns the recorded value or computes and records it, expecting the call ref's revision (a lost race re-reads the winner); `now()` returns the clock reading recorded at its call-order index, or records `Date.now()`. A step with no head (an action or hook outside one) parks without a head to notify; its wake re-runs it through the act that runs it. When `body` resolves, the `result` that `settle` returns is recorded in one set with the updates it returns and the step returns `done`. An execution that parked is `parked` however its body ended: a body whose own `catch` swallowed the sentinel and resolved anyway has its value dropped, even when a wake has since cleared `waiting` (§33g). Any other throw is rethrown with nothing recorded. */
+/**
+ * Runs one durable step (a tool call, a part action or a decide hook) from its `CallRecord`, which
+ * it creates or loads: a recorded result replays as `done`; a `never` step with no result is
+ * settled `interrupted`; otherwise `body` runs with a `Durable` replaying the record by call order.
+ * A settled step returns the result its record holds, decoded; an execution that parked is
+ * `parked` however its body ended (§33g).
+ */
 export async function runStep<T>(
   kernel: Kernel,
   input: {
@@ -73,8 +79,10 @@ export async function runStep<T>(
     readonly intent: Json;
     readonly part: PartId | null;
     readonly signal: AbortSignal;
+    /** The updates landing with the record's creation: a tool's part, so no part exists without its step. */
+    readonly opening?: readonly RefUpdate[];
     body(durable: Durable): Promise<T>;
-    /** Returns what the step's `result` records and the ref updates that land in the same set: for a tool, its part settled and the head commit. */
+    /** Returns what the step's `result` records and the ref updates landing in the same set. */
     settle(
       ended: Exclude<StepOutcome<T>, { readonly kind: "parked" }>,
     ): Promise<{ readonly result: Json; readonly updates: readonly RefUpdate[] }>;
@@ -84,36 +92,41 @@ export async function runStep<T>(
 ): Promise<StepOutcome<T>> {
   const { session, call } = input;
 
+  const created: CallRecord = {
+    id: call,
+    kind: input.kind,
+    run: input.run,
+    head: input.head,
+    part: input.part,
+    intent: input.intent,
+    memos: {},
+    clock: [],
+    waits: [],
+    waiting: null,
+    partial: [],
+    nested: {},
+    acquisitions: {},
+    result: null,
+    replay: input.replay,
+  };
+
   const opened = await changeCall(kernel, session, call, async (current) =>
-    current === null
-      ? {
-          record: {
-            id: call,
-            kind: input.kind,
-            run: input.run,
-            head: input.head,
-            part: input.part,
-            intent: input.intent,
-            memos: {},
-            clock: [],
-            waits: [],
-            waiting: null,
-            partial: [],
-            nested: {},
-            acquisitions: {},
-            result: null,
-            replay: input.replay,
-          },
-        }
-      : null,
+    current === null ? { record: created, updates: input.opening } : null,
   );
 
-  const record = opened.record;
+  const record = opened.record ?? created;
 
-  if (record === null) throw new SdkError("internal", `Call ${call} has no record.`);
+  const read = (result: Json | null): T => {
+    const value = result === null ? null : input.decode(result);
 
-  const settle = async (ended: Exclude<StepOutcome<T>, { readonly kind: "parked" }>) =>
-    changeCall(kernel, session, call, async (current) => {
+    if (value === null)
+      throw new SdkError("internal", `Call ${call} recorded a result its step cannot read.`);
+
+    return value;
+  };
+
+  const settle = async (ended: Exclude<StepOutcome<T>, { readonly kind: "parked" }>) => {
+    const written = await changeCall(kernel, session, call, async (current) => {
       if (current === null || current.result !== null) return null;
       const settled = await input.settle(ended);
 
@@ -123,16 +136,15 @@ export async function runStep<T>(
       };
     });
 
-  dev("durable", "step", { session: input.session, call, kind: input.kind });
+    return read(written.record?.result ?? null);
+  };
+
+  dev("durable", "step", { session, call, kind: input.kind });
 
   if (record.result !== null) {
-    dev("durable", "replayed", { session: input.session, call });
-    const value = input.decode(record.result);
+    dev("durable", "replayed", { session, call });
 
-    if (value === null)
-      throw new SdkError("internal", `Call ${call} recorded a result its step cannot read.`);
-
-    return { kind: "done", value };
+    return { kind: "done", value: read(record.result) };
   }
 
   if (!opened.wrote && input.replay === "never") {
@@ -142,7 +154,7 @@ export async function runStep<T>(
   }
 
   const writes: Promise<unknown>[] = [];
-  const durable = durableOf(kernel, input, record.clock, writes);
+  const durable = durableOf(kernel, input, record, writes);
 
   const ran = await input.body(durable).then(
     (value) => ({ value }),
@@ -150,8 +162,7 @@ export async function runStep<T>(
   );
 
   await Promise.all(writes);
-
-  dev("durable", "ran", { session: input.session, call, parked: parkedExecutions.has(durable) });
+  dev("durable", "ran", { session, call, parked: parkedExecutions.has(durable) });
 
   if (parkedExecutions.has(durable)) return { kind: "parked" };
 
@@ -161,14 +172,14 @@ export async function runStep<T>(
     throw ran.error;
   }
 
-  await settle({ kind: "done", value: ran.value });
-  dev("durable", "settled", { session: input.session, call });
+  const value = await settle({ kind: "done", value: ran.value });
+  dev("durable", "settled", { session, call });
 
-  return { kind: "done", value: ran.value };
+  return { kind: "done", value };
 }
 
-/** Runs a part action as a durable step of kind `action` (replay safe, outside any head or run) and returns how it ended; while it is parked, waits for the registry to wake it and runs it again, until it settles or its signal aborts. Its result records the output when it is JSON; it is never replayed, since every act has a fresh call id. */
-export async function runAction<T>(
+/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake until it settles or its signal aborts; its result records the output when it is JSON, and decodes back to it. */
+export async function runAction(
   kernel: Kernel,
   input: {
     readonly session: SessionId;
@@ -176,11 +187,11 @@ export async function runAction<T>(
     readonly action: string;
     readonly call: CallId;
     readonly signal: AbortSignal;
-    body(durable: Durable): Promise<T>;
+    body(durable: Durable): Promise<unknown>;
   },
-): Promise<StepOutcome<T>> {
+): Promise<StepOutcome<unknown>> {
   let woken = Promise.withResolvers<void>();
-  const dispose = onStepWoken(kernel, input.session, input.call, () => woken.resolve());
+  const dispose = kernel.waits.onWoken(input.session, input.call, () => woken.resolve());
 
   const aborted = new Promise<void>((resolve) =>
     input.signal.addEventListener("abort", () => resolve(), { once: true }),
@@ -190,7 +201,7 @@ export async function runAction<T>(
     for (;;) {
       woken = Promise.withResolvers<void>();
 
-      const outcome = await runStep<T>(kernel, {
+      const outcome = await runStep<{ readonly output: unknown }>(kernel, {
         session: input.session,
         head: null,
         run: null,
@@ -200,16 +211,17 @@ export async function runAction<T>(
         intent: { part: input.part, action: input.action },
         part: input.part,
         signal: input.signal,
-        body: (durable) => input.body(durable),
-        settle: async (ended) => ({
-          result: {
-            kind: ended.kind,
-            output: ended.kind === "done" && isJson(ended.value) ? ended.value : null,
-          },
-          updates: [],
-        }),
-        decode: () => null,
+        body: async (durable) => ({ output: await input.body(durable) }),
+        async settle(ended) {
+          const output = ended.kind === "done" ? ended.value.output : undefined;
+          const result: Json = isJson(output) ? { kind: ended.kind, output } : { kind: ended.kind };
+
+          return { result, updates: [] };
+        },
+        decode: (result) => (isJsonObject(result) ? { output: result.output } : null),
       });
+
+      if (outcome.kind === "done") return { kind: "done", value: outcome.value.output };
 
       if (outcome.kind !== "parked" || input.signal.aborted) return outcome;
       await Promise.race([woken.promise, aborted]);
@@ -221,7 +233,7 @@ export async function runAction<T>(
   }
 }
 
-/** Records what a durable step acquired under a key (a session, part, job or browser id) unless one is recorded, and returns the recorded winner. `sessions.create`, `parts.create`, `jobs.start` and `browser.open` call it when their connection's `origin` names a step, keyed by `input.id ?? \`acq:${origin.sequence.next()}\``. */
+/** Records what a durable step acquired under a key unless one is recorded, and returns the recorded winner (§33a). */
 export async function recordAcquisition(
   kernel: Kernel,
   step: { readonly session: SessionId; readonly call: CallId },
@@ -234,12 +246,10 @@ export async function recordAcquisition(
       : { record: { ...current, acquisitions: { ...current.acquisitions, [key]: value } } },
   );
 
-  const recorded = entryOf(written.record?.acquisitions, key);
-
-  return recorded === undefined ? value : recorded;
+  return entryOf(written.record?.acquisitions, key) ?? value;
 }
 
-/** Returns what a durable step recorded acquiring under a key, or null when it has acquired nothing under it; a re-run returns the recorded id instead of acquiring again. */
+/** Returns what a durable step recorded acquiring under a key, or null. */
 export async function recordedAcquisition(
   kernel: Kernel,
   step: { readonly session: SessionId; readonly call: CallId },
@@ -250,22 +260,22 @@ export async function recordedAcquisition(
   );
 }
 
-/** Returns the `Durable` one execution of a step runs with: waits, memos and clock readings replay from the record by call order and record what is new; clock writes are queued on `writes` for the step to await. A wait that parks marks this execution parked. */
+/** Returns the `Durable` one execution of a step runs with, replaying the opened record's waits, memos and clock by call order. */
 function durableOf(
   kernel: Kernel,
   place: Place,
-  recorded: readonly number[],
+  record: CallRecord,
   writes: Promise<unknown>[],
 ): Durable {
-  const clock = [...recorded];
+  const clock = [...record.clock];
+  const memos = new Map(Object.entries(record.memos));
   let waits = 0;
   let readings = 0;
 
   /** The one unchecked widening in core: a replayed memo is stored `Json`, returned as `V` (§34a). */
   function memo<V extends Json>(name: string, compute: () => Awaitable<V>): Promise<V>;
   async function memo(name: string, compute: () => Awaitable<Json>): Promise<Json> {
-    const known = entryOf((await readCall(kernel, place.session, place.call))?.record.memos, name);
-
+    const known = memos.get(name);
     dev("durable", "memo", { call: place.call, name, hit: known !== undefined });
 
     if (known !== undefined) return known;
@@ -277,19 +287,17 @@ function durableOf(
         : { record: { ...current, memos: { ...current.memos, [name]: value } } },
     );
 
-    const recorded = entryOf(written.record?.memos, name);
+    const recorded = entryOf(written.record?.memos, name) ?? value;
+    memos.set(name, recorded);
 
-    return recorded === undefined ? value : recorded;
+    return recorded;
   }
 
   const durable: Durable = {
     async wait(target) {
       const index = waits;
       waits += 1;
-      const found = await readCall(kernel, place.session, place.call);
-
-      if (found === null) throw new SdkError("internal", `Call ${place.call} has no record.`);
-      const outcome = found.record.waits.at(index);
+      const outcome = record.waits.at(index);
 
       if (outcome !== undefined) return outcome;
 
@@ -303,7 +311,8 @@ function durableOf(
         return STOPPED;
       }
 
-      const early = target.kind === "part" ? await takeAnswer(kernel, place, target.part, index) : null;
+      const early =
+        target.kind === "part" ? await takeAnswer(kernel, place, target.part, index) : null;
 
       if (early !== null) return early;
       await park(kernel, place, target, index);
@@ -335,8 +344,13 @@ function durableOf(
   return durable;
 }
 
-/** Settles a wait on one modal part at once when the part already holds an answer that came before any step parked (§48i): records `part { answer }` as the wait's outcome at `index` and clears the answer from the part's status, in one set. Null when the part holds none, or the wait at `index` is already recorded or parked. */
-async function takeAnswer(kernel: Kernel, place: Place, part: PartId, index: number): Promise<WaitOutcome | null> {
+/** Settles a wait on one modal part at once when the part already holds an answer that came before any step parked (§48i), clearing it from the part in the same set. */
+async function takeAnswer(
+  kernel: Kernel,
+  place: Place,
+  part: PartId,
+  index: number,
+): Promise<WaitOutcome | null> {
   const name = partRef(place.session, part);
 
   const taken = await changeCall(kernel, place.session, place.call, async (current) => {
@@ -371,7 +385,11 @@ async function takeAnswer(kernel: Kernel, place: Place, part: PartId, index: num
   return taken.wrote ? (taken.record?.waits.at(index) ?? null) : null;
 }
 
-/** Writes a step's wait at `index` to its record, with an empty outcome slot per target of a combination, with `call waiting`, inside a run the run's `waiting` with `run waiting`, the step in the `waitedBy` of every run it waits on, and `waiting: <call>` on the live status of every modal part it waits on with its `part waiting { call }` event (§42z, §42ac: the fold and every view show it, and `act` finds the one call its answer goes to), all in one set; then parks it in the kernel's registry. A record already waiting is parked as it stands. */
+/**
+ * Writes a step's wait at `index` in one set: `waiting` with an empty slot per target of a
+ * combination, `call waiting`, the run's `run waiting`, the step in the `waitedBy` of each run it
+ * waits on, and `waiting: <call>` on each live modal part it waits on (§42z, §42ac); then parks it.
+ */
 async function park(
   kernel: Kernel,
   place: Place,
@@ -404,29 +422,26 @@ async function park(
               on,
             },
       updates: [
-        ...(on === null || place.run === null
+        ...(place.run === null
           ? []
-          : await runWaiting(kernel, place.session, place.run, on)),
+          : await runWait(kernel, place.session, place.run, async (record) => ({
+              parked: record.parked.includes(place.call)
+                ? record.parked
+                : [...record.parked, place.call],
+              waiting: on ?? record.waiting,
+            }))),
         ...(await modalsWaiting(kernel, place.session, place.call, target)),
         ...(await runsWaited(kernel, place, target)),
       ],
     };
   });
 
-  const record = parked.record;
+  const entry = parkedOf(place.session, parked.record);
 
-  if (record === null || record.result !== null || record.waiting === null) return;
-
-  await kernel.waits.park({
-    session: place.session,
-    head: place.head,
-    run: place.run,
-    call: place.call,
-    target: record.waiting,
-  });
+  if (entry !== null) await kernel.waits.park(entry);
 }
 
-/** Returns the updates that add the step to the `waitedBy` of each live run a wait targets (not its own run), none for a run that has ended or already lists it. */
+/** Returns the updates adding the step to the `waitedBy` of each live run a wait targets, other than its own. */
 async function runsWaited(
   kernel: Kernel,
   place: Place,
@@ -440,13 +455,11 @@ async function runsWaited(
       continue;
     const name = runRef(waited.session, waited.run);
     const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
-    const listed = found?.record.waitedBy ?? [];
 
-    if (
-      found === null ||
-      updates.some((update) => update.name === name) ||
-      listed.some((entry) => entry.session === waiter.session && entry.call === waiter.call)
-    )
+    if (found === null || updates.some((update) => update.name === name)) continue;
+    const listed = found.record.waitedBy;
+
+    if (listed.some((entry) => entry.session === waiter.session && entry.call === waiter.call))
       continue;
 
     updates.push({
@@ -459,7 +472,7 @@ async function runsWaited(
   return updates;
 }
 
-/** Returns the updates that mark each live modal part a wait targets as waited on by `call`, none for a part that is not modal, not live or already marked. */
+/** Returns the updates marking each live modal part a wait targets as waited on by `call`. */
 async function modalsWaiting(
   kernel: Kernel,
   session: SessionId,
@@ -496,7 +509,6 @@ async function modalsWaiting(
   return updates;
 }
 
-/** Returns a record's entry under a key, or undefined when it has none of its own. */
 function entryOf(
   entries: Readonly<Record<string, Json>> | undefined,
   key: string,

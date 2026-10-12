@@ -472,7 +472,7 @@ describe("poll (§42h, §42u)", () => {
         const next = await events.next();
 
         if (next.done) return;
-        seen.push(next.value);
+        seen.push(next.value.event);
       }
     })();
 
@@ -486,7 +486,7 @@ describe("poll (§42h, §42u)", () => {
     expect(seen.filter((event) => event.kind === "input").map((event) => event.seq)).toEqual([
       ...new Set(seen.filter((event) => event.kind === "input").map((event) => event.seq)),
     ]);
-    expect(reader.kernel.revisions.get(headRef(session.id, main))).toBe(tip?.revision);
+    expect((await reader.host.session(session.id).head(main).view()).revision).toBe(tip?.revision);
 
     unpoll();
     await events.return?.();

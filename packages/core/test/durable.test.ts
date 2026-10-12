@@ -58,6 +58,13 @@ const timedHandlers: {
   }),
 };
 
+const question = definePart({
+  kind: "test/question",
+  state: standard(Type.Object({})),
+  actions: { answer: { input: standard(Type.Object({ choice: Type.String() })) } },
+  fallback: (_state, { id }) => `Ask ${id}`,
+});
+
 const timed = definePart({
   kind: "test/timed",
   state: timedState,
@@ -250,7 +257,7 @@ describe("durable steps", () => {
       body: waiting({ kind: "any", targets: [done, { kind: "timer", until: at + 1 }] }),
     });
 
-    expect(await kernel.waits.tick(at)).toBe(false);
+    await kernel.waits.tick(at);
     expect(await readCall(kernel, session.id, both)).toMatchObject({
       waits: [],
       partial: [{ kind: "timer" }, null],
@@ -268,7 +275,7 @@ describe("durable steps", () => {
       { kind: "all", outcomes: [{ kind: "timer" }, ended] },
     ]);
     expect((await readCall(kernel, session.id, either)).waits).toEqual([ended]);
-    expect(await kernel.waits.tick(at + 1)).toBe(false);
+    await kernel.waits.tick(at + 1);
   });
 
   it("fires a deadline through tick and reports it as the head's next deadline", async () => {
@@ -284,8 +291,9 @@ describe("durable steps", () => {
     });
 
     expect(kernel.waits.nextDeadline(session.id, main)).toBe(deadline);
-    expect(await kernel.waits.tick(deadline - 1)).toBe(false);
-    expect(await kernel.waits.tick(deadline)).toBe(true);
+    await kernel.waits.tick(deadline - 1);
+    expect((await readCall(kernel, session.id, call)).waits).toEqual([]);
+    await kernel.waits.tick(deadline);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([{ kind: "deadline" }]);
     expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
   });
@@ -387,11 +395,12 @@ describe("durable steps", () => {
       host: first.kernel.host,
     });
 
-    expect(await second.waits.tick(at)).toBe(false);
+    await second.waits.tick(at);
+    expect((await readCall(second, session.id, call)).waits).toEqual([]);
     await loadWaits(second);
 
     expect(second.waits.nextDeadline(session.id, main)).toBe(at);
-    expect(await second.waits.tick(at)).toBe(true);
+    await second.waits.tick(at);
     expect((await readCall(second, session.id, call)).waits).toEqual([{ kind: "timer" }]);
   });
 
@@ -415,7 +424,7 @@ describe("durable steps", () => {
       return undefined;
     });
 
-    expect(await kernel.waits.tick(at)).toBe(true);
+    await kernel.waits.tick(at);
     expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
   });
 
@@ -467,7 +476,7 @@ describe("durable steps", () => {
 
     expect(await runWaiting(kernel, session.id, run)).toEqual(first);
     expect(kernel.waits.nextDeadline(session.id, main)).toBe(first.until);
-    expect(await kernel.waits.tick(first.until)).toBe(false);
+    await kernel.waits.tick(first.until);
     expect(await readCall(kernel, session.id, call)).toMatchObject({
       waiting: { kind: "all" },
       partial: [{ kind: "timer" }, null],
@@ -487,7 +496,7 @@ describe("durable steps", () => {
 
     expect(log.filter((entry) => entry === "call:waiting")).toHaveLength(2);
     expect(log.filter((entry) => entry === "run:waiting")).toHaveLength(2);
-    expect(await kernel.waits.tick(second.until)).toBe(true);
+    await kernel.waits.tick(second.until);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([
       { kind: "all", outcomes: [{ kind: "timer" }, { kind: "timer" }] },
     ]);
@@ -552,7 +561,7 @@ describe("durable steps", () => {
     });
 
     expect((await session.view()).execution).toMatchObject({ kind: "waiting" });
-    expect(await kernel.waits.tick(at)).toBe(true);
+    await kernel.waits.tick(at);
     expect(await runRecord(kernel, session.id, run)).toMatchObject({
       waiting: null,
       phase: "executing",
@@ -645,7 +654,7 @@ describe("durable steps", () => {
       }),
     });
 
-    expect(await first.kernel.waits.partClosed(asId("p1"))).toBe(false);
+    await first.kernel.waits.partClosed(asId("p1"));
 
     const second = createKernel({
       hostId: first.kernel.hostId,
@@ -656,12 +665,66 @@ describe("durable steps", () => {
 
     await loadWaits(second);
 
-    expect(await second.waits.tick(at)).toBe(true);
+    await second.waits.tick(at);
     expect((await readCall(second, session.id, call)).waits).toEqual([
       {
         kind: "all",
         outcomes: [{ kind: "timer" }, { kind: "part", part: asId("p1"), answer: null }],
       },
     ]);
+  });
+
+  it("returns the result its record holds from the settle that wrote it, on the first run as on a replay (B F7)", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+
+    const run = () =>
+      runStep<string>(kernel, {
+        session: session.id,
+        head: main,
+        run: null,
+        call: asId("c1"),
+        kind: "hook",
+        replay: "safe",
+        intent: { test: true },
+        part: null,
+        signal: new AbortController().signal,
+        body: async () => "BODY",
+        settle: async () => ({ result: "RECORDED", updates: [] }),
+        decode: (result) => (typeof result === "string" ? result : null),
+      });
+
+    expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
+    expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
+  });
+
+  it("keeps the run waiting while another of its calls is parked, when a host that parked neither settles one (B F3)", async () => {
+    const store = await memoryStore().open();
+    const first = await setup({ store });
+    const second = await setup({ store });
+    const session = await first.host.sessions.create();
+    const run = await liveRun(first.kernel, session.id);
+    const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
+    const far: WaitTarget = { kind: "timer", until: Date.now() + 60_000 };
+
+    await step(first.kernel, { session: session.id, call: asId("a"), run, body: waiting(far) });
+    await step(first.kernel, {
+      session: session.id,
+      call: asId("b"),
+      run,
+      body: waiting({ kind: "part", part: part.id }),
+    });
+
+    expect((await runRecord(first.kernel, session.id, run))?.parked).toEqual(["a", "b"]);
+    await second.host.session(session.id).part(part.id).act("answer", { choice: "yes" });
+
+    expect((await readCall(second.kernel, session.id, asId("b"))).waits).toMatchObject([
+      { kind: "part", part: part.id },
+    ]);
+    expect((await readCall(second.kernel, session.id, asId("a"))).waiting).toEqual(far);
+    expect(await runRecord(second.kernel, session.id, run)).toMatchObject({
+      waiting: far,
+      parked: ["a"],
+    });
   });
 });

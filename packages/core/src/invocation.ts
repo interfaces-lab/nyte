@@ -8,11 +8,11 @@ import { PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { publishPatch } from "./runs.ts";
 import { sessionHandle } from "./session.ts";
-import { executeCall } from "./tool-runner.ts";
+import { executeNested } from "./tool-runner.ts";
 import { workspaceHandle } from "./workspaces.ts";
 import type { Durable, ToolInvocation } from "./tools.ts";
 
-/** Returns what a tool's `execute` receives, bound to where the call runs. `session` and `sdk` act from the call: the context with participant authority only and `origin` set to `{ session, run, head, call, sequence }`, `sequence` a fresh counter for this execution so its acquisitions key `acq:<n>` the same way on every re-run; `workspace` is `workspaceHandle` of the session's workspace over that context, so its capabilities, snapshots and jobs are the session's; `env` is the environment `executeCall` resolved through `kernel.env(session)`; `progress` publishes a `progress` patch on the tool part, dropped once the run is stopping; `tools.execute` is a nested `executeCall` keyed by the caller's key or call order, whose parking parks this step too; `tools.activate` and `tools.list` are `kernel.tools(session, run)`'s; `wait`, `memo` and `now` are the step's `durable`. Binds synchronously; no I/O. */
+/** Returns what a tool's `execute` receives, bound to where the call runs. `session` and `sdk` act from the call: the context with participant authority only and `origin` set to `{ session, run, head, call, sequence }`, `sequence` a fresh counter for this execution so its acquisitions key `acq:<n>` the same way on every re-run; `workspace` is `workspaceHandle` of the session's workspace over that context, so its capabilities, snapshots and jobs are the session's; `env` is the environment `executeCall` resolved through `kernel.env(session)`; `progress` publishes a `progress` patch on the tool part, dropped once the run is stopping; `tools.execute` is a nested `executeNested` keyed by the caller's key or call order, whose parking parks this step too; `tools.activate` and `tools.list` are `kernel.tools(kernel.pluginsFor(session), run)`'s; `wait`, `memo` and `now` are the step's `durable`. Binds synchronously; no I/O. */
 export function createInvocation(
   kernel: Kernel,
   input: {
@@ -50,7 +50,7 @@ export function createInvocation(
     },
   };
 
-  const source = kernel.tools(session, run);
+  const source = kernel.tools(kernel.pluginsFor(session), run);
 
   return {
     run,
@@ -73,7 +73,7 @@ export function createInvocation(
         const key = options?.key ?? `${calls}`;
         calls += 1;
 
-        const outcome = await executeCall(kernel, {
+        const outcome = await executeNested(kernel, {
           session,
           head,
           run,

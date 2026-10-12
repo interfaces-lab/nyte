@@ -1,8 +1,7 @@
-import type { CommitId, HeadName, Revision, SessionId, TreeNode, TreeView } from "@nyte-ai/schema";
+import type { CommitId, HeadName, SessionId, TreeNode, TreeView } from "@nyte-ai/schema";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
-import { headRef } from "./refs.ts";
 import {
   EMPTY_REVISION,
   START,
@@ -23,12 +22,10 @@ interface Commit {
 
 /** Returns the session's commit DAG as rows for a head: every commit on every branch, retained edits included, parents first, siblings in creation order, the head's path active. */
 export async function tree(kernel: Kernel, session: SessionId, head: HeadName): Promise<TreeView> {
-  const ref = await kernel.store.refs.get(headRef(session, head));
-
-  return withFold(kernel, session, (state) => rows(state, head, ref?.revision ?? EMPTY_REVISION));
+  return withFold(kernel, session, (state) => rows(state, head));
 }
 
-function rows(state: FoldState, head: HeadName, revision: Revision): TreeView {
+function rows(state: FoldState, head: HeadName): TreeView {
   const tips = new Map<CommitId, HeadName[]>();
 
   for (const [name, folded] of state.heads) {
@@ -51,7 +48,8 @@ function rows(state: FoldState, head: HeadName, revision: Revision): TreeView {
   for (const siblings of children.values())
     siblings.sort((left, right) => left.record.at - right.record.at);
 
-  const tip = state.heads.get(head)?.info.tip ?? START;
+  const folded = state.heads.get(head);
+  const tip = folded?.info.tip ?? START;
   const active = new Set(pathOf(state.commits, tipOf(tip)));
   const nodes: TreeNode[] = [];
 
@@ -89,7 +87,7 @@ function rows(state: FoldState, head: HeadName, revision: Revision): TreeView {
     enqueue(children.get(id) ?? [], entry.depth + 1);
   }
 
-  return { revision, tip, nodes };
+  return { revision: folded?.revision ?? EMPTY_REVISION, tip, nodes };
 }
 
 function partPreview(part: PartRecord | undefined): string {

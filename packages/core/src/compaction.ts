@@ -1,7 +1,5 @@
 import type { Models } from "@nyte-ai/ai";
 import { estimateMessageTokens } from "@nyte-ai/ai/utils/estimate";
-import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
-import { retryAssistantCall } from "@nyte-ai/ai/utils/retry";
 import { asId } from "@nyte-ai/schema";
 import type {
   CommitId,
@@ -23,19 +21,30 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
-import type { Failure, Message } from "@nyte-ai/schema/model";
+import type {
+  Api,
+  Failure,
+  JsonValue,
+  Message,
+  Model,
+  ProviderCheckpointMaterial,
+} from "@nyte-ai/schema/model";
 import { contributionsOf } from "./configuration.ts";
-import { projectedCommit, requestBody, tokenEstimate } from "./context.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
+import type { HookContext } from "./hooks.ts";
+import { check } from "./json-schema.ts";
 import type { Compactor, Kernel, Summarizer } from "./kernel.ts";
-import { modelInfo, withLimits } from "./models.ts";
+import { modelInfo } from "./models.ts";
+import { compaction } from "./parts.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import { LOCAL } from "./principals.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
-import type { CommitRecord, PartRecord } from "./records.ts";
+import type { PartRecord } from "./records.ts";
 import { headRef, partRef, runRef, sessionRef } from "./refs.ts";
-import { RETRY_POLICY, addUsage, requestEvent, rideRef, usageOf } from "./request.ts";
+import { ZERO_USAGE, charge, complete, requestEvent, rideRef } from "./request.ts";
 import {
+  START,
   STALE,
   attempt,
   commit,
@@ -45,26 +54,21 @@ import {
   objectOf,
   pathOf,
   put,
-  putCommit,
   readTip,
   requireSession,
   textOf,
+  tipOf,
   withFold,
 } from "./session-state.ts";
-import type { Tip } from "./session-state.ts";
+import type { Found, Tip } from "./session-state.ts";
+import { failParts, projectedCommit, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
-/** Returns a transcript split for compaction: what is summarised and the retained tail. */
-interface Split {
-  readonly summarise: readonly Message[];
-  readonly keep: readonly Message[];
-}
-
-/** Returns what one summary request answered: its text with the usage it was charged and the model it ran on, or why it failed. */
+/** Returns what one summary request answered. */
 type Answer =
   | { readonly kind: "ok"; readonly text: string; readonly usage: Usage; readonly info: ModelInfo }
   | { readonly kind: "failed"; readonly failure: Failure };
 
-/** Returns what a compaction writes: the part's settled state, the usage it cost, and, when a request ran, its `request` event. */
+/** Returns what a compaction writes: the part's settled state, the usage it cost and its `request` event. */
 type Written =
   | {
       readonly kind: "ok";
@@ -75,18 +79,6 @@ type Written =
   | { readonly kind: "failed"; readonly failure: Failure };
 
 const NOTE: Placement = { kind: "transcript", role: "note" };
-
-const SKIPPED = { kind: "skipped" } as const;
-
-const ZERO: Usage = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  reasoning: null,
-  total: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
 
 const STALE_HEAD: Failure = {
   class: "runner",
@@ -101,20 +93,49 @@ const COMPACTION_SYSTEM =
 const BRANCH_SYSTEM =
   "You summarise an abandoned branch of a coding agent's conversation so that the conversation can continue without it.";
 
-/** Returns the manual compaction `Head.compact` starts once it found no live run: what `kernel.compact` holds. Resolves the head's configuration (`kernel.resolveConfiguration` with its stored selection and no patch; a failure throws `SdkError("invalid")`), builds its request body as a turn pass does with no run (`buildContext`, `transform_context`, the session's tools, `transcriptOf`, `transform_transcript`) and splits it as `compactIfNeeded` does with reason `manual` and the given `instructions`; nothing to summarise (no committed message before the retained tail) answers `nothing-to-compact`. Otherwise it mints the part id, writes the `compaction` part live (placement transcript `note`, owner null, run null, state `{ summary: null, material: null, tokensBefore, usage: null }`) and answers `started { message }` with that id at once; the summary runs in the background as `compactIfNeeded`'s does, then `[part updated, part settled, commit { kind: "compaction", part, replaces }, head moved]` in one set, or `part failed { failure }` when the request or a hook fails, or when the head moved meanwhile (`stale`). */
+/** Returns the head's latest compaction state on its committed path, or null. */
+export async function latestCompaction(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+): Promise<Json | null> {
+  return withFold(kernel, session, (state) => {
+    const path = pathOf(state.commits, tipOf(state.heads.get(head)?.info.tip ?? START));
+
+    for (const id of [...path].reverse()) {
+      const body = state.commits.get(id)?.body;
+
+      if (body?.kind === "compaction") return state.parts.get(body.part)?.state ?? null;
+    }
+
+    return null;
+  });
+}
+
+/**
+ * Returns the manual compaction `Head.compact` starts once it found no live run: the request body
+ * built and split as a turn's, `nothing-to-compact` when nothing committed precedes the tail.
+ * Otherwise the `compaction` part is written live and `started` answered at once; the summary runs
+ * in the background and settles the part with its commit in one set, or fails it.
+ */
 export function createCompactor(kernel: Kernel, models: Models): Compactor {
   return async ({ session, head, instructions }) => {
-    const configuration = await configurationOf(kernel, session, head);
-    const info = await infoOf(kernel, models, configuration.model, session);
+    const runtime = kernel.pluginsFor(session);
+    const configuration = await configurationOf(kernel, runtime, session, head);
+    const { model } = configuration;
+    const info = await modelInfo(kernel, models, model, runtime);
+
+    if (info === null)
+      throw new SdkError("invalid", `No model ${model.provider}/${model.id} is in the catalog.`);
     const tip = await readTip(kernel, session, head);
-    const { transcript } = await requestBody(kernel, models, session, head, null, configuration);
+    const body = { session, head, run: null, configuration };
+    const { transcript } = await requestBody(kernel, models, runtime, body);
     const split = splitOf(transcript, info);
 
     if (split === null) return { kind: "nothing-to-compact" };
     const tokensBefore = tokenEstimate(transcript);
     const part = asId<"part">(crypto.randomUUID());
     const state: Json = { summary: null, material: null, tokensBefore, usage: null };
-    const at = Date.now();
 
     const record: PartRecord = {
       id: part,
@@ -130,7 +151,7 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
     await commit(kernel, [
       {
         name: partRef(session, part),
-        target: await put(kernel, "part", record, at),
+        target: await put(kernel, "part", record),
         expect: "absent",
         event: {
           head,
@@ -147,30 +168,34 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
       },
     ]);
 
-    void compactManually(kernel, models, {
-      session,
-      head,
-      part,
-      tip,
-      plan: {
-        model: configuration.model,
-        reason: "manual",
-        instructions,
-        tokensBefore,
-        summarise: split.summarise,
-        keep: split.keep,
-        result: null,
-      },
-    }).catch(() => undefined);
+    const plan: CompactionPlan = {
+      model: configuration.model,
+      reason: "manual",
+      instructions,
+      tokensBefore,
+      summarise: split.summarise,
+      keep: split.keep,
+      result: null,
+    };
+
+    void compactManually(kernel, models, runtime, { session, head, part, tip, plan, info }).catch(
+      () => undefined,
+    );
 
     return { kind: "started", message: asId<"message">(part) };
   };
 }
 
-/** Compacts a run's request body when it no longer fits, after `transform_transcript` and before `before_request` (§38s): skipped while `tokenEstimate(transcript)` is at most `info.compactAt` (reason `threshold`; reason `overflow`, after the provider reported a context overflow, always compacts). Splits the transformed transcript's messages after its leading system message into what is summarised and the retained tail (`keep`: the newest messages within a fifth of the window, from the latest user message when that fits, never parting a tool call from its result); nothing before the tail → skipped. Dispatches `before_compaction` (transform, 300 s budget) with a `CompactionPlan` `{ model, reason, instructions: null, tokensBefore, summarise, keep, result: null }`. A plan with `result` set is written as given without a request (`summary` text, or provider `material` `{ provider, api, model, data }` with its usage, §38e); otherwise one request summarises `plan.summarise` with `plan.model`, `before_request` (step `compaction`) applied to it and `after_request` observed, under `RETRY_POLICY`. The `compaction` part (id minted, placement transcript `note`, owner null, `run` this run, state `{ summary, material, tokensBefore, usage }`) and the commit `{ kind: "compaction", part, replaces }` (`replaces` the committed path's commits older than the oldest commit a `keep` message projects from, `projectedCommit`, with every commit a `summarise` message projects from; when no `keep` message maps to a commit, the path up to the newest commit a `summarise` message projects from) land in one set with `[part created, part settled, commit]`, plus a `request` event with step `compaction` when a request ran, the summary's usage added to the run record's `usage` and, with the event, its `requests` bumped (§38v, w). Resolves `compacted { message }` with the part id; a failed summary request throws, failing the run. */
+/**
+ * Compacts a run's request body (§38s): splits it into what is summarised and the retained tail
+ * (`skipped` when nothing committed precedes it), runs `before_compaction`, and writes its result
+ * or one summary request's as a `compaction` part with its commit, `request` event and run charge
+ * in one set. A failed summary, an invalid hook result or a throwing hook is `failed`.
+ */
 export async function compactIfNeeded(
   kernel: Kernel,
   models: Models,
+  runtime: PluginRuntime,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
@@ -182,18 +207,19 @@ export async function compactIfNeeded(
     readonly signal: AbortSignal;
   },
 ): Promise<
-  { readonly kind: "compacted"; readonly message: MessageId } | { readonly kind: "skipped" }
+  | { readonly kind: "compacted"; readonly message: MessageId }
+  | { readonly kind: "skipped" }
+  | { readonly kind: "failed"; readonly failure: Failure }
 > {
   const { session, head, run } = input;
   const tokensBefore = tokenEstimate(input.transcript);
+  const split = splitOf(input.transcript, input.info);
   dev("compaction", input.reason, { session, run: run.id, tokensBefore, at: input.info.compactAt });
 
-  if (input.reason === "threshold" && tokensBefore <= input.info.compactAt) return SKIPPED;
-  const split = splitOf(input.transcript, input.info);
+  if (split === null) return { kind: "skipped" };
+  const where = { session, head, run: run.id, principal: LOCAL };
 
-  if (split === null) return SKIPPED;
-
-  const plan = await kernel.pluginsFor(session).hooks.transform(
+  const plan = await runtime.hooks.transform(
     "before_compaction",
     {
       model: input.configuration.model,
@@ -204,85 +230,24 @@ export async function compactIfNeeded(
       keep: split.keep,
       result: null,
     },
-    { session, head, run: run.id, principal: LOCAL },
+    where,
   );
 
-  const written = await writtenOf(kernel, models, {
-    session,
-    head,
-    run: run.id,
+  const written = await writtenOf(kernel, models, runtime, {
+    where,
     plan,
+    info: input.info,
     signal: input.signal,
   });
 
-  if (written.kind === "failed")
-    throw new SdkError("unavailable", `Compaction failed: ${written.failure.message}`);
+  if (written.kind === "failed") return written;
   const part = asId<"part">(crypto.randomUUID());
 
   await attempt(`Compacting ${head}`, async () => {
     const tip = await readTip(kernel, session, head);
-    const at = Date.now();
+    const input = { session, head, run: run.id, part, live: null, tip, plan, written };
 
-    const record: CommitRecord = {
-      parent: tip.id,
-      at,
-      run: run.id,
-      body: { kind: "compaction", part, replaces: await replacesOf(kernel, session, tip, plan) },
-    };
-
-    const landed = await putCommit(kernel, record);
-    const name = partRef(session, part);
-
-    const target = await put(
-      kernel,
-      "part",
-      {
-        id: part,
-        partKind: "compaction",
-        placement: NOTE,
-        state: written.state,
-        version: 1,
-        owner: null,
-        run: run.id,
-        status: { kind: "settled", commit: landed, endedAt: at },
-      },
-      at,
-    );
-
-    const updates: readonly RefUpdate[] = [
-      {
-        name,
-        target,
-        expect: "absent",
-        event: {
-          head,
-          kind: "part",
-          part,
-          change: "created",
-          partKind: "compaction",
-          placement: NOTE,
-          state: written.state,
-          version: 1,
-          run: run.id,
-          owner: null,
-        },
-      },
-      {
-        name,
-        target,
-        event: { head, kind: "part", part, change: "settled", commit: landed, endedAt: at },
-      },
-      {
-        name: headRef(session, head),
-        target: objectOf(landed),
-        expect: expectOf(tip.ref),
-        event: { head, kind: "commit", id: landed, parent: tip.id, run: run.id, body: record.body },
-      },
-      ...(written.event === null ? [] : [{ name, target, event: written.event }]),
-      ...(await charged(kernel, session, run.id, written.usage, written.event !== null)),
-    ];
-
-    return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
+    return (await writeCompaction(kernel, input)) ? undefined : STALE;
   });
 
   dev("compaction", "compacted", { session, run: run.id, part });
@@ -290,13 +255,18 @@ export async function compactIfNeeded(
   return { kind: "compacted", message: asId<"message">(part) };
 }
 
-/** Returns the summariser `move({ abandoned: summarize })` runs: what `kernel.summarize` holds. Reads the abandoned commits from the fold as text (user content as text, text parts as markdown, a tool part as its name, arguments and outcome in one line, any other part as its `fallback`), resolves the head's configuration as `createCompactor` does, and sends one request with that model asking for a short markdown summary of what the abandoned path tried and found, following `instructions` when given: `before_request` with step `summary`, `RETRY_POLICY`, `after_request` observed and a `request` event with step `summary` on the head (riding the session ref, so the head ref the move compare-and-sets stays where it was). Resolves `ok { markdown, usage }`, or `failed { reason }` when the request fails or the signal aborts; no commit is abandoned → `ok` with empty markdown and zero usage. */
+/**
+ * Returns the summariser `move({ abandoned: summarize })` runs: the abandoned commits as text, one
+ * request with the head's model for a short markdown summary (`before_request` step `summary`),
+ * and its `request` event riding the session ref. `failed { reason }` when anything fails.
+ */
 export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
   return async ({ session, head, commits, instructions, signal }) => {
-    if (commits.length === 0) return { kind: "ok", markdown: "", usage: ZERO };
+    if (commits.length === 0) return { kind: "ok", markdown: "", usage: ZERO_USAGE };
 
     try {
-      const configuration = await configurationOf(kernel, session, head);
+      const runtime = kernel.pluginsFor(session);
+      const configuration = await configurationOf(kernel, runtime, session, head);
 
       const lines = await withFold(kernel, session, (state) =>
         commits.flatMap((id): readonly string[] => {
@@ -311,10 +281,8 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
         }),
       );
 
-      const answer = await ask(kernel, models, {
-        session,
-        head,
-        run: null,
+      const answer = await ask(kernel, models, runtime, {
+        where: { session, head, run: null, principal: LOCAL },
         model: configuration.model,
         step: "summary",
         system: BRANCH_SYSTEM,
@@ -341,28 +309,25 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
   };
 }
 
-/** Returns the update adding a compaction's usage to its run record's `usage` (§38v) and, when its set carries a `request` event, bumping its `requests` (§38w), compare-and-set on the run ref; none without usage or once the run is gone. */
+/** Returns the update charging a compaction's usage to its run record (§38v), bumping `requests` with its `request` event (§38w). */
 async function charged(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
-  usage: Usage | null,
-  requested: boolean,
+  written: Extract<Written, { readonly kind: "ok" }>,
 ): Promise<readonly RefUpdate[]> {
-  if (usage === null && !requested) return [];
+  const { usage, event } = written;
+
+  if (usage === null && event === null) return [];
   const name = runRef(session, run);
   const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
 
-  if (found === null) return [];
+  if (found === null) throw new SdkError("internal", `Run ${run} has no record.`);
 
   return [
     {
       name,
-      target: await put(kernel, "run", {
-        ...found.record,
-        usage: usage === null ? found.record.usage : addUsage(found.record.usage ?? ZERO, usage),
-        requests: found.record.requests + (requested ? 1 : 0),
-      }),
+      target: await put(kernel, "run", charge(found.record, usage, event !== null)),
       expect: found.ref.revision,
     },
   ];
@@ -372,192 +337,195 @@ async function charged(
 async function compactManually(
   kernel: Kernel,
   models: Models,
+  runtime: PluginRuntime,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
     readonly part: PartId;
     readonly tip: Tip;
     readonly plan: CompactionPlan;
+    readonly info: ModelInfo;
   },
 ): Promise<void> {
-  const { session, head, part, tip } = input;
+  const { session, head, part } = input;
+  const where = { session, head, run: null, principal: LOCAL };
   let failure: Failure | null = null;
 
   try {
-    const plan = await kernel.pluginsFor(session).hooks.transform("before_compaction", input.plan, {
-      session,
-      head,
-      run: null,
-      principal: LOCAL,
-    });
+    const plan = await runtime.hooks.transform("before_compaction", input.plan, where);
 
-    const written = await writtenOf(kernel, models, {
-      session,
-      head,
-      run: null,
+    const written = await writtenOf(kernel, models, runtime, {
+      where,
       plan,
+      info: input.info,
       signal: new AbortController().signal,
     });
 
+    const live = await load(
+      kernel,
+      await kernel.store.refs.get(partRef(session, part)),
+      decodePartRecord,
+    );
+
     if (written.kind === "failed") failure = written.failure;
-    else if (!(await settleManual(kernel, { session, head, part, tip, plan, written })))
+    else if (
+      live?.record.status.kind !== "live" ||
+      !(await writeCompaction(kernel, { ...input, run: null, live, plan, written }))
+    )
       failure = STALE_HEAD;
   } catch (error) {
     failure = { class: "runner", message: messageOf(error) };
   }
 
-  if (failure !== null) await failPart(kernel, session, head, part, failure);
+  if (failure !== null) await failParts(kernel, session, head, [part], failure);
 }
 
-/** Writes a manual compaction's settlement in one set, `[part updated, part settled, commit, head moved]` and its `request` event; false when the head or the part moved since the compaction started. */
-async function settleManual(
+/** Writes a compaction in one set (its part created, or the live one updated, settled, its commit, `head moved` outside a run, its charge), false when the head or the part moved. */
+async function writeCompaction(
   kernel: Kernel,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
+    readonly run: RunId | null;
     readonly part: PartId;
+    readonly live: Found<PartRecord> | null;
     readonly tip: Tip;
     readonly plan: CompactionPlan;
     readonly written: Extract<Written, { readonly kind: "ok" }>;
   },
 ): Promise<boolean> {
-  const { session, head, part, tip, written } = input;
-  const name = partRef(session, part);
-  const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
-
-  if (found === null || found.record.status.kind !== "live") return false;
+  const { session, head, run, part, live, tip, written } = input;
+  const { state } = written;
   const at = Date.now();
+  const name = partRef(session, part);
+  const version = live === null ? 1 : live.record.version + 1;
 
-  const record: CommitRecord = {
+  const landed = await settling(kernel, {
+    session,
+    head,
+    run,
     parent: tip.id,
-    at,
-    run: null,
+    expect: expectOf(tip.ref),
+    record:
+      live === null
+        ? {
+            id: part,
+            partKind: "compaction",
+            placement: NOTE,
+            state,
+            version,
+            owner: null,
+            run,
+            status: { kind: "live", run },
+          }
+        : { ...live.record, state, version },
     body: {
       kind: "compaction",
       part,
       replaces: await replacesOf(kernel, session, tip, input.plan),
     },
-  };
-
-  const landed = await putCommit(kernel, record);
-  const version = found.record.version + 1;
-
-  const target = await put(
-    kernel,
-    "part",
-    {
-      ...found.record,
-      state: written.state,
-      version,
-      status: { kind: "settled", commit: landed, endedAt: at },
-    },
     at,
-  );
+  });
+
+  const { target } = landed;
 
   const outcome = await commit(kernel, [
-    {
-      name,
-      target,
-      expect: found.ref.revision,
-      event: { head, kind: "part", part, change: "updated", state: written.state, version },
-    },
-    {
-      name,
-      target,
-      event: { head, kind: "part", part, change: "settled", commit: landed, endedAt: at },
-    },
-    {
-      name: headRef(session, head),
-      target: objectOf(landed),
-      expect: expectOf(tip.ref),
-      event: { head, kind: "commit", id: landed, parent: tip.id, run: null, body: record.body },
-    },
-    {
-      name: headRef(session, head),
-      target: objectOf(landed),
-      event: { head, kind: "head", from: tip.id, to: landed, reason: "moved" },
-    },
+    live === null
+      ? {
+          name,
+          target,
+          expect: "absent",
+          event: {
+            head,
+            kind: "part",
+            part,
+            change: "created",
+            partKind: "compaction",
+            placement: NOTE,
+            state,
+            version,
+            run,
+            owner: null,
+          },
+        }
+      : {
+          name,
+          target,
+          expect: live.ref.revision,
+          event: { head, kind: "part", part, change: "updated", state, version },
+        },
+    ...landed.updates,
+    ...(run === null
+      ? [
+          {
+            name: headRef(session, head),
+            target: objectOf(landed.landed),
+            event: {
+              head,
+              kind: "head",
+              from: tip.id,
+              to: landed.landed,
+              reason: "moved",
+            } as const,
+          },
+        ]
+      : []),
     ...(written.event === null ? [] : [{ name, target, event: written.event }]),
+    ...(run === null ? [] : await charged(kernel, session, run, written)),
   ]);
 
   return outcome.kind === "set";
 }
 
-/** Fails a live compaction part with `part failed`; a part no longer live is left as it is. */
-async function failPart(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  part: PartId,
-  failure: Failure,
-): Promise<void> {
-  await attempt(`Failing part ${part}`, async () => {
-    const name = partRef(session, part);
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
-
-    if (found === null || found.record.status.kind !== "live") return undefined;
-
-    const outcome = await commit(kernel, [
-      {
-        name,
-        target: await put(kernel, "part", {
-          ...found.record,
-          status: { kind: "failed", run: found.record.run, failure },
-        }),
-        expect: found.ref.revision,
-        event: { head, kind: "part", part, change: "failed", failure },
-      },
-    ]);
-
-    return outcome.kind === "set" ? undefined : STALE;
-  });
-}
-
-/** Returns what a plan writes: its `result` as given, or one summary request's answer. */
+/** Returns what a plan writes: its `result`, validated once here (§D9), or one summary request's answer. */
 async function writtenOf(
   kernel: Kernel,
   models: Models,
+  runtime: PluginRuntime,
   input: {
-    readonly session: SessionId;
-    readonly head: HeadName;
-    readonly run: RunId | null;
+    readonly where: HookContext & { readonly head: HeadName };
     readonly plan: CompactionPlan;
+    readonly info: ModelInfo;
     readonly signal: AbortSignal;
   },
 ): Promise<Written> {
-  const { plan } = input;
+  const { plan, where } = input;
   const result = plan.result;
 
-  if (result?.kind === "summary")
-    return {
-      kind: "ok",
-      state: { summary: result.text, material: null, tokensBefore: plan.tokensBefore, usage: null },
-      usage: null,
-      event: null,
+  if (result !== null) {
+    const usage = result.kind === "material" ? result.usage : null;
+
+    const state: Json = {
+      summary: result.kind === "summary" ? result.text : null,
+      material:
+        result.kind === "material"
+          ? { provider: result.provider, api: result.api, model: result.model, data: result.data }
+          : null,
+      tokensBefore: plan.tokensBefore,
+      usage,
     };
 
-  if (result?.kind === "material")
-    return {
-      kind: "ok",
-      state: {
-        summary: null,
-        material: {
-          provider: result.provider,
-          api: result.api,
-          model: result.model,
-          data: result.data,
+    const checked = await check(compaction.state, state);
+
+    if (checked.kind === "invalid")
+      return {
+        kind: "failed",
+        failure: {
+          class: "runner",
+          message: `before_compaction returned an invalid result: ${checked.issues.map((issue) => issue.message).join("; ")}`,
         },
-        tokensBefore: plan.tokensBefore,
-        usage: result.usage,
-      },
-      usage: result.usage,
-      event: null,
-    };
+      };
 
-  const answer = await ask(kernel, models, {
-    session: input.session,
-    head: input.head,
-    run: input.run,
+    return {
+      kind: "ok",
+      state,
+      usage,
+      event: usage === null ? null : requestEvent(where.head, "compaction", usage, input.info),
+    };
+  }
+
+  const answer = await ask(kernel, models, runtime, {
+    where,
     model: plan.model,
     step: "compaction",
     system: COMPACTION_SYSTEM,
@@ -580,18 +548,17 @@ async function writtenOf(
       usage: answer.usage,
     },
     usage: answer.usage,
-    event: requestEvent(input.head, "compaction", answer.usage, answer.info),
+    event: requestEvent(where.head, "compaction", answer.usage, answer.info),
   };
 }
 
-/** Sends one summary request: `before_request` with the step, the model's request under `RETRY_POLICY`, each attempt through `withLimits`, `after_request` observed; an empty answer is a failure. */
+/** Sends one summary request with `before_request` for its step; an empty answer is a failure. */
 async function ask(
   kernel: Kernel,
   models: Models,
+  runtime: PluginRuntime,
   input: {
-    readonly session: SessionId;
-    readonly head: HeadName;
-    readonly run: RunId | null;
+    readonly where: HookContext;
     readonly model: ModelRef;
     readonly step: "compaction" | "summary";
     readonly system: string;
@@ -599,11 +566,9 @@ async function ask(
     readonly signal: AbortSignal;
   },
 ): Promise<Answer> {
-  const { session, step, signal } = input;
-  const hooks = kernel.pluginsFor(session).hooks;
-  const where = { session, head: input.head, run: input.run, principal: LOCAL };
+  const { where, step } = input;
 
-  const request = await hooks.transform(
+  const request = await runtime.hooks.transform(
     "before_request",
     {
       model: input.model,
@@ -615,10 +580,16 @@ async function ask(
     where,
   );
 
-  const model = models.getModel(request.model.provider, request.model.id);
-  const info = await modelInfo(kernel, models, request.model, session);
+  const sent = await complete(kernel, models, runtime, {
+    where,
+    step,
+    request,
+    system: input.system,
+    messages: [{ role: "user", content: input.prompt, timestamp: Date.now() }],
+    signal: input.signal,
+  });
 
-  if (model === undefined || info === null)
+  if (sent === null)
     return {
       kind: "failed",
       failure: {
@@ -627,54 +598,25 @@ async function ask(
       },
     };
 
-  const thinking = request.thinking;
-  const started = Date.now();
+  const { message, usage, info, failure } = sent;
 
-  const message = await retryAssistantCall(
-    () =>
-      withLimits(kernel, models, model.provider, () =>
-        models.completeSimple(
-          model,
-          {
-            systemPrompt: input.system,
-            messages: [{ role: "user", content: input.prompt, timestamp: started }],
-          },
-          {
-            signal,
-            reasoning: thinking === "off" ? undefined : thinking,
-            samplingParams: { ...request.options.sampling },
-            headers: { ...request.options.headers },
-            sessionId: session,
-          },
-        ),
-      ),
-    RETRY_POLICY,
-    signal,
-  );
+  if (failure !== null) return { kind: "failed", failure };
+  const answer = contentText(message.content).trim();
 
-  const usage = usageOf(message, info);
-
-  void hooks.observe(
-    "after_request",
-    { model: request.model, thinking, usage, durationMs: Date.now() - started, step },
-    where,
-  );
-
-  if (message.stopReason === "error" || message.stopReason === "aborted")
-    return { kind: "failed", failure: classifyAssistantFailure(message) };
-  const text = contentText(message.content).trim();
-
-  if (text === "")
+  if (answer === "")
     return {
       kind: "failed",
       failure: { class: "provider", message: "The summary came back empty." },
     };
 
-  return { kind: "ok", text, usage, info };
+  return { kind: "ok", text: answer, usage, info };
 }
 
-/** Splits a transcript after its leading system message into what is summarised and the retained tail; null when nothing committed is before the tail. */
-function splitOf(transcript: Transcript, info: ModelInfo): Split | null {
+/** Splits a transcript after its leading system message into what is summarised and the retained tail (a fifth of the window, from the latest user message when that fits, never parting a call from its result); null when nothing committed precedes the tail. */
+function splitOf(
+  transcript: Transcript,
+  info: ModelInfo,
+): { readonly summarise: readonly Message[]; readonly keep: readonly Message[] } | null {
   const body =
     transcript.messages[0]?.role === "system" ? transcript.messages.slice(1) : transcript.messages;
 
@@ -695,7 +637,7 @@ function splitOf(transcript: Transcript, info: ModelInfo): Split | null {
   return { summarise, keep: body.slice(start) };
 }
 
-/** Returns the commits a compaction replaces on the path to `tip`: those older than the oldest commit a kept message projects from, with every commit a summarised one projects from; when no kept message maps to a commit, the path up to the newest commit a summarised one projects from. */
+/** Returns the commits a compaction replaces on the path to `tip`: those older than the oldest kept message's commit with every summarised one's; without a kept commit, the path up to the newest summarised one. */
 async function replacesOf(
   kernel: Kernel,
   session: SessionId,
@@ -725,9 +667,10 @@ async function replacesOf(
   ];
 }
 
-/** Returns a head's configuration resolved from its stored selection; throws `invalid` when it does not resolve. */
+/** Returns a head's configuration resolved from its stored selection once its runtime is ready; throws `invalid` when it does not resolve. */
 async function configurationOf(
   kernel: Kernel,
+  runtime: PluginRuntime,
   session: SessionId,
   head: HeadName,
 ): Promise<Configuration> {
@@ -735,35 +678,20 @@ async function configurationOf(
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
-  await kernel.pluginsFor(session).ready;
+  await runtime.ready;
 
   const resolved = await kernel.resolveConfiguration({
     session,
     head,
     selected: entry.selected,
     patch: null,
-    contributions: contributionsOf(kernel.pluginsFor(session)),
+    contributions: contributionsOf(runtime),
   });
 
   if (resolved.kind !== "exact")
     throw new SdkError("invalid", `The head's configuration is ${resolved.kind}.`);
 
   return resolved;
-}
-
-/** Returns a catalog model's info in a session; throws `invalid` when the catalog lacks it. */
-async function infoOf(
-  kernel: Kernel,
-  models: Models,
-  ref: ModelRef,
-  session: SessionId,
-): Promise<ModelInfo> {
-  const info = await modelInfo(kernel, models, ref, session);
-
-  if (info === null)
-    throw new SdkError("invalid", `No model ${ref.provider}/${ref.id} is in the catalog.`);
-
-  return info;
 }
 
 /** Returns model messages as plain text for a summary request. */
@@ -783,16 +711,20 @@ function transcriptText(messages: readonly Message[]): string {
                 ? [`Assistant called ${block.name}(${JSON.stringify(block.arguments)})`]
                 : [],
           );
-        case "toolResult":
-          return [
-            `${message.toolName} ${message.isError ? "failed" : "returned"}: ${clipped(contentText(message.content))}`,
-          ];
+        case "toolResult": {
+          const result = contentText(message.content);
+
+          const clipped =
+            result.length > RESULT_LIMIT ? `${result.slice(0, RESULT_LIMIT)}…` : result;
+
+          return [`${message.toolName} ${message.isError ? "failed" : "returned"}: ${clipped}`];
+        }
       }
     })
     .join("\n\n");
 }
 
-/** Returns one abandoned part as a line of text: a text part's markdown, a tool part's name, arguments and outcome, else its definition's fallback. */
+/** Returns one abandoned part as a line of text: a text part's markdown, a tool part's name, arguments and outcome, else its fallback. */
 function lineOf(kernel: Kernel, part: PartRecord): string {
   const state = part.state;
 
@@ -810,12 +742,53 @@ function lineOf(kernel: Kernel, part: PartRecord): string {
   );
 }
 
-/** Returns text cut to a summary request's per-result bound. */
-function clipped(content: string): string {
-  return content.length > RESULT_LIMIT ? `${content.slice(0, RESULT_LIMIT)}…` : content;
-}
-
-/** Returns an error's message, or the thrown value as text. */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Returns the head's latest compaction material as the checkpoint when the request model's provider identity made it (§38e); an invalid stored state is a corrupt store. */
+export async function checkpointOf(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  model: Model<Api>,
+): Promise<ProviderCheckpointMaterial | null> {
+  const latest = await latestCompaction(kernel, session, head);
+
+  if (latest === null) return null;
+  const checked = await check(compaction.state, latest);
+
+  if (checked.kind === "invalid")
+    throw new SdkError("internal", "The head's latest compaction is corrupt in the store.");
+  const material = checked.value.material;
+
+  if (
+    material === null ||
+    material.provider !== model.provider ||
+    material.api !== model.api ||
+    material.model !== (model.variant?.base ?? model.id)
+  )
+    return null;
+
+  return {
+    type: "provider",
+    provider: material.provider,
+    api: material.api,
+    model: material.model,
+    data: jsonValue(material.data),
+  };
+}
+
+/** Returns a JSON value as the provider's mutable JSON. */
+function jsonValue(value: Json): JsonValue {
+  if (isList(value)) return value.map(jsonValue);
+
+  if (isJsonObject(value))
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, jsonValue(inner)]));
+
+  return value;
+}
+
+function isList(value: Json): value is readonly Json[] {
+  return Array.isArray(value);
 }

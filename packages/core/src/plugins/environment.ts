@@ -231,7 +231,10 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   description:
     "Run a shell command in the workspace root and return its output and exit code. Long output keeps its end.",
   parameters: bashParameters,
-  class: (args) => ({ kind: "shell", command: args.command, description: args.description }),
+  class: (args) =>
+    args.description === undefined
+      ? { kind: "shell", command: args.command }
+      : { kind: "shell", command: args.command, description: args.description },
   replay: "never",
   async execute(args, invocation) {
     const { env } = invocation;

@@ -118,19 +118,20 @@ export type DurableEvent = { readonly head: HeadName | null } & (
  *
  * **Details**
  *
- * `append` is a token for text or thinking; `progress` is a tool saying what
- * it is doing, replacing the last. Coalesced by the fold. The durable
+ * `append` is a token for text or thinking; `markdown` is a text or thinking
+ * part's whole text so far, replacing it; `progress` is a tool saying what it
+ * is doing, replacing the last. Coalesced by the fold. The durable
  * `part.settled` carries the final state once.
  *
  * **Gotchas**
  *
- * A client that reconnects mid-stream gets the current state from the
- * host's fold and new patches from there; old ones are gone.
+ * A watch that starts or resumes mid-stream gets each streaming part's text
+ * as one `markdown` patch, then new patches from there; old ones are gone.
  *
  * @category events
  * @since 0.1.0
  */
-export type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & ({ readonly append: string } | { readonly progress: ToolProgress });
+export type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & ({ readonly append: string } | { readonly markdown: string } | { readonly progress: ToolProgress });
 
 /**
  * Returns what a commit holds: a user message, or a reference to a part's

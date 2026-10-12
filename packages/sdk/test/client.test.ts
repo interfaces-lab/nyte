@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import type { HostView, SessionView } from "@nyte-ai/schema";
-import { SdkError, createConnection, dev } from "@nyte-ai/core";
+import { SdkError, createConnection, dev, isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { encodeError } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
@@ -45,6 +45,12 @@ function users(view: SessionView): readonly string[] {
   return view.messages.flatMap((message) =>
     message.kind === "user" && typeof message.content === "string" ? [message.content] : [],
   );
+}
+
+function answer(view: SessionView): string | null {
+  const found = view.messages.find((message) => isPart(message, textPart));
+
+  return found !== undefined && isPart(found, textPart) ? found.state.markdown : null;
 }
 
 /** Returns a stream's chunks as they pass; with `cut`, after that many chunks it errors (a reset socket) or ends cleanly. */
@@ -218,6 +224,90 @@ describe("client", () => {
       expect(links.at(-1)).toBe("connected");
     },
   );
+
+  it("shows a head.watch that starts mid-stream the text streamed before it", async () => {
+    const host = await open();
+    const writer = await client(host);
+    const session = await writer.sessions.create();
+    const halfway = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+
+    host.fake.reply({
+      content: [{ type: "text", text: "abcdefgh" }],
+      tokens: 4,
+      async tap(streamed) {
+        if (streamed !== 2) return;
+        halfway.resolve();
+        await resume.promise;
+      },
+    });
+
+    const receipt = await session.send("Go.");
+    await halfway.promise;
+    const reader = await client(host);
+    const late = until(reader.session(session.id).watch(), (view) => answer(view) === "abcd");
+
+    expect(answer(await late)).toBe("abcd");
+    resume.resolve();
+    await receipt.settled();
+  });
+
+  it("resumes a head.watch mid-stream with the text streamed in the gap, none of it twice", async () => {
+    const host = await open();
+    const connection = await client(host);
+    const session = await connection.sessions.create();
+    const first = Promise.withResolvers<void>();
+    const gap = Promise.withResolvers<void>();
+    const paused = Promise.withResolvers<void>();
+    const end = Promise.withResolvers<void>();
+    let opens = 0;
+
+    host.fake.reply({
+      content: [{ type: "text", text: "abcdefgh" }],
+      tokens: 4,
+      async tap(streamed) {
+        if (streamed === 1) {
+          first.resolve();
+          await gap.promise;
+        }
+
+        if (streamed === 3) {
+          paused.resolve();
+          await end.promise;
+        }
+      },
+    });
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) === "head.watch" && ++opens === 2) {
+        gap.resolve();
+        await paused.promise;
+      }
+
+      return next(request);
+    });
+
+    const seen: string[] = [];
+
+    const settled = until(session.watch(), (view) => {
+      const markdown = answer(view);
+
+      if (markdown !== null && markdown !== seen.at(-1)) seen.push(markdown);
+
+      if (markdown === "ab") host.listener.disconnectClients();
+
+      if (markdown === "abcdef") end.resolve();
+
+      return view.execution.kind === "idle" && markdown === "abcdefgh";
+    });
+
+    const receipt = await session.send("Go.");
+    await first.promise;
+    await settled;
+    await receipt.settled();
+
+    expect(seen).toEqual(["ab", "abcdef", "abcdefgh"]);
+  });
 
   it("keeps a send journaled and shown unsent while the link is down, and lands it once on the next connect", async () => {
     const host = await open();

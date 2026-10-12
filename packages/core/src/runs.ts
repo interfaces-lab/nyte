@@ -59,6 +59,8 @@ export async function startRun(
     snapshot: null,
     usage: null,
     requests: 0,
+    waitedBy: [],
+    parked: [],
   };
 
   kernel.runs.start(id);

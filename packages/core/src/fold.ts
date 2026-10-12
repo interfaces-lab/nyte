@@ -41,12 +41,13 @@ import type {
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
 import { SdkError } from "./error.ts";
+import type { HeadPair } from "./bus.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
+import { EMPTY_REVISION, START, isJsonObject, pathOf, tipOf } from "./session-state.ts";
 
 /** Returns a session as the fold holds it for one principal: every head, commit, input, part, run, call and turn. The maps and each head's `messages` and `turns` belong to the fold and change in place; every object a view carries is immutable and shared between steps. */
 export interface FoldState {
   readonly session: SessionId;
-  /** Whose seen marks decide `unread`. */
   readonly principal: PrincipalId;
   /** The last durable event folded; for resume, never on the view. */
   readonly seq: Seq;
@@ -54,37 +55,28 @@ export interface FoldState {
   readonly catalog: SessionCatalogView;
   /** Files this session changed, latest per path, first-seen order. */
   readonly changes: readonly FileChange[];
-  /** Every head by name, in creation order. */
   readonly heads: ReadonlyMap<HeadName, FoldHead>;
   /** Every head's row in `heads` order: `SessionView.heads`, shared by every head's view. */
   readonly headInfos: readonly HeadInfo[];
-  /** Every commit folded, by id; a move rebuilds a head's path from it. */
   readonly commits: ReadonlyMap<CommitId, CommitRecord>;
   /** User commits sharing a parent, in creation order, by parent; null is the root. */
   readonly siblings: ReadonlyMap<CommitId | null, readonly CommitId[]>;
-  /** Every admitted input not withdrawn or superseded, by message id. */
   readonly inputs: ReadonlyMap<MessageId, FoldInput>;
-  /** Every part, any placement, by id. */
   readonly parts: ReadonlyMap<PartId, PartRecord>;
   /** Every open part not placed in the transcript, in creation order: `SessionView.parts`. */
   readonly partViews: readonly PartView[];
-  /** Every run folded, by id. */
   readonly runs: ReadonlyMap<RunId, FoldRun>;
-  /** Every tool call folded, by id. */
   readonly calls: ReadonlyMap<CallId, FoldCall>;
-  /** Every turn, by id. */
   readonly turns: ReadonlyMap<TurnId, FoldTurn>;
   /** The one message object per id, shared by every head whose list carries it. */
   readonly messages: ReadonlyMap<MessageId, Message>;
 }
 
-/** Returns one head as the fold holds it: its row, revision, seen mark, messages, turns and the view fields that are per head. */
 export interface FoldHead {
   /** Name, tip, stack, execution and unread; the same object sits in `FoldState.headInfos`. */
   readonly info: HeadInfo;
-  /** The head ref's revision, stamped by `withRevision`; null until the ref exists. */
+  /** The head ref's revision paired with this head's tip (§54a); null when no pair names the tip. */
   readonly revision: Revision | null;
-  /** The tip the fold's principal last saw on this head; null when none. */
   readonly seen: CommitId | null;
   /** The path's committed messages oldest first, then `live`, then `pending`. */
   readonly messages: readonly Message[];
@@ -94,15 +86,11 @@ export interface FoldHead {
   readonly pending: readonly MessageId[];
   /** Turns over `messages`, in the same order. */
   readonly turns: readonly TurnInfo[];
-  /** Children, jobs and pages working for this head, latest per `kind:id`. */
   readonly background: readonly BackgroundItem[];
-  /** The head's stored selection and what admission would resolve now. */
   readonly configuration: SessionView["configuration"];
-  /** The head's context size after its last request. */
   readonly context: ContextView;
 }
 
-/** Returns one admitted input as the fold holds it, from admission until it is withdrawn or superseded. */
 export interface FoldInput {
   readonly id: MessageId;
   readonly head: HeadName;
@@ -112,20 +100,16 @@ export interface FoldInput {
   readonly delivery: Delivery;
   readonly schedule: Schedule;
   readonly covered: boolean;
-  /** The selection admission resolved for this input. */
   readonly configuration: Configuration;
   readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
-  /** Set when it lands. */
   readonly landed: { readonly commit: CommitId; readonly run: RunId | null } | null;
 }
 
-/** Returns one run as the fold holds it: its fixed metadata and the turn it writes. */
 export interface FoldRun {
   readonly view: RunView;
   readonly turn: TurnId;
 }
 
-/** Returns one tool call as the fold holds it: its part, class, wait and whether it settled. */
 export interface FoldCall {
   readonly part: PartId;
   readonly class: ToolClass;
@@ -133,7 +117,6 @@ export interface FoldCall {
   readonly settled: boolean;
 }
 
-/** Returns one turn as the fold holds it: its view, its head, and its unsettled tool calls. */
 export interface FoldTurn {
   readonly info: TurnInfo;
   readonly head: HeadName;
@@ -142,8 +125,6 @@ export interface FoldTurn {
 }
 
 const DEFAULT_TAIL = 200;
-
-const START: Position = { kind: "start" };
 
 const IDLE: Execution = { kind: "idle", lastRun: null };
 
@@ -165,9 +146,6 @@ export const EMPTY_CATALOG: SessionCatalogView = {
   agents: [],
   tools: [],
 };
-
-
-const EMPTY_REVISION = asId<"revision">("");
 
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
 
@@ -202,26 +180,20 @@ interface Index {
   readonly calls: Map<CallId, FoldCall>;
   readonly turns: Map<TurnId, FoldTurn>;
   readonly messages: Map<MessageId, Message>;
-  /** Every part a run created, by run. */
   readonly byRun: Map<RunId, PartId[]>;
   /** Landed attach inputs still on their pending turn, waiting for a run to ride. */
   readonly riders: Set<MessageId>;
   /** Thinking steps per turn on its head's path, beside `TurnInfo.steps`. */
   readonly thinking: Map<TurnId, number>;
-  /** Every head's path, by head. */
   readonly paths: Map<HeadName, Path>;
 }
 
 interface Path {
-  /** The array `FoldHead.messages` is. */
   readonly messages: Message[];
   /** How many leading `messages` are committed; live parts and pending inputs follow. */
   committed: number;
-  /** Each message's position in `messages`. */
   readonly at: Map<MessageId, number>;
-  /** The array `FoldHead.turns` is. */
   readonly turns: TurnInfo[];
-  /** Each turn's position in `turns`. */
   readonly turnAt: Map<TurnId, number>;
   /** The position in `messages` of each turn's first message, beside `turns`. */
   readonly firstAt: number[];
@@ -236,7 +208,6 @@ interface Draft extends Index {
   partViews: readonly PartView[];
   /** Heads whose tip left the end of their path. */
   readonly walk: Set<HeadName>;
-  /** The commit a head's tip moved to. */
   readonly appended: Map<HeadName, CommitId>;
   /** Heads whose live parts or pending inputs changed. */
   readonly rebuild: Set<HeadName>;
@@ -299,7 +270,7 @@ export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldSt
   if (event.kind === "patch") {
     if (!applyPatch(draft, event)) return state;
   } else {
-    if (event.seq > draft.seq) draft.seq = event.seq;
+    if (event.seq !== 0) draft.seq = event.seq;
     apply(draft, event);
   }
 
@@ -325,6 +296,7 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
 
   if (
     cached !== undefined &&
+    cached.seq === state.seq &&
     cached.activation === state.activation &&
     cached.parts === state.partViews &&
     cached.heads === state.headInfos &&
@@ -335,6 +307,7 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
 
   const view: SessionView = {
     revision: folded.revision ?? EMPTY_REVISION,
+    seq: state.seq,
     activation: state.activation,
     messages: tailOf(folded.messages, tail),
     parts: state.partViews,
@@ -355,8 +328,14 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
   return view;
 }
 
-/** Returns the state with a head's ref revision stamped, or the same state when it is unchanged. The input state is consumed. */
-export function withRevision(state: FoldState, head: HeadName, revision: Revision): FoldState {
+/** Returns the state with a head pair applied: the head's revision is the pair's when the pair's tip is the head's tip, else null (§54a); the input state is consumed. */
+export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {
+  const tip = tipOf(state.heads.get(head)?.info.tip ?? START);
+
+  return withRevision(state, head, tip === pair.tip ? pair.revision : null);
+}
+
+function withRevision(state: FoldState, head: HeadName, revision: Revision | null): FoldState {
   const folded = state.heads.get(head);
 
   if (folded === undefined || folded.revision === revision) return state;
@@ -1182,7 +1161,7 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
   if (part === undefined) return false;
   const state = part.state;
 
-  if ("append" in event) {
+  if ("append" in event || "markdown" in event) {
     if (
       part.status.kind !== "live" ||
       (part.partKind !== "text" && part.partKind !== "thinking") ||
@@ -1190,16 +1169,22 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
     )
       return false;
 
+    const markdown = "append" in event ? state.markdown + event.append : event.markdown;
+
     updatePart(draft, part.id, (current) => ({
       ...current,
-      state: { ...state, markdown: state.markdown + event.append },
+      state: { ...state, markdown },
       version: current.version + 1,
     }));
 
     return true;
   }
 
-  if ((part.status.kind !== "live" && part.status.kind !== "waiting") || !isRunning(state))
+  if (
+    (part.status.kind !== "live" && part.status.kind !== "waiting") ||
+    !isJsonObject(state) ||
+    state.phase !== "running"
+  )
     return false;
 
   updatePart(draft, part.id, (current) => ({
@@ -1258,7 +1243,11 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     const walked = draft.walk.has(name);
     const appended = draft.appended.get(name);
     const from = walked ? 0 : path.committed;
-    const commits = walked ? lineage(draft, head) : appended === undefined ? [] : [appended];
+    const commits = walked
+      ? pathOf(draft.commits, tipOf(head.info.tip))
+      : appended === undefined
+        ? []
+        : [appended];
     truncate(draft, name, path, from);
 
     for (const commit of commits) {
@@ -1334,23 +1323,6 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
   }
 
   return touched;
-}
-
-function lineage(draft: Draft, head: FoldHead): readonly CommitId[] {
-  const commits: CommitId[] = [];
-  const visited = new Set<CommitId>();
-  let cursor = tipOf(head.info.tip);
-
-  while (cursor !== null && !visited.has(cursor)) {
-    visited.add(cursor);
-    const commit = draft.commits.get(cursor);
-
-    if (commit === undefined) break;
-    commits.push(cursor);
-    cursor = commit.parent;
-  }
-
-  return commits.reverse();
 }
 
 function truncate(draft: Draft, head: HeadName, path: Path, length: number): void {
@@ -1634,10 +1606,6 @@ function sameTurnState(left: TurnInfo["state"], right: TurnInfo["state"]): boole
   return left === right;
 }
 
-function tipOf(position: Position): CommitId | null {
-  return position.kind === "commit" ? position.id : null;
-}
-
 function messageOf(part: PartId): MessageId {
   return asId<"message">(part);
 }
@@ -1646,16 +1614,8 @@ function pendingTurn(id: MessageId): TurnId {
   return asId<"turn">(`pending:${id}`);
 }
 
-function isJsonObject(value: Json): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function hasMarkdown(
   value: Json,
 ): value is { readonly [key: string]: Json; readonly markdown: string } {
   return isJsonObject(value) && typeof value.markdown === "string";
-}
-
-function isRunning(value: Json): value is { readonly [key: string]: Json } {
-  return isJsonObject(value) && value.phase === "running";
 }

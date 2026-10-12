@@ -10,6 +10,7 @@ import type {
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import { isJsonObject } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";
 import type { ToolSource } from "./tool-runner.ts";
@@ -23,12 +24,13 @@ const activated = new WeakMap<Kernel, Map<RunId, Set<string>>>();
 
 const publishing = new WeakMap<Kernel, Map<SessionId, Promise<void>>>();
 
-/** Returns what a session's plugins contributed, from its materialised registries, each item with its owner: commands (named `<owner>/<name>` (§35d), side `core`, `arguments` as JSON Schema or null), settings (`settingInfos`), skills, agents (`description` and `model` null when absent, `mode` default `all`) and tools (`toolSource(kernel, session, null).list()`). An item whose schema has no JSON Schema is left out. */
+/** Returns what a session's plugins contributed, from its materialised registries, each item with its owner: commands (named `<owner>/<name>` (§35d), side `core`, `arguments` as JSON Schema or null), settings (`settingInfos`), skills, agents (`description` and `model` null when absent, `mode` default `all`) and tools (`toolSource(kernel, runtime, null).list()`). An item whose schema has no JSON Schema is left out. */
 export async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,
 ): Promise<SessionCatalogView> {
-  const { registries } = kernel.pluginsFor(session);
+  const runtime = kernel.pluginsFor(session);
+  const { registries } = runtime;
 
   return {
     commands: registries.commands.entries().flatMap(({ item, owner }): readonly CommandInfo[] => {
@@ -63,7 +65,7 @@ export async function sessionCatalog(
       model: item.model ?? null,
       mode: item.mode ?? "all",
     })),
-    tools: toolSource(kernel, session, null).list(),
+    tools: toolSource(kernel, runtime, null).list(),
   };
 }
 
@@ -101,9 +103,9 @@ export function bumpGeneration(kernel: Kernel): CatalogGeneration {
   return generation;
 }
 
-/** Returns a session's tools for one run, from its tools registry: `get` resolves any tool by name with its owner, whatever its exposure; `list` returns each as `ToolInfo` (`namespace` the definition's or null, §48d; parameters and output through `jsonSchemaOf`, a tool whose schemas have none left out), a deferred tool activated for this run listed as `model`; `activate` marks deferred tools for this run alone (a no-op when `run` is null), kept in memory until `endRun` drops them (§35f). What `kernel.tools` returns. */
-export function toolSource(kernel: Kernel, session: SessionId, run: RunId | null): ToolSource {
-  const registry = kernel.pluginsFor(session).registries.tools;
+/** Returns a runtime's tools for one run, from its tools registry: `get` resolves any tool by name with its owner, whatever its exposure; `list` returns each as `ToolInfo` (`namespace` the definition's or null, §48d; parameters and output through `jsonSchemaOf`, a tool whose schemas have none left out), a deferred tool activated for this run listed as `model`; `activate` marks deferred tools for this run alone (a no-op when `run` is null), kept in memory until `endRun` drops them (§35f). What `kernel.tools` returns. */
+export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | null): ToolSource {
+  const registry = runtime.registries.tools;
 
   return {
     get(name) {

@@ -1037,8 +1037,8 @@ const operations = {
   ),
   HeadWatchOutputSchema: operation(
     HeadWatchOutputSchema,
+    { kind: "revision", head, tip: null, revision },
     { kind: "revision", head, revision },
-    { kind: "revision", head },
   ),
   HeadHistoryInputSchema: operation(
     HeadHistoryInputSchema,
@@ -1905,6 +1905,7 @@ const cases = {
     SessionViewSchema,
     {
       revision,
+      seq: asSeq(4),
       activation: { kind: "active" },
       messages: [userMessage, partMessage],
       parts: [

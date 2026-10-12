@@ -380,8 +380,6 @@ describe("agentLoop", () => {
     const called = scripted([{ content: [call("a", "read")] }], {
       finishTurn: async () => {
         calling.abort();
-
-        return undefined;
       },
     });
 
@@ -393,9 +391,8 @@ describe("agentLoop", () => {
     const continued = scripted([{ content: [said("One.")] }], {
       finishTurn: async () => {
         asking.abort();
-
-        return "continue";
       },
+      boundary: async () => landed("steer"),
     });
 
     expect((await collect(continued.config, asking.signal)).end).toEqual({ reason: "stopped" });
@@ -465,22 +462,48 @@ describe("agentLoop", () => {
     expect(again.seen.requests).toHaveLength(2);
   });
 
-  it("follows finishTurn: end stops after the calls, continue asks for one more request", async () => {
-    const ended = scripted([{ content: [call("a", "read")] }, { content: [said("Never.")] }], {
-      finishTurn: async () => "end",
+  it("fails a stream that ends without done or error as a provider failure, never stopped (D7, A F15)", async () => {
+    const { config, seen } = scripted([], {
+      async stream() {
+        const events = streamOf({ content: [said("Half")] });
+        const unfinished = createAssistantMessageEventStream();
+
+        for await (const event of events) {
+          if (event.type === "done") break;
+          unfinished.push(event);
+        }
+
+        unfinished.end();
+
+        return respondWith(unfinished);
+      },
     });
 
-    expect((await collect(ended.config)).end.reason).toBe("done");
-    expect([ended.seen.executed, ended.seen.requests.length]).toEqual([["read"], 1]);
+    const { events, end } = await collect(config);
 
-    const decisions = ["continue", undefined] as const;
-
-    const continued = scripted([{ content: [said("One.")] }, { content: [said("Two.")] }], {
-      finishTurn: async () => decisions[continued.seen.requests.length - 1],
+    expect(end).toEqual({
+      reason: "failed",
+      failure: { class: "provider", message: "The response ended without a result." },
     });
+    expect(kinds(events)).not.toContain("turn_retry");
+    expect(seen.requests).toHaveLength(1);
+  });
 
-    expect((await collect(continued.config)).end.reason).toBe("done");
-    expect(continued.seen.requests).toHaveLength(2);
+  it("carries the failed request's model info on turn_retry, so the turn can charge it (D6)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+
+    try {
+      const { config } = scripted([
+        { content: [said("Half")], error: "503 Service Unavailable" },
+        { content: [said("Whole.")] },
+      ]);
+
+      const retry = (await collect(config)).events.find((event) => event.type === "turn_retry");
+
+      expect(retry).toMatchObject({ usage: { total: 1 }, prepared: { info: INFO } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

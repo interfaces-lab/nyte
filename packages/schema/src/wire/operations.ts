@@ -326,7 +326,7 @@ export const HeadWatchInputSchema = objectOf({
   after: Type.Optional(SeqType),
 });
 
-/** Validates one frame of `head.watch`'s output: a session event or a patch, which the sdk folds, or the wire-only revision a head's ref holds (§40s). */
+/** Validates one frame of `head.watch`'s output: a session event or a patch, which the sdk folds, or the wire-only pair of a head's ref, its tip and revision (§40s, §54a). */
 export const HeadWatchOutputSchema = schemaOf(
   Type.Union([
     SessionEventType,
@@ -334,6 +334,7 @@ export const HeadWatchOutputSchema = schemaOf(
     Type.Object({
       kind: Type.Literal("revision"),
       head: idSchema<"head">(),
+      tip: nullable(idSchema<"commit">()),
       revision: idSchema<"revision">(),
     }),
   ]),

@@ -21,7 +21,6 @@ import type {
   UserContent,
   WaitTarget,
 } from "@nyte-ai/schema";
-import { publishSet } from "./bus.ts";
 import { SdkError } from "./error.ts";
 import { dev } from "./dev-log.ts";
 import type { FoldState } from "./fold.ts";
@@ -46,6 +45,7 @@ import type {
 } from "./records.ts";
 import { callRef, headRef, inboxRef, receiptRef, runRef, sessionRef } from "./refs.ts";
 import { sessionInfo } from "./session-info.ts";
+import { publishSet } from "./watch.ts";
 
 /** The head every session has; "main" is the session itself. */
 export const MAIN: HeadName = asId<"head">("main");

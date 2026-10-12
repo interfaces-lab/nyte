@@ -10,6 +10,7 @@ import type {
   Decision,
   Delivery,
   Disposer,
+  FileChange,
   HeadName,
   HostDescription,
   HostId,
@@ -21,12 +22,12 @@ import type {
   Placement,
   PrincipalId,
   PruneReport,
-  Revision,
   RunEnd,
   RunId,
   RunView,
   SessionCatalogView,
   SessionId,
+  SnapshotId,
   Submission,
   ToolCall,
   ToolOutcome,
@@ -72,10 +73,10 @@ import { dispatchHead } from "./session-state.ts";
 import { stoppableTool } from "./tool-runner.ts";
 import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
-import { createWaitRegistry } from "./wait-registry.ts";
-import type { WaitRegistry } from "./wait-registry.ts";
-import { createFoldCache } from "./watch.ts";
-import type { FoldCache } from "./watch.ts";
+import { createWaitRegistry } from "./waits.ts";
+import type { WaitRegistry } from "./waits.ts";
+import { createFoldCache, trackStreams } from "./watch.ts";
+import type { FoldCache, Follow, LiveStream } from "./watch.ts";
 import type { Workspace, Workspaces } from "./workspace.ts";
 import { createWorkspaces, workspaceHandle } from "./workspaces.ts";
 
@@ -97,8 +98,20 @@ export interface Kernel {
   readonly host: HostState;
   /** One shared fold per session per principal. */
   readonly folds: FoldCache;
-  /** Each ref's latest revision as `publishSet` recorded it, by ref name; `project` stamps `SessionView.revision` from the head ref's. */
-  readonly revisions: Map<string, Revision>;
+  /** Each live part's streamed state in this process, by session: what a feed that starts mid-stream gets first (§54b). */
+  readonly streams: Map<SessionId, Map<PartId, LiveStream>>;
+  /** The sessions this kernel's bus carries, with their feeds and publish marks. */
+  readonly follows: Map<SessionId, Follow>;
+  /** The runs a turn drives in this process, each with its session. */
+  readonly driving: Map<RunId, SessionId>;
+  /** The listeners waiting on a receipt in this process, by `<session>/<receipt>`. */
+  readonly receipts: Map<string, Set<() => void>>;
+  /** The abort controllers of the tool calls running in this process, by call. */
+  readonly calls: Map<string, Set<AbortController>>;
+  /** Each run's latest snapshot this process took around a call that may write. */
+  readonly marks: Map<RunId, SnapshotId>;
+  /** Each session's changed files as this process last merged them. */
+  readonly changes: Map<SessionId, readonly FileChange[]>;
   /** Returns whether this host serves a session's workspace; in memory, default `{ kind: "inactive" }`. */
   activation(session: SessionId): Activation;
   /** Sets a session's activation in memory and publishes an `activation` event to it. */
@@ -139,8 +152,8 @@ export interface Kernel {
   readonly partDefinitions: PartDefinitions;
   /** Runs part actions as durable steps; core-e fills it. */
   readonly durable: DurableProvider;
-  /** Returns the tools a session can call, with deferred tools activated for `run` alone. Default `toolSource`, from the session's registries. */
-  tools(session: SessionId, run: RunId | null): ToolSource;
+  /** Returns the tools a session's runtime offers, with deferred tools activated for `run` alone. Default `toolSource`, from the runtime's registries. */
+  tools(runtime: PluginRuntime, run: RunId | null): ToolSource;
   /** Dispatches `before_tool` for a call. Default: the session's hook dispatch, as the step `hook:before_tool:<call>`. */
   readonly beforeTool: ToolGate;
   /** Dispatches `after_tool` over a call's outcome. Default: the session's hook dispatch. */
@@ -240,14 +253,14 @@ export interface LandedInput {
 
 /** Runs one run's assistant turn until it ends; `boundary()` lands the inputs that joined since the last boundary, and every attached input waiting, and returns each with its delivery, so the turn can tell a steer that wants an answer from an attach that only rides along. */
 export interface TurnDriver {
-  /** Runs the turn and returns how the run ended. */
+  /** Runs the turn and returns how the run ended, or `parked` when a call parked and the run waits (§34d). */
   run(input: {
     readonly session: SessionId;
     readonly head: HeadName;
     readonly run: RunView;
     readonly signal: AbortSignal;
     boundary(): Promise<readonly LandedInput[]>;
-  }): Promise<RunEnd>;
+  }): Promise<RunEnd | { readonly kind: "parked" }>;
 }
 
 /** Summarises abandoned commits with a model into branch summary markdown. */
@@ -322,14 +335,14 @@ export interface PartProvider {
 /** Runs a part action as a durable step of kind `action` over the part's call record. */
 export interface DurableProvider {
   /** Runs the action's `body` with the step's `Durable` and returns how the step ended; `parked` means the act waits until a wake completes the step in this host's life. */
-  run<T>(input: {
+  run(input: {
     readonly session: SessionId;
     readonly part: PartId;
     readonly action: string;
     readonly call: CallId;
     readonly signal: AbortSignal;
-    body(durable: Durable): Promise<T>;
-  }): Promise<StepOutcome<T>>;
+    body(durable: Durable): Promise<unknown>;
+  }): Promise<StepOutcome<unknown>>;
 }
 
 /** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch. It owns the durable step `hook:before_tool:<call>` (§35a), so a handler may park on `wait`: `parked` returns the call to the turn driver; `signal` is the call's. */
@@ -426,7 +439,8 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
 /** Returns a kernel over an open store, with a fresh bus, fold cache, activation table, catalog table, run table, wakes, plugin runtime map and part definition registry (built on first use, its `tool` built-in's `stop` action wired over this kernel); every slot not given answers `unavailable`, except `admit` (`before_send` through the session's hooks, `gateSubmission`), `command` (`runCommand`), `settings` (`createSettingsApi`, built on first use), `parts` (this kernel's `createPartsApi`), `durable` (each action a durable step of kind `action` through `runAction`), `tools` (`toolSource`), `beforeTool` (`before_tool` through the session's hooks), `afterTool` (`after_tool` through the session's hooks), `workspaces` and `workspace` (`createWorkspaces` and `workspaceHandle` as `CORE_CONTEXT`), `environments` (`createEnvironmentRegistry`), `env`, `wrapEnv` and `snapshots` (through `environments`), `resources` (`scanResources`), `jobs` (`createJobTable`), `pages` (`createPageTable`), `connections` (`createConnectionRegistry`), `principals` (`createPrincipals`), `prune` (`prune`), `secrets` (null), `home` (null), `builtins` and `hostPlugins` (none), `pluginSources` (empty), `pluginApi` (the session runtime's `api`), `plugins` (`replacePlugins` and `checkPlugins`), `waits` (`createWaitRegistry`); the getters among them are built on first use once the kernel object exists and never throw, so spreading a kernel is safe. `pluginsFor` creates a `createPluginRuntime` per session over this kernel on first use, which starts its activation, and `reloadPlugins` installs another in its place. A random `instance` is minted and `poll` recorded (null when absent); on a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
-  const revisions = new Map<string, Revision>();
+  const streams = trackStreams(bus);
+  const follows = new Map<SessionId, Follow>();
   const activations = new Map<SessionId, Activation>();
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
@@ -465,7 +479,8 @@ export function createKernel(input: KernelOptions): Kernel {
     folds: createFoldCache({
       store: input.store,
       bus,
-      revisions,
+      follows,
+      streams,
       activation,
       catalog,
       get jobs() {
@@ -475,7 +490,13 @@ export function createKernel(input: KernelOptions): Kernel {
         return kernel.pages;
       },
     }),
-    revisions,
+    streams,
+    follows,
+    driving: new Map(),
+    receipts: new Map(),
+    calls: new Map(),
+    marks: new Map(),
+    changes: new Map(),
     activation,
     setActivation(session, value) {
       activations.set(session, value);
@@ -526,7 +547,7 @@ export function createKernel(input: KernelOptions): Kernel {
       return definitions;
     },
     durable: input.durable ?? { run: (step) => runAction(kernel, step) },
-    tools: input.tools ?? ((session, run) => toolSource(kernel, session, run)),
+    tools: input.tools ?? ((runtime, run) => toolSource(kernel, runtime, run)),
     beforeTool:
       input.beforeTool ??
       ((call, context) =>

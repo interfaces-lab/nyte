@@ -4,7 +4,7 @@ import type { Schema } from "../schema.ts";
 import type { Message, SessionView, TurnInfo, UserStatus, ViewOptions } from "../views.ts";
 import { ConfigurationType } from "./configuration.ts";
 import { FileChangeType } from "./files.ts";
-import { idSchema } from "./ids.ts";
+import { SeqType, idSchema } from "./ids.ts";
 import { withJson } from "./json.ts";
 import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
 import { ContextViewType } from "./models.ts";
@@ -99,6 +99,7 @@ export const TurnInfoType = Type.Object({
 /** The TypeBox schema of a `SessionView`. */
 export const SessionViewType = Type.Object({
   revision: idSchema<"revision">(),
+  seq: SeqType,
   activation: ActivationType,
   messages: Type.Array(MessageType),
   parts: Type.Array(PartViewType),

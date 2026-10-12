@@ -220,7 +220,7 @@ describe("plugin runtime", () => {
     expect(runtime.api("broken")).toBeUndefined();
     expect(
       kernel
-        .tools(session.id, null)
+        .tools(kernel.pluginsFor(session.id), null)
         .list()
         .map((tool) => tool.name),
     ).toEqual(["echo"]);
@@ -914,7 +914,7 @@ describe("plugin api", () => {
     expect(passes).toBe(before + 1);
     expect(
       kernel
-        .tools(session.id, null)
+        .tools(kernel.pluginsFor(session.id), null)
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
@@ -1002,17 +1002,17 @@ describe("plugin api", () => {
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const run = turn.input.run.id;
-    await kernel.tools(session.id, run).activate(["echo"]);
+    await kernel.tools(kernel.pluginsFor(session.id), run).activate(["echo"]);
 
     expect(
       kernel
-        .tools(session.id, run)
+        .tools(kernel.pluginsFor(session.id), run)
         .list()
         .map((tool) => tool.exposure),
     ).toEqual(["model"]);
     expect(
       kernel
-        .tools(session.id, null)
+        .tools(kernel.pluginsFor(session.id), null)
         .list()
         .map((tool) => tool.exposure),
     ).toEqual(["deferred"]);
@@ -1022,7 +1022,7 @@ describe("plugin api", () => {
 
     expect(
       kernel
-        .tools(session.id, run)
+        .tools(kernel.pluginsFor(session.id), run)
         .list()
         .map((tool) => tool.exposure),
     ).toEqual(["deferred"]);

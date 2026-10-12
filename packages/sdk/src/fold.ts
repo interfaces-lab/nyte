@@ -9,7 +9,7 @@ import type {
   SessionView,
   ViewOptions,
 } from "@nyte-ai/schema";
-import { closable, coalesce, emptyFold, fold, project, withRevision } from "@nyte-ai/core";
+import { closable, coalesce, emptyFold, fold, project, withPair } from "@nyte-ai/core";
 import type { FoldState } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { JournalLoop } from "./journal.ts";
@@ -41,7 +41,8 @@ export interface Folds {
  * core's fold (remote carries deltas, never views); later watchers join it,
  * and the last one leaving closes the request and drops the fold.
  *
- * Revision frames stamp the head's revision (§40s); a logged event at or
+ * A head-moving event is offered only with the pair frame that follows it
+ * (§40s, §54a); a logged event at or
  * below the last folded seq is dropped, so a resumed watch neither misses
  * nor repeats. The state is offered once the feed is live (the first seq-0
  * seed or patch), so history arrives as one view.
@@ -53,6 +54,7 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
     const sinks = new Set<Sink<FoldState>>();
     let state = emptyFold({ session, principal });
     let live = false;
+    let unpaired = false;
     const frames = rows.watch("head.watch", { session, head })[Symbol.asyncIterator]();
 
     const finish = (end: (sink: Sink<FoldState>) => void): void => {
@@ -71,8 +73,9 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
           state = applied(state, frame);
 
           if (frame.kind === "patch" || (frame.kind !== "revision" && frame.seq === 0)) live = true;
+          unpaired = (frame.kind === "commit" || frame.kind === "head") && frame.head !== null;
 
-          if (live) for (const sink of sinks) sink.next(state);
+          if (live && !unpaired) for (const sink of sinks) sink.next(state);
         }
 
         finish((sink) => sink.end());
@@ -240,9 +243,9 @@ export function withUnsent(
   };
 }
 
-/** Returns the fold state after one `head.watch` frame: a revision frame stamps its head, a logged event already folded is dropped, anything else is folded. */
+/** Returns the fold state after one `head.watch` frame: a revision frame applies its head's pair, a logged event already folded is dropped, anything else is folded. */
 function applied(state: FoldState, frame: OperationOutput<"head.watch">): FoldState {
-  if (frame.kind === "revision") return withRevision(state, frame.head, frame.revision);
+  if (frame.kind === "revision") return withPair(state, frame.head, frame);
 
   if (frame.kind !== "patch" && frame.seq > 0 && frame.seq <= state.seq) return state;
 

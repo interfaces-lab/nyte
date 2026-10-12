@@ -39,9 +39,8 @@ import {
   withFold,
 } from "./session-state.ts";
 import type { Found } from "./session-state.ts";
-import { drivenBy } from "./driving.ts";
 import { executeCall, owedCalls } from "./tool-runner.ts";
-import { loadWaits } from "./wait-registry.ts";
+import { loadWaits } from "./waits.ts";
 
 const LEASE_MS = 30_000;
 
@@ -219,7 +218,7 @@ async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise
   if (live === null) return (await dueInputs(kernel, session, head)) !== null;
 
   return (
-    !drivenBy(kernel).has(live.record.view.id) &&
+    !kernel.driving.has(live.record.view.id) &&
     (live.record.waiting === null ||
       (await owedCalls(kernel, session, live.record.view.id)).some((call) => !call.parked))
   );
@@ -461,7 +460,7 @@ async function settleLive(
   live: Found<RunRecord>,
 ): Promise<AdvanceReport | null> {
   const run = live.record.view.id;
-  const driven = drivenBy(kernel).has(run);
+  const driven = kernel.driving.has(run);
 
   if (!driven && (live.record.stopping || kernel.runs.isStopping(run))) {
     kernel.runs.markStopping(run);
@@ -542,7 +541,7 @@ async function drive(
   head: HeadName,
   run: RunView,
 ): Promise<void> {
-  const driven = drivenBy(kernel);
+  const driven = kernel.driving;
   driven.set(run.id, session);
   const closing = closingOf(kernel).signal;
 
@@ -567,8 +566,8 @@ async function drive(
       boundary: () => boundary(kernel, session, head, run.id),
     })
     .then(
-      (end) => ({ end, returned: true }),
-      (error: unknown) => ({ end: failed(error), returned: false }),
+      (end) => ({ end }),
+      (error: unknown) => ({ end: failed(error) }),
     )
     .finally(() => {
       clearInterval(renewal);
@@ -586,13 +585,18 @@ async function drive(
 
   if (ended === null || (closing.aborted && !stopping)) return;
 
-  if (ended.returned && !stopping && (await owedCalls(kernel, session, run.id)).length > 0) {
+  if (ended.end.kind === "parked" && !stopping) {
     kernel.wakes.notify(session, head);
 
     return;
   }
 
-  await endRun(kernel, session, run.id, stopping ? { kind: "stopped" } : ended.end);
+  await endRun(
+    kernel,
+    session,
+    run.id,
+    stopping || ended.end.kind === "parked" ? { kind: "stopped" } : ended.end,
+  );
 }
 
 async function boundary(
@@ -662,7 +666,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
       : { kind: "continue" };
   const run = live.record.view.id;
 
-  if (drivenBy(kernel).has(run)) return { kind: "idle" };
+  if (kernel.driving.has(run)) return { kind: "idle" };
   const calls = await owedCalls(kernel, session, run);
 
   if (live.record.stopping || kernel.runs.isStopping(run) || calls.some((call) => !call.parked))

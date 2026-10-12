@@ -22,7 +22,7 @@ import { createHostState } from "./host-view.ts";
 import { createKernel } from "./kernel.ts";
 import type { Kernel } from "./kernel.ts";
 import { createModelsApi } from "./models.ts";
-import { pollStore } from "./poll.ts";
+import { pollStore } from "./watch.ts";
 import type { Plugin } from "./plugin.ts";
 import { checkPlugins, hostPluginRows } from "./plugin-runtime.ts";
 import { readKv } from "./plugin-storage.ts";
@@ -34,10 +34,10 @@ import { systemPromptPlugin } from "./plugins/system-prompt.ts";
 import { envelope } from "./records.ts";
 import { hostIdentityRef, kvRef } from "./refs.ts";
 import type { HostIdentity } from "./refs.ts";
-import { createRequest } from "./request.ts";
 import { isJsonObject } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
+import { createRequest } from "./request.ts";
 import { createTurnDriver } from "./turn.ts";
 
 /** Describes what `composeHost` needs: `OpenOptions`, plus what the platform host supplies: the home directory `Resources.user` attaches at (null on a host without one), the operations catalog `HostView.operations` serves (protocol's), the host's name, platform and version, and where each of `plugins` loaded from a plugin file came from (§41e; absent, every one is `inline`). */

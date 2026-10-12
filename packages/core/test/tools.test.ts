@@ -353,7 +353,7 @@ describe("tool calls", () => {
     expect(await call(kernel, input)).toEqual({ kind: "parked" });
     expect(echoes.slice(ran)).toEqual(["a", "b"]);
     expect((await session.view()).execution).toMatchObject({ kind: "waiting" });
-    expect(await kernel.waits.tick(at)).toBe(true);
+    await kernel.waits.tick(at);
     expect(await call(kernel, input)).toMatchObject({
       kind: "ok",
       content: [{ kind: "text", text: "ok ok timer" }],
@@ -457,13 +457,13 @@ describe("tool calls", () => {
         args: { until: at },
       }),
     ).toEqual({ kind: "parked" });
-    turn.finish();
+    turn.finish({ kind: "parked" });
     await step;
 
     expect((await session.view()).execution).toMatchObject({ kind: "waiting", run: { id: run } });
     expect(await host.execution.advance(head)).toEqual({ kind: "waiting", until: at });
     expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: [], next: null });
-    expect(await kernel.waits.tick(at)).toBe(true);
+    await kernel.waits.tick(at);
     expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: [head], next: null });
 
     const resumed = host.execution.advance(head);
@@ -508,7 +508,7 @@ describe("tool calls", () => {
     expect(
       await call(kernel, { session: session.id, run, call: "w1", name: "parker", args: {} }),
     ).toEqual({ kind: "parked" });
-    turn.finish();
+    turn.finish({ kind: "parked" });
     await step;
 
     expect(await session.run(run).stop()).toEqual({ kind: "requested" });
@@ -926,5 +926,37 @@ describe("tool calls", () => {
     expect(signals).toEqual(["live", "aborted"]);
     expect((await readCall(second.kernel, session.id, "f1")).result).toEqual({ kind: "stopped" });
     expect(await second.host.session(session.id).run(run).settled()).toEqual({ kind: "stopped" });
+  });
+
+  it("opens a tool part only with its step record, so a crash between them leaves no part a re-run cannot find (bench durable-tool-replay)", async () => {
+    const inner = await memoryStore().open();
+    let crash: string | null = null;
+
+    const store: StoreConnection = {
+      ...inner,
+      refs: {
+        ...inner.refs,
+        set(updates) {
+          if (crash !== null && updates.some((update) => update.name === crash)) {
+            crash = null;
+
+            return Promise.reject(new Error("The host died."));
+          }
+
+          return inner.refs.set(updates);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store, tools: source([echo]) });
+    const session = await host.sessions.create();
+    const run = await liveRun(kernel, session.id);
+    crash = callRef(session.id, asId("w1"));
+
+    await expect(
+      call(kernel, { session: session.id, run, call: "w1", name: "echo", args: { text: "a" } }),
+    ).rejects.toThrow("The host died.");
+    expect(await kernel.store.refs.get(partRef(session.id, asId("w1")))).toBeNull();
+    expect(await kernel.store.refs.get(callRef(session.id, asId("w1")))).toBeNull();
   });
 });

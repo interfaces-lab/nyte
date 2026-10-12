@@ -348,6 +348,7 @@ describe("fold", () => {
 
     expect(project(done, main)).toEqual({
       revision: "",
+      seq: done.seq,
       activation: { kind: "inactive" },
       messages: [
         {
@@ -478,7 +479,12 @@ describe("fold", () => {
       item: { kind: "job", id: "j1", title: "Dev server", state: "working", startedBy: null },
     });
 
-    expect(project(elsewhere, main)).toBe(later);
+    const moved = project(elsewhere, main);
+
+    expect(moved.seq).toBe(elsewhere.seq);
+    expect(moved.messages).toBe(later.messages);
+    expect(moved.turns).toBe(later.turns);
+    expect(project(elsewhere, main)).toBe(moved);
     expect(project(elsewhere, side).background).toHaveLength(1);
     expect(fold(elsewhere, append("missing", "x"))).toBe(elsewhere);
   });

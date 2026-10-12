@@ -221,6 +221,7 @@ import type {
   CapabilityWire,
   ChangeSet,
   CommandOutcome,
+  CommitId,
   ConfigurationPatch,
   ConfigureOutcome,
   ConsoleEntry,
@@ -427,7 +428,12 @@ export type Signatures = {
     readonly output:
       | SessionEvent
       | PatchEvent
-      | { readonly kind: "revision"; readonly head: HeadName; readonly revision: Revision };
+      | {
+          readonly kind: "revision";
+          readonly head: HeadName;
+          readonly tip: CommitId | null;
+          readonly revision: Revision;
+        };
   };
   "head.history": {
     readonly input: { readonly session: SessionId; readonly head: HeadName } & Parameters<

@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { Message, SessionView } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { conversationRows } from "../src/chat/transcript-rows.ts";
@@ -23,6 +23,7 @@ function part(id: string, partKind: string, state: unknown): Message {
 function view(messages: readonly Message[]): SessionView {
   return {
     revision: asId<"revision">("r1"),
+    seq: asSeq(0),
     activation: { kind: "active" },
     messages,
     parts: [],

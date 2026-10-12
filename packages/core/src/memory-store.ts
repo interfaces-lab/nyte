@@ -11,6 +11,7 @@ import type {
 } from "@nyte-ai/schema";
 import { blobId, objectId } from "./content.ts";
 import { SdkError } from "./error.ts";
+import { sessionOf } from "./refs.ts";
 import type { StoreConnection, Store } from "./store.ts";
 
 /** Returns an in-memory `Store` with `kind: "memory"`, for tests and bench. */
@@ -141,10 +142,4 @@ function admits(update: RefUpdate, current: Ref | undefined): boolean {
   if (update.expect === "absent") return current === undefined;
 
   return current?.revision === update.expect;
-}
-
-function sessionOf(name: string): SessionId | null {
-  const [root, id] = name.split("/");
-
-  return root === "sessions" && id ? asId<"session">(id) : null;
 }

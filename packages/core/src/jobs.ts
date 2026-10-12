@@ -17,12 +17,12 @@ import type {
 import { send } from "./admission.ts";
 import { dev } from "./dev-log.ts";
 import { recordAcquisition } from "./durable.ts";
+import { waitFor } from "./waits.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import { CORE_CONTEXT, requireAuthority } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { MAIN, readSession } from "./session-state.ts";
-import { waitFor } from "./waits.ts";
 import { closable, coalesce, latest } from "./watch.ts";
 
 /**

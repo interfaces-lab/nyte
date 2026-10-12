@@ -21,21 +21,13 @@ import type {
   Model,
 } from "@nyte-ai/schema/model";
 
-/**
- * Returns what `prepareRequest` is asked for, once per provider request: the attempt the request
- * is, and the context overflow a retry follows (null otherwise), which the config must compact for.
- * The loop owns no messages and no configuration; the config builds every request.
- */
+/** Returns what `prepareRequest` is asked for: the attempt, and the context overflow a retry follows, which the config must compact for. */
 export interface LoopRequest {
   readonly attempt: number;
   readonly overflow: Failure | null;
 }
 
-/**
- * Returns a prepared provider request: the `before_request` payload as the hooks left it, the model
- * it goes to with its catalog info (whose `maxOutput` a length stop is measured against), the
- * provider context it sends, when it was prepared, and what one response is charged.
- */
+/** Returns a prepared provider request: the `before_request` payload as the hooks left it, its model and catalog info, the provider context, when it was prepared, and what one response is charged. */
 export interface PreparedRequest {
   readonly kind: "request";
   readonly request: ModelRequest;
@@ -47,13 +39,11 @@ export interface PreparedRequest {
 }
 
 /** Returns a prepared provider request, or why none can be sent. */
-export type Prepared = PreparedRequest | { readonly kind: "failed"; readonly failure: Failure };
+export type Prepared<P extends PreparedRequest = PreparedRequest> =
+  | P
+  | { readonly kind: "failed"; readonly failure: Failure };
 
-/**
- * Returns a request on its way: the response's events, unconsumed, and what settles once the
- * config is done with the response's end (core moves the catalog generation there). The loop awaits
- * `settled` before it classifies the end.
- */
+/** Returns a request on its way: the response's events, and what settles once the config is done with the response's end. */
 export interface LoopResponse {
   readonly events: AssistantMessageEventStream;
   readonly settled: Promise<void>;
@@ -71,27 +61,19 @@ export type ToolProgress = Json;
 /** Returns how a tool call ended in the loop: its outcome, or parked until something wakes it. */
 export type ToolResult = ToolOutcome | { readonly kind: "parked" };
 
-/** Returns one input a boundary landed: its message and how it was delivered; only a non-attach one asks for another request. */
+/** Returns one input a boundary landed; only a non-attach one asks for another request. */
 export interface LoopInput {
   readonly message: MessageId;
   readonly delivery: Delivery;
 }
 
-/** Returns a turn's decision from `finishTurn`: end the loop after this turn's calls, ask for another request, or leave it to the calls and the boundary. */
-export type TurnDecision = "end" | "continue" | undefined;
-
 /** Returns what the loop runs on, as plain functions. A function that throws rejects the stream. */
-export interface LoopConfig {
-  /** The attempt the first request is. */
+export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
-  /** How a retryable failure is retried: at most `maxRetries` per request, `retryDelayMs` apart. */
   readonly retry: RetryPolicy;
-  /** Builds the next provider request: context, compaction (always when `overflow` is set), `before_request`. */
-  prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared>;
-  /** Sends a prepared request and returns it on its way. */
-  stream(prepared: PreparedRequest, signal: AbortSignal): Promise<LoopResponse>;
+  prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared<P>>;
+  stream(prepared: P, signal: AbortSignal): Promise<LoopResponse>;
   readonly tools: {
-    /** Runs one call until it settles or parks. */
     execute(
       call: ModelToolCall,
       signal: AbortSignal,
@@ -104,27 +86,23 @@ export interface LoopConfig {
       readonly message: AssistantMessage;
       readonly calls: readonly ModelToolCall[];
       readonly usage: Usage;
-      readonly prepared: PreparedRequest;
+      readonly prepared: P;
     },
     signal: AbortSignal,
-  ): Promise<TurnDecision>;
+  ): Promise<void>;
   /** Lands the inputs queued for this point and returns them. */
   boundary(signal: AbortSignal): Promise<readonly LoopInput[]>;
 }
 
-/** Returns how a loop ended: `done` and `parked` with the usage of the response that ended it, `stopped` when its signal aborted, `failed` with why. */
+/** Returns how a loop ended. */
 export type LoopEnd =
   | { readonly reason: "done"; readonly usage: Usage }
   | { readonly reason: "parked"; readonly usage: Usage }
   | { readonly reason: "stopped" }
   | { readonly reason: "failed"; readonly failure: Failure };
 
-/**
- * Returns one thing the loop did. `message_start` opens a content block, `message_update` carries
- * every other provider event of the response but its end, and `message_end` comes for a done
- * response only; a failed one ends in `turn_retry` or `loop_end`.
- */
-export type LoopEvent =
+/** Returns one thing the loop did; `message_end` comes for a done response only, a failed one ends in `turn_retry` or `loop_end`. */
+export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
   | { readonly type: "turn_start"; readonly attempt: number }
   | {
       readonly type: "message_start";
@@ -139,6 +117,7 @@ export type LoopEvent =
       readonly until: number;
       readonly failure: Failure;
       readonly usage: Usage;
+      readonly prepared: P;
     }
   | { readonly type: "tool_start"; readonly call: ModelToolCall }
   | { readonly type: "tool_update"; readonly call: ModelToolCall; readonly progress: ToolProgress }
@@ -152,7 +131,9 @@ export type LoopEvent =
   | { readonly type: "loop_end"; readonly end: LoopEnd };
 
 /** Returns the loop's events, each taken before the loop goes on, and how it ended once they are consumed. */
-export interface LoopStream extends AsyncIterable<LoopEvent> {
+export interface LoopStream<P extends PreparedRequest = PreparedRequest> extends AsyncIterable<
+  LoopEvent<P>
+> {
   result(): Promise<LoopEnd>;
 }
 
@@ -171,19 +152,25 @@ type Outcome =
       readonly retryable: boolean;
       readonly usage: Usage;
     }
+  | { readonly kind: "unfinished" }
   | { readonly kind: "stopped" };
 
 const STOPPED: LoopEnd = { reason: "stopped" };
+
+const UNFINISHED: Failure = {
+  class: "provider",
+  message: "The response ended without a result.",
+};
 
 /**
  * Runs the agent loop: one provider request per turn until a response asks for nothing more, a
  * call parks, the signal aborts or a request fails. A retryable failure is retried after
  * `turn_retry` and the policy's delay; a context overflow is retried once with `overflow` set.
- * A done response goes to `finishTurn`, then its calls run one at a time until each settles or
- * parks. Without calls the loop goes on only when the boundary landed an input that is not an
- * attach, or `finishTurn` said `continue`. Events are pulled: the loop waits for each to be taken.
  */
-export function agentLoop(config: LoopConfig, signal: AbortSignal): LoopStream {
+export function agentLoop<P extends PreparedRequest>(
+  config: LoopConfig<P>,
+  signal: AbortSignal,
+): LoopStream<P> {
   const events = run(config, signal);
   const ended = Promise.withResolvers<LoopEnd>();
   ended.promise.catch(() => undefined);
@@ -202,12 +189,20 @@ export function agentLoop(config: LoopConfig, signal: AbortSignal): LoopStream {
   };
 }
 
-/** Runs the turns, checking the signal only before preparing a request and before each call; every other step sees the abort through what it awaits (§45g). */
-async function* run(config: LoopConfig, signal: AbortSignal): AsyncGenerator<LoopEvent, LoopEnd> {
+/** Runs the turns, checking the signal only before preparing a request and before each call (§45g). */
+async function* run<P extends PreparedRequest>(
+  config: LoopConfig<P>,
+  signal: AbortSignal,
+): AsyncGenerator<LoopEvent<P>, LoopEnd> {
   let attempt = config.attempt;
   let retries = 0;
   let overflowed = false;
-  let overflow: { readonly failure: Failure; readonly usage: Usage } | null = null;
+
+  let overflow: {
+    readonly failure: Failure;
+    readonly usage: Usage;
+    readonly prepared: P;
+  } | null = null;
 
   for (;;) {
     const next = overflow === null ? attempt : attempt + 1;
@@ -234,19 +229,16 @@ async function* run(config: LoopConfig, signal: AbortSignal): AsyncGenerator<Loo
     switch (outcome.kind) {
       case "stopped":
         return yield* end(STOPPED);
+      case "unfinished":
+        return yield* end({ reason: "failed", failure: UNFINISHED });
       case "failed": {
         if (!outcome.retryable || retries >= config.retry.maxRetries)
           return yield* end({ reason: "failed", failure: outcome.failure });
         retries += 1;
         attempt += 1;
         const until = Date.now() + retryDelayMs(config.retry, retries);
-        yield {
-          type: "turn_retry",
-          attempt,
-          until,
-          failure: outcome.failure,
-          usage: outcome.usage,
-        };
+        const { failure, usage } = outcome;
+        yield { type: "turn_retry", attempt, until, failure, usage, prepared };
 
         const slept = await abortableSleep(until - Date.now(), signal).then(
           () => true,
@@ -260,7 +252,7 @@ async function* run(config: LoopConfig, signal: AbortSignal): AsyncGenerator<Loo
       case "overflow":
         if (overflowed) return yield* end({ reason: "failed", failure: outcome.failure });
         overflowed = true;
-        overflow = { failure: outcome.failure, usage: outcome.usage };
+        overflow = { failure: outcome.failure, usage: outcome.usage, prepared };
         continue;
       case "done":
         break;
@@ -270,7 +262,7 @@ async function* run(config: LoopConfig, signal: AbortSignal): AsyncGenerator<Loo
     overflowed = false;
     const { message, calls, usage } = outcome;
     yield { type: "message_end", message, usage };
-    const decision = await config.finishTurn({ message, calls, usage, prepared }, signal);
+    await config.finishTurn({ message, calls, usage, prepared }, signal);
     let parked = false;
 
     for (const call of calls) {
@@ -285,25 +277,19 @@ async function* run(config: LoopConfig, signal: AbortSignal): AsyncGenerator<Loo
     yield { type: "turn_end", message, calls, usage };
 
     if (parked) return yield* end({ reason: "parked", usage });
-
-    if (decision === "end") return yield* end({ reason: "done", usage });
     const landed = await config.boundary(signal);
 
-    if (
-      calls.length === 0 &&
-      decision !== "continue" &&
-      landed.every((input) => input.delivery === "attach")
-    )
+    if (calls.length === 0 && landed.every((input) => input.delivery === "attach"))
       return yield* end({ reason: "done", usage });
   }
 }
 
-/** Streams one prepared request: an event per block start and per update, and how the response ended, classified; an abort is the stream's own `aborted` end. */
-async function* respond(
-  config: LoopConfig,
-  prepared: PreparedRequest,
+/** Streams one prepared request and classifies how the response ended; an abort is the stream's own `aborted` end. */
+async function* respond<P extends PreparedRequest>(
+  config: LoopConfig<P>,
+  prepared: P,
   signal: AbortSignal,
-): AsyncGenerator<LoopEvent, Outcome> {
+): AsyncGenerator<LoopEvent<P>, Outcome> {
   const response = await config.stream(prepared, signal);
   let final: AssistantMessage | null = null;
 
@@ -331,7 +317,7 @@ async function* respond(
     }
   }
 
-  if (final === null) return { kind: "stopped" };
+  if (final === null) return { kind: "unfinished" };
   await response.settled;
 
   if (final.stopReason === "aborted") return { kind: "stopped" };
@@ -358,15 +344,12 @@ async function* respond(
   };
 }
 
-/**
- * Runs one call, yielding its progress as it comes, and returns how it ended. The calls of a length
- * stop run like any others: core never failed a truncated response's calls as a batch, as pi does.
- */
-async function* execute(
-  config: LoopConfig,
+/** Runs one call, yielding its progress as it comes; the calls of a length stop run like any others. */
+async function* execute<P extends PreparedRequest>(
+  config: LoopConfig<P>,
   call: ModelToolCall,
   signal: AbortSignal,
-): AsyncGenerator<LoopEvent, ToolResult> {
+): AsyncGenerator<LoopEvent<P>, ToolResult> {
   const progress: ToolProgress[] = [];
   let wake = (): void => {};
 
@@ -389,8 +372,9 @@ async function* execute(
   }
 }
 
-/** Yields `loop_end` and returns the end. */
-async function* end(loopEnd: LoopEnd): AsyncGenerator<LoopEvent, LoopEnd> {
+async function* end<P extends PreparedRequest>(
+  loopEnd: LoopEnd,
+): AsyncGenerator<LoopEvent<P>, LoopEnd> {
   yield { type: "loop_end", end: loopEnd };
 
   return loopEnd;

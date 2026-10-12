@@ -5,13 +5,13 @@ import type {
   ModelCatalogView,
   ModelInfo,
   ModelRef,
-  SessionId,
 } from "@nyte-ai/schema";
 import type { Api, Model } from "@nyte-ai/schema/model";
 import { bumpGeneration } from "./catalog.ts";
 import type { Login, ModelsApi } from "./connection.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { ModelContextPolicy } from "./plugin.ts";
 import { decodeKvValue } from "./records.ts";
 import { kvRef } from "./refs.ts";
@@ -134,23 +134,22 @@ export async function modelCatalog(kernel: Kernel, models: Models): Promise<Mode
   return { generation, default: preferred, providers };
 }
 
-/** Returns one catalog model as `ModelInfo`, or null when `models.getModel(ref.provider, ref.id)` has none; a fast sibling (`<id>-fast`, a `variant` of mode `fast`) resolves to its own row. `name`, `reasoning`, `input` and `cost` (the base rates; tiers are priced at settlement) come from the model; `maxOutput` is `maxTokens`; `thinking` is `getSupportedThinkingLevels(model)` from `@nyte-ai/ai/models` (§38i; `["off"]` when the model does not reason, else every level its `thinkingLevelMap` does not mark null, `xhigh` and `max` only when mapped), `"off"` first; `fast` is the sibling `models.getModels(provider)` lists with `variant: { mode: "fast", base: id }`, else null; `contextWindow` and `compactAt` are the model's window and 80 % of it unless a `ModelContextPolicy` names the ref: the session's `modelContext` registry when `session` is given, else the host's static ones as `modelCatalog` folds them. */
+/** Returns one catalog model as `ModelInfo`, or null when `models.getModel(ref.provider, ref.id)` has none; a fast sibling (`<id>-fast`, a `variant` of mode `fast`) resolves to its own row. `name`, `reasoning`, `input` and `cost` (the base rates; tiers are priced at settlement) come from the model; `maxOutput` is `maxTokens`; `thinking` is `getSupportedThinkingLevels(model)` from `@nyte-ai/ai/models` (§38i; `["off"]` when the model does not reason, else every level its `thinkingLevelMap` does not mark null, `xhigh` and `max` only when mapped), `"off"` first; `fast` is the sibling `models.getModels(provider)` lists with `variant: { mode: "fast", base: id }`, else null; `contextWindow` and `compactAt` are the model's window and 80 % of it unless a `ModelContextPolicy` names the ref: the `modelContext` registry of `runtime` when given, else the host's static ones as `modelCatalog` folds them. */
 export async function modelInfo(
   kernel: Kernel,
   models: Models,
   ref: ModelRef,
-  session?: SessionId,
+  runtime?: PluginRuntime,
 ): Promise<ModelInfo | null> {
   const model = models.getModel(ref.provider, ref.id);
 
   if (model === undefined) return null;
 
   const policy =
-    session === undefined
+    runtime === undefined
       ? staticPolicies(kernel).get(keyOf(ref))
-      : kernel
-          .pluginsFor(session)
-          .registries.modelContext.list()
+      : runtime.registries.modelContext
+          .list()
           .findLast((entry) => keyOf(entry.model) === keyOf(ref));
 
   return projectModel(models, model, policy);

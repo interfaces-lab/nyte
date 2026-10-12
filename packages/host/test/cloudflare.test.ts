@@ -25,8 +25,6 @@ function fakeHost(input: {
       waits: {
         tick: async (now: number) => {
           ticks.push(now);
-
-          return false;
         },
       },
     },

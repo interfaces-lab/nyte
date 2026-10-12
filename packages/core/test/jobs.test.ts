@@ -1,11 +1,13 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, standard } from "@nyte-ai/schema";
 import type { CallId, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import {
   LOCAL,
   callRef,
   createHost,
   decodeCallRecord,
+  definePart,
   jobHandle,
   loadWaits,
   memoryStore,
@@ -16,6 +18,13 @@ import type { ConnectionContext, Durable, Kernel } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
 import { main, until } from "./harness.ts";
+
+const question = definePart({
+  kind: "test/question",
+  state: standard(Type.Object({})),
+  actions: { answer: { input: standard(Type.Object({ choice: Type.String() })) } },
+  fallback: (_state, { id }) => `Ask ${id}`,
+});
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -321,7 +330,7 @@ describe("jobs", () => {
     expect(jobHandle(second, caller, job.id).key).toBeNull();
   });
 
-  it("keeps a job end the store refuses for repair: no unhandled rejection, the call still waiting", async () => {
+  it("retries a job end the store refused, so the parked call takes the exit without a restart (B F4)", async () => {
     const inner = await memoryStore().open();
     let refusing = false;
 
@@ -365,9 +374,52 @@ describe("jobs", () => {
     process.off("unhandledRejection", unhandled);
 
     expect(unhandled).not.toHaveBeenCalled();
+    await until(async () =>
+      (await readCall(kernel, session.id, call))?.waiting === null ? true : undefined,
+    );
     expect(await readCall(kernel, session.id, call)).toMatchObject({
-      waiting: { kind: "job", job: job.id },
-      waits: [],
+      waits: [{ kind: "job", job: job.id, end: { kind: "exited", code: 2 } }],
+    });
+  });
+
+  it("offers a cold host's answer only to its part: a wait on any of a running job and the part takes the answer (B F2)", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const session = await host.sessions.create({ workspace });
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
+    const call: CallId = asId("c1");
+
+    expect(
+      await parkOn(
+        kernel,
+        session.id,
+        call,
+        async (durable) =>
+          (
+            await durable.wait({
+              kind: "any",
+              targets: [
+                { kind: "job", job: job.id },
+                { kind: "part", part: part.id },
+              ],
+            })
+          ).kind,
+      ),
+    ).toEqual({ kind: "parked" });
+
+    const cold = createHost(kernelOver(kernel.store, provider), {
+      credential: { kind: "token", token: "x" },
+    });
+
+    await cold.session(session.id).part(part.id).act("answer", { choice: "yes" });
+
+    expect(await readCall(kernel, session.id, call)).toMatchObject({
+      waiting: null,
+      waits: [
+        { kind: "part", part: part.id, answer: { action: "answer", input: { choice: "yes" } } },
+      ],
     });
   });
 

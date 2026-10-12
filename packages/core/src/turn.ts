@@ -1,10 +1,9 @@
 import type { Models } from "@nyte-ai/ai";
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
+  DurableEvent,
   HeadName,
   Json,
-  ModelInfo,
-  ModelRequest,
   PartId,
   Placement,
   RefUpdate,
@@ -12,100 +11,69 @@ import type {
   RunId,
   RunView,
   SessionId,
-  Transcript,
   Usage,
 } from "@nyte-ai/schema";
-import type {
-  Api,
-  AssistantMessageEvent,
-  Failure,
-  JsonValue,
-  Model,
-  ProviderCheckpointMaterial,
-} from "@nyte-ai/schema/model";
+import type { AssistantMessageEvent, Failure } from "@nyte-ai/schema/model";
 import { agentLoop } from "./agent-loop.ts";
-import type { LoopConfig, LoopEvent, Prepared } from "./agent-loop.ts";
-import { compactIfNeeded } from "./compaction.ts";
-import { providerContext, requestBody } from "./context.ts";
+import type { LoopConfig, LoopEvent, Prepared, PreparedRequest } from "./agent-loop.ts";
+import { checkpointOf, compactIfNeeded } from "./compaction.ts";
 import { dev } from "./dev-log.ts";
+import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
-import { check } from "./json-schema.ts";
 import type { Kernel, LandedInput, TurnDriver } from "./kernel.ts";
 import { modelInfo, withLimits } from "./models.ts";
 import { createPart } from "./part-handle.ts";
-import { compaction, text, thinking } from "./parts.ts";
+import { text, thinking } from "./parts.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import { CORE_CONTEXT, LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
-import type { CommitRecord, RunRecord } from "./records.ts";
-import { headRef, partRef, runRef } from "./refs.ts";
-import { RETRY_POLICY, addUsage, requestEvent, usageOf } from "./request.ts";
-import { publishPatch } from "./runs.ts";
+import type { RunRecord } from "./records.ts";
+import { partRef, runRef } from "./refs.ts";
 import {
-  START,
-  STALE,
-  attempt,
-  commit,
-  expectOf,
-  isJsonObject,
-  load,
-  objectOf,
-  pathOf,
-  put,
-  putCommit,
-  readTip,
-  tipOf,
-  withFold,
-} from "./session-state.ts";
+  RETRY_POLICY,
+  ZERO_USAGE,
+  charge,
+  providerContext,
+  requestEvent,
+  usageOf,
+} from "./request.ts";
+import { publishPatch } from "./runs.ts";
+import { STALE, attempt, commit, expectOf, load, put, readTip, withFold } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
+import { failParts, failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
-/**
- * Returns one merged thought's share of a thinking part's `signature` (§38f): its length in the
- * part's markdown, so a replay splits the thoughts back, and the provider's `thinkingSignature` and
- * `redacted` for it.
- */
+/** Returns one merged thought's share of a thinking part's `signature` (§38f). */
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;
   readonly redacted: boolean;
 };
 
-/**
- * Returns one text or thinking part a request has open: its id, kind, the markdown streamed into it
- * so far, its provider continuity data, and for thinking how many adjacent thoughts it holds. It
- * stays live until the request's stream is done. Settled, a text part's `signature` is
- * `textSignature` and a thinking part's is `thoughts`, or null when no thought carried a signature
- * and none was redacted.
- */
+/** Returns one text or thinking part a request has open, live until the request's stream is done. */
 interface OpenPart {
   readonly part: PartId;
   readonly kind: "text" | "thinking";
   markdown: string;
   merged: number;
-  /** Text: the content's `textSignature` from its `text_end`, else null. */
   textSignature: string | null;
-  /** Thinking: one entry per merged thought, in order. */
   readonly thoughts: ThoughtSignature[];
 }
 
-/** Returns what one attempt of a run holds in memory while its requests stream; a re-drive rebuilds it from the run record and the fold. */
+/** Returns what one attempt of a run holds in memory while its requests stream. */
 interface AttemptState {
   readonly run: RunView;
-  /** The run record's `view.attempt`, which every `run retrying` bumps (§38t). */
   readonly attempt: number;
-  /** The index the attempt's next text or thinking part takes in its id `${run}:${attempt}:${index}`, counted from 0 across the attempt's requests. */
+  /** The index of the attempt's next text or thinking part, `${run}:${attempt}:${index}`. */
   index: number;
-  /** Every text and thinking part the current request opened, in opening order: live until its stream is done, then settled together; failed together when the request fails, overflows or is stopped. */
   readonly opened: OpenPart[];
-  /** The current request's text and thinking parts still streaming, by the provider's content index, until their `*_end`. */
+  /** The parts still streaming, by the provider's content index. */
   readonly parts: Map<number, OpenPart>;
-  /** Where each thought still streaming starts in its thinking part's markdown, by content index. */
+  /** Where each thought still streaming starts in its part's markdown, by content index. */
   readonly starts: Map<number, number>;
-  /** The thinking part the next thought merges into; null once text or a tool call streamed after it. */
   merging: OpenPart | null;
 }
 
-/** Returns one turn's fixed inputs. */
 interface Turn {
   readonly kernel: Kernel;
   readonly models: Models;
@@ -115,16 +83,26 @@ interface Turn {
   readonly where: HookContext;
 }
 
+/** Returns a prepared request with the runtime it was built on, which observes its `after_request`. */
+interface TurnRequest extends PreparedRequest {
+  readonly runtime: PluginRuntime;
+}
+
+/** Returns a run record change: the record, its events on the run ref, and updates landing in the same set. */
+interface RunChange {
+  readonly record: RunRecord;
+  readonly events: readonly DurableEvent[];
+  readonly updates?: readonly RefUpdate[];
+}
+
 const ANSWER: Placement = { kind: "transcript", role: "answer" };
 
 const STEP: Placement = { kind: "transcript", role: "step" };
 
-/** One merged thought from the next in a thinking part's markdown: a blank line. */
 const THOUGHTS = "\n\n";
 
 const STOPPED: RunEnd = { kind: "stopped" };
 
-/** The connection a run's tool calls act from: `LOCAL` with participant authority. */
 const CALLER: ConnectionContext = {
   principal: LOCAL,
   authority: PARTICIPANT_AUTHORITY,
@@ -139,24 +117,10 @@ const ORPHANED: Failure = {
   message: "The host stopped while this response streamed.",
 };
 
-const ZERO: Usage = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  reasoning: null,
-  total: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
-
 /**
- * Returns the turn driver `advance` runs a run's turn with: what `kernel.turn` holds, the adapter
- * between the kernel and `agentLoop` (§45d). It resumes the run's attempt, builds the loop's config
- * from the kernel, and lands each loop event as today's writes. `done` and `parked` end
- * `completed { usage }`, the run record's total; a parked call leaves the run live for `advance`
- * (§34d). `stopped` fails the parts still open with `aborted` when the run is stopping; a turn
- * aborted by the host closing leaves them and the run live for the next open (§38y).
- * `run_started` and `run_ended` are observed by `startRun` and `endRun`, not here (§38q, n).
+ * Returns the turn driver `advance` runs a run's turn with, the adapter between the kernel and
+ * `agentLoop` (§45d). `done` ends `completed` with the run record's usage, `parked` leaves the run
+ * live for `advance` (§34d); `stopped` fails the open parts with `aborted` when the run is stopping.
  */
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   return {
@@ -176,111 +140,110 @@ export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   };
 }
 
-/**
- * Runs one turn: resumes the attempt (`resumed`), runs `agentLoop` from the run record's attempt
- * with `RETRY_POLICY` over the kernel's config, and lands its events.
- */
+/** Runs one turn: resumes the attempt, runs `agentLoop` from it over the kernel's config, and lands its events. */
 async function turn(
   context: Turn,
   given: RunView,
   boundary: () => Promise<readonly LandedInput[]>,
-): Promise<RunEnd> {
-  const { kernel, models, session, head } = context;
+): Promise<RunEnd | { readonly kind: "parked" }> {
+  const { kernel, models, session, head, signal } = context;
   const run = given.id;
   const configuration = given.configuration;
-  const { signal } = context;
-  const resumedState = await resumed(context, given);
+  let state = await resumed(context, given);
+  let charged = { total: ZERO_USAGE, requests: 0 };
 
-  if (resumedState === null) return STOPPED;
-  let state = resumedState;
-  let charged = { total: ZERO, requests: 0 };
-
-  const body = () => requestBody(kernel, models, session, head, state.run, configuration);
-
-  const compact = (transcript: Transcript, at: ModelInfo, reason: "threshold" | "overflow") =>
-    compactIfNeeded(kernel, models, {
-      session,
-      head,
-      run: state.run,
-      configuration,
-      transcript,
-      info: at,
-      reason,
-      signal,
-    });
-
-  const config: LoopConfig = {
+  const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
-    /**
-     * Builds one request in the baseline's hook order (§38s): the configuration's model looked up,
-     * with `overflow` set an `overflow` compaction first (nothing to compact fails with the
-     * overflow), `requestBody`, a `threshold` compaction (rebuilding the body, never twice in one
-     * pass), `before_request` with the attempt on the session's current runtime, the request model
-     * looked up, the head's checkpoint and `providerContext`. A model the catalog lacks fails the
-     * run `runner`.
-     */
+    /** Builds one request on the session's runtime once it is ready, in the baseline's hook order (§38s), any failure failing the request rather than the loop. */
     async prepareRequest(asked) {
-      const configured = await modelInfo(kernel, models, configuration.model, session);
+      try {
+        const runtime = kernel.pluginsFor(session);
+        await runtime.ready;
+        const configured = await modelInfo(kernel, models, configuration.model, runtime);
 
-      if (configured === null)
-        return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
+        if (configured === null)
+          return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
+        const input = { session, head, run: state.run, configuration };
+        const body = () => requestBody(kernel, models, runtime, input);
 
-      if (asked.overflow !== null) {
-        const recovered = await compact((await body()).transcript, configured, "overflow");
+        const compact = (
+          built: Awaited<ReturnType<typeof body>>,
+          reason: "threshold" | "overflow",
+        ) =>
+          compactIfNeeded(kernel, models, runtime, {
+            ...input,
+            transcript: built.transcript,
+            info: configured,
+            reason,
+            signal,
+          });
 
-        if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
-      }
+        let built = await body();
 
-      let built = await body();
+        if (asked.overflow !== null) {
+          const recovered = await compact(built, "overflow");
 
-      if ((await compact(built.transcript, configured, "threshold")).kind === "compacted")
-        built = await body();
+          if (recovered.kind === "failed") return recovered;
 
-      const request: ModelRequest = await kernel.pluginsFor(session).hooks.transform(
-        "before_request",
-        {
-          model: configuration.model,
-          thinking: configuration.thinking,
-          step: "assistant",
-          attempt: asked.attempt,
-          options: { sampling: {}, headers: {} },
-        },
-        context.where,
-      );
+          if (recovered.kind === "skipped") return { kind: "failed", failure: asked.overflow };
+          built = await body();
+        }
 
-      const model = models.getModel(request.model.provider, request.model.id);
-      const found = await modelInfo(kernel, models, request.model, session);
+        if (tokenEstimate(built.transcript) > configured.compactAt) {
+          const compacted = await compact(built, "threshold");
 
-      if (model === undefined || found === null)
-        return failedRequest(
-          `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
+          if (compacted.kind === "failed") return compacted;
+
+          if (compacted.kind === "compacted") built = await body();
+        }
+
+        const request = await runtime.hooks.transform(
+          "before_request",
+          {
+            model: configuration.model,
+            thinking: configuration.thinking,
+            step: "assistant",
+            attempt: asked.attempt,
+            options: { sampling: {}, headers: {} },
+          },
+          context.where,
         );
-      const checkpoint = await checkpointOf(context, model);
 
-      return {
-        kind: "request",
-        request,
-        model,
-        info: found,
-        context: providerContext(built.transcript, built.source, checkpoint),
-        at: Date.now(),
-        usage: (message) => usageOf(message, found),
-      };
+        const model = models.getModel(request.model.provider, request.model.id);
+        const info = await modelInfo(kernel, models, request.model, runtime);
+
+        if (model === undefined || info === null)
+          return failedRequest(
+            `No model ${request.model.provider}/${request.model.id} is in the catalog.`,
+          );
+
+        return {
+          kind: "request",
+          request,
+          model,
+          info,
+          context: providerContext(
+            built.transcript,
+            built.source,
+            await checkpointOf(kernel, session, head, model),
+          ),
+          at: Date.now(),
+          usage: (message) => usageOf(message, info),
+          runtime,
+        };
+      } catch (error) {
+        return failedRequest(error instanceof Error ? error.message : String(error));
+      }
     },
-    /**
-     * Sets `run phase responding` (clearing `retrying`) and returns `models.streamSimple` with the
-     * request's thinking as `reasoning` (none for `"off"`), sampling, headers and output limit.
-     * It settles once the response's result did and `withLimits` moved the catalog generation when
-     * the response changed the provider's account limits.
-     */
+    /** Sets `run phase responding` and sends the request; settled once `withLimits` saw its result. */
     async stream(prepared) {
-      await changeRun(context, run, (record) =>
+      await changeRun(context, run, async (record) =>
         record.phase === "responding" && record.retrying === null
           ? null
           : {
               record: { ...record, phase: "responding", retrying: null },
-              event: { head, kind: "run", run, change: "phase", phase: "responding" },
+              events: [{ head, kind: "run", run, change: "phase", phase: "responding" }],
             },
       );
 
@@ -303,11 +266,7 @@ async function turn(
       };
     },
     tools: {
-      /**
-       * Runs the call through the durable `executeCall` as `LOCAL` with participant authority, its
-       * id (and tool part id) `${run}:${requests}:${providerCallId}` with `requests` the count the
-       * response's own `request` event wrote (§38w); settled or parked.
-       */
+      /** Runs the call through the durable `executeCall`, its id `${run}:${requests}:${providerCallId}` (§38w). */
       execute: (call, called) =>
         executeCall(kernel, {
           session,
@@ -320,46 +279,30 @@ async function turn(
           signal: called,
         }),
     },
-    /**
-     * Observes `after_request` (step `assistant`, `durationMs` from the request's preparation) on the
-     * session's current runtime, publishes the `request` event on the run ref in
-     * the write that adds the usage to the run record and bumps its `requests` (§38v, w), and sets
-     * `run phase executing` when the response has calls. It never ends the loop: core has no
-     * after-turn decision.
-     */
+    /** Observes `after_request` on the request's runtime, charges the response with its `request` event (§38v, w), and sets `run phase executing` when it has calls. */
     async finishTurn({ calls, usage, prepared }) {
-      const { request, info } = prepared;
+      observe(context, prepared, usage);
 
-      void kernel.pluginsFor(session).hooks.observe(
-        "after_request",
-        {
-          model: request.model,
-          thinking: request.thinking,
-          usage,
-          durationMs: Date.now() - prepared.at,
-          step: "assistant",
-        },
-        context.where,
-      );
+      await changeRun(context, run, async (record) => {
+        const next = charge(record, usage, true);
+        const executing = calls.length > 0 && record.phase !== "executing";
+        charged = { total: next.usage ?? usage, requests: next.requests };
 
-      charged = await charge(context, run, usage, requestEvent(head, "assistant", usage, info));
-
-      if (calls.length > 0)
-        await changeRun(context, run, (record) =>
-          record.phase === "executing"
-            ? null
-            : {
-                record: { ...record, phase: "executing" },
-                event: { head, kind: "run", run, change: "phase", phase: "executing" },
-              },
-        );
-
-      return undefined;
+        return {
+          record: executing ? { ...next, phase: "executing" } : next,
+          events: [
+            requestEvent(head, "assistant", usage, prepared.info),
+            ...(executing
+              ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
+              : []),
+          ],
+        };
+      });
     },
     boundary: () => boundary(),
   };
 
-  const land = async (event: LoopEvent): Promise<void> => {
+  const land = async (event: LoopEvent<TurnRequest>): Promise<void> => {
     switch (event.type) {
       case "message_start":
         return opened(context, state, event.kind, event.index);
@@ -368,7 +311,7 @@ async function turn(
       case "message_end":
         return settled(context, state);
       case "turn_retry":
-        state = await retry(context, state, event.failure, event.until, event.usage);
+        state = await retry(context, state, event.failure, event.until, event);
 
         return;
       default:
@@ -387,8 +330,9 @@ async function turn(
 
   switch (end.reason) {
     case "done":
-    case "parked":
       return { kind: "completed", usage: charged.total };
+    case "parked":
+      return { kind: "parked" };
     case "stopped":
       if (kernel.runs.isStopping(run)) await failOpen(context, state, ABORTED);
 
@@ -400,12 +344,7 @@ async function turn(
   }
 }
 
-/**
- * Lands `message_start`. Text opens a `text` part (placement transcript `answer`, id
- * `${run}:${attempt}:${index}`, `signature` null). Thinking opens a `thinking` part (transcript
- * `step`, `merged` 1) unless it follows a thought, which it merges into: `merged` + 1, the first id
- * kept, the markdown joined by a blank line. A tool call's start ends the merge.
- */
+/** Lands `message_start`: text opens a `text` part, a thought opens a `thinking` part or merges into the one before it, a tool call ends the merge. */
 async function opened(
   context: Turn,
   state: AttemptState,
@@ -442,11 +381,7 @@ async function opened(
   state.starts.set(index, merging.markdown.length);
 }
 
-/**
- * Lands `message_update`: each delta is a `publishPatch` `append` on its part, and a block's end
- * sets the part's final markdown and its signature (a text's `textSignature`, a thought's
- * `thinkingSignature` and `redacted`, §38f).
- */
+/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature (§38f). */
 async function updated(
   context: Turn,
   state: AttemptState,
@@ -500,10 +435,7 @@ async function updated(
   }
 }
 
-/**
- * Lands `message_end`: closes the thoughts still streaming, settles every part the response opened
- * with its final markdown and signature in one set (`settle`), and clears the request's parts.
- */
+/** Lands `message_end`: closes the thoughts still streaming and settles every part the response opened in one set. */
 async function settled(context: Turn, state: AttemptState): Promise<void> {
   for (const [index, pending] of state.parts) {
     const start = state.starts.get(index);
@@ -523,7 +455,6 @@ async function settled(context: Turn, state: AttemptState): Promise<void> {
   state.merging = null;
 }
 
-/** Appends a delta to an open part's markdown and publishes it as a patch. */
 function append(context: Turn, state: AttemptState, target: OpenPart, delta: string): void {
   target.markdown += delta;
   publishPatch(context.kernel, context.session, state.run.id, {
@@ -533,27 +464,30 @@ function append(context: Turn, state: AttemptState, target: OpenPart, delta: str
   });
 }
 
-/** Returns a request that fails the run itself. */
-function failedRequest(message: string): Prepared {
+/** Observes `after_request` for one response on the runtime its request was built on. */
+function observe(context: Turn, prepared: TurnRequest, usage: Usage): void {
+  const { request } = prepared;
+
+  void prepared.runtime.hooks.observe(
+    "after_request",
+    {
+      model: request.model,
+      thinking: request.thinking,
+      usage,
+      durationMs: Date.now() - prepared.at,
+      step: "assistant",
+    },
+    context.where,
+  );
+}
+
+function failedRequest(message: string): Prepared<TurnRequest> {
   return { kind: "failed", failure: { class: "runner", message } };
 }
 
-/**
- * Returns the attempt a drive resumes: the run record's, or the next one when the run still has
- * live text or thinking parts of its own (the host died mid-stream), which it fails in the same set
- * as `run retrying` with `until` now. The next part index counts the parts the attempt already
- * made. Null once the run is gone.
- */
-async function resumed(context: Turn, run: RunView): Promise<AttemptState | null> {
+/** Returns the attempt a drive resumes: the run's, or the next one when the run still has live text or thinking parts (the host died mid-stream), failed with `run retrying`. */
+async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
   const { kernel, session } = context;
-
-  const found = await load(
-    kernel,
-    await kernel.store.refs.get(runRef(session, run.id)),
-    decodeRunRecord,
-  );
-
-  if (found === null) return null;
 
   const orphans = await withFold(kernel, session, (state) =>
     [...state.parts.values()].flatMap((part) =>
@@ -565,7 +499,7 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState | null
     ),
   );
 
-  const current = fresh(found.record.view, 0);
+  const current = fresh(run, 0);
 
   const state =
     orphans.length === 0
@@ -620,11 +554,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/**
- * Settles the parts a request opened, once its stream is done, with their final markdown and
- * signatures in one set: for each in opening order its `part updated`, `part settled` and commit,
- * each commit the parent of the next. A part no longer live (its run's fence failed it) is left out.
- */
+/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed is left out. */
 async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
   const { kernel, session, head } = context;
 
@@ -654,264 +584,132 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
     for (const [index, { entry, found }] of live.entries()) {
       const name = partRef(session, entry.part);
 
-      const settled: Json =
+      const settledState: Json =
         entry.kind === "text"
           ? { markdown: entry.markdown, signature: entry.textSignature }
           : {
               markdown: entry.markdown,
               merged: entry.merged,
-              signature: thoughtsOf(entry.thoughts),
+              signature: entry.thoughts.some(
+                (thought) => thought.signature !== null || thought.redacted,
+              )
+                ? entry.thoughts.map((thought) => ({ ...thought }))
+                : null,
             };
 
-      const record: CommitRecord = { parent, at, run, body: { kind: "part", part: entry.part } };
-      const landed = await putCommit(kernel, record);
       const version = found.record.version + 1;
 
-      const target = await put(
-        kernel,
-        "part",
-        {
-          ...found.record,
-          state: settled,
-          version,
-          status: { kind: "settled", commit: landed, endedAt: at },
-        },
+      const landed = await settling(kernel, {
+        session,
+        head,
+        run,
+        parent,
+        expect: index === 0 ? expectOf(tip.ref) : undefined,
+        record: { ...found.record, state: settledState, version },
+        body: { kind: "part", part: entry.part },
         at,
-      );
+      });
 
       updates.push(
         {
           name,
-          target,
+          target: landed.target,
           expect: found.ref.revision,
           event: {
             head,
             kind: "part",
             part: entry.part,
             change: "updated",
-            state: settled,
+            state: settledState,
             version,
           },
         },
-        {
-          name,
-          target,
-          event: {
-            head,
-            kind: "part",
-            part: entry.part,
-            change: "settled",
-            commit: landed,
-            endedAt: at,
-          },
-        },
-        {
-          name: headRef(session, head),
-          target: objectOf(landed),
-          expect: index === 0 ? expectOf(tip.ref) : undefined,
-          event: { head, kind: "commit", id: landed, parent, run, body: record.body },
-        },
+        ...landed.updates,
       );
-      parent = landed;
+      parent = landed.landed;
     }
 
     return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
   });
 }
 
-/**
- * Lands `turn_retry` (and a resumed run's orphans): fails every part the attempt's current request
- * opened, and `extra`, and publishes `run retrying { attempt + 1, until, reason }` with the run
- * record's `retrying` set, its `view.attempt` bumped and the failed request's `charged` usage added
- * to its `usage` (§38t, v), in one set. Returns the next attempt's state.
- */
+/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge (§38t, v, w), none once the run is stopping. */
 async function retry(
   context: Turn,
   state: AttemptState,
   failure: Failure,
   until: number,
-  charged: Usage | null,
+  charged: { readonly usage: Usage; readonly prepared: TurnRequest } | null,
   extra: readonly PartId[] = [],
 ): Promise<AttemptState> {
-  const next = state.attempt + 1;
-  const reason = failure.message;
-  const failures = await failedParts(context, [...openParts(state), ...extra], failure);
-  let view = state.run;
-
-  await changeRun(
-    context,
-    state.run.id,
-    (record) => {
-      view = { ...record.view, attempt: next };
-
-      return {
-        record: {
-          ...record,
-          view,
-          retrying: { attempt: next, until, reason },
-          usage: charged === null ? record.usage : addUsage(record.usage ?? ZERO, charged),
-        },
-        event: {
-          head: context.head,
-          kind: "run",
-          run: state.run.id,
-          change: "retrying",
-          attempt: next,
-          until,
-          reason,
-        },
-      };
-    },
-    failures,
-  );
-
-  return fresh(view, 0);
-}
-
-/**
- * Lands `loop_end failed`, and `stopped` of a stopping run: fails every part the attempt's current
- * request left open with the failure (`aborted` for a stop; a part the fence already failed is left
- * out), in one set.
- */
-async function failOpen(context: Turn, state: AttemptState, failure: Failure): Promise<void> {
-  const updates = await failedParts(context, openParts(state), failure);
-
-  if (updates.length > 0) await commit(context.kernel, updates);
-}
-
-/** Returns the updates that fail live parts with `part failed`; a part no longer live is left out. */
-async function failedParts(
-  context: Turn,
-  parts: readonly PartId[],
-  failure: Failure,
-): Promise<readonly RefUpdate[]> {
   const { kernel, session, head } = context;
 
-  const updates = await Promise.all(
-    [...new Set(parts)].map(async (part): Promise<readonly RefUpdate[]> => {
-      const name = partRef(session, part);
-      const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+  if (charged !== null) observe(context, charged.prepared, charged.usage);
+  const next = state.attempt + 1;
+  const reason = failure.message;
+  const run = state.run.id;
+  let view = state.run;
 
-      if (found === null || found.record.status.kind !== "live") return [];
+  const wrote = await changeRun(context, run, async (record) => {
+    if (record.stopping) return null;
+    view = { ...record.view, attempt: next };
 
-      return [
-        {
-          name,
-          target: await put(kernel, "part", {
-            ...found.record,
-            status: { kind: "failed", run: found.record.run, failure },
-          }),
-          event: { head, kind: "part", part, change: "failed", failure },
-        },
-      ];
-    }),
-  );
+    return {
+      record: {
+        ...charge(record, charged?.usage ?? null, charged !== null),
+        view,
+        retrying: { attempt: next, until, reason },
+      },
+      events: [
+        { head, kind: "run", run, change: "retrying", attempt: next, until, reason },
+        ...(charged === null
+          ? []
+          : [requestEvent(head, "assistant", charged.usage, charged.prepared.info)]),
+      ],
+      updates: await failedParts(kernel, session, head, [...openParts(state), ...extra], failure),
+    };
+  });
 
-  return updates.flat();
+  return wrote ? fresh(view, 0) : state;
 }
 
-/** Writes the run record through `change` with its event (and `extra` updates) in one set, compare-and-set on the run ref; nothing when `change` returns null or the run is gone. */
+/** Lands `loop_end failed`, and `stopped` of a stopping run: fails the parts the request left open, in one set. */
+async function failOpen(context: Turn, state: AttemptState, failure: Failure): Promise<void> {
+  await failParts(context.kernel, context.session, context.head, openParts(state), failure);
+}
+
+/** Writes the run record through `change`, compare-and-set on the run ref; resolves whether it wrote. */
 async function changeRun(
   context: Turn,
   run: RunId,
-  change: (
-    record: RunRecord,
-  ) => { readonly record: RunRecord; readonly event: RefUpdate["event"] } | null,
-  extra: readonly RefUpdate[] = [],
-): Promise<void> {
+  change: (record: RunRecord) => Promise<RunChange | null>,
+): Promise<boolean> {
   const { kernel, session } = context;
 
-  await attempt(`Changing run ${run}`, async () => {
+  return attempt(`Changing run ${run}`, async () => {
     const found = await load(
       kernel,
       await kernel.store.refs.get(runRef(session, run)),
       decodeRunRecord,
     );
 
-    if (found === null) return undefined;
-    const next = change(found.record);
+    if (found === null) throw new SdkError("internal", `Run ${run} has no record.`);
+    const next = await change(found.record);
 
-    if (next === null) return undefined;
+    if (next === null) return false;
+    const target = await put(kernel, "run", next.record);
+    const [first, ...rest] = next.events;
 
     const outcome = await commit(kernel, [
-      ...extra,
-      {
-        name: found.ref.name,
-        target: await put(kernel, "run", next.record),
-        expect: found.ref.revision,
-        event: next.event,
-      },
+      ...(next.updates ?? []),
+      { name: found.ref.name, target, expect: found.ref.revision, event: first },
+      ...rest.map((event) => ({ name: found.ref.name, target, event })),
     ]);
 
-    return outcome.kind === "set" ? undefined : STALE;
+    return outcome.kind === "set" ? true : STALE;
   });
 }
 
-/**
- * Adds a settled request's usage to the run record's `usage` and bumps its `requests` in the same
- * write as its `request` event (§38v, w). Returns the run's total and the count that write set,
- * what the response's call ids are namespaced by; the usage alone and a count of 0 when the run is
- * gone.
- */
-async function charge(
-  context: Turn,
-  run: RunId,
-  usage: Usage,
-  event: RefUpdate["event"],
-): Promise<{ readonly total: Usage; readonly requests: number }> {
-  let charged = { total: usage, requests: 0 };
-
-  await changeRun(context, run, (record) => {
-    charged = { total: addUsage(record.usage ?? ZERO, usage), requests: record.requests + 1 };
-
-    return { record: { ...record, usage: charged.total, requests: charged.requests }, event };
-  });
-
-  return charged;
-}
-
-/** Returns the head's latest compaction material as the request's checkpoint when it was made by the request model's provider identity (§38e), else null. */
-async function checkpointOf(
-  context: Turn,
-  model: Model<Api>,
-): Promise<ProviderCheckpointMaterial | null> {
-  const { kernel, session, head } = context;
-
-  const latest = await withFold(kernel, session, (state) => {
-    const path = pathOf(state.commits, tipOf(state.heads.get(head)?.info.tip ?? START));
-
-    for (const id of [...path].reverse()) {
-      const body = state.commits.get(id)?.body;
-
-      if (body?.kind === "compaction") return state.parts.get(body.part)?.state ?? null;
-    }
-
-    return null;
-  });
-
-  if (latest === null) return null;
-  const checked = await check(compaction.state, latest);
-
-  if (checked.kind === "invalid" || checked.value.material === null) return null;
-  const material = checked.value.material;
-
-  if (
-    material.provider !== model.provider ||
-    material.api !== model.api ||
-    material.model !== (model.variant?.base ?? model.id)
-  )
-    return null;
-
-  return {
-    type: "provider",
-    provider: material.provider,
-    api: material.api,
-    model: material.model,
-    data: jsonValue(material.data),
-  };
-}
-
-/** Returns a fresh attempt's state for a run view, its next part index given. */
 function fresh(run: RunView, index: number): AttemptState {
   return {
     run,
@@ -924,29 +722,6 @@ function fresh(run: RunView, index: number): AttemptState {
   };
 }
 
-/** Returns every part the attempt's current request opened. */
 function openParts(state: AttemptState): readonly PartId[] {
   return state.opened.map((entry) => entry.part);
-}
-
-/** Returns a thinking part's `signature`: its thoughts, or null when none carried a signature and none was redacted. */
-function thoughtsOf(thoughts: readonly ThoughtSignature[]): Json {
-  return thoughts.some((entry) => entry.signature !== null || entry.redacted)
-    ? thoughts.map((entry) => ({ ...entry }))
-    : null;
-}
-
-/** Returns a JSON value as the provider's mutable JSON. */
-function jsonValue(value: Json): JsonValue {
-  if (isList(value)) return value.map(jsonValue);
-
-  if (isJsonObject(value))
-    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, jsonValue(inner)]));
-
-  return value;
-}
-
-/** Returns whether a JSON value is an array. */
-function isList(value: Json): value is readonly Json[] {
-  return Array.isArray(value);
 }

@@ -210,6 +210,7 @@ export const SessionEventType = durableEvent({
 /** The TypeBox schema of a `PatchEvent`. */
 export const PatchEventType = Type.Union([
   Type.Object({ ...PATCH, append: Type.String() }),
+  Type.Object({ ...PATCH, markdown: Type.String() }),
   Type.Object({ ...PATCH, progress: ToolProgressType }),
 ]);
 

@@ -11,12 +11,10 @@ import type {
   OutputFrame,
   PageId,
   PageInfo,
-  PatchEvent,
   PatchSet,
   PatchSetWire,
   PrincipalId,
   ReceiptId,
-  SessionEvent,
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/schema";
@@ -33,6 +31,7 @@ import {
 import type {
   BrowserApi,
   Connection,
+  FeedItem,
   FilesApi,
   GitApi,
   Job,
@@ -548,8 +547,8 @@ function seeing(
   principal: PrincipalId,
   session: SessionId,
   head: HeadName,
-  source: AsyncIterable<SessionEvent | PatchEvent>,
-): AsyncIterable<SessionEvent | PatchEvent> {
+  source: AsyncIterable<FeedItem>,
+): AsyncIterable<FeedItem> {
   return {
     [Symbol.asyncIterator]() {
       const iterator = source[Symbol.asyncIterator]();
@@ -589,7 +588,7 @@ function seeing(
             return next;
           }
 
-          const event = next.value;
+          const event = next.value.event;
 
           if (event.kind === "seen" && event.head === head && event.principal === principal)
             seen = event.commit;
@@ -617,42 +616,53 @@ function seeing(
   };
 }
 
-/** Yields the revision every head of the session holds first, then the session's events, each `commit` or `head` event followed by its head's revision: `kernel.revisions`, else the head ref's, else the empty revision (§40s). */
+/** Yields each head's ref as a pair first, then the session's events, each `commit` or `head` event followed at once by the pair its feed item carries, so the client applies tip and revision together (§40s, §54a). */
 function revisions(
   kernel: Kernel,
   session: SessionId,
   heads: readonly HeadName[],
-  source: AsyncIterable<SessionEvent | PatchEvent>,
+  source: AsyncIterable<FeedItem>,
 ): AsyncIterable<OperationOutput<"head.watch">> {
   return {
     [Symbol.asyncIterator]() {
       const iterator = source[Symbol.asyncIterator]();
       const pending = [...heads];
+      let after: OperationOutput<"head.watch"> | null = null;
 
       return {
         async next(): Promise<IteratorResult<OperationOutput<"head.watch">>> {
           const head = pending.shift();
 
           if (head !== undefined) {
-            const name = headRef(session, head);
+            const ref = await kernel.store.refs.get(headRef(session, head));
 
-            const revision =
-              kernel.revisions.get(name) ??
-              (await kernel.store.refs.get(name))?.revision ??
-              asId<"revision">("");
+            return {
+              done: false,
+              value: {
+                kind: "revision",
+                head,
+                tip: ref?.target === undefined || ref.target === null ? null : asId<"commit">(ref.target),
+                revision: ref?.revision ?? asId<"revision">(""),
+              },
+            };
+          }
 
-            return { done: false, value: { kind: "revision", head, revision } };
+          if (after !== null) {
+            const value = after;
+            after = null;
+
+            return { done: false, value };
           }
 
           const next = await iterator.next();
 
           if (next.done === true) return next;
-          const event = next.value;
+          const { event, head: pair } = next.value;
 
-          if ((event.kind === "commit" || event.kind === "head") && event.head !== null)
-            pending.push(event.head);
+          if ((event.kind === "commit" || event.kind === "head") && event.head !== null && pair !== null)
+            after = { kind: "revision", head: event.head, ...pair };
 
-          return next;
+          return { done: false, value: event };
         },
         async return() {
           await iterator.return?.();
