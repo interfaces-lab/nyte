@@ -13,7 +13,7 @@ export const benchMessage = definePart({
   fallback: (state, { id }) => `${state.markdown} [${id}]`,
 });
 
-/** Returns the core plugin `bench` with the two bench tools. `bench_wait_job` (input `{ command: string }`, replay `safe`): memoises a value under `bench-memo` whose compute calls `onMemo()` (the `bench_memo_runs` counter, so a replay that recomputes shows), memoises the start of `command` as a job in the session's workspace (`jobs.start`), waits on it with `wait({ kind: "job", job })`, and settles ok with the job's end, `lost` included, so a re-run after a restart replays both memos and waits on the job it started. `bench_never` (input `{}`, replay `never`): sleeps 60 s under the call's signal, so a crash finds it running and the restart settles it `interrupted`. */
+/** Returns the core plugin `bench` with the two bench tools. `bench_wait_job` (input `{ command: string }`, replay `safe`): memoises a value under `bench-memo` whose compute calls `onMemo()` (the `bench_memo_runs` counter, so a replay that recomputes shows), starts `command` as a job in the session's workspace with no memo (`jobs.start`, an acquisition the re-run replays by its sequence, baseline "No memo needed"), waits on it with `wait({ kind: "job", job })`, and settles ok with the job's end, `lost` included, so a re-run after a restart replays the memo and the acquisition and waits on the job it started. `bench_never` (input `{}`, replay `never`): sleeps 60 s under the call's signal, so a crash finds it running and the restart settles it `interrupted`. */
 export function benchTools(onMemo: () => void): Plugin<"core"> {
   const waitJob: ToolDefinition<{ readonly command: string }> = {
     name: "bench_wait_job",
@@ -28,17 +28,13 @@ export function benchTools(onMemo: () => void): Plugin<"core"> {
         return true;
       });
 
-      const job = await invocation.memo("bench-job", async () => {
-        const started = await invocation.workspace.jobs.start({
-          command: args.command,
-          session: invocation.session.id,
-          title: "bench",
-        });
-
-        return started.id;
+      const job = await invocation.workspace.jobs.start({
+        command: args.command,
+        session: invocation.session.id,
+        title: "bench",
       });
 
-      const outcome = await invocation.wait({ kind: "job", job });
+      const outcome = await invocation.wait({ kind: "job", job: job.id });
       const end = outcome.kind === "job" ? outcome.end.kind : outcome.kind;
 
       return { content: [{ kind: "text", text: `The job ended: ${end}.` }] };

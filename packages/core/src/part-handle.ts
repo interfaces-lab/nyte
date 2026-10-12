@@ -12,7 +12,8 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { objectId } from "./content.ts";
-import { recordAcquisition } from "./durable.ts";
+import { openAction, recordAcquisition } from "./durable.ts";
+import type { ActionIntent } from "./durable.ts";
 import { SdkError } from "./error.ts";
 import { check } from "./json-schema.ts";
 import type { Checked } from "./json-schema.ts";
@@ -28,20 +29,24 @@ import type {
   PartDefinition,
   PartState,
 } from "./parts.ts";
+import { PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord } from "./records.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
 import { headRef, partRef } from "./refs.ts";
+import { unfenced } from "./runs.ts";
 import {
   MAIN,
   STALE,
   attempt,
   commit,
   expectOf,
+  isJsonObject,
   load,
   objectOf,
   put,
   putCommit,
+  readCall,
   readTip,
   requireSession,
 } from "./session-state.ts";
@@ -149,7 +154,12 @@ export async function createPart<K extends PartDefinition>(
         status: { kind: "live", run },
       };
 
+      const held = run === null ? null : await unfenced(kernel, session, run);
+
+      if (run !== null && held === null) return;
+
       const outcome = await commit(kernel, [
+        ...(held === null ? [] : [held]),
         {
           name,
           target: await put(kernel, "part", stored, at),
@@ -296,6 +306,9 @@ function partHandleFor<K extends PartDefinition>(
       }
 
       const record = found.record;
+      const modal = record.placement.kind === "modal";
+
+      if (modal && record.status.kind !== "live") return { kind: "closed" };
       const registered = kernel.partDefinitions.get(record.partKind);
 
       if (registered === undefined && record.owner !== null) return { kind: "no-owner" };
@@ -305,6 +318,16 @@ function partHandleFor<K extends PartDefinition>(
 
       if (accepted === null) return { kind: "unknown-action" };
       const handler = registered?.definition.onAction === undefined ? null : registered;
+      const offered = { action: named, input: isJson(accepted.value) ? accepted.value : null };
+      const call = asId<"call">(`act:${id}:${crypto.randomUUID()}`);
+
+      if (handler !== null)
+        await openAction(kernel, {
+          session,
+          part: id,
+          call,
+          intent: { part: id, ...offered, principal: context.principal },
+        });
 
       const performed: Performed =
         handler === null
@@ -315,6 +338,7 @@ function partHandleFor<K extends PartDefinition>(
               registered: handler,
               action: named,
               input: accepted.value,
+              call,
             });
 
       if (performed.kind === "closed") return performed;
@@ -337,16 +361,7 @@ function partHandleFor<K extends PartDefinition>(
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
         };
 
-      if (record.placement.kind === "modal") {
-        const offered = { action: named, input: isJson(accepted.value) ? accepted.value : null };
-        const kept = await keepAnswer(kernel, name, id, offered);
-
-        if (kept.kind === "waiting") await kernel.waits.partAnswered(session, id, offered, kept.call);
-        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
-        const winner = found === null ? null : await storedAnswer(kernel, session, found.record);
-
-        if (winner !== null) settle(table, name, winner);
-      }
+      if (modal && !(await answered(kernel, session, id, offered))) return { kind: "closed" };
 
       return { kind: "ok", output };
     },
@@ -359,25 +374,29 @@ function partHandleFor<K extends PartDefinition>(
       if (table.closed.has(name)) return;
 
       const closed = await attempt(`Closing part ${id}`, async () => {
-        const ref = await kernel.store.refs.get(name);
+        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-        if (ref === null) return false;
+        if (found === null) return null;
 
         const outcome = await commit(kernel, [
           {
             name,
             target: null,
-            expect: ref.revision,
+            expect: found.ref.revision,
             event: { head: null, kind: "part", part: id, change: "closed" },
           },
         ]);
 
-        return outcome.kind === "set" ? true : STALE;
+        return outcome.kind === "set" ? found.record.status : STALE;
       });
 
-      if (!closed) return;
+      if (closed === null) return;
       release(table, name);
-      await kernel.waits.partClosed(id);
+      await kernel.waits.partClosed(
+        session,
+        id,
+        closed.kind === "live" ? (closed.waiting ?? null) : null,
+      );
     },
   };
 
@@ -386,26 +405,23 @@ function partHandleFor<K extends PartDefinition>(
   return handle;
 }
 
-/** Returns what keeps a modal part's answer: the step its status names as waiting, which the answer is offered to, or the status itself, written first when no step waits yet (§48i). A part already holding an answer keeps its first; a part no longer live is gone. */
-async function keepAnswer(
+/** Keeps an act's answer on a live modal part's status, its one home, unless the part holds one (§48i); offers the winner to the step the status names as waiting and to the waits here, then settles `answer()`. Resolves false when the part is no longer live. */
+async function answered(
   kernel: Kernel,
-  name: string,
+  session: SessionId,
   id: PartId,
   answer: Answered,
-): Promise<
-  | { readonly kind: "waiting"; readonly call: CallId }
-  | { readonly kind: "kept" }
-  | { readonly kind: "gone" }
-> {
-  return attempt(`Answering part ${id}`, async () => {
+): Promise<boolean> {
+  const name = partRef(session, id);
+
+  const kept = await attempt(`Answering part ${id}`, async () => {
     const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
     const status = found?.record.status;
 
-    if (found === null || status?.kind !== "live") return { kind: "gone" };
+    if (found === null || status?.kind !== "live") return null;
 
-    if (status.waiting !== undefined) return { kind: "waiting", call: status.waiting };
-
-    if (status.answer !== undefined) return { kind: "kept" };
+    if (status.answer !== undefined)
+      return { winner: status.answer, waiting: status.waiting ?? null };
 
     const outcome = await commit(kernel, [
       {
@@ -415,13 +431,53 @@ async function keepAnswer(
       },
     ]);
 
-    return outcome.kind === "set" ? { kind: "kept" } : STALE;
+    return outcome.kind === "set" ? { winner: answer, waiting: status.waiting ?? null } : STALE;
   });
+
+  if (kept === null) return false;
+  await kernel.waits.partAnswered(session, id, kept.winner, kept.waiting);
+  settle(kernel.partTable, name, kept.winner);
+
+  return true;
 }
 
-/** Returns the answer this process holds for a modal part, or null when it holds none. */
-export function answerOf(kernel: Kernel, session: SessionId, part: PartId): Answered | null {
-  return kernel.partTable.answered.get(partRef(session, part)) ?? null;
+/** Runs a head-less action step again when a wake recorded its outcome and no act here waits on it, as after a restart (§33j); a modal part keeps the answer once it returns. */
+export async function rerunAction(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
+  const step = (await readCall(kernel, session, call))?.record;
+
+  const intent =
+    step?.kind === "action" && step.result === null ? decodeActionIntent(step.intent) : null;
+
+  if (intent === null) return;
+
+  const found = await load(
+    kernel,
+    await kernel.store.refs.get(partRef(session, intent.part)),
+    decodePartRecord,
+  );
+
+  const registered = found === null ? undefined : kernel.partDefinitions.get(found.record.partKind);
+
+  if (found === null || registered?.definition.onAction === undefined) return;
+
+  const context: ConnectionContext = {
+    principal: intent.principal,
+    authority: PARTICIPANT_AUTHORITY,
+    credential: { kind: "token", token: "" },
+    origin: null,
+  };
+
+  const performed = await perform(kernel, context, {
+    session,
+    record: found.record,
+    registered,
+    action: intent.action,
+    input: intent.input,
+    call,
+  });
+
+  if (performed.kind === "returned" && found.record.placement.kind === "modal")
+    await answered(kernel, session, intent.part, { action: intent.action, input: intent.input });
 }
 
 /** Returns the session a part handle this module bound acts in, or undefined for any other object. */
@@ -429,7 +485,7 @@ export function sessionOfPart(part: object): SessionId | undefined {
   return boundIn.get(part);
 }
 
-/** Runs a registered definition's `onAction` as a durable step with call id `act:<part>:<uuid>`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending; an interrupted one fails it. */
+/** Runs a registered definition's `onAction` as the durable step `call`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending; an interrupted one fails it. */
 async function perform(
   kernel: Kernel,
   context: ConnectionContext,
@@ -439,6 +495,7 @@ async function perform(
     readonly registered: RegisteredDefinition;
     readonly action: string;
     readonly input: unknown;
+    readonly call: CallId;
   },
 ): Promise<Performed> {
   const { session, record, registered } = input;
@@ -460,7 +517,7 @@ async function perform(
       session,
       part: record.id,
       action: input.action,
-      call: asId<"call">(`act:${record.id}:${crypto.randomUUID()}`),
+      call: input.call,
       signal: controller.signal,
       async body(durable) {
         const actionContext: ActionContext<unknown, ActionSchemas> = {
@@ -504,7 +561,7 @@ async function perform(
   }
 }
 
-/** Returns a part's first answer as the store holds it, else waits for one; null once the part is gone or closes. */
+/** Returns a part's first answer as the store holds it, else waits for one; null once the part is gone or closes, or a modal part is no longer live. */
 async function firstAnswer(
   kernel: Kernel,
   session: SessionId,
@@ -513,7 +570,10 @@ async function firstAnswer(
   const table = kernel.partTable;
   const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-  if (found === null) {
+  if (
+    found === null ||
+    (found.record.placement.kind === "modal" && found.record.status.kind !== "live")
+  ) {
     table.answered.delete(name);
 
     return null;
@@ -538,6 +598,19 @@ async function firstAnswer(
     waiting.add(resolve);
     table.waiters.set(name, waiting);
   });
+}
+
+/** Returns the action intent a call record's `intent` holds, or null when it holds another shape. */
+function decodeActionIntent(value: Json): ActionIntent | null {
+  if (!isJsonObject(value)) return null;
+  const { part, action, input, principal } = value;
+
+  return typeof part === "string" &&
+    typeof action === "string" &&
+    input !== undefined &&
+    typeof principal === "string"
+    ? { part: asId<"part">(part), action, input, principal: asId<"principal">(principal) }
+    : null;
 }
 
 /** Returns an act's input as the definition validates it for the action, or null when the definition has no such action; throws `invalid` with the issues. Without a definition the input passes as given. */

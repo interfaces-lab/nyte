@@ -5,6 +5,7 @@ import type {
   HeadName,
   Json,
   PartId,
+  PrincipalId,
   RefUpdate,
   RunId,
   SessionId,
@@ -13,6 +14,7 @@ import type {
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
+import { storedAnswer } from "./parts.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
@@ -25,6 +27,14 @@ export type StepOutcome<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "parked" }
   | { readonly kind: "interrupted" };
+
+/** Returns what a part action's step records as its intent: the part, the action, its input and the principal it acts as. */
+export type ActionIntent = {
+  readonly part: PartId;
+  readonly action: string;
+  readonly input: Json;
+  readonly principal: PrincipalId;
+};
 
 interface Place {
   readonly session: SessionId;
@@ -78,8 +88,8 @@ export async function runStep<T>(
     readonly intent: Json;
     readonly part: PartId | null;
     readonly signal: AbortSignal;
-    /** The updates landing with the record's creation: a tool's part, so no part exists without its step. */
-    readonly opening?: readonly RefUpdate[];
+    /** Returns the updates landing with the record's creation, read again on each try: a tool's part, so no part exists without its step. */
+    readonly opening?: () => Promise<readonly RefUpdate[]>;
     body(durable: Durable): Promise<T>;
     /** Returns what the step's `result` records and the ref updates landing in the same set. */
     settle(
@@ -90,31 +100,13 @@ export async function runStep<T>(
   },
 ): Promise<StepOutcome<T>> {
   const { session, call } = input;
-
-  const created: CallRecord = {
-    id: call,
-    kind: input.kind,
-    run: input.run,
-    head: input.head,
-    part: input.part,
-    intent: input.intent,
-    memos: {},
-    clock: [],
-    waits: [],
-    waiting: null,
-    partial: [],
-    nested: {},
-    acquisitions: {},
-    result: null,
-    replay: input.replay,
-  };
-
+  const created = callRecord(input);
   let record = created;
 
   const opened = await changeCall(kernel, session, call, async (current) => {
     record = current ?? created;
 
-    return current === null ? { record, updates: input.opening } : null;
+    return current === null ? { record, updates: await input.opening?.() } : null;
   });
 
   const read = (result: Json | null): T => {
@@ -242,6 +234,33 @@ export async function runAction(
   }
 }
 
+/** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as (§33j). */
+export async function openAction(
+  kernel: Kernel,
+  input: {
+    readonly session: SessionId;
+    readonly part: PartId;
+    readonly call: CallId;
+    readonly intent: ActionIntent;
+  },
+): Promise<void> {
+  await changeCall(kernel, input.session, input.call, async (current) =>
+    current === null
+      ? {
+          record: callRecord({
+            call: input.call,
+            kind: "action",
+            run: null,
+            head: null,
+            part: input.part,
+            intent: input.intent,
+            replay: "safe",
+          }),
+        }
+      : null,
+  );
+}
+
 /** Records what a durable step acquired under a key unless one is recorded, and returns the recorded winner (§33a). */
 export async function recordAcquisition(
   kernel: Kernel,
@@ -353,45 +372,33 @@ function durableOf(
   return durable;
 }
 
-/** Settles a wait on one modal part at once when the part already holds an answer that came before any step parked (§48i), clearing it from the part in the same set. */
+/** Settles a wait on one modal part at once when the part already holds its answer (§48i); the answer stays on the part, its one home. */
 async function takeAnswer(
   kernel: Kernel,
   place: Place,
   part: PartId,
   index: number,
 ): Promise<WaitOutcome | null> {
-  const name = partRef(place.session, part);
+  const found = await load(
+    kernel,
+    await kernel.store.refs.get(partRef(place.session, part)),
+    decodePartRecord,
+  );
 
-  const taken = await changeCall(kernel, place.session, place.call, async (current) => {
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
-    const status = found?.record.status;
+  const answer = found === null ? null : await storedAnswer(kernel, place.session, found.record);
 
-    if (
-      current === null ||
-      current.result !== null ||
-      current.waiting !== null ||
-      current.waits.length !== index ||
-      found === null ||
-      status?.kind !== "live" ||
-      status.answer === undefined
-    )
-      return null;
+  if (answer === null) return null;
 
-    const { answer, ...kept } = status;
+  const taken = await changeCall(kernel, place.session, place.call, async (current) =>
+    current === null ||
+    current.result !== null ||
+    current.waiting !== null ||
+    current.waits.length !== index
+      ? null
+      : { record: { ...current, waits: [...current.waits, { kind: "part", part, answer }] } },
+  );
 
-    return {
-      record: { ...current, waits: [...current.waits, { kind: "part", part, answer }] },
-      updates: [
-        {
-          name,
-          target: await put(kernel, "part", { ...found.record, status: kept }),
-          expect: found.ref.revision,
-        },
-      ],
-    };
-  });
-
-  return taken.wrote ? (taken.record?.waits.at(index) ?? null) : null;
+  return taken.record?.waits.at(index) ?? null;
 }
 
 /**
@@ -516,6 +523,35 @@ async function modalsWaiting(
   }
 
   return updates;
+}
+
+/** Returns a new call record with nothing recorded. */
+function callRecord(input: {
+  readonly call: CallId;
+  readonly kind: CallRecord["kind"];
+  readonly run: RunId | null;
+  readonly head: HeadName | null;
+  readonly part: PartId | null;
+  readonly intent: Json;
+  readonly replay: CallRecord["replay"];
+}): CallRecord {
+  return {
+    id: input.call,
+    kind: input.kind,
+    run: input.run,
+    head: input.head,
+    part: input.part,
+    intent: input.intent,
+    memos: {},
+    clock: [],
+    waits: [],
+    waiting: null,
+    partial: [],
+    nested: {},
+    acquisitions: {},
+    result: null,
+    replay: input.replay,
+  };
 }
 
 function entryOf(

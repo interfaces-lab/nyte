@@ -30,6 +30,8 @@ import {
   pathOf,
   positionOf,
   put,
+  readReceipt,
+  readTip,
   requireSession,
   staleHead,
   withFold,
@@ -56,7 +58,7 @@ type Decided =
   | { readonly kind: "moved"; readonly outcome: MoveOutcome; readonly stopped: RunId | null }
   | { readonly kind: "replayed" };
 
-/** Moves a head to a position as a durable command and returns its receipt (§40e). The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing; only a branch summary settles later. */
+/** Moves a head to a position as a durable command and returns its receipt (§40e). The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing, settling one its crashed first request left pending; only a branch summary settles later. */
 export async function move(
   kernel: Kernel,
   session: SessionId,
@@ -77,7 +79,13 @@ export async function move(
 
   const receipt = typedReceipt(kernel, session, id, isMoveOutcome);
 
-  if (await known(kernel, session, id, "move", digest)) return receipt;
+  if (await known(kernel, session, id, "move", digest)) {
+    if (options?.abandoned === undefined || options.abandoned === "keep")
+      await recover(kernel, session, head, position, id);
+
+    return receipt;
+  }
+
   const decided = await decide(kernel, session, head, position, options ?? {}, id, digest);
 
   switch (decided.kind) {
@@ -242,15 +250,65 @@ async function summarized(
     markdown: summary.markdown,
   });
 
-  const outcome = await commit(kernel, written.updates);
+  return attempt<MoveOutcome>(`Moving ${head}`, async () => {
+    const checked = await guard(kernel, session, head, undefined, "stop");
 
-  if (outcome.kind === "stale") return staleHead(kernel, session, head);
+    if ("kind" in checked) return checked;
+    const inbox = inboxRef(session, head);
 
-  return {
-    kind: "moved",
-    revision: outcome.revisions.at(-1) ?? EMPTY_REVISION,
-    position: { kind: "commit", id: written.commit },
-    summary: asId<"message">(written.part),
-    handback: plan.handback,
-  };
+    const outcome = await commit(kernel, [
+      {
+        name: inbox,
+        target: checked.inbox.ref?.target ?? null,
+        expect: expectOf(checked.inbox.ref),
+      },
+      ...written.updates,
+    ]);
+
+    if (outcome.kind === "stale")
+      return outcome.name === inbox ? STALE : staleHead(kernel, session, head);
+
+    return {
+      kind: "moved",
+      revision: outcome.revisions.at(-1) ?? EMPTY_REVISION,
+      position: { kind: "commit", id: written.commit },
+      summary: asId<"message">(written.part),
+      handback: plan.handback,
+    };
+  });
+}
+
+/** Settles a replayed move whose set landed but whose settlement was lost with its process: `moved` at the head's revision while the head points where the move put it, else `stale` with the head's revision. */
+async function recover(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  position: Position,
+  id: ReceiptId,
+): Promise<void> {
+  const [found, tip] = await Promise.all([
+    readReceipt(kernel, session, id),
+    readTip(kernel, session, head),
+  ]);
+
+  if (found === null || found.record.outcome !== null) return;
+  const plan = await withFold(kernel, session, (state) => planOf(state.commits, tip.id, position));
+
+  if (plan === null) return;
+  const revision = tip.ref?.revision ?? EMPTY_REVISION;
+
+  await settleReceipt(
+    kernel,
+    session,
+    id,
+    tip.id === plan.landing
+      ? {
+          kind: "moved",
+          revision,
+          position: positionOf(plan.landing),
+          summary: null,
+          handback: plan.handback,
+        }
+      : { kind: "stale", revision },
+  );
 }

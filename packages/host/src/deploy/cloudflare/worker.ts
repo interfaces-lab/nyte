@@ -70,7 +70,7 @@ export function scheduleFrom(report: AdvanceReport, now: number): number | null 
   }
 }
 
-/** Runs one alarm pass over a composed host and the object's `nyte_schedule(session, head, at)` table in `storage` (§42f, §42i), and returns when the alarm should fire next. It fires the due timers and deadlines (`kernel.waits.tick(now)`), then takes the heads whose row is due, earliest first, and, when `budget.repair`, every head `host.execution.repair` pages out (100 a page, until `next` is null) that has no row; it advances up to `budget.heads` of them concurrently, starting none once `budget.ms` has passed since the pass began, and writes each head it left at `now`, so the remainder runs on the next alarm at once. Leases are claimed lazily, per advanced head: `advance` claims a head's lease on its first step, owned by the object's lifetime cover, and releases it when the head reports `idle`, `waiting` or `retry` (a `continue` keeps it for the next pass), so a lease is held only while a turn runs and the heads a pass leaves untouched cost no writes (§42t, §42y). The pass waits for every turn it started, so one long turn delays the object's other heads, and a turn past the 15 min alarm limit is cut short (§42w, for the owner). Each report sets its head's row to `scheduleFrom(report, now)` or deletes it on null, unless a wake rewrote the row during that step; an advance that throws is logged with `console.error` and its row set 30 s later, so one failing head never blocks the rest. Answers the earliest `at` left in the table, or null when it is empty. */
+/** Runs one alarm pass over a composed host and the object's `nyte_schedule(session, head, at)` table in `storage` (§42f, §42i), and returns when the alarm should fire next. It fires the due timers and deadlines (`kernel.waits.tick(now)`), when `budget.repair` pages `host.execution.repair` (100 a page, until `next` is null), whose wakes write each runnable head's row, then takes the heads whose row is due, earliest first, each once; it advances up to `budget.heads` of them concurrently, starting none once `budget.ms` has passed since the pass began, and writes each head it left at `now`, so the remainder runs on the next alarm at once. Leases are claimed lazily, per advanced head: `advance` claims a head's lease on its first step, owned by the object's lifetime cover, and releases it when the head reports `idle`, `waiting` or `retry` (a `continue` keeps it for the next pass), so a lease is held only while a turn runs and the heads a pass leaves untouched cost no writes (§42t, §42y). The pass waits for every turn it started, so one long turn delays the object's other heads, and a turn past the 15 min alarm limit is cut short (§42w, for the owner). Each report sets its head's row to `scheduleFrom(report, now)` or deletes it on null, unless a wake rewrote the row during that step; an advance that throws is logged with `console.error` and its row set 30 s later, so one failing head never blocks the rest. Answers the earliest `at` left in the table, or null when it is empty. */
 export async function pass(
   host: PassHost,
   storage: Pick<DurableObjectSql, "sql">,
@@ -80,29 +80,17 @@ export async function pass(
   const schedule = scheduleOf(storage);
   await host.kernel.waits.tick(began);
 
-  const heads = new Map<
-    string,
-    { readonly session: SessionId; readonly head: HeadName; readonly at: number | null }
-  >();
-
-  for (const row of schedule.due(began)) heads.set(keyOf(row.session, row.head), row);
-
   if (budget.repair) {
     let cursor: Parameters<Host["execution"]["repair"]>[0]["cursor"];
 
     do {
-      const page = await host.execution.repair({ cursor, limit: PAGE });
-
-      for (const { session, head } of page.runnable)
-        if (!heads.has(keyOf(session, head)))
-          heads.set(keyOf(session, head), { session, head, at: null });
-      cursor = page.next ?? undefined;
+      cursor = (await host.execution.repair({ cursor, limit: PAGE })).next ?? undefined;
     } while (cursor !== undefined);
   }
 
   const advances: Promise<void>[] = [];
 
-  for (const entry of heads.values()) {
+  for (const entry of schedule.due(Date.now())) {
     if (advances.length >= budget.heads || Date.now() - began >= budget.ms) {
       schedule.write(entry.session, entry.head, began);
 
@@ -319,7 +307,7 @@ function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
       );
     },
     settle(
-      entry: { readonly session: SessionId; readonly head: HeadName; readonly at: number | null },
+      entry: { readonly session: SessionId; readonly head: HeadName; readonly at: number },
       next: number | null,
     ): void {
       if (atOf(entry.session, entry.head) !== entry.at) return;
@@ -334,8 +322,4 @@ function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
       return typeof at === "number" ? at : null;
     },
   };
-}
-
-function keyOf(session: SessionId, head: HeadName): string {
-  return JSON.stringify([session, head]);
 }

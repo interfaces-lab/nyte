@@ -1,6 +1,7 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
 import {
+  SdkError,
   decodeSeenRecord,
   definePart,
   dev,
@@ -293,6 +294,85 @@ describe("handler", () => {
 
     await expect(body.read()).rejects.toThrow();
     expect(reader.closes()).toBe(1);
+  });
+
+  it("ends an upload in flight when its request aborts, as the listener's close does, writing nothing after (ADV G9, probe N1)", async () => {
+    for (const name of ["files.upload", "files.write"] as const) {
+      const { handler, workspace, disk } = await served();
+      const ready = Promise.withResolvers<void>();
+      const finish = Promise.withResolvers<void>();
+      let cancelled = 0;
+      let started = false;
+
+      const input = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (started) {
+            await finish.promise;
+            controller.close();
+
+            return;
+          }
+
+          started = true;
+          controller.enqueue(Uint8Array.of(7));
+          ready.resolve();
+        },
+        cancel() {
+          cancelled += 1;
+          finish.resolve();
+        },
+      });
+
+      const controller = new AbortController();
+      const init = withInputHeader(
+        name === "files.upload" ? { workspace } : { workspace, path: "AFTER_CLOSE" },
+        input,
+      );
+
+      const pending = handler(
+        new Request(`http://host.test/${name}`, {
+          ...init,
+          headers: { ...init.headers, Authorization: "Bearer owner" },
+          signal: controller.signal,
+        }),
+      );
+
+      await ready.promise;
+      controller.abort(new SdkError("unavailable", "The host disconnected its clients."));
+      const response = await pending;
+      finish.resolve();
+
+      expect([name, response.status, (await errorOf(response)).code]).toEqual([
+        name,
+        503,
+        "unavailable",
+      ]);
+      expect(cancelled).toBe(1);
+      expect([...disk.keys()]).toEqual([]);
+    }
+  });
+
+  it("ends a stream with its abort's SdkError, so a client revoked here reads unauthenticated (ADV C N2)", async () => {
+    const { handler } = await served();
+    const { session } = decodeOutput(
+      "sessions.create",
+      await (await post(handler, "sessions.create", {})).json(),
+    );
+    const controller = new AbortController();
+    const response = await post(handler, "head.watch", { session, head: main }, {}, controller.signal);
+
+    assert(response.body !== null);
+    const frames = parseSse(response.body)[Symbol.asyncIterator]();
+    let frame = await frames.next();
+
+    while (frame.done !== true && kindOf(frame.value) !== "catalog") frame = await frames.next();
+    controller.abort(new SdkError("unauthenticated", "The principal was revoked."));
+
+    await expect(
+      (async () => {
+        while ((await frames.next()).done !== true);
+      })(),
+    ).rejects.toMatchObject({ code: "unauthenticated", message: "The principal was revoked." });
   });
 
   it("routes exactly POST /<name>, a prefix being the host's mount (§40x)", async () => {

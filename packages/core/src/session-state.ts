@@ -11,6 +11,7 @@ import type {
   MessageId,
   MoveOutcome,
   ObjectId,
+  PartId,
   Position,
   Ref,
   RefUpdate,
@@ -19,7 +20,6 @@ import type {
   SessionId,
   SetOutcome,
   UserContent,
-  WaitTarget,
 } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
 import { dev } from "./dev-log.ts";
@@ -43,7 +43,7 @@ import type {
   RunRecord,
   SessionRecord,
 } from "./records.ts";
-import { callRef, headRef, inboxRef, receiptRef, runRef, sessionRef } from "./refs.ts";
+import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
 import { sessionInfo } from "./session.ts";
 import { publishSet } from "./watch.ts";
 
@@ -242,15 +242,14 @@ export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Pro
   return outcome;
 }
 
-/** Runs a read-then-write once, and once more after a lost compare-and-set; throws `stale` when it loses twice. */
+/** Runs a read-then-write until it wins: a lost compare-and-set means another write landed, so it reads again. */
 export async function attempt<T>(what: string, write: () => Promise<T | typeof STALE>): Promise<T> {
-  for (let tries = 0; tries < 2; tries += 1) {
+  for (;;) {
     const result = await write();
 
     if (result !== STALE) return result;
+    dev("store", "lost", { what });
   }
-
-  throw new SdkError("stale", `${what} lost to a concurrent write twice.`);
 }
 
 /** Reads the session's shared fold, as the host sees it, without keeping it. */
@@ -345,26 +344,19 @@ export async function readCalls(
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }
 
-/** Returns the update that marks a live run waiting on a target with `run waiting`, or none once the run has ended. */
-export async function runWaiting(
+/** Returns the parts of a run the session's log shows live or waiting: the candidates a run's fence or end fails, each re-read by the write. */
+export function liveParts(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
-  on: WaitTarget,
-): Promise<readonly RefUpdate[]> {
-  const name = runRef(session, run);
-  const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
-
-  if (found === null) return [];
-
-  return [
-    {
-      name,
-      target: await put(kernel, "run", { ...found.record, waiting: on }),
-      expect: found.ref.revision,
-      event: { head: found.record.view.head, kind: "run", run, change: "waiting", on },
-    },
-  ];
+): Promise<readonly PartId[]> {
+  return withFold(kernel, session, (state) =>
+    [...state.parts.values()].flatMap((part) =>
+      part.run === run && (part.status.kind === "live" || part.status.kind === "waiting")
+        ? [part.id]
+        : [],
+    ),
+  );
 }
 
 /** Changes a call record one change at a time per call in this process: reads it (null when absent), asks `change` for the next state, and compare-and-sets it with the change's updates in one set; a lost race reads and asks again. Resolves the record as written, or as read when `change` returned null, and whether it wrote. */

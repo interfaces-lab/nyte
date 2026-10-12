@@ -217,30 +217,59 @@ describe("transport", () => {
     expect(pairing.credential()).toBe("device-token");
   });
 
-  it("reads the answering host from X-Nyte-Host, error answers included", async () => {
-    let status = 200;
+  it("pins the first X-Nyte-Host, error answers included, and throws stale naming another host, its answer unread (ADV C N5, probe N4)", async () => {
+    let answer = { status: 404, host: "host-a" };
 
     const transport = createTransport({
       url: "http://host.test",
       headers: async () => ({}),
       fetch: async () =>
         new Response(
-          status === 200 ? "{}" : JSON.stringify({ code: "unauthenticated", message: "No." }),
+          answer.status === 200
+            ? "{}"
+            : JSON.stringify({ code: "unknown", message: "No session has that id." }),
           {
-            status,
-            headers: { "Content-Type": "application/json", [HOST_HEADER]: `host-${status}` },
+            status: answer.status,
+            headers: { "Content-Type": "application/json", [HOST_HEADER]: answer.host },
           },
         ),
     });
 
     expect(transport.host()).toBeNull();
+    await expect(transport.invoke("sessions.list", {})).rejects.toMatchObject({ code: "unknown" });
+    expect(transport.host()).toBe("host-a");
+    answer = { status: 200, host: "host-a" };
     await transport.invoke("sessions.list", {});
-    expect(transport.host()).toBe("host-200");
-    status = 401;
-    await expect(transport.invoke("sessions.list", {})).rejects.toMatchObject({
-      code: "unauthenticated",
+    answer = { status: 404, host: "host-b" };
+
+    expect(await failure(() => transport.invoke("sessions.list", {}))).toMatchObject({
+      code: "stale",
+      hostId: "host-b",
     });
-    expect(transport.host()).toBe("host-401");
+    expect(transport.host()).toBe("host-a");
+  });
+
+  it("answers only a fetch TypeError as unavailable; any other exception reaches the caller as thrown (ADV G10, probe N2)", async () => {
+    const denied = new SdkError("denied", "Policy refused this request.");
+    const programming = new RangeError("A bug in the custom fetch.");
+    let thrown: unknown = denied;
+
+    const transport = createTransport({
+      url: "http://host.test",
+      headers: async () => ({}),
+      fetch: async () => {
+        throw thrown;
+      },
+    });
+
+    await expect(transport.invoke("models.list", {})).rejects.toBe(denied);
+    thrown = programming;
+    await expect(transport.invoke("models.list", {})).rejects.toBe(programming);
+    thrown = new TypeError("fetch failed");
+    await expect(transport.invoke("models.list", {})).rejects.toMatchObject({
+      code: "unavailable",
+      message: "fetch failed",
+    });
   });
 
   it("answers a network failure as unavailable", async () => {

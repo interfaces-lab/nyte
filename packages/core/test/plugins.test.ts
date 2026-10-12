@@ -591,6 +591,7 @@ describe("hooks", () => {
     const call = () =>
       executeCall(kernel, {
         session: session.id,
+        runtime: kernel.pluginsFor(session.id),
         head: main,
         run,
         call: asId("g1"),
@@ -744,6 +745,7 @@ describe("hooks", () => {
     const call = (id: string, args: Json) =>
       executeCall(kernel, {
         session: session.id,
+        runtime: kernel.pluginsFor(session.id),
         head: main,
         run,
         call: asId(id),

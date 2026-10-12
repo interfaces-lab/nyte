@@ -3279,7 +3279,7 @@ class Interactive {
       {
         running: "refuse",
         abandoned: summary === undefined ? "keep" : { summarize: summary },
-        expect: tree.revision,
+        expect: tree.revision ?? undefined,
       },
     );
 

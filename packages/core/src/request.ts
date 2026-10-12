@@ -31,12 +31,13 @@ import type { Kernel } from "./kernel.ts";
 import { modelInfo, withLimits } from "./models.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import { LOCAL } from "./principals.ts";
+import { decodeRunRecord } from "./records.ts";
 import type { RunRecord } from "./records.ts";
-import { sessionRef } from "./refs.ts";
-import { commit, requireSession } from "./session-state.ts";
+import { runRef, sessionRef } from "./refs.ts";
+import { STALE, attempt, commit, load, put, requireSession } from "./session-state.ts";
 import type { ToolSource } from "./tool-runner.ts";
 
-/** Returns a sent request's response, the usage it was charged and its model's info. */
+/** Returns a sent request's answer, its usage and its model's info; a failed attempt was charged by `complete`. */
 interface Completed {
   readonly message: AssistantMessage;
   readonly usage: Usage;
@@ -165,7 +166,7 @@ export async function rideRef(kernel: Kernel, name: string, event: DurableEvent)
   }
 }
 
-/** Sends one model request outside a turn: each attempt through `withLimits` under `RETRY_POLICY`, `after_request` observed on `runtime`. Null when the catalog lacks the model. */
+/** Sends one model request outside a turn: each attempt through `withLimits` under `RETRY_POLICY`, observed on `runtime` with `after_request` and, when it failed, charged here (§38v); the caller charges the answer. Null when the catalog lacks the model. */
 export async function complete(
   kernel: Kernel,
   models: Models,
@@ -185,48 +186,98 @@ export async function complete(
   const info = await modelInfo(kernel, models, request.model, runtime);
 
   if (model === undefined || info === null) return null;
-  const started = Date.now();
   dev("request", "start", { session: where.session, model: model.id, step: input.step });
 
-  const message = await retryAssistantCall(
-    () =>
-      withLimits(kernel, models, model.provider, () =>
-        models.completeSimple(
-          model,
-          { systemPrompt: input.system, messages: [...input.messages] },
-          {
-            signal,
-            reasoning: request.thinking === "off" ? undefined : request.thinking,
-            samplingParams: { ...request.options.sampling },
-            headers: { ...request.options.headers },
-            maxTokens: input.maxOutput,
-            sessionId: where.session,
-          },
-        ),
+  const send = async (): Promise<AssistantMessage> => {
+    const started = Date.now();
+
+    const message = await withLimits(kernel, models, model.provider, () =>
+      models.completeSimple(
+        model,
+        { systemPrompt: input.system, messages: [...input.messages] },
+        {
+          signal,
+          reasoning: request.thinking === "off" ? undefined : request.thinking,
+          samplingParams: { ...request.options.sampling },
+          headers: { ...request.options.headers },
+          maxTokens: input.maxOutput,
+          sessionId: where.session,
+        },
       ),
-    RETRY_POLICY,
-    signal,
-    { onRetryScheduled: (attempt, _max, ms) => dev("request", "retry", { attempt, ms }) },
-  );
+    );
 
-  const usage = usageOf(message, info);
-  dev("request", "end", { session: where.session, stop: message.stopReason, tokens: usage.total });
+    const usage = usageOf(message, info);
+    dev("request", "end", {
+      session: where.session,
+      stop: message.stopReason,
+      tokens: usage.total,
+    });
 
-  void runtime.hooks.observe(
-    "after_request",
-    {
-      model: request.model,
-      thinking: request.thinking,
-      usage,
-      durationMs: Date.now() - started,
-      step: input.step,
-    },
-    where,
-  );
+    void runtime.hooks.observe(
+      "after_request",
+      {
+        model: request.model,
+        thinking: request.thinking,
+        usage,
+        durationMs: Date.now() - started,
+        step: input.step,
+      },
+      where,
+    );
 
-  const failed = message.stopReason === "error" || message.stopReason === "aborted";
+    if (failedOf(message))
+      await chargeFailed(kernel, where, requestEvent(where.head, input.step, usage, info), usage);
 
-  return { message, usage, info, failure: failed ? classifyAssistantFailure(message) : null };
+    return message;
+  };
+
+  const message = await retryAssistantCall(send, RETRY_POLICY, signal, {
+    onRetryScheduled: (attempt, _max, ms) => dev("request", "retry", { attempt, ms }),
+  });
+
+  return {
+    message,
+    usage: usageOf(message, info),
+    info,
+    failure: failedOf(message) ? classifyAssistantFailure(message) : null,
+  };
+}
+
+function failedOf(message: AssistantMessage): boolean {
+  return message.stopReason === "error" || message.stopReason === "aborted";
+}
+
+/** Charges one failed attempt where it was sent: its run record with the `request` event (§38v, w), else the event riding the session ref. */
+async function chargeFailed(
+  kernel: Kernel,
+  where: HookContext,
+  event: DurableEvent,
+  usage: Usage,
+): Promise<void> {
+  const { session, run } = where;
+
+  if (run === null) return rideRef(kernel, sessionRef(session), event);
+
+  await attempt(`Charging run ${run}`, async () => {
+    const found = await load(
+      kernel,
+      await kernel.store.refs.get(runRef(session, run)),
+      decodeRunRecord,
+    );
+
+    if (found === null) return undefined;
+
+    const outcome = await commit(kernel, [
+      {
+        name: found.ref.name,
+        target: await put(kernel, "run", charge(found.record, usage, true)),
+        expect: found.ref.revision,
+        event,
+      },
+    ]);
+
+    return outcome.kind === "set" ? undefined : STALE;
+  });
 }
 
 const REFUSALS = ["refusal", "content_filter", "SAFETY"] as const;
@@ -277,7 +328,9 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
       );
 
     const { message, usage, info, failure } = sent;
-    await rideRef(kernel, sessionRef(session), requestEvent(null, "plugin", usage, info));
+
+    if (failure === null)
+      await rideRef(kernel, sessionRef(session), requestEvent(null, "plugin", usage, info));
     const raw = message.rawStopReason;
 
     if (raw !== undefined && REFUSALS.some((reason) => raw === reason || raw.endsWith(reason)))

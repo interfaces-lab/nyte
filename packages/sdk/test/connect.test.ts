@@ -1,8 +1,13 @@
 import { asId } from "@nyte-ai/schema";
-import { SdkError, TOKEN } from "@nyte-ai/core";
+import type { HostView } from "@nyte-ai/schema";
+import { SdkError, TOKEN, composeHost, memoryStore } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { listenFetch } from "@nyte-ai/host";
+import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
+import { operations } from "@nyte-ai/protocol";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
+import { memoryJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -23,6 +28,16 @@ function kept(connection: Connection): Connection {
   cleanups.push(() => connection.close());
 
   return connection;
+}
+
+/** Returns the link a host watch reports last before it ends. */
+async function lastLink(views: AsyncIterator<HostView>): Promise<HostView["link"] | null> {
+  let link: HostView["link"] | null = null;
+
+  for (let next = await views.next(); next.done !== true; next = await views.next())
+    link = next.value.link;
+
+  return link;
 }
 
 async function failure(run: () => Promise<unknown>): Promise<SdkError> {
@@ -209,5 +224,91 @@ describe("connect", () => {
     await connection.sessions.list();
 
     expect(names).toEqual(["connection.watch", "sessions.list"]);
+  });
+
+  it("closes the link host-gone when another host answers a later request, every journal row kept (ADV C N5, probe N4)", async () => {
+    const one = await open();
+    const two = await open();
+    const journal = memoryJournal();
+
+    const connection = kept(
+      await connect({
+        url: BASE,
+        credentials: { kind: "token", token: TOKEN_SECRET },
+        fetch: one.fetch,
+        journal,
+      }),
+    );
+
+    const session = await connection.sessions.create();
+    const views = connection.watch()[Symbol.asyncIterator]();
+    await views.next();
+    one.intercept((request) => two.listener.fetch(request));
+
+    await expect(connection.session(session.id).send("To the pinned host.")).rejects.toBeInstanceOf(
+      SdkError,
+    );
+    expect(await lastLink(views)).toEqual({ kind: "closed", reason: "host-gone" });
+    expect((await journal.load()).map((entry) => entry.content)).toEqual(["To the pinned host."]);
+    await expect(connection.sessions.list()).rejects.toBeInstanceOf(SdkError);
+    expect(await two.host.sessions.list()).toMatchObject({ items: [] });
+  });
+
+  it("ends a stream opened before a revoke on another instance within the 60 s window, the link revoked (ADV C N2, probe N1)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+    const store = memoryStore();
+
+    const compose = () =>
+      composeHost({
+        store,
+        models: fakeModels().models,
+        plugins: [chatOnly],
+        workspace: { kind: "chat-only", locator: null },
+        home: null,
+        operations: operations(),
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+      });
+
+    const a = await compose();
+    const b = await compose();
+    cleanups.push(() => a.close(), () => b.close());
+
+    const listener = await listenFetch(b, {
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token: TOKEN_SECRET },
+      execution: { kind: "admit-only" },
+    });
+
+    cleanups.push(() => listener.close());
+    const session = await b.sessions.create();
+    const { code } = await a.principals.pair({ authority: new Set(["participant"]) });
+
+    const device = kept(
+      await connect({
+        url: BASE,
+        credentials: { kind: "pairing", code },
+        fetch: async (input, init) => listener.fetch(new Request(input, init)),
+      }),
+    );
+
+    const hostViews = device.watch()[Symbol.asyncIterator]();
+    await hostViews.next();
+    const views = device.session(session.id).watch()[Symbol.asyncIterator]();
+    await views.next();
+    await a.principals.revoke(device.principal);
+
+    const ended = (async () => {
+      while ((await views.next()).done !== true);
+
+      return "ended";
+    })();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await ended).toBe("ended");
+    expect(await lastLink(hostViews)).toEqual({ kind: "closed", reason: "revoked" });
   });
 });

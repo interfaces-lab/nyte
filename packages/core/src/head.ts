@@ -297,7 +297,7 @@ export async function removeHead(
   });
 }
 
-/** Returns the session's commit DAG as rows for a head: every commit on every branch, parents first, siblings in creation order, the head's path active; tip and revision from the one folded head. */
+/** Returns the session's commit DAG as rows for a head: every commit on every branch, parents first, siblings in creation order, the head's path active; tip and revision from the one folded head, the revision null when no pair names that tip (§54a). */
 export async function tree(kernel: Kernel, session: SessionId, head: HeadName): Promise<TreeView> {
   return withFold(kernel, session, (state) => rows(state, head));
 }
@@ -414,7 +414,7 @@ function rows(state: FoldState, head: HeadName): TreeView {
     enqueue(children.get(id) ?? [], entry.depth + 1);
   }
 
-  return { revision: folded?.revision ?? EMPTY_REVISION, tip, nodes };
+  return { revision: folded?.revision ?? null, tip, nodes };
 }
 
 function partPreview(part: PartRecord | undefined): string {

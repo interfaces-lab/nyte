@@ -98,11 +98,11 @@ export interface FailedResponse<P extends PreparedRequest = PreparedRequest> {
   readonly prepared: P;
 }
 
-/** Returns how a loop ended; a failed end carries the response it failed on, not yet charged, or null when none came. */
+/** Returns how a loop ended; a failed or stopped end carries the response it failed on or overflowed with, not yet charged, or null when none came. */
 export type LoopEnd<P extends PreparedRequest = PreparedRequest> =
   | { readonly reason: "done"; readonly usage: Usage }
   | { readonly reason: "parked"; readonly usage: Usage }
-  | { readonly reason: "stopped" }
+  | { readonly reason: "stopped"; readonly response: FailedResponse<P> | null }
   | {
       readonly reason: "failed";
       readonly failure: Failure;
@@ -161,7 +161,7 @@ type Outcome =
   | { readonly kind: "unfinished" }
   | { readonly kind: "stopped" };
 
-const STOPPED = { reason: "stopped" } as const;
+const STOPPED = { reason: "stopped", response: null } as const;
 
 const UNFINISHED: Failure = {
   class: "provider",
@@ -210,7 +210,8 @@ async function* run<P extends PreparedRequest>(
     const next = overflow === null ? attempt : attempt + 1;
     yield { type: "turn_start", attempt: next };
 
-    if (signal.aborted) return yield* end(STOPPED);
+    if (signal.aborted)
+      return yield* end({ reason: "stopped", response: overflow?.response ?? null });
 
     const prepared = await config.prepareRequest(
       { attempt: next, overflow: overflow?.failure ?? null },

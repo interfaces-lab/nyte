@@ -520,7 +520,12 @@ describe("client", () => {
 
     await until(
       second.session(session.id).watch(),
-      (view) => users(view).join() === "Final." && view.execution.kind === "idle",
+      (view) =>
+        users(view).join() === "Final." &&
+        view.execution.kind === "idle" &&
+        view.messages.every(
+          (message) => message.kind !== "user" || message.status.kind !== "unsent",
+        ),
     );
     expect(users(await host.view(session.id))).toEqual(["Final."]);
     await expect

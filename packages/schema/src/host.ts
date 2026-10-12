@@ -64,7 +64,7 @@ export type PruneReport = { readonly objects: number; readonly bytes: number; re
  * @category host
  * @since 0.1.0
  */
-export type PrincipalView = { readonly id: PrincipalId; readonly label: string; readonly authority: ReadonlySet<Authority>; readonly pairedAt: number; readonly lastSeenAt: number | null }
+export type PrincipalView = { readonly id: PrincipalId; readonly label: string; readonly authority: ReadonlySet<Authority>; readonly pairedAt: number }
 
 /**
  * Returns the preflight `open` runs: per-plugin outcomes and collisions;

@@ -143,7 +143,7 @@ async function serve(
   const resumed = name === "head.watch" ? resumeOf(value, request) : value;
 
   return new Response(
-    sseFrames(abortable(await frames(binding, name, resumed, context), request.signal), {
+    sseFrames(ending(await frames(binding, name, resumed, context), request.signal), {
       heartbeatMs: HEARTBEAT_MS,
     }),
     { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } },
@@ -179,6 +179,30 @@ async function frames<N extends FrameName>(
 
     return { id: idOf(name, data), data };
   });
+}
+
+/** Returns a stream row's frames ended by the request's abort; when the abort's reason is an `SdkError` (a revoke's `unauthenticated`), the end throws it, so the client reads why its stream ended. */
+function ending<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = abortable(source, signal)[Symbol.asyncIterator]();
+
+      return {
+        async next() {
+          const next = await iterator.next();
+
+          if (next.done === true && signal.reason instanceof SdkError) throw signal.reason;
+
+          return next;
+        },
+        async return() {
+          await iterator.return?.();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
 }
 
 function idOf(name: OperationName, data: Json): string | null {
@@ -219,6 +243,7 @@ async function bodyOf(request: Request, limit: number): Promise<unknown> {
   return text.trim() === "" ? {} : parseJson(text);
 }
 
+/** Returns the request's body capped at `limit` bytes; the request's abort cancels its source and fails a read in flight, so an upload ends with its listener. */
 function limited(request: Request, limit: number): ReadableStream<Uint8Array> | null {
   const declared = Number(request.headers.get("Content-Length") ?? "0");
 
@@ -236,6 +261,7 @@ function limited(request: Request, limit: number): ReadableStream<Uint8Array> | 
         else controller.enqueue(chunk);
       },
     }),
+    { signal: request.signal },
   );
 }
 

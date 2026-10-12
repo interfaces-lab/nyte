@@ -26,7 +26,7 @@ import type { Kernel } from "./kernel.ts";
 import type { PluginApi } from "./plugin.ts";
 import { decodePartRecord } from "./records.ts";
 import type { PartRecord } from "./records.ts";
-import { partRef, sessionOf } from "./refs.ts";
+import { sessionOf } from "./refs.ts";
 import { load, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
 
@@ -197,16 +197,6 @@ export function release(table: PartTable, name: string): void {
   table.answered.delete(name);
 }
 
-/** Records a modal part's answer another instance settled, so this instance's `answer()` resolves with it (§42z). */
-export function answeredElsewhere(
-  kernel: Kernel,
-  session: SessionId,
-  part: PartId,
-  answer: Answered,
-): void {
-  settle(kernel.partTable, partRef(session, part), answer);
-}
-
 /** Returns the part answers among recorded outcomes, those inside an `all` included. */
 export function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly {
   readonly part: PartId;
@@ -250,7 +240,11 @@ export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
     const session = sessionOf(name);
     const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-    if (session === null || found === null) {
+    if (
+      session === null ||
+      found === null ||
+      (found.record.placement.kind === "modal" && found.record.status.kind !== "live")
+    ) {
       release(table, name);
 
       continue;

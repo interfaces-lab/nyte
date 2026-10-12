@@ -16,8 +16,8 @@ import type { ModelRef } from "./models.ts";
  * @since 0.1.0
  */
 export type TreeView = {
-  /** Pass as `expect` to `move`; stale if the tree grew meanwhile. */
-  readonly revision: Revision;
+  /** Pass as `expect` to `move`; stale if the tree grew meanwhile. Null when the host holds no revision paired with this tip (§54a): read the tree again. */
+  readonly revision: Revision | null;
   readonly tip: Position;
   /** Parents before children; siblings in creation order. One pass draws it. */
   readonly nodes: readonly TreeNode[];

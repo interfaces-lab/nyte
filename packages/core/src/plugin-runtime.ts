@@ -37,7 +37,7 @@ import { activateSession } from "./workspaces.ts";
 export interface PluginRuntime {
   readonly registries: RegistrySet;
   readonly hooks: HookDispatch;
-  /** The session's activation, settled once (§44a): admission, `session.command` and `advance` await it. A rejected activation drops the runtime while it is still the one held, so the next `pluginsFor` activates again. */
+  /** The session's activation, settled once (§44a): admission, `session.command` and `advance` await it. A rejected activation rejects `unavailable` unless it failed with an `SdkError`, and drops the runtime and the session's attach while it is still the one held, so the next `pluginsFor` activates and attaches again. */
   readonly ready: Promise<void>;
   /** Loads plugins after those already loaded, one outcome per plugin in order, after `checkPlugins`' preflight. A plugin rejected in preflight or by its `activate` falls back to the version the replaced runtime ran (`kept-previous`). Rejects when the session's resources cannot be read. */
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
@@ -53,7 +53,9 @@ export interface PluginRuntime {
   instance(id: string): PluginInstance | undefined;
   /** Returns the list `Host.plugins.replace(plugins, { session })` gave this session (§37l); null while it follows `kernel.hostPlugins`. */
   assigned(): readonly Plugin<"core">[] | null;
-  /** Once no hook dispatch on it is in flight, lets every plugin go in reverse load order and runs a last reload pass; a plugin no other runtime runs deactivates. `load` and `close` run one at a time. */
+  /** Keeps this runtime open until the disposer runs: a request holds the runtime it was prepared on until its calls and `after_request` finish (§44c). */
+  hold(): Disposer;
+  /** Once nothing holds it, lets every plugin go in reverse load order and runs a last reload pass; a plugin no other runtime runs deactivates. `load` and `close` run one at a time. */
   close(): Promise<void>;
 }
 
@@ -178,16 +180,25 @@ export function createPluginRuntime(
 
   /** Runs one hook dispatch as an operation `close` waits for. */
   const held = <T>(work: () => Promise<T>): Promise<T> => {
-    holds += 1;
+    const release = hold();
 
-    return work().finally(() => {
+    return work().finally(release);
+  };
+
+  function hold(): Disposer {
+    holds += 1;
+    let released = false;
+
+    return () => {
+      if (released) return;
+      released = true;
       holds -= 1;
 
       if (holds > 0) return;
       idle?.resolve();
       idle = null;
-    });
-  };
+    };
+  }
 
   const pend = (owner: string, issue: ValidationIssue): void => {
     finding.set(owner, [...(finding.get(owner) ?? []), issue]);
@@ -206,11 +217,21 @@ export function createPluginRuntime(
 
   const dispatch = createHookDispatch(kernel, session);
 
-  const hooks: HookDispatch = {
+  const own: HookDispatch = {
     register: (plugin, api, name, entry) => dispatch.register(plugin, api, name, entry),
     observe: (name, event, context) => held(() => dispatch.observe(name, event, context)),
     transform: (name, value, context) => held(() => dispatch.transform(name, value, context)),
     decide: (name, value, context, step) => held(() => dispatch.decide(name, value, context, step)),
+  };
+
+  /** The predecessor serves this runtime's dispatches until its activation settles, so no hook meets a half-activated runtime (§44c). */
+  let serving = previous?.hooks ?? own;
+
+  const hooks: HookDispatch = {
+    register: (plugin, api, name, entry) => own.register(plugin, api, name, entry),
+    observe: (name, event, context) => serving.observe(name, event, context),
+    transform: (name, value, context) => serving.transform(name, value, context),
+    decide: (name, value, context, step) => serving.decide(name, value, context, step),
   };
 
   const host: InstanceHost = {
@@ -339,7 +360,7 @@ export function createPluginRuntime(
     await registries.materialize();
     await publishCatalog(kernel, session);
 
-    void hooks.observe(
+    void own.observe(
       "session_activated",
       { session: sessionHandle(kernel, CORE_CONTEXT, session) },
       { session, head: null, run: null, principal: LOCAL },
@@ -358,14 +379,17 @@ export function createPluginRuntime(
     return outcomes;
   };
 
-  const ready = (previous?.ready.catch(() => undefined) ?? Promise.resolve()).then(() =>
-    activateSession(kernel, session, runtime),
-  );
+  const ready = (previous?.ready.catch(() => undefined) ?? Promise.resolve())
+    .then(() => activateSession(kernel, session, runtime))
+    .catch((error: unknown) => {
+      throw error instanceof SdkError ? error : new SdkError("unavailable", messageOf(error));
+    });
 
   const runtime: PluginRuntime = {
     registries,
     hooks,
     ready,
+    hold,
     load: (plugins) => serial(() => loadAll(plugins)),
     outcomes: () => last,
     issues: () =>
@@ -400,13 +424,21 @@ export function createPluginRuntime(
       }),
   };
 
+  const serve = (): void => {
+    serving = own;
+  };
+
+  void ready.then(serve, serve);
+
   if (previous !== null) {
     const retire = (): Promise<void> => previous.close();
     void ready.then(retire, retire);
   }
 
   ready.catch(() => {
-    if (kernel.runtimes().get(session) === runtime) void kernel.closePlugins(session);
+    if (kernel.runtimes().get(session) !== runtime) return;
+    void kernel.environments.detach(session);
+    void kernel.closePlugins(session);
   });
 
   return runtime;

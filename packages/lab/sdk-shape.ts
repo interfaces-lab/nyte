@@ -1524,8 +1524,8 @@ interface ViewOptions {
  * @since 0.1.0
  */
 interface TreeView {
-  /** Pass as `expect` to `move`; stale if the tree grew meanwhile. */
-  readonly revision: Revision;
+  /** Pass as `expect` to `move`; stale if the tree grew meanwhile. Null when the host holds no revision paired with this tip (§54a): read the tree again. */
+  readonly revision: Revision | null;
   readonly tip: Position;
   /** Parents before children; siblings in creation order. One pass draws it. */
   readonly nodes: readonly TreeNode[];
@@ -4609,7 +4609,7 @@ interface PruneReport { readonly objects: number; readonly bytes: number; readon
  * @category host
  * @since 0.1.0
  */
-interface PrincipalView { readonly id: PrincipalId; readonly label: string; readonly authority: ReadonlySet<Authority>; readonly pairedAt: number; readonly lastSeenAt: number | null }
+interface PrincipalView { readonly id: PrincipalId; readonly label: string; readonly authority: ReadonlySet<Authority>; readonly pairedAt: number }
 /**
  * Returns the preflight `open` runs: per-plugin outcomes and collisions;
  * touches nothing.

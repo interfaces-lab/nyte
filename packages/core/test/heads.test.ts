@@ -1,8 +1,9 @@
 import { asId } from "@nyte-ai/schema";
-import type { CommitId, HeadName } from "@nyte-ai/schema";
+import type { CommitId, HeadName, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { memoryStore } from "../src/index.ts";
-import type { Head, Host } from "../src/index.ts";
+import { LOCAL, headRef, memoryStore, tree } from "../src/index.ts";
+import type { Head, Host, Kernel, StoreConnection } from "../src/index.ts";
+import { commit, expectOf, objectOf, putCommit, readTip } from "../src/session-state.ts";
 import { label, main, recording, setup, usage } from "./harness.ts";
 import type { Script } from "./harness.ts";
 
@@ -21,7 +22,77 @@ async function exchange(
   await step;
 }
 
+/** Lands a user commit on `main` straight through the store, as another instance's admission does. */
+async function land(kernel: Kernel, session: SessionId, content: string): Promise<CommitId> {
+  const tip = await readTip(kernel, session, main);
+  const body = {
+    kind: "user",
+    message: asId<"message">(crypto.randomUUID()),
+    content,
+    source: { kind: "user" },
+    delivery: "steer",
+    siblings: [],
+  } as const;
+  const record = { parent: tip.id, at: Date.now(), run: null, body };
+  const id = await putCommit(kernel, record);
+
+  const outcome = await commit(kernel, [
+    {
+      name: headRef(session, main),
+      target: objectOf(id),
+      expect: expectOf(tip.ref),
+      event: { head: main, kind: "commit", id, parent: record.parent, run: null, body },
+    },
+  ]);
+
+  assert(outcome.kind === "set");
+
+  return id;
+}
+
 describe("heads", () => {
+  it("answers a null tree revision when no pair names the folded tip, never the empty revision (ADV F 3, probe N3)", async () => {
+    const raw = await memoryStore().open();
+    let between: (() => Promise<unknown>) | null = null;
+
+    const store: StoreConnection = {
+      ...raw,
+      refs: {
+        ...raw.refs,
+        async log(session, after, limit) {
+          const events = await raw.refs.log(session, after, limit);
+          const run = between;
+
+          if (run !== null && events.some((event) => event.kind === "commit")) {
+            between = null;
+            await run();
+          }
+
+          return events;
+        },
+      },
+    };
+
+    const a = await setup({ store, execution: { kind: "admit-only" } });
+    const b = await setup({ store: raw, execution: { kind: "admit-only" } });
+    const session = await a.host.sessions.create();
+    await land(a.kernel, session.id, "A");
+    const hold = a.kernel.folds.acquire(session.id, LOCAL);
+
+    try {
+      await hold.ready();
+      const second = await land(b.kernel, session.id, "B");
+      between = () => land(b.kernel, session.id, "C");
+      const view = await tree(a.kernel, session.id, main);
+
+      expect(view.tip).toEqual({ kind: "commit", id: second });
+      expect(view.revision).toBeNull();
+      expect((await tree(a.kernel, session.id, asId("nowhere"))).revision).toBeNull();
+    } finally {
+      hold.release();
+    }
+  });
+
   it("creates, merges and removes heads with each outcome", async () => {
     const { host, script } = await setup();
     const session = await host.sessions.create();

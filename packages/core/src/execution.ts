@@ -24,7 +24,7 @@ import { decodeRunRecord } from "./records.ts";
 import type { RunRecord } from "./records.ts";
 import { leaseRef, runRef } from "./refs.ts";
 import type { Lease } from "./refs.ts";
-import { endRun, startRun } from "./runs.ts";
+import { begin, endRun, newRun } from "./runs.ts";
 import { listSessions } from "./session.ts";
 import {
   addDriven,
@@ -137,7 +137,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   return { close, [Symbol.asyncDispose]: close };
 }
 
-/** Runs one leased kernel step on a head after its activation (§44a): claims the lease, re-runs owed tool calls, lands due inputs, runs a turn when one is owed and reports what comes next. A head this instance already steps answers `busy`; the lease is released when the step ends unless it reports `continue` and an open cover still owns it (§42y, §42ac). */
+/** Runs one leased kernel step on a head after its activation (§44a): claims the lease, re-runs owed tool calls, lands due inputs, runs a turn when one is owed and reports what comes next. A head this instance already steps answers `busy`; the lease is released when the step ends unless it reports `continue` and an open cover still owns it (§42y, §42ac); an `idle` head owed a step by then, its dispatch refused `busy` meanwhile, is woken once. */
 export async function advance(
   kernel: Kernel,
   input: { readonly session: SessionId; readonly head: HeadName },
@@ -174,8 +174,15 @@ export async function advance(
   } finally {
     state.advancing.delete(name);
 
-    if (claimed && (report?.kind !== "continue" || (state.held.get(name)?.owners.size ?? 0) === 0))
+    if (
+      claimed &&
+      (report?.kind !== "continue" || (state.held.get(name)?.owners.size ?? 0) === 0)
+    ) {
       await release(kernel, session, head);
+
+      if (report?.kind === "idle" && (await owed(kernel, session, head)))
+        kernel.wakes.notify(session, head);
+    }
   }
 }
 
@@ -188,7 +195,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (due === null) return { kind: "idle" };
 
-  const run = await startRun(
+  const run = await newRun(
     kernel,
     session,
     head,
@@ -196,15 +203,11 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
     due.start.configuration,
   );
 
-  try {
-    await landing(kernel, session, head, due.ids, run.id);
-  } catch (error) {
-    await endRun(kernel, session, run.id, failed(error));
+  if ((await landing(kernel, session, head, due.ids, run.view.id, run.update)).length === 0)
+    return next(kernel, session, head);
+  begin(kernel, session, run.view);
 
-    throw error;
-  }
-
-  return (await drive(kernel, session, head, run)) ?? next(kernel, session, head);
+  return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
 }
 
 /** Returns one page of heads owed a step and wakes each (§38y, §42s). It first parks the page's recorded waits, so a wait whose target settled while no instance held it is settled and its head woken. */
@@ -524,6 +527,7 @@ async function resume(
       call: owed.call,
       name: owed.intent.name,
       args: owed.intent.args,
+      runtime: kernel.pluginsFor(session),
       context: {
         principal: owed.intent.principal,
         authority: PARTICIPANT_AUTHORITY,
@@ -611,7 +615,7 @@ async function drive(
     kernel,
     session,
     run.id,
-    stopping || ended.end.kind === "parked" ? { kind: "stopped" } : ended.end,
+    ended.end.kind === "parked" ? { kind: "stopped" } : ended.end,
   );
 
   return null;
@@ -623,7 +627,6 @@ async function boundary(
   head: HeadName,
   run: RunId,
 ): Promise<readonly LandedInput[]> {
-  if (kernel.runs.isStopping(run)) return [];
   const inbox = await readInbox(kernel, session, head);
 
   const due = await withFold(kernel, session, (state) =>
@@ -639,7 +642,8 @@ async function boundary(
   );
 
   if (due.length === 0) return [];
-  await landing(
+
+  const landed = await landing(
     kernel,
     session,
     head,
@@ -647,7 +651,7 @@ async function boundary(
     run,
   );
 
-  return due;
+  return due.filter((input) => landed.includes(input.message));
 }
 
 async function dueInputs(

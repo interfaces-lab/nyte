@@ -599,9 +599,10 @@ describe("parts", () => {
     expect(first.kernel.partTable.answered.size).toBe(0);
   });
 
-  it("publishes no answer when keeping it loses its write twice (ADV B F6)", async () => {
+  it("publishes no answer while keeping it loses its write; it lands once the write wins (ADV B F6, §62 retry until won)", async () => {
     const shared = await memoryStore().open();
-    let refused = 0;
+    const publishedWhileRefused: number[] = [];
+    let table: Kernel["partTable"] | null = null;
 
     const store: StoreConnection = {
       ...shared,
@@ -610,8 +611,13 @@ describe("parts", () => {
         async set(updates) {
           const [only] = updates;
 
-          if (updates.length === 1 && only?.event === undefined && only.name.includes("/parts/")) {
-            refused += 1;
+          if (
+            publishedWhileRefused.length < 2 &&
+            updates.length === 1 &&
+            only?.event === undefined &&
+            only.name.includes("/parts/")
+          ) {
+            publishedWhileRefused.push(table?.answered.size ?? -1);
 
             return { kind: "stale", name: only.name, revision: null };
           }
@@ -622,6 +628,7 @@ describe("parts", () => {
     };
 
     const { kernel, host } = await setup({ store });
+    table = kernel.partTable;
     const session = await host.sessions.create();
 
     const part = await session.parts.create(question, {
@@ -631,17 +638,8 @@ describe("parts", () => {
 
     const answer = part.answer();
 
-    await expect(part.act("answer", { choice: "yes" })).rejects.toMatchObject({ code: "stale" });
-    expect(refused).toBe(2);
-    expect(kernel.partTable.answered.size).toBe(0);
-    expect(
-      await Promise.race([answer, new Promise((resolve) => setTimeout(resolve, 20, "pending"))]),
-    ).toBe("pending");
-
-    const stored = await shared.refs.get(partRef(session.id, part.id));
-
-    expect(
-      decodePartRecord(stored?.target ? await shared.objects.get(stored.target) : null)?.status,
-    ).toEqual({ kind: "live", run: null });
+    await part.act("answer", { choice: "yes" });
+    expect(publishedWhileRefused).toEqual([0, 0]);
+    expect(await answer).toMatchObject({ action: "answer" });
   });
 });

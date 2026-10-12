@@ -1435,8 +1435,8 @@ const operations = {
   PrincipalsListInputSchema: operation(PrincipalsListInputSchema, {}, 1),
   PrincipalsListOutputSchema: operation(
     PrincipalsListOutputSchema,
-    [{ id: principal, label: "Phone", authority: ["participant"], pairedAt: 1, lastSeenAt: 2 }],
-    [{ id: principal, label: "Phone", authority: "participant", pairedAt: 1, lastSeenAt: 2 }],
+    [{ id: principal, label: "Phone", authority: ["participant"], pairedAt: 1 }],
+    [{ id: principal, label: "Phone", authority: "participant", pairedAt: 1 }],
   ),
   PrincipalsPairInputSchema: operation(
     PrincipalsPairInputSchema,
@@ -2004,8 +2004,8 @@ const cases = {
   ),
   PrincipalViewWireSchema: sample(
     PrincipalViewWireSchema,
-    { id: principal, label: "Phone", authority: ["participant"], pairedAt: 1, lastSeenAt: null },
-    { id: principal, label: "Phone", authority: {}, pairedAt: 1, lastSeenAt: null },
+    { id: principal, label: "Phone", authority: ["participant"], pairedAt: 1 },
+    { id: principal, label: "Phone", authority: {}, pairedAt: 1 },
   ),
   PluginLoadOutcomeSchema: sample(
     PluginLoadOutcomeSchema,

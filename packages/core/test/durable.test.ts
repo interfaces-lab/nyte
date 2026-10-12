@@ -655,7 +655,7 @@ describe("durable steps", () => {
       }),
     });
 
-    await first.kernel.waits.partClosed(asId("p1"));
+    await first.kernel.waits.partClosed(session.id, asId("p1"), null);
 
     const second = createKernel({
       hostId: first.kernel.hostId,

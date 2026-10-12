@@ -53,6 +53,7 @@ async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
 
     const outcome = await executeCall(kernel, {
       session,
+      runtime: kernel.pluginsFor(session),
       head: main,
       run: run.id,
       call: asId(`call-${calls}`),

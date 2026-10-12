@@ -346,8 +346,8 @@ describe("agentLoop", () => {
     const { events, end } = await collect(config, controller.signal);
 
     expect(seen.executed).toEqual(["first"]);
-    expect(end).toEqual({ reason: "stopped" });
-    expect(events.at(-1)).toEqual({ type: "loop_end", end: { reason: "stopped" } });
+    expect(end).toEqual({ reason: "stopped", response: null });
+    expect(events.at(-1)).toEqual({ type: "loop_end", end: { reason: "stopped", response: null } });
   });
 
   it("ends stopped when the signal aborts mid-stream, through the stream's own aborted end", async () => {
@@ -369,7 +369,7 @@ describe("agentLoop", () => {
       if (event.type === "message_update") controller.abort();
     }
 
-    expect(await loop.result()).toEqual({ reason: "stopped" });
+    expect(await loop.result()).toEqual({ reason: "stopped", response: null });
     expect(kinds(events)).not.toContain("message_end");
     expect(seen.requests).toHaveLength(1);
   });
@@ -383,7 +383,10 @@ describe("agentLoop", () => {
       },
     });
 
-    expect((await collect(called.config, calling.signal)).end).toEqual({ reason: "stopped" });
+    expect((await collect(called.config, calling.signal)).end).toEqual({
+      reason: "stopped",
+      response: null,
+    });
     expect(called.seen.executed).toEqual([]);
 
     const asking = new AbortController();
@@ -395,7 +398,10 @@ describe("agentLoop", () => {
       boundary: async () => landed("steer"),
     });
 
-    expect((await collect(continued.config, asking.signal)).end).toEqual({ reason: "stopped" });
+    expect((await collect(continued.config, asking.signal)).end).toEqual({
+      reason: "stopped",
+      response: null,
+    });
     expect(continued.seen.requests).toHaveLength(1);
   });
 

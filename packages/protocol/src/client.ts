@@ -16,7 +16,7 @@ export type TransportOptions = {
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
-/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the last response that carried one, error answers included, §43j); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `stream` (event-stream JSON frames, or a framed job output as byte chunks and `gap`/`exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `stream` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
 export type Transport = {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   stream(name: OperationName, input: Json): AsyncIterable<Uint8Array | Json>;
@@ -51,15 +51,23 @@ export function createTransport(options: TransportOptions): Transport {
     try {
       response = await send(`${base}/${name}`, { ...init, method: "POST", headers });
     } catch (error) {
-      if (init.signal?.aborted === true) throw error;
+      if (!(error instanceof TypeError) || init.signal?.aborted === true) throw error;
 
-      throw new SdkError("unavailable", error instanceof Error ? error.message : String(error));
+      throw new SdkError("unavailable", error.message);
     }
 
-    credential = response.headers.get("X-Nyte-Credential") ?? credential;
     const answered = response.headers.get(HOST_HEADER);
 
+    if (answered !== null && host !== null && answered !== host) {
+      await response.body?.cancel();
+
+      throw new SdkError("stale", `Host ${answered} answered instead of ${host}.`, {
+        hostId: asId<"host">(answered),
+      });
+    }
+
     if (answered !== null) host = asId<"host">(answered);
+    credential = response.headers.get("X-Nyte-Credential") ?? credential;
 
     if (response.ok) return response;
 

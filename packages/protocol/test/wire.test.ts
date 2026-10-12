@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { ByteReader, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError, dev } from "@nyte-ai/core";
 import type { SdkErrorCode } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -287,5 +287,51 @@ describe("byte bodies", () => {
     await expect(pending).rejects.toThrow();
     await expect(body.read()).rejects.toThrow();
     expect(reader.closes()).toBe(1);
+  });
+
+  it("reports a provider close that fails on abort and still returns the chunk iterator (ADV G11, probe N4)", async () => {
+    let returned = 0;
+    const lines: string[] = [];
+    const sink = dev.sink;
+
+    const reader: ByteReader = {
+      size: null,
+      mime: null,
+      chunks: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: () => new Promise<IteratorResult<Uint8Array>>(() => undefined),
+          return: async () => {
+            returned += 1;
+
+            return { done: true, value: undefined };
+          },
+        }),
+      }),
+      close: async () => {
+        throw new Error("Provider close I/O failed.");
+      },
+      [Symbol.asyncDispose]: async () => undefined,
+    };
+
+    dev.on((line) => {
+      lines.push(line);
+    });
+
+    try {
+      const controller = new AbortController();
+      const body = octetStream({ reader }, controller.signal).body?.getReader();
+
+      assert(body !== undefined);
+      const pending = body.read();
+      controller.abort();
+
+      await expect(pending).rejects.toThrow();
+      await expect.poll(() => returned).toBe(1);
+      await expect
+        .poll(() => lines.filter((line) => line.startsWith("DEV:protocol byte reader close failed")))
+        .toEqual(['DEV:protocol byte reader close failed {"message":"Provider close I/O failed."}']);
+    } finally {
+      dev.sink = sink;
+    }
   });
 });

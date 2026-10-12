@@ -10,7 +10,6 @@ import type {
   Decision,
   Delivery,
   Disposer,
-  FileChange,
   HeadName,
   HostDescription,
   HostId,
@@ -27,7 +26,6 @@ import type {
   RunView,
   SessionCatalogView,
   SessionId,
-  SnapshotId,
   Submission,
   ToolCall,
   ToolOutcome,
@@ -120,10 +118,6 @@ export interface Kernel {
   readonly receipts: Map<string, Set<() => void>>;
   /** The abort controllers of the tool calls running in this process, by call. */
   readonly calls: Map<string, Set<AbortController>>;
-  /** Each run's latest snapshot this process took around a call that may write. */
-  readonly marks: Map<RunId, SnapshotId>;
-  /** Each session's changed files as this process last merged them. */
-  readonly changes: Map<SessionId, readonly FileChange[]>;
   /** Returns whether this host serves a session's workspace; in memory, default `{ kind: "inactive" }`. */
   activation(session: SessionId): Activation;
   /** Sets a session's activation in memory and publishes an `activation` event to it. */
@@ -239,8 +233,8 @@ export interface RunTable {
   get(run: RunId): { readonly controller: AbortController; readonly stopping: boolean } | undefined;
   /** Records the run as live and returns its controller; a run already live keeps the one it has. */
   start(run: RunId): AbortController;
-  /** Marks the run stopping, recording it first when it is not live here, so its patches drop from now on; its signal is not aborted. */
-  markStopping(run: RunId): void;
+  /** Marks the run stopping, recording it first when it is not live here, so its patches drop from now on; its signal is not aborted. Returns what clears the mark when the stop's fence failed to land. */
+  markStopping(run: RunId): Disposer;
   /** Aborts the run's signal: a stop's cleanup, called only once its fence is logged. */
   abort(run: RunId): void;
   /** Returns whether the run's stop fence is passed. */
@@ -369,6 +363,7 @@ export interface ToolGate {
       readonly run: RunId;
       readonly principal: PrincipalId;
       readonly signal: AbortSignal;
+      readonly runtime: PluginRuntime;
     },
   ): Promise<StepOutcome<Decision<ToolCall>>>;
 }
@@ -383,6 +378,7 @@ export interface ToolOutcomeRewriter {
       readonly run: RunId;
       readonly call: CallId;
       readonly principal: PrincipalId;
+      readonly runtime: PluginRuntime;
     },
   ): Promise<ToolOutcome>;
 }
@@ -511,8 +507,6 @@ export function createKernel(input: KernelOptions): Kernel {
     workspaceState: createWorkspaceState(),
     receipts: new Map(),
     calls: new Map(),
-    marks: new Map(),
-    changes: new Map(),
     activation,
     setActivation(session, value) {
       activations.set(session, value);
@@ -559,8 +553,8 @@ export function createKernel(input: KernelOptions): Kernel {
     tools: input.tools ?? ((runtime, run) => toolSource(kernel, runtime, run)),
     beforeTool:
       input.beforeTool ??
-      ((call, context) =>
-        kernel.pluginsFor(context.session).hooks.decide("before_tool", call, context, {
+      ((call, { runtime, ...context }) =>
+        runtime.hooks.decide("before_tool", call, context, {
           call: asId<"call">(`hook:before_tool:${call.call}`),
           run: context.run,
           head: context.head,
@@ -569,8 +563,8 @@ export function createKernel(input: KernelOptions): Kernel {
         })),
     afterTool:
       input.afterTool ??
-      ((outcome, context) =>
-        kernel.pluginsFor(context.session).hooks.transform("after_tool", outcome, context)),
+      ((outcome, { runtime, ...context }) =>
+        runtime.hooks.transform("after_tool", outcome, context)),
     snapshots: input.snapshots ?? ((session) => kernel.environments.snapshots(session)),
     env: input.env ?? ((session) => kernel.environments.attach(session)),
     wrapEnv: input.wrapEnv ?? ((session, wrap) => kernel.environments.wrap(session, wrap)),
@@ -598,9 +592,8 @@ export function createKernel(input: KernelOptions): Kernel {
       const runtime = runtimes.get(session);
 
       if (runtime === undefined) return;
+      runtimes.delete(session);
       await runtime.close();
-
-      if (runtimes.get(session) === runtime) runtimes.delete(session);
     },
     catalog,
     setCatalog(session, value) {
@@ -653,7 +646,12 @@ function createRunTable(): RunTable {
     get: (run) => live.get(run),
     start: (run) => enter(run).controller,
     markStopping(run) {
-      enter(run).stopping = true;
+      const entry = enter(run);
+      entry.stopping = true;
+
+      return () => {
+        entry.stopping = false;
+      };
     },
     abort(run) {
       live.get(run)?.controller.abort();

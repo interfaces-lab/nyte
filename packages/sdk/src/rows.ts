@@ -48,8 +48,9 @@ export interface Link {
  * row's frames across link loss (resuming after the last event id), and
  * `output` yields `job.output`. `wait` is `call` retried across link loss,
  * for the long waits (`settled`, `landed`, `answer`). Any 401 closes the
- * link `revoked`. Every frame is decoded leniently; a frame that still fails
- * its schema is skipped with a `dev` line (§47m).
+ * link `revoked`, and an answer from another host closes it `host-gone`.
+ * Every frame is decoded leniently; a frame that still fails its schema is
+ * skipped with a `dev` line (§47m).
  */
 export interface Rows {
   readonly link: Link;
@@ -134,7 +135,7 @@ export function createRows(transport: Transport, link: Link): Rows {
     send: (signal: AbortSignal) => Promise<T>,
     signal: AbortSignal | undefined,
   ): Promise<T> => {
-    if (link.signal.aborted) throw closed(link);
+    link.signal.throwIfAborted();
 
     try {
       const answer = await send(
@@ -145,7 +146,9 @@ export function createRows(transport: Transport, link: Link): Rows {
 
       return answer;
     } catch (error) {
-      if (link.signal.aborted) throw closed(link);
+      if (isHostGone(transport, error)) link.close("host-gone");
+
+      link.signal.throwIfAborted();
 
       if (isLinkLoss(error)) link.lost();
 
@@ -260,6 +263,12 @@ function resumable(
           try {
             next = await current.next();
           } catch (error) {
+            if (isHostGone(transport, error)) {
+              link.close("host-gone");
+
+              return DONE;
+            }
+
             if (error instanceof SdkError && error.code === "unauthenticated") {
               link.close("revoked");
 
@@ -359,6 +368,19 @@ function decoded<N extends OperationName>(
   }
 }
 
+/** Returns whether an error is another host answering the transport: the `stale` it throws, naming that host, for an `X-Nyte-Host` other than the one it first read (§43j). */
+function isHostGone(transport: Transport, error: unknown): boolean {
+  const pinned = transport.host();
+
+  return (
+    error instanceof SdkError &&
+    error.code === "stale" &&
+    pinned !== null &&
+    error.hostId !== null &&
+    error.hostId !== pinned
+  );
+}
+
 /** Returns whether an error is the link failing rather than an answer: `unavailable`, which the transport also makes of a `TypeError` the `fetch` call itself throws (§47m). */
 export function isLinkLoss(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable";
@@ -394,12 +416,4 @@ export function backoff(link: Link, ms: number, signal: AbortSignal): Promise<vo
       if (state.kind === "connected") done();
     });
   });
-}
-
-function closed(link: Link): SdkError {
-  const reason: unknown = link.signal.reason;
-
-  return reason instanceof SdkError
-    ? reason
-    : new SdkError("unavailable", "The connection is closed.");
 }

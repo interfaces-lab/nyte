@@ -120,6 +120,8 @@ export type RunRecord = {
     readonly reason: string;
   } | null;
   readonly snapshot: SnapshotId | null;
+  /** The snapshot after the run's last write-class call: the next one diffs from it. */
+  readonly lastSnapshot: SnapshotId | null;
   readonly usage: Usage | null;
   readonly requests: number;
   /** The durable steps parked on this run, each written by its park in the same set as its wait. */
@@ -140,7 +142,7 @@ export type PartRecord = {
   readonly status: PartStatus;
 };
 
-/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. */
+/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. A record whose `id` is another receipt's names it: a revise's names its target (§62). */
 export type ReceiptRecord = {
   readonly id: ReceiptId;
   readonly kind: "send" | "move" | "batch";
@@ -197,7 +199,6 @@ export type PrincipalRecord = {
     readonly label: string;
     readonly authority: readonly Authority[];
     readonly pairedAt: number;
-    readonly lastSeenAt: number | null;
     readonly tokenDigest: string;
   }[];
   readonly codes: readonly {
@@ -305,6 +306,7 @@ export const decodeRunRecord: Decode<RunRecord> = decoder(
     waiting: nullable(WaitTargetType),
     retrying: nullable(RetryingType),
     snapshot: nullable(idSchema<"snapshot">()),
+    lastSnapshot: nullable(idSchema<"snapshot">()),
     usage: nullable(UsageType),
     requests: Type.Number(),
     waitedBy: Type.Array(Type.Object({ session: idSchema<"session">(), call: idSchema<"call">() })),
@@ -389,7 +391,6 @@ export const decodePrincipalRecord: Decode<PrincipalRecord> = decoder(
         label: Type.String(),
         authority: Type.Array(AuthorityType),
         pairedAt: Type.Number(),
-        lastSeenAt: nullable(Type.Number()),
         tokenDigest: Type.String(),
       }),
     ),

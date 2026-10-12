@@ -63,7 +63,6 @@ export const PrincipalViewWireType = Type.Object({
   label: Type.String(),
   authority: Type.Array(AuthorityType),
   pairedAt: Type.Number(),
-  lastSeenAt: nullable(Type.Number()),
 });
 
 /** The TypeBox schema of a `PluginLoadOutcome`. */

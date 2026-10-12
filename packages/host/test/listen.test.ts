@@ -12,7 +12,7 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
-import { memoryStore } from "@nyte-ai/core";
+import { SdkError, memoryStore } from "@nyte-ai/core";
 import { createTransport, decodeError, operations, parseSse } from "@nyte-ai/protocol";
 import type { SseFrame } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
@@ -147,6 +147,17 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   ]);
 }
 
+/** Drains an event stream and returns how it ended: "ended", or the code of the `SdkError` its error event carried. */
+async function endOf(frames: AsyncIterator<SseFrame>): Promise<string> {
+  try {
+    while ((await frames.next()).done !== true);
+
+    return "ended";
+  } catch (error) {
+    return error instanceof SdkError ? error.code : String(error);
+  }
+}
+
 describe("listen", () => {
   it("refuses a token shorter than 16 characters before anything binds", async () => {
     const host = await compose(fakeModels());
@@ -198,7 +209,6 @@ describe("listen", () => {
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
     const [paired] = await host.principals.list();
     assert(paired !== undefined);
-    expect(paired.lastSeenAt).toBeNull();
     expect([...paired.authority].sort()).toEqual(["owner", "participant"]);
 
     await host.principals.revoke(paired.id);
@@ -206,7 +216,7 @@ describe("listen", () => {
     expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
-  it("drops a revoked principal's open head.watch at once while another principal's keeps flowing", async () => {
+  it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
     const created = await json(await post(listener, "sessions.create", {}));
@@ -257,16 +267,7 @@ describe("listen", () => {
     assert(id !== undefined);
     await host.principals.revoke(id);
 
-    const ended = within(
-      (async () => {
-        while (!(await revoked.next()).done);
-
-        return "ended";
-      })(),
-      100,
-    );
-
-    expect(await ended).toBe("ended");
+    expect(await within(endOf(revoked), 100)).toBe("unauthenticated");
     await post(listener, "session.update", { session, patch: { name: "Renamed" } });
 
     const renamed = within(
@@ -283,7 +284,7 @@ describe("listen", () => {
     await kept.return?.(undefined);
   });
 
-  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here, and authenticating writes no lastSeenAt (ADV C 3)", async () => {
+  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here (ADV C 3)", async () => {
     const store = memoryStore();
     const host = await open(fakeModels(), { store, operations: operations() });
     cleanups.push(() => host.close());
@@ -306,16 +307,12 @@ describe("listen", () => {
     const token = exchange.headers.get("X-Nyte-Credential");
     assert(token !== null);
     const device = { Authorization: `Bearer ${token}` };
-    const seen = async () => (await other.principals.list())[0]?.lastSeenAt;
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBeNull();
     vi.setSystemTime(start + 30_000);
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBeNull();
     vi.setSystemTime(start + 61_000);
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    expect(await seen()).toBeNull();
 
     const created = await json(await post(listener, "sessions.create", {}));
     assert(
@@ -339,11 +336,7 @@ describe("listen", () => {
     while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
     expect(frame).toBeDefined();
 
-    const ended = (async () => {
-      while (!(await frames.next()).done);
-
-      return "ended";
-    })();
+    const ended = endOf(frames);
 
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
@@ -354,7 +347,7 @@ describe("listen", () => {
     const revoked = await post(listener, "sessions.list", {}, device);
 
     expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
-    expect(await within(ended, 100)).toBe("ended");
+    expect(await within(ended, 100)).toBe("unauthenticated");
   });
 
   it("denies a participant git.stage by the row's authority", async () => {

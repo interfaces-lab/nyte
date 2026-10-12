@@ -355,10 +355,75 @@ describe("admission", () => {
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
-    const later = await session.send("Later.", { delivery: "attach" });
+    const later = await session.send("Later.", { delivery: "queue" });
     const edit = await session.send("Hello.", { replace: original.message });
 
     expect(await edit.settled()).toEqual({ kind: "pending-input", messages: [later.message] });
+  });
+
+  it("A-2 N2: a child's report waiting on a streaming head neither blocks an edit nor is dropped", async () => {
+    const { host, script } = await setup({ execution: { kind: "admit-only" } });
+    const session = await host.sessions.create();
+    const child = await host.sessions.create({ parent: session.id });
+    const first = await session.send("First.");
+    const driving = host.execution.advance({ session: session.id, head: main });
+    await script.started(1);
+
+    const report = await session.send("Child report.", {
+      delivery: "attach",
+      source: { kind: "child", session: child.id },
+    });
+
+    const edit = await session.send("First v2.", { replace: first.message });
+    await driving;
+
+    expect(await edit.status()).toEqual({ kind: "pending" });
+
+    const next = host.execution.advance({ session: session.id, head: main });
+    const turn = await script.started(2);
+    const landed = await edit.landed();
+    assert(landed.kind === "landed");
+
+    expect(landed.run).toBe(turn.input.run.id);
+    expect(await report.landed()).toMatchObject({ kind: "landed", run: turn.input.run.id });
+    turn.finish();
+    await next;
+  });
+
+  it("A-2 N2: on an idle head a child's report blocks neither an edit nor a move", async () => {
+    const { host, script } = await setup({ execution: { kind: "admit-only" } });
+    const session = await host.sessions.create();
+    const child = await host.sessions.create({ parent: session.id });
+    const first = await session.send("First.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    (await script.started(1)).finish(completed);
+    await step;
+
+    await session.send("Child report.", {
+      delivery: "attach",
+      source: { kind: "child", session: child.id },
+    });
+
+    expect(await host.execution.advance({ session: session.id, head: main })).toMatchObject({
+      kind: "idle",
+    });
+
+    const edit = await session.send("First v2.", { replace: first.message });
+
+    expect(await edit.status()).toEqual({ kind: "pending" });
+
+    const next = host.execution.advance({ session: session.id, head: main });
+    (await script.started(2)).finish(completed);
+    await next;
+
+    await session.send("Job output.", {
+      delivery: "attach",
+      source: { kind: "job", job: asId("j1") },
+    });
+
+    expect(await (await session.move({ kind: "start" })).settled()).toMatchObject({
+      kind: "moved",
+    });
   });
 
   it("denies an operation the connection's principal lacks authority for", async () => {

@@ -30,7 +30,7 @@ import { sendReceipt, settleReceipt } from "./receipts.ts";
 import { envelope } from "./records.ts";
 import type { CommitRecord, MessageRecord, RunRecord } from "./records.ts";
 import { headRef, inboxRef, receiptRef } from "./refs.ts";
-import { abortHere, fence, stopRun } from "./runs.ts";
+import { abortHere, fence, stopRun, unfenced } from "./runs.ts";
 import {
   EMPTY_REVISION,
   STALE,
@@ -74,7 +74,7 @@ type SendInput = {
   readonly options?: SendOptions;
 };
 
-/** Returns what a guarded head read: its tip, its empty inbox and the run to stop. */
+/** Returns what a guarded head read: its tip, its inbox holding only attach inputs, and the run to stop. */
 interface Guarded {
   readonly tip: Tip;
   readonly inbox: Inbox;
@@ -83,6 +83,12 @@ interface Guarded {
 
 const USER: MessageSource = { kind: "user" };
 
+/** Returns a replace's own receipt id and the digest a resend must match. */
+interface Keyed {
+  readonly id: ReceiptId;
+  readonly digest: string;
+}
+
 /** Admits user content to a head after the session's activation in this process (§44a); see `sendNow`. */
 export async function send(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
   await kernel.pluginsFor(input.session).ready;
@@ -90,7 +96,7 @@ export async function send(kernel: Kernel, input: SendInput): Promise<SendReceip
   return sendNow(kernel, input);
 }
 
-/** Admits user content to a head and returns its receipt without awaiting the session's activation: the send path of the api an activation constructs and of a command's prompt (§44b). It replays a known id, runs `before_send`, resolves the configuration and admits in one set; a `replace` revises a pending input in place or edits a landed one. */
+/** Admits user content to a head and returns its receipt without awaiting the session's activation: the send path of the api an activation constructs and of a command's prompt (§44b). It replays a known id, runs `before_send`, resolves the configuration and admits in one set. A `replace` first replays its own id, then revises a pending input in place or edits a landed one. */
 export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
   const found = await requireSession(kernel, input.session);
   const head = found.record.heads.find((entry) => entry.name === input.head);
@@ -111,19 +117,31 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
   const target = sending.options.replace;
 
   if (target === undefined) return admit(sending);
+
+  const keyed = {
+    id: sending.options.id ?? asId<"receipt">(crypto.randomUUID()),
+    digest: await digestOf(sending),
+  };
+
+  const replayed = await replayOf(kernel, input.session, keyed);
+
+  if (replayed !== null) return replayed;
   const inbox = await readInbox(kernel, input.session, input.head);
 
-  return inbox.messages.includes(target) ? revise(sending, target) : edit(sending, target);
+  return inbox.messages.includes(target)
+    ? revise(sending, target, keyed)
+    : edit(sending, target, keyed);
 }
 
-/** Lands admitted inputs on a head into a run, or none: writes their user commits, advances the head, drops them from the inbox, and publishes `input landed` then `commit` per input in one set; returns the commits in `ids` order. */
+/** Lands admitted inputs on a head into a run, or none: writes their user commits, advances the head, drops them from the inbox, and publishes `input landed` then `commit` per input in one set; returns the messages it landed. The set expects the run unfenced (§61), or carries `start`, the run's `run started`, when the inputs start it; a start lands nothing without an input that is not attached (§62). */
 export async function landing(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   ids: readonly MessageId[],
   run: RunId | null,
-): Promise<readonly CommitId[]> {
+  start: RefUpdate | null = null,
+): Promise<readonly MessageId[]> {
   const landed = await attempt(`Landing on ${head}`, async () => {
     const [tip, inbox] = await Promise.all([
       readTip(kernel, session, head),
@@ -134,10 +152,16 @@ export async function landing(
 
     if (due.length === 0) return [];
 
+    const held = start ?? (run === null ? null : await unfenced(kernel, session, run));
+
+    if (run !== null && held === null) return [];
+
     const { inputs, siblings } = await withFold(kernel, session, (state) => ({
       inputs: due.map((message) => state.inputs.get(message)),
       siblings: state.siblings.get(tip.id) ?? [],
     }));
+
+    if (start !== null && inputs.every((input) => input?.delivery === "attach")) return [];
 
     const at = Date.now();
     const records: { readonly id: CommitId; readonly record: CommitRecord }[] = [];
@@ -201,7 +225,7 @@ export async function landing(
       },
     ]);
 
-    return (await commit(kernel, updates)).kind === "set"
+    return (await commit(kernel, held === null ? updates : [held, ...updates])).kind === "set"
       ? due.map((message, index) => ({ message, commit: records[index].id }))
       : STALE;
   });
@@ -212,10 +236,10 @@ export async function landing(
       ...landed.map((entry) => entry.message),
     ]);
 
-  return ids.flatMap((id) => landed.find((entry) => entry.message === id)?.commit ?? []);
+  return landed.map((entry) => entry.message);
 }
 
-/** Checks what a move or an edit needs of a head, in order: `expect` holds, no live run unless `running` is stop, an empty inbox; returns the failure, or what it read for the write to expect. */
+/** Checks what a move or an edit needs of a head, in order: `expect` holds, no live run unless `running` is stop, no input but attach ones; returns the failure, or what it read for the write to expect. */
 export async function guard(
   kernel: Kernel,
   session: SessionId,
@@ -234,7 +258,11 @@ export async function guard(
 
   if (run !== null && running === "refuse") return { kind: "busy", run: run.record.view.id };
 
-  if (inbox.messages.length > 0) return { kind: "pending-input", messages: inbox.messages };
+  const pending = await withFold(kernel, session, (state) =>
+    inbox.messages.filter((message) => state.inputs.get(message)?.delivery !== "attach"),
+  );
+
+  if (pending.length > 0) return { kind: "pending-input", messages: pending };
 
   return { tip, inbox, run: run?.record.view.id ?? null };
 }
@@ -290,21 +318,18 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     if (message.delivery !== "attach" && covered) kernel.wakes.notify(session, head);
 
-    if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
+    if (message.source.kind === "user")
+      await kernel.waits.inputAdmitted(session, head, message.id, run?.record.parked ?? []);
     dev("admission", "admitted", { session, head, message: message.id, covered });
 
     return sendReceipt(kernel, session, id);
   });
 }
 
-/** Revises a pending input in place; one that landed meanwhile is edited instead. */
-async function revise(sending: Sending, target: MessageId): Promise<SendReceipt> {
+/** Revises a pending input in place under its own id, and writes `receipts/<keyed.id>` naming the target in the same set, so a resent revise replays; one that landed meanwhile is edited instead. */
+async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
   const { kernel, session, head, options } = sending;
-  const id = asId<"receipt">(target);
-  const digest = await digestOf(sending);
-
-  if ((await readReceipt(kernel, session, id))?.record.digest === digest)
-    return sendReceipt(kernel, session, id);
+  const { id, digest } = keyed;
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
   const submission = await gate(sending, target, {
@@ -323,10 +348,9 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
   const covered = await isCovered(kernel, session);
 
   const revised = await attempt(`Revising ${target}`, async () => {
-    const [inbox, run, receipt] = await Promise.all([
+    const [inbox, run] = await Promise.all([
       readInbox(kernel, session, head),
       liveRun(kernel, session, head),
-      readReceipt(kernel, session, id),
     ]);
 
     const current = inbox.messages.indexOf(target);
@@ -358,7 +382,14 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
         message,
       ),
       {
-        ...(await pendingReceipt(kernel, session, id, digest, expectOf(receipt?.ref ?? null))),
+        name: receiptRef(session, id),
+        target: await put(kernel, "receipt", {
+          id: asId<"receipt">(target),
+          kind: "send",
+          digest,
+          outcome: null,
+        }),
+        expect: "absent",
         event: {
           head,
           kind: "input",
@@ -370,32 +401,24 @@ async function revise(sending: Sending, target: MessageId): Promise<SendReceipt>
       },
     ]);
 
-    if (outcome.kind === "stale") return STALE;
+    if (outcome.kind === "stale")
+      return outcome.name === receiptRef(session, id)
+        ? ((await replayOf(kernel, session, keyed)) ?? STALE)
+        : STALE;
 
     if (message.delivery !== "attach" && covered) kernel.wakes.notify(session, head);
     dev("admission", "revised", { session, head, message: target });
 
-    return sendReceipt(kernel, session, id);
+    return sendReceipt(kernel, session, asId<"receipt">(target));
   });
 
-  return (
-    revised ??
-    editGated(sending, target, {
-      id: options.id ?? asId<"receipt">(crypto.randomUUID()),
-      digest,
-      submission,
-      configuration,
-    })
-  );
+  return revised ?? editGated(sending, target, { id, digest, submission, configuration });
 }
 
 /** Edits a landed input: stops the head's run, moves the head to the input's parent and admits the new content under a fresh id, in one set guarded by what `guard` read (§40). */
-async function edit(sending: Sending, target: MessageId): Promise<SendReceipt> {
+async function edit(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
   const { kernel, session, options } = sending;
-  const id = options.id ?? asId<"receipt">(crypto.randomUUID());
-  const digest = await digestOf(sending);
-
-  if (await known(kernel, session, id, "send", digest)) return sendReceipt(kernel, session, id);
+  const { id, digest } = keyed;
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
   const submission = await gate(sending, asId<"message">(id), {
@@ -415,9 +438,7 @@ async function edit(sending: Sending, target: MessageId): Promise<SendReceipt> {
 async function editGated(
   sending: Sending,
   target: MessageId,
-  gated: {
-    readonly id: ReceiptId;
-    readonly digest: string;
+  gated: Keyed & {
     readonly submission: Submission;
     readonly configuration: Configuration;
   },
@@ -452,12 +473,13 @@ async function editGated(
     | { readonly kind: "failed"; readonly outcome: MoveFailure }
     | {
         readonly kind: "summarize";
+        readonly tip: Tip;
         readonly parent: CommitId | null;
         readonly run: RunId | null;
         readonly instructions: string | null;
       }
     | { readonly kind: "edited"; readonly stopped: RunId | null }
-    | { readonly kind: "replayed" }
+    | { readonly kind: "replayed"; readonly receipt: SendReceipt }
   >(`Editing ${target}`, async () => {
     const checked = await guard(kernel, session, head, options.expect, options.running ?? "stop");
 
@@ -469,13 +491,14 @@ async function editGated(
     if (typeof abandoned === "object")
       return {
         kind: "summarize",
+        tip: checked.tip,
         parent,
         run: checked.run,
         instructions: abandoned.summarize.instructions ?? null,
       };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
     const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;
-    const record = message(stopped, 0);
+    const record = message(stopped, checked.inbox.messages.length);
 
     const outcome = await commit(kernel, [
       ...(fenced?.kind === "live" ? fenced.updates : []),
@@ -485,7 +508,14 @@ async function editGated(
         expect: expectOf(checked.tip.ref),
         event: { head, kind: "head", from: checked.tip.id, to: parent, reason: "moved" },
       },
-      await admitted(kernel, session, head, checked.inbox, [record.id], record),
+      await admitted(
+        kernel,
+        session,
+        head,
+        checked.inbox,
+        [...checked.inbox.messages, record.id],
+        record,
+      ),
       await pendingReceipt(kernel, session, id, digest, "absent"),
     ]);
 
@@ -493,26 +523,24 @@ async function editGated(
 
     if (outcome.kind === "set") return { kind: "edited", stopped };
 
-    return outcome.name === receiptRef(session, id) &&
-      (await known(kernel, session, id, "send", digest))
-      ? { kind: "replayed" }
-      : STALE;
+    const replayed =
+      outcome.name === receiptRef(session, id) ? await replayOf(kernel, session, gated) : null;
+
+    return replayed === null ? STALE : { kind: "replayed", receipt: replayed };
   });
 
   switch (edited.kind) {
     case "replayed":
-      break;
+      return edited.receipt;
 
     case "failed":
       if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: edited.outcome })))
-        await known(kernel, session, id, "send", digest);
+        return (await replayOf(kernel, session, gated)) ?? sendReceipt(kernel, session, id);
       break;
 
     case "summarize": {
-      if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: null }))) {
-        await known(kernel, session, id, "send", digest);
-        break;
-      }
+      if (!(await reserve(kernel, session, { id, kind: "send", digest, outcome: null })))
+        return (await replayOf(kernel, session, gated)) ?? sendReceipt(kernel, session, id);
 
       const stopped =
         edited.run !== null && (await stopRun(kernel, session, edited.run)).kind === "requested"
@@ -523,6 +551,7 @@ async function editGated(
         id,
         session,
         head,
+        tip: edited.tip,
         parent: edited.parent,
         instructions: edited.instructions,
         message: (position) => message(stopped, position),
@@ -554,13 +583,13 @@ async function summarizedEdit(
     readonly id: ReceiptId;
     readonly session: SessionId;
     readonly head: HeadName;
+    readonly tip: Tip;
     readonly parent: CommitId | null;
     readonly instructions: string | null;
     readonly message: (position: number) => MessageRecord;
   },
 ): Promise<boolean> {
-  const { id, session, head } = input;
-  const tip = await readTip(kernel, session, head);
+  const { id, session, head, tip } = input;
 
   const abandoned = await withFold(kernel, session, (state) => {
     const kept = new Set(pathOf(state.commits, input.parent));
@@ -609,6 +638,22 @@ async function summarizedEdit(
     await settleReceipt(kernel, session, id, await staleHead(kernel, session, head));
 
   return admittedEdit;
+}
+
+/** Returns the receipt a replace's own id already answered with, or null when the id is new: the record at `receipts/<id>` names it (a revise's names its target). */
+async function replayOf(
+  kernel: Kernel,
+  session: SessionId,
+  { id, digest }: Keyed,
+): Promise<SendReceipt | null> {
+  const found = await readReceipt(kernel, session, id);
+
+  if (found === null) return null;
+
+  if (found.record.kind !== "send" || found.record.digest !== digest)
+    throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
+
+  return sendReceipt(kernel, session, found.record.id);
 }
 
 /** Returns the parent of the commit that landed a message on a tip's path, or undefined when the path has none. */

@@ -16,7 +16,7 @@ import type { Kernel } from "./kernel.ts";
 import { decodePrincipalRecord } from "./records.ts";
 import type { PrincipalRecord } from "./records.ts";
 import { hostPrincipalsRef } from "./refs.ts";
-import { STALE, attempt, commit, expectOf, load, put } from "./session-state.ts";
+import { commit, expectOf, load, put } from "./session-state.ts";
 
 /** Returns who a connection acts as, what it may do, the credential it reconnects with, and the run it acts from; every handle closes over one. */
 export interface ConnectionContext {
@@ -121,7 +121,7 @@ export function gated<T extends object>(
   });
 }
 
-/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `revoke` also drops the principal's open connections; an unknown id writes nothing. */
+/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds writes and marks nothing and throws `unknown`. */
 export function createPrincipals(kernel: Kernel): Host["principals"] {
   return {
     async list() {
@@ -132,14 +132,15 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
         label: principal.label,
         authority: new Set(principal.authority),
         pairedAt: principal.pairedAt,
-        lastSeenAt: principal.lastSeenAt,
       }));
     },
     async pair(input) {
+      if (!input.authority.has("participant"))
+        throw new SdkError("invalid", "A pairing code needs participant authority.");
       const code = mintCode();
       const expiresAt = Date.now() + PAIRING_TTL;
 
-      await writePrincipals(kernel, "Minting a pairing code", (record) => ({
+      await writePrincipals(kernel, (record) => ({
         principals: record.principals,
         codes: [
           ...record.codes.filter((entry) => entry.expiresAt > Date.now()),
@@ -155,7 +156,7 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
       return { code, expiresAt };
     },
     async revoke(id) {
-      await writePrincipals(kernel, `Revoking ${id}`, (record) =>
+      const written = await writePrincipals(kernel, (record) =>
         record.principals.some((principal) => principal.id === id)
           ? {
               principals: record.principals.filter((principal) => principal.id !== id),
@@ -164,6 +165,7 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
           : null,
       );
 
+      if (written === null) throw new SdkError("unknown", `No paired principal has the id ${id}.`);
       kernel.connections.revoke(id);
     },
   };
@@ -182,7 +184,7 @@ export async function redeemPairing(
   const tokenDigest = await sha256(token);
   const principal = asId<"principal">(crypto.randomUUID());
 
-  const written = await writePrincipals(kernel, "Redeeming a pairing code", (record) => {
+  const written = await writePrincipals(kernel, (record) => {
     const now = Date.now();
     const found = record.codes.find((entry) => entry.code === code && entry.expiresAt > now);
 
@@ -196,7 +198,6 @@ export async function redeemPairing(
           label: found.label,
           authority: found.authority,
           pairedAt: now,
-          lastSeenAt: null,
           tokenDigest,
         },
       ],
@@ -258,13 +259,12 @@ async function readPrincipals(kernel: Kernel) {
   return { ref, record: (await load(kernel, ref, decodePrincipalRecord))?.record ?? EMPTY };
 }
 
-/** Rewrites `host/principals` with what `change` returns, compare-and-set against the record read; a null change writes nothing. */
+/** Rewrites `host/principals` with what `change` returns, compare-and-set against the record read and read again after every lost race until it wins, since `stale` is reserved for another host answering; a null change writes nothing. Each loss is another writer's win, so the loop ends. */
 async function writePrincipals(
   kernel: Kernel,
-  what: string,
   change: (record: PrincipalRecord) => PrincipalRecord | null,
 ): Promise<PrincipalRecord | null> {
-  return attempt(what, async () => {
+  for (;;) {
     const { ref, record } = await readPrincipals(kernel);
     const next = change(record);
 
@@ -278,8 +278,8 @@ async function writePrincipals(
       },
     ]);
 
-    return outcome.kind === "set" ? next : STALE;
-  });
+    if (outcome.kind === "set") return next;
+  }
 }
 
 function mintCode(): string {

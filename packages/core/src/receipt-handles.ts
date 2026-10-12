@@ -95,7 +95,7 @@ export async function known(
   return true;
 }
 
-/** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. */
+/** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. A record naming another receipt (a revise's names its target, §62) is followed to it. */
 export function typedReceipt<O extends Json>(
   kernel: Kernel,
   session: SessionId,
@@ -109,10 +109,13 @@ export function typedReceipt<O extends Json>(
     return value;
   };
 
+  const named = async (): Promise<ReceiptId> =>
+    (await readReceipt(kernel, session, id))?.record.id ?? id;
+
   return {
     id,
     async status() {
-      const found = await readReceipt(kernel, session, id);
+      const found = await readReceipt(kernel, session, await named());
 
       if (found === null) return { kind: "missing" };
       const outcome = found.record.outcome;
@@ -121,11 +124,13 @@ export function typedReceipt<O extends Json>(
         ? { kind: "pending" }
         : { kind: "settled", outcome: outcomeOf(outcome) };
     },
-    settled: (options) =>
-      waitFor({
+    async settled(options) {
+      const target = await named();
+
+      return waitFor({
         options,
         async check() {
-          const found = await readReceipt(kernel, session, id);
+          const found = await readReceipt(kernel, session, target);
 
           if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
           const outcome = found.record.outcome;
@@ -134,13 +139,14 @@ export function typedReceipt<O extends Json>(
         },
         subscribe: (trigger) =>
           both(
-            onReceipt(kernel, session, id, trigger),
+            onReceipt(kernel, session, target, trigger),
             kernel.bus.subscribe(session, (event) => {
               if (RECEIPT_EVENTS.has(event.kind)) trigger();
             }),
           ),
-      }),
-    stop: () => stopReceipt(kernel, session, id, outcomeOf),
+      });
+    },
+    stop: async () => stopReceipt(kernel, session, await named(), outcomeOf),
   };
 }
 

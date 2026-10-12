@@ -1,6 +1,6 @@
 import { SdkErrorWireSchema } from "@nyte-ai/schema";
 import type { ByteReader, Json, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError, dev } from "@nyte-ai/core";
 import type { SdkErrorCode } from "@nyte-ai/core";
 import { isRecord, parseJson } from "./json.ts";
 
@@ -155,8 +155,11 @@ export function octetStream(
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      await reader.close();
-      await chunks.return?.();
+      try {
+        await reader.close();
+      } finally {
+        await chunks.return?.();
+      }
     })();
 
     return closing;
@@ -166,7 +169,11 @@ export function octetStream(
     start(controller) {
       const abort = (): void => {
         controller.error(signal.reason);
-        void close();
+        close().catch((error: unknown) => {
+          dev("protocol", "byte reader close failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
       };
 
       if (signal.aborted) abort();

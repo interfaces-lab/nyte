@@ -110,6 +110,7 @@ function call(
 ) {
   return executeCall(kernel, {
     session: input.session,
+    runtime: kernel.pluginsFor(input.session),
     head: main,
     run: input.run,
     call: asId(input.call),
@@ -811,7 +812,10 @@ describe("tool calls", () => {
       changes: { added: 0, removed: 0, paths: [] },
     });
     expect((await session.view()).changes).toHaveLength(1);
-    expect((await readRun(kernel, session.id, run)).record.snapshot).toBe(asId("s0"));
+    expect((await readRun(kernel, session.id, run)).record).toMatchObject({
+      snapshot: asId("s0"),
+      lastSnapshot: asId("s1"),
+    });
 
     const retaken: string[] = [];
 
@@ -831,8 +835,42 @@ describe("tool calls", () => {
 
     expect(retaken).toEqual(["after"]);
     expect((await toolPart(restarted.host.session(session.id), "e3")).state).toMatchObject({
-      changes: { added: 3, removed: 1, paths: ["a.ts"] },
+      changes: { added: 0, removed: 0, paths: [] },
     });
+  });
+
+  it("B-2 N4: another instance's changed file stays in the session's changes", async () => {
+    const store = await memoryStore().open();
+
+    const touching =
+      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
+      async () => ({
+        before: async () => asId("s0"),
+        after: async () => asId(`after-${path}`),
+        diff: async (_from, to) => ({
+          revision: to,
+          files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
+        }),
+        patches: async () => [],
+      });
+
+    const edit = {
+      ...echo,
+      name: "edit",
+      class: () => ({ kind: "edit", path: "a.ts" }),
+    } satisfies ToolDefinition<{ text: string }>;
+
+    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
+    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
+    const session = await a.host.sessions.create();
+    const run = await liveRun(a.kernel, session.id);
+    const args = { text: "x" };
+
+    await call(a.kernel, { session: session.id, run, call: "e1", name: "edit", args });
+    await call(b.kernel, { session: session.id, run, call: "e2", name: "edit", args });
+    await call(a.kernel, { session: session.id, run, call: "e3", name: "edit", args });
+
+    expect((await session.view()).changes.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
   });
 
   it("stops a parked call through its part, and its re-run settles stopped", async () => {

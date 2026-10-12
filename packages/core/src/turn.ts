@@ -1,6 +1,7 @@
 import type { Models } from "@nyte-ai/ai";
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
+  Disposer,
   DurableEvent,
   HeadName,
   Json,
@@ -28,13 +29,11 @@ import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
 import type { Kernel, LandedInput, TurnDriver } from "./kernel.ts";
 import { modelInfo, withLimits } from "./models.ts";
-import { createPart } from "./part-handle.ts";
-import { text, thinking } from "./parts.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
-import { CORE_CONTEXT, LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
+import { LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
-import type { RunRecord } from "./records.ts";
+import type { PartRecord, RunRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
 import {
   RETRY_POLICY,
@@ -44,7 +43,7 @@ import {
   requestEvent,
   usageOf,
 } from "./request.ts";
-import { publishPatch } from "./runs.ts";
+import { abortHere, publishPatch, unfenced } from "./runs.ts";
 import { STALE, attempt, commit, expectOf, load, put, readTip, withFold } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
 import { failParts, failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
@@ -87,6 +86,8 @@ interface Turn {
   readonly head: HeadName;
   readonly signal: AbortSignal;
   readonly where: HookContext;
+  /** The runtimes the turn's requests hold, the latest last: each from its preparation until a later request streams, the turn's signal aborts or the turn ends (§44c). */
+  readonly holds: { readonly runtime: PluginRuntime; readonly release: Disposer }[];
 }
 
 /** Returns a prepared request with the runtime it was built on, which observes its `after_request`. */
@@ -130,19 +131,39 @@ const ORPHANED: Failure = {
  */
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   return {
-    run: (input) =>
-      turn(
-        {
-          kernel,
-          models,
-          session: input.session,
-          head: input.head,
-          signal: input.signal,
-          where: { session: input.session, head: input.head, run: input.run.id, principal: LOCAL },
-        },
-        input.run,
-        () => input.boundary(),
-      ),
+    async run(input) {
+      const holds: Turn["holds"][number][] = [];
+
+      const release = (): void => {
+        for (const held of holds.splice(0)) held.release();
+      };
+
+      input.signal.addEventListener("abort", release, { once: true });
+
+      try {
+        return await turn(
+          {
+            kernel,
+            models,
+            session: input.session,
+            head: input.head,
+            signal: input.signal,
+            where: {
+              session: input.session,
+              head: input.head,
+              run: input.run.id,
+              principal: LOCAL,
+            },
+            holds,
+          },
+          input.run,
+          () => input.boundary(),
+        );
+      } finally {
+        input.signal.removeEventListener("abort", release);
+        release();
+      }
+    },
   };
 }
 
@@ -161,10 +182,12 @@ async function turn(
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
-    /** Builds one request on the session's runtime once it is ready, in the baseline's hook order (§38s), any failure failing the request rather than the loop. */
+    /** Builds one request on the session's runtime, held from here, once it is ready, in the baseline's hook order (§38s), any failure failing the request rather than the loop. */
     async prepareRequest(asked) {
+      const runtime = kernel.pluginsFor(session);
+      context.holds.push({ runtime, release: runtime.hold() });
+
       try {
-        const runtime = kernel.pluginsFor(session);
         await runtime.ready;
         const configured = await modelInfo(kernel, models, configuration.model, runtime);
 
@@ -242,8 +265,10 @@ async function turn(
         return failedRequest(error instanceof Error ? error.message : String(error));
       }
     },
-    /** Sets `run phase responding` and sends the request; settled once `withLimits` saw its result. */
+    /** Releases the runtimes earlier requests hold, their responses observed and their calls done, sets `run phase responding` and sends the request; settled once `withLimits` saw its result. */
     async stream(prepared) {
+      for (const held of context.holds.splice(0, context.holds.length - 1)) held.release();
+
       await changeRun(context, run, async (record) =>
         record.phase === "responding" && record.retrying === null
           ? null
@@ -272,9 +297,10 @@ async function turn(
       };
     },
     tools: {
-      /** Runs the call through the durable `executeCall`, its id `${run}:${requests}:${providerCallId}` (§38w). */
+      /** Runs the call through the durable `executeCall` on its response's runtime, its id `${run}:${requests}:${providerCallId}` (§38w). */
       execute: (call, called) =>
         executeCall(kernel, {
+          runtime: context.holds.at(-1)?.runtime ?? kernel.pluginsFor(session),
           session,
           head,
           run,
@@ -340,7 +366,8 @@ async function turn(
     case "parked":
       return { kind: "parked" };
     case "stopped":
-      if (kernel.runs.isStopping(run)) await failOpen(context, state, ABORTED, null);
+      if (kernel.runs.isStopping(run) || end.response !== null)
+        await failOpen(context, state, ABORTED, end.response);
 
       return STOPPED;
     case "failed":
@@ -524,27 +551,58 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
 }
 
 /** Opens a text or thinking part for the attempt's next index, live in the run, and adds it to the request's `opened`. */
+/** Opens a text or thinking part for the attempt's next index, live in the run, in one set with the run ref as read (`unfenced`), and adds it to the request's `opened`. A run fenced first gets no part and is aborted here, so the loop ends stopped. */
 async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]): Promise<OpenPart> {
-  const part = asId<"part">(`${state.run.id}:${state.attempt}:${state.index}`);
+  const { kernel, session, head } = context;
+  const run = state.run.id;
+  const part = asId<"part">(`${run}:${state.attempt}:${state.index}`);
   state.index += 1;
+  const placement = kind === "text" ? ANSWER : STEP;
 
-  const input = {
+  const initial: Json =
+    kind === "text"
+      ? { markdown: "", signature: null }
+      : { markdown: "", merged: 1, signature: null };
+
+  const record: PartRecord = {
     id: part,
-    run: state.run.id,
-    head: context.head,
-    placement: kind === "text" ? ANSWER : STEP,
+    partKind: kind,
+    placement,
+    state: initial,
+    version: 1,
+    owner: null,
+    run,
+    status: { kind: "live", run },
   };
 
-  if (kind === "text")
-    await createPart(context.kernel, CORE_CONTEXT, context.session, text, {
-      ...input,
-      state: { markdown: "", signature: null },
-    });
-  else
-    await createPart(context.kernel, CORE_CONTEXT, context.session, thinking, {
-      ...input,
-      state: { markdown: "", merged: 1, signature: null },
-    });
+  const live = await attempt(`Opening part ${part}`, async () => {
+    const held = await unfenced(kernel, session, run);
+
+    if (held === null) return false;
+
+    const outcome = await commit(kernel, [
+      held,
+      {
+        name: partRef(session, part),
+        target: await put(kernel, "part", record),
+        expect: "absent",
+        event: {
+          head,
+          kind: "part",
+          part,
+          change: "created",
+          partKind: kind,
+          placement,
+          state: initial,
+          version: 1,
+          run,
+          owner: null,
+        },
+      },
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
 
   const opened: OpenPart = {
     part,
@@ -555,7 +613,8 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
     thoughts: [],
   };
 
-  state.opened.push(opened);
+  if (live) state.opened.push(opened);
+  else abortHere(kernel, run);
 
   return opened;
 }

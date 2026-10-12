@@ -1567,4 +1567,50 @@ describe("turn findings (CORE-DIET D3)", () => {
     });
     expect(fake.requests).toHaveLength(0);
   });
+
+  it("D-2 N3: a part left live when the turn throws after opening it is failed by the run's end write", async () => {
+    const fake = fakeModels();
+    const base = memoryStore();
+    let locked = true;
+
+    const store: Store = {
+      ...base,
+      async open() {
+        const opened = await base.open();
+
+        return {
+          ...opened,
+          refs: {
+            ...opened.refs,
+            async set(updates) {
+              if (
+                locked &&
+                updates.some(
+                  (update) => update.event?.kind === "part" && update.event.change === "settled",
+                )
+              ) {
+                locked = false;
+
+                throw new Error("database is locked");
+              }
+
+              return opened.refs.set(updates);
+            },
+          },
+        };
+      },
+    };
+
+    fake.reply({ content: [{ type: "text", text: "An answer." }] });
+    await using host = await open(fake, { store });
+    const session = await host.sessions.create();
+    const end = await (await session.send("Go.")).settled();
+    const run = runOf((await session.view()).messages);
+
+    expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });
+    expect(await storedStatus(host.kernel, session.id, `${run}:1:0`)).toMatchObject({
+      kind: "failed",
+      failure: { class: "runner" },
+    });
+  });
 });

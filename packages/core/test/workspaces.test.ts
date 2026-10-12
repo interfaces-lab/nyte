@@ -147,6 +147,7 @@ describe("workspaces", () => {
 
     const invocation = createInvocation(kernel, {
       session: session.id,
+      runtime: kernel.pluginsFor(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -218,7 +219,7 @@ describe("workspaces", () => {
     await watched.return?.();
   });
 
-  it("attaches a session once per activation: a failed attach is cached until reload, rejects ready and shows failed with its reason (E7)", async () => {
+  it("attaches a session once per activation: a failed attach rejects ready, shows failed with its reason and is dropped, so the next activation attaches again (E7, E-2 N3)", async () => {
     const seen: string[] = [];
 
     const probe: Plugin<"core"> = {
@@ -245,21 +246,20 @@ describe("workspaces", () => {
     provider.failure = "The sandbox did not boot.";
     const session = await host.sessions.create({ workspace });
     await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The sandbox did not boot.");
-    provider.failure = null;
 
-    expect((await session.info()).activation).toEqual({
+    expect(kernel.activation(session.id)).toEqual({
       kind: "failed",
       message: "The sandbox did not boot.",
     });
     expect(seen).toEqual([]);
-    expect(attempts).toBe(1);
-    await expect(kernel.env(session.id)).rejects.toThrow("The sandbox did not boot.");
-    expect(attempts).toBe(1);
 
-    expect(await host.workspace(workspace).reload()).toEqual({ kind: "updated" });
+    provider.failure = null;
+    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
+    const failed = attempts;
+    await kernel.pluginsFor(session.id).ready;
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(seen).toEqual(["/work/project"]);
-    expect(attempts).toBe(2);
+    expect(attempts).toBe(failed + 1);
   });
 
   it("rejects an unknown session's activation instead of resolving it (E6, P4)", async () => {
@@ -494,7 +494,6 @@ describe("principals", () => {
         label: "Phone",
         authority: new Set(["participant"]),
         pairedAt: expect.any(Number),
-        lastSeenAt: null,
       },
     ]);
 
@@ -509,7 +508,6 @@ describe("principals", () => {
       principal: redeemed.principal,
       authority: new Set(["participant"]),
     });
-    expect((await host.principals.list())[0]?.lastSeenAt).toBeNull();
     expect(await authenticateToken(kernel, "forged")).toBeNull();
 
     let dropped = 0;
@@ -529,6 +527,51 @@ describe("principals", () => {
     expect(dropped).toBe(1);
     expect(await host.principals.list()).toEqual([]);
     expect(await authenticateToken(kernel, redeemed.token)).toBeNull();
+  });
+
+  it("answers unknown for an id no paired principal holds, writing and marking nothing (ADV C N3, probe N2)", async () => {
+    const { kernel, host } = await world();
+    await host.principals.pair({ authority: new Set(["participant"]) });
+    const before = await kernel.store.refs.get(hostPrincipalsRef());
+
+    for (const id of ["token", "local", "nobody"])
+      await expect(host.principals.revoke(asId(id))).rejects.toMatchObject({ code: "unknown" });
+
+    expect(await kernel.store.refs.get(hostPrincipalsRef())).toEqual(before);
+
+    for (const id of ["token", "local", "nobody"])
+      expect(kernel.connections.register(asId(id), () => undefined).kind).toBe("admitted");
+  });
+
+  it("retries pair, redeem and revoke on the one record until each wins, none answering stale (ADV C N4, probe N3)", async () => {
+    const { kernel, host } = await world();
+
+    const codes = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        host.principals.pair({ authority: new Set(["participant"]) }),
+      ),
+    );
+    const redeemed = await Promise.all(codes.map(({ code }) => redeemPairing(kernel, code)));
+
+    expect(redeemed.filter((entry) => entry === null)).toEqual([]);
+    expect(await host.principals.list()).toHaveLength(6);
+
+    await Promise.all(
+      redeemed
+        .slice(0, 3)
+        .flatMap((entry) => (entry === null ? [] : [host.principals.revoke(entry.principal)])),
+    );
+
+    expect(await host.principals.list()).toHaveLength(3);
+  });
+
+  it("refuses to mint a pairing code without participant, so none is spent on a connection that is denied (ADV C N6, probe PA1)", async () => {
+    const { kernel, host } = await world();
+
+    await expect(
+      host.principals.pair({ authority: new Set(["maintenance"]) }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(await kernel.store.refs.get(hostPrincipalsRef())).toBeNull();
   });
 });
 

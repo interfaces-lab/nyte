@@ -215,6 +215,7 @@ describe("the store is the truth", () => {
       waiting: null,
       retrying: null,
       snapshot: null,
+      lastSnapshot: null,
       usage: null,
       requests: 0,
       waitedBy: [],

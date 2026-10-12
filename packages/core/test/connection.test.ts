@@ -126,6 +126,7 @@ describe("connection gate (§52 rule 5)", () => {
 
     const invocation = createInvocation(kernel, {
       session: session.id,
+      runtime: kernel.pluginsFor(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),

@@ -8,11 +8,12 @@ import { doSqlStub } from "./do-sql-stub.ts";
 
 const main: HeadName = asId("main");
 
-/** Returns a host for `pass` whose advances answer from `reports` by session, recording each advance, tick and repair. */
+/** Returns a host for `pass` whose advances answer from `reports` by session, recording each advance, tick and repair; a repair wakes each runnable head through `wake`, as core's does. */
 function fakeHost(input: {
   readonly reports: Readonly<Record<string, AdvanceReport | Error>>;
   readonly runnable?: readonly { readonly session: SessionId; readonly head: HeadName }[];
   readonly during?: (session: SessionId) => void;
+  readonly wake?: (session: SessionId, head: HeadName) => void;
 }): PassHost & { readonly advanced: SessionId[]; readonly ticks: number[]; repairs: number } {
   const advanced: SessionId[] = [];
   const ticks: number[] = [];
@@ -44,6 +45,8 @@ function fakeHost(input: {
       },
       async repair(): Promise<RepairPage> {
         host.repairs += 1;
+
+        for (const { session, head } of input.runnable ?? []) input.wake?.(session, head);
 
         return { runnable: input.runnable ?? [], next: null };
       },
@@ -145,10 +148,16 @@ describe("pass (§42f, §42i)", () => {
     expect(host.advanced).toEqual([]);
   });
 
-  it("pages repair only when asked, advancing its heads that have no row", async () => {
+  it("pages repair only when asked, advancing the heads its wakes scheduled", async () => {
     const storage = doSqlStub();
     const runnable = [{ session: asId<"session">("owed"), head: main }];
-    const host = fakeHost({ reports: { owed: { kind: "continue" } }, runnable });
+
+    const host = fakeHost({
+      reports: { owed: { kind: "continue" } },
+      runnable,
+      wake: (session) => due(storage, [[session, Date.now()]]),
+    });
+
     const next = await pass(host, storage, { heads: 32, ms: 10_000, repair: true });
 
     expect(host.repairs).toBe(1);
@@ -161,6 +170,23 @@ describe("pass (§42f, §42i)", () => {
 
     expect(quiet.repairs).toBe(0);
     expect(quiet.advanced).toEqual([]);
+  });
+
+  it("advances a repaired head once and leaves no row due after it went idle (ADV E N6, host probe)", async () => {
+    const storage = doSqlStub();
+    const runnable = [{ session: asId<"session">("owed"), head: main }];
+
+    const host = fakeHost({
+      reports: { owed: { kind: "idle" } },
+      runnable,
+      wake: (session) => due(storage, [[session, Date.now()]]),
+    });
+
+    expect(await pass(host, storage, { heads: 32, ms: 10_000, repair: true })).toBeNull();
+    expect(host.advanced).toEqual(["owed"]);
+    expect(rowsOf(storage)).toEqual([]);
+    expect(await pass(host, storage, { heads: 32, ms: 10_000, repair: false })).toBeNull();
+    expect(host.advanced).toEqual(["owed"]);
   });
 
   it("keeps a row a wake rewrote while its head was advancing", async () => {

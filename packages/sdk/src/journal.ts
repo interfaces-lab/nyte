@@ -9,8 +9,8 @@ import { backoff, delayOf, isLinkLoss } from "./rows.ts";
 /**
  * Drives this connection's journal: each send is a row posted under its own id with the content it was
  * journaled with, after the rows before it on its head, and shown `unsent` until a fold contains the
- * message its answer named (§49c). A `replace` is its own row behind its target (ADV C 2), so an id
- * never leaves with two contents; `replay` holds every row before the first is delivered (ADV C 4).
+ * message its answer named (§49c). A `replace` is its own row behind its target (ADV C 2), shown in its
+ * target's place (ADV C N1); `replay` holds every row before the first is delivered (ADV C 4).
  */
 export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
@@ -44,7 +44,7 @@ export function memoryJournal(): RequestJournal {
   };
 }
 
-/** Returns an empty retry loop over `journal`. A send failing for a reason other than link loss is removed from the journal (§47j); one cut by `close()` stays for the next connect. */
+/** Returns an empty retry loop over `journal`. A send failing for a reason it does not retry on is removed from the journal (§47j); one cut by `close()` stays for the next connect. */
 export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   const held = new Map<string, Held>();
   const tails = new Map<string, Promise<void>>();
@@ -66,8 +66,10 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
           options: { ...options, id },
         });
       } catch (error) {
-        if (rows.link.signal.aborted || !isLinkLoss(error)) {
-          if (!rows.link.signal.aborted) await journal.remove(id);
+        const closing = rows.link.signal.aborted;
+
+        if (closing || !retried(error)) {
+          if (!closing) await journal.remove(id);
           held.delete(id);
           changed();
 
@@ -152,13 +154,17 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
     },
     unsent(session, head) {
       const shown = new Map<Message["id"], Held>();
+      const slots = new Map<Message["id"], Message["id"]>();
 
-      for (const current of held.values())
-        if (current.entry.session === session && current.entry.head === head)
-          shown.set(
-            current.answered ?? current.entry.options.replace ?? asId<"message">(current.entry.id),
-            current,
-          );
+      for (const current of held.values()) {
+        if (current.entry.session !== session || current.entry.head !== head) continue;
+        const target = current.entry.options.replace ?? asId<"message">(current.entry.id);
+        const slot = slots.get(target) ?? target;
+        shown.set(slot, current);
+
+        if (current.answered !== null && current.answered !== target)
+          slots.set(current.answered, slot);
+      }
 
       return [...shown].map(([id, current]) => unsentMessage(id, current));
     },
@@ -180,6 +186,11 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       };
     },
   };
+}
+
+/** Returns whether a send is posted again under its id: the link failed, or the host lost the inbox write to a concurrent one (`stale`, ADV A N5); the id keeps it one message. */
+function retried(error: unknown): error is SdkError {
+  return isLinkLoss(error) || (error instanceof SdkError && error.code === "stale");
 }
 
 /** Returns a journaled send as the user message a view shows under `id` before the host has it: status `unsent`, its pending turn, no siblings. */

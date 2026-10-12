@@ -36,10 +36,11 @@ type Flight = {
 /** Returns who a request is when no token of this listener names it: the principal and authority `authorize` gave. */
 type Verdict = { readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> };
 
-/** Returns a device token remembered by digest: its principal and authority until `expiresAt`. */
+/** Returns a device token remembered by digest: its principal and authority until `expiresAt`, and the token, read again at each window boundary while it has a request open. */
 type Device = {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
+  readonly token: string;
   readonly expiresAt: number;
 };
 
@@ -63,8 +64,9 @@ export async function listenFetch(
   const streams = new Map<PrincipalId, Set<Flight>>();
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
+  let rechecking: ReturnType<typeof setInterval> | null = null;
 
-  const drop = (key: string, entry: Cached): void => {
+  const drop = (key: string, entry: Cached, reason: SdkError): void => {
     if (cache.get(key) === entry) cache.delete(key);
     entry.dispose();
 
@@ -73,10 +75,7 @@ export async function listenFetch(
     const open = streams.get(entry.principal);
     streams.delete(entry.principal);
 
-    for (const flight of open ?? [])
-      flight.controller.abort(
-        new SdkError("unavailable", "The principal's connection was dropped."),
-      );
+    for (const flight of open ?? []) flight.controller.abort(reason);
     void entry.connection.close();
   };
 
@@ -119,7 +118,9 @@ export async function listenFetch(
     });
 
     const entry: Cached = { connection, principal, dispose: () => undefined };
-    const admitted = kernel.connections.register(principal, () => drop(key, entry));
+    const admitted = kernel.connections.register(principal, () =>
+      drop(key, entry, new SdkError("unauthenticated", "The principal was revoked.")),
+    );
 
     if (admitted.kind === "revoked")
       throw new SdkError("unauthenticated", "The principal was revoked.");
@@ -129,13 +130,12 @@ export async function listenFetch(
     return entry;
   };
 
-  const deviceOf = async (
+  /** Reads a device token from the store for another window, or forgets it and revokes its principal here when no paired principal holds it any more. */
+  const reread = async (
     token: string,
-  ): Promise<{ readonly digest: string; readonly device: Device } | null> => {
-    const digest = hex(await sha256(token));
-    const known = devices.get(digest);
-
-    if (known !== undefined && known.expiresAt > Date.now()) return { digest, device: known };
+    digest: string,
+    known: Device | undefined,
+  ): Promise<Device | null> => {
     const found = await authenticateToken(kernel, token);
 
     if (found === null) {
@@ -146,7 +146,37 @@ export async function listenFetch(
       return null;
     }
 
-    return { digest, device: { ...found, expiresAt: Date.now() + DEVICE_TTL_MS } };
+    return { ...found, token, expiresAt: Date.now() + DEVICE_TTL_MS };
+  };
+
+  const deviceOf = async (
+    token: string,
+  ): Promise<{ readonly digest: string; readonly device: Device } | null> => {
+    const digest = hex(await sha256(token));
+    const known = devices.get(digest);
+
+    if (known !== undefined && known.expiresAt > Date.now()) return { digest, device: known };
+    const device = await reread(token, digest, known);
+
+    return device === null ? null : { digest, device };
+  };
+
+  /** Re-reads every device token with a request open, once per window (§58), so a stream outlives a revoke on another instance by one window at most and ends `unauthenticated`; the timer stops when none is open. */
+  const recheck = async (): Promise<void> => {
+    const open = [...devices].filter(([, device]) => streams.has(device.principal));
+
+    if (open.length === 0 && rechecking !== null) {
+      clearInterval(rechecking);
+      rechecking = null;
+    }
+
+    await Promise.all(
+      open.map(async ([digest, known]) => {
+        const device = await reread(known.token, digest, known);
+
+        if (device !== null) devices.set(digest, device);
+      }),
+    );
   };
 
   const isListenerToken: (token: string) => Promise<boolean> =
@@ -204,6 +234,13 @@ export async function listenFetch(
         const { digest, device } = remembered;
         const connection = connectionFor(request, device.principal, device.authority, token);
         devices.set(digest, device);
+        rechecking ??= setInterval(() => {
+          recheck().catch((error: unknown) => {
+            dev("listen", "device re-check failed", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }, DEVICE_TTL_MS);
 
         return { connection, authority: device.authority };
       }
@@ -313,7 +350,8 @@ export async function listenFetch(
         : await host.execution.cover(execution.coverage);
 
   const disconnectClients = (): void => {
-    for (const [key, entry] of cache) drop(key, entry);
+    for (const [key, entry] of cache)
+      drop(key, entry, new SdkError("unavailable", "The host disconnected its clients."));
     devices.clear();
     generation.abort(new SdkError("unavailable", "The host disconnected its clients."));
     generation = new AbortController();
@@ -321,6 +359,7 @@ export async function listenFetch(
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      if (rechecking !== null) clearInterval(rechecking);
       disconnectClients();
       await coverage?.close();
     })();

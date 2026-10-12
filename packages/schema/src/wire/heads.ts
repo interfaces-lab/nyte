@@ -42,7 +42,7 @@ export const TreeNodeType = Type.Object({
 
 /** The TypeBox schema of a `TreeView`. */
 export const TreeViewType = Type.Object({
-  revision: idSchema<"revision">(),
+  revision: nullable(idSchema<"revision">()),
   tip: PositionType,
   nodes: Type.Array(TreeNodeType),
 });

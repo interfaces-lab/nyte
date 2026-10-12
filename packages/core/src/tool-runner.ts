@@ -29,12 +29,14 @@ import { dev } from "./dev-log.ts";
 import { createInvocation } from "./invocation.ts";
 import type { Kernel } from "./kernel.ts";
 import { sessionOfPart } from "./part-handle.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import { definePart, tool } from "./parts.ts";
 import type { ActionContext, ActionOutput } from "./parts.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, PartRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
+import { unfenced } from "./runs.ts";
 import {
   STALE,
   attempt,
@@ -84,6 +86,8 @@ interface Settled {
     readonly paths: readonly string[];
   } | null;
   readonly files: readonly FileChange[];
+  /** The snapshot after the call, the run's next diff base; null when the call did not diff. */
+  readonly snapshot: SnapshotId | null;
 }
 
 type ToolActions = (typeof tool)["actions"];
@@ -126,11 +130,12 @@ export function decodeToolIntent(value: Json): ToolIntent | null {
  * Runs one tool call to its outcome, or parks it: `before_tool` through `kernel.beforeTool` (§35a),
  * the arguments validated, the tool part opened with `call intent`, then `execute` as a durable step
  * of kind `tool` that settles the part, the head commit and the session's `changes` in one set. The
- * call runs under its own abort controller, so the part's `stop` aborts it alone.
+ * tool resolves on `runtime`, the one the call's request holds (§63). The call runs
+ * under its own abort controller, so the part's `stop` aborts it alone.
  */
 export async function executeCall(
   kernel: Kernel,
-  input: Where & { readonly args: Json },
+  input: Where & { readonly args: Json; readonly runtime: PluginRuntime },
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, call } = input;
   const controller = new AbortController();
@@ -162,7 +167,7 @@ export async function executeCall(
 /** Runs a nested `tools.execute` from the step `call` as the call `<call>:<key>`, its outcome recorded in and replayed from the parent's `nested[key]`. */
 export async function executeNested(
   kernel: Kernel,
-  input: Where & { readonly args: Json; readonly key: string },
+  input: Where & { readonly args: Json; readonly key: string; readonly runtime: PluginRuntime },
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, call, key } = input;
   const nested = (await readCall(kernel, session, call))?.record.nested;
@@ -253,7 +258,7 @@ export function stoppableTool(kernel: Kernel): typeof tool {
 /** Plans the call, opens its part with `call intent`, and runs or settles it as a durable step of kind `tool`; returns the recorded outcome. */
 async function perform(
   kernel: Kernel,
-  where: Where & { readonly args: Json },
+  where: Where & { readonly args: Json; readonly runtime: PluginRuntime },
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, head, run, call, signal } = where;
 
@@ -267,7 +272,6 @@ async function perform(
   const planned = await plan(kernel, where, intent);
 
   if (planned.kind === "parked") return PARKED;
-  const opening = await partOpening(kernel, where, planned);
   let concluded: Promise<Settled> | undefined;
 
   const step = await runStep<ToolOutcome>(kernel, {
@@ -278,7 +282,7 @@ async function perform(
     kind: "tool",
     replay: planned.kind === "execute" ? planned.definition.replay : "safe",
     intent,
-    opening,
+    opening: () => partOpening(kernel, where, planned),
     part: asId<"part">(call),
     signal,
     body:
@@ -312,12 +316,12 @@ async function perform(
 /** Resolves the definition, runs `before_tool` through `kernel.beforeTool`, and validates the arguments it leaves; parked when the hook parks. */
 async function plan(
   kernel: Kernel,
-  where: Where & { readonly args: Json },
+  where: Where & { readonly args: Json; readonly runtime: PluginRuntime },
   intent: ToolIntent,
 ): Promise<Plan | typeof PARKED> {
   const { session, head, run, call, name } = where;
   const custom: ToolClass = { kind: "custom", label: name };
-  const definition = kernel.tools(kernel.pluginsFor(session), run).get(name)?.definition;
+  const definition = kernel.tools(where.runtime, run).get(name)?.definition;
 
   if (definition === undefined)
     return {
@@ -340,6 +344,7 @@ async function plan(
     run,
     principal: intent.principal,
     signal: where.signal,
+    runtime: where.runtime,
   });
 
   if (gated.kind === "parked") return PARKED;
@@ -388,7 +393,7 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
-/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), none when the part exists; they land with the step's record. */
+/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced (§61); none when the part exists or the run is stopping. They land with the step's record. */
 async function partOpening(
   kernel: Kernel,
   where: Where,
@@ -398,7 +403,12 @@ async function partOpening(
   const part = asId<"part">(call);
   const name = partRef(session, part);
 
-  if ((await kernel.store.refs.get(name)) !== null) return [];
+  const [existing, held] = await Promise.all([
+    kernel.store.refs.get(name),
+    unfenced(kernel, session, run),
+  ]);
+
+  if (existing !== null || held === null) return [];
   const at = Date.now();
   const fields = { call, name: where.name, args: planned.args, class: planned.class };
   const calling: Json = { ...fields, phase: "calling" };
@@ -415,6 +425,7 @@ async function partOpening(
   });
 
   return [
+    held,
     {
       name,
       target: await put(kernel, "part", record(calling, 1), at),
@@ -457,7 +468,7 @@ async function partOpening(
 /** Runs the tool's `execute` with its invocation, a call that may write taking the run's first snapshot first, and returns the outcome: output validated, throws as `failed`, an aborted signal as `stopped`. */
 async function execute(
   kernel: Kernel,
-  where: Where,
+  where: Where & { readonly runtime: PluginRuntime },
   planned: Extract<Plan, { readonly kind: "execute" }>,
   durable: Durable,
 ): Promise<ToolOutcome> {
@@ -478,6 +489,7 @@ async function execute(
       workspace: found.record.workspace,
       env,
       durable,
+      runtime: where.runtime,
     });
 
     const result = await planned.definition.execute(planned.input, invocation);
@@ -521,7 +533,7 @@ async function outcomeOf(
 /** Returns what a call settles with: `after_tool` over its outcome, and the changes a call that may write made since the run's last snapshot. */
 async function conclude(
   kernel: Kernel,
-  where: Where,
+  where: Where & { readonly runtime: PluginRuntime },
   ended: Exclude<StepOutcome<ToolOutcome>, { readonly kind: "parked" }>,
   wrote: boolean,
 ): Promise<Settled> {
@@ -533,14 +545,14 @@ async function conclude(
     run,
     call,
     principal: where.context.principal,
+    runtime: where.runtime,
   });
 
   const snapshots = wrote && ended.kind === "done" ? await kernel.snapshots(session) : null;
 
-  if (snapshots === null) return { outcome, changes: null, files: [] };
-  const from = (await markOf(kernel, session, run)) ?? (await snapshots.before(run));
+  if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
+  const from = (await diffBase(kernel, session, run)) ?? (await snapshots.before(run));
   const to = await snapshots.after(run);
-  kernel.marks.set(run, to);
 
   const files = (await snapshots.diff(from, to)).files.map((file): FileChange => {
     const change: FileChange = {
@@ -561,10 +573,11 @@ async function conclude(
       paths: files.map((file) => file.path),
     },
     files,
+    snapshot: to,
   };
 }
 
-/** Returns the updates that settle a call's part: its settled state with `call settled`, then, unless its run's stop fence failed it, `part settled` and the head commit, plus the session's merged `changes` when files changed. */
+/** Returns the updates that settle a call's part: its settled state with `call settled`, then, unless its run's stop fence failed it, `part settled` and the head commit, plus the run's next diff base and the session's merged `changes` when files changed. */
 async function settlement(
   kernel: Kernel,
   where: Where,
@@ -596,6 +609,9 @@ async function settlement(
   const merged =
     settled.files.length === 0 ? null : await mergeChanges(kernel, session, settled.files);
 
+  const based =
+    settled.snapshot === null ? [] : await nextBase(kernel, session, run, settled.snapshot);
+
   const record = { ...found.record, state, version: found.record.version + 1 };
 
   const opened = (target: ObjectId): RefUpdate => ({
@@ -621,7 +637,7 @@ async function settlement(
   if (found.record.status.kind === "failed") {
     const target = await put(kernel, "part", record, at);
 
-    return [opened(target), ...closing(target)];
+    return [opened(target), ...based, ...closing(target)];
   }
 
   const landed = await settling(kernel, {
@@ -635,17 +651,16 @@ async function settlement(
     at,
   });
 
-  return [opened(landed.target), ...landed.updates, ...closing(landed.target)];
+  return [opened(landed.target), ...landed.updates, ...based, ...closing(landed.target)];
 }
 
-/** Takes the run's first snapshot before a call that may write, once per run: kept in memory and in `RunRecord.snapshot`, so a restart diffs from it. */
+/** Takes the run's first snapshot before a call that may write, once per run, into `RunRecord.snapshot`. */
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
-  if ((await markOf(kernel, session, run)) !== null) return;
+  if ((await diffBase(kernel, session, run)) !== null) return;
   const snapshots = await kernel.snapshots(session);
 
   if (snapshots === null) return;
   const before = await snapshots.before(run);
-  kernel.marks.set(run, before);
 
   await attempt(`Recording run ${run}'s snapshot`, async () => {
     const found = await load(
@@ -668,39 +683,55 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
   });
 }
 
-/** Returns the run's latest snapshot in this process, else the one its record kept, remembering it; null before its first write-class call. */
-async function markOf(kernel: Kernel, session: SessionId, run: RunId): Promise<SnapshotId | null> {
-  const runs = kernel.marks;
-  const known = runs.get(run);
+/** Returns the snapshot a run's next write-class call diffs from, as its record keeps it: its last such call's, else its first; null before the first. */
+async function diffBase(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+): Promise<SnapshotId | null> {
+  const found = await load(
+    kernel,
+    await kernel.store.refs.get(runRef(session, run)),
+    decodeRunRecord,
+  );
 
-  if (known !== undefined) return known;
-
-  const recorded =
-    (await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord))?.record
-      .snapshot ?? null;
-
-  if (recorded !== null) runs.set(run, recorded);
-
-  return recorded;
+  return found?.record.lastSnapshot ?? found?.record.snapshot ?? null;
 }
 
-/** Returns the session's changed files, latest per path in first-seen order, with `files` merged in; seeded from the fold, then kept in memory. */
-async function mergeChanges(
+/** Returns the update that makes `to` the run's diff base, or none once the run ended or when it is already. */
+async function nextBase(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+  to: SnapshotId,
+): Promise<readonly RefUpdate[]> {
+  const found = await load(
+    kernel,
+    await kernel.store.refs.get(runRef(session, run)),
+    decodeRunRecord,
+  );
+
+  if (found === null || found.record.lastSnapshot === to) return [];
+
+  return [
+    {
+      name: found.ref.name,
+      target: await put(kernel, "run", { ...found.record, lastSnapshot: to }),
+      expect: found.ref.revision,
+    },
+  ];
+}
+
+/** Returns the session's changed files as its log holds them, latest per path in first-seen order, with `files` merged in. */
+function mergeChanges(
   kernel: Kernel,
   session: SessionId,
   files: readonly FileChange[],
 ): Promise<readonly FileChange[]> {
-  const known =
-    kernel.changes.get(session) ?? (await withFold(kernel, session, (state) => state.changes));
-
-  const merged = [
-    ...known.map((file) => files.find((next) => next.path === file.path) ?? file),
-    ...files.filter((next) => !known.some((file) => file.path === next.path)),
-  ];
-
-  kernel.changes.set(session, merged);
-
-  return merged;
+  return withFold(kernel, session, (state) => [
+    ...state.changes.map((file) => files.find((next) => next.path === file.path) ?? file),
+    ...files.filter((next) => !state.changes.some((file) => file.path === next.path)),
+  ]);
 }
 
 /** Returns what a tool's class says about its call, or null when the class function throws. */

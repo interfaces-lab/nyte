@@ -39,7 +39,7 @@ const ask = definePart({
 });
 
 describe("composeHost", () => {
-  it("takes a modal answer a cold host gave before the run parked from the part record, and clears it (§48i)", async () => {
+  it("takes a modal answer a cold host gave before the run parked from the part record, which keeps it (§48i, ADV B N2)", async () => {
     const store = memoryStore();
     const fake = fakeModels();
     let release: () => void = () => undefined;
@@ -92,9 +92,9 @@ describe("composeHost", () => {
     expect(fake.requests).toHaveLength(2);
     expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({ role: "toolResult", content: [{ type: "text", text: "yes" }] });
 
-    const cleared = decodePartRecord(await connection.objects.get((await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none")));
+    const after = decodePartRecord(await connection.objects.get((await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none")));
 
-    expect(cleared?.status).toEqual({ kind: "live", run: null });
+    expect(after?.status).toEqual(kept?.status);
   });
 
   it("resolves a fresh session's effective configuration at creation, with nothing selected (§48c)", async () => {

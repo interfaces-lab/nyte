@@ -126,7 +126,9 @@ async function verifyIdentity(url: string, send: typeof fetch, expected: HostId)
       `${url.replace(/\/+$/, "")}/.nyte/identity?nonce=${encodeURIComponent(nonce)}`,
     );
   } catch (error) {
-    throw new SdkError("unavailable", error instanceof Error ? error.message : String(error));
+    if (!(error instanceof TypeError)) throw error;
+
+    throw new SdkError("unavailable", error.message);
   }
 
   const body: unknown = await response.json().catch(() => null);

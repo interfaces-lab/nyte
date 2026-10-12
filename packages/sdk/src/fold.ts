@@ -220,25 +220,27 @@ export function watchHost(rows: Rows): AsyncIterable<HostView> {
   );
 }
 
-/** Returns a view with the unsent messages it does not already carry (by `known`) placed before its first pending user message, or the same view when there are none. */
+/** Returns a view with each unsent message in place of the one it shares an id with (an edit over its target, ADV C N1), the others the fold does not know placed before its first pending user message, or the same view when there are none. */
 export function withUnsent(
   view: SessionView,
   unsent: readonly Message[],
   known: (id: Message["id"]) => boolean,
 ): SessionView {
+  const over = new Map(unsent.map((message) => [message.id, message]));
   const missing = unsent.filter((message) => !known(message.id));
 
-  if (missing.length === 0) return view;
+  if (missing.length === 0 && !view.messages.some((message) => over.has(message.id))) return view;
+  const messages = view.messages.map((message) => over.get(message.id) ?? message);
 
-  const at = view.messages.findIndex(
+  const at = messages.findIndex(
     (message) => message.kind === "user" && message.status.kind === "pending",
   );
 
-  const index = at < 0 ? view.messages.length : at;
+  const index = at < 0 ? messages.length : at;
 
   return {
     ...view,
-    messages: [...view.messages.slice(0, index), ...missing, ...view.messages.slice(index)],
+    messages: [...messages.slice(0, index), ...missing, ...messages.slice(index)],
   };
 }
 
