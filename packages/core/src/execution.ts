@@ -19,6 +19,7 @@ import { landing } from "./admission.ts";
 import { dev } from "./dev-log.ts";
 import type { FoldInput } from "./fold.ts";
 import type { Kernel, LandedInput } from "./kernel.ts";
+import { recoverMoves } from "./move.ts";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "./principals.ts";
 import { decodeRunRecord } from "./records.ts";
 import type { RunRecord } from "./records.ts";
@@ -42,7 +43,8 @@ import type { Found } from "./session-state.ts";
 import { executeCall, owedCalls } from "./tool-runner.ts";
 import { loadWaits } from "./waits.ts";
 
-const LEASE_MS = 30_000;
+/** How long a lease, and a step's re-run claim, holds unrenewed (§42q, §66). */
+export const LEASE_MS = 30_000;
 
 const RENEW_MS = 10_000;
 
@@ -210,7 +212,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
 }
 
-/** Returns one page of heads owed a step and wakes each (§38y, §42s). It first parks the page's recorded waits, so a wait whose target settled while no instance held it is settled and its head woken. */
+/** Returns one page of heads owed a step and wakes each (§38y, §42s). It first parks the page's recorded waits, so a wait whose target settled while no instance held it is settled and its head woken, and settles the moves a crash left pending. */
 export async function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
@@ -223,6 +225,8 @@ export async function repair(
   const runnable: { readonly session: SessionId; readonly head: HeadName }[] = [];
 
   for (const info of page.items) {
+    await recoverMoves(kernel, info.id);
+
     for (const head of info.heads) {
       if (await owed(kernel, info.id, head.name))
         runnable.push({ session: info.id, head: head.name });
@@ -235,7 +239,7 @@ export async function repair(
   return { runnable, next: page.next };
 }
 
-/** Returns whether a head is owed a step: an input due and no live run, or a live run no turn drives here that waits on nothing or has a call to re-run. */
+/** Returns whether a head is owed a step: an input due and no live run, or a live run no turn drives here that is stopping, waits on nothing or has a call to re-run, so `repair` re-dispatches a lost stop (§66). */
 async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise<boolean> {
   const live = await liveRun(kernel, session, head);
 
@@ -243,7 +247,8 @@ async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   return (
     !kernel.driving.has(live.record.view.id) &&
-    (live.record.waiting === null ||
+    (live.record.stopping ||
+      live.record.waiting === null ||
       (await owedCalls(kernel, session, live.record.view.id)).some((call) => !call.parked))
   );
 }
@@ -521,7 +526,7 @@ async function holding(
     : null;
 }
 
-/** Re-runs, one at a time, a run's tool calls owed a re-run with the principal their intent recorded. */
+/** Re-runs, one at a time, a run's tool calls owed a re-run with the principal their intent recorded, on the session's runtime held from here and ready (§63). */
 async function resume(
   kernel: Kernel,
   session: SessionId,
@@ -529,26 +534,34 @@ async function resume(
   run: RunId,
 ): Promise<void> {
   const signal = kernel.runs.signal(run) ?? kernel.runs.start(run).signal;
+  const runtime = kernel.pluginsFor(session);
+  const release = runtime.hold();
 
-  for (const owed of await owedCalls(kernel, session, run)) {
-    if (owed.parked) continue;
+  try {
+    await runtime.ready;
 
-    await executeCall(kernel, {
-      session,
-      head,
-      run,
-      call: owed.call,
-      name: owed.intent.name,
-      args: owed.intent.args,
-      runtime: kernel.pluginsFor(session),
-      context: {
-        principal: owed.intent.principal,
-        authority: PARTICIPANT_AUTHORITY,
-        credential: { kind: "token", token: "" },
-        origin: null,
-      },
-      signal,
-    });
+    for (const owed of await owedCalls(kernel, session, run)) {
+      if (owed.parked) continue;
+
+      await executeCall(kernel, {
+        session,
+        head,
+        run,
+        call: owed.call,
+        name: owed.intent.name,
+        args: owed.intent.args,
+        runtime,
+        context: {
+          principal: owed.intent.principal,
+          authority: PARTICIPANT_AUTHORITY,
+          credential: { kind: "token", token: "" },
+          origin: null,
+        },
+        signal,
+      });
+    }
+  } finally {
+    release();
   }
 }
 

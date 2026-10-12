@@ -51,8 +51,8 @@ export type ViewOptions = {
  * @since 0.1.0
  */
 export type SessionView = {
-  /** The head revision this view reflects; pass as `expect`. */
-  readonly revision: Revision;
+  /** The head revision this view reflects; pass as `expect`. Null when the host holds no revision paired with this tip (§54a): read the view again. */
+  readonly revision: Revision | null;
   /** The seq of the last durable event this view folded (§54g). */
   readonly seq: Seq;
   

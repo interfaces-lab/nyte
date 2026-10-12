@@ -236,11 +236,11 @@ interface OpenOptions {
    *   (admission of a non-`attach` input, a part answer, a child run's
    *   end, a job's end, a stop, a timer), deduplicated per instance while
    *   one for that head is pending. A rejection is recorded in no event:
-   *   the head stays owed and `repair` re-dispatches it. A session with a
-   *   resolved dispatch in this instance counts as covered, and activation
-   *   attaches as for `run`. A Vercel deploy dispatches each head to a
-   *   workflow, which ends when it finds the head `busy`: the lease
-   *   holder's loop re-reads after each turn and sees the wake.
+   *   the head stays owed and `repair` re-dispatches it. Every session
+   *   counts as covered on a dispatch kernel (§42p as amended), and
+   *   activation attaches as for `run`. A Vercel deploy dispatches each
+   *   head to a workflow, which ends when it finds the head `busy`: the
+   *   lease holder's loop re-reads after each turn and sees the wake.
    */
   readonly execution?:
     | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
@@ -2587,8 +2587,8 @@ type ActOutcome<Output> =
  * @since 0.1.0
  */
 interface SessionView {
-  /** The head revision this view reflects; pass as `expect`. */
-  readonly revision: Revision;
+  /** The head revision this view reflects; pass as `expect`. Null when the host holds no revision paired with this tip (§54a): read the view again. */
+  readonly revision: Revision | null;
   /** The seq of the last durable event this view folded (§54g). */
   readonly seq: Seq;
   
@@ -2712,9 +2712,11 @@ type Schedule =
  *
  * - `live`: being written: streaming text, a running tool, an open modal.
  *   `run` is null for a part created outside a run (a modal a client opened).
- *   `waiting` is the durable step parked on a modal's answer, which `act`
- *   writes the answer to; `answer` is an answer that came before any step
- *   parked, which the first step to wait on the part takes (§48i).
+ *   `answer` is the modal's first answer: it stays on the part, a later
+ *   act does not replace it, and every step that waits on the part reads
+ *   it, on any instance and after a restart (§60). `waiting` is a durable
+ *   step that parked on the modal; it is not cleared when that step stops
+ *   waiting, and the answer does not depend on it.
  * - `waiting`: parked on a durable wait.
  * - `settled`: committed.
  * - `failed`: its run failed or was stopped; `run` null when closed by a

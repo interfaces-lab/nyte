@@ -98,7 +98,7 @@ export const TurnInfoType = Type.Object({
 
 /** The TypeBox schema of a `SessionView`. */
 export const SessionViewType = Type.Object({
-  revision: idSchema<"revision">(),
+  revision: nullable(idSchema<"revision">()),
   seq: SeqType,
   activation: ActivationType,
   messages: Type.Array(MessageType),

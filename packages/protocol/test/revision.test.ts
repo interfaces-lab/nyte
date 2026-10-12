@@ -48,7 +48,7 @@ describe("head revisions across instances", () => {
     const frame = await frames.next();
     const edited = await session.send("From A, edited.", {
       replace: sent.message,
-      expect: view.revision,
+      expect: view.revision ?? undefined,
     });
 
     expect(view.revision).toBe(stored?.revision);

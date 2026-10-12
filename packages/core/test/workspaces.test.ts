@@ -529,13 +529,13 @@ describe("principals", () => {
     expect(await authenticateToken(kernel, redeemed.token)).toBeNull();
   });
 
-  it("answers unknown for an id no paired principal holds, writing and marking nothing (ADV C N3, probe N2)", async () => {
+  it("revokes an id no paired principal holds as a success, writing and marking nothing (§65, ADV C N3, probe N2)", async () => {
     const { kernel, host } = await world();
     await host.principals.pair({ authority: new Set(["participant"]) });
     const before = await kernel.store.refs.get(hostPrincipalsRef());
 
     for (const id of ["token", "local", "nobody"])
-      await expect(host.principals.revoke(asId(id))).rejects.toMatchObject({ code: "unknown" });
+      await expect(host.principals.revoke(asId(id))).resolves.toBeUndefined();
 
     expect(await kernel.store.refs.get(hostPrincipalsRef())).toEqual(before);
 

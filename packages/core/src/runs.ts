@@ -43,7 +43,8 @@ import {
 import { failedParts } from "./transcript.ts";
 import { waitFor } from "./waits.ts";
 
-const STOPPED: Failure = { class: "aborted", message: "Stopped." };
+/** The failure the stop fence writes on a run's live parts. */
+export const FENCED: Failure = { class: "aborted", message: "Stopped." };
 
 const REPORT_LIMIT = 4096;
 
@@ -176,7 +177,7 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
 
   const [stopping, failed, rewritten] = await Promise.all([
     put(kernel, "run", { ...found.record, stopping: true }),
-    failedParts(kernel, session, head, live, STOPPED),
+    failedParts(kernel, session, head, live, FENCED),
     put(kernel, "inbox", inboxWithout(inbox, [])),
   ]);
 
@@ -270,7 +271,7 @@ export async function endRun(
             session,
             head,
             await liveParts(kernel, session, run),
-            final.kind === "failed" ? final.failure : STOPPED,
+            final.kind === "failed" ? final.failure : FENCED,
           )),
     ]);
 

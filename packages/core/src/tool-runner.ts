@@ -36,7 +36,7 @@ import type { ConnectionContext } from "./principals.ts";
 import { decodeChangesRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, PartRecord } from "./records.ts";
 import { changesRef, partRef, runRef } from "./refs.ts";
-import { unfenced } from "./runs.ts";
+import { FENCED, abortHere, unfenced } from "./runs.ts";
 import {
   STALE,
   attempt,
@@ -392,12 +392,12 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
-/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced (§61); none when the part exists or the run is stopping. They land with the step's record. */
+/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced (§61); none when the part exists. A run stopping or ended gets the part settled `stopped` and failed with the step's result `stopped`, its tool never run, and the run aborted here (§66). */
 async function partOpening(
   kernel: Kernel,
   where: Where,
   planned: Plan,
-): Promise<readonly RefUpdate[]> {
+): Promise<{ readonly updates: readonly RefUpdate[]; readonly result: Json | null }> {
   const { session, head, run, call } = where;
   const part = asId<"part">(call);
   const name = partRef(session, part);
@@ -407,7 +407,7 @@ async function partOpening(
     unfenced(kernel, session, run),
   ]);
 
-  if (existing !== null || held === null) return [];
+  if (existing !== null) return { updates: [], result: null };
   const at = Date.now();
   const fields = { call, name: where.name, args: planned.args, class: planned.class };
   const calling: Json = { ...fields, phase: "calling" };
@@ -423,8 +423,7 @@ async function partOpening(
     status: { kind: "live", run },
   });
 
-  return [
-    held,
+  const opened: RefUpdate[] = [
     {
       name,
       target: await put(kernel, "part", record(calling, 1), at),
@@ -462,6 +461,36 @@ async function partOpening(
       },
     },
   ];
+
+  if (held !== null) return { updates: [held, ...opened], result: null };
+  abortHere(kernel, run);
+  const settled = record({ ...fields, phase: "settled", outcome: STOPPED, changes: null }, 3);
+  const status = { kind: "failed", run, failure: FENCED } as const;
+
+  return {
+    updates: [
+      ...opened,
+      {
+        name,
+        target: await put(kernel, "part", settled, at),
+        event: {
+          head,
+          kind: "call",
+          call,
+          part,
+          change: "settled",
+          outcome: STOPPED,
+          changes: null,
+        },
+      },
+      {
+        name,
+        target: await put(kernel, "part", { ...settled, status }, at),
+        event: { head, kind: "part", part, change: "failed", failure: FENCED },
+      },
+    ],
+    result: STOPPED,
+  };
 }
 
 /** Runs the tool's `execute` with its invocation, a call that may write taking the run's first snapshot first, and returns the outcome: output validated, throws as `failed`, an aborted signal as `stopped`. */

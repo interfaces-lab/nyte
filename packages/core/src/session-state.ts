@@ -25,6 +25,7 @@ import { SdkError } from "./error.ts";
 import { dev } from "./dev-log.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
+import { dismiss } from "./parts.ts";
 import { LOCAL } from "./principals.ts";
 import {
   decodeCallRecord,
@@ -243,11 +244,15 @@ export async function put(
   return id;
 }
 
-/** Publishes one batch and its events: the one `refs.set` of a durable change. */
+/** Publishes one batch and its events: the one `refs.set` of a durable change. A part the batch failed resolves its pending local `answer()` with null, as no answer can land on it (§66). */
 export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Promise<SetOutcome> {
   const outcome = await kernel.store.refs.set(updates);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
   await publishSet(kernel, updates, outcome);
+
+  if (outcome.kind === "set")
+    for (const { name, event } of updates)
+      if (event?.kind === "part" && event.change === "failed") dismiss(kernel.partTable, name);
 
   return outcome;
 }

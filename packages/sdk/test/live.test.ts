@@ -380,7 +380,7 @@ describe("live parts across a reconnect", () => {
     const stored = await kernel.store.refs.get(headRef(created.id, main));
 
     expect(shown.revision).toBe(stored?.revision);
-    expect((await (await session.move({ kind: "start" }, { expect: shown.revision })).settled()).kind).toBe(
+    expect((await (await session.move({ kind: "start" }, { expect: shown.revision ?? undefined })).settled()).kind).toBe(
       "moved",
     );
     await views.return?.();

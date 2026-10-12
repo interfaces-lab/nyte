@@ -43,7 +43,7 @@ import type { Failure } from "@nyte-ai/schema/model";
 import { SdkError } from "./error.ts";
 import type { HeadPair } from "./bus.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
-import { EMPTY_REVISION, START, isJsonObject, pathOf, tipOf } from "./session-state.ts";
+import { START, isJsonObject, pathOf, tipOf } from "./session-state.ts";
 
 /** Returns a session as the fold holds it for one principal: every head, commit, input, part, run, call and turn. The maps and each head's `messages` and `turns` belong to the fold and change in place; every object a view carries is immutable and shared between steps. */
 export interface FoldState {
@@ -306,7 +306,7 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
     return cached;
 
   const view: SessionView = {
-    revision: folded.revision ?? EMPTY_REVISION,
+    revision: folded.revision,
     seq: state.seq,
     activation: state.activation,
     messages: tailOf(folded.messages, tail),
@@ -928,7 +928,9 @@ function create(
   const head = folded?.view.head ?? event.head;
 
   if (head === null) return;
-  dropFailed(draft, head);
+  const execution = draft.heads.get(head)?.info.execution;
+
+  if (execution?.kind !== "live" || !execution.stopping) dropFailed(draft, head);
   const turn = folded?.turn ?? noteTurn(draft, head, id, event.at);
   setMessage(draft, {
     id: messageOf(id),

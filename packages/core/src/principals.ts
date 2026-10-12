@@ -121,7 +121,7 @@ export function gated<T extends object>(
   });
 }
 
-/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds writes and marks nothing and throws `unknown`. */
+/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds succeeds and writes or marks nothing (§65). */
 export function createPrincipals(kernel: Kernel): Host["principals"] {
   return {
     async list() {
@@ -165,8 +165,7 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
           : null,
       );
 
-      if (written === null) throw new SdkError("unknown", `No paired principal has the id ${id}.`);
-      kernel.connections.revoke(id);
+      if (written !== null) kernel.connections.revoke(id);
     },
   };
 }

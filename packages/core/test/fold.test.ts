@@ -347,7 +347,7 @@ describe("fold", () => {
     };
 
     expect(project(done, main)).toEqual({
-      revision: "",
+      revision: null,
       seq: done.seq,
       activation: { kind: "inactive" },
       messages: [

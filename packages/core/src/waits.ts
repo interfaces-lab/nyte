@@ -17,6 +17,7 @@ import type {
   WaitOutcome,
   WaitTarget,
 } from "@nyte-ai/schema";
+import { lapsed } from "./durable.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
@@ -82,6 +83,8 @@ export interface WaitRegistry {
   nextDeadline(session: SessionId, head: HeadName): number | null;
   /** Judges every wait held here again from its stored call record, dropping those another instance settled (§42h, §42x), and resumes each act here whose step another runner settled. */
   settleFromStore(): Promise<void>;
+  /** Runs a head-less step again once its wake is recorded: the act here waiting on it resumes, else the action re-runs here (§33j). */
+  rerun(session: SessionId, call: CallId): void;
   /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again; with none, a wake written here re-runs the action (§33j). */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 }
@@ -150,19 +153,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
     if (slots.get(key) === slot) slots.delete(key);
 
-    if (entry.head !== null) {
-      kernel.wakes.notify(entry.session, entry.head);
-
-      return;
-    }
-
-    const resumer = resumers.get(key);
-
-    if (resumer !== undefined) resumer.resume();
-    else
-      void rerunAction(kernel, entry.session, entry.call).catch((error: unknown) =>
-        dev("waits", "rerun failed", { call: entry.call, error: String(error) }),
-      );
+    if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
+    else registry.rerun(entry.session, entry.call);
   };
 
   const settle = async (slot: Slot, outcome: WaitOutcome): Promise<boolean> => {
@@ -383,7 +375,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     }
   };
 
-  return {
+  const registry: WaitRegistry = {
     park,
     async runEnded(session, run, end, waitedBy) {
       const on = (target: WaitTarget): boolean =>
@@ -477,7 +469,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
           if (slots.has(key)) return;
           const found = await readCall(kernel, resumer.session, resumer.call);
 
-          if ((found?.record.result ?? null) !== null) resumer.resume();
+          if (found !== null && (found.record.result !== null || lapsed(kernel, found.record)))
+            resumer.resume();
         }),
       );
     },
@@ -498,6 +491,15 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       return due.length === 0 ? null : Math.min(...due);
     },
+    rerun(session, call) {
+      const resumer = resumers.get(keyOf(session, call));
+
+      if (resumer !== undefined) resumer.resume();
+      else
+        void rerunAction(kernel, session, call).catch((error: unknown) =>
+          dev("waits", "rerun failed", { call, error: String(error) }),
+        );
+    },
     onWoken(session, call, resume) {
       const key = keyOf(session, call);
       const resumer = { session, call, resume };
@@ -508,9 +510,11 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       };
     },
   };
+
+  return registry;
 }
 
-/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions' (§42p); `cover` calls it. */
+/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions' (§42p); `cover` and `repair` call it. A woken step whose re-run claim lapsed is re-run (§66). */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
   const refs: readonly Ref[] =
     sessions === undefined
@@ -529,6 +533,8 @@ export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[])
     const entry = parkedOf(asId<"session">(session), found?.record ?? null);
 
     if (entry !== null) await kernel.waits.park(entry);
+    else if (found !== null && lapsed(kernel, found.record))
+      kernel.waits.rerun(asId<"session">(session), found.record.id);
   }
 }
 

@@ -13,6 +13,7 @@ import type {
 } from "@nyte-ai/schema";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
+import { LEASE_MS } from "./execution.ts";
 import type { Kernel } from "./kernel.ts";
 import { storedAnswer } from "./parts.ts";
 import { decodePartRecord, decodeRunRecord } from "./records.ts";
@@ -93,8 +94,11 @@ export async function runStep<T>(
     readonly intent: Json;
     readonly part: PartId | null;
     readonly signal: AbortSignal;
-    /** Returns the updates landing with the record's creation, read again on each try: a tool's part, so no part exists without its step. */
-    readonly opening?: () => Promise<readonly RefUpdate[]>;
+    /** Returns the updates landing with the record's creation, read again on each try: a tool's part, so no part exists without its step. A result settles the step at its creation, so its body never runs. */
+    readonly opening?: () => Promise<{
+      readonly updates: readonly RefUpdate[];
+      readonly result: Json | null;
+    }>;
     body(durable: Durable): Promise<T>;
     /** Returns what the step's `result` records and the ref updates landing in the same set. */
     settle(
@@ -109,9 +113,16 @@ export async function runStep<T>(
   let record = created;
 
   const opened = await changeCall(kernel, session, call, async (current) => {
-    record = current ?? created;
+    if (current !== null) {
+      record = current;
 
-    return current === null ? { record, updates: await input.opening?.() } : null;
+      return null;
+    }
+
+    const opening = await input.opening?.();
+    record = { ...created, result: opening?.result ?? null };
+
+    return { record, updates: opening?.updates };
   });
 
   const read = (result: Json | null): T => {
@@ -239,7 +250,7 @@ export async function runAction(
   }
 }
 
-/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake (§33j). Resolves true when this runner won or the step has a result to replay, false while another runner holds it or the step waits. */
+/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake (§33j): a claim naming this instance that lapses with the lease (§66). Resolves true when this runner won or the step has a result to replay, false while another runner holds a live claim or the step waits. */
 export async function reserveRerun(
   kernel: Kernel,
   session: SessionId,
@@ -249,12 +260,33 @@ export async function reserveRerun(
     current === null ||
     current.result !== null ||
     current.waiting !== null ||
-    current.reran === current.waits.length
+    ((current.reran?.waits ?? 0) === current.waits.length && !lapsed(kernel, current))
       ? null
-      : { record: { ...current, reran: current.waits.length } },
+      : {
+          record: {
+            ...current,
+            reran: {
+              waits: current.waits.length,
+              holder: kernel.instance,
+              expiresAt: Date.now() + LEASE_MS,
+            },
+          },
+        },
   );
 
   return reserved.wrote || (reserved.record?.result ?? null) !== null;
+}
+
+/** Returns whether a woken step's re-run is claimed by another instance whose claim lapsed with no result: its holder is gone, so another runner takes it over (§66). */
+export function lapsed(kernel: Kernel, record: CallRecord): boolean {
+  return (
+    record.result === null &&
+    record.waiting === null &&
+    record.reran !== null &&
+    record.reran.waits === record.waits.length &&
+    record.reran.holder !== kernel.instance &&
+    record.reran.expiresAt <= Date.now()
+  );
 }
 
 /** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as (§33j). */
@@ -574,7 +606,7 @@ function callRecord(input: {
     acquisitions: {},
     result: null,
     replay: input.replay,
-    reran: 0,
+    reran: null,
   };
 }
 

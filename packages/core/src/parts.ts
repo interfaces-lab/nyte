@@ -188,13 +188,17 @@ export function settle(table: PartTable, name: string, answer: Answered): void {
 export function release(table: PartTable, name: string): void {
   table.closed.add(name);
   table.created.delete(name);
-
-  for (const resolve of table.waiters.get(name) ?? []) resolve(null);
+  dismiss(table, name);
 
   for (const controller of table.acting.get(name) ?? []) controller.abort();
-  table.waiters.delete(name);
   table.acting.delete(name);
   table.answered.delete(name);
+}
+
+/** Resolves a part's pending `answer()` waiters with null. */
+export function dismiss(table: PartTable, name: string): void {
+  for (const resolve of table.waiters.get(name) ?? []) resolve(null);
+  table.waiters.delete(name);
 }
 
 /** Returns the part answers among recorded outcomes, those inside an `all` included. */

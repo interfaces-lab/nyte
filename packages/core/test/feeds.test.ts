@@ -194,7 +194,7 @@ describe("the store is the truth", () => {
     release.resolve();
     expect(
       shown.done !== true &&
-        (await (await session.move({ kind: "start" }, { expect: shown.value.revision })).settled())
+        (await (await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })).settled())
           .kind,
     ).toBe("moved");
     await watched.return?.();

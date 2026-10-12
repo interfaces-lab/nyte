@@ -80,8 +80,7 @@ export async function move(
   const receipt = typedReceipt(kernel, session, id, isMoveOutcome);
 
   if (await known(kernel, session, id, "move", digest)) {
-    if (options?.abandoned === undefined || options.abandoned === "keep")
-      await recover(kernel, session, head, position, id);
+    await recover(kernel, session, id);
 
     return receipt;
   }
@@ -170,7 +169,13 @@ async function decide(
       },
       {
         name: receiptRef(session, id),
-        target: await put(kernel, "receipt", { id, kind: "move", digest, outcome: null }),
+        target: await put(kernel, "receipt", {
+          id,
+          kind: "move",
+          digest,
+          outcome: null,
+          move: { head, position },
+        }),
         expect: "absent",
       },
       {
@@ -278,37 +283,33 @@ async function summarized(
   });
 }
 
-/** Settles a replayed move whose set landed but whose settlement was lost with its process: `moved` at the head's revision while the head points where the move put it, else `stale` with the head's revision. */
-async function recover(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  position: Position,
-  id: ReceiptId,
-): Promise<void> {
-  const [found, tip] = await Promise.all([
-    readReceipt(kernel, session, id),
-    readTip(kernel, session, head),
-  ]);
+/** Settles each move of a session whose set landed but whose settlement was lost with its process, as `repair` runs it after a restart (§40e). */
+export async function recoverMoves(kernel: Kernel, session: SessionId): Promise<void> {
+  const prefix = receiptRef(session, asId<"receipt">(""));
 
-  if (found === null || found.record.outcome !== null) return;
-  const plan = await withFold(kernel, session, (state) => planOf(state.commits, tip.id, position));
+  for (const ref of await kernel.store.refs.list(prefix))
+    await recover(kernel, session, asId<"receipt">(ref.name.slice(prefix.length)));
+}
+
+/** Settles a move whose set landed but whose settlement was lost with its process: its pending record names the head and position, so it settles `moved` with the head's revision now, though later writes moved the head on. */
+async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promise<void> {
+  const found = await readReceipt(kernel, session, id);
+  const moved = found?.record.outcome === null ? found.record.move : undefined;
+
+  if (moved === undefined) return;
+  const tip = await readTip(kernel, session, moved.head);
+
+  const plan = await withFold(kernel, session, (state) =>
+    planOf(state.commits, tip.id, moved.position),
+  );
 
   if (plan === null) return;
-  const revision = tip.ref?.revision ?? EMPTY_REVISION;
 
-  await settleReceipt(
-    kernel,
-    session,
-    id,
-    tip.id === plan.landing
-      ? {
-          kind: "moved",
-          revision,
-          position: positionOf(plan.landing),
-          summary: null,
-          handback: plan.handback,
-        }
-      : { kind: "stale", revision },
-  );
+  await settleReceipt(kernel, session, id, {
+    kind: "moved",
+    revision: tip.ref?.revision ?? EMPTY_REVISION,
+    position: positionOf(plan.landing),
+    summary: null,
+    handback: plan.handback,
+  });
 }

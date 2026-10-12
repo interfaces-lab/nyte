@@ -7,6 +7,7 @@ import {
   JsonType,
   PartStatusType,
   PlacementType,
+  PositionType,
   PromptOverrideType,
   RunEndType,
   RunViewType,
@@ -35,6 +36,7 @@ import type {
   PartId,
   PartStatus,
   Placement,
+  Position,
   PrincipalId,
   PromptOverride,
   ReceiptId,
@@ -150,12 +152,13 @@ export type PartRecord = {
   readonly status: PartStatus;
 };
 
-/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. A record whose `id` is another receipt's names it: a revise's names its target (§62). */
+/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. A record whose `id` is another receipt's names it: a revise's names its target (§62). A move's pending record, written in the set that moves its head, names the head and position, so its settlement survives a crash (§40e). */
 export type ReceiptRecord = {
   readonly id: ReceiptId;
   readonly kind: "send" | "move" | "batch";
   readonly digest: string;
   readonly outcome: Json | null;
+  readonly move?: { readonly head: HeadName; readonly position: Position };
 };
 
 /** What `sessions/<id>/seen/<principal>/<head>` holds: the tip the principal last saw. */
@@ -187,8 +190,12 @@ export type CallRecord = {
   readonly acquisitions: Readonly<Record<string, Json>>;
   readonly result: Json | null;
   readonly replay: "safe" | "never";
-  /** The count of `waits` the step's latest re-run started after: a woken head-less step is re-run by the one runner that writes it (§33j). */
-  readonly reran: number;
+  /** The claim on the step's latest re-run: the count of `waits` it started after, the kernel instance holding it and when it lapses, as a lease does; a lapsed claim's step is re-run by another runner (§33j, §66). */
+  readonly reran: {
+    readonly waits: number;
+    readonly holder: string;
+    readonly expiresAt: number;
+  } | null;
 };
 
 /** What `workspaces/<id>` holds. */
@@ -364,6 +371,7 @@ export const decodeReceiptRecord: Decode<ReceiptRecord> = decoder(
     kind: Type.Enum(["send", "move", "batch"]),
     digest: Type.String(),
     outcome: nullable(JsonType),
+    move: Type.Optional(Type.Object({ head: idSchema<"head">(), position: PositionType })),
   }),
 );
 
@@ -398,7 +406,9 @@ export const decodeCallRecord: Decode<CallRecord> = decoder(
     acquisitions: Type.Record(Type.String(), JsonType),
     result: nullable(JsonType),
     replay: Type.Enum(["safe", "never"]),
-    reran: Type.Number(),
+    reran: nullable(
+      Type.Object({ waits: Type.Number(), holder: Type.String(), expiresAt: Type.Number() }),
+    ),
   }),
 );
 

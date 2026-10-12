@@ -60,7 +60,6 @@ export async function listenFetch(
   const { kernel } = host;
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
-  const flights = new WeakMap<Request, Flight>();
   const streams = new Map<PrincipalId, Set<Flight>>();
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
@@ -85,21 +84,17 @@ export async function listenFetch(
   };
 
   const connectionFor = (
-    request: Request,
+    flight: Flight,
     principal: PrincipalId,
     authority: ReadonlySet<Authority>,
     token: string,
   ): Connection => {
     const key = JSON.stringify([principal, [...authority].sort()]);
     const entry = cache.get(key) ?? admit(key, principal, authority, token);
-    const flight = flights.get(request);
-
-    if (flight !== undefined) {
-      flight.principal = principal;
-      const open = streams.get(principal) ?? new Set<Flight>();
-      open.add(flight);
-      streams.set(principal, open);
-    }
+    flight.principal = principal;
+    const open = streams.get(principal) ?? new Set<Flight>();
+    open.add(flight);
+    streams.set(principal, open);
 
     return entry.connection;
   };
@@ -179,6 +174,18 @@ export async function listenFetch(
     );
   };
 
+  /** Remembers a device token for one window and starts the per-window re-check (§58) of open streams when it is not running. */
+  const remember = (digest: string, device: Device): void => {
+    devices.set(digest, device);
+    rechecking ??= setInterval(() => {
+      recheck().catch((error: unknown) => {
+        dev("listen", "device re-check failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }, DEVICE_TTL_MS);
+  };
+
   const isListenerToken: (token: string) => Promise<boolean> =
     auth.kind === "token" ? (token) => sameSecret(token, auth.token) : async () => false;
 
@@ -203,7 +210,10 @@ export async function listenFetch(
           );
         };
 
-  const authenticate: HandlerOptions["connection"] = async (request) => {
+  const authenticate = async (
+    request: Request,
+    flight: Flight,
+  ): ReturnType<HandlerOptions["connection"]> => {
     const header = request.headers.get("Authorization") ?? "";
     const pairing = /^Pairing\s+(\S+)\s*$/i.exec(header)?.[1];
 
@@ -212,12 +222,12 @@ export async function listenFetch(
 
       if (redeemed === null)
         throw new SdkError("unauthenticated", "The pairing code is unknown or has expired.");
+      const digest = hex(await sha256(redeemed.token));
+      const { principal, authority, token } = redeemed;
+      const connection = connectionFor(flight, principal, authority, token);
+      remember(digest, { principal, authority, token, expiresAt: Date.now() + DEVICE_TTL_MS });
 
-      return {
-        connection: connectionFor(request, redeemed.principal, redeemed.authority, redeemed.token),
-        authority: redeemed.authority,
-        headers: { "X-Nyte-Credential": redeemed.token },
-      };
+      return { connection, authority, headers: { "X-Nyte-Credential": token } };
     }
 
     const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
@@ -225,22 +235,15 @@ export async function listenFetch(
     if (token !== undefined) {
       if (await isListenerToken(token))
         return {
-          connection: connectionFor(request, TOKEN, TOKEN_AUTHORITY, token),
+          connection: connectionFor(flight, TOKEN, TOKEN_AUTHORITY, token),
           authority: TOKEN_AUTHORITY,
         };
       const remembered = await deviceOf(token);
 
       if (remembered !== null) {
         const { digest, device } = remembered;
-        const connection = connectionFor(request, device.principal, device.authority, token);
-        devices.set(digest, device);
-        rechecking ??= setInterval(() => {
-          recheck().catch((error: unknown) => {
-            dev("listen", "device re-check failed", {
-              message: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }, DEVICE_TTL_MS);
+        const connection = connectionFor(flight, device.principal, device.authority, token);
+        remember(digest, device);
 
         return { connection, authority: device.authority };
       }
@@ -249,17 +252,19 @@ export async function listenFetch(
     const verdict = await fallback(request, token);
 
     return {
-      connection: connectionFor(request, verdict.principal, verdict.authority, ""),
+      connection: connectionFor(flight, verdict.principal, verdict.authority, ""),
       authority: verdict.authority,
     };
   };
 
-  const handler = createHandler({
-    kernel,
-    origins: options.origins,
-    maxBodyBytes: options.maxBodyBytes,
-    connection: authenticate,
-  });
+  /** Returns the protocol handler for one flight, so authentication registers that flight without looking it up. */
+  const handlerFor = (flight: Flight) =>
+    createHandler({
+      kernel,
+      origins: options.origins,
+      maxBodyBytes: options.maxBodyBytes,
+      connection: (request) => authenticate(request, flight),
+    });
 
   const cors = (request: Request): Readonly<Record<string, string>> => {
     const origin = request.headers.get("Origin");
@@ -313,8 +318,7 @@ export async function listenFetch(
     });
 
     const flight: Flight = { request: forwarded, controller, principal: null };
-    flights.set(forwarded, flight);
-    const response = await handler(forwarded);
+    const response = await handlerFor(flight)(forwarded);
     trace.principal = flight.principal;
 
     return landing(response, () => land(flight));

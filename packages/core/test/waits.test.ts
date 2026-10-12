@@ -1,8 +1,9 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import {
+  LEASE_MS,
   LOCAL,
   ALL_AUTHORITY,
   callRef,
@@ -15,6 +16,7 @@ import {
   failedParts,
   loadWaits,
   partRef,
+  repair,
   runRef,
   runStep,
   startRun,
@@ -28,7 +30,7 @@ import type {
   ToolDefinition,
   ToolSource,
 } from "../src/index.ts";
-import { commit } from "../src/session-state.ts";
+import { commit, put } from "../src/session-state.ts";
 import { configuration, main, setup, until } from "./harness.ts";
 
 const question = definePart({
@@ -115,6 +117,38 @@ const gated = definePart({
   onAction: (action, input, context) => gatedHandlers[action](input, context),
 });
 
+const dyingHandlers: typeof gatedHandlers = {
+  hold: async (input, context) => {
+    const woke = await context.wait({ kind: "timer", until: input.until });
+    resumed.push(context.principal);
+
+    if (resumed.length === 1) await new Promise<never>(() => undefined);
+
+    return { woke: woke.kind };
+  },
+};
+
+/** A held action whose first re-run never returns: its runner died mid-handler. */
+const dying = definePart({
+  kind: "test/dying",
+  state: holdState,
+  actions: holdActions,
+  fallback: (_state, { id }) => `Dying ${id}`,
+  onAction: (action, input, context) => dyingHandlers[action](input, context),
+});
+
+/** Runs `body` with `Date.now` a lease later than the clock, so every claim taken before lapses. */
+async function leaseLater<T>(body: () => Promise<T>): Promise<T> {
+  const real = Date.now.bind(Date);
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + LEASE_MS + 1);
+
+  try {
+    return await body();
+  } finally {
+    clock.mockRestore();
+  }
+}
+
 /** Runs a test step that waits once and returns the outcome; its result records it. */
 function waitStep(
   kernel: Kernel,
@@ -152,6 +186,29 @@ function waiting(target: Parameters<Durable["wait"]>[0]) {
 async function readCall(kernel: Kernel, session: SessionId, id: string): Promise<CallRecord> {
   const ref = await kernel.store.refs.get(callRef(session, asId<"call">(id)));
   const record = decodeCallRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
+  assert(record !== null);
+
+  return record;
+}
+
+/** Returns the id of the first step parked in a session's store. */
+function parkedCall(kernel: Kernel, session: SessionId): Promise<string> {
+  return until(async () => {
+    for (const ref of await kernel.store.refs.list(`sessions/${session}/calls/`)) {
+      const record = decodeCallRecord(
+        ref.target ? await kernel.store.objects.get(ref.target) : null,
+      );
+
+      if (record !== null && record.waiting !== null) return record.id;
+    }
+
+    return undefined;
+  });
+}
+
+async function partRecord(kernel: Kernel, session: SessionId, part: PartId) {
+  const ref = await kernel.store.refs.get(partRef(session, part));
+  const record = decodePartRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
   assert(record !== null);
 
   return record;
@@ -255,6 +312,46 @@ describe("waits as store facts", () => {
     expect(holder.kernel.waits.nextDeadline(session.id, main)).toBeNull();
   });
 
+  it("lists a stopping parked run as owed, so repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
+    const holder = await setup({ tools: tools(parker) });
+    const other = await setup({ store: holder.kernel.store });
+    const session = await holder.host.sessions.create();
+    const head = { session: session.id, head: main };
+    await session.send("Wait.");
+    const step = holder.host.execution.advance(head);
+    const turn = await holder.script.started(1);
+    const run = turn.input.run.id;
+
+    await executeCall(holder.kernel, {
+      session: session.id,
+      runtime: holder.kernel.pluginsFor(session.id),
+      head: main,
+      run,
+      call: asId("w1"),
+      name: "parker",
+      args: {},
+      context: {
+        principal: LOCAL,
+        authority: ALL_AUTHORITY,
+        credential: { kind: "token", token: "" },
+        origin: null,
+      },
+      signal: new AbortController().signal,
+    });
+    turn.finish({ kind: "parked" });
+    await step;
+
+    expect(await other.host.session(session.id).run(run).stop()).toEqual({ kind: "requested" });
+    expect(await runOf(other.kernel, session.id, run)).toMatchObject({
+      stopping: true,
+      parked: [asId("w1")],
+    });
+
+    const fresh = restart(holder.kernel);
+
+    expect(await repair(fresh, { limit: 10 })).toMatchObject({ runnable: [head] });
+  });
+
   it("wakes no head when its turn parks: the advance reports waiting itself (ADV E-2 N7)", async () => {
     const { kernel, host, script } = await setup({ tools: tools(parker) });
     const session = await host.sessions.create();
@@ -286,7 +383,7 @@ describe("waits as store facts", () => {
     expect(notified).toEqual([]);
   });
 
-  it("answers a modal whose step stopped waiting on it: the answer stays on the part, answer() resolves and a later step takes it; a modal no longer live refuses the act (ADV B N1)", async () => {
+  it("answers a modal whose step stopped waiting on it: the answer stays on the part, answer() resolves and a later step takes it; a modal no longer live refuses the act and its pending answer() resolves null (ADV B N1, B-3 N1)", async () => {
     const { kernel, host } = await setup();
     const cold = await setup({ store: kernel.store });
     const session = await host.sessions.create();
@@ -340,7 +437,50 @@ describe("waits as store facts", () => {
     expect(await cold.host.session(session.id).part(failed.id).answer()).toBeNull();
     expect(
       await Promise.race([pending, new Promise((resolve) => setTimeout(resolve, 10, "pending"))]),
-    ).toBe("pending");
+    ).toBeNull();
+  });
+
+  it("resolves a pending answer() null when the stop fence fails its modal, on a host with no poll (ADV B-3 N1)", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+
+    const { id: run } = await startRun(
+      kernel,
+      session.id,
+      main,
+      { kind: "continuation", from: "wake" },
+      configuration,
+    );
+
+    const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
+    const record = await partRecord(kernel, session.id, part.id);
+
+    await commit(kernel, [
+      {
+        name: partRef(session.id, part.id),
+        target: await put(kernel, "part", { ...record, run, status: { kind: "live", run } }),
+        event: {
+          head: main,
+          kind: "part",
+          part: part.id,
+          change: "created",
+          partKind: record.partKind,
+          placement: record.placement,
+          state: record.state,
+          version: record.version,
+          run,
+          owner: record.owner,
+        },
+      },
+    ]);
+    const pending = part.answer();
+
+    expect(kernel.poll).toBeNull();
+    expect((await session.run(run).stop()).kind).toBe("requested");
+    expect(await partStatus(kernel, session.id, part.id)).toMatchObject({ kind: "failed" });
+    expect(
+      await Promise.race([pending, new Promise((resolve) => setTimeout(resolve, 10, "pending"))]),
+    ).toBeNull();
   });
 
   it("keeps an early answer on the part when a step takes it: a cold answer() returns it and a later act does not replace it (ADV B N2)", async () => {
@@ -510,6 +650,84 @@ describe("waits as store facts", () => {
 
     expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
     expect(resumed).toHaveLength(1);
+  });
+
+  it("hands a woken action over once its re-run's holder dies mid-handler: the act's holder takes it when the claim lapses (ADV B-3 R1)", async () => {
+    const holder = await setup();
+    const other = await setup({ store: holder.kernel.store });
+
+    for (const kernel of [holder.kernel, other.kernel])
+      kernel.partDefinitions.register(dying, "plugin");
+    const session = await holder.host.sessions.create();
+
+    const part = await session.parts.create(dying, {
+      state: { done: false },
+      placement: { kind: "panel" },
+    });
+
+    const at = Date.now() + 60_000;
+    resumed.length = 0;
+    const acting = part.act("hold", { until: at });
+    const call = await parkedCall(holder.kernel, session.id);
+
+    await loadWaits(other.kernel, [session.id]);
+    await other.kernel.waits.tick(at);
+    await until(async () => (resumed.length === 1 ? true : undefined));
+    await holder.kernel.waits.settleFromStore();
+
+    expect((await readCall(holder.kernel, session.id, call)).reran).toMatchObject({
+      waits: 1,
+      holder: other.kernel.instance,
+    });
+
+    await leaseLater(async () => {
+      await holder.kernel.waits.settleFromStore();
+
+      expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
+    });
+
+    expect(resumed).toHaveLength(2);
+  });
+
+  it("re-runs a woken action once after a restart and repair when its re-run's holder died mid-handler (ADV B-3 R1)", async () => {
+    const holder = await setup();
+    const other = await setup({ store: holder.kernel.store });
+
+    for (const kernel of [holder.kernel, other.kernel])
+      kernel.partDefinitions.register(dying, "plugin");
+    const session = await holder.host.sessions.create();
+
+    const part = await session.parts.create(dying, {
+      state: { done: false },
+      placement: { kind: "panel" },
+    });
+
+    const at = Date.now() + 60_000;
+    resumed.length = 0;
+    void part.act("hold", { until: at });
+    const call = await parkedCall(holder.kernel, session.id);
+
+    await loadWaits(other.kernel, [session.id]);
+    await other.kernel.waits.tick(at);
+    await until(async () => (resumed.length === 1 ? true : undefined));
+
+    const second = restart(holder.kernel);
+    second.partDefinitions.register(dying, "plugin");
+
+    await leaseLater(async () => {
+      await repair(second, { limit: 10 });
+      await repair(second, { limit: 10 });
+
+      expect(
+        await until(async () => {
+          const record = await readCall(second, session.id, call);
+
+          return record.result === null ? undefined : record.result;
+        }),
+      ).toEqual({ kind: "done", output: { woke: "timer" } });
+    });
+
+    expect(resumed).toHaveLength(2);
   });
 
   it("wakes an untilInput wait parked on another instance when the user sends here, and a wait on a modal another instance closes (ADV B N6, E N5)", async () => {

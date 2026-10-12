@@ -574,6 +574,7 @@ async function editGated(
   return sendReceipt(kernel, session, id);
 }
 
+/** Writes an edit's branch summary, then admits the edit in one set with it; queued user input refuses it `pending-input` and a moved head `stale`, settling its receipt. Resolves whether it was admitted. */
 async function summarizedEdit(
   kernel: Kernel,
   input: {
@@ -617,8 +618,11 @@ async function summarizedEdit(
     markdown: summary.markdown,
   });
 
-  const admittedEdit = await attempt(`Editing ${id}`, async () => {
-    const inbox = await readInbox(kernel, session, head);
+  const admittedEdit = await attempt<MoveFailure | null>(`Editing ${id}`, async () => {
+    const checked = await guard(kernel, session, head, undefined, "stop");
+
+    if ("kind" in checked) return checked;
+    const { inbox } = checked;
     const record = input.message(inbox.messages.length);
 
     const outcome = await commit(kernel, [
@@ -626,15 +630,14 @@ async function summarizedEdit(
       await admitted(kernel, session, head, inbox, [...inbox.messages, record.id], record),
     ]);
 
-    if (outcome.kind === "set") return true;
+    if (outcome.kind === "set") return null;
 
-    return outcome.name === inboxRef(session, head) ? STALE : false;
+    return outcome.name === inboxRef(session, head) ? STALE : staleHead(kernel, session, head);
   });
 
-  if (!admittedEdit)
-    await settleReceipt(kernel, session, id, await staleHead(kernel, session, head));
+  if (admittedEdit !== null) await settleReceipt(kernel, session, id, admittedEdit);
 
-  return admittedEdit;
+  return admittedEdit === null;
 }
 
 /** Returns the receipt a replace's own id already answered with, or null when the id is new: the record at `receipts/<id>` names it (a revise's names its target). */

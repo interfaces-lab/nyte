@@ -350,6 +350,44 @@ describe("listen", () => {
     expect(await within(ended, 100)).toBe("unauthenticated");
   });
 
+  it("ends a head.watch opened by its own pairing request within one re-check window of another host's revoke (ADV C-3 N2, probe N2r)", async () => {
+    const store = memoryStore();
+    const host = await open(fakeModels(), { store, operations: operations() });
+    cleanups.push(() => host.close());
+    const other = await open(fakeModels(), { store, operations: operations() });
+    cleanups.push(() => other.close());
+    const listener = await serve(host);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+    const session = await host.sessions.create();
+
+    const watch = await post(
+      listener,
+      "head.watch",
+      { session: session.id, head: main },
+      { Authorization: `Pairing ${await pair(other, ["participant"])}` },
+    );
+
+    expect(watch.headers.get("X-Nyte-Credential")).not.toBeNull();
+    assert(watch.body !== null);
+    const frames = parseSse(watch.body)[Symbol.asyncIterator]();
+    let frame = (await frames.next()).value;
+
+    while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
+    expect(frame).toBeDefined();
+
+    const ended = endOf(frames);
+    const [paired] = await other.principals.list();
+    assert(paired !== undefined);
+    await other.principals.revoke(paired.id);
+
+    expect(await within(ended, 50)).toBe("timed out");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await within(ended, 100)).toBe("unauthenticated");
+  });
+
   it("denies a participant git.stage by the row's authority", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);

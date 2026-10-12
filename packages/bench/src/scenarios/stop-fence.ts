@@ -1,7 +1,7 @@
 import type { Scenario } from "../scenario.ts";
 import { collect, invariant, timed } from "../scenario.ts";
 
-/** §2 Run.stop fence: stop() resolves synchronously in effect; the next yield already shows stopped; no later yield appends to that run. */
+/** §2 Run.stop fence: stop() resolves synchronously in effect; the next yield already shows stopped; no later yield appends to that run. The 10 ms budget covers a contended stop: stop() runs while the run's part open is landing, so the fence's first set loses its compare-and-set and retries once (§61). */
 export const stopFence: Scenario = {
   name: "stop-fence",
   guarantee: "After stop() the very next view shows the run's parts failed { class: aborted } and no later view carries more of its text.",

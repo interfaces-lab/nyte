@@ -45,8 +45,9 @@ import {
 } from "./request.ts";
 import { abortHere, publishPatch, unfenced } from "./runs.ts";
 import { STALE, attempt, commit, expectOf, load, put, readTip, withFold } from "./session-state.ts";
+import type { Found } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
-import { failParts, failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
+import { failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
 /** Returns one merged thought's share of a thinking part's `signature` (§38f). */
 type ThoughtSignature = {
@@ -414,12 +415,14 @@ async function opened(
   state.starts.set(index, merging.markdown.length);
 }
 
-/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature (§38f). */
+/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature (§38f). Once the run is stopping nothing more lands, so a stopped part keeps the text it streamed. */
 async function updated(
   context: Turn,
   state: AttemptState,
   event: AssistantMessageEvent,
 ): Promise<void> {
+  if (context.kernel.runs.isStopping(state.run.id)) return;
+
   switch (event.type) {
     case "text_delta":
     case "thinking_delta": {
@@ -619,83 +622,111 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed is left out. */
+/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed keeps what it streamed instead (§66). */
 async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
   const { kernel, session, head } = context;
 
   if (opened.length === 0) return;
 
   await attempt(`Settling the parts of run ${run}`, async () => {
-    const [live, tip] = await Promise.all([
-      Promise.all(
-        opened.map(async (entry) => {
-          const found = await load(
-            kernel,
-            await kernel.store.refs.get(partRef(session, entry.part)),
-            decodePartRecord,
-          );
-
-          return found === null || found.record.status.kind !== "live" ? [] : [{ entry, found }];
-        }),
-      ).then((entries) => entries.flat()),
+    const [found, tip] = await Promise.all([
+      Promise.all(opened.map(async (entry) => ({ entry, found: await readPart(context, entry) }))),
       readTip(kernel, session, head),
     ]);
 
-    if (live.length === 0) return undefined;
     const at = Date.now();
     const updates: RefUpdate[] = [];
     let parent = tip.id;
 
-    for (const [index, { entry, found }] of live.entries()) {
-      const name = partRef(session, entry.part);
+    for (const { entry, found: part } of found) {
+      if (part === null || part.record.status.kind === "settled") continue;
 
-      const settledState: Json =
-        entry.kind === "text"
-          ? { markdown: entry.markdown, signature: entry.textSignature }
-          : {
-              markdown: entry.markdown,
-              merged: entry.merged,
-              signature: entry.thoughts.some(
-                (thought) => thought.signature !== null || thought.redacted,
-              )
-                ? entry.thoughts.map((thought) => ({ ...thought }))
-                : null,
-            };
+      if (part.record.status.kind !== "live") {
+        updates.push(...(await keep(context, entry, part, ABORTED)));
 
-      const version = found.record.version + 1;
+        continue;
+      }
+
+      const state = stateOf(entry);
+      const version = part.record.version + 1;
 
       const landed = await settling(kernel, {
         session,
         head,
         run,
         parent,
-        expect: index === 0 ? expectOf(tip.ref) : undefined,
-        record: { ...found.record, state: settledState, version },
+        expect: parent === tip.id ? expectOf(tip.ref) : undefined,
+        record: { ...part.record, state, version },
         body: { kind: "part", part: entry.part },
         at,
       });
 
       updates.push(
         {
-          name,
+          name: partRef(session, entry.part),
           target: landed.target,
-          expect: found.ref.revision,
-          event: {
-            head,
-            kind: "part",
-            part: entry.part,
-            change: "updated",
-            state: settledState,
-            version,
-          },
+          expect: part.ref.revision,
+          event: { head, kind: "part", part: entry.part, change: "updated", state, version },
         },
         ...landed.updates,
       );
       parent = landed.landed;
     }
 
-    return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
+    return updates.length === 0 || (await commit(kernel, updates)).kind === "set"
+      ? undefined
+      : STALE;
   });
+}
+
+/** Returns the state an open part settles or fails with: its markdown as streamed, with its signatures. */
+function stateOf(entry: OpenPart): Json {
+  if (entry.kind === "text") return { markdown: entry.markdown, signature: entry.textSignature };
+
+  return {
+    markdown: entry.markdown,
+    merged: entry.merged,
+    signature: entry.thoughts.some((thought) => thought.signature !== null || thought.redacted)
+      ? entry.thoughts.map((thought) => ({ ...thought }))
+      : null,
+  };
+}
+
+/** Reads an open part's record. */
+async function readPart(context: Turn, entry: OpenPart): Promise<Found<PartRecord> | null> {
+  const { kernel, session } = context;
+
+  return load(kernel, await kernel.store.refs.get(partRef(session, entry.part)), decodePartRecord);
+}
+
+/** Returns the updates keeping what an open part streamed on its unsettled record (§66): `part updated` with its streamed state, then `part failed` with `failure` while it is still live. */
+async function keep(
+  context: Turn,
+  entry: OpenPart,
+  found: Found<PartRecord>,
+  failure: Failure,
+): Promise<readonly RefUpdate[]> {
+  const { kernel, session, head } = context;
+  const { record } = found;
+  const name = partRef(session, entry.part);
+  const part = entry.part;
+  const state = stateOf(entry);
+  const version = record.version + 1;
+  const live = record.status.kind === "live" || record.status.kind === "waiting";
+  const status = live ? { kind: "failed", run: record.run, failure } : record.status;
+  const target = await put(kernel, "part", { ...record, state, version, status });
+
+  return [
+    {
+      name,
+      target,
+      expect: found.ref.revision,
+      event: { head, kind: "part", part, change: "updated", state, version },
+    },
+    ...(live
+      ? [{ name, target, event: { head, kind: "part", part, change: "failed", failure } } as const]
+      : []),
+  ];
 }
 
 /** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge (§38t, v, w). Once the run is stopping only the charge lands; the stop fails the parts. */
@@ -742,22 +773,45 @@ async function retry(
   return retried === null ? state : fresh(retried, 0);
 }
 
-/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed, and the response the loop failed on charged and observed on its request's runtime (§38v, w). */
+/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed with what they streamed (§66), and the response the loop failed on charged and observed on its request's runtime (§38v, w). */
 async function failOpen(
   context: Turn,
   state: AttemptState,
   failure: Failure,
   response: FailedResponse<TurnRequest> | null,
 ): Promise<void> {
-  const { kernel, session, head } = context;
+  const { kernel, head } = context;
+  const run = state.run.id;
 
-  if (response === null) return failParts(kernel, session, head, openParts(state), failure);
+  const updates = async () => {
+    const failed = await Promise.all(
+      state.opened.map(async (entry) => {
+        const found = await readPart(context, entry);
+
+        return found === null || found.record.status.kind === "settled"
+          ? []
+          : keep(context, entry, found, failure);
+      }),
+    );
+
+    return failed.flat();
+  };
+
+  if (response === null)
+    return attempt(`Failing the parts of run ${run}`, async () => {
+      const failed = await updates();
+
+      return failed.length === 0 || (await commit(kernel, failed)).kind === "set"
+        ? undefined
+        : STALE;
+    });
+
   observe(context, response.prepared, response.usage);
 
-  await changeRun(context, state.run.id, async (record) => ({
+  await changeRun(context, run, async (record) => ({
     record: charge(record, response.usage, true),
     events: [requestEvent(head, "assistant", response.usage, response.prepared.info)],
-    updates: await failedParts(kernel, session, head, openParts(state), failure),
+    updates: await updates(),
   }));
 }
 
