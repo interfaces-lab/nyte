@@ -23,6 +23,11 @@
     "./identity": "./src/identity.ts",
     "./listen-fetch": "./src/listen-fetch.ts",
     "./providers": "./src/providers.ts",
+    "./usage": "./src/usage.ts",
+    "./store-usage": "./src/store-usage.ts",
+    "./usage-service": "./src/usage-service.ts",
+    "./usage-scan": "./src/usage-scan.ts",
+    "./usage-worker": "./src/usage-worker.ts",
     "./deploy/cloudflare": "./src/deploy/cloudflare/worker.ts",
     "./deploy/vercel": "./src/deploy/vercel/nitro.config.ts"
   },
@@ -31,14 +36,17 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/deploy/vercel",
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p src/deploy/vercel",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build host"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.296",
     "@lydell/node-pty": "1.2.0-beta.15",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "ignore": "7.0.9",
@@ -48,11 +56,11 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261001.1",
     "@electric-sql/pglite": "0.5.8",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.5",
     "@types/pg": "8.23.1",
     "nitro": "3.0.260903-beta",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.2",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.4",
     "workflow": "4.8.8"
   },
   "peerDependencies": {

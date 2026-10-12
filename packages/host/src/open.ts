@@ -18,6 +18,7 @@ import type {
 } from "@nyte-ai/schema";
 import { composeHost, dev } from "@nyte-ai/core";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
+import claudeSdk, { claudeSdkProvider } from "@nyte-ai/plugin/claude-sdk";
 import { operations } from "@nyte-ai/protocol";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
@@ -104,9 +105,13 @@ async function composeOpen(
   const description = hostDescription();
   const given = options.plugins ?? [];
 
-  const plugins = given.some((plugin) => plugin.environment?.kind === "local")
-    ? given
-    : [{ id: "local", environment: localProvider({ home }) }, ...given];
+  const plugins = [
+    ...(given.some((plugin) => plugin.environment?.kind === "local")
+      ? []
+      : [{ id: "local", environment: localProvider({ home }) }]),
+    ...(given.some((plugin) => plugin.id === claudeSdk.id) ? [] : [claudeSdk]),
+    ...given,
+  ];
 
   const [files, settings] = await Promise.all([filePlugins(home, workspace), settingsSeed(home)]);
 
@@ -230,10 +235,12 @@ async function nyteModels(input: {
   });
 
   for (const provider of nyteProviders()) models.setProvider(provider);
+  const claude = claudeSdkProvider();
+  models.setProvider(claude);
   const stored = await credentials.list();
 
   const restored = await models.refresh({
-    providers: stored.map((row) => row.providerId),
+    providers: [...stored.map((row) => row.providerId), claude.id],
     allowNetwork: false,
   });
 
