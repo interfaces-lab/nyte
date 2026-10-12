@@ -1,12 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type {
-  ByteReader,
-  CredentialSource,
-  FileVersion,
-  HostId,
-  Json,
-  RequestOptions,
-} from "@nyte-ai/schema";
+import type { ByteReader, FileVersion, HostId, Json, RequestOptions } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
 import { parseJson } from "./json.ts";
@@ -35,7 +28,7 @@ export type Transport = {
     body: Uint8Array | ReadableStream<Uint8Array>,
     options?: RequestOptions,
   ): Promise<Json>;
-  credential(): CredentialSource | null;
+  credential(): string | null;
   host(): HostId | null;
 };
 
@@ -45,7 +38,7 @@ const DONE = { done: true, value: undefined } as const;
 export function createTransport(options: TransportOptions): Transport {
   const base = options.url.replace(/\/+$/, "");
   const send = options.fetch ?? fetch;
-  let credential: CredentialSource | null = null;
+  let credential: string | null = null;
   let host: HostId | null = null;
 
   const post = async (
@@ -63,9 +56,7 @@ export function createTransport(options: TransportOptions): Transport {
       throw new SdkError("unavailable", error instanceof Error ? error.message : String(error));
     }
 
-    const token = response.headers.get("X-Nyte-Credential");
-
-    if (token !== null) credential = { kind: "token", token };
+    credential = response.headers.get("X-Nyte-Credential") ?? credential;
     const answered = response.headers.get(HOST_HEADER);
 
     if (answered !== null) host = asId<"host">(answered);
@@ -106,17 +97,27 @@ export function createTransport(options: TransportOptions): Transport {
       const response = await post(name, { ...json(input), signal: request?.signal });
       const length = response.headers.get("Content-Length");
       const version = response.headers.get("X-Nyte-Version");
-      const body = response.body;
+      const body: ReadableStream<Uint8Array> | null = response.body;
+      const reader = body?.getReader() ?? null;
 
       const close = async (): Promise<void> => {
-        await body?.cancel().catch(() => undefined);
+        await reader?.cancel();
       };
 
       return {
         size: length === null ? null : Number(length),
         mime: response.headers.get("X-Nyte-Mime"),
         ...(version === null ? {} : { version: asId<"file-version">(version) }),
-        chunks: () => chunksOf(body),
+        async *chunks() {
+          if (reader === null) return;
+
+          for (;;) {
+            const read = await reader.read();
+
+            if (read.done) return;
+            yield read.value;
+          }
+        },
         close,
         [Symbol.asyncDispose]: close,
       };
@@ -126,7 +127,7 @@ export function createTransport(options: TransportOptions): Transport {
         const headers = lastEventId === undefined ? undefined : { "Last-Event-ID": lastEventId };
         const response = await post(name, { ...json(input, headers), signal });
 
-        if (response.body !== null) yield* parseSse(response.body);
+        if (response.body !== null) yield* parseSse(severable(response.body));
       });
     },
     async upload(name, input, body, request) {
@@ -203,20 +204,21 @@ function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncI
   };
 }
 
-async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
-  if (body === null) return;
+/** Returns a watch body whose read failures are link loss (`unavailable`, §47c): a socket reset mid-stream, never a failure parsing what was read. */
+function severable(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const reader = body.getReader();
 
-  try {
-    for (;;) {
-      const read = await reader.read();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const read = await reader.read().catch((error: unknown) => {
+        throw new SdkError("unavailable", error instanceof Error ? error.message : String(error));
+      });
 
-      if (read.done) return;
-      yield read.value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
+      if (read.done) controller.close();
+      else controller.enqueue(read.value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
 }
 
 function jsonOrText(text: string): Json {

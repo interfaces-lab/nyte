@@ -175,7 +175,14 @@ export function createRows(transport: Transport, link: Link): Rows {
           if (!isLinkLoss(error) || link.signal.aborted || options?.signal?.aborted === true)
             throw error;
           dev("sdk", "wait retrying", { name, attempts });
-          await backoff(link, delayOf(attempts), link.signal);
+          await backoff(
+            link,
+            delayOf(attempts),
+            options?.signal === undefined
+              ? link.signal
+              : AbortSignal.any([link.signal, options.signal]),
+          );
+          options?.signal?.throwIfAborted();
         }
       }
     },
@@ -218,14 +225,10 @@ export function createRows(transport: Transport, link: Link): Rows {
 }
 
 /**
- * Yields a watch row's frames across link loss: a clean end and a reset
- * socket are the same (§41j, §47c), so either reopens the request after
- * `delayOf`'s backoff, with `Last-Event-ID` set to the last id seen;
- * a stream body that errors mid-read is a reset socket.
- *
- * Each failed attempt marks the link reconnecting and the first frame after
- * one marks it connected. `unauthenticated` closes the link as revoked and
- * throws; any error other than `unavailable` throws. The link's close ends it.
+ * Yields a watch row's frames across link loss: a clean end and a reset socket (`unavailable`, §41j,
+ * §47c) reopen the request after `delayOf`'s backoff with `Last-Event-ID` set to the last id seen, and
+ * any other error throws. `unauthenticated` closes the link as revoked and ends it, as the link's close
+ * does; each failed attempt marks the link reconnecting and the first frame after one, connected.
  */
 function resumable(
   transport: Transport,
@@ -260,10 +263,10 @@ function resumable(
             if (error instanceof SdkError && error.code === "unauthenticated") {
               link.close("revoked");
 
-              throw error;
+              return DONE;
             }
 
-            if (!isLinkLoss(error) && !(error instanceof TypeError)) throw error;
+            if (!isLinkLoss(error)) throw error;
           }
 
           if (next.done !== true) {

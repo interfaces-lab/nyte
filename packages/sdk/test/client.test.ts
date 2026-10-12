@@ -4,7 +4,7 @@ import { asId } from "@nyte-ai/schema";
 import type { HostView, SessionView } from "@nyte-ai/schema";
 import { SdkError, createConnection, dev, isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
-import { encodeError } from "@nyte-ai/protocol";
+import { decodeInput, encodeError } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { memoryJournal } from "../src/journal.ts";
@@ -472,37 +472,124 @@ describe("client", () => {
     expect(closed).toBe(1);
   });
 
-  it("rewrites the journal row of a send still unsent when a replace names it, and keeps the row until a view shows the answered id", async () => {
+  it("journals a replace of an unsent send as its own row behind it, and resends both after a reconnect (ADV C 2, probe P2)", async () => {
+    const host = await open();
+    const journal = memoryJournal();
+    const first = await client(host, journal);
+    host.fake.reply(text("Draft answer."), text("Final answer."));
+    const session = await first.sessions.create();
+    const lost = Promise.withResolvers<void>();
+    let posts = 0;
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) !== "head.send") return next(request);
+      posts += 1;
+
+      if (posts === 1) {
+        await next(request);
+        lost.resolve();
+      }
+
+      throw new TypeError("fetch failed");
+    });
+
+    const draft = first.session(session.id).send("Draft.");
+    await lost.promise;
+
+    const shown = await until(first.session(session.id).watch(), (view) =>
+      users(view).includes("Draft."),
+    );
+
+    const id = shown.messages.find((message) => message.kind === "user")?.id;
+    assert(id !== undefined);
+    const final = first.session(session.id).send("Final.", { replace: id });
+    await expect.poll(async () => (await journal.load()).length).toBe(2);
+    const rows = await journal.load();
+
+    expect(rows.map((entry) => [entry.id, entry.content, entry.options.replace ?? null])).toEqual([
+      [id, "Draft.", null],
+      [expect.not.stringMatching(id), "Final.", id],
+    ]);
+    await first.close();
+    await expect(draft).rejects.toMatchObject({ code: "unavailable" });
+    await expect(final).rejects.toMatchObject({ code: "unavailable" });
+    expect(await journal.load()).toEqual(rows);
+
+    host.intercept(null);
+    const second = await client(host, journal);
+
+    await until(
+      second.session(session.id).watch(),
+      (view) => users(view).join() === "Final." && view.execution.kind === "idle",
+    );
+    expect(users(await host.view(session.id))).toEqual(["Final."]);
+    await expect
+      .poll(async () => {
+        await second.session(session.id).view();
+
+        return journal.load();
+      })
+      .toEqual([]);
+  });
+
+  it("posts every attempt under an id with the content first sent under it, a replace after it under its own id (ADV C 1, probe P1)", async () => {
     const host = await open();
     const journal = memoryJournal();
     const connection = await client(host, journal);
-    host.fake.reply(text("Final answer."));
+    host.fake.reply(text("Draft answer."), text("Final answer."));
     const session = await connection.sessions.create();
-    let down = true;
+
+    const bodies: {
+      readonly id: string;
+      readonly content: string;
+      readonly replace: string | null;
+    }[] = [];
+
+    const lost = Promise.withResolvers<void>();
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+      if (operationOf(request) !== "head.send") return next(request);
+      const body: unknown = await request.clone().json();
+      const { content, options } = decodeInput("head.send", body);
+      assert(typeof content === "string" && options?.id !== undefined);
+      bodies.push({ id: options.id, content, replace: options.replace ?? null });
+      const response = await next(request);
 
-      return next(request);
+      if (bodies.length > 1) return response;
+      lost.resolve();
+
+      throw new TypeError("fetch failed");
     });
 
-    const first = session.send("Draft.");
-    const unsent = await until(session.watch(), (view) => users(view).includes("Draft."));
-    const id = unsent.messages.find((message) => message.kind === "user")?.id;
+    const draft = session.send("Draft.");
+    await lost.promise;
+    const shown = await until(session.watch(), (view) => users(view).includes("Draft."));
+
+    const id = shown.messages.find((message) => message.kind === "user")?.id;
     assert(id !== undefined);
-    const second = session.send("Final.", { replace: id });
-    await Promise.resolve();
+    const final = session.send("Final.", { replace: id });
+    const [one, two] = await Promise.all([draft, final]);
 
-    expect((await journal.load()).map((entry) => entry.content)).toEqual(["Final."]);
-    down = false;
-    const [one, two] = await Promise.all([first, second]);
-
-    expect([one.message, two.message]).toEqual([id, id]);
-    expect(await two.settled()).toMatchObject({ kind: "completed" });
+    expect(bodies.map(({ content, replace }) => [content, replace])).toEqual([
+      ["Draft.", null],
+      ["Draft.", null],
+      ["Final.", id],
+    ]);
+    expect(bodies.map((body) => body.id === id)).toEqual([true, true, false]);
+    expect(one.message).toBe(id);
+    expect(two.id).toBe(bodies[2]?.id);
+    await until(
+      session.watch(),
+      (view) => users(view).join() === "Final." && view.execution.kind === "idle",
+    );
     expect(users(await host.view(session.id))).toEqual(["Final."]);
-    expect(await journal.load()).toHaveLength(1);
-    expect(users(await session.view())).toEqual(["Final."]);
-    expect(await journal.load()).toEqual([]);
+    await expect
+      .poll(async () => {
+        await session.view();
+
+        return journal.load();
+      })
+      .toEqual([]);
   });
 
   it("binds plugins and principals: a participant is denied, maintenance pairs and lists, a file loads through kernel.loadPlugins over the wire and in process", async () => {
@@ -589,7 +676,7 @@ describe("client", () => {
     await expect(connection.workspaces.list()).rejects.toMatchObject({ code: "unavailable" });
   });
 
-  it("retries only the replace once the host has the id, when a rewrite lands mid-post and the link then drops", async () => {
+  it("retries only the replace once the host has the id, and answers with the replace's own receipt (ADV A F6, C 6)", async () => {
     const host = await open();
     const journal = memoryJournal();
     const connection = await client(host, journal);
@@ -629,7 +716,8 @@ describe("client", () => {
     release();
     const [one, two] = await Promise.all([draft, final]);
 
-    expect([one.message, two.message]).toEqual([id, id]);
+    expect(one.message).toBe(id);
+    expect(two.message).not.toBe(id);
     expect(posts).toBe(4);
     await until(
       session.watch(),
@@ -755,6 +843,292 @@ describe("client", () => {
 
     expect(Array.isArray(first)).toBe(true);
     expect(lines.some((line) => line.startsWith("DEV:sdk frame skipped"))).toBe(true);
+  });
+
+  it("points a second rewrite of a landed message at the id the first one's edit answered, before it leaves", async () => {
+    const host = await open();
+    const journal = memoryJournal();
+    const connection = await client(host, journal);
+    host.fake.reply(text("One."), text("Two."), text("Three."));
+    const session = await connection.sessions.create();
+    const first = await session.send("Draft.");
+    await first.settled();
+    await session.view();
+    let down = true;
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+
+      return next(request);
+    });
+
+    const edit = session.send("Final.", { replace: first.message });
+    const again = session.send("Final, again.", { replace: first.message });
+    await expect.poll(async () => (await journal.load()).length).toBe(2);
+    down = false;
+    const [edited, twice] = await Promise.all([edit, again]);
+
+    expect(edited.message).not.toBe(first.message);
+    expect((await journal.load()).at(-1)?.options.replace).toBe(edited.message);
+    await twice.settled();
+    await until(
+      session.watch(),
+      (view) => users(view).join() === "Final, again." && view.execution.kind === "idle",
+    );
+    expect(users(await host.view(session.id))).toEqual(["Final, again."]);
+  });
+
+  it("shows an edit of a queued, acknowledged message once, never unsent beside it, and the view equals the host's after the run (ADV A F1, probe P1)", async () => {
+    const host = await open();
+    const connection = await client(host);
+    const session = await connection.sessions.create();
+    const halfway = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+
+    host.fake.reply(
+      {
+        content: [{ type: "text", text: "abcdefgh" }],
+        tokens: 4,
+        async tap(streamed) {
+          if (streamed !== 1) return;
+          halfway.resolve();
+          await resume.promise;
+        },
+      },
+      text("Second answer."),
+    );
+
+    const first = await session.send("First.");
+    await halfway.promise;
+    const second = await session.send("Second.", { delivery: "queue" });
+    await until(session.watch(), (view) => users(view).includes("Second."));
+    const views: SessionView[] = [];
+    const watching = session.watch()[Symbol.asyncIterator]();
+
+    const collected = (async () => {
+      for (;;) {
+        const next = await watching.next();
+
+        if (next.done === true) return;
+        views.push(next.value);
+      }
+    })();
+
+    const edited = await session.send("Second v2.", { replace: second.message });
+
+    expect(edited.message).toBe(second.message);
+    resume.resolve();
+    await first.settled();
+    await edited.settled();
+
+    const settled = await until(
+      session.watch(),
+      (view) => view.execution.kind === "idle" && users(view).join() === "First.,Second v2.",
+    );
+
+    await watching.return?.();
+    await collected;
+    expect(
+      views.filter((view) => users(view).filter((text) => text.startsWith("Second")).length > 1),
+    ).toEqual([]);
+    expect(
+      settled.messages.filter(
+        (message) => message.kind === "user" && message.status.kind === "unsent",
+      ),
+    ).toEqual([]);
+    expect(settled).toEqual(await host.view(session.id));
+  });
+
+  it("holds every journaled entry at connect, all shown unsent before the first lands, then delivers them in order (ADV C 4, probe P5)", async () => {
+    const host = await open();
+    const session = await (await client(host)).sessions.create();
+    host.fake.reply(text("One answer."), text("Two answer."));
+    const journal = memoryJournal();
+
+    for (const content of ["One.", "Two."])
+      await journal.put({
+        id: asId<"receipt">(crypto.randomUUID()),
+        session: session.id,
+        head: asId<"head">("main"),
+        content,
+        options: { delivery: "queue" },
+        at: Date.now(),
+      });
+
+    let down = true;
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+
+      return next(request);
+    });
+
+    const connection = await client(host, journal);
+
+    const unsent = await until(
+      connection.session(session.id).watch(),
+      (view) => users(view).length === 2,
+    );
+
+    expect(users(unsent)).toEqual(["One.", "Two."]);
+    expect(
+      unsent.messages.map((message) => message.kind === "user" && message.status.kind),
+    ).toEqual(["unsent", "unsent"]);
+    down = false;
+    await until(
+      connection.session(session.id).watch(),
+      (view) => view.execution.kind === "idle" && view.messages.length === 4,
+    );
+    expect(users(await host.view(session.id))).toEqual(["One.", "Two."]);
+    await expect.poll(() => journal.load()).toEqual([]);
+  });
+
+  it("ends a watch cleanly when its own reconnect is answered 401, the link closed revoked (ADV C 7)", async () => {
+    const host = await open();
+    const connection = await client(host);
+    let opens = 0;
+
+    host.intercept(async (request, next) =>
+      operationOf(request) === "sessions.watch" && ++opens > 1
+        ? Response.json(encodeError(new SdkError("unauthenticated", "Revoked.")), { status: 401 })
+        : next(request),
+    );
+
+    const watching = connection.sessions.watch()[Symbol.asyncIterator]();
+    await watching.next();
+    host.listener.disconnectClients();
+
+    expect(await watching.next()).toEqual({ done: true, value: undefined });
+    expect(opens).toBe(2);
+    await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("stops a wait backing off across link loss as soon as its signal aborts, posting nothing more (ADV C 8)", async () => {
+    const host = await open();
+    const connection = await client(host);
+    host.fake.reply(text("Waited."));
+    const session = await connection.sessions.create();
+    const receipt = await session.send("Hi.");
+    const failed = Promise.withResolvers<void>();
+    let waits = 0;
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) !== "receipt.settled") return next(request);
+      waits += 1;
+      failed.resolve();
+
+      throw new TypeError("fetch failed");
+    });
+
+    const controller = new AbortController();
+    const settled = receipt.settled({ signal: controller.signal });
+    await failed.promise;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort(new Error("Gave up."));
+
+    await expect(settled).rejects.toThrow("Gave up.");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(waits).toBe(1);
+  });
+
+  it("throws a TypeError a watch's reconnect raises instead of reconnecting forever: only the transport's unavailable is link loss (ADV A F15)", async () => {
+    const host = await open();
+    let broken = false;
+
+    const connection = await connect({
+      url: BASE,
+      credentials: {
+        kind: "custom",
+        headers: async () => {
+          if (broken) throw new TypeError("A header bug.");
+
+          return { Authorization: `Bearer ${TOKEN_SECRET}` };
+        },
+      },
+      fetch: host.fetch,
+    });
+
+    cleanups.push(() => connection.close());
+    const watching = connection.sessions.watch()[Symbol.asyncIterator]();
+    await watching.next();
+    broken = true;
+    host.listener.disconnectClients();
+
+    await expect(watching.next()).rejects.toThrow("A header bug.");
+  });
+
+  it("returns a new plan from every put and remove: a reviewed plan applies only its own entries (ADV G2, probe P1)", async () => {
+    const host = await open({ local: true });
+    const connection = await client(host);
+    const [info] = await connection.workspaces.list();
+    assert(info !== undefined && host.root !== null);
+    const files = await connection.workspace(info.id).files();
+    assert(files.kind === "available");
+    const empty = files.api.batch();
+    const a = empty.put({ path: "A.bin", contents: new Uint8Array([1, 2, 3]) });
+    const b = a.put({ path: "B.bin", contents: new Uint8Array([4]) }).remove({ path: "a.txt" });
+
+    expect(new Set([empty, a, b]).size).toBe(3);
+    expect(await (await a.apply()).settled()).toMatchObject({ kind: "applied" });
+    expect([...(await readFile(join(host.root, "workspace", "A.bin")))]).toEqual([1, 2, 3]);
+    await expect(readFile(join(host.root, "workspace", "B.bin"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(await readFile(join(host.root, "workspace", "a.txt"), "utf8")).toBe("one\ntwo\n");
+  });
+
+  it("detaches a job handle's open output on close while the process keeps running (ADV G4, probe P4)", async () => {
+    const host = await open({ local: true });
+    const connection = await client(host);
+    const [info] = await connection.workspaces.list();
+    assert(info !== undefined);
+
+    const job = await connection.workspace(info.id).jobs.start({
+      command: "printf before; sleep 0.3; printf AFTER_CLOSE",
+    });
+
+    const output = job.output()[Symbol.asyncIterator]();
+    expect(await output.next()).toMatchObject({ done: false, value: { kind: "bytes" } });
+    const pending = output.next();
+    await job.close();
+
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(await job.settled()).toMatchObject({ code: 0 });
+  });
+
+  it("ends a byte reader's read in flight on close and cancels its body (ADV G3, probe P6)", async () => {
+    const host = await open({ local: true });
+    const connection = await client(host);
+    const [info] = await connection.workspaces.list();
+    assert(info !== undefined);
+    const files = await connection.workspace(info.id).files();
+    assert(files.kind === "available");
+    let cancelled = 0;
+
+    host.intercept(async (request, next) => {
+      const response = await next(request);
+
+      if (operationOf(request) !== "files.bytes") return response;
+
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start: (controller) => controller.enqueue(new Uint8Array([1])),
+          cancel: () => {
+            cancelled += 1;
+          },
+        }),
+        response,
+      );
+    });
+
+    const reader = await files.api.bytes("a.txt");
+    const chunks = reader.chunks()[Symbol.asyncIterator]();
+    expect(await chunks.next()).toEqual({ done: false, value: new Uint8Array([1]) });
+    const pending = chunks.next();
+    await reader.close();
+
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(cancelled).toBe(1);
   });
 
   it("ends every stream and fails requests unavailable once closed", async () => {

@@ -350,7 +350,7 @@ describe("live parts across a reconnect", () => {
           });
         },
       },
-      { hostId: kernel.hostId, principal: TOKEN, credential: { kind: "token", token: TOKEN_SECRET }, journal: memoryJournal() },
+      { hostId: kernel.hostId, principal: TOKEN, credential: { kind: "token", token: TOKEN_SECRET }, journal: memoryJournal(), journaled: [] },
     );
 
     cleanups.push(() => client.close());

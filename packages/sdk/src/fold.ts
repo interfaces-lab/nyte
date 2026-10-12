@@ -119,9 +119,9 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
 
 /**
  * Yields a head's view on every change from the connection's shared fold
- * for it, projected with this watcher's options. The journal's unsent sends
- * for the head are merged as `unsent` user messages; views are coalesced to
- * one per 16 ms frame. `return()` leaves the fold.
+ * for it, projected with this watcher's options. The journal first drops the
+ * sends the fold contains, then its unsent sends for the head are merged as
+ * `unsent` user messages, coalesced to one view per 16 ms frame; `return()` leaves the fold.
  */
 export function watchHead(
   folds: Folds,
@@ -142,7 +142,14 @@ export function watchHead(
         const state = hold.state();
 
         if (state === null) return;
-        const view = withUnsent(project(state, head, options), journal, session, head, state);
+        const known = (id: Message["id"]): boolean => state.messages.has(id);
+        journal.landed(known);
+
+        const view = withUnsent(
+          project(state, head, options),
+          journal.unsent(session, head),
+          known,
+        );
 
         if (view === shown) return;
         shown = view;
@@ -213,21 +220,13 @@ export function watchHost(rows: Rows): AsyncIterable<HostView> {
   );
 }
 
-/** Returns a view with the journal's unsent sends for its head placed before its first pending user message, or the same view when there are none. The journal is first told which answered sends the view carries (they land and leave it), and a send the view already carries is not shown twice. */
+/** Returns a view with the unsent messages it does not already carry (by `known`) placed before its first pending user message, or the same view when there are none. */
 export function withUnsent(
   view: SessionView,
-  journal: JournalLoop,
-  session: SessionId,
-  head: HeadName,
-  state: FoldState | null,
+  unsent: readonly Message[],
+  known: (id: Message["id"]) => boolean,
 ): SessionView {
-  if (journal.unsent(session, head).length === 0) return view;
-
-  const known = (id: Message["id"]): boolean =>
-    state === null ? view.messages.some((message) => message.id === id) : state.messages.has(id);
-
-  journal.landed(known);
-  const missing = journal.unsent(session, head).filter((message) => !known(message.id));
+  const missing = unsent.filter((message) => !known(message.id));
 
   if (missing.length === 0) return view;
 

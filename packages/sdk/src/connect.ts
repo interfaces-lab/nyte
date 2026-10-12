@@ -1,5 +1,5 @@
 import { IdentityChallengeSchema, isJson } from "@nyte-ai/schema";
-import type { CredentialSource, HostId, HostViewWire, JournalEntry } from "@nyte-ai/schema";
+import type { CredentialSource, HostId, HostViewWire } from "@nyte-ai/schema";
 import { SdkError, dev } from "@nyte-ai/core";
 import type { ConnectOptions, Connection } from "@nyte-ai/core";
 import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
@@ -8,23 +8,16 @@ import { createClient } from "./client.ts";
 import { memoryJournal } from "./journal.ts";
 import { parsed } from "./receipts.ts";
 
-const paired = new Map<string, CredentialSource>();
+const paired = new Map<string, string>();
 
 const encoder = new TextEncoder();
 
 /**
- * Opens a connection to one host at a URL, authenticates, and replays the
- * request journal.
- *
- * With `expect`, the host's identity challenge is verified first (an Ed25519
- * signature over `nyte/identity\n<hostId>\n<nonce>`, §43a); a host that
- * answers none is pinned by the id it answers with. The first request opens
- * `connection.watch` and reads the host's id and the principal from its
- * first frame. A `pairing` code is sent once; the device token the host
- * returns becomes `Connection.credential` and is kept in memory for a later
- * connect with the same URL and code. It returns then; each journal entry
- * is resent with its id afterwards, in order, through the retry loop (shown
- * `unsent` until it lands), so a link drop during replay cannot hang it.
+ * Opens a connection to one host at a URL: verifies `expect` by the identity challenge first (§43a; a
+ * host answering none is pinned by its id), then reads the host's id and the principal from the first
+ * `connection.watch` frame. A `pairing` code is sent once; the device token the host returns becomes
+ * `Connection.credential` and is kept in memory for a later connect with the same URL and code. It
+ * returns then, every journal entry held at once (shown `unsent`) and resent afterwards in order.
  *
  * @throws {SdkError} unavailable when the URL is unreachable.
  * @throws {SdkError} unauthenticated when the host rejects the credential.
@@ -51,59 +44,53 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
       hostId: answered,
     });
 
-  const credential =
-    credentials.kind === "pairing" ? deviceCredential(transport, kept) : credentials;
+  const token = credentials.kind === "pairing" ? deviceToken(transport, kept) : null;
 
-  if (key !== null) paired.set(key, credential);
+  if (key !== null && token !== null) paired.set(key, token);
+  const credential: CredentialSource = token === null ? credentials : { kind: "token", token };
   const journal = options.journal ?? memoryJournal();
+  const journaled = await journal.load();
 
-  const connection = createClient(transport, {
+  dev("sdk", "connected", {
+    hostId: first.id,
+    credential: credentials.kind,
+    journaled: journaled.length,
+  });
+
+  return createClient(transport, {
     hostId: first.id,
     principal: first.principal,
     credential,
     journal,
+    journaled,
   });
-
-  const entries = await journal.load();
-  dev("sdk", "connected", {
-    hostId: first.id,
-    credential: credentials.kind,
-    journaled: entries.length,
-  });
-
-  void replay(connection, entries);
-
-  return connection;
 }
 
 /** Returns the headers a request carries for a credential: a bearer token, a pairing code until the host has returned its device token, or the custom headers read again per request. */
 async function headersOf(
   credentials: CredentialSource,
-  device: CredentialSource | null,
+  device: string | null,
 ): Promise<Readonly<Record<string, string>>> {
   if (credentials.kind === "custom") return credentials.headers();
 
   if (credentials.kind === "token") return { Authorization: `Bearer ${credentials.token}` };
 
-  return device?.kind === "token"
-    ? { Authorization: `Bearer ${device.token}` }
-    : { Authorization: `Pairing ${credentials.code}` };
+  return device === null
+    ? { Authorization: `Pairing ${credentials.code}` }
+    : { Authorization: `Bearer ${device}` };
 }
 
 /** Returns the device credential a pairing connect yielded: the token the host returned, or the one kept from an earlier connect. */
-function deviceCredential(
-  transport: Transport,
-  kept: CredentialSource | undefined,
-): CredentialSource {
-  const credential = transport.credential() ?? kept;
+function deviceToken(transport: Transport, kept: string | undefined): string {
+  const token = transport.credential() ?? kept;
 
-  if (credential === undefined)
+  if (token === undefined)
     throw new SdkError(
       "unauthenticated",
       "The host returned no device credential for the pairing code.",
     );
 
-  return credential;
+  return token;
 }
 
 /** Returns the first frame of `connection.watch`, then closes it: the host's id, the principal and the authority, from the request that authenticates. */
@@ -175,19 +162,4 @@ async function verifyIdentity(url: string, send: typeof fetch, expected: HostId)
         : `The identity signature of ${challenge.hostId} does not verify.`,
       { hostId: challenge.hostId },
     );
-}
-
-/** Resends journal entries in order, each with its id, through the connection's retry loop; a failure is logged and the next entry goes on. */
-async function replay(connection: Connection, entries: readonly JournalEntry[]): Promise<void> {
-  for (const entry of entries)
-    await connection
-      .session(entry.session)
-      .head(entry.head)
-      .send(entry.content, { ...entry.options, id: entry.id })
-      .catch((error: unknown) =>
-        dev("sdk", "replay failed", {
-          receipt: entry.id,
-          code: error instanceof SdkError ? error.code : "internal",
-        }),
-      );
 }

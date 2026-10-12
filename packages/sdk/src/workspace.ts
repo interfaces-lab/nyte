@@ -3,11 +3,13 @@ import type {
   BlobId,
   JobId,
   JobKey,
+  OutputFrame,
   PageId,
   PatchSet,
   PatchSetWire,
   WorkspaceId,
 } from "@nyte-ai/schema";
+import { closable } from "@nyte-ai/core";
 import type {
   BrowserApi,
   FileBatch,
@@ -63,10 +65,41 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
   };
 }
 
-/** Returns the files api over the `files.*` rows: `write` and `upload` send their bytes as the body, `bytes` answers a reader, and `batch().apply()` uploads `Uint8Array` contents first (§40i) and mints the batch's id (§40o). */
+/** Returns the files api over the `files.*` rows: `write` and `upload` send their bytes as the body, `bytes` answers a reader, and `batch()` an immutable plan whose `apply()` uploads `Uint8Array` contents first (§40i) and mints the batch's id (§40o). */
 function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   const upload = (source: AsyncIterable<Uint8Array>): Promise<BlobId> =>
     rows.upload("files.upload", { workspace }, streamOf(source));
+
+  const plan = (pending: readonly Pending[]): FileBatch => ({
+    put: (input) => plan([...pending, { kind: "put", input }]),
+    remove: (input) => plan([...pending, { kind: "remove", input }]),
+    async apply() {
+      const entries: BatchEntry[] = [];
+
+      for (const entry of pending) {
+        if (entry.kind === "remove") {
+          entries.push({ kind: "remove", ...entry.input });
+          continue;
+        }
+
+        const { contents, ...rest } = entry.input;
+
+        entries.push({
+          kind: "put",
+          ...rest,
+          contents: typeof contents === "string" ? contents : await upload(once(contents)),
+        });
+      }
+
+      const { receipt } = await rows.call("files.batch", {
+        workspace,
+        entries,
+        id: asId<"receipt">(crypto.randomUUID()),
+      });
+
+      return receiptHandle(rows, null, receipt, batchOutcome);
+    },
+  });
 
   return {
     read: (path) => rows.call("files.read", { workspace, path }),
@@ -79,50 +112,7 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
         typeof contents === "string" ? encoder.encode(contents) : contents,
       ),
     remove: (path, options) => rows.call("files.remove", { workspace, path, options }),
-    batch() {
-      const pending: Pending[] = [];
-
-      const batch: FileBatch = {
-        put(input) {
-          pending.push({ kind: "put", input });
-
-          return batch;
-        },
-        remove(input) {
-          pending.push({ kind: "remove", input });
-
-          return batch;
-        },
-        async apply() {
-          const entries: BatchEntry[] = [];
-
-          for (const entry of pending) {
-            if (entry.kind === "remove") {
-              entries.push({ kind: "remove", ...entry.input });
-              continue;
-            }
-
-            const { contents, ...rest } = entry.input;
-
-            entries.push({
-              kind: "put",
-              ...rest,
-              contents: typeof contents === "string" ? contents : await upload(once(contents)),
-            });
-          }
-
-          const { receipt } = await rows.call("files.batch", {
-            workspace,
-            entries,
-            id: asId<"receipt">(crypto.randomUUID()),
-          });
-
-          return receiptHandle(rows, null, receipt, batchOutcome);
-        },
-      };
-
-      return batch;
-    },
+    batch: () => plan([]),
     format: (path, contents) => rows.call("files.format", { workspace, path, contents }),
     scan: (input) => rows.frames("files.scan", { workspace, ...input }),
     find: (input) => rows.call("files.find", { workspace, ...input }),
@@ -220,10 +210,12 @@ function jobsApi(rows: Rows, workspace: WorkspaceId): Jobs {
   };
 }
 
-/** Returns a handle on a job over the `job.*` rows: `write` sends its bytes as the body, `output` yields byte frames and the `gap`/`exit` control frames (§40h), `settled` is retried across link loss. Binds synchronously. */
+/** Returns a handle on a job over the `job.*` rows, bound synchronously: `write` sends its bytes as the body, `output` yields byte frames and the `gap`/`exit` control frames (§40h), and `settled` is retried across link loss. `close` returns this handle's open outputs on the client (ADV G4); the process keeps running. */
 function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey | null): Job {
+  const readers = new Set<() => Promise<void>>();
+
   const close = async (): Promise<void> => {
-    await rows.call("job.close", { workspace, job });
+    await Promise.all([...readers].map((detach) => detach()));
   };
 
   return {
@@ -232,7 +224,19 @@ function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey |
     async write(bytes) {
       await rows.upload("job.write", { workspace, job }, bytes);
     },
-    output: () => rows.output({ workspace, job }),
+    output: () =>
+      closable<OutputFrame>(() => {
+        const frames = rows.output({ workspace, job })[Symbol.asyncIterator]();
+
+        const detach = async (): Promise<void> => {
+          readers.delete(detach);
+          await frames.return?.();
+        };
+
+        readers.add(detach);
+
+        return { pull: () => frames.next(), close: detach };
+      }),
     resize: (size) => rows.call("job.resize", { workspace, job, size }),
     idle: () => rows.call("job.idle", { workspace, job }),
     stop: () => rows.call("job.stop", { workspace, job }),

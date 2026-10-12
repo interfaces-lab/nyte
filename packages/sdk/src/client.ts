@@ -3,7 +3,9 @@ import type {
   CredentialSource,
   HeadName,
   HostId,
+  JournalEntry,
   Json,
+  Message,
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
@@ -20,12 +22,13 @@ import { createLink, createRows } from "./rows.ts";
 import type { Rows } from "./rows.ts";
 import { workspaceHandle } from "./workspace.ts";
 
-/** Describes what a client is bound to once `connect` has authenticated: the host that answered, the principal it acts as, the credential to reconnect with, and the journal its sends go through. */
+/** Describes what a client is bound to once `connect` has authenticated: the host that answered, the principal it acts as, the credential to reconnect with, the journal its sends go through, and the entries that journal held at connect, resent in order. */
 export type ClientContext = {
   readonly hostId: HostId;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
   readonly journal: RequestJournal;
+  readonly journaled: readonly JournalEntry[];
 };
 
 type Bound = {
@@ -37,15 +40,10 @@ type Bound = {
 const MAIN = asId<"head">("main");
 
 /**
- * Returns a connection over a transport: the handle tree, each handle bound
- * synchronously with no I/O to the rows it names, ids spread into each row's
- * input. Sends go through the journal's retry loop; watches resume across
- * link loss and fold on the client.
- *
- * `close()` closes the link as `client`: every open request and stream ends,
- * a send still retrying rejects `unavailable` and keeps its journal entry.
- * `plugins` and `principals` are always bound (§47e); a participant is
- * answered `denied`.
+ * Returns a connection over a transport: the handle tree, each handle bound synchronously with no I/O,
+ * sends through the journal's retry loop (the journaled entries resent first, in order), watches
+ * resumed across link loss and folded on the client. `close()` closes the link as `client`: every
+ * request and stream ends, and a send still retrying rejects `unavailable` and keeps its journal row.
  */
 export function createClient(transport: Transport, context: ClientContext): Connection {
   const link = createLink();
@@ -56,6 +54,8 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     journal: journalLoop(rows, context.journal),
     folds: createFolds(rows, context.principal),
   };
+
+  bound.journal.replay(context.journaled);
 
   const close = async (): Promise<void> => {
     link.close("client");
@@ -151,12 +151,9 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
 }
 
 /**
- * Returns a handle on a head over the `head.*` rows. `send` mints the
- * receipt id (or takes `options.id`) and sends through the journal's retry
- * loop; a `replace` aimed at a send still unsent rewrites it instead
- * (§47g). `view` and `watch` merge this client's unsent sends, `watch`
- * through the connection's shared fold; `move` mints its wire-only id
- * (§40o). Binds synchronously.
+ * Returns a handle on a head over the `head.*` rows, bound synchronously. `send` mints the receipt id
+ * (or takes `options.id`) and journals the send, a `replace` included, as its own row; `view` and
+ * `watch` merge this client's unsent sends, and `move` mints its wire-only id (§40o).
  */
 function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
   const { rows, journal } = bound;
@@ -166,18 +163,6 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     name: head,
     async send(content, options) {
       const { id, ...rest } = options ?? {};
-
-      if (rest.replace !== undefined) {
-        const { replace, ...plain } = rest;
-        const rewritten = journal.rewrite(replace, content, plain);
-
-        if (rewritten !== null) {
-          const sent = await rewritten;
-
-          return sendReceipt(rows, session, sent.receipt, sent.message);
-        }
-      }
-
       const receipt = id ?? asId<"receipt">(crypto.randomUUID());
       dev("sdk", "send", { session, head, receipt });
 
@@ -193,14 +178,16 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       return sendReceipt(rows, session, sent.receipt, sent.message);
     },
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
-    view: async (options) =>
-      withUnsent(
-        await rows.call("head.view", { session, head, options }),
-        journal,
-        session,
-        head,
-        null,
-      ),
+    async view(options) {
+      const view = await rows.call("head.view", { session, head, options });
+
+      const known = (id: Message["id"]): boolean =>
+        view.messages.some((message) => message.id === id);
+
+      journal.landed(known);
+
+      return withUnsent(view, journal.unsent(session, head), known);
+    },
     watch: (options) => watchHead(bound.folds, journal, { session, head, options }),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
