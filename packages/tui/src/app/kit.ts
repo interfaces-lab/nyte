@@ -89,7 +89,7 @@ function destroyPair(pair: SyntaxPair): void {
   pair.subtle.destroy();
 }
 
-/** The two styles for one palette, owned by `owner`: the syntax role table ported from transcript.ts `createSyntaxStyle`. */
+/** The two styles for one palette, owned by `owner`. */
 export function syntaxPair(theme: CliTheme, owner: NativeResourceOwner): SyntaxPair {
   return { normal: syntaxStyle(theme, false, owner), subtle: syntaxStyle(theme, true, owner) };
 }

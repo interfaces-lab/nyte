@@ -1,5 +1,5 @@
 /**
- * The one choice list (was InlineMenu + MenuList): filter by whitespace
+ * The one choice list: filter by whitespace
  * terms over label, description, status and id; wrap-around movement; an
  * optional typed-answer row after the choices; per-purpose extra actions.
  * The list only moves and filters; accepting a row emits `choose`, and

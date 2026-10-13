@@ -957,7 +957,7 @@ describe("session and view intents", () => {
   });
 });
 
-describe("refusals the old shell gave", () => {
+describe("refusals", () => {
   test("/cd without a path says one is required", () => {
     const step = play(ready(idle), typed("/cd "), { kind: "send", delivery: "queue" });
 

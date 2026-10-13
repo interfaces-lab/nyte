@@ -1,8 +1,7 @@
 /**
- * Facts in, transitions out. Everything that used to be a side effect of
- * `render`/`flushVisual` (retracting a stopped prompt, landing a handback,
- * re-asking a question, cancelling an edit whose message landed) is a pure
- * comparison between the previous facts and the new ones.
+ * Facts in, transitions out. Retracting a stopped prompt, landing a
+ * handback, re-asking a question and cancelling an edit whose message landed
+ * are pure comparisons between the previous facts and the new ones.
  */
 import type { MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
 import { shortId } from "../lib/format.ts";

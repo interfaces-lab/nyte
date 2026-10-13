@@ -2,9 +2,6 @@
  * The draft's meaning: what kind of thing Enter would send, and the rich
  * parts behind its markers. The textarea owns the characters; this module
  * owns the parts and the codec between markers and `UserContent`.
- *
- * Ported pure from composer.ts: marker naming and de-duplication, paste
- * classification results, `prepare` planning, `extract*`/`shellBlock` codecs.
  */
 import type { BlobId, SkillInfo, UserContent } from "@nyte-ai/sdk";
 import {

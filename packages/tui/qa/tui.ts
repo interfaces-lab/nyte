@@ -794,7 +794,6 @@ export const tui: Scenario = {
           assert.equal(await resumeSession(terminal, 143), sessionId);
         });
 
-        // The old models.during-turn shape: /effort before a session's first message.
         await context.beat(
           "a new session's first message uses the /effort level chosen before it",
           async () => {

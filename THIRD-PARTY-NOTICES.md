@@ -125,7 +125,7 @@ THE SOFTWARE.
   diff renderer.
 - What: the desktop app uses `@pierre/diffs` as a lazy leaf renderer for
   unified patches and uses `@pierre/trees` only for its complete file-icon
-  resolver and sprite. The TUI's palettes (`packages/tui/src/theme.ts`) take
+  resolver and sprite. The TUI's palettes (`packages/tui/src/lib/theme.ts`) take
   their colors from `@pierre/theme`'s roles and their diff row fills from
   `@pierre/diffs`' stylesheet. Nyte core remains the source of change, VCS,
   file, and session identity; Pierre does not own application state or the
@@ -273,17 +273,18 @@ Copyright 2025 OpenAI
 ## OpenCode (`anomalyco/opencode`)
 
 - Repository: https://github.com/anomalyco/opencode
-- What: the TUI slash-command autocomplete (`packages/tui/src/slash.ts`), the
-  keymap wiring (`packages/tui/src/keymap.ts`), the queued-prompt panel in
-  `packages/tui/src/interactive.ts`, Up/Down over a wrapped draft
-  (`packages/tui/src/prompt-history.ts`), and patch-hunk splitting in
-  `packages/tui/src/format.ts` are ported from OpenCode. The SDK admission
+- What: the TUI slash-command autocomplete (`packages/tui/src/lib/slash.ts`,
+  `packages/tui/src/model/completion.ts`), the keymap wiring
+  (`packages/tui/src/app/keymap.ts`), the queued-prompt rows
+  (`packages/tui/src/ui/composer/queue.tsx`), Up/Down over a wrapped draft
+  (`packages/tui/src/model/history.ts`), and patch-hunk splitting in
+  `packages/tui/src/lib/output-diff.ts` are ported from OpenCode. The SDK admission
   vocabulary (`steer`/`queue`, `wait`, opaque cursors) follows OpenCode's v2
   design, as does re-delivery: `messages.redeliver`
   (`packages/core/src/kernel/queue.ts`) follows OpenCode v2's inbox
   `steer`/`queue`/`cancel` trio, and enter on an empty composer sending the
-  front of the queue (`packages/tui/src/pending-gutter.ts`,
-  `packages/tui/src/interactive.ts`) is its `onEmptySubmit`. The rename
+  front of the queue (`packages/tui/src/model/interactions.ts`) is its
+  `onEmptySubmit`. The rename
   plugin's context construction, prompt, model fallback, and output cleanup
   (`packages/plugin/examples/rename.ts`) port OpenCode v2. The web-search
   plugin set (`packages/plugin/examples/web-search/`) ports its Exa, Firecrawl,
@@ -399,13 +400,14 @@ SOFTWARE.
 ## Grok Build (`xai-org/grok-build`)
 
 - Repository: https://github.com/xai-org/grok-build
-- What: the TUI's startup appearance detection (`packages/tui/src/theme.ts`)
+- What: the TUI's startup appearance detection (`packages/tui/src/lib/theme.ts`)
   ports the `env_appearance` module of `xai-grok-pager-render`; the spinner and
-  status glyphs (`packages/tui/src/constants.ts`) port its `glyphs`. The slash
+  status glyphs (`packages/tui/src/lib/constants.ts`) port its `glyphs`. The slash
   dropdown's layout and selection behavior
-  (`packages/tui/src/slash-autocomplete.ts`, `packages/tui/src/menu-list.ts`,
-  `packages/tui/src/picker.ts`) and the slash command model
-  (`packages/tui/src/slash.ts`) port `xai-grok-pager`. The demo CLI
+  (`packages/tui/src/ui/composer/completion.tsx`,
+  `packages/tui/src/model/dialogs/list.ts`, `packages/tui/src/ui/dialogs/list.tsx`)
+  and the slash command model (`packages/tui/src/lib/slash.ts`) port
+  `xai-grok-pager`. The demo CLI
   (`packages/demo/cli/src/tui.ts`) uses a reduced dark palette.
 - All of the above are adaptations rather than copies: they are rewritten in
   TypeScript against OpenTUI, and the semantic roles, detection order, and

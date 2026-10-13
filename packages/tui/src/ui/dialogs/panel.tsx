@@ -1,5 +1,5 @@
 /**
- * The chrome every dialog shares (was PanelLayout): a padded column with a
+ * The chrome every dialog shares: a padded column with a
  * bold accent title, an optional query line, the body, and the hint line.
  * Widths and row budgets come from the terminal size through Yoga, never
  * from a declared row count; typed text is the model's, drawn with a caret.

@@ -19,7 +19,7 @@ import {
 } from "../../model/dialogs/model-picker.ts";
 import { cut, hint, joinHints, Note, Panel, QueryLine, useBodyWidth } from "./panel.tsx";
 
-/** Rows the picker may spend below its title and search line: the old slot's 8 + 10, bounded by the terminal. */
+/** Rows the picker may spend below its title and search line, bounded by the terminal. */
 const MAX_BODY_ROWS = 18;
 
 const CHROME_ROWS = 10;

@@ -289,7 +289,7 @@ export function moveCompletion(
 }
 
 /**
- * What accepting `item` does, by the old SlashAutocomplete rules: a file
+ * What accepting `item` does: a file
  * becomes its marker, a directory completes the `/cd` path, `/cd` completes
  * itself, and a command runs or completes per `acceptSlashCommand` (a
  * token followed by text only completes).

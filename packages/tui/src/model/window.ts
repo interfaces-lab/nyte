@@ -6,7 +6,7 @@
  * drawing mounted rows that are off-screen.
  *
  * The window is anchored by row key, so a note inserted earlier, or a turn
- * removed, never resets the reader's place (it used to snap to the bottom).
+ * removed, never resets the reader's place.
  */
 import type { Row, RowKey } from "./transcript.ts";
 

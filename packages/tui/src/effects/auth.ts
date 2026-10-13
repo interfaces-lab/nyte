@@ -2,7 +2,7 @@
  * Sign in and out through the host. The login's steps reach the auth dialog
  * as `loaded` outcomes; what the user types or picks comes back through the
  * `login-answer` effect on the runner's channel for that dialog. Credential
- * changes recover the model selection the way the old shell did: a model
+ * changes recover the model selection: a model
  * that vanished is replaced by the first the provider still serves.
  */
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
