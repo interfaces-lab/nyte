@@ -211,6 +211,7 @@ export function Transcript(props: TranscriptProps): JSX.Element {
           scrollY
           flexGrow={1}
           minHeight={0}
+          paddingTop={1}
           paddingLeft={1}
           paddingRight={1}
           paddingBottom={TRANSCRIPT_BOTTOM_PADDING}

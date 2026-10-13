@@ -215,7 +215,7 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
           ref={(box) => {
             scroll = box;
           }}
-          maxHeight={cap()}
+          height={Math.min(rows().length, cap())}
           scrollX={false}
           scrollY
           scrollbarOptions={{ visible: false }}
