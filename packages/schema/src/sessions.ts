@@ -28,7 +28,7 @@ export type SessionInfo = {
   readonly heads: readonly HeadInfo[];
   readonly createdAt: number;
   readonly lastActivityAt: number;
-}
+};
 
 /**
  * Returns one head as a directory row: tip, stack, execution and unread.
@@ -40,11 +40,15 @@ export type HeadInfo = {
   readonly name: HeadName;
   readonly tip: Position;
   /** What `heads.create({ from })` defaults to and `heads.merge()` targets. */
-  readonly stack: { readonly parent: HeadName; readonly base: Position; readonly stale: boolean } | null;
+  readonly stack: {
+    readonly parent: HeadName;
+    readonly base: Position;
+    readonly stale: boolean;
+  } | null;
   readonly execution: Execution;
   /** Tip !== sessions/<id>/seen/<principal>/<head>. */
   readonly unread: boolean;
-}
+};
 
 /**
  * Returns what plugins contributed to a session: commands, settings, skills,
@@ -60,7 +64,7 @@ export type SessionCatalogView = {
   readonly agents: readonly AgentInfo[];
   /** What the model can call, with deferred ones marked. */
   readonly tools: readonly ToolInfo[];
-}
+};
 
 /**
  * Describes one command for the palette.
@@ -80,7 +84,7 @@ export type CommandInfo = {
   readonly arguments: JsonSchema | null;
   readonly category?: string;
   readonly keywords?: readonly string[];
-}
+};
 
 /**
  * Describes one setting with its schema, choices, value and the layer that
@@ -97,11 +101,13 @@ export type SettingInfo = {
   /** The client renders from it: enum → picker, number → field, array → list. */
   readonly schema: JsonSchema;
   /** Labels and status badges for enum schemas. */
-  readonly choices: readonly { readonly value: Json; readonly label: string; readonly badge?: string }[] | null;
+  readonly choices:
+    | readonly { readonly value: Json; readonly label: string; readonly badge?: string }[]
+    | null;
   readonly value: Json;
   /** The layer that set it. */
   readonly from: "default" | "host" | "session";
-}
+};
 
 /**
  * Describes one skill the model can load.
@@ -115,7 +121,7 @@ export type SkillInfo = {
   readonly description: string;
   /** Path or url; the model loads it on demand. */
   readonly location: string;
-}
+};
 
 /**
  * Describes one agent preset.
@@ -131,7 +137,7 @@ export type AgentInfo = {
   readonly model: ModelRef | null;
   /** Subagent presets stay out of the user's picker. */
   readonly mode: "primary" | "subagent" | "all";
-}
+};
 
 /**
  * Describes one tool as the session exposes it.
@@ -148,7 +154,7 @@ export type ToolInfo = {
   readonly parameters: JsonSchema;
   readonly output: JsonSchema | null;
   readonly exposure: "model" | "deferred" | "code" | "hidden";
-}
+};
 
 /**
  * Returns the result of running a command.

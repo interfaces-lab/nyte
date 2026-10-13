@@ -18,6 +18,7 @@ import {
   applyBrowserKey,
 } from "./workbench/browser-surfaces.ts";
 import { applyBrowserHistory } from "./workbench/browser-history.ts";
+import { workbenchController } from "./workbench/controller.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
@@ -110,7 +111,7 @@ function useHostEvents(router: AppRouter): void {
 
           return;
         case "browser_agent_opened":
-          applyBrowserAgentOpened(event, focusedSession());
+          applyBrowserAgentOpened(workbenchController, event);
 
           return;
         case "terminal_data":

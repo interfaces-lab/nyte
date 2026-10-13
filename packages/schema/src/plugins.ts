@@ -10,7 +10,9 @@ import type { Schema } from "./schema.ts";
  * @category plugins
  * @since 0.1.0
  */
-export type PromptOverride = { readonly kind: "layer"; readonly text: string; readonly order?: number } | { readonly kind: "replace"; readonly text: string };
+export type PromptOverride =
+  | { readonly kind: "layer"; readonly text: string; readonly order?: number }
+  | { readonly kind: "replace"; readonly text: string };
 
 /**
  * Describes a plugin's own model request: not a run, so no tools, no
@@ -56,7 +58,7 @@ export type ModelRequestInput<T = string> = {
   readonly output?: Schema<T>;
   readonly maxOutput?: number;
   readonly signal?: AbortSignal;
-}
+};
 
 /**
  * Returns the result of a plugin's model request.
@@ -71,6 +73,11 @@ export type ModelRequestInput<T = string> = {
  * @since 0.1.0
  */
 export type ModelRequestOutcome<T = string> =
-  | { readonly kind: "ok"; readonly value: T; readonly usage: Usage; readonly stop: "end" | "length" }
+  | {
+      readonly kind: "ok";
+      readonly value: T;
+      readonly usage: Usage;
+      readonly stop: "end" | "length";
+    }
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "failed"; readonly failure: Failure };

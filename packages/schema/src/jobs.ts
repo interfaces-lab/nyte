@@ -18,7 +18,7 @@ export type JobView = {
   readonly endedAt: number | null;
   /** The last lines, bounded; a panel shows this without opening `output()`. */
   readonly tail: string;
-}
+};
 
 /**
  * How a job stands: running, exited with a code, or lost with the host.
@@ -26,7 +26,10 @@ export type JobView = {
  * @category jobs
  * @since 0.1.0
  */
-export type JobState = { readonly kind: "running" } | { readonly kind: "exited"; readonly code: number | null; readonly reason: EndReason } | { readonly kind: "lost" };
+export type JobState =
+  | { readonly kind: "running" }
+  | { readonly kind: "exited"; readonly code: number | null; readonly reason: EndReason }
+  | { readonly kind: "lost" };
 
 /**
  * How a job ended. The same record `settled()` resolves and `JobView.state` holds once it is final.
@@ -51,4 +54,7 @@ export type EndReason = "exited" | "terminated" | "expired" | "host-lost";
  * @category jobs
  * @since 0.1.0
  */
-export type OutputFrame = { readonly kind: "bytes"; readonly data: Uint8Array } | { readonly kind: "gap" } | { readonly kind: "exit"; readonly code: number | null };
+export type OutputFrame =
+  | { readonly kind: "bytes"; readonly data: Uint8Array }
+  | { readonly kind: "gap" }
+  | { readonly kind: "exit"; readonly code: number | null };

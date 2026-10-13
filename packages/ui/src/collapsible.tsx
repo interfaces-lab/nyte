@@ -4,6 +4,7 @@ import type { ComponentProps, ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
 import { target } from "./schema.stylex.ts";
+import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { appearance, motion, role } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
@@ -80,7 +81,7 @@ function selecting(event: {
   readonly shiftKey: boolean;
   readonly currentTarget: Element;
 }): boolean {
-  return event.shiftKey || event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false;
+  return event.shiftKey || selectionWithin(event.currentTarget);
 }
 
 function CollapsibleRoot({

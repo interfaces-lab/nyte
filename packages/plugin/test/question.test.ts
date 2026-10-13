@@ -9,7 +9,12 @@ it("parks the run on an ask/question modal and resumes it with the chosen answer
   fake.reply(
     {
       content: [
-        { type: "toolCall", id: "ask", name: "question", arguments: { prompt: "Deploy?", options: ["yes", "no"] } },
+        {
+          type: "toolCall",
+          id: "ask",
+          name: "question",
+          arguments: { prompt: "Deploy?", options: ["yes", "no"] },
+        },
       ],
     },
     { content: [{ type: "text", text: "Deploying." }] },
@@ -23,9 +28,15 @@ it("parks the run on an ask/question modal and resumes it with the chosen answer
     (await session.view()).parts.find((part) => part.partKind === "ask/question"),
   );
 
-  expect(asked).toMatchObject({ placement: { kind: "modal" }, state: { prompt: "Deploy?", options: ["yes", "no"] } });
+  expect(asked).toMatchObject({
+    placement: { kind: "modal" },
+    state: { prompt: "Deploy?", options: ["yes", "no"] },
+  });
   expect(fake.requests).toHaveLength(1);
-  expect(await session.part(asked.id).act("answer", { choice: "no" })).toEqual({ kind: "ok", output: undefined });
+  expect(await session.part(asked.id).act("answer", { choice: "no" })).toEqual({
+    kind: "ok",
+    output: undefined,
+  });
 
   const end = await receipt.settled();
 
@@ -35,7 +46,11 @@ it("parks the run on an ask/question modal and resumes it with the chosen answer
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 
   assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
-  expect(call.state.outcome).toMatchObject({ kind: "ok", content: [{ kind: "text", text: "no" }], parts: [asked.id] });
+  expect(call.state.outcome).toMatchObject({
+    kind: "ok",
+    content: [{ kind: "text", text: "no" }],
+    parts: [asked.id],
+  });
 });
 
 it("resumes the run with an answer given on a cold host sharing the store, which resolves the question's owner (§48h)", async () => {
@@ -43,7 +58,16 @@ it("resumes the run with an answer given on a cold host sharing the store, which
   const fake = fakeModels();
 
   fake.reply(
-    { content: [{ type: "toolCall", id: "ask", name: "question", arguments: { prompt: "Ship it?", options: ["yes", "no"] } }] },
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "ask",
+          name: "question",
+          arguments: { prompt: "Ship it?", options: ["yes", "no"] },
+        },
+      ],
+    },
     { content: [{ type: "text", text: "Shipping." }] },
   );
 
@@ -51,11 +75,19 @@ it("resumes the run with an answer given on a cold host sharing the store, which
   const session = await parked.sessions.create();
   const receipt = await session.send("Ask me.");
 
-  const asked = await until(async () => (await session.view()).parts.find((part) => part.partKind === "ask/question"));
+  const asked = await until(async () =>
+    (await session.view()).parts.find((part) => part.partKind === "ask/question"),
+  );
 
-  await using cold = await open(fakeModels(), [question], { store, execution: { kind: "admit-only" } });
+  await using cold = await open(fakeModels(), [question], {
+    store,
+    execution: { kind: "admit-only" },
+  });
 
-  expect(await cold.session(session.id).part(asked.id).act("answer", { choice: "yes" })).toEqual({ kind: "ok", output: undefined });
+  expect(await cold.session(session.id).part(asked.id).act("answer", { choice: "yes" })).toEqual({
+    kind: "ok",
+    output: undefined,
+  });
 
   const end = await receipt.settled();
 
@@ -64,5 +96,8 @@ it("resumes the run with an answer given on a cold host sharing the store, which
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 
   assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
-  expect(call.state.outcome).toMatchObject({ kind: "ok", content: [{ kind: "text", text: "yes" }] });
+  expect(call.state.outcome).toMatchObject({
+    kind: "ok",
+    content: [{ kind: "text", text: "yes" }],
+  });
 });

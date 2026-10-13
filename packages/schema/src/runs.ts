@@ -25,8 +25,10 @@ export type RunView = {
   readonly attempt: number;
   readonly configuration: Configuration;
   /** What started it. */
-  readonly origin: { readonly kind: "input"; readonly message: MessageId } | { readonly kind: "continuation"; readonly from: "child" | "job" | "wake" };
-}
+  readonly origin:
+    | { readonly kind: "input"; readonly message: MessageId }
+    | { readonly kind: "continuation"; readonly from: "child" | "job" | "wake" };
+};
 
 /**
  * Returns how a run ended.
@@ -61,10 +63,27 @@ export type RunEnd =
  * @since 0.1.0
  */
 export type Execution =
-  | { readonly kind: "idle"; readonly lastRun: { readonly id: RunId; readonly end: RunEnd; readonly endedAt: number } | null }
-  | { readonly kind: "live"; readonly run: RunView; readonly phase: "responding" | "executing"; readonly stopping: boolean }
+  | {
+      readonly kind: "idle";
+      readonly lastRun: {
+        readonly id: RunId;
+        readonly end: RunEnd;
+        readonly endedAt: number;
+      } | null;
+    }
+  | {
+      readonly kind: "live";
+      readonly run: RunView;
+      readonly phase: "responding" | "executing";
+      readonly stopping: boolean;
+    }
   | { readonly kind: "waiting"; readonly run: RunView; readonly on: WaitTarget }
-  | { readonly kind: "retrying"; readonly run: RunView; readonly until: number; readonly reason: string };
+  | {
+      readonly kind: "retrying";
+      readonly run: RunView;
+      readonly until: number;
+      readonly reason: string;
+    };
 
 /**
  * Returns one child, job or page working in the background for a head.
@@ -79,7 +98,7 @@ export type BackgroundItem = {
   readonly state: "working" | "waiting" | "done" | "failed";
   /** The tool call that started it, if any. */
   readonly startedBy: CallId | null;
-}
+};
 
 /**
  * Names what a durable wait parks on, with an optional deadline.
@@ -113,7 +132,10 @@ export type WaitTarget = { readonly deadline?: number } & (
  * @category receipts
  * @since 0.1.0
  */
-export type StopOutcome<O> = { readonly kind: "requested" } | { readonly kind: "settled"; readonly outcome: O } | { readonly kind: "missing" };
+export type StopOutcome<O> =
+  | { readonly kind: "requested" }
+  | { readonly kind: "settled"; readonly outcome: O }
+  | { readonly kind: "missing" };
 
 /**
  * Returns what woke a durable wait.
@@ -135,7 +157,11 @@ export type StopOutcome<O> = { readonly kind: "requested" } | { readonly kind: "
 export type WaitOutcome =
   | { readonly kind: "run"; readonly session: SessionId; readonly run: RunId; readonly end: RunEnd }
   | { readonly kind: "job"; readonly job: JobId; readonly end: JobEnd }
-  | { readonly kind: "part"; readonly part: PartId; readonly answer: { readonly action: string; readonly input: Json } | null }
+  | {
+      readonly kind: "part";
+      readonly part: PartId;
+      readonly answer: { readonly action: string; readonly input: Json } | null;
+    }
   | { readonly kind: "timer" }
   | { readonly kind: "deadline" }
   | { readonly kind: "input"; readonly message: MessageId }

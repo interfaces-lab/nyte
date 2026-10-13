@@ -22,7 +22,6 @@ export function DocArticle({
   title,
   lede,
   actions,
-  aside,
   toc,
   previous,
   next,
@@ -32,8 +31,6 @@ export function DocArticle({
   title: ReactNode;
   lede?: ReactNode;
   actions?: ReactNode;
-  /** Sits under the on-this-page list. */
-  aside?: ReactNode;
   toc: TocEntry[];
   previous?: NavItem;
   next?: NavItem;
@@ -58,7 +55,7 @@ export function DocArticle({
           ) : null}
         </article>
       </main>
-      <Toc entries={toc.filter((entry) => entry.depth <= 3)} aside={aside} />
+      <Toc entries={toc.filter((entry) => entry.depth <= 3)} />
     </>
   );
 }

@@ -51,32 +51,36 @@ const WEEKLY_ABOVE_DAYS = 120;
 
 type UsageGrain = "day" | "week";
 
-/** One bucket of the trend: when it is, what it cost, and the tokens behind it. */
+/** One bar of the trend: when it is, and the window's measure in it. */
 export interface UsagePoint {
+  readonly key: string;
   readonly label: string;
-  readonly cost: number;
-  readonly input: number;
-  readonly output: number;
-  readonly cached: number;
+  readonly value: number;
 }
 
 /**
- * One ranked row, formatted. `value` says why there is no amount rather than
- * printing `$0.00`, because a history nobody could read is not free usage.
+ * One ranked row, formatted. `value.absent` says why there is no amount rather
+ * than printing `$0.00`, because a history nobody could read is not free usage.
  */
 export interface UsageRow {
   readonly key: string;
   readonly label: string;
   readonly meta: string;
-  readonly value:
-    | { readonly kind: "cost"; readonly text: string }
-    | { readonly kind: "absent"; readonly text: string };
+  readonly turns: string;
+  readonly perTurn: string;
+  /** The row's measure per bucket of the window, or undefined when its history has no days. */
+  readonly trend: readonly number[] | undefined;
+  readonly value: { readonly text: string; readonly absent: boolean };
   /** Of the window's cost, or of its tokens when nothing in it was priced. */
   readonly share: number;
 }
 
+/** Cost while anything in the window is priced; a free local model still has tokens. */
+export type UsageMeasure = "cost" | "tokens";
+
 export interface UsageDerived {
   readonly grain: UsageGrain;
+  readonly measure: UsageMeasure;
   readonly from: string;
   readonly to: string;
   readonly points: readonly UsagePoint[];
@@ -191,6 +195,11 @@ export function dayLabel(day: string): string {
   });
 }
 
+/** The window's days as a heading: one day, or the first and last. */
+export function spanLabel(from: string, to: string): string {
+  return from === to ? dayLabel(to) : `${dayLabel(from)} – ${dayLabel(to)}`;
+}
+
 /** When a read happened, stated absolutely so the page needs no ticking clock. */
 export function timeLabel(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -203,38 +212,33 @@ export function timeLabel(at: number): string {
 export function costChange(
   current: number,
   previous: number | undefined,
+  range: UsageRange,
 ): { readonly direction: "up" | "down" | "flat"; readonly label: string } | undefined {
-  if (previous === undefined) return undefined;
+  if (previous === undefined || range === "all") return undefined;
+  const prior = `prior ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`;
 
-  if (previous === 0) return current === 0 ? undefined : { direction: "up", label: "New" };
+  if (previous === 0)
+    return current === 0 ? undefined : { direction: "up", label: `None in the ${prior}` };
   const change = (current - previous) / previous;
 
-  if (Math.abs(change) < 0.005) return { direction: "flat", label: "No change" };
+  if (Math.abs(change) < 0.005) return { direction: "flat", label: `No change vs ${prior}` };
 
   return {
     direction: change > 0 ? "up" : "down",
-    label: `${change > 0 ? "+" : "−"}${formatPercent(Math.abs(change))}`,
+    label: `${change > 0 ? "↑" : "↓"} ${formatPercent(Math.abs(change))} vs ${prior}`,
   };
 }
 
-/** Cache reads as a share of all prompt tokens, including newly written entries. */
-function cacheHitRate(totals: UsageTotals): number {
-  const read = totals.input + totals.cacheRead + totals.cacheWrite;
-
-  return read === 0 ? 0 : totals.cacheRead / read;
-}
-
-/** The sentence under a total: what the number is, and what it is made of. */
+/** The line under the total: what the window holds besides its cost. */
 export function describeTotals(totals: UsageTotals): string {
-  return `API estimate · ${formatTokens(totals.tokens)} tokens · ${plural(totals.turns, "request")} · ${formatPercent(cacheHitRate(totals))} of context from cache`;
+  return `${plural(totals.turns, "turn")} · ${formatTokens(totals.tokens)} tokens`;
 }
 
-function cost(dollars: number): UsageRow["value"] {
-  return { kind: "cost", text: formatUsd(dollars) };
-}
-
-function absent(text: string): UsageRow["value"] {
-  return { kind: "absent", text };
+/** Cache reads as a share of all prompt tokens, including newly written entries. */
+function cachedShare(spend: Spend): string {
+  return spend.prompt === 0
+    ? "not cached"
+    : `${formatPercent(spend.cacheRead / spend.prompt)} cached`;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,28 +313,41 @@ function chatLabel(name: string | undefined): string {
   return trimmed === undefined || trimmed === "" ? "Untitled chat" : trimmed;
 }
 
+/** What one row spent in the window, in total and per bucket. */
 interface Spend {
   cost: number;
   tokens: number;
-}
-
-interface ModelSpend extends Spend {
-  readonly model: string;
-  readonly provider: string;
   turns: number;
+  cacheRead: number;
+  prompt: number;
+  readonly costs: number[];
+  readonly tokensBy: number[];
 }
 
-interface FolderSpend extends Spend {
-  readonly path: string | null;
+function emptySpend(buckets: number): Spend {
+  return {
+    cost: 0,
+    tokens: 0,
+    turns: 0,
+    cacheRead: 0,
+    prompt: 0,
+    costs: Array.from({ length: buckets }, () => 0),
+    tokensBy: Array.from({ length: buckets }, () => 0),
+  };
 }
 
-function bump<K, V extends Spend>(into: Map<K, V>, key: K, seed: V, totals: UsageTotals): V {
-  const found = into.get(key) ?? seed;
-  found.cost += totals.cost;
-  found.tokens += totals.tokens;
-  into.set(key, found);
+function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
+  spend.cost += totals.cost;
+  spend.tokens += totals.tokens;
+  spend.turns += totals.turns;
+  spend.cacheRead += totals.cacheRead;
+  spend.prompt += totals.input + totals.cacheRead + totals.cacheWrite;
+  spend.costs[bucket] = (spend.costs[bucket] ?? 0) + totals.cost;
+  spend.tokensBy[bucket] = (spend.tokensBy[bucket] ?? 0) + totals.tokens;
+}
 
-  return found;
+function perTurn(cost: number, turns: number): string {
+  return cost > 0 && turns > 0 ? formatUsd(cost / turns) : "—";
 }
 
 /**
@@ -347,12 +364,15 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   const prior = priorWindow(from, to, window.sinceDay !== null);
   const days = daySpan(from, to);
   const grain: UsageGrain = days.length > WEEKLY_ABOVE_DAYS ? "week" : "day";
+  const bucketSize = grain === "day" ? 1 : 7;
+  const bucketCount = Math.ceil(days.length / bucketSize);
+  const bucketOf = new Map(days.map((day, index) => [day, Math.floor(index / bucketSize)]));
 
-  const perDay = new Map<string, UsageTotals>();
-  const perModel = new Map<string, ModelSpend>();
-  const perFolder = new Map<string, FolderSpend>();
+  const whole = emptySpend(bucketCount);
+  const perModel = new Map<string, { provider: string; model: string; spend: Spend }>();
+  const perFolder = new Map<string, { path: string | null; spend: Spend }>();
   const perChat = new Map<SessionId, Spend>();
-  const overhead: Spend = { cost: 0, tokens: 0 };
+  const overhead = emptySpend(bucketCount);
   let totals = EMPTY_TOTALS;
 
   let priorCost = 0;
@@ -364,71 +384,78 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
       priorCost += entry.totals.cost;
     }
 
-    if (entry.day < from || entry.day > to) continue;
+    const bucket = bucketOf.get(entry.day);
+
+    if (bucket === undefined) continue;
 
     totals = addTotals(totals, entry.totals);
-    perDay.set(entry.day, addTotals(perDay.get(entry.day) ?? EMPTY_TOTALS, entry.totals));
-    bump(
-      perFolder,
-      entry.workspacePath ?? "",
-      { path: entry.workspacePath, cost: 0, tokens: 0 },
-      entry.totals,
-    );
-    bump(perChat, entry.sessionId, { cost: 0, tokens: 0 }, entry.totals);
+    addSpend(whole, entry.totals, bucket);
+
+    const folderKey = entry.workspacePath ?? "";
+
+    const folder = perFolder.get(folderKey) ?? {
+      path: entry.workspacePath,
+      spend: emptySpend(bucketCount),
+    };
+
+    addSpend(folder.spend, entry.totals, bucket);
+    perFolder.set(folderKey, folder);
+
+    const chat = perChat.get(entry.sessionId) ?? emptySpend(bucketCount);
+    addSpend(chat, entry.totals, bucket);
+    perChat.set(entry.sessionId, chat);
 
     if (entry.subject.kind === "model") {
-      const seed: ModelSpend = {
-        model: entry.subject.model,
+      const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
+
+      const model = perModel.get(key) ?? {
         provider: entry.subject.provider,
-        cost: 0,
-        tokens: 0,
-        turns: 0,
+        model: entry.subject.model,
+        spend: emptySpend(bucketCount),
       };
 
-      const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
-      bump(perModel, key, seed, entry.totals).turns += entry.totals.turns;
+      addSpend(model.spend, entry.totals, bucket);
+      perModel.set(key, model);
       continue;
     }
 
-    overhead.cost += entry.totals.cost;
-    overhead.tokens += entry.totals.tokens;
+    addSpend(overhead, entry.totals, bucket);
   }
 
   // Rank by cost while anything is priced; a free local model still ranks by tokens.
-  const byCost = totals.cost > 0;
+  const measure: UsageMeasure = totals.cost > 0 ? "cost" : "tokens";
+  const wholeAmount = measure === "cost" ? totals.cost : totals.tokens;
 
-  const shareOf = (spend: Spend): number => {
-    const whole = byCost ? totals.cost : totals.tokens;
-
-    return whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole;
-  };
+  const row = (key: string, label: string, meta: string, spend: Spend): UsageRow => ({
+    key,
+    label,
+    meta,
+    turns: formatCount(spend.turns),
+    perTurn: perTurn(spend.cost, spend.turns),
+    // An unpriced row still has a shape: its tokens. It is never a chart layer.
+    trend: measure === "cost" && spend.cost > 0 ? spend.costs : spend.tokensBy,
+    value:
+      measure === "tokens"
+        ? { text: `${formatTokens(spend.tokens)} tokens`, absent: false }
+        : spend.cost === 0
+          ? { text: "No price", absent: true }
+          : { text: formatUsd(spend.cost), absent: false },
+    share: wholeAmount === 0 ? 0 : (measure === "cost" ? spend.cost : spend.tokens) / wholeAmount,
+  });
 
   const ranked = (rows: readonly UsageRow[]): readonly UsageRow[] =>
     rows.toSorted((left, right) => right.share - left.share);
 
-  const bucketSize = grain === "day" ? 1 : 7;
-  const points: UsagePoint[] = [];
+  const points = Array.from({ length: bucketCount }, (_slot, index): UsagePoint => {
+    const first = days[index * bucketSize] ?? from;
+    const last = days[Math.min((index + 1) * bucketSize, days.length) - 1] ?? first;
 
-  for (let index = 0; index < days.length; index += bucketSize) {
-    const bucket = days.slice(index, index + bucketSize);
-    const first = bucket[0];
-    const last = bucket.at(-1);
-
-    if (first === undefined || last === undefined) continue;
-
-    const sum = bucket.reduce(
-      (running, day) => addTotals(running, perDay.get(day) ?? EMPTY_TOTALS),
-      EMPTY_TOTALS,
-    );
-
-    points.push({
+    return {
+      key: first,
       label: bucketLabel(first, last, grain),
-      cost: sum.cost,
-      input: sum.input,
-      output: sum.output,
-      cached: sum.cacheRead + sum.cacheWrite,
-    });
-  }
+      value: (measure === "cost" ? whole.costs[index] : whole.tokensBy[index]) ?? 0,
+    };
+  });
 
   // Two checkouts can end in the same directory name, so a repeated leaf earns
   // the segment above it. Unique names stay short.
@@ -439,26 +466,29 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1);
   }
 
-  const models: UsageRow[] = [...perModel].map(([key, model]) => ({
-    key,
-    label: model.model,
-    meta: `${model.provider} · ${formatTokens(model.tokens)} tokens · ${plural(model.turns, "request")}`,
-    value: cost(model.cost),
-    share: shareOf(model),
-  }));
+  const models = [...perModel].map(([key, model]) =>
+    row(
+      key,
+      model.model,
+      `${model.provider} · ${formatTokens(model.spend.tokens)} tokens · ${cachedShare(model.spend)}`,
+      model.spend,
+    ),
+  );
 
   if (overhead.cost > 0 || overhead.tokens > 0) {
-    models.push({
-      key: "overhead",
-      label: "Compaction and tools",
-      meta: `No model of its own · ${formatTokens(overhead.tokens)} tokens`,
-      value: cost(overhead.cost),
-      share: shareOf(overhead),
-    });
+    models.push(
+      row(
+        "overhead",
+        "Compaction and tools",
+        `No model of its own · ${formatTokens(overhead.tokens)} tokens`,
+        overhead,
+      ),
+    );
   }
 
   return {
     grain,
+    measure,
     from,
     to,
     points,
@@ -470,13 +500,12 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         const leaf = folderLabel(folder.path);
         const parent = (leafCounts.get(leaf) ?? 0) > 1 ? folderParent(folder.path) : undefined;
 
-        return {
+        return row(
           key,
-          label: parent === undefined ? leaf : `${leaf} in ${parent}`,
-          meta: `${formatTokens(folder.tokens)} tokens`,
-          value: cost(folder.cost),
-          share: shareOf(folder),
-        };
+          parent === undefined ? leaf : `${leaf} in ${parent}`,
+          `${formatTokens(folder.spend.tokens)} tokens · ${cachedShare(folder.spend)}`,
+          folder.spend,
+        );
       }),
     ),
     chats: ranked(
@@ -486,13 +515,12 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         return spent === undefined
           ? []
           : [
-              {
-                key: session.sessionId,
-                label: chatLabel(session.name),
-                meta: `${formatTokens(spent.tokens)} tokens`,
-                value: cost(spent.cost),
-                share: shareOf(spent),
-              },
+              row(
+                session.sessionId,
+                chatLabel(session.name),
+                `${folderLabel(session.workspacePath)} · ${formatTokens(spent.tokens)} tokens`,
+                spent,
+              ),
             ];
       }),
     ),
@@ -549,12 +577,9 @@ const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
 
 type UsageTool = (typeof USAGE_TOOLS)[number];
 
-/** The two tools whose history is a file on this machine rather than Nyte's own. */
-export const LOCAL_TOOLS = ["claudeCode", "codex"] as const;
+type LocalTool = Exclude<UsageTool, "nyte">;
 
-type LocalTool = (typeof LOCAL_TOOLS)[number];
-
-export const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
+const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
   nyte: "Nyte",
   claudeCode: "Claude Code",
   codex: "Codex",
@@ -565,23 +590,6 @@ const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
   claudeCode: "CLAUDE_CONFIG_DIR or ~/.claude",
   codex: "CODEX_HOME or ~/.codex",
 };
-
-/** A total and the rows that make it up. */
-interface UsageBreakdown {
-  readonly amount: string;
-  readonly meta: string;
-  readonly rows: readonly UsageRow[];
-}
-
-/** A history that answered, or the sentence explaining why it did not. */
-type LocalHistoryView =
-  | {
-      readonly kind: "rows";
-      readonly rows: readonly UsageRow[];
-      /** What the read skipped, when it skipped anything. */
-      readonly note: string | undefined;
-    }
-  | { readonly kind: "message"; readonly message: string; readonly failed: boolean };
 
 type LocalHistory = UsageSnapshot["claudeCode"];
 
@@ -594,142 +602,82 @@ function coverageGaps(usage: Extract<LocalHistory, { kind: "ready" }>): readonly
   ].filter((gap) => gap !== false);
 }
 
-/** One tool's models, all time, or the sentence explaining why there are none. */
-export function deriveLocalHistory(tool: LocalTool, usage: LocalHistory): LocalHistoryView {
-  if (usage.kind === "missing") {
+/** What one tool spent all time, or the sentence explaining why it is unknown. */
+type ToolSpend =
+  | {
+      readonly cost: number;
+      readonly tokens: number;
+      readonly turns: number;
+      readonly partial: boolean;
+    }
+  | { readonly absent: string; readonly meta: string };
+
+function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
+  if (tool === "nyte") {
+    if (report.nyteError !== null) return { absent: "Couldn't read", meta: report.nyteError };
+
     return {
-      kind: "message",
-      message: `No local history in ${USAGE_TOOL_HOMES[tool]}.`,
-      failed: false,
-    };
-  }
-
-  if (usage.kind === "failed") {
-    return {
-      kind: "message",
-      message: `Couldn't read ${USAGE_TOOL_LABELS[tool]} history. ${usage.message}`,
-      failed: true,
-    };
-  }
-
-  const total = usage.summary.total;
-  const gaps = coverageGaps(usage);
-  const priced = total.cost.total > 0;
-  const whole = priced ? total.cost.total : total.total;
-
-  return {
-    kind: "rows",
-    note: gaps.length === 0 ? undefined : `Skipped ${gaps.join(", ")}`,
-    rows: usage.summary.models.map((row) => ({
-      key: `${row.provider}/${row.model}`,
-      label: row.model,
-      meta: `${formatTokens(row.usage.total)} tokens · ${plural(row.turns, "record")}`,
-      value:
-        row.usage.cost.total === 0 && gaps.length > 0
-          ? absent("Unpriced")
-          : cost(row.usage.cost.total),
-      share: whole === 0 ? 0 : (priced ? row.usage.cost.total : row.usage.total) / whole,
-    })),
-  };
-}
-
-/** A tool's row, with the spend behind it when the tool answered at all. */
-interface ToolEntry {
-  readonly row: UsageRow;
-  readonly spend: Spend | undefined;
-}
-
-/** Every tool's all-time spend against the sum of them, so a share means one thing. */
-export function deriveTools(report: UsageSnapshot): UsageBreakdown {
-  const entries = USAGE_TOOLS.map((tool): ToolEntry => {
-    const label = USAGE_TOOL_LABELS[tool];
-
-    if (tool === "nyte") {
-      if (report.nyteError !== null) {
-        return {
-          row: {
-            key: tool,
-            label,
-            meta: report.nyteError,
-            value: absent("Couldn't read"),
-            share: 0,
-          },
-          spend: undefined,
-        };
-      }
-
-      const spend = report.entries.reduce<Spend>(
+      ...report.entries.reduce(
         (sum, entry) => ({
           cost: sum.cost + entry.totals.cost,
           tokens: sum.tokens + entry.totals.tokens,
+          turns: sum.turns + entry.totals.turns,
         }),
-        { cost: 0, tokens: 0 },
-      );
-
-      const partial = report.sources.some((source) => source.status === "failed");
-
-      return {
-        row: {
-          key: tool,
-          label,
-          meta: `${formatTokens(spend.tokens)} tokens${partial ? " · partial history" : ""}`,
-          value: cost(spend.cost),
-          share: 0,
-        },
-        spend,
-      };
-    }
-
-    const history = report[tool];
-
-    if (history.kind !== "ready") {
-      return {
-        row: {
-          key: tool,
-          label,
-          meta:
-            history.kind === "missing"
-              ? `No local history in ${USAGE_TOOL_HOMES[tool]}`
-              : history.message,
-          value: absent(history.kind === "missing" ? "Not found" : "Couldn't read"),
-          share: 0,
-        },
-        spend: undefined,
-      };
-    }
-
-    const spend: Spend = {
-      cost: history.summary.total.cost.total,
-      tokens: history.summary.total.total,
+        { cost: 0, tokens: 0, turns: 0 },
+      ),
+      partial: report.sources.some((source) => source.status === "failed"),
     };
+  }
 
-    return {
-      row: {
-        key: tool,
-        label,
-        meta: `${formatTokens(spend.tokens)} tokens${coverageGaps(history).length > 0 ? " · partial history" : ""}`,
-        value: cost(spend.cost),
-        share: 0,
-      },
-      spend,
-    };
-  });
+  const history = report[tool];
 
-  const counted = entries.flatMap((entry) => (entry.spend === undefined ? [] : [entry.spend]));
-  const spent = counted.reduce((sum, spend) => sum + spend.cost, 0);
-  const tokens = counted.reduce((sum, spend) => sum + spend.tokens, 0);
-  const byCost = spent > 0;
-  const whole = byCost ? spent : tokens;
+  if (history.kind === "missing")
+    return { absent: "Not found", meta: `No local history in ${USAGE_TOOL_HOMES[tool]}` };
+
+  if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
 
   return {
-    amount: counted.length === 0 ? "No history read" : formatUsd(spent),
-    meta: `API estimate · ${formatTokens(tokens)} tokens · ${formatCount(counted.length)} of ${formatCount(USAGE_TOOLS.length)} histories read`,
-    rows: entries.map(({ row, spend }) =>
-      spend === undefined || whole === 0
-        ? row
-        : { ...row, share: (byCost ? spend.cost : spend.tokens) / whole },
-    ),
+    cost: history.summary.total.cost.total,
+    tokens: history.summary.total.total,
+    turns: history.summary.models.reduce((sum, model) => sum + model.turns, 0),
+    partial: coverageGaps(history).length > 0,
   };
+}
+
+/** Every tool's all-time spend against the sum of them, so a share means one thing. */
+export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
+  const spends = USAGE_TOOLS.map((tool) => ({ tool, spend: toolSpend(report, tool) }));
+  const counted = spends.flatMap(({ spend }) => ("absent" in spend ? [] : [spend]));
+  const byCost = counted.some((spend) => spend.cost > 0);
+  const whole = counted.reduce((sum, spend) => sum + (byCost ? spend.cost : spend.tokens), 0);
+
+  return spends.map(({ tool, spend }): UsageRow => {
+    const base = { key: tool, label: USAGE_TOOL_LABELS[tool], trend: undefined };
+
+    if ("absent" in spend) {
+      return {
+        ...base,
+        meta: spend.meta,
+        turns: "—",
+        perTurn: "—",
+        value: { text: spend.absent, absent: true },
+        share: 0,
+      };
+    }
+
+    return {
+      ...base,
+      meta: `${formatTokens(spend.tokens)} tokens${spend.partial ? " · partial history" : ""}`,
+      turns: formatCount(spend.turns),
+      perTurn: perTurn(spend.cost, spend.turns),
+      value: byCost
+        ? spend.cost === 0
+          ? { text: "No price", absent: true }
+          : { text: formatUsd(spend.cost), absent: false }
+        : { text: `${formatTokens(spend.tokens)} tokens`, absent: false },
+      share: whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

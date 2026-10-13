@@ -5,10 +5,7 @@
   "provider": "openai-codex",
   "baseUrl": "https://chatgpt.com/backend-api",
   "reasoning": true,
-  "input": [
-    "text",
-    "image"
-  ],
+  "input": ["text", "image"],
   "cost": {
     "input": 2,
     "output": 10,
@@ -17,9 +14,7 @@
   },
   "contextWindow": 272000,
   "maxTokens": 128000,
-  "modes": [
-    "fast"
-  ],
+  "modes": ["fast"],
   "thinkingLevelMap": {
     "xhigh": "xhigh",
     "max": "max",

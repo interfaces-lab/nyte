@@ -4,7 +4,8 @@ import { invariant, timed } from "../scenario.ts";
 /** §3b git.patches: expanding every file costs a few host reads, not one per file; a revision bump serves stale entries until fresh ones land. */
 export const gitPatchesBatching: Scenario = {
   name: "git-patches-batching",
-  guarantee: "patches(scope, 500 paths) makes ≤ ceil(500 / batch) git reads and serves stale-until-fresh across a revision bump.",
+  guarantee:
+    "patches(scope, 500 paths) makes ≤ ceil(500 / batch) git reads and serves stale-until-fresh across a revision bump.",
   async run(driver) {
     const bench = await driver.open({ changedFiles: 500 });
     const [info] = await bench.host.workspaces.list();
@@ -17,7 +18,11 @@ export const gitPatchesBatching: Scenario = {
     const readsBefore = bench.counters.gitDiffReads?.() ?? 0;
     const full = await timed(async () => {
       for await (const set of git.api.patches({ kind: "worktree" }, paths)) {
-        if (set.entries.size === paths.length && [...set.entries.values()].every((entry) => entry.fresh)) return set;
+        if (
+          set.entries.size === paths.length &&
+          [...set.entries.values()].every((entry) => entry.fresh)
+        )
+          return set;
       }
       throw new Error("patches never completed");
     });
@@ -42,8 +47,14 @@ export const gitPatchesBatching: Scenario = {
     return {
       name: this.name,
       invariants: [
-        invariant("every requested path got a fresh entry", full.value.entries.size === paths.length),
-        invariant("after a write, the old entry stood in until the fresh one landed", sawStale && sawFresh),
+        invariant(
+          "every requested path got a fresh entry",
+          full.value.entries.size === paths.length,
+        ),
+        invariant(
+          "after a write, the old entry stood in until the fresh one landed",
+          sawStale && sawFresh,
+        ),
       ],
       metrics: { hostReadsMax: reads, fullExpandMs: full.ms },
     };

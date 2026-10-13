@@ -328,8 +328,12 @@ describe("byte bodies", () => {
       await expect(pending).rejects.toThrow();
       await expect.poll(() => returned).toBe(1);
       await expect
-        .poll(() => lines.filter((line) => line.startsWith("DEV:protocol byte reader close failed")))
-        .toEqual(['DEV:protocol byte reader close failed {"message":"Provider close I/O failed."}']);
+        .poll(() =>
+          lines.filter((line) => line.startsWith("DEV:protocol byte reader close failed")),
+        )
+        .toEqual([
+          'DEV:protocol byte reader close failed {"message":"Provider close I/O failed."}',
+        ]);
     } finally {
       dev.sink = sink;
     }

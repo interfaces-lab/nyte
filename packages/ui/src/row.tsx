@@ -6,6 +6,7 @@ import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
 import { focus } from "./a11y.stylex.ts";
 import { glyph, row, target } from "./schema.stylex.ts";
+import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { appearance, motion, role, type } from "./vars.stylex.ts";
 
@@ -233,7 +234,7 @@ function rowClickTarget(event: RowClickEvent) {
 function preserveRowSelection(event: RowClickEvent) {
   if (!rowClickTarget(event)) return;
 
-  if (!event.shiftKey && !event.currentTarget.ownerDocument.getSelection()?.toString()) return;
+  if (!event.shiftKey && !selectionWithin(event.currentTarget)) return;
   event.preventDefault();
   event.stopPropagation();
   event.preventBaseUIHandler();

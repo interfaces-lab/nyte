@@ -29,7 +29,7 @@ export type ContextView = {
   readonly window: number;
   /** The last settled request's usage. */
   readonly lastRequest: Usage | null;
-}
+};
 
 /**
  * Returns token counts and cost for one provider request.
@@ -45,8 +45,14 @@ export type Usage = {
   /** Subset of output when the provider reports it. */
   readonly reasoning: number | null;
   readonly total: number;
-  readonly cost: { readonly input: number; readonly output: number; readonly cacheRead: number; readonly cacheWrite: number; readonly total: number };
-}
+  readonly cost: {
+    readonly input: number;
+    readonly output: number;
+    readonly cacheRead: number;
+    readonly cacheWrite: number;
+    readonly total: number;
+  };
+};
 
 /**
  * Returns the host's providers and their models as one catalog, stamped with
@@ -68,11 +74,16 @@ export type ModelCatalogView = {
     /** How a credential can be obtained: oauth, key. A device-code flow is an oauth login whose `open` step carries a code. */
     readonly methods: readonly LoginMethod[];
     /** Account windows the provider reported on its last response. */
-    readonly limits: readonly { readonly label: string; readonly used: number; readonly limit: number; readonly resetsAt: number | null }[];
+    readonly limits: readonly {
+      readonly label: string;
+      readonly used: number;
+      readonly limit: number;
+      readonly resetsAt: number | null;
+    }[];
     /** Base models only. */
     readonly models: readonly ModelInfo[];
   }[];
-}
+};
 
 /**
  * Describes one base model: what it accepts, its limits and its cost.
@@ -100,8 +111,13 @@ export type ModelInfo = {
   /** Input kinds the model takes; anything else is sent as a text reference. */
   readonly input: readonly ("text" | "image")[];
   /** Per million tokens. */
-  readonly cost: { readonly input: number; readonly output: number; readonly cacheRead: number; readonly cacheWrite: number };
-}
+  readonly cost: {
+    readonly input: number;
+    readonly output: number;
+    readonly cacheRead: number;
+    readonly cacheWrite: number;
+  };
+};
 
 /**
  * Names how a provider credential can be obtained.

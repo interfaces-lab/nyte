@@ -37,6 +37,7 @@ const slugs = [
   "dialog",
   "input",
   "menu",
+  "meter",
   "number-field",
   "popover",
   "preview-card",

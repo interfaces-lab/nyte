@@ -6,7 +6,8 @@ const parameters = standard(
   Type.Object({
     command: Type.String({ description: "The shell command to run." }),
     description: Type.String({
-      description: "Clear, concise description of what this command does in 5-10 words, in active voice.",
+      description:
+        "Clear, concise description of what this command does in 5-10 words, in active voice.",
     }),
   }),
 );

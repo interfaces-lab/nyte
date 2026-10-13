@@ -20,7 +20,8 @@ const config = {
         path.join(docsRoot, "src/**/*.{ts,tsx}"),
         // `defineConsts` handles only inline where their definition is collected,
         // so a demo that reads `t`, `menu`, or `layer` needs these compiled here too.
-        path.join(workspaceRoot, "packages/ui/src/{vars,schema,floating-surface}.stylex.ts"),
+        // `a11y` ships as source only, so its `srOnly` rules are collected here as well.
+        path.join(workspaceRoot, "packages/ui/src/{vars,schema,floating-surface,a11y}.stylex.ts"),
       ],
       useCSSLayers: { prefix: "stylex" },
       babelConfig: {

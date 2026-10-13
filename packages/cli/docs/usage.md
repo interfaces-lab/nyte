@@ -14,9 +14,9 @@ Nyte exchanges the GitHub token for a short-lived Copilot session token and refr
 Existing direct-token Copilot logins need a fresh sign-in after upgrading. Nyte is not an officially
 supported Copilot client; the account needs Copilot access.
 
-Nyte asks whether you trust the directory. A trusted workspace lets tools read,
-edit, and run commands with your process's access. There are no per-tool prompts.
-Use an isolated environment when the workspace needs stronger boundaries.
+Tools read, edit, and run commands in the directory with your process's access.
+There are no per-tool prompts. Use an isolated environment when the workspace needs
+stronger boundaries.
 
 To send one prompt and exit:
 
@@ -26,35 +26,11 @@ nyte --print -- "Summarize this project's README"
 
 Use `--provider <provider>` and `--model <model>` before `--` to select a model.
 These requests use your configured provider and may incur charges. Run `nyte login`
-interactively before using scripts. A script must also run in a trusted workspace.
+interactively before using scripts.
 
 Use `nyte --resume` in a terminal to continue the latest conversation.
 Installed copies can update with `nyte update`. Run `nyte update --models` to refresh the model catalog without updating Nyte. The update command installs the new
 release's docs beside the executable when the release archive carries them.
-
-## Serve this machine
-
-`nyte serve` runs a host without the terminal interface, so a phone or browser can use it:
-
-```sh
-nyte account login
-nyte serve --workspace ~/code/app --trust --account
-```
-
-`nyte account login` links the host to your Nyte account. Approve it from a browser on any
-device. `nyte serve` serves until you press Ctrl-C. `nyte serve --help` and `nyte account --help`
-list the flags. The [remote access guide](https://nyte.sh/docs/remote-access) covers connecting
-a device.
-
-## Delegated tasks
-
-The agent waits for a delegated task by default. It can start independent work in the
-background, then use `wait_task` with that job's ID when it needs the report. The parent
-continues after the existing task finishes; it does not launch a replacement or poll.
-`stop_task` cancels the task. These are agent tools, not terminal commands.
-
-A background report cannot restart a finished or stopped conversation. If the parent
-already finished, the report stays queued for your next message.
 
 The [source examples](examples/README.md) demonstrate quoted arguments and stdin.
 Return to the [guide](README.md).

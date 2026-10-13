@@ -6,7 +6,7 @@ Leave dev servers to the user. Build and test commands target individual package
 
 Prefer the smallest complete fix. Leave unrelated work alone.
 
-Core contracts live in `packages/docs/content/kernel/` and `packages/core/src/kernel/README.md`.
+Core contracts are the JSDoc on `@nyte-ai/core`'s exports and the baseline `packages/lab/sdk-shape.ts`.
 
 Work on the public site's design, copy, or docs layout loads `.agents/skills/site-design`.
 

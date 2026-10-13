@@ -31,7 +31,9 @@ const layerStylesheet = {
       for (const entry of entryPoints) {
         if (
           entry.endsWith(".stylex.ts") ||
-          ["style.ts", "surface-theme.ts", "appearance.ts", "platform-colors.ts"].includes(basename(entry))
+          ["style.ts", "surface-theme.ts", "appearance.ts", "platform-colors.ts"].includes(
+            basename(entry),
+          )
         )
           continue;
         const compiled = join(outdir, `${basename(entry).replace(/\.tsx?$/, "")}.js`);

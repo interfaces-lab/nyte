@@ -30,14 +30,21 @@ import { sessionOf } from "./refs.ts";
 import { load, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
 
-export type ActionSchemas = Record<string, { readonly input: Schema<unknown>; readonly output?: Schema<unknown> }>;
+export type ActionSchemas = Record<
+  string,
+  { readonly input: Schema<unknown>; readonly output?: Schema<unknown> }
+>;
 
 export interface PartDefinition<State = unknown, Actions extends ActionSchemas = ActionSchemas> {
   readonly kind: string;
   readonly state: Schema<State>;
   readonly actions: Actions;
   fallback(state: State, context: { readonly id: PartId }): string;
-  onAction?<A extends keyof Actions>(action: A, input: Infer<Actions[A]["input"]>, context: ActionContext<State, Actions>): Awaitable<ActionOutput<Actions[A]>>;
+  onAction?<A extends keyof Actions>(
+    action: A,
+    input: Infer<Actions[A]["input"]>,
+    context: ActionContext<State, Actions>,
+  ): Awaitable<ActionOutput<Actions[A]>>;
 }
 
 export type ActionOutput<S> = S extends { readonly output: Schema<infer O> } ? O : undefined;
@@ -49,23 +56,51 @@ export interface ActionContext<State, Actions extends ActionSchemas> extends Dur
   readonly signal: AbortSignal;
 }
 
-export function definePart<State, const Actions extends ActionSchemas>(definition: PartDefinition<State, Actions>): PartDefinition<State, Actions> {
+export function definePart<State, const Actions extends ActionSchemas>(
+  definition: PartDefinition<State, Actions>,
+): PartDefinition<State, Actions> {
   return definition;
 }
 
 export type PartState<K extends PartDefinition> = Infer<K["state"]>;
 
-export type PartActions<K extends PartDefinition> = { readonly [A in keyof K["actions"]]: { readonly input: Infer<K["actions"][A]["input"]>; readonly output: ActionOutput<K["actions"][A]> } };
+export type PartActions<K extends PartDefinition> = {
+  readonly [A in keyof K["actions"]]: {
+    readonly input: Infer<K["actions"][A]["input"]>;
+    readonly output: ActionOutput<K["actions"][A]>;
+  };
+};
 
 export interface Part<K extends PartDefinition> {
   readonly id: PartId;
-  update(next: PartState<K> | ((current: PartState<K>) => PartState<K>)): Promise<{ readonly kind: "updated"; readonly version: number } | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] } | { readonly kind: "closed" } | { readonly kind: "missing" }>;
-  act<A extends keyof PartActions<K>>(action: A, input: PartActions<K>[A]["input"]): Promise<ActOutcome<PartActions<K>[A]["output"]>>;
-  answer(): Promise<{ readonly [A in keyof PartActions<K>]: { readonly action: A; readonly input: PartActions<K>[A]["input"] } }[keyof PartActions<K>] | null>;
+  update(
+    next: PartState<K> | ((current: PartState<K>) => PartState<K>),
+  ): Promise<
+    | { readonly kind: "updated"; readonly version: number }
+    | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] }
+    | { readonly kind: "closed" }
+    | { readonly kind: "missing" }
+  >;
+  act<A extends keyof PartActions<K>>(
+    action: A,
+    input: PartActions<K>[A]["input"],
+  ): Promise<ActOutcome<PartActions<K>[A]["output"]>>;
+  answer(): Promise<
+    | {
+        readonly [A in keyof PartActions<K>]: {
+          readonly action: A;
+          readonly input: PartActions<K>[A]["input"];
+        };
+      }[keyof PartActions<K>]
+    | null
+  >;
   close(): Promise<void>;
 }
 
-export function isPart<K extends PartDefinition>(message: Message, kind: K): message is Extract<Message, { readonly kind: "part" }> & { readonly state: PartState<K> } {
+export function isPart<K extends PartDefinition>(
+  message: Message,
+  kind: K,
+): message is Extract<Message, { readonly kind: "part" }> & { readonly state: PartState<K> } {
   return message.kind === "part" && message.partKind === kind.kind;
 }
 
@@ -88,14 +123,20 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
   },
 };
 
-export const text: PartDefinition<{ readonly markdown: string; readonly signature: Json | null }, {}> = definePart({
+export const text: PartDefinition<
+  { readonly markdown: string; readonly signature: Json | null },
+  {}
+> = definePart({
   kind: "text",
   state: standard(withJson(Type.Object({ markdown: Type.String(), signature: SignatureType }))),
   actions: {},
   fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
 });
 
-export const thinking: PartDefinition<{ readonly markdown: string; readonly merged: number; readonly signature: Json | null }, {}> = definePart({
+export const thinking: PartDefinition<
+  { readonly markdown: string; readonly merged: number; readonly signature: Json | null },
+  {}
+> = definePart({
   kind: "thinking",
   state: standard(
     withJson(
@@ -106,7 +147,10 @@ export const thinking: PartDefinition<{ readonly markdown: string; readonly merg
   fallback: (state, { id }) => `Thinking (${state.merged})… [${id}]`,
 });
 
-export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly input: Schema<Record<string, never>> } }> = definePart({
+export const tool: PartDefinition<
+  ToolPartState,
+  { readonly stop: { readonly input: Schema<Record<string, never>> } }
+> = definePart({
   kind: "tool",
   state: ToolPartStateSchema,
   actions: { stop: { input: EMPTY_INPUT } },
@@ -114,24 +158,37 @@ export const tool: PartDefinition<ToolPartState, { readonly stop: { readonly inp
     `${clip(state.name)} ${state.phase}${state.phase === "settled" ? ` ${state.outcome.kind}` : ""} [${id}]`,
 });
 
-export const compaction: PartDefinition<{ readonly summary: string | null; readonly material: { readonly provider: string; readonly api: string; readonly model: string; readonly data: Json } | null; readonly tokensBefore: number; readonly usage: Usage | null }, {}> = definePart({
+export const compaction: PartDefinition<
+  {
+    readonly summary: string | null;
+    readonly material: {
+      readonly provider: string;
+      readonly api: string;
+      readonly model: string;
+      readonly data: Json;
+    } | null;
+    readonly tokensBefore: number;
+    readonly usage: Usage | null;
+  },
+  {}
+> = definePart({
   kind: "compaction",
   state: standard(
     withJson(
-    Type.Object({
-      summary: Type.Union([Type.String(), Type.Null()]),
-      material: Type.Union([
-        Type.Object({
-          provider: Type.String(),
-          api: Type.String(),
-          model: Type.String(),
-          data: JsonType,
-        }),
-        Type.Null(),
-      ]),
-      tokensBefore: Type.Number(),
-      usage: Type.Union([UsageType, Type.Null()]),
-    }),
+      Type.Object({
+        summary: Type.Union([Type.String(), Type.Null()]),
+        material: Type.Union([
+          Type.Object({
+            provider: Type.String(),
+            api: Type.String(),
+            model: Type.String(),
+            data: JsonType,
+          }),
+          Type.Null(),
+        ]),
+        tokensBefore: Type.Number(),
+        usage: Type.Union([UsageType, Type.Null()]),
+      }),
     ),
   ),
   actions: {},
@@ -217,7 +274,7 @@ export function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly
   );
 }
 
-/** Returns the answer the store holds for a live part: kept on its status before a step parked (§48i), else the one recorded on the call its status names as waiting. */
+/** Returns the answer the store holds for a live part: kept on its status before a step parked, else the one recorded on the call its status names as waiting. */
 export async function storedAnswer(
   kernel: Kernel,
   session: SessionId,
@@ -236,7 +293,7 @@ export async function storedAnswer(
   return partAnswers(outcomes).find((entry) => entry.part === record.id)?.answer ?? null;
 }
 
-/** Settles each pending local `answer()` from the store, as `pollStore` runs it (§42ac): the stored answer, or null once the part is gone. */
+/** Settles each pending local `answer()` from the store, as `pollStore` runs it: the stored answer, or null once the part is gone. */
 export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
   const table = kernel.partTable;
 

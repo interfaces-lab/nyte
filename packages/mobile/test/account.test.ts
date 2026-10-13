@@ -242,7 +242,9 @@ describe("connectEnvironment", () => {
 
     // The readiness window retried the same bearer at the relay. On the shared
     // origin the JWT goes only to the broker and the bearer only to the Mac.
-    expect(net.seen.filter((request) => request.url === `${MAC_URL}/sessions.list`)).toHaveLength(3);
+    expect(net.seen.filter((request) => request.url === `${MAC_URL}/sessions.list`)).toHaveLength(
+      3,
+    );
 
     for (const request of net.seen) {
       expect(request.authorization).toBe(

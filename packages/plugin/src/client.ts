@@ -7,7 +7,16 @@ import type {
 } from "@nyte-ai/core";
 
 export { branchSummary, compaction, definePart, isPart, text, thinking, tool } from "@nyte-ai/core";
-export type { ClientApi, Command, Keybinding, Part, PartDefinition, PartState, Renderer, SettingDefinition } from "@nyte-ai/core";
+export type {
+  ClientApi,
+  Command,
+  Keybinding,
+  Part,
+  PartDefinition,
+  PartState,
+  Renderer,
+  SettingDefinition,
+} from "@nyte-ai/core";
 
 /**
  * A client plugin: once per app, with renderers, commands, settings,

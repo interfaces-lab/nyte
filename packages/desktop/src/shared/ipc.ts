@@ -31,6 +31,7 @@ export const HOST_OPERATION_PATHS = [
   "host.endpoint",
   "host.state",
   "host.fonts",
+  "host.usage",
   "host.openWorkspace",
   "host.pickWorkspace",
   "host.closeWorkspace",
@@ -87,7 +88,7 @@ export type CallPath = HostOperationPath;
  * `window.nyte` on the desktop: the client surface and every host bridge
  * member main answers. Not here: `settings` (the desktop's settings are host
  * settings over the connection), `trustWorkspace` (a registered folder runs),
- * `usage` and `github` (nothing on this host serves them yet), `remember`
+ * `github` (nothing on this host serves it yet), `remember`
  * (the loopback token is minted per run).
  */
 export type DesktopBridge = {
@@ -113,6 +114,7 @@ export type DesktopBridge = {
     Required<
       Pick<
         HostBridge,
+        | "usage"
         | "pickWorkspace"
         | "updates"
         | "revealPath"

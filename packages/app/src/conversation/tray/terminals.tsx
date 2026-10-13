@@ -3,18 +3,14 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
-// oxlint-disable-next-line no-restricted-imports -- each live terminal job opens once as it appears
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { nyte } from "../../nyte.ts";
-import { usePaneControllerSnapshot } from "../../layout/pane-context.tsx";
-import { activeSelection } from "../../layout/pane-layout.ts";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { useJobTerminals } from "../../workbench/terminal-store.ts";
 import { focusTerminal } from "../../workbench/terminal-runtime.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
@@ -42,7 +38,7 @@ interface BackgroundWorkProps {
   readonly sessionId: SessionId;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onOpenTerminal: (job: JobView, activate: boolean) => string;
+  readonly onOpenTerminal: (job: JobView) => string;
   readonly viewport: HTMLElement | null;
 }
 
@@ -53,16 +49,11 @@ function AvailableBackgroundWork({
   onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
-  const { layout } = usePaneControllerSnapshot();
-  const focusedSelection = activeSelection(layout);
-  const focused = focusedSelection.kind === "session" && focusedSelection.sessionId === sessionId;
-  useJobTerminals(sessionId);
   const workspace = useSession(sessionId).data?.workspace;
   const jobs = useWorkspaceJobs(workspace);
 
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const pillRef = useRef<HTMLButtonElement>(null);
-  const openedJobIds = useRef(new Set<JobView["id"]>());
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly JobView["id"][]>();
 
@@ -87,14 +78,6 @@ function AvailableBackgroundWork({
   const pendingAction = cancel.isPending || stopAll.isPending;
   const count = String(liveTerminals.length);
   const noun = liveTerminals.length === 1 ? "Terminal" : "Terminals";
-
-  useEffect(() => {
-    for (const job of liveTerminals) {
-      if (openedJobIds.current.has(job.id)) continue;
-      openedJobIds.current.add(job.id);
-      onOpenTerminal(job, focused);
-    }
-  }, [focused, liveTerminals, onOpenTerminal]);
 
   useLayoutEffect(() => {
     if (open && !hasTerminals) onOpenChange(false);
@@ -178,7 +161,7 @@ function AvailableBackgroundWork({
                 aria-label={`Open terminal for ${job.command}`}
                 title={job.command}
                 onClick={() => {
-                  focusTerminal(onOpenTerminal(job, true));
+                  focusTerminal(onOpenTerminal(job));
                   onOpenChange(false);
                 }}
               >

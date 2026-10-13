@@ -1,5 +1,5 @@
 import { props } from "@stylexjs/stylex";
-import { elementScroll, useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -16,59 +16,63 @@ import {
   useState,
 } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
+import { flushSync } from "react-dom";
 import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
-import type { ToolCallDensity } from "../preferences/index.ts";
+import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { messageScrollerStyles } from "./styles.stylex.ts";
 import type { TranscriptRow } from "./transcript-rows.ts";
 import {
-  activeStickyCandidate,
-  distanceFromEnd,
-  initialTranscriptOffset,
-  isAtEnd,
+  navigates,
+  scrollsWithin,
+  showScrollButton,
+  syncSticky,
+  topIn,
   TRANSCRIPT_PADDING_END,
   TRANSCRIPT_PADDING_START,
 } from "./transcript-scroll.ts";
-import type { StickyCandidate } from "./transcript-scroll.ts";
 
 const OVERSCAN = 4;
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
-export interface TranscriptScrollOptions {
-  readonly align?: "start" | "center" | "end" | "nearest";
-  readonly behavior?: ScrollBehavior;
+/** The scrollport's height before it has one, for the first window. */
+const VIEWPORT_GUESS = 800;
+
+/** Far enough above the end for the scroll-to-bottom button to show. */
+const SCROLL_EDGE_THRESHOLD = 60;
+
+/**
+ * What Reading holds still: an element and its distance below the
+ * scrollport's top, or the row `key` names when there is no element yet.
+ */
+interface Anchor {
+  readonly key: string;
+  readonly element: Element | undefined;
+  readonly top: number;
 }
 
-type ScrollToRow = (messageId: string, options?: TranscriptScrollOptions) => boolean;
+interface TranscriptControls {
+  readonly end: () => void;
+  readonly hold: (element: Element) => void;
+}
 
 interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
-  readonly ready: boolean;
-  readonly autoScroll: boolean;
-  readonly scrollEdgeThreshold: number;
+  /** Receives the scrollport, which the composer's trays and file drops use. */
+  readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
 }
 
 interface TranscriptState extends TranscriptOptions {
   readonly viewStore: ReturnType<typeof usePaneViewStateStore>;
-  readonly initialView: ReturnType<ReturnType<typeof usePaneViewStateStore>["readSession"]>;
-  readonly viewport: HTMLDivElement | null;
-  readonly setViewport: (viewport: HTMLDivElement | null) => void;
+  readonly initialPosition: ScrollViewState;
   readonly dock: HTMLDivElement | null;
   readonly setDock: (dock: HTMLDivElement | null) => void;
-  readonly navigation: RefObject<ScrollToRow | null>;
-  /** The content's way to the real bottom; it also resumes following. */
-  readonly end: RefObject<(() => void) | null>;
-  /** Whether the reader rides the bottom. Only the content flips it. */
-  readonly following: RefObject<boolean>;
-  readonly setAway: (away: boolean) => void;
+  readonly controlsRef: RefObject<TranscriptControls | null>;
 }
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
-
-/** Far enough above the bottom for the scroll-to-bottom button to show. */
-const TranscriptAwayContext = createContext(false);
 
 function useTranscript(): TranscriptState {
   const transcript = useContext(TranscriptContext);
@@ -78,302 +82,141 @@ function useTranscript(): TranscriptState {
   return transcript;
 }
 
-export function useTranscriptDock() {
-  const transcript = useContext(TranscriptContext);
-  const setDock = transcript?.setDock;
+const ignore = (): void => {};
 
-  return useCallback((dock: HTMLDivElement | null) => setDock?.(dock), [setDock]);
+export function useTranscriptDock(): (dock: HTMLDivElement | null) => void {
+  return useContext(TranscriptContext)?.setDock ?? ignore;
 }
 
-/** The session the enclosing transcript draws, if any. */
-export function useTranscriptSession(): SessionId | undefined {
-  return useContext(TranscriptContext)?.sessionId;
-}
+/** Hold an element where it is on screen, or go to the end and follow it. */
+export function useTranscriptControls(): TranscriptControls {
+  const controlsRef = useContext(TranscriptContext)?.controlsRef;
 
-export function useTranscriptNavigation() {
-  const { navigation } = useTranscript();
-
-  return useMemo(
-    () => ({
-      scrollToRow: (messageId: string, options?: TranscriptScrollOptions) =>
-        navigation.current?.(messageId, options) ?? false,
-    }),
-    [navigation],
-  );
-}
-
-const REMEMBERED_STEP_GROUPS = 64;
-
-function rememberStepGroup(
-  current: ReadonlyMap<string, boolean>,
-  key: string,
-  open: boolean,
-  liveKey: string | undefined,
-): ReadonlyMap<string, boolean> {
-  const groups = new Map(current);
-
-  if (liveKey !== undefined) groups.delete(liveKey);
-  groups.delete(key);
-  groups.set(key, open);
-
-  for (const oldest of groups.keys()) {
-    if (groups.size <= REMEMBERED_STEP_GROUPS) break;
-    groups.delete(oldest);
-  }
-
-  return groups;
-}
-
-export function useStepGroupOpen(
-  groupKey: string | undefined,
-  liveKey: string | undefined,
-): readonly [boolean | undefined, (open: boolean) => void] {
-  const transcript = useContext(TranscriptContext);
-  const key = groupKey === "" ? undefined : groupKey;
-
-  const [open, setOpen] = useState(() => {
-    if (transcript === null || key === undefined) return undefined;
-
-    const groups = transcript.viewStore.readSession(
-      transcript.sessionId,
-      transcript.paneId,
-    ).stepGroups;
-
-    return groups.get(key) ?? (liveKey === undefined ? undefined : groups.get(liveKey));
-  });
-
-  const change = (next: boolean): void => {
-    setOpen(next);
-
-    if (transcript === null || key === undefined) return;
-    transcript.viewStore.updateSession(transcript.sessionId, transcript.paneId, (current) => ({
-      ...current,
-      stepGroups: rememberStepGroup(current.stepGroups, key, next, liveKey),
-    }));
+  return {
+    end: () => controlsRef?.current?.end(),
+    hold: (element) => controlsRef?.current?.hold(element),
   };
+}
 
-  useLayoutEffect(() => {
-    if (transcript === null || key === undefined || liveKey === undefined) return;
-    transcript.viewStore.updateSession(transcript.sessionId, transcript.paneId, (current) => {
-      const adopted = current.stepGroups.get(liveKey);
-
-      return adopted === undefined
-        ? current
-        : {
-            ...current,
-            stepGroups: rememberStepGroup(
-              current.stepGroups,
-              key,
-              current.stepGroups.get(key) ?? adopted,
-              liveKey,
-            ),
-          };
-    });
-  }, [key, liveKey, transcript]);
-
-  return [open, change];
+/** The session the enclosing transcript draws and the pane view-state slot it saves into. */
+export function useTranscriptScope():
+  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore">
+  | undefined {
+  return useContext(TranscriptContext) ?? undefined;
 }
 
 export function TranscriptProvider({
   paneId,
   sessionId,
-  ready,
-  autoScroll,
-  scrollEdgeThreshold,
+  viewportRef,
   children,
 }: TranscriptOptions & { readonly children: ReactNode }): ReactElement {
   const viewStore = usePaneViewStateStore();
-  const [initialView] = useState(() => viewStore.readSession(sessionId, paneId));
-  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+
+  const [initialPosition] = useState<ScrollViewState>(
+    () => viewStore.readSession(sessionId, paneId).scroll[paneId] ?? { kind: "end" },
+  );
+
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
-  const navigation = useRef<ScrollToRow | null>(null);
-  const end = useRef<(() => void) | null>(null);
-  const following = useRef(initialView.scroll.bottomPinned);
-  const [away, setAway] = useState(false);
+  const controlsRef = useRef<TranscriptControls | null>(null);
 
   const transcript = useMemo(
     () => ({
       paneId,
       sessionId,
-      ready,
-      autoScroll: autoScroll && ready,
-      scrollEdgeThreshold,
+      viewportRef,
       viewStore,
-      initialView,
-      viewport,
-      setViewport,
+      initialPosition,
       dock,
       setDock,
-      navigation,
-      end,
-      following,
-      setAway,
+      controlsRef,
     }),
-    [
-      autoScroll,
-      dock,
-      initialView,
-      navigation,
-      paneId,
-      ready,
-      scrollEdgeThreshold,
-      sessionId,
-      viewport,
-      viewStore,
-    ],
+    [dock, initialPosition, paneId, sessionId, viewportRef, viewStore],
   );
 
-  return (
-    <TranscriptContext value={transcript}>
-      <TranscriptAwayContext value={away}>{children}</TranscriptAwayContext>
-    </TranscriptContext>
-  );
-}
-
-export function TranscriptViewport({
-  ref,
-  children,
-}: {
-  readonly ref: (viewport: HTMLDivElement | null) => void;
-  readonly children: ReactNode;
-}): ReactElement {
-  const { setViewport } = useTranscript();
-
-  const attach = useCallback(
-    (viewport: HTMLDivElement | null): void => {
-      setViewport(viewport);
-      ref(viewport);
-    },
-    [ref, setViewport],
-  );
-
-  return (
-    <div
-      ref={attach}
-      role="region"
-      aria-label="Messages"
-      tabIndex={-1}
-      data-nyte-scrollport="balanced"
-      {...props(messageScrollerStyles.viewport)}
-    >
-      {children}
-    </div>
-  );
-}
-
-const ANCHOR_SETTLE_MS = 150;
-
-const ANCHOR_LIMIT_MS = 1000;
-
-interface ContentFloor {
-  transient: number;
-  total: number;
-  frame: number;
-}
-
-function applyFloor(content: HTMLElement, floor: ContentFloor): void {
-  content.style.minHeight = floor.transient > 0 ? `${floor.transient}px` : "";
-}
-
-function setDataState(element: HTMLElement, name: string, active: boolean): void {
-  const value = active ? "true" : "false";
-
-  if (element.dataset[name] !== value) element.dataset[name] = value;
-}
-
-function syncStickyAnchor(
-  scroll: HTMLDivElement,
-  container: HTMLDivElement,
-  virtualizer: TranscriptVirtualizer,
-  following: boolean,
-): void {
-  virtualizer.getTotalSize();
-  const rows = container.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
-  const candidates: StickyCandidate[] = [];
-  const candidateRows: HTMLElement[] = [];
-
-  for (const row of rows) {
-    const anchor = row.closest<HTMLDivElement>("[data-nyte-scroll-anchor='true']");
-    const content = anchor?.firstElementChild;
-
-    const item =
-      anchor === null
-        ? undefined
-        : virtualizer.measurementsCache[virtualizer.indexFromElement(anchor)];
-
-    const eligible =
-      content instanceof HTMLElement &&
-      item !== undefined &&
-      row.offsetHeight < scroll.clientHeight;
-
-    setDataState(row, "stickyDisabled", !eligible);
-
-    if (!eligible || !(content instanceof HTMLElement) || item === undefined) continue;
-    candidates.push({ start: item.start + content.offsetTop, height: item.size });
-    candidateRows.push(row);
-  }
-
-  const active = activeStickyCandidate(candidates, scroll.scrollTop, following);
-
-  const activeRow = active === undefined ? undefined : candidateRows[active];
-
-  for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
-  setDataState(scroll, "topFade", scroll.scrollTop > 0 && activeRow === undefined);
+  return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
 }
 
 export const TranscriptContent = memo(function TranscriptContent({
   items,
   ready,
-  density,
   estimateSize,
   renderItem,
 }: {
   readonly items: readonly Pick<TranscriptRow, "messageId" | "scrollAnchor">[];
   readonly ready: boolean;
-  readonly density: ToolCallDensity;
   readonly estimateSize: (index: number) => number;
   readonly renderItem: (index: number) => ReactNode;
 }): ReactElement {
-  const viewStore = usePaneViewStateStore();
+  const { paneId, sessionId, viewportRef, viewStore, initialPosition, dock, controlsRef } =
+    useTranscript();
 
-  const {
-    paneId,
-    sessionId,
-    initialView,
-    autoScroll,
-    scrollEdgeThreshold,
-    viewport,
-    dock,
-    navigation,
-    end,
-    following,
-    setAway,
-  } = useTranscript();
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [dockHeight, setDockHeight] = useState(0);
 
-  const container = useRef<HTMLDivElement>(null);
-  const anchoring = useRef(false);
-  /** The last scroll offset written by code, so its scroll event is not read as intent. */
-  const written = useRef<number | null>(null);
-  const settle = useRef<() => void>(() => {});
-  const floor = useRef<ContentFloor>({ transient: 0, total: 0, frame: 0 });
+  const [held, setHeld] = useState<Anchor | null>(
+    initialPosition.kind === "end"
+      ? null
+      : { key: initialPosition.key, element: undefined, top: initialPosition.offset },
+  );
 
-  const [restore] = useState(() => {
-    const { transcript, scroll } = initialView;
-    const measurements = transcript.density === density ? transcript.measurements : [];
-    const measured = new Map(measurements.map((item) => [item.key, item.size]));
+  const heldRef = useRef(held);
+  /** Reopening at the end chases it while the first rows measure, until it gets there. */
+  const opening = useRef(initialPosition.kind === "end");
+  const content = useRef<HTMLDivElement>(null);
+  const scrollport = useRef<HTMLDivElement | null>(null);
+  const indexOf = (key: string): number => items.findIndex((item) => item.messageId === key);
 
-    return {
-      measurements: [...measurements],
-      rect: transcript.viewport ?? { width: 0, height: 0 },
-      offset: initialTranscriptOffset({
-        sizes: items.map((item, index) => measured.get(item.messageId) ?? estimateSize(index)),
-        viewportHeight: transcript.viewport?.height ?? 0,
-        scroll,
-      }),
-    };
+  const [initialOffset] = useState(() => {
+    let total = TRANSCRIPT_PADDING_START;
+
+    for (let index = 0; index < items.length; index += 1) total += estimateSize(index);
+
+    return Math.max(0, total - VIEWPORT_GUESS);
   });
 
-  const getItemKey = useCallback((index: number) => items[index]?.messageId ?? index, [items]);
+  const getItemKey = useCallback(
+    (index: number) => items[index]?.messageId ?? String(index),
+    [items],
+  );
+
+  /** The hold's drift after TanStack laid rows out; its row stands in for a lost element. */
+  const correct = (instance: TranscriptVirtualizer): void => {
+    const anchor = heldRef.current;
+    const scroll = instance.scrollElement;
+    const row = anchor === null ? undefined : instance.elementsCache.get(anchor.key);
+
+    if (anchor === null || scroll === null || row === undefined) return;
+
+    if (anchor.element !== undefined && !anchor.element.isConnected) {
+      heldRef.current = { ...anchor, element: undefined, top: topIn(scroll, row) };
+
+      return;
+    }
+
+    const drift = topIn(scroll, anchor.element ?? row) - anchor.top;
+
+    if (Math.abs(drift) > 0.5) instance.scrollToOffset(scroll.scrollTop + drift);
+  };
+
+  /** Whether the view was at the end the last time it settled; rows changing keep it there. */
+  const atEnd = useRef(initialPosition.kind === "end");
+
+  const present = (instance: TranscriptVirtualizer, left = instance.getDistanceFromEnd()): void => {
+    const scroll = instance.scrollElement;
+
+    if (scroll === null || content.current === null) return;
+    correct(instance);
+
+    if (opening.current && heldRef.current === null) {
+      if (left <= 1) opening.current = false;
+      else instance.scrollToEnd();
+    }
+
+    atEnd.current = heldRef.current === null && left <= 1;
+    syncSticky(scroll, content.current, atEnd.current);
+    showScrollButton(dock, left > SCROLL_EDGE_THRESHOLD);
+  };
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
@@ -381,324 +224,272 @@ export const TranscriptContent = memo(function TranscriptContent({
     getScrollElement: () => viewport,
     estimateSize,
     getItemKey,
-    directDomUpdates: true,
-    directDomUpdatesMode: "position",
-    initialMeasurementsCache: restore.measurements,
-    initialRect: restore.rect,
-    initialOffset: restore.offset,
+    initialOffset,
     overscan: OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
-    paddingEnd: TRANSCRIPT_PADDING_END,
-    scrollToFn: (offset, options, instance) => {
-      written.current = offset + (options.adjustments ?? 0);
-      elementScroll(offset, options, instance);
-    },
-    onChange: (instance) => {
-      const total = instance.getTotalSize();
-      const bounds = floor.current;
-
-      const content = container.current;
-
-      if (content !== null && total < bounds.total) {
-        bounds.transient = Math.max(bounds.transient, bounds.total);
-        applyFloor(content, bounds);
-        window.cancelAnimationFrame(bounds.frame);
-        bounds.frame = window.requestAnimationFrame(() => {
-          bounds.transient = 0;
-          applyFloor(content, bounds);
-        });
-      }
-
-      bounds.total = total;
-      settle.current();
-    },
+    paddingEnd: TRANSCRIPT_PADDING_END + dockHeight,
+    anchorTo: "end",
+    scrollEndThreshold: held === null ? 1 : -1,
+    directDomUpdates: true,
+    directDomUpdatesMode: "position",
+    useFlushSync: false,
+    onChange: (instance) => present(instance),
   });
 
-  const attachContainer = useCallback(
+  useLayoutEffect(() => {
+    heldRef.current = held;
+  }, [held]);
+
+  /** Rule 10: rows above the fold are compensated, even while the reader scrolls up. */
+  useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      const fold = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+
+      return instance.itemSizeCache.has(item.key) ? item.end <= fold : item.start < fold;
+    };
+  }, [virtualizer]);
+
+  const attachViewport = useCallback(
     (element: HTMLDivElement | null) => {
-      container.current = element;
-      virtualizer.containerRef(element);
+      scrollport.current = element;
+      setViewport(element);
+      viewportRef?.(element);
     },
-    [virtualizer],
+    [viewportRef],
   );
 
+  const hold = (element: Element): void => {
+    const key = element.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+    const scroll = virtualizer.scrollElement;
+
+    if (key === undefined || scroll === null) return;
+    virtualizer.cancelScroll();
+    opening.current = false;
+    const anchor = { key, element, top: topIn(scroll, element) };
+    heldRef.current = anchor;
+    flushSync(() => setHeld(anchor));
+  };
+
+  const release = (): void => {
+    virtualizer.cancelScroll();
+    opening.current = false;
+
+    if (heldRef.current === null) return;
+    heldRef.current = null;
+    setHeld(null);
+  };
+
+  const end = (): void => {
+    release();
+    virtualizer.scrollToEnd();
+  };
+
+  /** Rules 1 and 20: reopen at the end, or jump to the saved row for `correct` to place. */
   useLayoutEffect(() => {
-    navigation.current = (messageId, options) => {
-      const index = items.findIndex((item) => item.messageId === messageId);
+    if (!ready) return;
+    const anchor = heldRef.current;
 
-      if (index < 0) return false;
-      following.current = false;
-      virtualizer.scrollToIndex(index, {
-        align: options?.align === "nearest" ? "auto" : (options?.align ?? "start"),
-        behavior: options?.behavior ?? "auto",
-      });
+    if (anchor === null) {
+      virtualizer.scrollToEnd();
+    } else if (anchor.element === undefined && indexOf(anchor.key) >= 0) {
+      virtualizer.scrollToIndex(indexOf(anchor.key), { align: "start" });
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- once the thread's rows exist
+  }, [ready]);
 
-      return true;
-    };
-
-    return () => {
-      navigation.current = null;
-    };
-  }, [following, items, navigation, virtualizer]);
+  /**
+   * Rules 2 and 15: rows joining (the live sentinel stays last, so TanStack
+   * sees no append) and a composer changing height keep Following at the end.
+   */
+  useLayoutEffect(() => {
+    if (atEnd.current) virtualizer.scrollToEnd();
+  }, [dockHeight, items, virtualizer]);
 
   useLayoutEffect(
     () => () => {
-      const measurements = virtualizer.takeSnapshot();
-      viewStore.updateSession(sessionId, paneId, (current) =>
-        measurements.length === 0
-          ? current
-          : {
-              ...current,
-              transcript: {
-                measurements,
-                viewport: virtualizer.scrollRect ?? undefined,
-                density,
-              },
-            },
-      );
+      const scroll = scrollport.current;
+      const anchor = heldRef.current;
+      const rows = [...virtualizer.elementsCache.entries()];
+
+      const top =
+        scroll === null
+          ? undefined
+          : rows
+              .filter(
+                ([, row]) =>
+                  row.getBoundingClientRect().bottom > scroll.getBoundingClientRect().top,
+              )
+              .sort(
+                ([, first], [, second]) =>
+                  virtualizer.indexFromElement(first) - virtualizer.indexFromElement(second),
+              )[0];
+
+      const row = anchor === null ? top : (rows.find(([key]) => key === anchor.key) ?? top);
+      const atEnd =
+        scroll !== null && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop <= 1;
+
+      const position: ScrollViewState =
+        scroll !== null && row !== undefined && (anchor !== null || !atEnd)
+          ? { kind: "anchor", key: String(row[0]), offset: topIn(scroll, row[1]) }
+          : { kind: "end" };
+
+      viewStore.updateSession(sessionId, paneId, (state) => ({
+        ...state,
+        scroll: { ...state.scroll, [paneId]: position },
+      }));
     },
-    [density, paneId, sessionId, viewStore, virtualizer],
+    [paneId, sessionId, viewStore, virtualizer],
   );
 
   useLayoutEffect(() => {
-    const content = container.current;
+    const scroll = viewport;
 
-    if (viewport === null || content === null) return undefined;
+    if (scroll === null) return undefined;
+    let height = scroll.clientHeight;
 
-    const pin = (): void => {
-      const bottom = viewport.scrollHeight - viewport.clientHeight;
+    const resize = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === dock) {
+          setDockHeight(entry.target.getBoundingClientRect().height);
+        } else if (entry.target === scroll) {
+          const shrunk = Math.max(0, height - scroll.clientHeight);
+          height = scroll.clientHeight;
+          const left = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
 
-      if (viewport.scrollTop === bottom) return;
-      written.current = bottom;
-      viewport.scrollTop = bottom;
-    };
+          if (heldRef.current === null && left <= shrunk + 1) virtualizer.scrollToEnd();
+          present(virtualizer, Math.min(left, shrunk + 1 >= left ? 0 : left));
 
-    let extent = -1;
-
-    settle.current = () => {
-      const next = viewport.scrollHeight - viewport.clientHeight;
-
-      if (autoScroll && following.current && next !== extent) pin();
-      extent = next;
-      syncStickyAnchor(viewport, content, virtualizer, following.current);
-      setAway(distanceFromEnd(viewport) > scrollEdgeThreshold);
-    };
-
-    end.current = () => {
-      following.current = autoScroll;
-      pin();
-      settle.current();
-    };
-
-    let lastTop = viewport.scrollTop;
-    const scrollable = (): boolean => viewport.scrollHeight > viewport.clientHeight;
-
-    const scrolled = (): void => {
-      const top = viewport.scrollTop;
-      const own = written.current !== null && Math.abs(top - written.current) < 1.5;
-      written.current = null;
-
-      if (!own && !anchoring.current) {
-        if (isAtEnd(viewport)) following.current = autoScroll;
-        else if (top < lastTop) following.current = false;
+          return;
+        }
       }
 
-      lastTop = top;
-      settle.current();
-      viewStore.updateSession(sessionId, paneId, (current) => ({
-        ...current,
-        scroll: { top, bottomPinned: following.current },
-      }));
-    };
+      present(virtualizer);
+    });
 
-    const wheeled = (event: WheelEvent): void => {
-      if (!scrollable()) return;
+    resize.observe(scroll);
 
-      if (event.deltaY < 0) following.current = false;
-      else if (event.deltaY > 0 && isAtEnd(viewport)) following.current = autoScroll;
+    if (dock !== null) {
+      setDockHeight(dock.getBoundingClientRect().height);
+      resize.observe(dock);
+    }
+
+    controlsRef.current = { end, hold };
+
+    const pressed = (event: PointerEvent): void => {
+      if (event.target === scroll) release();
     };
 
     const keyed = (event: KeyboardEvent): void => {
-      const upward =
-        event.key === "ArrowUp" ||
-        event.key === "PageUp" ||
-        event.key === "Home" ||
-        (event.key === " " && event.shiftKey);
-
-      const editing =
-        event.target instanceof HTMLElement &&
-        (event.target.isContentEditable ||
-          event.target.closest("input, textarea, select, [contenteditable]") !== null);
-
-      if (upward && !editing && !event.defaultPrevented && scrollable()) following.current = false;
+      if (navigates(event)) release();
     };
 
-    const observer = new ResizeObserver(() => settle.current());
-    observer.observe(viewport);
-    observer.observe(content);
-
-    if (dock !== null) observer.observe(dock);
-    viewport.addEventListener("scroll", scrolled, { passive: true });
-    viewport.addEventListener("wheel", wheeled, { passive: true });
-    viewport.addEventListener("keydown", keyed);
-    settle.current();
-
-    return () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", scrolled);
-      viewport.removeEventListener("wheel", wheeled);
-      viewport.removeEventListener("keydown", keyed);
-      settle.current = () => {};
-
-      end.current = null;
-    };
-  }, [
-    autoScroll,
-    dock,
-    end,
-    following,
-    paneId,
-    scrollEdgeThreshold,
-    sessionId,
-    setAway,
-    viewStore,
-    viewport,
-    virtualizer,
-  ]);
-
-  useLayoutEffect(() => {
-    if (viewport === null || container.current === null) return;
-
-    if (initialView.scroll.bottomPinned) {
-      end.current?.();
-    } else {
-      following.current = false;
-      virtualizer.scrollToOffset(initialView.scroll.top);
-    }
-  }, [end, following, initialView, ready, viewport, virtualizer]);
-
-  useLayoutEffect(() => {
-    const content = container.current;
-
-    if (viewport === null || content === null) return undefined;
-    const bounds = floor.current;
-    let release = (): void => {};
-
-    let gesture: Event | undefined;
-
-    const anchor = (event: MouseEvent): void => {
+    const clicked = (event: MouseEvent): void => {
       const control =
         event.target instanceof Element
           ? event.target.closest("[aria-expanded], [data-step-preview] *")
           : null;
 
-      if (control === null || (gesture !== undefined && gesture.eventPhase !== Event.NONE)) return;
-      gesture = event;
-      release();
-      following.current = false;
-      anchoring.current = true;
+      if (control !== null) hold(control);
+    };
 
-      const anchors = [control, control.closest("[data-index]")].flatMap((element) =>
-        element === null ? [] : [{ element, top: element.getBoundingClientRect().top }],
+    const selected = (): void => {
+      const selection = document.getSelection();
+      const node = selection?.anchorNode;
+      const anchor = heldRef.current;
+
+      const row = (node instanceof Element ? node : node?.parentElement)?.closest(
+        "[data-message-id]",
       );
 
-      const started = performance.now();
-      let timer = 0;
-
-      const correct = (): void => {
-        const pinned = anchors.find(({ element }) => element.isConnected);
-
-        const drift =
-          pinned === undefined ? 0 : pinned.element.getBoundingClientRect().top - pinned.top;
-
-        if (Math.abs(drift) > 0.5) viewport.scrollTop += drift;
-        window.clearTimeout(timer);
-        timer = window.setTimeout(
-          release,
-          performance.now() - started < ANCHOR_LIMIT_MS ? ANCHOR_SETTLE_MS : 0,
-        );
-      };
-
-      const observer = new ResizeObserver(correct);
-      content.addEventListener("scroll", correct, { capture: true, passive: true });
-
-      release = () => {
-        observer.disconnect();
-        content.removeEventListener("scroll", correct, { capture: true });
-        window.clearTimeout(timer);
-        release = () => {};
-
-        anchoring.current = false;
-
-        if (isAtEnd(viewport)) following.current = autoScroll;
-        settle.current();
-      };
-
-      for (
-        let node = control.parentElement;
-        node !== null && node !== viewport;
-        node = node.parentElement
-      ) {
-        observer.observe(node);
-      }
-
-      timer = window.setTimeout(release, ANCHOR_SETTLE_MS);
+      if (
+        selection?.isCollapsed === false &&
+        row instanceof Element &&
+        content.current?.contains(row) === true &&
+        anchor?.element !== row
+      )
+        hold(row);
     };
 
-    content.addEventListener("click", anchor, { capture: true });
+    const wheeledDock = (event: WheelEvent): void => {
+      if (dock === null || scrollsWithin(event.target, dock)) return;
+      release();
+      virtualizer.scrollBy(event.deltaY);
+    };
+
+    const listeners = new AbortController();
+    const { signal } = listeners;
+    scroll.addEventListener("scroll", () => present(virtualizer), { passive: true, signal });
+    scroll.addEventListener("wheel", release, { passive: true, signal });
+    scroll.addEventListener("touchmove", release, { passive: true, signal });
+    scroll.addEventListener("pointerdown", pressed, { signal });
+    scroll.addEventListener("keydown", keyed, { signal });
+    content.current?.addEventListener("click", clicked, { capture: true, signal });
+    document.addEventListener("selectionchange", selected, { signal });
+    dock?.addEventListener("wheel", wheeledDock, { passive: true, signal });
 
     return () => {
-      release();
-      window.cancelAnimationFrame(bounds.frame);
-      content.removeEventListener("click", anchor, { capture: true });
+      listeners.abort();
+      resize.disconnect();
+      controlsRef.current = null;
     };
-  }, [autoScroll, following, viewport]);
-
-  useLayoutEffect(() => {
-    settle.current();
-  }, [items]);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- the handlers read live state through refs
+  }, [controlsRef, dock, viewport, virtualizer]);
 
   return (
-    <div ref={attachContainer} role="log" {...props(messageScrollerStyles.content)}>
-      {virtualizer.getVirtualItems().map((virtualItem) => {
-        const item = items[virtualItem.index];
+    <div
+      ref={attachViewport}
+      role="region"
+      aria-label="Messages"
+      tabIndex={-1}
+      data-nyte-scrollport="balanced"
+      {...props(messageScrollerStyles.viewport)}
+    >
+      <div
+        ref={(element) => {
+          content.current = element;
+          virtualizer.containerRef(element);
+        }}
+        role="log"
+        {...props(messageScrollerStyles.content)}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const item = items[virtualItem.index];
 
-        if (item === undefined) return null;
+          if (item === undefined) return null;
 
-        return (
-          <div
-            key={item.messageId}
-            ref={virtualizer.measureElement}
-            data-message-id={item.messageId}
-            data-index={virtualItem.index}
-            data-nyte-scroll-anchor={item.scrollAnchor}
-            {...props(
-              messageScrollerStyles.item,
-              virtualItem.index === 0 && messageScrollerStyles.itemFirst,
-            )}
-          >
-            {renderItem(virtualItem.index)}
-          </div>
-        );
-      })}
+          return (
+            <div
+              key={item.messageId}
+              ref={virtualizer.measureElement}
+              data-message-id={item.messageId}
+              data-index={virtualItem.index}
+              data-nyte-scroll-anchor={item.scrollAnchor}
+              {...props(
+                messageScrollerStyles.item,
+                virtualItem.index === 0 && messageScrollerStyles.itemFirst,
+              )}
+            >
+              {renderItem(virtualItem.index)}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 });
 
-function TranscriptScrollButton(): ReactElement {
-  const { end } = useTranscript();
-  const away = useContext(TranscriptAwayContext);
+export function TranscriptButton(): ReactElement | null {
+  const transcript = useContext(TranscriptContext);
   const scrollButton = props(messageScrollerStyles.buttonControl);
+
+  if (transcript === null) return null;
 
   return (
     <div
-      aria-hidden={!away}
+      aria-hidden
       data-slot="scroll-to-bottom"
-      data-scroll-shown={away}
-      {...props(
-        messageScrollerStyles.button,
-        away ? messageScrollerStyles.buttonShown : messageScrollerStyles.buttonHidden,
-      )}
+      data-scroll-shown="false"
+      {...props(messageScrollerStyles.button)}
     >
       <Tooltip>
         <TooltipTrigger
@@ -706,12 +497,12 @@ function TranscriptScrollButton(): ReactElement {
             <Button
               iconOnly
               aria-label="Scroll to bottom"
-              tabIndex={away ? undefined : -1}
+              tabIndex={-1}
               className={scrollButton.className}
               style={scrollButton.style}
               onClick={(event) => {
                 event.currentTarget.blur();
-                end.current?.();
+                transcript.controlsRef.current?.end();
               }}
             >
               <Icon name="arrow-down" size={14} />
@@ -722,10 +513,4 @@ function TranscriptScrollButton(): ReactElement {
       </Tooltip>
     </div>
   );
-}
-
-export function TranscriptButton(): ReactElement | null {
-  const transcript = useContext(TranscriptContext);
-
-  return transcript === null ? null : <TranscriptScrollButton />;
 }

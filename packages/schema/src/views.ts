@@ -20,7 +20,7 @@ import type { Activation } from "./workspaces.ts";
 export type ViewOptions = {
   /** How many messages from the end to carry. Default: the host's bound. */
   readonly tail?: number;
-}
+};
 
 /**
  * Returns everything a client draws for one head: one list of messages, the
@@ -55,7 +55,7 @@ export type SessionView = {
   readonly revision: Revision | null;
   /** The seq of the last durable event this view folded (§54g). */
   readonly seq: Seq;
-  
+
   readonly activation: Activation;
   /** Conversation order, including this client's unsent and the live tail. */
   readonly messages: readonly Message[];
@@ -68,14 +68,17 @@ export type SessionView = {
   /** Children, jobs and pages working for this head. */
   readonly background: readonly BackgroundItem[];
   /** The head's stored selection and what admission would resolve now. */
-  readonly configuration: { readonly selected: Configuration | null; readonly effective: Configuration | null };
+  readonly configuration: {
+    readonly selected: Configuration | null;
+    readonly effective: Configuration | null;
+  };
   readonly context: ContextView;
   readonly heads: readonly HeadInfo[];
   /** Files this session changed, latest state per path, first-seen order. A field, not a derivation. */
   readonly changes: readonly FileChange[];
   /** Commands, settings, skills, agents, tools. A new object only when a plugin, skill or MCP server reloads. */
   readonly catalog: SessionCatalogView;
-}
+};
 
 /**
  * Returns one transcript row: a user input or a part. Nothing else.
@@ -121,7 +124,11 @@ export type Message = { readonly id: MessageId; readonly turn: TurnId; readonly 
       readonly delivery: Delivery;
       readonly status: UserStatus;
       /** Alternatives sharing this message's parent; count 1 = never edited. */
-      readonly siblings: { readonly index: number; readonly count: number; readonly ids: readonly CommitId[] };
+      readonly siblings: {
+        readonly index: number;
+        readonly count: number;
+        readonly ids: readonly CommitId[];
+      };
     }
   | {
       readonly kind: "part";
@@ -152,9 +159,18 @@ export type Message = { readonly id: MessageId; readonly turn: TurnId; readonly 
  * @since 0.1.0
  */
 export type UserStatus =
-  | { readonly kind: "unsent"; readonly attempts: number; readonly retrying: { readonly at: number; readonly reason: string } | null }
+  | {
+      readonly kind: "unsent";
+      readonly attempts: number;
+      readonly retrying: { readonly at: number; readonly reason: string } | null;
+    }
   | { readonly kind: "pending"; readonly schedule: Schedule; readonly covered: boolean }
-  | { readonly kind: "landed"; readonly commit: CommitId; readonly run: RunId | null; readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null };
+  | {
+      readonly kind: "landed";
+      readonly commit: CommitId;
+      readonly run: RunId | null;
+      readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
+    };
 
 /**
  * Returns one turn: its run, prompt, state, step count and summary, computed
@@ -222,10 +238,12 @@ export type TurnInfo = {
   /** What the turn did, maintained incrementally as tools settle. */
   readonly summary: {
     /** Per tool class: how many calls settled ok and the paths they touched. Adding a class adds a key, never a field. */
-    readonly byClass: Readonly<Record<ToolClass["kind"], { readonly count: number; readonly paths: readonly string[] }>>;
+    readonly byClass: Readonly<
+      Record<ToolClass["kind"], { readonly count: number; readonly paths: readonly string[] }>
+    >;
     readonly failed: number;
     readonly stopped: number;
     readonly added: number;
     readonly removed: number;
   };
-}
+};

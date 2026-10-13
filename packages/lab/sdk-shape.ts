@@ -971,8 +971,6 @@ interface Host extends Connection {
   listen(options: ListenOptions): Promise<Listener>;
   /** Hot plugin replacement and preflight: plugin objects and plugin files alike (§47l). */
   readonly plugins: PluginsApi<Plugin<"core"> | PluginFile>;
-  /** Collects unreachable history. The only GC entry point. In-process only. */
-  prune(): Promise<PruneReport>;
   /**
    * Returns raw store reads for one session, for maintenance and tests; never
    * served remotely.
@@ -1108,7 +1106,7 @@ interface Listener {
  * - `owner`: workspaces, providers, settings, git writes.
  * - `maintenance`: `plugins.*` and `principals.*`.
  *
- * `inspect`, `prune` and `execution` are in-process only and have no
+ * `inspect` and `execution` are in-process only and have no
  * authority. A token principal has participant + owner.
  *
  * @category host
@@ -4598,14 +4596,6 @@ type AdvanceReport =
  */
 interface RepairPage { readonly runnable: readonly { readonly session: SessionId; readonly head: HeadName }[]; readonly next: Cursor | null }
 /**
- * Returns what `prune` collected: unreachable history; `retained` = pinned
- * by a ref.
- *
- * @category host
- * @since 0.1.0
- */
-interface PruneReport { readonly objects: number; readonly bytes: number; readonly retained: number }
-/**
  * Returns one paired principal and its authority.
  *
  * @category host
@@ -5402,8 +5392,6 @@ declare class SdkError extends Error {
 interface StoreConnection {
   readonly objects: ObjectStore;
   readonly refs: RefStore;
-  /** Releases the connection. */
-  close(): Promise<void>;
 }
 /**
  * Stores immutable, content-addressed objects and blobs.
@@ -5436,12 +5424,11 @@ interface ObjectStore {
  * - `sessions/<id>/parts/<part>`: part's current state version.
  * - `sessions/<id>/receipts/<receipt>`: `{ kind, digest, outcome | null }`.
  * - `sessions/<id>/calls/<call>`: a durable step: intent, memos, recorded acquisitions, wait.
- * - `sessions/<id>/journal/<principal>`: client-side only; the sdk's RequestJournal over the same interface.
  * - `workspaces/<id>`: workspace record.
  * - `kv/<scope>/<owner>/<key>`: settings, plugin storage, secrets (encrypted object).
  * - `sessions/<id>/leases/<head>`: `{ holder: HostId, instance, expiresAt }`; what an advance holds while a turn runs, renewed while it runs (`execution.cover` takes none). `holder` is the host, `instance` the kernel within it; `busy` and `fenced` compare both. `fenced` is this CAS answering stale.
  * - `host/identity`: `{ id: HostId, createdAt }`, written once, never moved.
- * - `host/settings`, `host/principals`, `host/catalog`.
+ * - `host/principals`: paired principals and unredeemed pairing codes.
  *
  * Receipts, memos and kv are refs, not tables: put-unless-exists is
  * `expect: "absent"`; settle and update are `expect: revision`.

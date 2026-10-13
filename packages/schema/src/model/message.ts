@@ -216,7 +216,7 @@ export type Failure = {
   readonly message: string;
   /** A delay the provider asked for before the next attempt. */
   readonly retryAfterMs?: number;
-}
+};
 
 // oxlint-disable-next-line no-explicit-any -- pi shape; details are tool-defined and typed by each tool
 export interface ToolResultMessage<TDetails = any> {

@@ -1,7 +1,6 @@
 # Source examples
 
-Run these from the workspace you want Nyte to inspect, after login and workspace
-trust setup. Put `nyte` on `PATH`. Each script starts one prompt run and
+Run these from the workspace you want Nyte to inspect, after login. Put `nyte` on `PATH`. Each script starts one prompt run and
 returns Nyte's exit status. Neither script changes your shell settings.
 
 - [ask.sh](ask.sh) passes prompt arguments without shell evaluation.

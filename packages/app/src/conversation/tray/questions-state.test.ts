@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { PartView, SessionView } from "@nyte-ai/sdk";
+import { openQuestions } from "@nyte-ai/plugin/question";
 import { asId } from "@nyte-ai/schema";
-import { answerQuestion, waitingQuestions } from "./questions-state.ts";
+import { answerQuestion } from "./questions-state.ts";
 import { installConnection } from "../../sdk.tsx";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 
@@ -11,7 +12,7 @@ function part(id: string, change: Partial<PartView> = {}): PartView {
     id: asId<"part">(id),
     partKind: "ask/question",
     placement: { kind: "modal" },
-    state: { prompt: `Pick for ${id}`, options: ["Yes", "No"] },
+    state: { prompt: `Pick for ${id}`, options: ["Yes", "No"], answer: null },
     version: 1,
     status: { kind: "live", run: asId<"run">("run") },
     owner: "question",
@@ -23,11 +24,18 @@ function view(parts: readonly PartView[]): Pick<SessionView, "parts"> {
   return { parts };
 }
 
-test("every unanswered question part is waiting; answered, foreign and malformed parts are not", () => {
-  const questions = waitingQuestions(
+test("every unanswered question part is waiting; answered, stopped, foreign and malformed parts are not", () => {
+  const questions = openQuestions(
     view([
       part("open"),
-      part("answered", { status: { kind: "settled", commit: asId<"commit">("c"), endedAt: 1 } }),
+      part("answered", { state: { prompt: "Pick", options: ["Yes", "No"], answer: "Yes" } }),
+      part("stopped", {
+        status: {
+          kind: "failed",
+          run: asId<"run">("run"),
+          failure: { class: "aborted", message: "Stopped." },
+        },
+      }),
       part("map", { partKind: "maps/places" }),
       part("broken", { state: { prompt: 1 } }),
     ]),
@@ -36,7 +44,7 @@ test("every unanswered question part is waiting; answered, foreign and malformed
   assert.deepEqual(questions, [
     { part: asId<"part">("open"), prompt: "Pick for open", options: ["Yes", "No"] },
   ]);
-  assert.deepEqual(waitingQuestions(undefined), []);
+  assert.deepEqual(openQuestions(undefined), []);
 });
 
 test("an answer is the part's answer action with the choice trimmed", async () => {
@@ -58,7 +66,7 @@ test("an answer is the part's answer action with the choice trimmed", async () =
     }),
   });
   installConnection(connection);
-  const [question] = waitingQuestions(view([part("open")]));
+  const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 
   await answerQuestion(session, question, "  Yes  ");
@@ -78,7 +86,7 @@ test("a question nobody waits on any more says so", async () => {
     }),
   });
   installConnection(connection);
-  const [question] = waitingQuestions(view([part("open")]));
+  const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 
   await assert.rejects(

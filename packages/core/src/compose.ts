@@ -27,18 +27,17 @@ import { delegationPlugin } from "./plugins/delegation.ts";
 import { environmentPlugin } from "./plugins/environment.ts";
 import { partsPlugin } from "./plugins/parts.ts";
 import { systemPromptPlugin } from "./plugins/system-prompt.ts";
-import { envelope } from "./records.ts";
+import { decodeHostIdentity, envelope } from "./records.ts";
+import type { HostIdentity } from "./records.ts";
 import { hostIdentityRef, kvRef } from "./refs.ts";
-import type { HostIdentity } from "./refs.ts";
 import { createRequest } from "./request.ts";
 import { resourcesPlugin } from "./resources.ts";
-import { isJsonObject } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { createTurnDriver } from "./turn.ts";
 import { pollStore } from "./watch.ts";
 
-/** Describes what `composeHost` needs: `OpenOptions` plus what the platform host supplies: the home `Resources.user` attaches at, protocol's operations catalog, the host's description, and where each file-loaded plugin came from (§41e). */
+/** Describes what `composeHost` needs: `OpenOptions` plus what the platform host supplies: the home `Resources.user` attaches at, protocol's operations catalog, the host's description, and where each file-loaded plugin came from. */
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
   readonly operations: HostView["operations"];
@@ -47,11 +46,11 @@ export type ComposeOptions = OpenOptions & {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** The interval in ms at which this host re-reads a store it shares with other instances (§42h); the Vercel deploy sets 1000. */
+  /** The interval in ms at which this host re-reads a store it shares with other instances; the Vercel deploy sets 1000. */
   readonly poll?: number;
-  /** Host settings applied before any driver attaches, skipping an id already stored so a value set over the wire survives (§43c, §43j); what did not apply is reported on one `settings` row naming `path`. */
+  /** Host settings applied before any driver attaches, skipping an id already stored so a value set over the wire survives; what did not apply is reported on one `settings` row naming `path`. */
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
-  /** Loads plugin files by path for `PluginsApi` (§47l); absent, a file answers `unavailable`. */
+  /** Loads plugin files by path for `PluginsApi`; absent, a file answers `unavailable`. */
   readonly loadPlugins?: Kernel["loadPlugins"];
 };
 
@@ -64,7 +63,7 @@ export const BUILTINS: readonly Plugin<"core">[] = [
   partsPlugin,
 ];
 
-/** Composes the in-process host `sdk.open` serves: preflights `BUILTINS` and `options.plugins` (a rejected file plugin is dropped and reported, any other throws `invalid`), opens the store, creates the kernel, registers `options.workspace` as the default, applies the seed and starts the in-process driver and the poll. `close()` stops them, releases the leases without waiting on turns in flight (§38y), closes every session's plugins and environments, then the store connection. */
+/** Composes the in-process host `sdk.open` serves: preflights `BUILTINS` and `options.plugins` (a rejected file plugin is dropped and reported, any other throws `invalid`), opens the store, creates the kernel, registers `options.workspace` as the default, applies the seed and starts the in-process driver and the poll. `close()` stops them, releases the leases without waiting on turns in flight, closes every session's plugins and environments, then the store connection. */
 export async function composeHost(
   options: ComposeOptions,
 ): Promise<Omit<Host, "listen"> & { readonly kernel: Kernel }> {
@@ -99,13 +98,7 @@ export async function composeHost(
 
   const store = await options.store.open();
 
-  const kernel = await composeKernel({ ...options, plugins }, store).catch(
-    async (error: unknown) => {
-      await store.close();
-
-      throw error;
-    },
-  );
+  const kernel = await composeKernel({ ...options, plugins }, store);
 
   for (const row of dropped) {
     dev("compose", "plugin file dropped", { path: row.path, issues: row.issues.length });
@@ -162,13 +155,7 @@ export async function hostIdentity(store: StoreConnection): Promise<HostIdentity
   const outcome = await store.refs.set([
     {
       name: hostIdentityRef(),
-      target: await store.objects.put(
-        envelope(
-          "identity",
-          { id: identity.id, createdAt: identity.createdAt },
-          identity.createdAt,
-        ),
-      ),
+      target: await store.objects.put(envelope("identity", identity, identity.createdAt)),
       expect: "absent",
     },
   ]);
@@ -181,7 +168,7 @@ export async function hostIdentity(store: StoreConnection): Promise<HostIdentity
   return winner;
 }
 
-/** Applies a settings seed (§43c, §43j) through `kernel.settings.apply`, skipping ids already stored; unknown ids and invalid values become warnings on one `settings` report row. */
+/** Applies a settings seed through `kernel.settings.apply`, skipping ids already stored; unknown ids and invalid values become warnings on one `settings` report row. */
 async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"]>): Promise<void> {
   const issues: ValidationIssue[] = [];
   let applied = 0;
@@ -308,20 +295,11 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
     await kernel.environments.detachWorkspace(
       asId<"workspace">(ref.name.slice("workspaces/".length)),
     );
-
-  await kernel.store.close();
 }
 
 /** Returns the identity `host/identity` holds, or null before the first open. */
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {
   const ref = await store.refs.get(hostIdentityRef());
-  const object = ref?.target ? await store.objects.get(ref.target) : null;
 
-  if (!isJsonObject(object) || object.kind !== "identity" || !isJsonObject(object.body))
-    return null;
-  const { id, createdAt } = object.body;
-
-  return typeof id === "string" && typeof createdAt === "number"
-    ? { id: asId<"host">(id), createdAt }
-    : null;
+  return ref?.target ? decodeHostIdentity(await store.objects.get(ref.target)) : null;
 }

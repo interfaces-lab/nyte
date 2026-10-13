@@ -11,6 +11,11 @@ export async function blobId(bytes: Uint8Array): Promise<BlobId> {
   return asId<"blob">(await digest(new Uint8Array(bytes)));
 }
 
+/** Returns the SHA-256 hex of a text's UTF-8 bytes. */
+export async function textDigest(text: string): Promise<string> {
+  return digest(new TextEncoder().encode(text));
+}
+
 function canonical(value: Json): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
 

@@ -49,6 +49,11 @@
       "types": "./dist/marker.d.ts",
       "default": "./dist/marker.js"
     },
+    "./meter": {
+      "nyte-source": "./src/meter.tsx",
+      "types": "./dist/meter.d.ts",
+      "default": "./dist/meter.js"
+    },
     "./message": {
       "nyte-source": "./src/message.tsx",
       "types": "./dist/message.d.ts",
@@ -98,11 +103,6 @@
       "nyte-source": "./src/kbd.tsx",
       "types": "./dist/kbd.d.ts",
       "default": "./dist/kbd.js"
-    },
-    "./meter": {
-      "nyte-source": "./src/meter.tsx",
-      "types": "./dist/meter.d.ts",
-      "default": "./dist/meter.js"
     },
     "./menu": {
       "nyte-source": "./src/menu.tsx",
@@ -210,6 +210,11 @@
       "nyte-source": "./src/style.ts",
       "types": "./dist/style.d.ts",
       "default": "./dist/style.js"
+    },
+    "./selection": {
+      "nyte-source": "./src/selection.ts",
+      "types": "./dist/selection.d.ts",
+      "default": "./dist/selection.js"
     }
   },
   "scripts": {
@@ -222,11 +227,15 @@
     "typecheck": "pnpm check:tokens && tsc --noEmit"
   },
   "dependencies": {
-    "@base-ui/react": "^1.8.0",
+    "@base-ui/react": "^1.9.0",
+    "@nivo/axes": "0.99.0",
+    "@nivo/bar": "0.99.0",
+    "@nivo/core": "0.99.0",
+    "@nivo/line": "0.99.0",
     "@shadcn/react": "0.3.1",
     "@stylexjs/stylex": "0.19.0",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.1",
-    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.1",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.10",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.10",
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
     "motion": "12.43.0"

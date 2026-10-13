@@ -13,11 +13,22 @@ it("notifies once when a root session's run ends and stays quiet for a child", a
   const notified: Parameters<ClientApi["ui"]["notify"]>[0][] = [];
   const api = clientApi(host, notified);
   const handler = notifications.hooks.run_ended_anywhere;
-  const context = { api, signal: new AbortController().signal, session: null, head: null, run: null };
-  const failed = { kind: "failed", failure: { class: "provider", message: "Rate\nlimited." } } as const;
+  const context = {
+    api,
+    signal: new AbortController().signal,
+    session: null,
+    head: null,
+    run: null,
+  };
+  const failed = {
+    kind: "failed",
+    failure: { class: "provider", message: "Rate\nlimited." },
+  } as const;
 
   await handler({ session: root.id, run: asId("r1"), end: failed }, context);
   await handler({ session: child.id, run: asId("r2"), end: { kind: "stopped" } }, context);
 
-  expect(notified).toEqual([{ title: "Release", message: "Run failed: Rate limited.", level: "error" }]);
+  expect(notified).toEqual([
+    { title: "Release", message: "Run failed: Rate limited.", level: "error" },
+  ]);
 });

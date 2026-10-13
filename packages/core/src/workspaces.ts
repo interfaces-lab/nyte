@@ -99,7 +99,7 @@ const PATCH_READS = 4;
 
 const staleEntries = new WeakMap<HeldEntry, HeldEntry>();
 
-/** Holds a kernel's workspace-side memory (§52): `Workspace.watch` listeners, patch reads, session scans, the home's files and file batches. */
+/** Holds a kernel's workspace-side memory: `Workspace.watch` listeners, patch reads, session scans, the home's files and file batches. */
 export interface WorkspaceState {
   readonly listeners: Set<(id: WorkspaceId) => void>;
   readonly patches: Map<string, PatchCache>;
@@ -221,7 +221,7 @@ export function createWorkspaces(
   };
 }
 
-/** Returns a handle on a workspace; binds synchronously. An origin in a session on this workspace views it through the session's environment (§37f), and pages opened through `browser()` are held by the origin's head (§37i). */
+/** Returns a handle on a workspace; binds synchronously. An origin in a session on this workspace views it through the session's environment, and pages opened through `browser()` are held by the origin's head. */
 export function workspaceHandle(
   kernel: Kernel,
   context: Pick<ConnectionContext, "origin">,
@@ -397,7 +397,7 @@ export function workspaceHandle(
   };
 }
 
-/** Runs a session's activation over its new runtime: what `ready` settles with (§44a); an unknown session rejects `unknown`. The environment attaches once and the activation is derived from that one settled attach, which the plugins share (E7). */
+/** Runs a session's activation over its new runtime: what `ready` settles with; an unknown session rejects `unknown`. The environment attaches once and the activation is derived from that one settled attach, which the plugins share (E7). */
 export async function activateSession(
   kernel: Kernel,
   session: SessionId,

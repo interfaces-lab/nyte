@@ -7,20 +7,15 @@ import {
   authenticateToken,
   envelope,
   hostPrincipalsRef,
-  prune,
-  reachableObjects,
   createConnection,
   createHost,
   createInvocation,
   driveInProcess,
   environmentPlugin,
-  headRef,
-  isPart,
   redeemPairing,
   runStep,
   viewHead,
   workspaceHandle,
-  text,
   workspaceRef,
 } from "../src/index.ts";
 import type {
@@ -572,39 +567,6 @@ describe("principals", () => {
       host.principals.pair({ authority: new Set(["maintenance"]) }),
     ).rejects.toMatchObject({ code: "invalid" });
     expect(await kernel.store.refs.get(hostPrincipalsRef())).toBeNull();
-  });
-});
-
-describe("prune", () => {
-  it("reports every ref target and every commit a head reaches, and nothing else", async () => {
-    const { kernel, host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
-
-    for (const markdown of ["First.", "Second."])
-      await session.parts.create(text, {
-        state: { markdown, signature: null },
-        placement: { kind: "transcript", role: "note" },
-      });
-
-    const first = (await session.view()).messages[0];
-    assert(first !== undefined && isPart(first, text) && first.status.kind === "settled");
-    const ancestor = asId<"object">(first.status.commit);
-    const refs = await kernel.store.refs.list("");
-    const targets = refs.flatMap((ref) => (ref.target === null ? [] : [ref.target]));
-    const reachable = await collect(reachableObjects(kernel));
-    const unreferenced = await kernel.store.objects.put(envelope("kv", "orphan", 0));
-
-    expect(targets).not.toContain(ancestor);
-    expect(new Set(reachable).size).toBe(reachable.length);
-    expect(reachable).toEqual(expect.arrayContaining([...new Set(targets), ancestor]));
-    expect(reachable).not.toContain(unreferenced);
-    expect(await prune(kernel)).toEqual({
-      objects: reachable.length,
-      bytes: 0,
-      retained: refs.length,
-    });
-    expect(await host.prune()).toEqual(await prune(kernel));
-    expect(refs.map((ref) => ref.name)).toContain(headRef(session.id, main));
   });
 });
 

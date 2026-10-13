@@ -1,67 +1,109 @@
 /**
- * Launches the built desktop for the `desktop` project: a fresh home under
- * the caller's directory, chats seeded through `sdk.open` over the same
- * `.nyte/nyte.db` the desktop opens, and the Electron main entry run with
- * that home. Nothing reaches a provider; the store is the one the app reads.
+ * Launches the e2e desktop build (`packages/desktop/out-e2e`, whose main
+ * answers chats from the offline `e2e` catalog) over a prepared home: a
+ * fresh Electron profile under a temp root, a sanitized environment, and
+ * `HOME` set to the given directory. Nothing reaches a provider or this
+ * machine's `~/.nyte`.
  */
 import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import electronExecutable from "electron";
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { localProvider, sqliteStore } from "@nyte-ai/host";
-import { sdk } from "@nyte-ai/sdk";
 
-const DESKTOP_ROOT = resolve(import.meta.dirname, "../../../desktop");
+const APP_ROOT = resolve(import.meta.dirname, "../..");
+
+const DESKTOP_ROOT = resolve(APP_ROOT, "../desktop");
+
+const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
+
+const KEPT_VARIABLES = new Set([
+  "PATH",
+  "SHELL",
+  "USER",
+  "LOGNAME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "TERM",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "XAUTHORITY",
+  "XDG_RUNTIME_DIR",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "SystemRoot",
+  "windir",
+  "ComSpec",
+  "PATHEXT",
+  "APPDATA",
+  "LOCALAPPDATA",
+]);
 
 export interface LaunchOptions {
-  /** Where the app path is made; the unpackaged desktop serves `<parent>/app/dist`. */
+  /** The home whose `.nyte` the desktop opens; the launcher owns nothing inside it. */
+  readonly home: string;
+  /** Where the Electron profile and app path are made; the unpackaged desktop serves `<parent>/app/dist`. */
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
-  /** Chat names created in the store before the app starts. */
-  readonly sessions?: readonly string[];
 }
 
 export interface LaunchedDesktop {
   readonly application: ElectronApplication;
   readonly page: Page;
-  readonly sessions: readonly string[];
-  readonly pageErrors: readonly string[];
+  readonly home: string;
+  /** Everything the main process wrote to stdout and stderr since launch, interleaved in arrival order. */
+  readonly output: readonly string[];
   close(): Promise<void>;
 }
 
-/** Creates each named chat in the store at `<home>/.nyte/nyte.db`, then closes that host. */
-async function seedSessions(home: string, names: readonly string[]): Promise<void> {
-  await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
+/** Throws with the command to run when a build the desktop project needs is missing. */
+export async function assertBuilt(): Promise<void> {
+  const required = [
+    [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
+    [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
+    [resolve(APP_ROOT, "dist/index.html"), "pnpm --dir packages/app build"],
+  ] as const;
 
-  const host = await sdk.open({
-    store: sqliteStore({ path: join(home, ".nyte", "nyte.db") }),
-    plugins: [{ id: "local", environment: localProvider({ home }) }],
-    workspace: { kind: "local", path: home },
-    home,
-  });
-
-  try {
-    for (const name of names) await host.sessions.create({ name });
-  } finally {
-    await host.close();
+  for (const [path, command] of required) {
+    await access(path).catch(() => {
+      throw new Error(`Missing ${path}. Run ${command} first.`);
+    });
   }
 }
 
-/** Starts the desktop over a fresh home and waits until its shell and the first seeded chat show. */
+/** The electron the desktop package pins, not the app package's: `path.txt` names the binary inside `dist`, as electron's own `index.js` resolves it. */
+async function electronExecutable(): Promise<string> {
+  const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
+  const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
+
+  return join(electronRoot, "dist", executable.trim());
+}
+
+/** The launched process sees only what a GUI launch needs, plus `HOME` at the test's home. */
+function launchEnvironment(home: string): Record<string, string> {
+  const kept = Object.entries(process.env).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
+  );
+
+  return { ...Object.fromEntries(kept), HOME: home, USERPROFILE: home };
+}
+
+/** Starts the desktop over `home` and waits until its shell shows. */
 export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDesktop> {
-  const mainEntry = resolve(DESKTOP_ROOT, "out/main/index.js");
-  await access(mainEntry);
+  await assertBuilt();
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));
-  const home = join(root, "home");
   const appData = join(root, "app-data");
-  const sessions = options.sessions ?? [];
   await mkdir(appData, { recursive: true });
-  await seedSessions(home, sessions);
+  await symlink(APP_ROOT, join(options.parentDirectory, "app"), "junction").catch(
+    (cause: NodeJS.ErrnoException) => {
+      if (cause.code !== "EEXIST") throw cause;
+    },
+  );
 
   const downloads =
     options.downloadsDirectory === undefined
@@ -74,7 +116,7 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   );
   await writeFile(
     join(root, "entry.mjs"),
-    `import "./environment.mjs";\nimport ${JSON.stringify(pathToFileURL(mainEntry).href)};\n`,
+    `import "./environment.mjs";\nimport ${JSON.stringify(pathToFileURL(MAIN_ENTRY).href)};\n`,
   );
 
   const metadata = Value.Parse(
@@ -88,20 +130,21 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   );
   await symlink(join(DESKTOP_ROOT, "resources"), join(root, "resources"), "junction");
 
-  const environment = Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] =>
-        entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
-    ),
-  );
-
   const application = await _electron.launch({
-    executablePath: Value.Parse(Type.String(), electronExecutable),
+    executablePath: await electronExecutable(),
     args: [root, "--use-mock-keychain", "--password-store=basic"],
     cwd: DESKTOP_ROOT,
-    env: { ...environment, HOME: home },
+    env: launchEnvironment(options.home),
     timeout: 30_000,
   });
+
+  const output: string[] = [];
+  const child = application.process();
+
+  for (const stream of [child.stdout, child.stderr]) {
+    stream?.setEncoding("utf8");
+    stream?.on("data", (chunk: string) => output.push(chunk));
+  }
 
   const close = async (): Promise<void> => {
     await application.close().catch(() => undefined);
@@ -109,19 +152,10 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   };
 
   try {
-    const pageErrors: string[] = [];
     const page = await application.firstWindow();
-    page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
-    const [first] = sessions;
 
-    if (first !== undefined)
-      await page
-        .getByRole("navigation", { name: "Sessions and workspaces" })
-        .getByRole("button", { name: first })
-        .waitFor({ state: "visible", timeout: 30_000 });
-
-    return { application, page, sessions, pageErrors, close };
+    return { application, page, home: options.home, output, close };
   } catch (cause) {
     await close();
     throw cause;

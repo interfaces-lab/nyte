@@ -40,7 +40,10 @@ function MeterRoot({
   ...rest
 }: StyledProps<MeterPrimitive.Root.Props>): ReactElement {
   return (
-    <MeterPrimitive.Root {...rest} {...mergeStyleProps(props(styles.root, xstyle), className, style)} />
+    <MeterPrimitive.Root
+      {...rest}
+      {...mergeStyleProps(props(styles.root, xstyle), className, style)}
+    />
   );
 }
 

@@ -20,7 +20,7 @@ const states: Readonly<Record<string, Json>> = {
   tool: { ...call, phase: "running", progress: null },
   compaction: { summary: "Earlier work.", material: null, tokensBefore: 90_000, usage: null },
   branchSummary: { markdown: "Tried another parser." },
-  "ask/question": { prompt: "Deploy?", options: ["yes", "no"] },
+  "ask/question": { prompt: "Deploy?", options: ["yes", "no"], answer: null },
 };
 
 /** Returns an `act` that records each call and answers closed. */

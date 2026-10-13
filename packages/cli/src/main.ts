@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { sqliteStore } from "@nyte-ai/host";
 import canvasPlugin from "@nyte-ai/plugin/canvas";
 import { isPart, text } from "@nyte-ai/plugin/core";
-import { sdk } from "@nyte-ai/sdk";
+import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host, OpenHostOptions } from "@nyte-ai/sdk";
 import { launch } from "./launcher.js";
 
@@ -30,6 +30,7 @@ export interface MainOptions {
  * is the terminal client, the native binary `launch` spawns.
  */
 export async function main(args: readonly string[], options: MainOptions = {}): Promise<number> {
+  if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "cli");
   if (args[0] === "serve") return serve(args.slice(1), options);
   const end = args.indexOf("--");
   const flags = end === -1 ? args : args.slice(0, end);

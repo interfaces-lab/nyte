@@ -5,7 +5,9 @@ import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import type { Plugin } from "./core.ts";
 
-const page = Type.Optional(Type.String({ description: "The page id; omit for the page opened last." }));
+const page = Type.Optional(
+  Type.String({ description: "The page id; omit for the page opened last." }),
+);
 
 const ref = Type.String({ description: "A node's ref from the latest snapshot." });
 
@@ -18,13 +20,18 @@ function on<P extends Record<string, TSchema>>(properties: P) {
 async function browserOf(invocation: ToolInvocation): Promise<BrowserApi> {
   const capability = await invocation.workspace.browser();
 
-  if (capability.kind !== "available") throw new Error(`No browser is available here: ${capability.reason}`);
+  if (capability.kind !== "available")
+    throw new Error(`No browser is available here: ${capability.reason}`);
 
   return capability.api;
 }
 
 /** Runs `use` on a transient hold of the page named, or of the page opened last, and releases the hold. */
-async function withPage<T>(invocation: ToolInvocation, id: string | undefined, use: (page: Page) => Promise<T>): Promise<T> {
+async function withPage<T>(
+  invocation: ToolInvocation,
+  id: string | undefined,
+  use: (page: Page) => Promise<T>,
+): Promise<T> {
   const browser = await browserOf(invocation);
   const target = id ?? (await browser.list()).at(-1)?.id;
 
@@ -38,7 +45,10 @@ async function withPage<T>(invocation: ToolInvocation, id: string | undefined, u
 function render(snapshot: PageSnapshot): string {
   return [
     `Revision ${snapshot.revision}`,
-    ...snapshot.nodes.map((node) => `${"  ".repeat(node.depth)}[${node.ref}] ${node.role} "${node.name}"${node.editable ? " (editable)" : ""}`),
+    ...snapshot.nodes.map(
+      (node) =>
+        `${"  ".repeat(node.depth)}[${node.ref}] ${node.role} "${node.name}"${node.editable ? " (editable)" : ""}`,
+    ),
   ].join("\n");
 }
 
@@ -46,9 +56,12 @@ function render(snapshot: PageSnapshot): string {
 function outcomeText(outcome: PageOutcome): string {
   if (outcome.kind === "applied") return render(outcome.snapshot);
 
-  if (outcome.kind === "stale") return `The page changed (now revision ${outcome.revision}). Take a snapshot and try again.`;
+  if (outcome.kind === "stale")
+    return `The page changed (now revision ${outcome.revision}). Take a snapshot and try again.`;
 
-  return outcome.kind === "refused" ? `Refused: ${outcome.reason}.` : `The page is closed: ${outcome.reason}.`;
+  return outcome.kind === "refused"
+    ? `Refused: ${outcome.reason}.`
+    : `The page is closed: ${outcome.reason}.`;
 }
 
 /** Returns a tool over the browser: the given name, description and parameters, its result as text. */
@@ -65,21 +78,32 @@ function browserTool<S extends ReturnType<typeof on>>(input: {
     parameters: input.parameters,
     class: () => ({ kind: "custom", label: input.name.replace("browser_", "Browser: ") }),
     replay: input.replay,
-    execute: async (args, invocation) => ({ content: [{ kind: "text", text: await input.run(args, invocation) }] }),
+    execute: async (args, invocation) => ({
+      content: [{ kind: "text", text: await input.run(args, invocation) }],
+    }),
   };
 }
 
 const open: ToolDefinition<{ url: string }> = {
   name: "browser_open",
   description: "Open a URL in a new browser page and return the page id and its snapshot.",
-  parameters: standard(Type.Object({ url: Type.String({ minLength: 1, description: "The URL to open." }) })),
+  parameters: standard(
+    Type.Object({ url: Type.String({ minLength: 1, description: "The URL to open." }) }),
+  ),
   class: (args) => ({ kind: "custom", label: `Opening ${args.url}` }),
   replay: "safe",
   async execute(args, invocation) {
     const opened = await (await browserOf(invocation)).open({ url: args.url });
     const view = await opened.view();
 
-    return { content: [{ kind: "text", text: `Page ${opened.id}: ${view.title} (${view.url})\n${render(await opened.snapshot())}` }] };
+    return {
+      content: [
+        {
+          kind: "text",
+          text: `Page ${opened.id}: ${view.title} (${view.url})\n${render(await opened.snapshot())}`,
+        },
+      ],
+    };
   },
 };
 
@@ -116,31 +140,51 @@ export const browserTools: readonly ToolDefinition[] = [
   open,
   browserTool({
     name: "browser_snapshot",
-    description: "Read the page's accessibility tree: one line per node with its ref, role and name.",
+    description:
+      "Read the page's accessibility tree: one line per node with its ref, role and name.",
     parameters: on({ ref: Type.Optional(ref) }),
     replay: "safe",
-    run: (args, invocation) => withPage(invocation, args.page, async (held) => render(await held.snapshot({ ref: args.ref }))),
+    run: (args, invocation) =>
+      withPage(invocation, args.page, async (held) =>
+        render(await held.snapshot({ ref: args.ref })),
+      ),
   }),
   browserTool({
     name: "browser_click",
     description: "Click a node by its ref.",
     parameters: on({
       ref,
-      button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")])),
+      button: Type.Optional(
+        Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle")]),
+      ),
       double: Type.Optional(Type.Boolean()),
     }),
     replay: "never",
     run: (args, invocation) =>
-      withPage(invocation, args.page, async (held) => outcomeText(await held.click({ ref: args.ref, button: args.button, double: args.double }))),
+      withPage(invocation, args.page, async (held) =>
+        outcomeText(await held.click({ ref: args.ref, button: args.button, double: args.double })),
+      ),
   }),
   browserTool({
     name: "browser_type",
     description: "Type text into a node by its ref.",
-    parameters: on({ ref, text: Type.String(), clear: Type.Optional(Type.Boolean()), submit: Type.Optional(Type.Boolean()) }),
+    parameters: on({
+      ref,
+      text: Type.String(),
+      clear: Type.Optional(Type.Boolean()),
+      submit: Type.Optional(Type.Boolean()),
+    }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
-        outcomeText(await held.type({ ref: args.ref, text: args.text, clear: args.clear, submit: args.submit })),
+        outcomeText(
+          await held.type({
+            ref: args.ref,
+            text: args.text,
+            clear: args.clear,
+            submit: args.submit,
+          }),
+        ),
       ),
   }),
   browserTool({
@@ -148,23 +192,36 @@ export const browserTools: readonly ToolDefinition[] = [
     description: "Press a key or chord, such as Enter or Control+a, on a node or the page.",
     parameters: on({ key: Type.String(), ref: Type.Optional(ref) }),
     replay: "never",
-    run: (args, invocation) => withPage(invocation, args.page, async (held) => outcomeText(await held.press({ key: args.key, ref: args.ref }))),
+    run: (args, invocation) =>
+      withPage(invocation, args.page, async (held) =>
+        outcomeText(await held.press({ key: args.key, ref: args.ref })),
+      ),
   }),
   browserTool({
     name: "browser_scroll",
     description: "Scroll the page or a node.",
     parameters: on({
-      direction: Type.Union([Type.Literal("up"), Type.Literal("down"), Type.Literal("top"), Type.Literal("bottom")]),
+      direction: Type.Union([
+        Type.Literal("up"),
+        Type.Literal("down"),
+        Type.Literal("top"),
+        Type.Literal("bottom"),
+      ]),
       ref: Type.Optional(ref),
       pages: Type.Optional(Type.Number({ minimum: 0.1 })),
     }),
     replay: "never",
     run: (args, invocation) =>
-      withPage(invocation, args.page, async (held) => outcomeText(await held.scroll({ direction: args.direction, ref: args.ref, pages: args.pages }))),
+      withPage(invocation, args.page, async (held) =>
+        outcomeText(
+          await held.scroll({ direction: args.direction, ref: args.ref, pages: args.pages }),
+        ),
+      ),
   }),
   browserTool({
     name: "browser_wait",
-    description: "Wait for the page to load, for text to appear or disappear, or for a delay in milliseconds.",
+    description:
+      "Wait for the page to load, for text to appear or disappear, or for a delay in milliseconds.",
     parameters: on({
       for: Type.Union([Type.Literal("loaded"), Type.Literal("text"), Type.Literal("delay")]),
       text: Type.Optional(Type.String()),
@@ -188,13 +245,18 @@ export const browserTools: readonly ToolDefinition[] = [
   browserTool({
     name: "browser_console",
     description: "Read the page's console, newest first.",
-    parameters: on({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })), clear: Type.Optional(Type.Boolean()) }),
+    parameters: on({
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+      clear: Type.Optional(Type.Boolean()),
+    }),
     replay: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) => {
         const entries = await held.console({ limit: args.limit, clear: args.clear });
 
-        return entries.length === 0 ? "The console is empty." : entries.map((entry) => `[${entry.level}] ${entry.text}`).join("\n");
+        return entries.length === 0
+          ? "The console is empty."
+          : entries.map((entry) => `[${entry.level}] ${entry.text}`).join("\n");
       }),
   }),
   capture,

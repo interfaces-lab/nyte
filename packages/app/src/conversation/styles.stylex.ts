@@ -306,11 +306,10 @@ export const composerStyles = create({
     whiteSpace: "nowrap",
   },
   dock: {
-    position: "sticky",
+    position: "absolute",
+    insetInline: 0,
     bottom: 0,
     zIndex: layer.stickyContent,
-    flexShrink: 0,
-    width: "100%",
     pointerEvents: "none",
     "::before": {
       content: "''",
@@ -485,13 +484,12 @@ export const composerStyles = create({
   frameNewChat: {
     gap: 6,
     minHeight: 106,
-    padding: "10px 12px 8px",
     borderRadius: conversation.composerNewChatRadius,
   },
   frameFollowUpCompact: {
     gap: 6,
     minHeight: COMPOSER_COMPACT_HEIGHT,
-    padding: "4px 8px 4px 10px",
+    paddingInline: "10px 8px",
     borderRadius: radius.pill,
   },
   frameFollowUpExpanded: { borderRadius: conversation.composerExpandedRadius },
@@ -520,6 +518,7 @@ export const composerStyles = create({
     scrollPaddingInline: 8,
   },
   attachmentsInset: { width: "auto", marginInline: 12 },
+  attachmentsNewChat: { paddingBlockStart: 16 },
   attachmentsInsetCompact: { marginInline: 2 },
   attachmentsMessageEdit: {
     gap: USER_IMAGES_GAP,
@@ -558,6 +557,7 @@ export const composerStyles = create({
     lineHeight: type.leadingSm,
   },
   attachmentErrorInset: { marginInline: 12 },
+  attachmentErrorNewChat: { marginBlockStart: 10 },
   attachmentErrorInsetCompact: { marginInline: 2 },
   input: {
     display: "block",
@@ -621,9 +621,17 @@ export const composerStyles = create({
     animationTimingFunction: "step-end",
     animationIterationCount: "infinite",
   },
-  inputNewChat: { minHeight: 54, maxHeight: 340 },
+  inputNewChat: {
+    minHeight: 64,
+    maxHeight: 350,
+    paddingBlockStart: 10,
+    paddingInline: 12,
+  },
+  inputNewChatAttached: { minHeight: 54, maxHeight: 340, paddingBlockStart: 0 },
   inputCompact: {
-    minHeight: type.leadingLg,
+    minHeight: COMPOSER_COMPACT_HEIGHT - 2,
+    paddingBlock: 6,
+    paddingBlockStart: 8,
     minWidth: 0,
     overflowX: "auto",
     overflowY: "hidden",
@@ -662,7 +670,7 @@ export const composerStyles = create({
     paddingInline: USER_PROMPT_PADDING_INLINE,
   },
   // Clips a multi-line draft to the compact row; `inputCompact`'s nowrap does not stop hard line breaks.
-  editorCollapsed: { maxHeight: type.leadingLg },
+  editorCollapsed: { maxHeight: `calc(${type.leadingLg} + 14px)` },
   mentionChip: {
     position: "relative",
     display: "inline-flex",
@@ -757,6 +765,7 @@ export const composerStyles = create({
     gap: target.gap,
     minHeight: button.heightMd,
   },
+  controlsNewChat: { paddingInline: 12, paddingBlockEnd: 8 },
   controlsInset: { paddingInline: 8, paddingBlockEnd: 8 },
   controlsCompact: { display: "contents" },
   addButtonCompact: { gridColumn: 1, gridRow: 1 },
@@ -1538,27 +1547,15 @@ export const messageScrollerStyles = create({
     insetBlockEnd: 0,
     insetInlineStart: "50%",
     translate: "-50% 0",
+    opacity: { default: 0, "[data-scroll-shown='true']": 1 },
+    visibility: { default: "hidden", "[data-scroll-shown='true']": "visible" },
+    pointerEvents: { default: "none", "[data-scroll-shown='true']": "auto" },
     transitionProperty: "opacity, visibility",
-  },
-  buttonShown: {
-    opacity: 1,
-    visibility: "visible",
-    pointerEvents: "auto",
-    transitionDuration: {
-      default: motion.durationNormal,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
-  },
-  buttonHidden: {
-    opacity: 0,
-    visibility: "hidden",
-    pointerEvents: "none",
     transitionDuration: {
       default: "120ms",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "ease-in",
+    transitionTimingFunction: "ease-in-out",
   },
   buttonControl: {
     borderRadius: radius.pill,

@@ -37,7 +37,7 @@ import { contributionsOf, modelInfo } from "./models.ts";
 import { compaction } from "./parts.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import { LOCAL } from "./principals.ts";
-import { decodePartRecord, decodeRunRecord } from "./records.ts";
+import { decodePartRecord, decodeRunRecord, isJsonObject } from "./records.ts";
 import type { PartRecord } from "./records.ts";
 import { headRef, partRef, runRef, sessionRef } from "./refs.ts";
 import { ZERO_USAGE, charge, complete, requestEvent, rideRef } from "./request.ts";
@@ -47,7 +47,6 @@ import {
   attempt,
   commit,
   expectOf,
-  isJsonObject,
   load,
   objectOf,
   pathOf,
@@ -184,7 +183,7 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
 }
 
 /**
- * Compacts a run's request body (§38s): splits it into what is summarised and the retained tail
+ * Compacts a run's request body: splits it into what is summarised and the retained tail
  * (`skipped` when nothing committed precedes it), runs `before_compaction`, and writes its result
  * or one summary request's as a `compaction` part with its commit, `request` event and run charge
  * in one set. A failed summary or an invalid hook result is `failed`; a hook that throws rejects.
@@ -306,7 +305,7 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
   };
 }
 
-/** Returns the update charging a compaction's usage to its run record (§38v), bumping `requests` with its `request` event (§38w). */
+/** Returns the update charging a compaction's usage to its run record, bumping `requests` with its `request` event. */
 async function charged(
   kernel: Kernel,
   session: SessionId,
@@ -474,7 +473,7 @@ async function writeCompaction(
   return outcome.kind === "set";
 }
 
-/** Returns what a plan writes: its `result`, validated once here (§D9), or one summary request's answer. */
+/** Returns what a plan writes: its `result`, validated once here, or one summary request's answer. */
 async function writtenOf(
   kernel: Kernel,
   models: Models,
@@ -743,7 +742,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Returns the head's latest compaction material as the checkpoint when the request model's provider identity made it (§38e); an invalid stored state is a corrupt store. */
+/** Returns the head's latest compaction material as the checkpoint when the request model's provider identity made it; an invalid stored state is a corrupt store. */
 export async function checkpointOf(
   kernel: Kernel,
   session: SessionId,

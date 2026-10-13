@@ -46,7 +46,7 @@ interface Completed {
   readonly failure: Failure | null;
 }
 
-/** The provider retry policy every request core sends follows (§38j). */
+/** The provider retry policy every request core sends follows. */
 export const RETRY_POLICY: RetryPolicy = {
   enabled: true,
   maxRetries: 3,
@@ -64,7 +64,7 @@ export const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** Returns the usage a provider message reports (§38l): counts as reported, `cost` the adapter's priced cost when above zero, else priced at `info.cost` per million. */
+/** Returns the usage a provider message reports: counts as reported, `cost` the adapter's priced cost when above zero, else priced at `info.cost` per million. */
 export function usageOf(message: AssistantMessage, info: ModelInfo): Usage {
   const reported = message.usage;
   const { input, output, cacheRead, cacheWrite } = reported;
@@ -122,7 +122,7 @@ export function addUsage(left: Usage, right: Usage): Usage {
   };
 }
 
-/** Returns a run record charged one request's usage, its `requests` bumped when the request publishes a `request` event (§38v, w). */
+/** Returns a run record charged one request's usage, its `requests` bumped when the request publishes a `request` event. */
 export function charge(record: RunRecord, usage: Usage | null, requested: boolean): RunRecord {
   return {
     ...record,
@@ -166,7 +166,7 @@ export async function rideRef(kernel: Kernel, name: string, event: DurableEvent)
   }
 }
 
-/** Sends one model request outside a turn: each attempt through `withLimits` under `RETRY_POLICY`, observed on `runtime` with `after_request` and, when it failed, charged here (§38v); the caller charges the answer. Null when the catalog lacks the model. */
+/** Sends one model request outside a turn: each attempt through `withLimits` under `RETRY_POLICY`, observed on `runtime` with `after_request` and, when it failed, charged here; the caller charges the answer. Null when the catalog lacks the model. */
 export async function complete(
   kernel: Kernel,
   models: Models,
@@ -247,7 +247,7 @@ function failedOf(message: AssistantMessage): boolean {
   return message.stopReason === "error" || message.stopReason === "aborted";
 }
 
-/** Charges one failed attempt where it was sent: its run record with the `request` event (§38v, w), else the event riding the session ref. */
+/** Charges one failed attempt where it was sent: its run record with the `request` event, else the event riding the session ref. */
 async function chargeFailed(
   kernel: Kernel,
   where: HookContext,
@@ -284,11 +284,11 @@ const REFUSALS = ["refusal", "content_filter", "SAFETY"] as const;
 
 /**
  * Returns `PluginApi.request`: one `completeSimple` under `RETRY_POLICY`, charged as a `request`
- * event with step `plugin`. A provider refusal (§38h) is `refused`; with `output` the system prompt
- * asks for JSON matching the schema and the answer is parsed and validated (§38g).
+ * event with step `plugin`. A provider refusal is `refused`; with `output` the system prompt
+ * asks for JSON matching the schema and the answer is parsed and validated.
  */
 export function createRequest(kernel: Kernel, models: Models): Kernel["request"] {
-  /** Without `output`, `T` is the default `string`: the one unchecked widening of a request (§34a). */
+  /** Without `output`, `T` is the default `string`: the one unchecked widening of a request. */
   function request<T>(
     session: SessionId,
     input: ModelRequestInput<T>,
@@ -382,7 +382,7 @@ function parseJson(text: string): { readonly value: unknown } | null {
 /**
  * Lowers a transcript to ai's request `Context`: the tools ride the leading system message as
  * `toolsAdded`, each with its JSON Schema and, when its definition has a `grammar`, constrained
- * sampling; `checkpoint` is set when given (§38e).
+ * sampling; `checkpoint` is set when given.
  */
 export function providerContext(
   transcript: Transcript,

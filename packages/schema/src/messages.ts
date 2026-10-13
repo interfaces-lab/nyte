@@ -7,7 +7,10 @@ import type { BlobId, CommitId, JobId, RunId, SessionId } from "./ids.ts";
  *
  * - `steer`: join the live run at its next boundary; start one if idle.
  * - `queue`: after the current run; start one if idle.
- * - `attach`: never starts a run; rides with whatever turn comes next.
+ * - `attach`: rides with whatever turn comes next. A child's or job's report
+ *   also starts a `continuation` run when the head's last run completed, and
+ *   asks the live run for one more reply when it lands as that run finishes.
+ *   A head stopped or failed stays so until its next prompt.
  *
  * One admission path for users, core, tools and the terminal. Async subagent
  * reports, background job output and `!cmd` output are all attach by
@@ -47,7 +50,12 @@ export type UserContent =
   | string
   | readonly (
       | { readonly kind: "text"; readonly text: string }
-      | { readonly kind: "file"; readonly blob: BlobId; readonly mime: string; readonly name: string }
+      | {
+          readonly kind: "file";
+          readonly blob: BlobId;
+          readonly mime: string;
+          readonly name: string;
+        }
       | { readonly kind: "reference"; readonly path: string }
     )[];
 
@@ -57,7 +65,9 @@ export type UserContent =
  * @category heads
  * @since 0.1.0
  */
-export type Position = { readonly kind: "start" } | { readonly kind: "commit"; readonly id: CommitId };
+export type Position =
+  | { readonly kind: "start" }
+  | { readonly kind: "commit"; readonly id: CommitId };
 
 /**
  * Names who sent an input.
@@ -85,12 +95,16 @@ export type MessageSource =
  *
  * - `joined`: steer joined a live run at its next boundary.
  * - `next-turn`: waits for the next turn, for `reason`.
- * - `attached`: starts nothing; rides with the next turn.
+ * - `attached`: rides with the next turn; a child's or job's report starts
+ *   one when the head's last run completed.
  *
  * @category views
  * @since 0.1.0
  */
 export type Schedule =
   | { readonly kind: "joined"; readonly run: RunId }
-  | { readonly kind: "next-turn"; readonly reason: "requested" | "idle" | "run-ended" | "configuration" }
+  | {
+      readonly kind: "next-turn";
+      readonly reason: "requested" | "idle" | "run-ended" | "configuration";
+    }
   | { readonly kind: "attached" };

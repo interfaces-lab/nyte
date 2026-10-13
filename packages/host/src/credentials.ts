@@ -324,16 +324,10 @@ function stringRecord(value: unknown): Record<string, string> | undefined {
     : undefined;
 }
 
-/** Runs `task` over a fresh store connection and closes it after. */
+/** Runs `task` over a store connection. */
 async function connected<T>(
   store: Store,
   task: (connection: StoreConnection) => Promise<T>,
 ): Promise<T> {
-  const connection = await store.open();
-
-  try {
-    return await task(connection);
-  } finally {
-    await connection.close();
-  }
+  return task(await store.open());
 }

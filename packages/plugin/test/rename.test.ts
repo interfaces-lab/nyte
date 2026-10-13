@@ -15,7 +15,9 @@ it("names an unnamed session once from a title request, and a later run asks not
   const session = await host.sessions.create();
   await (await session.send("Why does fetch time out?")).settled();
 
-  expect(await until(async () => (await session.info()).name ?? undefined)).toBe("Timeout for flaky fetch");
+  expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
+    "Timeout for flaky fetch",
+  );
   expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({
     role: "user",
     content: "User: Why does fetch time out?\n\nAssistant: Use a 30 s timeout.",

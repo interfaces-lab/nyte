@@ -1,7 +1,9 @@
-import { standard } from "@nyte-ai/schema";
-import type { Infer, ToolContent } from "@nyte-ai/schema";
+import { PatchEntrySchema, standard } from "@nyte-ai/schema";
+import type { Infer, PatchEntry, ToolContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { textDigest } from "../content.ts";
 import type { FilesApi } from "../files.ts";
+import { lineDiff } from "../line-diff.ts";
 import type { Plugin } from "../plugin.ts";
 import type { ToolDefinition } from "../tools.ts";
 
@@ -99,31 +101,40 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
   },
 };
 
-/** Writes a whole file with `parents`; replaying writes the same content again. */
-const write: ToolDefinition<Infer<typeof writeParameters>> = {
+/** Writes a whole file with `parents`, its output the patch from what it replaced, none when that was binary or large; replaying writes the same content again. */
+const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
   name: "write",
   description:
     "Write a file in the workspace, creating missing directories. Replaces the whole file.",
   parameters: writeParameters,
+  output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
   replay: "safe",
   async execute(args, invocation) {
-    const outcome = await invocation.env.files.write(args.path, args.content, { parents: true });
+    const { files } = invocation.env;
+    const previous = await files.read(args.path);
+    const outcome = await files.write(args.path, args.content, { parents: true });
 
     if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
 
-    return text(
+    const result = text(
       `Wrote ${new TextEncoder().encode(args.content).byteLength} bytes to ${args.path}.`,
     );
+
+    if (previous.kind === "binary" || previous.kind === "large") return result;
+    const before = previous.kind === "text" ? previous.contents : null;
+
+    return { ...result, output: await patchOf(args.path, before, args.content) };
   },
 };
 
 /** Edits a text file by unique, non-overlapping exact replacements written against the version read; a replay whose `oldText` no longer occurs fails, since an earlier run's edit cannot be told apart. */
-const edit: ToolDefinition<Infer<typeof editParameters>> = {
+const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
   name: "edit",
   description:
     "Edit a file in the workspace by exact replacement. Each oldText must match exactly one place in the file, and edits must not overlap.",
   parameters: editParameters,
+  output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
   replay: "safe",
   async execute(args, invocation) {
@@ -170,9 +181,12 @@ const edit: ToolDefinition<Infer<typeof editParameters>> = {
 
     if (outcome.kind !== "saved") throw new Error(`Could not write ${args.path}: ${outcome.kind}.`);
 
-    return text(
-      `Edited ${args.path}: ${spans.length} ${spans.length === 1 ? "replacement" : "replacements"}.`,
-    );
+    return {
+      ...text(
+        `Edited ${args.path}: ${spans.length} ${spans.length === 1 ? "replacement" : "replacements"}.`,
+      ),
+      output: await patchOf(args.path, contents, edited),
+    };
   },
 };
 
@@ -225,7 +239,7 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   },
 };
 
-/** Runs a command in the workspace root: its last 32 KiB of output and exit code, the last 4 KiB published as progress while it runs (§51h); never replayed, so a crash settles it `interrupted`. */
+/** Runs a command in the workspace root: its last 32 KiB of output and exit code, the last 4 KiB published as progress while it runs; never replayed, so a crash settles it `interrupted`. */
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
   description:
@@ -332,6 +346,17 @@ export const environmentPlugin: Plugin<"core"> = {
 /** Returns a tool result of one text item. */
 function text(value: string): { readonly content: readonly ToolContent[] } {
   return { content: [{ kind: "text", text: value }] };
+}
+
+/** Returns a write's change to one path: hunks with three lines of context and real line numbers, `added` when nothing was there, `empty` when nothing changed, `digest` the SHA-256 of both sides. */
+async function patchOf(path: string, before: string | null, after: string): Promise<PatchEntry> {
+  const status = before === null ? "added" : "modified";
+  const digest = await textDigest(`${before ?? ""}\u0000${after}`);
+  const diffed = lineDiff(before ?? "", after);
+
+  if (diffed.hunks.length === 0) return { path, status, digest, kind: "empty" };
+
+  return { path, status, digest, kind: "text", ...diffed };
 }
 
 /** Returns the environment's cwd, or null when the session has none here. */

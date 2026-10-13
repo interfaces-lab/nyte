@@ -28,7 +28,8 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import { CORE_CONTEXT } from "./principals.ts";
-import { MAIN, isJsonObject } from "./session-state.ts";
+import { isJsonObject } from "./records.ts";
+import { MAIN } from "./session-state.ts";
 import { settingInfos } from "./settings.ts";
 import type { ToolSource } from "./tool-runner.ts";
 
@@ -84,7 +85,7 @@ const ORDER = [
   "settings",
 ] as const satisfies readonly (keyof CoreRegistries)[];
 
-/** Returns a session's empty registry set. `settings.add` returns `setting(definition, owner)` with its disposer, and `settings.value`/`watch` read the setting the owner declared through the same handle (§48b). `report` receives collisions and derive failures; `onChange` runs after every pass. */
+/** Returns a session's empty registry set. `settings.add` returns `setting(definition, owner)` with its disposer, and `settings.value`/`watch` read the setting the owner declared through the same handle. `report` receives collisions and derive failures; `onChange` runs after every pass. */
 export function createRegistrySet(input: {
   onChange(): void;
   setting(definition: SettingDefinition, owner: string): Setting<unknown>;
@@ -330,7 +331,7 @@ const schemas = new WeakMap<
   { readonly input?: JsonSchema; readonly output?: JsonSchema }
 >();
 
-/** Returns what a session's plugins contributed, from its materialised registries, each item with its owner; commands are named `<owner>/<name>` (§35d). An item whose schema has no JSON Schema is left out. */
+/** Returns what a session's plugins contributed, from its materialised registries, each item with its owner; commands are named `<owner>/<name>`. An item whose schema has no JSON Schema is left out. */
 export async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,
@@ -408,7 +409,7 @@ export function bumpGeneration(kernel: Kernel): CatalogGeneration {
   return generation;
 }
 
-/** Returns a runtime's tools for one run: `get` resolves any tool with its owner, `list` answers `ToolInfo`s, and `activate` lists deferred tools as `model` for this run alone until `endRun` drops them (§35f). */
+/** Returns a runtime's tools for one run: `get` resolves any tool with its owner, `list` answers `ToolInfo`s, and `activate` lists deferred tools as `model` for this run alone until `endRun` drops them. */
 export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | null): ToolSource {
   const registry = runtime.registries.tools;
 
@@ -450,7 +451,7 @@ export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | 
   };
 }
 
-/** Forgets the deferred tools a run activated (§35f). */
+/** Forgets the deferred tools a run activated. */
 export function dropActivations(kernel: Kernel, run: RunId): void {
   pluginState(kernel).activated.delete(run);
 }
@@ -483,7 +484,7 @@ function converted(schema: Schema<unknown>, direction: "input" | "output"): Json
   }
 }
 
-/** Runs a core command by its `<owner>/<name>`, or its bare name when exactly one command has it (§35d), validating `args` against `arguments`. A string answers `ran`; a `{ prompt }` is sent to the main head through `sendNow`, the caller having awaited the activation (§44b), and answers `sent`; a throw answers `failed`. */
+/** Runs a core command by its `<owner>/<name>`, or its bare name when exactly one command has it, validating `args` against `arguments`. A string answers `ran`; a `{ prompt }` is sent to the main head through `sendNow`, the caller having awaited the activation, and answers `sent`; a throw answers `failed`. */
 export async function runCommand(
   kernel: Kernel,
   session: SessionId,

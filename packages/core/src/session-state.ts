@@ -244,7 +244,7 @@ export async function put(
   return id;
 }
 
-/** Publishes one batch and its events: the one `refs.set` of a durable change. A part the batch failed resolves its pending local `answer()` with null, as no answer can land on it (§66). */
+/** Publishes one batch and its events: the one `refs.set` of a durable change. A part the batch failed resolves its pending local `answer()` with null, as no answer can land on it. */
 export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Promise<SetOutcome> {
   const outcome = await kernel.store.refs.set(updates);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
@@ -317,7 +317,7 @@ export function positionOf(commit: CommitId | null): Position {
 
 /** Stores a commit in its envelope and returns its id: the object id the store returned. */
 export async function putCommit(kernel: Kernel, record: CommitRecord): Promise<CommitId> {
-  const object = envelope("commit", record, record.at, record.parent);
+  const object = envelope("commit", record, record.at);
   const id = asId<"commit">(await kernel.store.objects.put(object));
   dev("store", "objects.put", { id, kind: "commit", bytes: dev.bytes(object) });
 
@@ -420,7 +420,7 @@ export function changeCall(
   return done;
 }
 
-/** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed (§42ac: `sessions` names sessions and their descendants). */
+/** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed (`sessions` names sessions and their descendants). */
 export async function covers(
   kernel: Kernel,
   coverage: ExecutionCoverage,
@@ -439,7 +439,7 @@ export async function covers(
   return false;
 }
 
-/** Records a coverage an in-process driver or an open `cover` runs while it is open, so `isCovered` counts it on a kernel whose own execution is `admit-only` (§41b, §42a); the disposer removes it. */
+/** Records a coverage an in-process driver or an open `cover` runs while it is open, so `isCovered` counts it on a kernel whose own execution is `admit-only`; the disposer removes it. */
 export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer {
   const coverages = kernel.executionState.driven;
   const entry = { ...coverage };
@@ -450,7 +450,7 @@ export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer
   };
 }
 
-/** Returns whether this host runs a session: always on a `dispatch` kernel (§42p), else when its own `run` coverage or an open driver's or `cover`'s coverage includes it. */
+/** Returns whether this host runs a session: always on a `dispatch` kernel, else when its own `run` coverage or an open driver's or `cover`'s coverage includes it. */
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 
@@ -463,7 +463,7 @@ export async function isCovered(kernel: Kernel, session: SessionId): Promise<boo
   return false;
 }
 
-/** Hands a head owed a step to a `dispatch` kernel's dispatcher (§42s): at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a rejected one is recorded nowhere, the head staying owed for `repair`. */
+/** Hands a head owed a step to a `dispatch` kernel's dispatcher: at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a rejected one is recorded nowhere, the head staying owed for `repair`. */
 export function dispatchHead(
   kernel: Kernel,
   execution: Extract<Kernel["execution"], { readonly kind: "dispatch" }>,
@@ -526,9 +526,4 @@ export function textOf(content: UserContent): string {
   if (typeof content === "string") return content;
 
   return content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join(" ");
-}
-
-/** Returns whether a value is a JSON object. */
-export function isJsonObject(value: Json | undefined): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

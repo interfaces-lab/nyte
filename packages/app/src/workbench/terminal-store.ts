@@ -378,13 +378,11 @@ export function openJobTerminal({
   view,
   sessionId,
   job,
-  activate,
 }: {
   readonly controller: Pick<WorkbenchController, "actions">;
   readonly view: WorkbenchViewKey;
   readonly sessionId: SessionId;
   readonly job: JobView;
-  readonly activate: boolean;
 }): WorkbenchTabId {
   const id = controller.actions.openTab({
     view,
@@ -392,7 +390,7 @@ export function openJobTerminal({
       kind: "terminal",
       owner: { kind: "agent", sessionId, jobId: job.id },
     },
-    activate,
+    activate: true,
   });
 
   terminalActions.openJob({ id, sessionId, job });

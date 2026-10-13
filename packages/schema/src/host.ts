@@ -1,6 +1,15 @@
 import type { Authority } from "./declaration.ts";
 import type { ValidationIssue } from "./errors.ts";
-import type { CatalogGeneration, CommitId, Cursor, HeadName, ObjectId, PrincipalId, SessionId, WorkspaceId } from "./ids.ts";
+import type {
+  CatalogGeneration,
+  CommitId,
+  Cursor,
+  HeadName,
+  ObjectId,
+  PrincipalId,
+  SessionId,
+  WorkspaceId,
+} from "./ids.ts";
 import type { Json } from "./primitives.ts";
 
 /**
@@ -47,16 +56,10 @@ export type AdvanceReport =
  * @category host
  * @since 0.1.0
  */
-export type RepairPage = { readonly runnable: readonly { readonly session: SessionId; readonly head: HeadName }[]; readonly next: Cursor | null }
-
-/**
- * Returns what `prune` collected: unreachable history; `retained` = pinned
- * by a ref.
- *
- * @category host
- * @since 0.1.0
- */
-export type PruneReport = { readonly objects: number; readonly bytes: number; readonly retained: number }
+export type RepairPage = {
+  readonly runnable: readonly { readonly session: SessionId; readonly head: HeadName }[];
+  readonly next: Cursor | null;
+};
 
 /**
  * Returns one paired principal and its authority.
@@ -64,7 +67,12 @@ export type PruneReport = { readonly objects: number; readonly bytes: number; re
  * @category host
  * @since 0.1.0
  */
-export type PrincipalView = { readonly id: PrincipalId; readonly label: string; readonly authority: ReadonlySet<Authority>; readonly pairedAt: number }
+export type PrincipalView = {
+  readonly id: PrincipalId;
+  readonly label: string;
+  readonly authority: ReadonlySet<Authority>;
+  readonly pairedAt: number;
+};
 
 /**
  * Returns the preflight `open` runs: per-plugin outcomes and collisions;
@@ -73,7 +81,10 @@ export type PrincipalView = { readonly id: PrincipalId; readonly label: string; 
  * @category host
  * @since 0.1.0
  */
-export type PluginCheckReport = { readonly plugins: readonly PluginLoadOutcome[]; readonly collisions: readonly ValidationIssue[] }
+export type PluginCheckReport = {
+  readonly plugins: readonly PluginLoadOutcome[];
+  readonly collisions: readonly ValidationIssue[];
+};
 
 /**
  * Returns the new catalog generation and per-plugin outcomes of a
@@ -82,7 +93,10 @@ export type PluginCheckReport = { readonly plugins: readonly PluginLoadOutcome[]
  * @category host
  * @since 0.1.0
  */
-export type PluginReplacementReport = { readonly generation: CatalogGeneration; readonly plugins: readonly PluginLoadOutcome[] }
+export type PluginReplacementReport = {
+  readonly generation: CatalogGeneration;
+  readonly plugins: readonly PluginLoadOutcome[];
+};
 
 /**
  * Returns how one plugin loaded.
@@ -99,7 +113,11 @@ export type PluginReplacementReport = { readonly generation: CatalogGeneration; 
 export type PluginLoadOutcome =
   | { readonly kind: "activated"; readonly id: string; readonly issues: readonly ValidationIssue[] }
   | { readonly kind: "rejected"; readonly id: string; readonly issues: readonly ValidationIssue[] }
-  | { readonly kind: "kept-previous"; readonly id: string; readonly issues: readonly ValidationIssue[] };
+  | {
+      readonly kind: "kept-previous";
+      readonly id: string;
+      readonly issues: readonly ValidationIssue[];
+    };
 
 /**
  * Returns one stored object, decoded, for maintenance reads.
@@ -107,7 +125,13 @@ export type PluginLoadOutcome =
  * @category host
  * @since 0.1.0
  */
-export type DecodedObjectView = { readonly id: ObjectId; readonly kind: string; readonly parent: CommitId | null; readonly body: Json; readonly at: number }
+export type DecodedObjectView = {
+  readonly id: ObjectId;
+  readonly kind: string;
+  readonly parent: CommitId | null;
+  readonly body: Json;
+  readonly at: number;
+};
 
 /**
  * Returns whether a session's refs and objects are consistent, and what is
@@ -116,4 +140,11 @@ export type DecodedObjectView = { readonly id: ObjectId; readonly kind: string; 
  * @category host
  * @since 0.1.0
  */
-export type IntegrityReport = { readonly ok: boolean; readonly issues: readonly { readonly ref: string | null; readonly object: CommitId | null; readonly message: string }[] }
+export type IntegrityReport = {
+  readonly ok: boolean;
+  readonly issues: readonly {
+    readonly ref: string | null;
+    readonly object: CommitId | null;
+    readonly message: string;
+  }[];
+};

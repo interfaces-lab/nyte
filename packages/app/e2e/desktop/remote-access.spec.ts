@@ -1,58 +1,61 @@
-import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
 import type { Page } from "@playwright/test";
-import { existsSync } from "node:fs";
-import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { launchDesktop } from "./launch.ts";
+import { APP_ORIGINS } from "../../src/web/origins.ts";
 import { collectErrors } from "../utils/errors.ts";
+import { FIXTURES } from "./baseline.ts";
+import { expect, test } from "./fixtures.ts";
+import { chatRow, sidebar } from "./ui.ts";
 
-const APP_ROOT = resolve(import.meta.dirname, "../..");
+test.use({ chapter: "remote-access" });
 
 const CREATED = "Created in the browser";
 
-test.beforeAll(() => {
-  if (!existsSync(resolve(APP_ROOT, "../desktop/out/main/index.js"))) {
-    throw new Error("Run pnpm --dir packages/desktop build first");
-  }
+// The desktop listener is API only; the pairing link opens the hosted web app.
+// The browser gets the built shell from `dist` on an origin the host allows,
+// without anything listening there.
+const WEB_ORIGIN = APP_ORIGINS[2];
+const DIST = join(import.meta.dirname, "../../dist");
 
-  if (!existsSync(resolve(APP_ROOT, "dist/index.html"))) {
-    throw new Error("Run pnpm --dir packages/app build first");
-  }
-});
+const TYPES: Readonly<Record<string, string>> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".json": "application/json",
+};
 
-async function openRemoteAccess(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Environments", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Remote access" })).toBeVisible();
+async function serveShell(page: Page): Promise<void> {
+  await page.route(`${WEB_ORIGIN}/**`, async (route) => {
+    const path = normalize(join(DIST, new URL(route.request().url()).pathname));
+    const file = path.startsWith(DIST) && extname(path) !== "" ? path : join(DIST, "index.html");
+
+    try {
+      await route.fulfill({
+        body: await readFile(file),
+        contentType: TYPES[extname(file)] ?? "application/octet-stream",
+      });
+    } catch {
+      await route.fulfill({ status: 404, body: "Not found" });
+    }
+  });
 }
 
-function sessionButton(page: Page, name: string) {
-  return page
-    .getByRole("navigation", { name: "Sessions and workspaces" })
-    .getByRole("button", { name });
+async function openRemoteAccess(page: Page): Promise<void> {
+  await sidebar(page).getByRole("button", { name: "Environments", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Remote access" })).toBeVisible();
 }
 
 test("a browser paired through Remote access shares the desktop's chats until it stops", async ({
   browser,
+  desktop,
 }) => {
+  const context = await browser.newContext({ permissions: ["local-network-access"] });
   await using cleanup = new AsyncDisposableStack();
-  const parent = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-desktop-")));
-  cleanup.defer(() => rm(parent, { recursive: true, force: true }));
-  // The unpackaged desktop serves `<app path>/../app/dist`; the fixture's app
-  // path is a directory under `parent`, so `parent/app` points at this package.
-  await symlink(APP_ROOT, join(parent, "app"), "junction");
-
-  const desktop = await launchDesktop({
-    parentDirectory: parent,
-    sessions: ["Seeded chat 1", "Seeded chat 2"],
-  });
-
-  cleanup.defer(() => desktop.close());
-  const context = await browser.newContext();
   cleanup.defer(() => context.close());
-
   const { page } = desktop;
-  const seeded = desktop.sessions;
   await openRemoteAccess(page);
 
   const thisMacOnly = page
@@ -62,57 +65,57 @@ test("a browser paired through Remote access shares the desktop's chats until it
   await thisMacOnly.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByRole("button", { name: "Remote access: This Mac only" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Address and token" }).click();
+  await page.getByRole("tab", { name: "Address and Token" }).click();
   await page.getByRole("button", { name: "Reveal token" }).click();
-  const link = page.getByLabel("Pairing link");
-  await expect(link).toHaveText(/^http:\/\/127\.0\.0\.1:\d+\/pair#host=.+&token=[\w-]+$/u);
-  const pairingUrl = await link.innerText();
-  const token = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
+  const link = page.locator('code[aria-label="Pairing link"]');
+  await expect(link).toHaveText(/^https:\/\/app\.nyte\.sh\/pair#host=.+&token=[\w-]+$/u);
+  const pairingUrl = new URL(await link.innerText());
+  const fragment = new URLSearchParams(pairingUrl.hash.slice(1));
+  const host = fragment.get("host");
+  const token = fragment.get("token");
+  expect(host).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
 
   const remote = await context.newPage();
   const remoteErrors = collectErrors(remote);
-  await remote.goto(pairingUrl);
+  await serveShell(remote);
+  await remote.goto(`${WEB_ORIGIN}/pair${pairingUrl.hash}`);
   await expect(remote.getByRole("form", { name: "Message composer" })).toBeVisible();
 
-  for (const name of seeded) await expect(sessionButton(remote, name)).toBeVisible();
+  for (const name of Object.values(FIXTURES)) await expect(chatRow(remote, name)).toBeVisible();
 
-  // A chat is created by its first message, and this project sends none, so
-  // the browser creates it over the same API with the paired token.
+  // The browser creates a chat over the same API with the paired token, so
+  // the desktop's sidebar must pick it up without a reload.
   const status = await remote.evaluate(
     async (input) => {
-      const response = await fetch("/v1/call/sessions.create", {
+      const response = await fetch(`${input.host}/sessions.create`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${input.token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ input: { name: input.name } }),
+        body: JSON.stringify({ name: input.name }),
       });
 
       return response.status;
     },
-    { token, name: CREATED },
+    { host, token, name: CREATED },
   );
 
   expect(status).toBe(200);
+  // An empty chat lands on the Done shelf.
+  await sidebar(page)
+    .getByRole("button", { name: /^Done \d+$/u })
+    .click();
+  await expect(chatRow(page, CREATED)).toBeVisible();
 
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(sessionButton(page, CREATED)).toBeVisible();
-
-  await openRemoteAccess(page);
   await page.getByRole("button", { name: "Remote access: This Mac only" }).click();
   await page.getByRole("menuitem", { name: "Stop Remote Access" }).click();
   await expect(thisMacOnly.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
 
-  const [first] = seeded;
-
-  if (first === undefined) throw new Error("The fixture seeded no sessions");
-  await sessionButton(remote, first).click();
-  await expect(
-    remote.getByRole("alert").filter({ hasText: "Couldn’t load this chat." }),
-  ).toBeVisible();
-  await expect(remote.reload()).rejects.toThrow("net::ERR_CONNECTION_REFUSED");
+  await chatRow(remote, FIXTURES.alpha).click();
+  await expect(remote.getByRole("dialog", { name: "Couldn't open folder" })).toContainText(
+    "Failed to fetch",
+  );
 
   expect(remoteErrors.pageErrors).toEqual([]);
-  expect(desktop.pageErrors).toEqual([]);
 });

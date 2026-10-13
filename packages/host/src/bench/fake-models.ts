@@ -103,14 +103,14 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
   };
 }
 
-/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback`, else the provider error "No reply was scripted for this request.". */
+/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback` (a function sees the request), else the provider error "No reply was scripted for this request.". */
 export function fakeModels(input?: {
   readonly id?: string;
   readonly name?: string;
   readonly models?: readonly Model<Api>[];
   readonly into?: MutableModels;
   readonly verify?: boolean;
-  readonly fallback?: Reply;
+  readonly fallback?: Reply | ((request: Request) => Reply);
 }): FakeModels {
   const id = input?.id ?? "test";
   const catalog = input?.models ?? [testModel("model", { provider: id })];
@@ -179,14 +179,10 @@ export function fakeModels(input?: {
   ): AssistantMessageEventStream => {
     const request: Request = { model, context, options };
     requests.push(request);
-    const next = queue.shift();
+    const next = queue.shift() ??
+      input?.fallback ?? { error: "No reply was scripted for this request." };
 
-    const reply: Reply =
-      next === undefined
-        ? (input?.fallback ?? { error: "No reply was scripted for this request." })
-        : typeof next === "function"
-          ? next(request)
-          : next;
+    const reply: Reply = typeof next === "function" ? next(request) : next;
 
     return streamOf(model, reply, options);
   };

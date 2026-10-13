@@ -27,7 +27,12 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import type { Connection, PluginStorage } from "./connection.ts";
-import type { EnvironmentProvider, EnvironmentWrap, ExecutionEnv, Resources } from "./environment.ts";
+import type {
+  EnvironmentProvider,
+  EnvironmentWrap,
+  ExecutionEnv,
+  Resources,
+} from "./environment.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { Session } from "./session.ts";
 import type { Durable, ToolDefinition } from "./tools.ts";
@@ -89,7 +94,11 @@ export interface SettingDefinition<T = unknown> {
   /** Choices, numbers, text, lists: the client renders from the JSON Schema. */
   readonly schema: Schema<T>;
   /** For enum schemas: labels and a badge shown while current. */
-  readonly choices?: readonly { readonly value: T; readonly label: string; readonly badge?: string }[];
+  readonly choices?: readonly {
+    readonly value: T;
+    readonly label: string;
+    readonly badge?: string;
+  }[];
   readonly default: T;
   readonly scope: "host" | "session";
 }
@@ -128,7 +137,10 @@ export interface Command<Args = unknown, S extends Side = Side> {
   readonly category?: string;
   readonly keywords?: readonly string[];
   /** Runs the command: text shows; a prompt is sent by core with source action `{ label: title, command: name }`. */
-  run(args: Args, context: { readonly signal: AbortSignal; readonly api: PluginApi<S> }): Awaitable<string | { readonly prompt: UserContent } | void>;
+  run(
+    args: Args,
+    context: { readonly signal: AbortSignal; readonly api: PluginApi<S> },
+  ): Awaitable<string | { readonly prompt: UserContent } | void>;
 }
 
 /**
@@ -174,7 +186,11 @@ export interface Agent {
  * @category plugins
  * @since 0.1.0
  */
-export interface PromptSection { readonly id: string; readonly text: string; readonly order?: number }
+export interface PromptSection {
+  readonly id: string;
+  readonly text: string;
+  readonly order?: number;
+}
 
 /**
  * Describes one model's context limits; folded into `ModelInfo` for that
@@ -183,7 +199,11 @@ export interface PromptSection { readonly id: string; readonly text: string; rea
  * @category plugins
  * @since 0.1.0
  */
-export interface ModelContextPolicy { readonly model: ModelRef; readonly contextWindow: number; readonly compactAt: number }
+export interface ModelContextPolicy {
+  readonly model: ModelRef;
+  readonly contextWindow: number;
+  readonly compactAt: number;
+}
 
 /**
  * Describes a skill the model can load on demand.
@@ -191,7 +211,13 @@ export interface ModelContextPolicy { readonly model: ModelRef; readonly context
  * @category plugins
  * @since 0.1.0
  */
-export interface Skill { readonly name: string; readonly description: string; readonly location: string; readonly modelInvocable?: boolean; load(): Promise<string> }
+export interface Skill {
+  readonly name: string;
+  readonly description: string;
+  readonly location: string;
+  readonly modelInvocable?: boolean;
+  load(): Promise<string>;
+}
 
 /**
  * Binds a key to a command, optionally under a context.
@@ -199,7 +225,11 @@ export interface Skill { readonly name: string; readonly description: string; re
  * @category plugins
  * @since 0.1.0
  */
-export interface Keybinding { readonly key: string; readonly command: string; readonly when?: string }
+export interface Keybinding {
+  readonly key: string;
+  readonly command: string;
+  readonly when?: string;
+}
 
 /**
  * Maps each side to what it adds to the plugin api and to the plugin object.
@@ -296,7 +326,12 @@ export interface ClientApi {
   readonly session: Session | null;
   readonly ui: {
     /** Shows a notification. */
-    notify(input: { readonly title?: string; readonly message: string; readonly level?: "info" | "warning" | "error"; readonly sound?: boolean }): void;
+    notify(input: {
+      readonly title?: string;
+      readonly message: string;
+      readonly level?: "info" | "warning" | "error";
+      readonly sound?: boolean;
+    }): void;
   };
 }
 
@@ -314,7 +349,10 @@ export interface Renderer<K extends PartDefinition = PartDefinition, View = unkn
   /** Which placement kinds this renderer draws; omitted = any. */
   readonly placements?: readonly string[];
   /** Returns the framework's view for a part's state. */
-  render(part: { readonly state: PartState<K>; readonly version: number; readonly placement: Placement }, act: Part<K>["act"]): View;
+  render(
+    part: { readonly state: PartState<K>; readonly version: number; readonly placement: Placement },
+    act: Part<K>["act"],
+  ): View;
 }
 
 /**
@@ -324,7 +362,11 @@ export interface Renderer<K extends PartDefinition = PartDefinition, View = unkn
  * @category plugins
  * @since 0.1.0
  */
-export type Row<Item, S extends Side, Handle = Disposer> = { readonly item: Item; readonly sides: S; readonly handle: Handle };
+export type Row<Item, S extends Side, Handle = Disposer> = {
+  readonly item: Item;
+  readonly sides: S;
+  readonly handle: Handle;
+};
 
 /**
  * Maps each contribution kind to its item type and the sides that may own
@@ -359,9 +401,13 @@ export type ContributionTable = {
  * @since 0.1.0
  */
 export type Available<Table, S extends Side> = {
-  [K in keyof Table as Table[K] extends { readonly sides: infer Owners }
-    ? [Extract<S, Owners>] extends [never] ? never : K
-    : never]: Table[K];
+  [
+    K in keyof Table as Table[K] extends { readonly sides: infer Owners }
+      ? [Extract<S, Owners>] extends [never]
+        ? never
+        : K
+      : never
+  ]: Table[K];
 };
 
 /**
@@ -373,18 +419,26 @@ export type Available<Table, S extends Side> = {
 export type Registries<S extends Side> = {
   readonly [K in keyof Available<ContributionTable, S>]: K extends "settings"
     ? SettingsRegistry<S>
-    : Registry<ContributionTable[K & keyof ContributionTable]["item"], S, ContributionTable[K & keyof ContributionTable]["handle"]>;
+    : Registry<
+        ContributionTable[K & keyof ContributionTable]["item"],
+        S,
+        ContributionTable[K & keyof ContributionTable]["handle"]
+      >;
 };
 
 /**
  * Returns the settings registry: a registry that also reads the settings
  * this plugin declared, statically in `contribute.settings` or through
- * `add`, so no plugin declares a setting twice to hold its handle (§48b).
+ * `add`, so no plugin declares a setting twice to hold its handle.
  *
  * @category plugins
  * @since 0.1.0
  */
-export interface SettingsRegistry<S extends Side = Side> extends Registry<SettingDefinition, S, Setting<unknown>> {
+export interface SettingsRegistry<S extends Side = Side> extends Registry<
+  SettingDefinition,
+  S,
+  Setting<unknown>
+> {
   /**
    * Returns the current value of a setting this plugin declared: the
    * session layer, else the host value, else the default.
@@ -409,7 +463,8 @@ export interface SettingsRegistry<S extends Side = Side> extends Registry<Settin
  * @since 0.1.0
  */
 export type Declared<S extends Side> = {
-  readonly [K in keyof Available<ContributionTable, S>]?: readonly ContributionTable[K & keyof ContributionTable]["item"][];
+  readonly [K in keyof Available<ContributionTable, S>]?: readonly ContributionTable[K &
+    keyof ContributionTable]["item"][];
 };
 
 /**
@@ -419,7 +474,12 @@ export type Declared<S extends Side> = {
  * @category hooks
  * @since 0.1.0
  */
-export type Observe<Event, S extends Side> = { event: Event; result: void; sides: S; phase: "observe" };
+export type Observe<Event, S extends Side> = {
+  event: Event;
+  result: void;
+  sides: S;
+  phase: "observe";
+};
 
 /**
  * Returns a transform row: handlers chain, each seeing the previous result.
@@ -427,7 +487,12 @@ export type Observe<Event, S extends Side> = { event: Event; result: void; sides
  * @category hooks
  * @since 0.1.0
  */
-export type Transform<Value, S extends Side> = { event: Value; result: Value; sides: S; phase: "transform" };
+export type Transform<Value, S extends Side> = {
+  event: Value;
+  result: Value;
+  sides: S;
+  phase: "transform";
+};
 
 /**
  * Returns a decide row: handlers return a {@link Decision}; reject
@@ -436,7 +501,12 @@ export type Transform<Value, S extends Side> = { event: Value; result: Value; si
  * @category hooks
  * @since 0.1.0
  */
-export type Decide<Value, S extends Side> = { event: Value; result: Decision<Value>; sides: S; phase: "decide" };
+export type Decide<Value, S extends Side> = {
+  event: Value;
+  result: Decision<Value>;
+  sides: S;
+  phase: "decide";
+};
 
 /**
  * Maps each hook to its event, result, sides and phase. Table 3 of three;
@@ -516,11 +586,23 @@ export type HookTable = {
   /** Redaction and truncation rewrite what the model sees. */
   after_tool: Transform<ToolOutcome, "core">;
   /** What a telemetry plugin reads. */
-  after_request: Observe<{ readonly model: ModelRef; readonly thinking: Thinking; readonly usage: Usage; readonly durationMs: number; readonly step: "assistant" | "compaction" | "summary" | "plugin" }, "core">;
+  after_request: Observe<
+    {
+      readonly model: ModelRef;
+      readonly thinking: Thinking;
+      readonly usage: Usage;
+      readonly durationMs: number;
+      readonly step: "assistant" | "compaction" | "summary" | "plugin";
+    },
+    "core"
+  >;
   /** When a run ends. */
   run_ended: Observe<RunEnd, "core">;
   /** Any session this client can see; the notifier's hook. */
-  run_ended_anywhere: Observe<{ readonly session: SessionId; readonly run: RunId; readonly end: RunEnd }, "client">;
+  run_ended_anywhere: Observe<
+    { readonly session: SessionId; readonly run: RunId; readonly end: RunEnd },
+    "client"
+  >;
   /** After client plugins activate; sends are admitted from here on. */
   app_ready: Observe<{ readonly restored: boolean }, "client">;
   /** When a session comes on screen. */
@@ -562,7 +644,11 @@ export type HookHandler<S extends Side, N extends HookName<S>> = (
     readonly session: SessionId | null;
     readonly head: HeadName | null;
     readonly run: RunId | null;
-  } & (HookTable[N & keyof HookTable]["phase"] extends "decide" ? (S extends "core" ? Durable : {}) : {}),
+  } & (HookTable[N & keyof HookTable]["phase"] extends "decide"
+    ? S extends "core"
+      ? Durable
+      : {}
+    : {}),
 ) => Awaitable<HookTable[N & keyof HookTable]["result"]>;
 
 /**

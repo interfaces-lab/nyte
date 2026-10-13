@@ -1,6 +1,11 @@
 import { McpClient, StdioTransport, StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import type { CallToolResult, McpTransport, Tool } from "@earendil-works/pi-mcp";
-import { McpOAuthProvider, OAuthCallbackServer, adaptOAuthProvider, authorizeMcp } from "@earendil-works/pi-mcp/oauth";
+import {
+  McpOAuthProvider,
+  OAuthCallbackServer,
+  adaptOAuthProvider,
+  authorizeMcp,
+} from "@earendil-works/pi-mcp/oauth";
 import type { McpOAuthStateStore } from "@earendil-works/pi-mcp/oauth";
 import { dev } from "@nyte-ai/core";
 import type { ExecutionEnv, PluginStorage, SettingDefinition, ToolDefinition } from "@nyte-ai/core";
@@ -18,7 +23,10 @@ const serverConfig = Type.Union([
     env: Type.Optional(Type.Record(Type.String(), Type.String())),
     cwd: Type.Optional(Type.String()),
   }),
-  Type.Object({ url: Type.String(), headers: Type.Optional(Type.Record(Type.String(), Type.String())) }),
+  Type.Object({
+    url: Type.String(),
+    headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  }),
 ]);
 
 const serversSchema = Type.Record(Type.String(), serverConfig);
@@ -39,7 +47,11 @@ export type McpServerConfig = Static<typeof serverConfig>;
  * @category plugins
  * @since 0.1.0
  */
-export type McpConnector = (server: string, config: McpServerConfig, context: { readonly cwd: string; readonly storage: PluginStorage; signIn(url: URL): void }) => McpTransport;
+export type McpConnector = (
+  server: string,
+  config: McpServerConfig,
+  context: { readonly cwd: string; readonly storage: PluginStorage; signIn(url: URL): void },
+) => McpTransport;
 
 const servers: SettingDefinition<Static<typeof serversSchema>> = {
   id: "mcp.servers",
@@ -156,7 +168,10 @@ export function openLink(input: {
 
       client = next;
       delay = 1000;
-      next.onNotification("notifications/tools/list_changed", () => void refresh().catch((error: unknown) => retry(messageOf(error))));
+      next.onNotification(
+        "notifications/tools/list_changed",
+        () => void refresh().catch((error: unknown) => retry(messageOf(error))),
+      );
       await refresh();
     } catch (error) {
       if (client === next) client = null;
@@ -181,7 +196,12 @@ export function openLink(input: {
 }
 
 /** Returns an MCP tool as a session tool named `<server>_<tool>` in namespace `mcp/<server>`, called over the link's client. */
-function bridge(server: string, tool: Tool, client: McpClient, env: () => ExecutionEnv): ToolDefinition {
+function bridge(
+  server: string,
+  tool: Tool,
+  client: McpClient,
+  env: () => ExecutionEnv,
+): ToolDefinition {
   const output = tool.outputSchema;
 
   return {
@@ -191,17 +211,29 @@ function bridge(server: string, tool: Tool, client: McpClient, env: () => Execut
     parameters: passthrough(tool.inputSchema),
     ...(output === undefined ? {} : { output: passthrough(output) }),
     class: () => ({ kind: "custom", label: `${server}: ${tool.title ?? tool.name}` }),
-    replay: tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true ? "safe" : "never",
+    replay:
+      tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true
+        ? "safe"
+        : "never",
     async execute(args, invocation) {
-      const result = await client.callTool(tool.name, isObject(args) ? args : {}, { signal: invocation.signal, timeoutMs: 12 * 60 * 60 * 1000 });
+      const result = await client.callTool(tool.name, isObject(args) ? args : {}, {
+        signal: invocation.signal,
+        timeoutMs: 12 * 60 * 60 * 1000,
+      });
       const content = await contentOf(result, env);
 
       if (result.isError === true)
-        throw new Error(content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n") || `${tool.name} failed.`);
+        throw new Error(
+          content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n") ||
+            `${tool.name} failed.`,
+        );
 
       const structured = result.structuredContent;
 
-      return { content, ...(output !== undefined && isJson(structured) ? { output: structured } : {}) };
+      return {
+        content,
+        ...(output !== undefined && isJson(structured) ? { output: structured } : {}),
+      };
     },
   };
 }
@@ -213,7 +245,11 @@ async function contentOf(result: CallToolResult, env: () => ExecutionEnv): Promi
   for (const block of result.content) {
     if (block.type === "text") content.push({ kind: "text", text: block.text });
     else if (block.type === "image")
-      content.push({ kind: "file", blob: await env().files.upload(once(Uint8Array.fromBase64(block.data))), mime: block.mimeType });
+      content.push({
+        kind: "file",
+        blob: await env().files.upload(once(Uint8Array.fromBase64(block.data))),
+        mime: block.mimeType,
+      });
     else content.push({ kind: "text", text: JSON.stringify(block) });
   }
 
@@ -226,7 +262,10 @@ function passthrough(json: Record<string, unknown>): Schema<Json> {
     "~standard": {
       version: 1,
       vendor: "mcp",
-      validate: (value) => (isJson(value) && isObject(value) ? { value } : { issues: [{ message: "Expected a JSON object." }] }),
+      validate: (value) =>
+        isJson(value) && isObject(value)
+          ? { value }
+          : { issues: [{ message: "Expected a JSON object." }] },
       jsonSchema: { input: () => json, output: () => json },
     },
   };
@@ -272,7 +311,13 @@ function oauthStore(storage: PluginStorage, server: string): McpOAuthStateStore 
  */
 export const connectServer: McpConnector = (server, config, context) => {
   if ("command" in config)
-    return new StdioTransport({ command: config.command, args: config.args, env: config.env, cwd: config.cwd ?? context.cwd, stderr: "pipe" });
+    return new StdioTransport({
+      command: config.command,
+      args: config.args,
+      env: config.env,
+      cwd: config.cwd ?? context.cwd,
+      stderr: "pipe",
+    });
 
   const provider = new McpOAuthProvider({
     serverUrl: config.url,
@@ -285,7 +330,10 @@ export const connectServer: McpConnector = (server, config, context) => {
       context.signIn(url);
 
       const signedIn = (async () => {
-        const callback = await OAuthCallbackServer.listen({ ...CALLBACK, timeoutMs: 5 * 60 * 1000 });
+        const callback = await OAuthCallbackServer.listen({
+          ...CALLBACK,
+          timeoutMs: 5 * 60 * 1000,
+        });
 
         try {
           const { code } = await callback.waitForCallback(await provider.state());
@@ -295,11 +343,18 @@ export const connectServer: McpConnector = (server, config, context) => {
         }
       })();
 
-      signIns.set(config.url, signedIn.catch(() => undefined).finally(() => signIns.delete(config.url)));
+      signIns.set(
+        config.url,
+        signedIn.catch(() => undefined).finally(() => signIns.delete(config.url)),
+      );
     },
   });
 
-  return new StreamableHttpTransport({ url: config.url, headers: config.headers, authProvider: adaptOAuthProvider(provider) });
+  return new StreamableHttpTransport({
+    url: config.url,
+    headers: config.headers,
+    authProvider: adaptOAuthProvider(provider),
+  });
 };
 
 /**
@@ -320,7 +375,8 @@ export function mcpPlugin(connect: McpConnector): Plugin {
       const links = new Map<string, { readonly config: string; readonly link: McpLink }>();
 
       api.contribute.tools.add((draft) => {
-        for (const { link } of links.values()) for (const tool of link.tools()) draft.set(tool.name, tool);
+        for (const { link } of links.values())
+          for (const tool of link.tools()) draft.set(tool.name, tool);
       });
 
       const sync = (value: unknown): void => {
@@ -343,10 +399,21 @@ export function mcpPlugin(connect: McpConnector): Plugin {
                 cwd: api.env.cwd,
                 storage: api.storage,
                 signIn: (url) =>
-                  api.report({ severity: "warning", path: ["mcp.servers", server], message: `Sign in to ${server}: ${url.href}`, source: { plugin: "mcp" } }),
+                  api.report({
+                    severity: "warning",
+                    path: ["mcp.servers", server],
+                    message: `Sign in to ${server}: ${url.href}`,
+                    source: { plugin: "mcp" },
+                  }),
               }),
             changed: () => api.reload(),
-            failed: (message) => api.report({ severity: "warning", path: ["mcp.servers", server], message, source: { plugin: "mcp" } }),
+            failed: (message) =>
+              api.report({
+                severity: "warning",
+                path: ["mcp.servers", server],
+                message,
+                source: { plugin: "mcp" },
+              }),
           });
 
           links.set(server, { config: JSON.stringify(config), link });

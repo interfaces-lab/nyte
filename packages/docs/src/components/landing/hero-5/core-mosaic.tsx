@@ -22,6 +22,18 @@ function lastRows(columns: number) {
  * rules. Nyte closes the grid. Hovering or focusing one names it below.
  */
 export function CoreMosaic() {
+  return (
+    <Section
+      id="cores-title"
+      title="Countless cores."
+      line="Each one fits the harness it was written for."
+    >
+      <CoreGrid />
+    </Section>
+  );
+}
+
+export function CoreGrid() {
   const grid = useRef<HTMLUListElement>(null);
   const pointerType = useRef("");
   const [hovered, setHovered] = useState<number | null>(null);
@@ -85,11 +97,7 @@ export function CoreMosaic() {
   };
 
   return (
-    <Section
-      id="cores-title"
-      title="Countless cores."
-      line="Each one fits the harness it was written for."
-    >
+    <div>
       <ul
         ref={grid}
         aria-label="Agent harnesses"
@@ -161,6 +169,6 @@ export function CoreMosaic() {
           {active === null ? "" : `${String(active + 1).padStart(2, "0")} / ${count}`}
         </span>
       </p>
-    </Section>
+    </div>
   );
 }

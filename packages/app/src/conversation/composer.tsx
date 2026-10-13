@@ -25,6 +25,7 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-a
 import { Button } from "@nyte-ai/ui/button";
 import {
   useCatalog,
+  COMPACT_COMMAND,
   useConfigureSession,
   useHostState,
   useMentionFiles,
@@ -84,7 +85,7 @@ import { StatusDot } from "../components/ui.tsx";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { subagentActivity } from "./subagent-status.ts";
 import { composerStyles, markerStyles } from "./styles.stylex.ts";
-import { TranscriptButton, useTranscriptDock } from "./transcript.tsx";
+import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import type { ComposerAnswer } from "./tray/questions.tsx";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
@@ -358,7 +359,14 @@ export function ComposerFrame({
 
       if (editorNeedsExpansion) return;
 
-      if (area.scrollHeight > Number.parseFloat(getComputedStyle(area).lineHeight) * 1.5) {
+      const typography = getComputedStyle(area);
+
+      const contentHeight =
+        area.scrollHeight -
+        Number.parseFloat(typography.paddingTop) -
+        Number.parseFloat(typography.paddingBottom);
+
+      if (contentHeight > Number.parseFloat(typography.lineHeight) * 1.5) {
         setEditorNeedsExpansion(true);
       }
     },
@@ -423,7 +431,8 @@ export function ComposerFrame({
         aria-label="Image attachments"
         {...props(
           composerStyles.attachments,
-          surface === "follow-up" && composerStyles.attachmentsInset,
+          composerStyles.attachmentsInset,
+          surface === "new-chat" && composerStyles.attachmentsNewChat,
           compact && composerStyles.attachmentsInsetCompact,
           messageEdit && composerStyles.attachmentsMessageEdit,
         )}
@@ -461,7 +470,10 @@ export function ComposerFrame({
         {...props(
           intent.danger,
           composerStyles.attachmentError,
-          surface === "follow-up" && composerStyles.attachmentErrorInset,
+          composerStyles.attachmentErrorInset,
+          surface === "new-chat" &&
+            attachments.length === 0 &&
+            composerStyles.attachmentErrorNewChat,
           compact && composerStyles.attachmentErrorInsetCompact,
         )}
       >
@@ -575,15 +587,7 @@ export function ComposerFrame({
             compact && composerStyles.layoutCompact,
           )}
         >
-          <div
-            {...props(
-              composerStyles.editor,
-              compact && composerStyles.editorCompact,
-              collapsed && composerStyles.editorCollapsed,
-              followUpExpanded && composerStyles.editorExpanded,
-              messageEdit && composerStyles.editorMessageEdit,
-            )}
-          >
+          <div {...props(composerStyles.editor, compact && composerStyles.editorCompact)}>
             <ComposerEditor
               ref={areaRef}
               inputRef={inputRef}
@@ -591,7 +595,13 @@ export function ComposerFrame({
                 props(
                   composerStyles.input,
                   geometry === "new-chat" && composerStyles.inputNewChat,
+                  geometry === "new-chat" &&
+                    (attachments.length > 0 || attachmentError !== undefined) &&
+                    composerStyles.inputNewChatAttached,
                   compact && composerStyles.inputCompact,
+                  collapsed && composerStyles.editorCollapsed,
+                  followUpExpanded && composerStyles.editorExpanded,
+                  messageEdit && composerStyles.editorMessageEdit,
                 ).className
               }
               files={suggestionMenu.files}
@@ -660,6 +670,7 @@ export function ComposerFrame({
           <div
             {...props(
               composerStyles.controls,
+              geometry === "new-chat" && composerStyles.controlsNewChat,
               compact && composerStyles.controlsCompact,
               followUpExpanded && composerStyles.controlsInset,
             )}
@@ -831,6 +842,7 @@ export function Composer({
 }): ReactElement {
   const runningMessagePreference = useSetting(preferences.runningMessage);
   const attachTranscriptDock = useTranscriptDock();
+  const transcript = useTranscriptControls();
   const [currentViewState, setCurrentViewState] = useState(initialViewState);
   const attachments = currentViewState.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
@@ -1078,6 +1090,36 @@ export function Composer({
       }
     }
 
+    if (plan.kind === "command" && plan.command.name === COMPACT_COMMAND.name) {
+      try {
+        const outcome = await connection()
+          .session(sessionId)
+          .compact(plan.command.argument === "" ? {} : { instructions: plan.command.argument });
+
+        switch (outcome.kind) {
+          case "started":
+            return true;
+          case "nothing-to-compact":
+            setFeedback({ kind: "command", message: "Nothing to compact" });
+
+            return true;
+          case "busy":
+            refuse("Wait for the current run before compacting.", sent);
+
+            return false;
+          default: {
+            const _exhaustive: never = outcome;
+
+            return _exhaustive;
+          }
+        }
+      } catch (cause: unknown) {
+        refuse(errorMessage(cause), sent);
+
+        return false;
+      }
+    }
+
     if (plan.kind === "command") {
       try {
         const outcome = await connection()
@@ -1159,7 +1201,10 @@ export function Composer({
   ): Promise<boolean> => {
     const sent = await deliver(submission, delivery, document, pendingEdit);
 
-    if (sent) sessionActions.restore(sessionId);
+    if (sent) {
+      sessionActions.restore(sessionId);
+      transcript.end();
+    }
 
     return sent;
   };

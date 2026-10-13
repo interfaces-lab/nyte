@@ -54,11 +54,17 @@ describe("composeHost", () => {
       class: () => ({ kind: "custom", label: "Asking" }),
       replay: "safe",
       async execute(args, invocation) {
-        const part = await invocation.session.parts.create(ask, { state: args, placement: { kind: "modal" } });
+        const part = await invocation.session.parts.create(ask, {
+          state: args,
+          placement: { kind: "modal" },
+        });
         await gate;
         const outcome = await invocation.wait({ kind: "part", part: part.id });
         const input = outcome.kind === "part" ? outcome.answer?.input : null;
-        const choice = typeof input === "object" && input !== null && "choice" in input ? String(input.choice) : "none";
+        const choice =
+          typeof input === "object" && input !== null && "choice" in input
+            ? String(input.choice)
+            : "none";
 
         return { content: [{ kind: "text", text: choice }] };
       },
@@ -74,25 +80,48 @@ describe("composeHost", () => {
     await using warm = await open(fake, { store, plugins: [plugin] });
     const session = await warm.sessions.create();
     const receipt = await session.send("Ask.");
-    const asked = await until(async () => (await session.view()).parts.find((part) => part.partKind === ask.kind));
+    const asked = await until(async () =>
+      (await session.view()).parts.find((part) => part.partKind === ask.kind),
+    );
 
-    await using cold = await open(fakeModels(), { store, plugins: [plugin], execution: { kind: "admit-only" } });
+    await using cold = await open(fakeModels(), {
+      store,
+      plugins: [plugin],
+      execution: { kind: "admit-only" },
+    });
 
-    expect(await cold.session(session.id).part(asked.id).act("answer", { choice: "yes" })).toEqual({ kind: "ok", output: undefined });
+    expect(await cold.session(session.id).part(asked.id).act("answer", { choice: "yes" })).toEqual({
+      kind: "ok",
+      output: undefined,
+    });
 
     const connection = await store.open();
-    const kept = decodePartRecord(await connection.objects.get((await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none")));
+    const kept = decodePartRecord(
+      await connection.objects.get(
+        (await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none"),
+      ),
+    );
 
-    expect(kept?.status).toMatchObject({ kind: "live", answer: { action: "answer", input: { choice: "yes" } } });
+    expect(kept?.status).toMatchObject({
+      kind: "live",
+      answer: { action: "answer", input: { choice: "yes" } },
+    });
 
     release();
     const end = await receipt.settled();
 
     assert(end.kind === "completed");
     expect(fake.requests).toHaveLength(2);
-    expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({ role: "toolResult", content: [{ type: "text", text: "yes" }] });
+    expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      content: [{ type: "text", text: "yes" }],
+    });
 
-    const after = decodePartRecord(await connection.objects.get((await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none")));
+    const after = decodePartRecord(
+      await connection.objects.get(
+        (await connection.refs.get(partRef(session.id, asked.id)))?.target ?? asId("none"),
+      ),
+    );
 
     expect(after?.status).toEqual(kept?.status);
   });
@@ -103,7 +132,11 @@ describe("composeHost", () => {
 
     expect((await session.view()).configuration).toEqual({
       selected: null,
-      effective: expect.objectContaining({ kind: "exact", model: { provider: "test", id: "model" }, agent: null }),
+      effective: expect.objectContaining({
+        kind: "exact",
+        model: { provider: "test", id: "model" },
+        agent: null,
+      }),
     });
   });
 

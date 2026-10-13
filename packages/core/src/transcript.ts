@@ -36,7 +36,7 @@ import { branchSummary, compaction, text, thinking, tool } from "./parts.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { PromptSection } from "./plugin.ts";
 import { LOCAL } from "./principals.ts";
-import { decodePartRecord } from "./records.ts";
+import { decodePartRecord, isJsonObject } from "./records.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
 import { headRef, partRef } from "./refs.ts";
 import {
@@ -44,7 +44,6 @@ import {
   STALE,
   attempt,
   commit,
-  isJsonObject,
   load,
   objectOf,
   pathOf,
@@ -101,7 +100,7 @@ export function projectedCommit(message: Message): CommitId | null {
 }
 
 /**
- * Builds the request body one pass sends on a head in the baseline's hook order (§38s):
+ * Builds the request body one pass sends on a head in the baseline's hook order:
  * `buildContext`, `transform_context`, the run's tools (narrowed to the configuration's agent's
  * `tools`), the transcript, then `transform_transcript`, all on the given runtime.
  */
@@ -153,7 +152,7 @@ export async function requestBody(
   };
 }
 
-/** Returns an estimate of a request body's tokens (§38m): its messages, the leading system message included, and each tool's name, description and JSON Schema. */
+/** Returns an estimate of a request body's tokens: its messages, the leading system message included, and each tool's name, description and JSON Schema. */
 export function tokenEstimate(transcript: Transcript): number {
   const messages = transcript.messages.reduce(
     (sum, message) => sum + estimateMessageTokens(message),
@@ -580,7 +579,7 @@ async function assistantBlocks(
   };
 }
 
-/** Returns a thinking part's markdown split back into its merged thoughts by the lengths its signature recorded (§38f). */
+/** Returns a thinking part's markdown split back into its merged thoughts by the lengths its signature recorded. */
 function thoughtsOf(markdown: string, signature: Json | null): ThinkingContent[] {
   if (
     !Array.isArray(signature) ||
@@ -767,14 +766,14 @@ async function referenceContent(
     : { type: "text", text: `[Reference: ${path}]` };
 }
 
-/** Returns the `${requests}` of a call id's `${run}:${requests}:` namespace (§38w), or null. */
+/** Returns the `${requests}` of a call id's `${run}:${requests}:` namespace, or null. */
 function responseOf(call: string, run: RunId | null): string | null {
   if (run === null || !call.startsWith(`${run}:`)) return null;
 
   return /^(\d+):/.exec(call.slice(run.length + 1))?.[1] ?? null;
 }
 
-/** Returns the id the provider gave a call: its call id without the turn's namespace (§38w). */
+/** Returns the id the provider gave a call: its call id without the turn's namespace. */
 function providerCallId(call: string, run: RunId | null): string {
   if (run === null || !call.startsWith(`${run}:`)) return call;
   const rest = call.slice(run.length + 1);

@@ -75,9 +75,9 @@ describe("revoke fence", () => {
 
       expect([first.status, second.status]).toEqual([401, 401]);
       expect(await host.principals.list()).toEqual([]);
-      expect(
-        (await session.view()).messages.filter((message) => message.kind === "user"),
-      ).toEqual([]);
+      expect((await session.view()).messages.filter((message) => message.kind === "user")).toEqual(
+        [],
+      );
     } finally {
       await listener.close();
       await host.close();

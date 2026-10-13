@@ -43,7 +43,8 @@ import type { Failure } from "@nyte-ai/schema/model";
 import { SdkError } from "./error.ts";
 import type { HeadPair } from "./bus.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
-import { START, isJsonObject, pathOf, tipOf } from "./session-state.ts";
+import { isJsonObject } from "./records.ts";
+import { START, pathOf, tipOf } from "./session-state.ts";
 
 /** Returns a session as the fold holds it for one principal: every head, commit, input, part, run, call and turn. The maps and each head's `messages` and `turns` belong to the fold and change in place; every object a view carries is immutable and shared between steps. */
 export interface FoldState {
@@ -75,7 +76,7 @@ export interface FoldState {
 export interface FoldHead {
   /** Name, tip, stack, execution and unread; the same object sits in `FoldState.headInfos`. */
   readonly info: HeadInfo;
-  /** The head ref's revision paired with this head's tip (§54a); null when no pair names the tip. */
+  /** The head ref's revision paired with this head's tip; null when no pair names the tip. */
   readonly revision: Revision | null;
   readonly seen: CommitId | null;
   /** The path's committed messages oldest first, then `live`, then `pending`. */
@@ -328,7 +329,7 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
   return view;
 }
 
-/** Returns the state with a head pair applied: the head's revision is the pair's when the pair's tip is the head's tip, else null (§54a); the input state is consumed. */
+/** Returns the state with a head pair applied: the head's revision is the pair's when the pair's tip is the head's tip, else null; the input state is consumed. */
 export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {
   const tip = tipOf(state.heads.get(head)?.info.tip ?? START);
 

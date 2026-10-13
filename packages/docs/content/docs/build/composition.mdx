@@ -62,8 +62,7 @@ if (
 ```
 
 `plugins` lists the host's core plugins, with exactly one environment provider per workspace
-kind. What a plugin is, and where a session gets the rest of them, is in
-[Plugins](/docs/kernel/plugins).
+kind.
 
 To work in a project folder, serve it with the local provider:
 
@@ -357,8 +356,9 @@ between, the next `connect` resends each entry under the same id, and the host a
 replays the receipt it already has.
 
 `delivery: "steer"`, the default, joins the live run at its next boundary, and `"queue"` waits
-for the current run to end; either starts a run when the head is idle. `"attach"` never starts a
-run and rides with the next turn. The journal is in memory by default. For messages that
+for the current run to end; either starts a run when the head is idle. `"attach"` rides with the
+next turn; a subagent's or background job's report also wakes a head whose last run completed,
+but not one that was stopped or failed. The journal is in memory by default. For messages that
 should survive a restart, pass `journal` to `connect`: an object with `load`, `put` and `remove`
 over your own storage. To edit a message, `send(content, { replace: id })`.
 

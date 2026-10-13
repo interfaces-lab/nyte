@@ -335,8 +335,7 @@ const shellSearch = Type.Object({
   customize: Type.Optional(searchText),
   environment: Type.Optional(searchText),
   usage: Type.Optional(searchText),
-  usageWhere: Type.Optional(searchText),
-  usageTool: Type.Optional(searchText),
+  usageRange: Type.Optional(searchText),
 });
 
 export type ShellSearch = Static<typeof shellSearch>;
@@ -348,8 +347,7 @@ const rootRoute = createRootRouteWithContext<{ startup: { pending: boolean } }>(
     customize: Value.Check(searchText, search.customize) ? search.customize : undefined,
     environment: Value.Check(searchText, search.environment) ? search.environment : undefined,
     usage: Value.Check(searchText, search.usage) ? search.usage : undefined,
-    usageWhere: Value.Check(searchText, search.usageWhere) ? search.usageWhere : undefined,
-    usageTool: Value.Check(searchText, search.usageTool) ? search.usageTool : undefined,
+    usageRange: Value.Check(searchText, search.usageRange) ? search.usageRange : undefined,
   }),
 });
 

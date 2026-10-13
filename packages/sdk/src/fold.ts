@@ -39,7 +39,9 @@ export interface Folds {
  * Returns a connection's shared folds (§47f): the first watcher of a
  * `(session, head)` opens its `head.watch` and folds it on the client with
  * core's fold (remote carries deltas, never views); later watchers join it,
- * and the last one leaving closes the request and drops the fold.
+ * and the last one leaving closes the request and parks the fold. The next
+ * watcher of a parked fold resumes its `head.watch` after the last folded
+ * seq, so returning to a session never replays its log.
  *
  * A head-moving event is offered only with the pair frame that follows it
  * (§40s, §54a); a logged event at or
@@ -49,13 +51,22 @@ export interface Folds {
  */
 export function createFolds(rows: Rows, principal: PrincipalId): Folds {
   const open = new Map<string, FoldHold>();
+  const parked = new Map<string, FoldState>();
 
   const start = (session: SessionId, head: HeadName, key: string): FoldHold => {
     const sinks = new Set<Sink<FoldState>>();
-    let state = emptyFold({ session, principal });
+    const resumed = parked.get(key);
+    parked.delete(key);
+    let state = resumed ?? emptyFold({ session, principal });
     let live = false;
     let unpaired = false;
-    const frames = rows.watch("head.watch", { session, head })[Symbol.asyncIterator]();
+
+    const frames = rows
+      .watch(
+        "head.watch",
+        resumed === undefined ? { session, head } : { session, head, after: resumed.seq },
+      )
+      [Symbol.asyncIterator]();
 
     const finish = (end: (sink: Sink<FoldState>) => void): void => {
       if (open.get(key) === hold) open.delete(key);
@@ -94,7 +105,12 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
 
           if (sinks.size > 0) return;
 
-          if (open.get(key) === hold) open.delete(key);
+          if (open.get(key) === hold) {
+            open.delete(key);
+
+            if (live) parked.set(key, state);
+          }
+
           void frames.return?.();
         };
       },

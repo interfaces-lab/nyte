@@ -126,7 +126,6 @@ export function memoryStore(): Store {
         (logs.get(session) ?? []).filter((event) => event.seq > after).slice(0, limit),
       tail: async (session) => tail(session),
     },
-    close: async () => {},
   };
 
   return {

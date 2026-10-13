@@ -1,8 +1,7 @@
 import { Type } from "typebox";
 import type { TCyclic, TProperties, TSchema } from "typebox";
-import { Compile } from "typebox/compile";
 import type { Json, JsonSchema } from "../primitives.ts";
-import { standard } from "../schema.ts";
+import { compile, standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
 
 const JSON_DEFINITION = Type.Union([
@@ -41,7 +40,7 @@ export const JsonValueSchema: Schema<Json> = standard(withJson(JsonType));
 /** Validates a JSON object, such as a `JsonSchema` document. */
 export const JsonObjectSchema: Schema<JsonSchema> = standard(withJson(JsonObjectType));
 
-const json = Compile(withJson(JsonType));
+const json = compile(withJson(JsonType));
 
 /** Returns whether a value is JSON: what a part's state and a stored record must be. */
 export function isJson(value: unknown): value is Json {

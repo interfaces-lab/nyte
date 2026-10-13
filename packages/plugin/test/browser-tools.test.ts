@@ -9,7 +9,10 @@ import { fakeModels, open } from "./fake-models.ts";
 /** Returns a browser with one page that records every call made to it. */
 function fakeBrowser() {
   const calls: string[] = [];
-  const snapshot: PageSnapshot = { revision: asId("rev1"), nodes: [{ ref: "e1", role: "button", name: "Go", editable: false, depth: 0 }] };
+  const snapshot: PageSnapshot = {
+    revision: asId("rev1"),
+    nodes: [{ ref: "e1", role: "button", name: "Go", editable: false, depth: 0 }],
+  };
   const applied = { kind: "applied", snapshot } as const;
   const after = <T>(call: string, value: T): T => {
     calls.push(call);
@@ -19,7 +22,15 @@ function fakeBrowser() {
 
   const page: Page = {
     id: asId("p1"),
-    view: async () => ({ id: asId("p1"), url: "https://nyte.test", title: "Nyte", loading: false, revision: asId("rev1"), canGoBack: false, canGoForward: false }),
+    view: async () => ({
+      id: asId("p1"),
+      url: "https://nyte.test",
+      title: "Nyte",
+      loading: false,
+      revision: asId("rev1"),
+      canGoBack: false,
+      canGoForward: false,
+    }),
     watch: async function* () {},
     snapshot: async () => after("snapshot", snapshot),
     navigate: async (url) => after(`navigate ${url}`, applied),
@@ -58,11 +69,26 @@ it("drives the workspace browser: open, click, type, console and evaluate", asyn
   fake.reply(
     {
       content: [
-        { type: "toolCall", id: "b1", name: "browser_open", arguments: { url: "https://nyte.test" } },
+        {
+          type: "toolCall",
+          id: "b1",
+          name: "browser_open",
+          arguments: { url: "https://nyte.test" },
+        },
         { type: "toolCall", id: "b2", name: "browser_click", arguments: { ref: "e1" } },
-        { type: "toolCall", id: "b3", name: "browser_type", arguments: { ref: "e1", text: "hi", page: "p1" } },
+        {
+          type: "toolCall",
+          id: "b3",
+          name: "browser_type",
+          arguments: { ref: "e1", text: "hi", page: "p1" },
+        },
         { type: "toolCall", id: "b4", name: "browser_console", arguments: {} },
-        { type: "toolCall", id: "b5", name: "browser_evaluate", arguments: { expression: "1 + 1" } },
+        {
+          type: "toolCall",
+          id: "b5",
+          name: "browser_evaluate",
+          arguments: { expression: "1 + 1" },
+        },
       ],
     },
     { content: [{ type: "text", text: "Done." }] },
@@ -72,10 +98,19 @@ it("drives the workspace browser: open, click, type, console and evaluate", asyn
   const session = await host.sessions.create();
   await (await session.send("Browse.")).settled();
 
-  expect(calls).toEqual(["open https://nyte.test", "snapshot", "click e1", "type e1 hi", "console", "evaluate 1 + 1"]);
+  expect(calls).toEqual([
+    "open https://nyte.test",
+    "snapshot",
+    "click e1",
+    "type e1 hi",
+    "console",
+    "evaluate 1 + 1",
+  ]);
 
   const texts = (await session.view()).messages.flatMap((message) =>
-    isPart(message, tool) && message.state.phase === "settled" && message.state.outcome.kind === "ok"
+    isPart(message, tool) &&
+    message.state.phase === "settled" &&
+    message.state.outcome.kind === "ok"
       ? message.state.outcome.content.flatMap((item) => (item.kind === "text" ? [item.text] : []))
       : [],
   );

@@ -39,7 +39,7 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS log (session TEXT NOT NULL, seq BIGINT NOT NULL, at BIGINT NOT NULL, event TEXT NOT NULL, PRIMARY KEY (session, seq))",
 ];
 
-/** Returns a `Store` (`kind: "postgres"`) over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` creates the sqlite store's three tables if absent, `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that first takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs, checks every `expect` against them, and applies and appends as the sqlite store does, rolling back on any error. Every `open()` returns a connection whose reads go through the pool, its `close` a no-op. */
+/** Returns a `Store` (`kind: "postgres"`) over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` creates the sqlite store's three tables if absent, `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that first takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs, checks every `expect` against them, and applies and appends as the sqlite store does, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
 export function postgresStore(
   input: { readonly connectionString: string } | { readonly pool: PostgresPool },
 ): Store {
@@ -174,7 +174,6 @@ function connect(pool: PostgresPool): StoreConnection {
       },
       tail: (session) => withClient(pool, (client) => tailOf(client, session)),
     },
-    close: async () => undefined,
   };
 }
 

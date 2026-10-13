@@ -359,7 +359,13 @@ describe("handler", () => {
       await (await post(handler, "sessions.create", {})).json(),
     );
     const controller = new AbortController();
-    const response = await post(handler, "head.watch", { session, head: main }, {}, controller.signal);
+    const response = await post(
+      handler,
+      "head.watch",
+      { session, head: main },
+      {},
+      controller.signal,
+    );
 
     assert(response.body !== null);
     const frames = parseSse(response.body)[Symbol.asyncIterator]();

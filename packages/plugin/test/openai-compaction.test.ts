@@ -4,7 +4,11 @@ import { afterEach, assert, expect, it, vi } from "vitest";
 import { openaiCompaction } from "../src/openai-compaction.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 
-const responses = testModel("gpt-test", { provider: "openai", api: "openai-responses", baseUrl: "https://openai.test/v1" });
+const responses = testModel("gpt-test", {
+  provider: "openai",
+  api: "openai-responses",
+  baseUrl: "https://openai.test/v1",
+});
 
 const models: Pick<Models, "getModel" | "getAuth"> = {
   getModel: (provider, id) => (provider === "openai" && id === "gpt-test" ? responses : undefined),
@@ -46,7 +50,13 @@ it("supplies the compact endpoint's window as material for an OpenAI Responses m
   const handler = plugin.hooks?.before_compaction;
 
   assert(api !== undefined && typeof handler === "function");
-  const context = { api, signal: new AbortController().signal, session: session.id, head: null, run: null };
+  const context = {
+    api,
+    signal: new AbortController().signal,
+    session: session.id,
+    head: null,
+    run: null,
+  };
 
   expect(await handler(plan, context)).toMatchObject({
     result: {

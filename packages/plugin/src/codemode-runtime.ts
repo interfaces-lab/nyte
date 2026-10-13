@@ -12,5 +12,7 @@ export type { CodemodeSandboxOptions } from "@earendil-works/pi-codemode";
  * @since 0.1.0
  */
 export function resolveQuickJSWasmPath(): string {
-  return createRequire(import.meta.resolve("@earendil-works/pi-codemode")).resolve("quickjs-wasi/quickjs.wasm");
+  return createRequire(import.meta.resolve("@earendil-works/pi-codemode")).resolve(
+    "quickjs-wasi/quickjs.wasm",
+  );
 }

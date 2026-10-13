@@ -9,7 +9,6 @@ import type {
   PluginLoadOutcome,
   PluginReplacementReport,
   PrincipalView,
-  PruneReport,
   RepairPage,
 } from "../host.ts";
 import { standard } from "../schema.ts";
@@ -48,13 +47,6 @@ export const AdvanceReportType = Type.Union([
 export const RepairPageType = Type.Object({
   runnable: Type.Array(Type.Object({ session: idSchema<"session">(), head: idSchema<"head">() })),
   next: nullable(idSchema<"cursor">()),
-});
-
-/** The TypeBox schema of a `PruneReport`. */
-export const PruneReportType = Type.Object({
-  objects: Type.Number(),
-  bytes: Type.Number(),
-  retained: Type.Number(),
 });
 
 /** The TypeBox schema of a `PrincipalViewWire`. */
@@ -116,9 +108,6 @@ export const AdvanceReportSchema: Schema<AdvanceReport> = standard(AdvanceReport
 
 /** Validates a `RepairPage`. */
 export const RepairPageSchema: Schema<RepairPage> = standard(RepairPageType);
-
-/** Validates a `PruneReport`. */
-export const PruneReportSchema: Schema<PruneReport> = standard(PruneReportType);
 
 /** Validates a `PrincipalViewWire`. */
 export const PrincipalViewWireSchema: Schema<PrincipalViewWire> = standard(PrincipalViewWireType);

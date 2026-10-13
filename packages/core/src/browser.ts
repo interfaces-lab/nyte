@@ -80,7 +80,7 @@ export interface Page {
 
 const OPENED_IDS = 256;
 
-/** Names who takes a page hold: the origin's session and head, its step's call and acquisition counter (§33a); null for a client. */
+/** Names who takes a page hold: the origin's session and head, its step's call and acquisition counter; null for a client. */
 export type PageHolder = {
   readonly session: SessionId;
   readonly head: HeadName;
@@ -88,11 +88,11 @@ export type PageHolder = {
   readonly sequence: { next(): number };
 };
 
-/** Holds the browser pages opened or adopted through this kernel, in memory: a page lives while any hold does, and a holder's head shows it as an unlogged `background` item (§37c). */
+/** Holds the browser pages opened or adopted through this kernel, in memory: a page lives while any hold does, and a holder's head shows it as an unlogged `background` item. */
 export interface PageTable {
   /** Takes one more hold on a provider page; the returned page's `close()` releases this hold once, the last one closing the provider's page. */
   hold(page: Page, title: string, holder: PageHolder | null): Page;
-  /** Runs `open` once per `id`: a replay with the same input returns the same page (§40e), another input throws `invalid` (§40x), and a replay after the page closed throws `unknown`, the digest kept (G6). */
+  /** Runs `open` once per `id`: a replay with the same input returns the same page, another input throws `invalid`, and a replay after the page closed throws `unknown`, the digest kept (G6). */
   open(request: {
     readonly id?: string;
     readonly input: Json;
@@ -247,7 +247,7 @@ export function createPageTable(kernel: Kernel): PageTable {
   };
 }
 
-/** Returns a provider's browser with every page held through `kernel.pages` for `holder` (§37i); `open` from a step is an acquisition (`acquire`), a re-run adopting the recorded page. `list` and `watch` report the table's hold count as `holders`. */
+/** Returns a provider's browser with every page held through `kernel.pages` for `holder`; `open` from a step is an acquisition (`acquire`), a re-run adopting the recorded page. `list` and `watch` report the table's hold count as `holders`. */
 export function wrapBrowser(
   kernel: Kernel,
   browser: BrowserApi,

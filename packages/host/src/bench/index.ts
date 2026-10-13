@@ -14,8 +14,8 @@ import { cuttableLink } from "./link.ts";
 import { severableStore } from "./store.ts";
 import { benchTools } from "./tools.ts";
 
-export { chatOnly, fakeModels } from "./fake-models.ts";
-export type { FakeModel, FakeModels, ScriptedTurn } from "./fake-models.ts";
+export { chatOnly, fakeModels, testModel } from "./fake-models.ts";
+export type { FakeModel, FakeModels, Reply, Request, ScriptedTurn } from "./fake-models.ts";
 
 /** One open bench fixture (`BenchHost` in `packages/bench/src/driver.ts`): the host, its model and store, crash and restart, a cuttable client link, counters and id constructors. */
 export interface BenchHost {
@@ -46,6 +46,8 @@ export interface BenchLink {
   /** Cuts the socket; the connection reports reconnecting until `restore()`. */
   drop(): void;
   restore(): void;
+  /** Bytes the host has sent this client since the link opened. */
+  received(): number;
   close(): Promise<void>;
 }
 
@@ -203,7 +205,7 @@ async function openBench(
  * token, a `cuttableLink` in front, and `connect({ url, credentials: { kind:
  * "token", token } })` dialling the link.
  *
- * `drop` and `restore` are the link's; `close()` closes the connection, the
+ * `drop`, `restore` and `received` are the link's; `close()` closes the connection, the
  * link and the listener, once.
  */
 async function linkTo(host: Host, connect: BenchConnect): Promise<BenchLink> {
@@ -238,6 +240,7 @@ async function linkTo(host: Host, connect: BenchConnect): Promise<BenchLink> {
     connection,
     drop: () => link.drop(),
     restore: () => link.restore(),
+    received: () => link.received(),
     close() {
       closing ??= (async () => {
         await connection.close();

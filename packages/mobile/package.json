@@ -24,7 +24,7 @@
     "eas-build-post-install": "pnpm canvas:build",
     "submit": "eas submit --platform ios --profile production",
     "test": "vitest --run",
-    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsc --noEmit",
+    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsgo --noEmit",
     "icons:sync": "node scripts/sync-completion-icons.mjs"
   },
   "dependencies": {
@@ -85,7 +85,7 @@
     "@types/react": "19.2.18",
     "babel-plugin-react-compiler": "1.0.0",
     "babel-preset-expo": "57.0.13",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "vitest": "5.0.2"
   },
   "enriched-markdown": {

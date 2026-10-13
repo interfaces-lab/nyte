@@ -111,6 +111,9 @@ export const settingsStyles = create({
   titleRow: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
     paddingInline: 4,
   },
   panel: { display: "flex", flexDirection: "column", gap: settings.sectionGap },

@@ -1,7 +1,6 @@
 "use client";
 
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { Tabs } from "@nyte-ai/ui/tabs";
 import { IconImac, IconMoon, IconSun } from "central-icons";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
@@ -42,39 +41,22 @@ export function ThemeToggle() {
   };
 
   return (
-    <>
-      <Tabs.Root variant="pill" value={value} onValueChange={choose} className="max-lg:hidden">
-        <Tabs.List aria-label="Theme">
+    <Menu>
+      <MenuTrigger
+        aria-label="Theme"
+        className="inline-flex size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-hover hover:text-foreground hero:text-white/72 hero:hover:bg-white/12 hero:hover:text-white"
+      >
+        <Current size={16} />
+      </MenuTrigger>
+      <MenuContent align="end">
+        <MenuRadioGroup value={value} onValueChange={choose}>
           {THEMES.map(({ value: item, label, Icon }) => (
-            <Tabs.Tab
-              key={item}
-              value={item}
-              aria-label={label}
-              className="w-8 justify-center px-0 hero:border-white/20 hero:text-white/72 hero:hover:bg-white/12 hero:hover:text-white hero:data-active:border-white/40 hero:data-active:bg-white/16 hero:data-active:text-white"
-            >
-              <Icon size={16} />
-            </Tabs.Tab>
+            <MenuRadioItem key={item} value={item} leading={<Icon size={14} />}>
+              {label}
+            </MenuRadioItem>
           ))}
-        </Tabs.List>
-      </Tabs.Root>
-
-      <Menu>
-        <MenuTrigger
-          aria-label="Theme"
-          className="inline-flex size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-hover hover:text-foreground lg:hidden hero:text-white/72 hero:hover:bg-white/12 hero:hover:text-white"
-        >
-          <Current size={16} />
-        </MenuTrigger>
-        <MenuContent align="end">
-          <MenuRadioGroup value={value} onValueChange={choose}>
-            {THEMES.map(({ value: item, label, Icon }) => (
-              <MenuRadioItem key={item} value={item} leading={<Icon size={14} />}>
-                {label}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuContent>
-      </Menu>
-    </>
+        </MenuRadioGroup>
+      </MenuContent>
+    </Menu>
   );
 }

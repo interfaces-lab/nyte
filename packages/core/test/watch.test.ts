@@ -165,7 +165,7 @@ async function land(
     },
   };
 
-  const id: CommitId = asId(await kernel.store.objects.put(envelope("commit", record, 0, parent)));
+  const id: CommitId = asId(await kernel.store.objects.put(envelope("commit", record, 0)));
   await admit(kernel, session, message);
   await write(kernel, [
     {
@@ -182,7 +182,7 @@ async function land(
     },
     {
       name: headRef(session, main),
-      object: envelope("commit", record, 0, parent),
+      object: envelope("commit", record, 0),
       event: { head: main, kind: "commit", id, parent, run: null, body: record.body },
     },
   ]);

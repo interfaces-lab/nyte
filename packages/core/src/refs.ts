@@ -1,5 +1,14 @@
 import { asId } from "@nyte-ai/schema";
-import type { CallId, HeadName, HostId, PartId, PrincipalId, ReceiptId, RunId, SessionId, WorkspaceId } from "@nyte-ai/schema";
+import type {
+  CallId,
+  HeadName,
+  PartId,
+  PrincipalId,
+  ReceiptId,
+  RunId,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/schema";
 
 /** Returns `sessions/<id>`: the session record. */
 export function sessionRef(id: SessionId): string {
@@ -14,7 +23,9 @@ export function sessionOf(name: string): SessionId | null {
 }
 
 /** Returns the session and head a head ref names, or null for any other ref. */
-export function headOf(name: string): { readonly session: SessionId; readonly head: HeadName } | null {
+export function headOf(
+  name: string,
+): { readonly session: SessionId; readonly head: HeadName } | null {
   const [root, id, kind, head, ...rest] = name.split("/");
 
   return root === "sessions" && id && kind === "heads" && head && rest.length === 0
@@ -62,11 +73,6 @@ export function callRef(id: SessionId, call: CallId): string {
   return `sessions/${id}/calls/${call}`;
 }
 
-/** Returns `sessions/<id>/journal/<principal>`: the client-side request journal. */
-export function journalRef(id: SessionId, principal: PrincipalId): string {
-  return `sessions/${id}/journal/${principal}`;
-}
-
 /** Returns `workspaces/<id>`: the workspace record. */
 export function workspaceRef(id: WorkspaceId): string {
   return `workspaces/${id}`;
@@ -91,14 +97,3 @@ export function hostIdentityRef(): string {
 export function hostPrincipalsRef(): string {
   return "host/principals";
 }
-
-/** Returns `host/catalog`: the model catalog. */
-export function hostCatalogRef(): string {
-  return "host/catalog";
-}
-
-/** Returns what `host/identity` holds: the host's id and when it was first opened. */
-export interface HostIdentity { readonly id: HostId; readonly createdAt: number }
-
-/** Returns what `sessions/<id>/leases/<head>` holds: the host running the head, the kernel instance within it that holds the lease (`kernel.instance`), and when the lease expires (§42q). */
-export interface Lease { readonly holder: HostId; readonly instance: string; readonly expiresAt: number }

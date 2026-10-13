@@ -7,7 +7,11 @@ const storage: PluginStorage = {
   delete: async () => undefined,
   keys: async () => [],
   at: () => storage,
-  secrets: { get: async () => undefined, set: async () => undefined, delete: async () => undefined },
+  secrets: {
+    get: async () => undefined,
+    set: async () => undefined,
+    delete: async () => undefined,
+  },
 };
 
 /** Returns a client plugin api over `sdk` whose notifications land in `notified` and whose registries hold nothing. */
@@ -26,7 +30,12 @@ export function clientApi(
     sdk,
     contribute: {
       commands: { add: () => () => undefined, list: () => [] },
-      settings: { add: () => setting, list: () => [], value: async () => undefined, watch: async function* () {} },
+      settings: {
+        add: () => setting,
+        list: () => [],
+        value: async () => undefined,
+        watch: async function* () {},
+      },
       renderers: { add: () => () => undefined, list: () => [] },
       keybindings: { add: () => () => undefined, list: () => [] },
     },

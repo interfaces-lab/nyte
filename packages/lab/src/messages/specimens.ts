@@ -1,45 +1,46 @@
 /**
  * Every row the transcript draws, as the SDK hands it over. A scene is a slice
- * of a session's state: `transcript` and `run` are `SessionSnapshot` fields,
- * `overlay` is the client fold's `LiveParts`, and `landing` is what
- * `conversationMessages` derives from `pending` and the outbox. Nothing here is
- * shaped for the renderer.
+ * of a session's view: `turns` are `conversationTurns` of its messages,
+ * `execution` is the head's run phase, and `landing` is the user messages
+ * `conversationMessages` draws under the transcript. Nothing here is shaped
+ * for the renderer.
  */
-import { sessionId } from "@nyte-ai/protocol";
+import { lineDiff } from "@nyte-ai/core";
+import { asId } from "@nyte-ai/schema";
 import type {
-  Failure,
-  RunInfo,
-  RunPhase,
+  Execution,
+  Json,
+  Message,
+  PartStatus,
+  PatchEntry,
+  RunEnd,
+  RunView,
+  Schedule,
   SessionId,
   SessionInfo,
-  ToolReason,
-  ToolState,
-  ToolTurnPart,
-  Turn,
-  TurnPart,
-  TurnToolClass,
-  UserTurnPart,
-} from "@nyte-ai/protocol";
-import type { LiveParts } from "@nyte-ai/client";
-import type { ProvisionalSubagentSession } from "@nyte-ai/app/conversation/subagent-sessions.ts";
+  ToolClass,
+  ToolOutcome,
+  ToolPartState,
+  TurnInfo,
+  UserContent,
+} from "@nyte-ai/sdk";
+import type {
+  ProvisionalSubagentSession,
+  SubagentSession,
+} from "@nyte-ai/app/conversation/subagent-sessions.ts";
+import { isToolMessage } from "@nyte-ai/app/view-helpers.ts";
+import type { ConversationTurn, UserMessage } from "@nyte-ai/app/view-helpers.ts";
 
 export const CWD = "/Users/lab/nyte";
 
 const T0 = Date.UTC(2026, 9, 7, 13, 30);
 
-const RUN = "lab-run";
-
-export interface Landing {
-  readonly key: string;
-  readonly content: UserTurnPart["content"];
-  readonly pending: boolean;
-}
+const RUN = asId<"run">("lab-run");
 
 export interface Scene {
-  readonly transcript: readonly Turn[];
-  readonly run?: RunInfo;
-  readonly overlay?: LiveParts;
-  readonly landing?: readonly Landing[];
+  readonly turns: readonly ConversationTurn[];
+  readonly execution?: Execution;
+  readonly landing?: readonly UserMessage[];
   readonly loading?: true;
   readonly failed?: true;
 }
@@ -69,167 +70,347 @@ function oid(label: string): string {
 
 const at = (seconds: number): number => T0 + seconds * 1_000;
 
-function user(content: UserTurnPart["content"], seconds = 0): UserTurnPart {
-  return { kind: "user", commit: oid("user"), parent: null, content, at: at(seconds) };
+const NO_TURN = asId<"turn">("");
+
+const settled = (seconds: number): PartStatus => ({
+  kind: "settled",
+  commit: asId<"commit">(oid("commit")),
+  endedAt: at(seconds),
+});
+
+const LIVE: PartStatus = { kind: "live", run: RUN };
+
+function user(content: UserContent, seconds = 0): UserMessage {
+  return {
+    kind: "user",
+    id: asId<"message">(oid("user")),
+    turn: NO_TURN,
+    at: at(seconds),
+    content,
+    source: { kind: "user" },
+    delivery: "queue",
+    status: { kind: "landed", commit: asId<"commit">(oid("commit")), run: RUN, replaced: null },
+    siblings: { index: 0, count: 1, ids: [] },
+  };
 }
 
-function action(label: string, content: string, seconds = 0): UserTurnPart {
+function action(label: string, content: string, seconds = 0): UserMessage {
   return { ...user(content, seconds), source: { kind: "action", label } };
 }
 
-function said(text: string, seconds: number, contentIndex = 0): TurnPart {
-  return { kind: "assistant", commit: oid("reply"), contentIndex, text, at: at(seconds) };
+function pending(content: string, schedule: Schedule): UserMessage {
+  return { ...user(content), status: { kind: "pending", schedule, covered: true } };
 }
 
-function thought(text: string, seconds: number, contentIndex = 0): TurnPart {
-  return { kind: "thinking", commit: oid("reply"), contentIndex, text, at: at(seconds) };
-}
-
-function call(
-  toolClass: TurnToolClass,
-  state: ToolState,
+function part(
+  partKind: string,
+  role: "step" | "answer" | "note",
+  state: Json,
   seconds: number,
-  output?: string,
-): ToolTurnPart {
-  const part = {
-    kind: "tool",
-    callId: oid("call"),
-    class: toolClass,
-    state,
+  status: PartStatus = settled(seconds),
+): Message {
+  const id = oid(partKind);
+
+  return {
+    kind: "part",
+    id: asId<"message">(id),
+    turn: NO_TURN,
     at: at(seconds),
-  } as const;
-
-  return output === undefined ? part : { ...part, output };
-}
-
-function turn(
-  parts: readonly TurnPart[],
-  failure?: Failure,
-): Extract<Turn, { readonly kind: "turn" }> {
-  const first = parts[0]?.at ?? T0;
-  const last = parts.at(-1)?.at ?? first;
-
-  const base: Extract<Turn, { readonly kind: "turn" }> = {
-    kind: "turn",
-    id: oid("turn"),
-    run: { kind: "run", id: RUN },
-    parts: [...parts],
-    startedAt: first,
-    durationMs: last - first,
+    part: asId<"part">(id),
+    partKind,
+    role,
+    state,
+    version: 1,
+    status,
   };
-
-  return failure === undefined ? base : { ...base, failure };
 }
 
-function run(phase: RunPhase, abortRequested?: true): RunInfo {
-  const base = {
-    runId: RUN,
-    head: "main",
-    origin: { kind: "user" },
-    root: RUN,
-    phase,
-    startedAt: T0,
-    attempts: 1,
-    config: {},
-  } as const;
+const said = (markdown: string, seconds: number, status?: PartStatus): Message =>
+  part("text", "answer", { markdown, signature: null }, seconds, status);
 
-  return abortRequested === undefined ? base : { ...base, abortRequested };
+const thought = (markdown: string, seconds: number, status?: PartStatus): Message =>
+  part("thinking", "step", { markdown, merged: 1, signature: null }, seconds, status);
+
+interface ToolSpec {
+  readonly name: string;
+  readonly args: Json;
+  readonly class: ToolClass;
+  readonly changes?: { readonly added: number; readonly removed: number };
+  /** The patch an edit or write settles with as its output. */
+  readonly patch?: PatchEntry;
+  readonly durationMs?: number;
 }
 
-const ok = (): ToolState => ({ kind: "success", commit: oid("result") });
+type CallState =
+  | { readonly phase: "calling" }
+  | { readonly phase: "running"; readonly progress: string | null; readonly waiting?: true }
+  | ToolOutcome;
 
-const failed = (reason: ToolReason): ToolState => ({
-  kind: "error",
-  reason,
-  commit: oid("result"),
-});
+function call(spec: ToolSpec, state: CallState, seconds: number, output?: string): Message {
+  const id = oid("call");
+  const base = { call: asId<"call">(id), name: spec.name, args: spec.args, class: spec.class };
 
-const PENDING: ToolState = { kind: "pending" };
+  const toolState: ToolPartState =
+    "phase" in state
+      ? state.phase === "calling"
+        ? { ...base, phase: "calling" }
+        : {
+            ...base,
+            phase: "running",
+            progress: state.progress === null ? null : { text: state.progress },
+          }
+      : {
+          ...base,
+          phase: "settled",
+          outcome:
+            state.kind === "ok"
+              ? {
+                  ...state,
+                  ...(output === undefined ? {} : { content: [{ kind: "text", text: output }] }),
+                  output: spec.patch ?? state.output,
+                }
+              : state,
+          changes:
+            spec.changes === undefined || state.kind !== "ok"
+              ? null
+              : { ...spec.changes, paths: [spec.class.kind === "edit" ? spec.class.path : ""] },
+        };
 
-const RUNNING: ToolState = { kind: "running" };
+  const status: PartStatus =
+    "phase" in state
+      ? state.phase === "running" && state.waiting === true
+        ? {
+            kind: "waiting",
+            run: RUN,
+            on: { kind: "part", part: asId<"part">(`${id}-question`) },
+          }
+        : LIVE
+      : {
+          kind: "settled",
+          commit: asId<"commit">(oid("commit")),
+          endedAt: at(seconds) + (spec.durationMs ?? 0),
+        };
 
-const NEEDS_INPUT: ToolState = {
-  kind: "running",
-  waitingFor: { kind: "input", waitId: "lab-wait" },
+  return {
+    kind: "part",
+    id: asId<"message">(id),
+    turn: NO_TURN,
+    at: at(seconds),
+    part: asId<"part">(id),
+    partKind: "tool",
+    role: "step",
+    state: toolState,
+    version: 1,
+    status,
+  };
+}
+
+const COMPLETED: RunEnd = {
+  kind: "completed",
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: null,
+    total: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
 };
 
-const INTERRUPTED: ToolState = { kind: "error", reason: { kind: "interrupted" }, commit: null };
+const WORKING: TurnInfo["state"] = { kind: "working", activity: null };
+
+function turn(
+  drafts: readonly Message[],
+  state: TurnInfo["state"] = { kind: "ended", end: COMPLETED },
+): ConversationTurn {
+  const id = asId<"turn">(oid("turn"));
+  const messages = drafts.map((message) => ({ ...message, turn: id }));
+  const steps = messages.filter((message) => message.kind === "part" && message.role === "step");
+
+  const tools = messages.flatMap((message) =>
+    isToolMessage(message) && message.state.phase === "settled" ? [message.state] : [],
+  );
+
+  const succeeded = tools.filter((tool) => tool.outcome.kind === "ok");
+  const first = messages[0]?.at ?? T0;
+
+  const tally = (kind: ToolClass["kind"]) => {
+    const calls = succeeded.filter((tool) => tool.class.kind === kind);
+
+    return {
+      count: calls.length,
+      paths: calls.flatMap((tool) => tool.changes?.paths ?? []),
+    };
+  };
+
+  const byClass = {
+    read: tally("read"),
+    list: tally("list"),
+    edit: tally("edit"),
+    shell: tally("shell"),
+    delegate: tally("delegate"),
+    custom: tally("custom"),
+  } satisfies TurnInfo["summary"]["byClass"];
+
+  const info: TurnInfo = {
+    id,
+    run: RUN,
+    prompt: messages.find((message) => message.kind === "user")?.id ?? null,
+    state,
+    startedAt: first,
+    endedAt: state.kind === "ended" ? (messages.at(-1)?.at ?? first) : null,
+    steps: steps.length,
+    thinkingOnly:
+      steps.length > 0 &&
+      steps.every((message) => message.kind === "part" && message.partKind === "thinking"),
+    summary: {
+      byClass,
+      failed: tools.filter((tool) => tool.outcome.kind === "failed").length,
+      stopped: tools.filter((tool) => tool.outcome.kind === "stopped").length,
+      added: tools.reduce((sum, tool) => sum + (tool.changes?.added ?? 0), 0),
+      removed: tools.reduce((sum, tool) => sum + (tool.changes?.removed ?? 0), 0),
+    },
+  };
+
+  return { info, messages };
+}
+
+const RUN_VIEW: RunView = {
+  id: RUN,
+  head: asId<"head">("main"),
+  startedAt: T0,
+  attempt: 1,
+  configuration: {
+    kind: "exact",
+    model: { provider: "anthropic", id: "claude-opus" },
+    thinking: "high",
+    agent: null,
+    settings: {},
+    settingsVersion: "lab",
+  },
+  origin: { kind: "input", message: asId<"message">("lab-prompt") },
+};
+
+const responding = (stopping = false): Execution => ({
+  kind: "live",
+  run: RUN_VIEW,
+  phase: "responding",
+  stopping,
+});
+
+const executing = (stopping = false): Execution => ({
+  kind: "live",
+  run: RUN_VIEW,
+  phase: "executing",
+  stopping,
+});
+
+const ok = (): ToolOutcome => ({ kind: "ok", content: [], output: null, parts: [] });
+
+const failed = (message: string): ToolOutcome => ({ kind: "failed", message });
+
+const PENDING: CallState = { phase: "calling" };
+
+const RUNNING: CallState = { phase: "running", progress: null };
+
+const NEEDS_INPUT: CallState = { phase: "running", progress: null, waiting: true };
+
+const INTERRUPTED: ToolOutcome = { kind: "interrupted" };
+
+const BLOCKED: ToolOutcome = {
+  kind: "rejected",
+  reason: "Blocked by the workspace's tool policy.",
+};
+
+const STOPPED: ToolOutcome = { kind: "stopped" };
 
 const path = (relative: string): string => `${CWD}/${relative}`;
 
-const read = (relative: string): TurnToolClass => ({ kind: "file_read", path: path(relative) });
+const read = (relative: string): ToolSpec => ({
+  name: "read",
+  args: { path: path(relative) },
+  class: { kind: "read", path: path(relative) },
+});
 
-const list = (relative: string): TurnToolClass => ({ kind: "list", path: path(relative) });
+const list = (relative: string): ToolSpec => ({
+  name: "ls",
+  args: { path: path(relative) },
+  class: { kind: "list", path: path(relative) },
+});
 
-const shell = (
-  command: string,
-  extra: Pick<Extract<TurnToolClass, { readonly kind: "shell" }>, "description" | "facts"> = {},
-): TurnToolClass => ({ kind: "shell", command, ...extra });
+const shell = (command: string, description?: string, durationMs?: number): ToolSpec => ({
+  name: "bash",
+  args: { command },
+  class:
+    description === undefined
+      ? { kind: "shell", command }
+      : { kind: "shell", command, description },
+  durationMs,
+});
 
-const custom = (label: string): TurnToolClass => ({ kind: "custom", label });
+const custom = (label: string): ToolSpec => ({
+  name: label,
+  args: {},
+  class: { kind: "custom", label },
+});
 
 const lines = (...rows: readonly string[]): string => rows.join("\n");
 
-const EDIT_PATCH = lines(
-  "--- a/packages/app/src/conversation/step-group-content.ts",
-  "+++ b/packages/app/src/conversation/step-group-content.ts",
-  "@@ -16,7 +16,8 @@ export function stepGroupContent(input: {",
-  '   if (input.open === true) return "open";',
-  " ",
-  '-  if (input.active && input.density === "compact") return input.hasContent ? "preview" : "closed";',
-  '+  if (input.active && input.density === "compact")',
-  '+    return input.hasContent ? "preview" : "closed";',
-  " ",
-  '   if (input.open === false) return "closed";',
-  " ",
-  '-  return input.active || (input.density === "detailed" && !input.thinkingOnly) ? "open" : "closed";',
-  '+  return input.active || input.density === "detailed" ? "open" : "closed";',
-  "",
-);
+const filePatch = (
+  file: string,
+  status: "added" | "modified",
+  before: string,
+  after: string,
+): PatchEntry => ({ path: file, status, digest: file, kind: "text", ...lineDiff(before, after) });
 
-const WRITE_PATCH = lines(
-  "--- /dev/null",
-  "+++ b/packages/lab/src/messages/notes.md",
-  "@@ -0,0 +1,4 @@",
-  "+# Messages",
-  "+",
-  "+Every row the transcript draws,",
-  "+in every density.",
-  "",
-);
-
-function smallPatch(file: string, before: string, after: string): string {
-  return lines(`--- a/${file}`, `+++ b/${file}`, "@@ -1,1 +1,1 @@", `-${before}`, `+${after}`, "");
-}
-
-const edited: TurnToolClass = {
-  kind: "file_patch",
-  op: "edit",
-  path: path("packages/app/src/conversation/step-group-content.ts"),
-  added: 3,
-  removed: 2,
-  patch: EDIT_PATCH,
-};
-
-const created: TurnToolClass = {
-  kind: "file_patch",
-  op: "write",
-  path: path("packages/lab/src/messages/notes.md"),
-  added: 4,
-  removed: 0,
-  patch: WRITE_PATCH,
-};
-
-function touched(file: string): TurnToolClass {
+function editing(file: string, oldText: string, newText: string): ToolSpec {
   return {
-    kind: "file_patch",
-    op: "edit",
-    path: path(file),
-    added: 1,
-    removed: 1,
-    patch: smallPatch(file, "const density = useSetting(preferences.toolCalls);", "density,"),
+    name: "edit",
+    args: { path: path(file), edits: [{ oldText, newText }] },
+    class: { kind: "edit", path: path(file) },
+    changes: { added: newText.split("\n").length, removed: oldText.split("\n").length },
+    patch: filePatch(path(file), "modified", oldText, newText),
   };
 }
+
+const edited = editing(
+  "packages/app/src/conversation/step-group-content.ts",
+  lines(
+    '  if (input.active && input.density === "compact") return input.hasContent ? "preview" : "closed";',
+    '  return input.active || (input.density === "detailed" && !input.thinkingOnly) ? "open" : "closed";',
+  ),
+  lines(
+    '  if (input.active && input.density === "compact")',
+    '    return input.hasContent ? "preview" : "closed";',
+    '  return input.active || input.density === "detailed" ? "open" : "closed";',
+  ),
+);
+
+const NOTES = lines("# Messages", "", "Every row the transcript draws,", "in every density.");
+
+const created: ToolSpec = {
+  name: "write",
+  args: { path: path("packages/lab/src/messages/notes.md"), content: NOTES },
+  class: { kind: "edit", path: path("packages/lab/src/messages/notes.md") },
+  changes: { added: 4, removed: 0 },
+  patch: filePatch(path("packages/lab/src/messages/notes.md"), "added", "", NOTES),
+};
+
+const touched = (file: string): ToolSpec =>
+  editing(file, "const density = useSetting(preferences.toolCalls);", "density,");
+
+const editSpec = (file: string): ToolSpec => ({
+  name: "edit",
+  args: { path: path(file) },
+  class: { kind: "edit", path: path(file) },
+});
+
+const writeSpec = (file: string): ToolSpec => ({
+  name: "write",
+  args: { path: path(file) },
+  class: { kind: "edit", path: path(file) },
+});
 
 const TEST_OUTPUT = lines(
   " RUN  v4.1.0 /Users/lab/nyte/packages/app",
@@ -270,80 +451,72 @@ const LOG_OUTPUT = lines(
   "1cf97733 perf(app): keep TypeBox template parser out of the font schema",
 );
 
-/** A 4:3 swatch, so an attachment draws without a network request. */
-const SWATCH = btoa(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c8cff"/><stop offset="1" stop-color="#ff9d7c"/></linearGradient></defs><rect width="160" height="120" fill="url(#g)"/></svg>',
-);
+/** A 4:3 swatch, uploaded as a blob the transcript reads by id. */
+const SWATCH = asId<"blob">("lab-swatch");
 
 /* ---------------------------------------------------------------- subagents */
 
-function child(id: string, name: string, phase: RunPhase, awaitingReply?: true): SessionInfo {
-  const session = sessionId(id);
-
-  const headRun: RunInfo = {
-    runId: `${id}-run`,
-    head: "main",
-    origin: { kind: "user" },
-    root: `${id}-run`,
-    phase,
-    startedAt: T0,
-    attempts: 1,
-    config: {},
-  };
-
+function child(id: string, name: string, execution: Execution): SessionInfo {
   return {
-    sessionId: session,
-    activation: { kind: "active" },
-    workspace: { kind: "local", id: "fixture", cwd: CWD },
+    id: asId<"session">(id),
     name,
-    createdAt: T0,
-    lastActivityAt: T0 + 60_000,
+    parent: asId<"session">("lab-messages"),
+    workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,
-    config: {},
-    parent: { sessionId: sessionId("lab-messages"), runId: RUN, callId: id, depth: 1 },
+    activation: { kind: "active" },
     heads: [
-      {
-        head: "main",
-        tip: null,
-        run: awaitingReply === undefined ? headRun : { ...headRun, awaitingReply },
-      },
+      { name: asId<"head">("main"), tip: { kind: "start" }, stack: null, execution, unread: false },
     ],
+    createdAt: T0,
+    lastActivityAt: T0 + 60_000,
   };
 }
 
 const starting: ProvisionalSubagentSession = {
   kind: "provisional",
-  sessionId: sessionId("lab-agent-starting"),
+  id: asId<"session">("lab-agent-starting"),
   title: "Map translucent tints to tokens",
   startedAt: T0,
 };
 
-const finished = child("lab-agent-done", "Review titlebar alignment", { kind: "done" });
+const finished = child("lab-agent-done", "Review titlebar alignment", {
+  kind: "idle",
+  lastRun: { id: RUN, end: COMPLETED, endedAt: T0 + 60_000 },
+});
 
-const asking = child("lab-agent-asking", "Confirm workspace trust copy", { kind: "waiting" }, true);
+const asking = child("lab-agent-asking", "Confirm workspace trust copy", {
+  kind: "waiting",
+  run: RUN_VIEW,
+  on: { kind: "part", part: asId<"part">("lab-agent-question") },
+});
 
 const broken = child("lab-agent-failed", "Audit floating surface shadows", {
-  kind: "failed",
-  failure: { class: "provider", message: "Model returned an empty response." },
+  kind: "idle",
+  lastRun: {
+    id: RUN,
+    end: {
+      kind: "failed",
+      failure: { class: "provider", message: "Model returned an empty response." },
+    },
+    endedAt: T0 + 60_000,
+  },
 });
 
 /** Listed nowhere and read as absent: a create whose child never started. */
-export const UNSTARTED = sessionId("lab-agent-unstarted");
+export const UNSTARTED = asId<"session">("lab-agent-unstarted");
 
-export const SUBAGENTS: ReadonlyMap<SessionId, SessionInfo | ProvisionalSubagentSession> = new Map<
-  SessionId,
-  SessionInfo | ProvisionalSubagentSession
->([
-  [starting.sessionId, starting],
-  [finished.sessionId, finished],
-  [asking.sessionId, asking],
-  [broken.sessionId, broken],
-]);
+export const SUBAGENTS: ReadonlyMap<SessionId, SubagentSession> = new Map(
+  [starting, finished, asking, broken].map((session) => [session.id, session]),
+);
 
-function create(title: string, session: SessionId, state: ToolState, seconds: number) {
+function create(title: string, session: SessionId, state: CallState, seconds: number) {
   return call(
-    { kind: "delegate", role: "create", title, target: { kind: "one", session } },
+    {
+      name: "task",
+      args: { title },
+      class: { kind: "delegate", child: session, role: "create", title },
+    },
     state,
     seconds,
     `Started ${title}`,
@@ -353,18 +526,23 @@ function create(title: string, session: SessionId, state: ToolState, seconds: nu
 function delegate(
   role: "send" | "read" | "stop",
   session: SessionId,
-  state: ToolState,
+  state: CallState,
   seconds: number,
   output?: string,
 ) {
-  return call({ kind: "delegate", role, target: { kind: "one", session } }, state, seconds, output);
+  return call(
+    { name: role, args: {}, class: { kind: "delegate", child: session, role, title: null } },
+    state,
+    seconds,
+    output,
+  );
 }
 
 /* ------------------------------------------------------------------ helpers */
 
 /** One tool on its own: a settled lone call draws its own line, without a group. */
-function lone(id: string, title: string, source: string, part: ToolTurnPart): Specimen {
-  return { id, title, source, scene: { transcript: [turn([part])] } };
+function lone(id: string, title: string, source: string, message: Message): Specimen {
+  return { id, title, source, scene: { turns: [turn([message])] } };
 }
 
 const PROMPT = "Tighten the step group copy so a settled episode reads in one line.";
@@ -381,7 +559,7 @@ const MARKDOWN = lines(
   "`TurnView` and `LiveTurn` now take `density` as a prop; `Timeline` stays the only reader.",
   "",
   "```ts",
-  "<TurnView turn={turn} density={density} liveTools={live.tools} running />",
+  "<TurnView turn={turn} density={density} running />",
   "```",
   "",
   "| Surface | Compact | Detailed |",
@@ -398,20 +576,20 @@ export const SECTIONS: readonly Section[] = [
   {
     id: "messages",
     title: "Messages",
-    detail: "UserTurnPart and the assistant's text. Density changes none of these.",
+    detail: "User messages and the assistant's text. Density changes none of these.",
     specimens: [
       {
         id: "user-text",
         title: "User message",
-        source: 'part.kind = "user" · content: string',
-        scene: { transcript: [turn([user(PROMPT)])] },
+        source: 'kind = "user" · content: string',
+        scene: { turns: [turn([user(PROMPT)])] },
       },
       {
         id: "user-long",
         title: "Long user message",
-        source: 'part.kind = "user" · clipped at 3.5 lines',
+        source: 'kind = "user" · clipped at 3.5 lines',
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(
                 lines(
@@ -431,14 +609,14 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "user-images",
         title: "User message with images",
-        source: "content: (TextContent | ImageContent)[]",
+        source: "content: (text | file)[]",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user([
-                { type: "image", mimeType: "image/svg+xml", data: SWATCH },
-                { type: "image", mimeType: "image/svg+xml", data: SWATCH },
-                { type: "text", text: "Match these two swatches in the accent ramp." },
+                { kind: "file", blob: SWATCH, mime: "image/svg+xml", name: "warm.svg" },
+                { kind: "file", blob: SWATCH, mime: "image/svg+xml", name: "cool.svg" },
+                { kind: "text", text: "Match these two swatches in the accent ramp." },
               ]),
             ]),
           ],
@@ -449,7 +627,7 @@ export const SECTIONS: readonly Section[] = [
         title: "User message with references",
         source: "content: string · file URL and skill sentence",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(
                 `Use the unslop skill.\n\nRewrite the hint in @file://${CWD}/packages/app/src/settings/appearance.tsx so it fits one line.`,
@@ -463,7 +641,7 @@ export const SECTIONS: readonly Section[] = [
         title: "Action message",
         source: 'part.source = { kind: "action", label }',
         scene: {
-          transcript: [
+          turns: [
             turn([
               action(
                 "Review uncommitted changes",
@@ -476,19 +654,19 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "assistant-prose",
         title: "Assistant prose",
-        source: 'part.kind = "assistant" · markdown',
-        scene: { transcript: [turn([user(PROMPT), said(MARKDOWN, 8)])] },
+        source: 'partKind = "text" · markdown',
+        scene: { turns: [turn([user(PROMPT), said(MARKDOWN, 8)])] },
       },
       {
         id: "assistant-parts",
         title: "Response in several parts",
-        source: "consecutive assistant parts → one ResponseView",
+        source: "consecutive text parts → one ResponseView",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
-              said("The settled summary now leads with the outcome.", 6, 0),
-              said("Failed and stopped calls are tallied instead of claiming a verb.", 6, 1),
+              said("The settled summary now leads with the outcome.", 6),
+              said("Failed and stopped calls are tallied instead of claiming a verb.", 6),
             ]),
           ],
         },
@@ -506,7 +684,7 @@ export const SECTIONS: readonly Section[] = [
         title: "One thought with a heading",
         source: 'thinking only · "**Heading**" titles the group',
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
               thought(
@@ -523,15 +701,14 @@ export const SECTIONS: readonly Section[] = [
         title: "Several thoughts",
         source: "thinking × 2",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
               thought(
                 "**Reading the presentation**\n\nThe summary counts files by set, so a file read twice counts once.",
                 0,
-                0,
               ),
-              thought("**Checking failures**\n\nA failed call must not claim a verb.", 4, 1),
+              thought("**Checking failures**\n\nA failed call must not claim a verb.", 4),
               said("Both rules already hold.", 7),
             ]),
           ],
@@ -540,12 +717,12 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "episode-edit",
         title: "Edited, explored and ran",
-        source: "thinking · file_read · list · shell · file_patch",
+        source: "thinking · read · list · shell · edit",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
-              thought("**Finding the summary**\n\nThe verb is chosen in `settledSummary`.", 1, 0),
+              thought("**Finding the summary**\n\nThe verb is chosen in `settledSummary`.", 1),
               call(list("packages/app/src/conversation"), ok(), 2),
               call(read("packages/app/src/conversation/step-group-presentation.ts"), ok(), 3),
               call(read("packages/app/src/conversation/step-group-content.ts"), ok(), 4),
@@ -559,9 +736,9 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "episode-explore",
         title: "Explored only",
-        source: "file_read × 2 · list",
+        source: "read × 2 · list",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user("Where is tool call density read?"),
               call(list("packages/app/src/preferences"), ok(), 1),
@@ -575,18 +752,13 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "episode-trouble",
         title: "Episode with a failure",
-        source: "success + error(exit) · no verb claimed",
+        source: "ok + failed · no verb claimed",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user("Typecheck the lab."),
               call(read("packages/lab/src/router.tsx"), ok(), 1),
-              call(
-                shell("pnpm --dir packages/lab typecheck"),
-                failed({ kind: "exit", code: 2 }),
-                14,
-                TYPE_ERRORS,
-              ),
+              call(shell("pnpm --dir packages/lab typecheck"), failed(TYPE_ERRORS), 14),
               said("Two call sites still need `density`.", 16),
             ]),
           ],
@@ -595,19 +767,14 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "episode-lost",
         title: "Every call failed or stopped",
-        source: "error(error) · error(timeout) · error(cancelled)",
+        source: "failed × 2 · stopped",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user("Run the e2e suite."),
-              call(shell("pnpm --dir packages/app e2e"), failed({ kind: "timeout" }), 1),
-              call(
-                custom("websearch"),
-                failed({ kind: "error" }),
-                2,
-                "Search provider returned 503.",
-              ),
-              call(shell("pnpm --dir packages/desktop build"), failed({ kind: "cancelled" }), 3),
+              call(shell("pnpm --dir packages/app e2e"), failed("Timed out after 120s."), 1),
+              call(custom("websearch"), failed("Search provider returned 503."), 2),
+              call(shell("pnpm --dir packages/desktop build"), STOPPED, 3),
             ]),
           ],
         },
@@ -617,7 +784,7 @@ export const SECTIONS: readonly Section[] = [
         title: "Prose between two episodes",
         source: "step · response · step · response",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
               call(read("packages/app/src/conversation/turn-view.tsx"), ok(), 1),
@@ -636,19 +803,19 @@ export const SECTIONS: readonly Section[] = [
     id: "tools",
     title: "Tool kinds",
     detail:
-      "ToolTurnPart.class is typed per tool by the runner. ToolCallView switches on class.kind; shell and file edits have their own cards in detailed.",
+      "ToolPartState.class is typed per tool by the runner. ToolCallView switches on class.kind; shell and file edits have their own cards in detailed.",
     specimens: [
       lone(
         "tool-read",
         "Read a file",
-        'class.kind = "file_read"',
-        call(read("packages/app/src/live-fold.ts"), ok(), 0),
+        'class.kind = "read"',
+        call(read("packages/app/src/live.ts"), ok(), 0),
       ),
       lone(
         "tool-list",
         "List a directory",
         'class.kind = "list"',
-        call(list("packages/client/src/views"), ok(), 0),
+        call(list("packages/sdk/src"), ok(), 0),
       ),
       lone(
         "tool-shell",
@@ -664,59 +831,38 @@ export const SECTIONS: readonly Section[] = [
       lone(
         "tool-shell-described",
         "Shell with description and facts",
-        "shell.description · shell.facts (duration, truncated)",
-        call(
-          shell("git log --oneline -200", {
-            description: "show recent commits",
-            facts: {
-              durationMs: 4_200,
-              truncated: true,
-              fullOutputPath: "/tmp/nyte/output-1f3a.txt",
-            },
-          }),
-          ok(),
-          0,
-          LOG_OUTPUT,
-        ),
+        "class.description · duration from status.endedAt",
+        call(shell("git log --oneline -200", "show recent commits", 4_200), ok(), 0, LOG_OUTPUT),
       ),
       lone(
         "tool-patch-edit",
         "Edited a file",
-        'class.kind = "file_patch" · op = "edit"',
+        'class.kind = "edit" · name = "edit"',
         call(edited, ok(), 0),
       ),
       lone(
         "tool-patch-write",
         "Created a file",
-        'class.kind = "file_patch" · op = "write"',
+        'class.kind = "edit" · name = "write"',
         call(created, ok(), 0),
       ),
       lone(
         "tool-edit-running",
         "Editing (no result yet)",
-        'class.kind = "file_edit" · state.kind = "running"',
-        call(
-          { kind: "file_edit", path: path("packages/app/src/conversation/turn-view.tsx") },
-          RUNNING,
-          0,
-        ),
+        'class.kind = "edit" · phase = "running"',
+        call(editSpec("packages/app/src/conversation/turn-view.tsx"), RUNNING, 0),
       ),
       lone(
         "tool-write-running",
         "Writing (no result yet)",
-        'class.kind = "file_write" · state.kind = "running"',
-        call({ kind: "file_write", path: path("packages/lab/src/messages/page.tsx") }, RUNNING, 0),
+        'class.kind = "edit" · name = "write" · phase = "running"',
+        call(writeSpec("packages/lab/src/messages/page.tsx"), RUNNING, 0),
       ),
       lone(
         "tool-edit-denied",
         "Edit that was blocked",
-        'class.kind = "file_edit" · error(denied) · falls back to the generic line',
-        call(
-          { kind: "file_edit", path: path(".env") },
-          failed({ kind: "denied" }),
-          0,
-          "Writes outside the workspace's allowed paths are blocked.",
-        ),
+        'class.kind = "edit" · outcome = "rejected"',
+        call(editSpec(".env"), BLOCKED, 0),
       ),
       lone(
         "tool-custom-named",
@@ -777,49 +923,49 @@ export const SECTIONS: readonly Section[] = [
         "agent-starting",
         "Starting",
         'delegate · role = "create" · child provisional',
-        create(starting.title, starting.sessionId, RUNNING, 0),
+        create(starting.title, starting.id, RUNNING, 0),
       ),
       lone(
         "agent-done",
         "Completed",
-        'create · child run "done"',
-        create("Review titlebar alignment", finished.sessionId, ok(), 0),
+        "create · child idle, last run completed",
+        create("Review titlebar alignment", finished.id, ok(), 0),
       ),
       lone(
         "agent-asking",
         "Waiting for a reply",
-        'create · child "waiting" + awaitingReply',
-        create("Confirm workspace trust copy", asking.sessionId, ok(), 0),
+        "create · child waiting on a part",
+        create("Confirm workspace trust copy", asking.id, ok(), 0),
       ),
       lone(
         "agent-failed",
         "Failed",
-        'create · child run "failed"',
-        create("Audit floating surface shadows", broken.sessionId, ok(), 0),
+        "create · child idle, last run failed",
+        create("Audit floating surface shadows", broken.id, ok(), 0),
       ),
       lone(
         "agent-unstarted",
         "Never started",
         "create · session reads null · status from the call",
-        create("Profile the transcript", UNSTARTED, failed({ kind: "error" }), 0),
+        create("Profile the transcript", UNSTARTED, failed("The subagent could not start."), 0),
       ),
       lone(
         "agent-send",
         "Message to an agent",
         'delegate · role = "send"',
-        delegate("send", finished.sessionId, ok(), 0, "Also check the window controls on Windows."),
+        delegate("send", finished.id, ok(), 0, "Also check the window controls on Windows."),
       ),
       lone(
         "agent-read",
         "Read an agent",
         'delegate · role = "read"',
-        delegate("read", finished.sessionId, ok(), 0),
+        delegate("read", finished.id, ok(), 0),
       ),
       lone(
         "agent-stop",
         "Stop an agent",
         'delegate · role = "stop"',
-        delegate("stop", asking.sessionId, ok(), 0),
+        delegate("stop", asking.id, ok(), 0),
       ),
     ],
   },
@@ -827,71 +973,50 @@ export const SECTIONS: readonly Section[] = [
     id: "states",
     title: "Tool states",
     detail:
-      "ToolState is settled by the SDK, reasons included. toolStatus maps it to a tense, a tone and an outcome word.",
+      "ToolPartState carries the phase and outcome; the part status says when it waits. toolStatus maps it to a tense, a tone and an outcome word.",
     specimens: [
-      lone(
-        "state-pending",
-        "Pending",
-        'state.kind = "pending"',
-        call(shell("pnpm test"), PENDING, 0),
-      ),
-      lone(
-        "state-running",
-        "Running",
-        'state.kind = "running"',
-        call(shell("pnpm test"), RUNNING, 0),
-      ),
+      lone("state-pending", "Pending", 'phase = "calling"', call(shell("pnpm test"), PENDING, 0)),
+      lone("state-running", "Running", 'phase = "running"', call(shell("pnpm test"), RUNNING, 0)),
       lone(
         "state-input",
         "Needs input",
-        'running · waitingFor = { kind: "input" }',
+        "running · status = waiting on a part",
         call(shell("pnpm test"), NEEDS_INPUT, 0),
       ),
       lone(
         "state-success",
         "Succeeded",
-        'state.kind = "success"',
+        'outcome = "ok"',
         call(shell("pnpm test"), ok(), 0, TEST_OUTPUT),
       ),
       lone(
         "state-exit",
         "Exited nonzero",
-        'error · reason = { kind: "exit", code: 1 }',
-        call(shell("pnpm test"), failed({ kind: "exit", code: 1 }), 0, TYPE_ERRORS),
+        'outcome = "failed" · shell output',
+        call(shell("pnpm test"), failed(TYPE_ERRORS), 0),
       ),
       lone(
         "state-error",
         "Failed",
-        'error · reason.kind = "error"',
-        call(
-          read("packages/lab/missing.ts"),
-          failed({ kind: "error" }),
-          0,
-          "ENOENT: no such file or directory",
-        ),
-      ),
-      lone(
-        "state-timeout",
-        "Timed out",
-        'error · reason.kind = "timeout"',
-        call(shell("pnpm --dir packages/app e2e"), failed({ kind: "timeout" }), 0),
+        'outcome = "failed"',
+        call(read("packages/lab/missing.ts"), failed("ENOENT: no such file or directory"), 0),
       ),
       lone(
         "state-denied",
         "Blocked",
-        'error · reason.kind = "denied"',
-        call(shell("rm -rf node_modules"), failed({ kind: "denied" }), 0),
+        'outcome = "rejected"',
+        call(shell("rm -rf node_modules"), BLOCKED, 0),
       ),
       lone(
         "state-cancelled",
         "Stopped",
-        'error · reason.kind = "cancelled"',
-        call(shell("pnpm build"), failed({ kind: "cancelled" }), 0),
+        'outcome = "stopped"',
+        call(shell("pnpm build"), STOPPED, 0),
       ),
       lone(
         "state-interrupted",
         "Interrupted",
-        'error · reason.kind = "interrupted" · commit = null',
+        'outcome = "interrupted"',
         call(read("packages/app/src/live.ts"), INTERRUPTED, 0),
       ),
     ],
@@ -900,14 +1025,14 @@ export const SECTIONS: readonly Section[] = [
     id: "outcomes",
     title: "Turn outcomes",
     detail:
-      "Turn.failure carries why the assistant stopped; failureNotice words each class. Turns with settled file patches end in a changes card.",
+      "A turn that ended failed carries why the assistant stopped; failureNotice words each class. Turns with settled edits end in a changes card.",
     specimens: [
       {
         id: "failure-classes",
         title: "Every failure class",
-        source: "Turn.failure.class × 9",
+        source: "TurnInfo.state.end.failure.class × 9",
         scene: {
-          transcript: (
+          turns: (
             [
               ["aborted", "Aborted by the user."],
               ["rate_limit", "429"],
@@ -921,8 +1046,8 @@ export const SECTIONS: readonly Section[] = [
             ] as const
           ).map(([failureClass, message], index) =>
             turn([said(`Response ${String(index + 1)} started…`, index)], {
-              class: failureClass,
-              message,
+              kind: "ended",
+              end: { kind: "failed", failure: { class: failureClass, message } },
             }),
           ),
         },
@@ -930,9 +1055,9 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "changes-card",
         title: "Changes card",
-        source: "file_patch success → changesFromTurns",
+        source: "settled edit changes → TurnChangesCard",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user(PROMPT),
               call(edited, ok(), 4),
@@ -947,7 +1072,7 @@ export const SECTIONS: readonly Section[] = [
         title: "Changes card, more than five files",
         source: "changes > CHANGES_VISIBLE_FILES",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user("Thread density through every TurnView caller."),
               ...[
@@ -970,76 +1095,61 @@ export const SECTIONS: readonly Section[] = [
     id: "history",
     title: "History",
     detail:
-      "Turn kinds other than a conversation turn. Config draws nothing; a completion opens a requestless turn that rides under the previous prompt.",
+      "Notes between turns, and a requestless turn: a background report opens a turn that rides under the previous prompt.",
     specimens: [
       {
-        id: "checkpoint",
+        id: "compaction",
         title: "Context summarized",
-        source: 'Turn.kind = "checkpoint"',
+        source: 'partKind = "compaction" · role = "note"',
         scene: {
-          transcript: [
-            {
-              kind: "checkpoint",
-              commit: oid("checkpoint"),
-              at: at(0),
-              body: {
-                kind: "checkpoint",
-                summary:
-                  "The user is moving tool call density from a global read to a prop. `TurnView` and `LiveTurn` take it; `Timeline` passes it. The lab call sites were updated.",
-                retainedTail: [],
-                tokensBefore: 182_000,
-              },
-            },
+          turns: [
+            turn([
+              part(
+                "compaction",
+                "note",
+                {
+                  summary:
+                    "The user is moving tool call density from a global read to a prop. `TurnView` and `LiveTurn` take it; `Timeline` passes it. The lab call sites were updated.",
+                  material: null,
+                  tokensBefore: 182_000,
+                  usage: null,
+                },
+                0,
+              ),
+            ]),
           ],
         },
       },
       {
-        id: "summary",
+        id: "branch-summary",
         title: "Branch summary",
-        source: 'Turn.kind = "summary"',
+        source: 'partKind = "branchSummary" · role = "note"',
         scene: {
-          transcript: [
-            {
-              kind: "summary",
-              commit: oid("summary"),
-              at: at(0),
-              body: {
-                kind: "summary",
-                text: "On the abandoned branch the assistant tried a density context provider, then dropped it for a prop.",
-              },
-            },
-          ],
-        },
-      },
-      {
-        id: "config",
-        title: "Config change",
-        source: 'Turn.kind = "config" · rendersInTranscript → false',
-        scene: {
-          transcript: [
-            {
-              kind: "config",
-              commit: oid("config"),
-              at: at(0),
-              body: {
-                kind: "config",
-                model: { provider: "anthropic", id: "claude-opus" },
-                thinkingLevel: "high",
-              },
-            },
+          turns: [
+            turn([
+              part(
+                "branchSummary",
+                "note",
+                {
+                  markdown:
+                    "On the abandoned branch the assistant tried a density context provider, then dropped it for a prop.",
+                },
+                0,
+              ),
+            ]),
           ],
         },
       },
       {
         id: "continuation",
         title: "Background report continues a turn",
-        source: "turn without a user part → TranscriptRow.continuations",
+        source: "TurnInfo.prompt = null → TranscriptRow.continuations",
         scene: {
-          transcript: [
+          turns: [
             turn([
               user("Run the e2e suite in the background and tell me when it's done."),
               call(
-                shell("pnpm --dir packages/app e2e", { description: "run e2e in the background" }),
+                shell("pnpm --dir packages/app e2e", "run e2e in the background"),
                 ok(),
                 2,
                 "Started job e2e-41",
@@ -1057,151 +1167,148 @@ export const SECTIONS: readonly Section[] = [
     id: "live",
     title: "Run in flight",
     detail:
-      "The trailing turn while a run is live, plus the overlay's streamed parts. The overlay is LiveParts from the client fold; the app reshapes it into LiveSnapshot first.",
+      "The trailing turn while a run is live. Streaming parts are messages with status live; the view carries them like any other.",
     specimens: [
       {
         id: "live-waiting",
         title: "Working, nothing streamed yet",
-        source: 'run.phase = "respond" · overlay = []',
-        scene: { transcript: [turn([user(PROMPT)])], run: run({ kind: "respond" }), overlay: [] },
+        source: 'execution = live · phase = "responding"',
+        scene: { turns: [turn([user(PROMPT)], WORKING)], execution: responding() },
       },
       {
         id: "live-thinking",
         title: "Streaming reasoning",
-        source: 'overlay: { kind: "thinking" }',
+        source: 'thinking · status = "live"',
         scene: {
-          transcript: [turn([user(PROMPT)])],
-          run: run({ kind: "respond" }),
-          overlay: [
-            {
-              kind: "thinking",
-              runId: RUN,
-              attempt: 1,
-              index: 0,
-              text: "**Reading the summary**\n\nThe verb comes from `settledSummary`. A failed call is tallied before",
-            },
+          turns: [
+            turn(
+              [
+                user(PROMPT),
+                thought(
+                  "**Reading the summary**\n\nThe verb comes from `settledSummary`. A failed call is tallied before",
+                  1,
+                  LIVE,
+                ),
+              ],
+              WORKING,
+            ),
           ],
+          execution: responding(),
         },
       },
       {
         id: "live-text",
         title: "Streaming prose",
-        source: 'overlay: { kind: "text" }',
+        source: 'text · status = "live"',
         scene: {
-          transcript: [
-            turn([
-              user(PROMPT),
-              call(read("packages/app/src/conversation/step-group-presentation.ts"), ok(), 1),
-            ]),
+          turns: [
+            turn(
+              [
+                user(PROMPT),
+                call(read("packages/app/src/conversation/step-group-presentation.ts"), ok(), 1),
+                said(
+                  "The settled summary already leads with the outcome. What reads badly is the **trouble** case, where",
+                  2,
+                  LIVE,
+                ),
+              ],
+              WORKING,
+            ),
           ],
-          run: run({ kind: "respond" }),
-          overlay: [
-            {
-              kind: "text",
-              runId: RUN,
-              attempt: 1,
-              index: 0,
-              text: "The settled summary already leads with the outcome. What reads badly is the **trouble** case, where",
-            },
-          ],
+          execution: responding(),
         },
       },
       {
         id: "live-tool",
         title: "Running a tool with progress",
-        source: 'run.phase = "tools" · overlay: { kind: "tool", progress }',
-        scene: ((): Scene => {
-          const running = call(shell("pnpm --dir packages/app test"), RUNNING, 3);
-
-          return {
-            transcript: [
-              turn([
+        source: 'phase = "executing" · tool phase = "running" · progress',
+        scene: {
+          turns: [
+            turn(
+              [
                 user(PROMPT),
                 thought("**Running the tests**\n\nThe step group tests cover every density.", 1),
                 call(read("packages/app/src/conversation/step-group.tsx"), ok(), 2),
-                running,
-              ]),
-            ],
-            run: run({ kind: "tools" }),
-            overlay: [
-              {
-                kind: "tool",
-                runId: RUN,
-                callId: running.callId,
-                progress: {
-                  text: lines(
-                    " RUN  v4.1.0 /Users/lab/nyte/packages/app",
-                    "",
-                    " ✓ src/conversation/step-group-presentation.test.ts (9 tests) 4ms",
-                    " ❯ src/conversation/step-group.test.ts 3/14",
-                  ),
-                },
-              },
-            ],
-          };
-        })(),
+                call(
+                  shell("pnpm --dir packages/app test"),
+                  {
+                    phase: "running",
+                    progress: lines(
+                      " RUN  v4.1.0 /Users/lab/nyte/packages/app",
+                      "",
+                      " ✓ src/conversation/step-group-presentation.test.ts (9 tests) 4ms",
+                      " ❯ src/conversation/step-group.test.ts 3/14",
+                    ),
+                  },
+                  3,
+                ),
+              ],
+              { kind: "working", activity: "Running" },
+            ),
+          ],
+          execution: executing(),
+        },
       },
       {
         id: "live-input",
         title: "Parked on a question",
-        source: 'run.phase = "waiting" · tool waitingFor input',
+        source: 'execution = waiting · on = { kind: "part" }',
         scene: {
-          transcript: [
-            turn([
-              user("Delete the generated fixtures?"),
-              call(custom("Ask user"), NEEDS_INPUT, 2),
-            ]),
+          turns: [
+            turn(
+              [user("Delete the generated fixtures?"), call(custom("Ask user"), NEEDS_INPUT, 2)],
+              WORKING,
+            ),
           ],
-          run: run({ kind: "waiting" }),
+          execution: {
+            kind: "waiting",
+            run: RUN_VIEW,
+            on: { kind: "part", part: asId<"part">("lab-question") },
+          },
         },
       },
       {
         id: "live-retry",
         title: "Retrying",
-        source: 'run.phase = "retry"',
+        source: "execution = retrying",
         scene: {
-          transcript: [turn([user(PROMPT)])],
-          run: run({
-            kind: "retry",
-            at: T0 + 30_000,
-            retries: 1,
-            failure: { class: "overloaded", message: "The model is temporarily unavailable." },
-          }),
-          overlay: [],
+          turns: [turn([user(PROMPT)], WORKING)],
+          execution: {
+            kind: "retrying",
+            run: RUN_VIEW,
+            until: T0 + 30_000,
+            reason: "The model is temporarily unavailable.",
+          },
         },
       },
       {
         id: "live-stopping",
         title: "Stopping",
-        source: "run.abortRequested = true",
+        source: "execution.stopping = true",
         scene: {
-          transcript: [turn([user(PROMPT), call(shell("pnpm build"), RUNNING, 2)])],
-          run: run({ kind: "tools" }, true),
-          overlay: [],
+          turns: [turn([user(PROMPT), call(shell("pnpm build"), RUNNING, 2)], WORKING)],
+          execution: executing(true),
         },
       },
       {
         id: "landing-pending",
         title: "Sent while a run is live",
-        source: "landing · pending = true (steers at the next boundary)",
+        source: 'landing · status = pending · schedule = "joined"',
         scene: {
-          transcript: [
-            turn([user(PROMPT), call(shell("pnpm --dir packages/app test"), RUNNING, 2)]),
+          turns: [
+            turn([user(PROMPT), call(shell("pnpm --dir packages/app test"), RUNNING, 2)], WORKING),
           ],
-          run: run({ kind: "tools" }),
-          overlay: [],
-          landing: [
-            { key: "lab-landing-pending", content: "Also run the lab typecheck.", pending: true },
-          ],
+          execution: executing(),
+          landing: [pending("Also run the lab typecheck.", { kind: "joined", run: RUN })],
         },
       },
       {
         id: "landing-idle",
         title: "Sent, not landed yet",
-        source: "landing · pending = false (outbox row, no commit)",
+        source: "landing · status = pending · no turn yet",
         scene: {
-          transcript: [],
-          landing: [{ key: "lab-landing", content: PROMPT, pending: false }],
+          turns: [],
+          landing: [pending(PROMPT, { kind: "next-turn", reason: "idle" })],
         },
       },
     ],
@@ -1214,14 +1321,14 @@ export const SECTIONS: readonly Section[] = [
       {
         id: "row-loading",
         title: "Loading",
-        source: "snapshot.isLoading · no turns",
-        scene: { transcript: [], loading: true },
+        source: "view = undefined · no turns",
+        scene: { turns: [], loading: true },
       },
       {
         id: "row-error",
         title: "Couldn't load",
-        source: "snapshot.isError",
-        scene: { transcript: [], failed: true },
+        source: "failed",
+        scene: { turns: [], failed: true },
       },
     ],
   },

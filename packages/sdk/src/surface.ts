@@ -191,7 +191,6 @@ export type {
   PrincipalId,
   PrincipalView,
   PromptOverride,
-  PruneReport,
   ReceiptId,
   Ref,
   RefUpdate,
@@ -252,4 +251,5 @@ export type {
 } from "@nyte-ai/schema";
 export type { Failure } from "@nyte-ai/schema/model";
 
-export { SdkError } from "@nyte-ai/core";
+export { dev, SdkError } from "@nyte-ai/core";
+export type { DevRow } from "@nyte-ai/core";

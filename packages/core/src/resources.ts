@@ -25,7 +25,7 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Resolves what core scanned for a session (§4c-bis, §37d, §37g) through `FilesApi` only, cached until `invalidateResources` drops its workspace or the session moves. A failure to attach the session's environment or the home's rejects, never answering "no resources" (D 13). */
+/** Resolves what core scanned for a session through `FilesApi` only, cached until `invalidateResources` drops its workspace or the session moves. A failure to attach the session's environment or the home's rejects, never answering "no resources" (D 13). */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const workspace = (await requireSession(kernel, session)).record.workspace;
   const table = kernel.workspaceState.scans;
@@ -324,7 +324,7 @@ function skillOf(
   };
 }
 
-/** Returns the ancestor context files of a workspace root, root first, read through the workspace's own files; none when those files reject a path (§37g). */
+/** Returns the ancestor context files of a workspace root, root first, read through the workspace's own files; none when those files reject a path. */
 async function ancestorFiles(files: FilesApi, root: string): Promise<readonly ContextFile[]> {
   const found: ContextFile[] = [];
 

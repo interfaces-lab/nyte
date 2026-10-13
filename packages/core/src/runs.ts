@@ -19,7 +19,7 @@ import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { CORE_CONTEXT, LOCAL } from "./principals.ts";
 import { settleReceipt } from "./receipts.ts";
-import { decodeRunRecord } from "./records.ts";
+import { decodeRunRecord, isJsonObject } from "./records.ts";
 import type { RunRecord, SessionRecord } from "./records.ts";
 import { inboxRef, runRef, sessionRef } from "./refs.ts";
 import type { Run } from "./run.ts";
@@ -30,7 +30,6 @@ import {
   commit,
   expectOf,
   inboxWithout,
-  isJsonObject,
   landedIn,
   liveParts,
   load,
@@ -54,7 +53,7 @@ type Fence =
   | { readonly kind: "stopping"; readonly head: HeadName }
   | { readonly kind: "live"; readonly head: HeadName; readonly updates: readonly RefUpdate[] };
 
-/** Starts a run on a head: writes its record with `run started` alone, then begins it here (§38q). Advance starts a run in the set that lands its inputs instead (§62). */
+/** Starts a run on a head: writes its record with `run started` alone, then begins it here. Advance starts a run in the set that lands its inputs instead. */
 export async function startRun(
   kernel: Kernel,
   session: SessionId,
@@ -119,7 +118,7 @@ export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   });
 }
 
-/** Stops one run at the fence (§30): a run live here drops its patches from now on; the fence lands, or finds the run stopping or ended; then its signal aborts, its parked waits wake `stopped` and its head wakes. */
+/** Stops one run at the fence: a run live here drops its patches from now on; the fence lands, or finds the run stopping or ended; then its signal aborts, its parked waits wake `stopped` and its head wakes. */
 export async function stopRun(
   kernel: Kernel,
   session: SessionId,
@@ -214,7 +213,7 @@ export async function unfenced(
     : { name: found.ref.name, target: found.ref.target, expect: found.ref.revision };
 }
 
-/** Ends a run with `end`, or `stopped` when its record is fenced: deletes its ref, records the head's `lastRun`, rewrites the head's inbox and fails the parts a failed or stopped run left live in one set, so an input admitted against the live run loses its compare-and-set and reads again. Then it settles the receipts of the inputs that landed in the run, parks the waits listed in `waitedBy` here, delivers a child's report when no wait took the end, and wakes the head when input is due (§38n, §42s). */
+/** Ends a run with `end`, or `stopped` when its record is fenced: deletes its ref, records the head's `lastRun`, rewrites the head's inbox and fails the parts a failed or stopped run left live in one set, so an input admitted against the live run loses its compare-and-set and reads again. Then it settles the receipts of the inputs that landed in the run, parks the waits listed in `waitedBy` here, delivers a child's report when no wait took the end, and wakes the head when input is due. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -299,12 +298,9 @@ export async function endRun(
   const landed = landedIn(kernel).get(run) ?? [];
   landedIn(kernel).delete(run);
 
-  const { folded, runnable } = await withFold(kernel, session, (state) => ({
-    folded: [...state.inputs.values()].flatMap((input) =>
-      input.landed?.run === run ? [input.id] : [],
-    ),
-    runnable: ended.pending.some((id) => state.inputs.get(id)?.delivery !== "attach"),
-  }));
+  const folded = await withFold(kernel, session, (state) =>
+    [...state.inputs.values()].flatMap((input) => (input.landed?.run === run ? [input.id] : [])),
+  );
 
   for (const message of new Set([...landed, ...folded]))
     await settleReceipt(kernel, session, asId<"receipt">(message), ended.end);
@@ -313,7 +309,7 @@ export async function endRun(
 
   if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, ended.end);
 
-  if (runnable) kernel.wakes.notify(session, ended.head);
+  if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
 
 /** Returns a handle on one run: `stop()` is the fence; `settled()` waits for `run ended`, or reads the head's `lastRun` after a restart. Binds synchronously; no I/O. */
@@ -411,21 +407,24 @@ async function deliverChildReport(
   });
 }
 
+/** Returns the last text the child wrote in its run's turn: its final message, not the narration before its tool calls. */
 function answerOf(state: FoldState, run: RunId): string {
   const messages = state.heads.get(MAIN)?.messages ?? [];
   const turn = state.runs.get(run)?.turn ?? messages.at(-1)?.turn;
 
-  return messages
-    .flatMap((message) => {
-      if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn)
-        return [];
-      const part = state.parts.get(message.part)?.state;
+  return (
+    messages
+      .flatMap((message) => {
+        if (message.kind !== "part" || message.partKind !== "text" || message.turn !== turn)
+          return [];
+        const part = state.parts.get(message.part)?.state;
 
-      return isJsonObject(part) && typeof part.markdown === "string" && part.markdown !== ""
-        ? [part.markdown]
-        : [];
-    })
-    .join("\n\n");
+        return isJsonObject(part) && typeof part.markdown === "string" && part.markdown !== ""
+          ? [part.markdown]
+          : [];
+      })
+      .at(-1) ?? ""
+  );
 }
 
 function capped(text: string, limit: number): string {

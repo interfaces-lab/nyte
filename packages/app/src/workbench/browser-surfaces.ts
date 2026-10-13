@@ -1,8 +1,6 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
 import type { BrowserDownload, BrowserKey, BrowserSurfaceState, HostEvent } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
-import type { WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
+import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 
 interface BrowserSurfaceView {
@@ -153,27 +151,33 @@ export function claimBrowserSurface(surface: string): void {
 }
 
 /**
- * An agent opened a page on a surface. Open or update the Browser tab in the
- * workbench of the workspace the page belongs to. The tab is shown only when
- * the agent's chat is the focused one; another chat's page must not displace
- * what the user is viewing.
+ * An agent opened a page. The workspace's Browser tab follows it: an open one
+ * navigates in place, otherwise one is added without being shown. Nothing
+ * reveals the workbench; the user opens the tab when they want to watch.
  */
 export function applyBrowserAgentOpened(
+  controller: Pick<WorkbenchController, "actions" | "getView">,
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,
-  focusedSession: SessionId | undefined,
 ): void {
-  if (nyte.host.browser === undefined) return;
-  const current = views.get(event.surface) ?? EMPTY;
-  const revealed = { ...current, state: event.state };
-  set(event.surface, revealed);
+  const view = workbenchViewKey(event.owner ?? undefined);
+  const existing = controller.getView(view).tabs.find((tab) => tab.kind === "browser");
 
-  const id = workbenchController.actions.openTab({
-    view: workbenchViewKey(event.owner ?? undefined),
-    tab: { kind: "browser", url: event.url },
-    activate: event.session === focusedSession,
+  if (existing === undefined) {
+    controller.actions.openTab({
+      view,
+      tab: { kind: "browser", url: event.url },
+      activate: false,
+    });
+
+    return;
+  }
+
+  controller.actions.updateTab({
+    view,
+    id: existing.id,
+    kind: "browser",
+    patch: { url: event.url },
   });
-
-  set(id, revealed);
 }
 
 export function forgetBrowserSurface(surface: string): void {

@@ -18,7 +18,12 @@ export type ToolClass =
   | { readonly kind: "list"; readonly path: string }
   | { readonly kind: "edit"; readonly path: string }
   | { readonly kind: "shell"; readonly command: string; readonly description?: string }
-  | { readonly kind: "delegate"; readonly child: SessionId | null; readonly role: "task" | "create" | "send" | "await" | "read" | "stop"; readonly title: string | null }
+  | {
+      readonly kind: "delegate";
+      readonly child: SessionId | null;
+      readonly role: "task" | "create" | "send" | "await" | "read" | "stop";
+      readonly title: string | null;
+    }
   | { readonly kind: "custom"; readonly label: string };
 
 /**
@@ -50,7 +55,12 @@ export type ToolContent =
  * @since 0.1.0
  */
 export type ToolOutcome =
-  | { readonly kind: "ok"; readonly content: readonly ToolContent[]; readonly output: Json | null; readonly parts: readonly PartId[] }
+  | {
+      readonly kind: "ok";
+      readonly content: readonly ToolContent[];
+      readonly output: Json | null;
+      readonly parts: readonly PartId[];
+    }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "interrupted" }
   | { readonly kind: "rejected"; readonly reason: string }
@@ -69,7 +79,7 @@ export type ToolProgress = {
   readonly fraction?: number;
   /** For a renderer that knows the tool. */
   readonly detail?: Json;
-}
+};
 
 /**
  * Returns what a tool call produced: content for the model, typed output for
@@ -85,4 +95,4 @@ export type ToolResult<Output> = {
   readonly output?: Output;
   /** Parts this call created and wants shown with it. */
   readonly parts?: readonly PartId[];
-}
+};

@@ -647,13 +647,9 @@ export type HostEvent =
     }
   | {
       kind: "browser_agent_opened";
-      surface: string;
-      /** The chat whose agent opened the page. */
-      session: SessionId;
       /** The workspace the page belongs to, or null for home. */
       owner: string | null;
       url: string;
-      state: BrowserSurfaceState;
     };
 
 export interface TerminalBridge {

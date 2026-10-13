@@ -11,7 +11,11 @@ export interface Scenario {
 
 export interface ScenarioResult {
   readonly name: string;
-  readonly invariants: readonly { readonly name: string; readonly held: boolean; readonly detail?: string }[];
+  readonly invariants: readonly {
+    readonly name: string;
+    readonly held: boolean;
+    readonly detail?: string;
+  }[];
   readonly metrics: Readonly<Record<string, number>>;
 }
 
@@ -19,7 +23,9 @@ export function invariant(name: string, held: boolean, detail?: string) {
   return detail === undefined ? { name, held } : { name, held, detail };
 }
 
-export async function timed<T>(work: () => Promise<T>): Promise<{ readonly value: T; readonly ms: number }> {
+export async function timed<T>(
+  work: () => Promise<T>,
+): Promise<{ readonly value: T; readonly ms: number }> {
   const start = performance.now();
   const value = await work();
 
@@ -37,7 +43,11 @@ export function percentile(samples: readonly number[], p: number): number {
 export async function collect<T>(
   stream: AsyncIterable<T>,
   until: (value: T, index: number) => boolean,
-): Promise<{ readonly views: readonly T[]; readonly gapsMs: readonly number[]; readonly ms: number }> {
+): Promise<{
+  readonly views: readonly T[];
+  readonly gapsMs: readonly number[];
+  readonly ms: number;
+}> {
   const views: T[] = [];
   const gapsMs: number[] = [];
   const start = performance.now();

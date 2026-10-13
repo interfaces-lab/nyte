@@ -98,39 +98,6 @@ beforeEach(() => {
 });
 
 describe("job-backed terminal runtime", () => {
-  test("a job start adds an unfocused agent-owned tab with running runtime state", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
-    const view = workbenchViewKey(`/workspace/${tabId()}`);
-
-    const browser = controller.actions.openTab({
-      view,
-      tab: { kind: "browser", url: "about:blank" },
-      activate: true,
-    });
-
-    const job = command(`job-${tabId()}`);
-
-    const id = openJobTerminal({
-      controller,
-      view,
-      sessionId: firstSession,
-      job,
-      activate: false,
-    });
-
-    const tab = controller.getView(view).tabs.find((candidate) => candidate.id === id);
-    assert.deepEqual(tab, {
-      id,
-      kind: "terminal",
-      owner: { kind: "agent", sessionId: firstSession, jobId: job.id },
-    });
-    assert.equal(controller.getView(view).active, browser);
-    const terminal = getTerminal(id);
-    assert.ok(terminal);
-    assert.ok(isJobTerminal(terminal));
-    assert.equal(terminal.state.kind, "running");
-  });
-
   test("a job opens in the workspace view", () => {
     const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
     const view = workbenchViewKey("/workspace/displayed");
@@ -143,7 +110,6 @@ describe("job-backed terminal runtime", () => {
       view,
       sessionId: childSession,
       job,
-      activate: true,
     });
 
     assert.equal(controller.getView(view).active, id);
@@ -153,6 +119,10 @@ describe("job-backed terminal runtime", () => {
       owner: { kind: "agent", sessionId: childSession, jobId: job.id },
     });
     assert.deepEqual(controller.getView(otherView).tabs, []);
+    const terminal = getTerminal(id);
+    assert.ok(terminal);
+    assert.ok(isJobTerminal(terminal));
+    assert.equal(terminal.state.kind, "running");
   });
 
   test("binds output and job state to the controller tab ID", () => {

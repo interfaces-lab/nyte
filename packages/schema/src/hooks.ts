@@ -19,7 +19,7 @@ export type Submission = {
   readonly delivery: Delivery;
   readonly configuration: Configuration | ConfigurationPatch | null;
   readonly replace: MessageId | null;
-}
+};
 
 /**
  * Returns the `transform_context` payload: what the kernel assembled for
@@ -33,7 +33,7 @@ export type ModelContext = {
   readonly system: string;
   /** The conversation as the model will read it, without system messages. */
   readonly messages: readonly ModelMessage[];
-}
+};
 
 /**
  * Returns the `transform_transcript` payload: after every
@@ -45,7 +45,7 @@ export type ModelContext = {
 export type Transcript = {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly ToolInfo[];
-}
+};
 
 /**
  * Returns the `before_compaction` payload: a plugin may change what is
@@ -63,8 +63,18 @@ export type CompactionPlan = {
   /** The retained tail. */
   readonly keep: readonly ModelMessage[];
   /** Set it and core writes the compaction part without a request; material is provider-opaque (encrypted Responses compaction). */
-  readonly result: { readonly kind: "summary"; readonly text: string } | { readonly kind: "material"; readonly provider: string; readonly api: string; readonly model: string; readonly data: Json; readonly usage: Usage | null } | null;
-}
+  readonly result:
+    | { readonly kind: "summary"; readonly text: string }
+    | {
+        readonly kind: "material";
+        readonly provider: string;
+        readonly api: string;
+        readonly model: string;
+        readonly data: Json;
+        readonly usage: Usage | null;
+      }
+    | null;
+};
 
 /**
  * Returns the `before_request` payload, per provider request.
@@ -77,8 +87,11 @@ export type ModelRequest = {
   readonly thinking: Thinking;
   readonly step: "assistant" | "compaction" | "summary";
   readonly attempt: number;
-  readonly options: { readonly sampling: Readonly<Record<string, Json>>; readonly headers: Readonly<Record<string, string>> };
-}
+  readonly options: {
+    readonly sampling: Readonly<Record<string, Json>>;
+    readonly headers: Readonly<Record<string, string>>;
+  };
+};
 
 /**
  * Returns the `before_tool` payload; modify replaces args and later handlers
@@ -92,7 +105,7 @@ export type ToolCall = {
   readonly name: string;
   readonly args: Json;
   readonly class: ToolClass;
-}
+};
 
 /**
  * Returns the client-side `before_submit` payload: the composer's content on
@@ -105,7 +118,7 @@ export type SubmitDraft = {
   readonly content: UserContent;
   readonly delivery: Delivery;
   readonly session: SessionId;
-}
+};
 
 /**
  * Returns a decide hook's verdict.

@@ -24,10 +24,10 @@ import { emptyFold, fold, project, withPair } from "./fold.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { settleAnswersFrom } from "./parts.ts";
-import { decodeRunRecord, envelope } from "./records.ts";
+import { decodeRunRecord, isJsonObject } from "./records.ts";
 import type { SeenRecord } from "./records.ts";
 import { headOf, headRef, runRef, seenRef, sessionOf } from "./refs.ts";
-import { EMPTY_REVISION, isJsonObject, load } from "./session-state.ts";
+import { EMPTY_REVISION, commit, load, put } from "./session-state.ts";
 
 /** Holds one shared fold per session per principal: built on first acquire, dropped on last release. */
 export interface FoldCache {
@@ -75,7 +75,7 @@ const LOG_PAGE = 512;
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a fold cache over the kernel's store and bus, fed by `sessionEvents`' feed (§40a). Each item is folded with its head pair in one step: a head's revision is the pair's when the pair's tip is the head's tip, else null (§54a). */
+/** Returns a fold cache over the kernel's store and bus, fed by `sessionEvents`' feed. Each item is folded with its head pair in one step: a head's revision is the pair's when the pair's tip is the head's tip, else null. */
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<string, Entry>();
 
@@ -150,8 +150,12 @@ export function createFoldCache(kernel: Feeds): FoldCache {
   };
 }
 
-/** Yields a session's feed items after `after`: its log, then the unlogged seq-0 seeds (activation, catalog, the background items of its jobs and held pages), then the items published meanwhile, then each live part's streamed state, then every item as it is published, a logged one at or below the last seq yielded dropped. What the fold cache and the server's `head.watch` consume (§40a); `return()` unsubscribes at once. */
-export function sessionEvents(kernel: Feeds, session: SessionId, after: Seq): AsyncIterable<FeedItem> {
+/** Yields a session's feed items after `after`: its log, then the unlogged seq-0 seeds (activation, catalog, the background items of its jobs and held pages), then the items published meanwhile, then each live part's streamed state, then every item as it is published, a logged one at or below the last seq yielded dropped. What the fold cache and the server's `head.watch` consume; `return()` unsubscribes at once. */
+export function sessionEvents(
+  kernel: Feeds,
+  session: SessionId,
+  after: Seq,
+): AsyncIterable<FeedItem> {
   return closable<FeedItem>(() => {
     const queue: FeedItem[] = [];
     let waiting: (() => void) | null = null;
@@ -194,7 +198,7 @@ export function sessionEvents(kernel: Feeds, session: SessionId, after: Seq): As
   });
 }
 
-/** Publishes a successful set's events on the bus through `followLog`, each event that moved a head written in this set paired with the tip and revision the `SetOutcome` gave it (§54a). A session's first mark is where the set's own events start, or where a feed following it finished reading the log, whichever is earlier. */
+/** Publishes a successful set's events on the bus through `followLog`, each event that moved a head written in this set paired with the tip and revision the `SetOutcome` gave it. A session's first mark is where the set's own events start, or where a feed following it finished reading the log, whichever is earlier. */
 export async function publishSet(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   updates: readonly RefUpdate[],
@@ -244,7 +248,7 @@ export async function publishSet(
   }
 }
 
-/** Publishes on the bus what a session's log holds after this kernel's mark (`from` when it has none), each event once and in seq order (§42h), paired with its head ref: from `known` up to its seq, else read once per page after the log (§54a). */
+/** Publishes on the bus what a session's log holds after this kernel's mark (`from` when it has none), each event once and in seq order, paired with its head ref: from `known` up to its seq, else read once per page after the log. */
 export async function followLog(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   session: SessionId,
@@ -267,7 +271,7 @@ export async function followLog(
   }
 }
 
-/** Writes a principal's seen mark for a head and publishes its `seen` event (§40a). */
+/** Writes a principal's seen mark for a head and publishes its `seen` event. */
 export async function advanceSeen(
   kernel: Kernel,
   input: {
@@ -278,12 +282,11 @@ export async function advanceSeen(
   },
 ): Promise<void> {
   const record: SeenRecord = { commit: input.commit };
-  const target = await kernel.store.objects.put(envelope("seen", record, Date.now()));
 
-  const updates: readonly RefUpdate[] = [
+  await commit(kernel, [
     {
       name: seenRef(input.session, input.principal, input.head),
-      target,
+      target: await put(kernel, "seen", record),
       event: {
         head: input.head,
         kind: "seen",
@@ -291,12 +294,10 @@ export async function advanceSeen(
         commit: input.commit,
       },
     },
-  ];
-
-  await publishSet(kernel, updates, await kernel.store.refs.set(updates));
+  ]);
 }
 
-/** Keeps `streams` current from what the bus carries: a part's text from its creation, durable updates and appends, its tool progress, dropped when it settles, fails or closes or its run ends (§54b). */
+/** Keeps `streams` current from what the bus carries: a part's text from its creation, durable updates and appends, its tool progress, dropped when it settles, fails or closes or its run ends. */
 export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveStream>> {
   const streams = new Map<SessionId, Map<PartId, LiveStream>>();
 
@@ -319,7 +320,8 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
       return;
     }
 
-    const current = event.kind === "part" || event.kind === "call" ? parts.get(event.part) : undefined;
+    const current =
+      event.kind === "part" || event.kind === "call" ? parts.get(event.part) : undefined;
 
     if (event.kind === "part" && event.change === "created")
       parts.set(event.part, { run: event.run, markdown: markdownOf(event.state), progress: null });
@@ -451,7 +453,8 @@ async function paired(
   const read = new Map(
     await Promise.all(
       [...unknown].map(
-        async (head) => [head, pairOf(await kernel.store.refs.get(headRef(session, head)))] as const,
+        async (head) =>
+          [head, pairOf(await kernel.store.refs.get(headRef(session, head)))] as const,
       ),
     ),
   );
@@ -765,7 +768,7 @@ export async function viewHead(
   }
 }
 
-/** Re-reads the store a kernel shares with other instances every `kernel.poll` ms, one pass at a time (§42h, §42u): the log of each session a feed follows here (`followLog`), the parked waits (`kernel.waits.settleFromStore`), the modal parts with a pending local `answer()` (`settleAnswersFrom`, §42ac), then the stop fence of every run a turn drives here (`rereadFences`). A pass that throws is dropped and the next one tries again; without `poll` nothing runs. */
+/** Re-reads the store a kernel shares with other instances every `kernel.poll` ms, one pass at a time: the log of each session a feed follows here (`followLog`), the parked waits (`kernel.waits.settleFromStore`), the modal parts with a pending local `answer()` (`settleAnswersFrom`), then the stop fence of every run a turn drives here (`rereadFences`). A pass that throws is dropped and the next one tries again; without `poll` nothing runs. */
 export function pollStore(kernel: Kernel): Disposer {
   const every = kernel.poll;
 
@@ -805,7 +808,7 @@ export function pollStore(kernel: Kernel): Disposer {
   };
 }
 
-/** Aborts each run a turn drives here whose stop fence another instance wrote: marks it stopping, aborts its signal and wakes its parked waits with `stopped` (§30, §42u). */
+/** Aborts each run a turn drives here whose stop fence another instance wrote: marks it stopping, aborts its signal and wakes its parked waits with `stopped`. */
 export async function rereadFences(kernel: Kernel): Promise<void> {
   dev("poll", "fences", { runs: kernel.driving.size });
 

@@ -246,7 +246,7 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
-/** Contributes the subagent tools (decision 13, §38r): `task`, `create`, `send`, `await`, `read_agent` and `stop`, each a `delegate` call over the calling session's children. */
+/** Contributes the subagent tools: `task`, `create`, `send`, `await`, `read_agent` and `stop`, each a `delegate` call over the calling session's children. */
 export const delegationPlugin: Plugin<"core"> = {
   id: "delegation",
   contribute: { tools: [task, create, send, awaitChild, readAgent, stop] },

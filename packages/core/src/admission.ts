@@ -11,6 +11,7 @@ import type {
   RefUpdate,
   Revision,
   RunId,
+  RunView,
   Schedule,
   SendOptions,
   SessionId,
@@ -22,13 +23,13 @@ import { contributionsOf } from "./models.ts";
 import { objectId } from "./content.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
+import type { FoldInput, FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { SendReceipt } from "./receipt.ts";
 import { known, reserve } from "./receipt-handles.ts";
 import { sendReceipt, settleReceipt } from "./receipts.ts";
-import { envelope } from "./records.ts";
-import type { CommitRecord, MessageRecord, RunRecord } from "./records.ts";
+import type { CommitRecord, RunRecord } from "./records.ts";
 import { headRef, inboxRef, receiptRef } from "./refs.ts";
 import { abortHere, fence, stopRun, unfenced } from "./runs.ts";
 import {
@@ -75,6 +76,20 @@ type SendInput = {
   readonly options?: SendOptions;
 };
 
+/** Returns one admitted input: what its `input` event carries, plus its position in the inbox. */
+interface MessageRecord {
+  readonly id: MessageId;
+  readonly at: number;
+  readonly content: UserContent;
+  readonly source: MessageSource;
+  readonly delivery: Delivery;
+  readonly schedule: Schedule;
+  readonly covered: boolean;
+  readonly configuration: Configuration;
+  readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
+  readonly position: number;
+}
+
 /** Returns what a guarded head read: its tip, its inbox holding only attach inputs, and the run to stop. */
 interface Guarded {
   readonly tip: Tip;
@@ -90,14 +105,14 @@ interface Keyed {
   readonly digest: string;
 }
 
-/** Admits user content to a head after the session's activation in this process (§44a); see `sendNow`. */
+/** Admits user content to a head after the session's activation in this process; see `sendNow`. */
 export async function send(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
   await kernel.pluginsFor(input.session).ready;
 
   return sendNow(kernel, input);
 }
 
-/** Admits user content to a head and returns its receipt without awaiting the session's activation: the send path of the api an activation constructs and of a command's prompt (§44b). It replays a known id, runs `before_send`, resolves the configuration and admits in one set. A `replace` first replays its own id, then revises a pending input in place or edits a landed one. */
+/** Admits user content to a head and returns its receipt without awaiting the session's activation: the send path of the api an activation constructs and of a command's prompt. It replays a known id, runs `before_send`, resolves the configuration and admits in one set. A `replace` first replays its own id, then revises a pending input in place or edits a landed one. */
 export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
   const found = await requireSession(kernel, input.session);
   const head = found.record.heads.find((entry) => entry.name === input.head);
@@ -134,7 +149,35 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
     : edit(sending, target, keyed);
 }
 
-/** Lands admitted inputs on a head into a run, or none: writes their user commits, advances the head, drops them from the inbox, and publishes `input landed` then `commit` per input in one set; returns the messages it landed. The set expects the run unfenced (§61), or carries `start`, the run's `run started`, when the inputs start it; a start lands nothing without an input that is not attached (§62). */
+/**
+ * Returns how a head's due inputs start a run: its first input not attached is the prompt; with
+ * only attached inputs, a child's or job's report continues a head whose last run completed. Null
+ * when they start nothing: a head stopped or failed stays so until its next prompt.
+ */
+export function startOf(
+  state: FoldState,
+  head: HeadName,
+  inputs: readonly FoldInput[],
+): { readonly origin: RunView["origin"]; readonly input: FoldInput } | null {
+  const prompt = inputs.find((input) => input.delivery !== "attach");
+
+  if (prompt !== undefined) return { origin: { kind: "input", message: prompt.id }, input: prompt };
+  const execution = state.heads.get(head)?.info.execution;
+
+  if (execution?.kind !== "idle" || execution.lastRun?.end.kind !== "completed") return null;
+
+  const report = inputs
+    .flatMap((input) =>
+      input.source.kind === "child" || input.source.kind === "job"
+        ? [{ origin: { kind: "continuation", from: input.source.kind } as const, input }]
+        : [],
+    )
+    .at(0);
+
+  return report ?? null;
+}
+
+/** Lands admitted inputs on a head into a run, or none: writes their user commits, advances the head, drops them from the inbox, and publishes `input landed` then `commit` per input in one set; returns the messages it landed. The set expects the run unfenced, or carries `start`, the run's `run started`, when the inputs start it; a start lands nothing unless `startOf` lets the inputs start a run. */
 export async function landing(
   kernel: Kernel,
   session: SessionId,
@@ -157,12 +200,18 @@ export async function landing(
 
     if (run !== null && held === null) return [];
 
-    const { inputs, siblings } = await withFold(kernel, session, (state) => ({
+    const { inputs, siblings, starts } = await withFold(kernel, session, (state) => ({
       inputs: due.map((message) => state.inputs.get(message)),
       siblings: state.siblings.get(tip.id) ?? [],
+      starts:
+        startOf(
+          state,
+          head,
+          due.flatMap((message) => state.inputs.get(message) ?? []),
+        ) !== null,
     }));
 
-    if (start !== null && inputs.every((input) => input?.delivery === "attach")) return [];
+    if (start !== null && !starts) return [];
 
     const at = Date.now();
     const records: { readonly id: CommitId; readonly record: CommitRecord }[] = [];
@@ -313,7 +362,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
         ? sendReceipt(kernel, session, id)
         : STALE;
 
-    if (message.delivery !== "attach" && covered) kernel.wakes.notify(session, head);
+    if (covered) kernel.wakes.notify(session, head);
 
     if (message.source.kind === "user")
       await kernel.waits.inputAdmitted(session, head, message.id, run?.record.parked ?? []);
@@ -403,7 +452,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
         ? ((await replayOf(kernel, session, keyed)) ?? STALE)
         : STALE;
 
-    if (message.delivery !== "attach" && covered) kernel.wakes.notify(session, head);
+    if (covered) kernel.wakes.notify(session, head);
     dev("admission", "revised", { session, head, message: target });
 
     return sendReceipt(kernel, session, asId<"receipt">(target));
@@ -412,7 +461,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
   return revised ?? editGated(sending, target, { id, digest, submission, configuration });
 }
 
-/** Edits a landed input: stops the head's run, moves the head to the input's parent and admits the new content under a fresh id, in one set guarded by what `guard` read (§40). */
+/** Edits a landed input: stops the head's run, moves the head to the input's parent and admits the new content under a fresh id, in one set guarded by what `guard` read. */
 async function edit(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
   const { kernel, session, options } = sending;
   const { id, digest } = keyed;
@@ -462,8 +511,7 @@ async function editGated(
   });
 
   const wake = (stopped: RunId | null): void => {
-    if (stopped !== null || (covered && submission.delivery !== "attach"))
-      kernel.wakes.notify(session, head);
+    if (stopped !== null || covered) kernel.wakes.notify(session, head);
   };
 
   const edited = await attempt<
@@ -747,7 +795,6 @@ async function admitted(
   messages: readonly MessageId[],
   message: MessageRecord,
 ): Promise<RefUpdate> {
-  await kernel.store.objects.put(envelope("message", message, message.at));
   const input = message.source.kind === "user" && message.delivery !== "attach";
 
   const pendingInput = [

@@ -22,7 +22,9 @@ export function view<K extends PartDefinition, View>(
     render(part, act) {
       const checked = kind.state["~standard"].validate(part.state);
 
-      return checked instanceof Promise || checked.issues !== undefined ? unreadable(kind.kind) : draw(checked.value, act);
+      return checked instanceof Promise || checked.issues !== undefined
+        ? unreadable(kind.kind)
+        : draw(checked.value, act);
     },
   };
 }

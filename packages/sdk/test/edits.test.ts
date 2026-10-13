@@ -161,9 +161,9 @@ describe("edits", () => {
     expect(users(await until(session.watch(), () => true))).toEqual(["Final.#unsent"]);
     host.intercept(null);
     await (await edit).settled();
-    expect(
-      users(await until(session.watch(), (view) => view.execution.kind === "idle")),
-    ).toEqual(["Final.#landed"]);
+    expect(users(await until(session.watch(), (view) => view.execution.kind === "idle"))).toEqual([
+      "Final.#landed",
+    ]);
   });
 
   it("keeps an edit of a landed message unsent in its place across a revoke and a re-pair, until it lands (ADV C N1, probe /tmp/adversarial-c2-probe J2b)", async () => {

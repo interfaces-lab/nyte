@@ -1,70 +1,35 @@
-import { Type } from "typebox";
+import { PatchEntryType } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { ToolMessage } from "../view-helpers.ts";
-
-const EditArgs = Type.Object({
-  path: Type.String(),
-  edits: Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() })),
-});
-
-const WriteArgs = Type.Object({ path: Type.String(), content: Type.String() });
+import { formatPatch } from "../workbench/patch-text.ts";
 
 /** The text a diff draws and the counts beside it. */
 export interface EditPatch {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
-}
-
-function lines(text: string): readonly string[] {
-  return text === "" ? [] : text.replace(/\n$/u, "").split("\n");
+  /** The call wrote a file where none was. */
+  readonly created: boolean;
 }
 
 /**
- * An edit or write call's own change as a unified patch: each replacement a
- * hunk of its old and new text, a write one hunk of added lines. Line numbers
- * count from the replacement, since the call carries no position; the counts
- * are the settled call's own when it reported them.
+ * The patch an edit or write call settled with, as unified text: core diffs
+ * the file before and after, so hunks carry the file's line numbers and
+ * context. Undefined while the call runs, or when it settled without a text
+ * patch.
  */
 export function editPatch(message: ToolMessage): EditPatch | undefined {
-  const { args } = message.state;
-  const hunks: string[] = [];
-  let added = 0;
-  let removed = 0;
-  let path = "";
+  const { state } = message;
 
-  if (Value.Check(EditArgs, args)) {
-    path = args.path;
+  if (state.phase !== "settled" || state.outcome.kind !== "ok") return undefined;
+  const { output } = state.outcome;
 
-    for (const edit of args.edits) {
-      const before = lines(edit.oldText);
-      const after = lines(edit.newText);
-      hunks.push(
-        `@@ -1,${String(before.length)} +1,${String(after.length)} @@`,
-        ...before.map((line) => `-${line}`),
-        ...after.map((line) => `+${line}`),
-      );
-      added += after.length;
-      removed += before.length;
-    }
-  } else if (Value.Check(WriteArgs, args)) {
-    path = args.path;
-    const after = lines(args.content);
-    hunks.push(`@@ -0,0 +1,${String(after.length)} @@`, ...after.map((line) => `+${line}`));
-    added = after.length;
-  } else {
-    return undefined;
-  }
-
-  if (hunks.length === 0) return undefined;
-  const counts =
-    message.state.phase === "settled" && message.state.changes !== null
-      ? message.state.changes
-      : { added, removed };
+  if (!Value.Check(PatchEntryType, output) || output.kind !== "text") return undefined;
 
   return {
-    patch: [`--- a/${path}`, `+++ b/${path}`, ...hunks, ""].join("\n"),
-    added: counts.added,
-    removed: counts.removed,
+    patch: formatPatch(output),
+    added: output.added,
+    removed: output.removed,
+    created: output.status === "added",
   };
 }

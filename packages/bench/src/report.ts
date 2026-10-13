@@ -8,7 +8,11 @@ function withinBudget(name: string, value: number, budget: number): boolean {
   return name.endsWith("Min") ? value >= budget : value <= budget;
 }
 
-export async function report(results: readonly ScenarioResult[], budgetsPath: string, outPath: string): Promise<boolean> {
+export async function report(
+  results: readonly ScenarioResult[],
+  budgetsPath: string,
+  outPath: string,
+): Promise<boolean> {
   const budgets: Budgets = JSON.parse(await readFile(budgetsPath, "utf8"));
   let ok = true;
   const lines: string[] = [];
@@ -17,7 +21,9 @@ export async function report(results: readonly ScenarioResult[], budgetsPath: st
     const scenarioBudgets = budgets[result.name] ?? {};
     for (const check of result.invariants) {
       ok &&= check.held;
-      lines.push(`${check.held ? "ok  " : "FAIL"} ${result.name}: ${check.name}${check.detail === undefined ? "" : ` (${check.detail})`}`);
+      lines.push(
+        `${check.held ? "ok  " : "FAIL"} ${result.name}: ${check.name}${check.detail === undefined ? "" : ` (${check.detail})`}`,
+      );
     }
     for (const [metric, value] of Object.entries(result.metrics)) {
       const budget = scenarioBudgets[metric];
@@ -27,12 +33,16 @@ export async function report(results: readonly ScenarioResult[], budgetsPath: st
       }
       const pass = withinBudget(metric, value, budget);
       ok &&= pass;
-      lines.push(`${pass ? "ok  " : "SLOW"} ${result.name}.${metric} = ${value.toFixed(3)} (budget ${name_(metric)} ${budget})`);
+      lines.push(
+        `${pass ? "ok  " : "SLOW"} ${result.name}.${metric} = ${value.toFixed(3)} (budget ${name_(metric)} ${budget})`,
+      );
     }
   }
 
   await writeFile(outPath, JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  process.stdout.write(`${lines.join("\n")}\n\n${ok ? "all guarantees held" : "guarantees broken"}; results in ${outPath}\n`);
+  process.stdout.write(
+    `${lines.join("\n")}\n\n${ok ? "all guarantees held" : "guarantees broken"}; results in ${outPath}\n`,
+  );
 
   return ok;
 }

@@ -4,7 +4,8 @@ import { bytesOf, invariant, timed } from "../scenario.ts";
 /** §2c ViewOptions.tail and history(): a long session opens bounded, pages back without gaps or repeats. */
 export const initialLoad: Scenario = {
   name: "initial-load",
-  guarantee: "view({ tail }) is bounded for a 5,000-message session; history() pages back and reassembles the whole transcript once.",
+  guarantee:
+    "view({ tail }) is bounded for a 5,000-message session; history() pages back and reassembles the whole transcript once.",
   async run(driver) {
     const bench = await driver.open({ sessions: 1, messagesPerSession: 5_000 });
     const [info] = await bench.host.sessions.list({ limit: 1 }).then((page) => page.items);
@@ -31,9 +32,18 @@ export const initialLoad: Scenario = {
       name: this.name,
       invariants: [
         invariant("tail is exactly 200", tail.value.messages.length === 200),
-        invariant("pages reassemble the transcript in order with no repeats", ids.length === new Set(ids).size && ids.join() === whole.messages.map((message) => message.id).join()),
+        invariant(
+          "pages reassemble the transcript in order with no repeats",
+          ids.length === new Set(ids).size &&
+            ids.join() === whole.messages.map((message) => message.id).join(),
+        ),
       ],
-      metrics: { viewTailMs: tail.ms, viewTailBytes: bytesOf(tail.value), historyPageMs: Math.max(...pageTimes), pages: pageTimes.length },
+      metrics: {
+        viewTailMs: tail.ms,
+        viewTailBytes: bytesOf(tail.value),
+        historyPageMs: Math.max(...pageTimes),
+        pages: pageTimes.length,
+      },
     };
   },
 };

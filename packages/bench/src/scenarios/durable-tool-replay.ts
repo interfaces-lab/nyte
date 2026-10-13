@@ -7,24 +7,41 @@ import { invariant, timed } from "../scenario.ts";
  */
 export const durableToolReplay: Scenario = {
   name: "durable-tool-replay",
-  guarantee: "Crash mid-wait, restart: a safe tool re-runs with memo and acquisitions replayed; a never tool is interrupted.",
+  guarantee:
+    "Crash mid-wait, restart: a safe tool re-runs with memo and acquisitions replayed; a never tool is interrupted.",
   async run(driver) {
     const bench = await driver.open();
     const session = await bench.host.sessions.create();
-    bench.model.script({ text: "", tokens: 0, tools: [{ name: "bench_wait_job", args: { command: "sleep 2" } }, { name: "bench_never", args: {} }], after: "done" });
+    bench.model.script({
+      text: "",
+      tokens: 0,
+      tools: [
+        { name: "bench_wait_job", args: { command: "sleep 2" } },
+        { name: "bench_never", args: {} },
+      ],
+      after: "done",
+    });
     const receipt = await session.send("run both");
     await waitFor(async () => {
       const view = await session.view();
-      const never = view.messages.find((message) => message.kind === "part" && isTool(message.state, "bench_never"));
+      const never = view.messages.find(
+        (message) => message.kind === "part" && isTool(message.state, "bench_never"),
+      );
 
-      return view.execution.kind === "waiting" && never?.kind === "part" && phaseOf(never.state) === "running";
+      return (
+        view.execution.kind === "waiting" &&
+        never?.kind === "part" &&
+        phaseOf(never.state) === "running"
+      );
     });
     await bench.crash();
     const restart = await timed(() => bench.restart());
     const resumed = restart.value.session(session.id);
     const end = await resumed.receipt(receipt.id).settled();
     const view = await resumed.view();
-    const tools = view.messages.filter((message) => message.kind === "part" && message.partKind === "tool");
+    const tools = view.messages.filter(
+      (message) => message.kind === "part" && message.partKind === "tool",
+    );
     const states = tools.map((message) => (message.kind === "part" ? message.state : null));
     const safe = states.find((state) => isTool(state, "bench_wait_job"));
     const never = states.find((state) => isTool(state, "bench_never"));
@@ -34,10 +51,19 @@ export const durableToolReplay: Scenario = {
     return {
       name: this.name,
       invariants: [
-        invariant("the safe tool settled ok after the restart", phaseOf(safe) === "settled" && outcomeOf(safe) === "ok"),
+        invariant(
+          "the safe tool settled ok after the restart",
+          phaseOf(safe) === "settled" && outcomeOf(safe) === "ok",
+        ),
         invariant("its memo computed exactly once across both runs", memoRuns === 1),
-        invariant("the never tool settled interrupted", phaseOf(never) === "settled" && outcomeOf(never) === "interrupted"),
-        invariant("the run completed", typeof end === "object" && end !== null && "kind" in end && end.kind === "completed"),
+        invariant(
+          "the never tool settled interrupted",
+          phaseOf(never) === "settled" && outcomeOf(never) === "interrupted",
+        ),
+        invariant(
+          "the run completed",
+          typeof end === "object" && end !== null && "kind" in end && end.kind === "completed",
+        ),
       ],
       metrics: { resumeMs: restart.ms },
     };
@@ -57,13 +83,22 @@ function isTool(state: unknown, name: string): boolean {
 }
 
 function phaseOf(state: unknown): string | null {
-  return typeof state === "object" && state !== null && "phase" in state && typeof state.phase === "string" ? state.phase : null;
+  return typeof state === "object" &&
+    state !== null &&
+    "phase" in state &&
+    typeof state.phase === "string"
+    ? state.phase
+    : null;
 }
 
 function outcomeOf(state: unknown): string | null {
   if (typeof state !== "object" || state === null || !("outcome" in state)) return null;
   const outcome = state.outcome;
 
-  return typeof outcome === "object" && outcome !== null && "kind" in outcome && typeof outcome.kind === "string" ? outcome.kind : null;
+  return typeof outcome === "object" &&
+    outcome !== null &&
+    "kind" in outcome &&
+    typeof outcome.kind === "string"
+    ? outcome.kind
+    : null;
 }
-

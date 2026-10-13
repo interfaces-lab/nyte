@@ -4,7 +4,7 @@ packages:
   - packages/demo/server/*
 overrides:
   "opentui-spinner@0.0.7>@opentui/core": "0.5.11"
-  "opentui-spinner@0.0.7>typescript": "7.0.2"
+  "opentui-spinner@0.0.7>typescript": "6.0.3"
 # The TUI bundle resolves @opentui/core's native module per libc, and a bundle
 # built for the wrong one cannot fall back at runtime. Installing both variants
 # for this machine's platform keeps the musl target buildable and lets
@@ -28,6 +28,7 @@ allowBuilds:
   react-native-enriched-markdown@1.2.0-nightly-20261011-678a5a99a: true
   workerd: true
   core-js-pure: false
+  react-native-enriched-markdown: true
 minimumReleaseAge: 0
 patchedDependencies:
   "@use-voltra/ios-client@2.3.2": patches/@use-voltra__ios-client@2.3.2.patch

@@ -53,7 +53,14 @@ if (!compiled) {
       tail: true,
       run: () => pnpm("exec", "electron-vite", "build", "--logLevel", "info"),
     },
-    { title: "Startup budgets", run: () => node("scripts/check-startup-bundle.mjs") },
+    {
+      title: "Startup budgets",
+      run: () =>
+        node(
+          "scripts/check-startup-bundle.mjs",
+          ...(args.includes("--warn-budgets") ? ["--warn-budgets"] : []),
+        ),
+    },
   );
 }
 

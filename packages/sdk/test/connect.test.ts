@@ -274,7 +274,10 @@ describe("connect", () => {
 
     const a = await compose();
     const b = await compose();
-    cleanups.push(() => a.close(), () => b.close());
+    cleanups.push(
+      () => a.close(),
+      () => b.close(),
+    );
 
     const listener = await listenFetch(b, {
       transport: { kind: "fetch" },

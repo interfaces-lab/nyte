@@ -1,4 +1,15 @@
-import type { BlobId, ByteReader, Json, ObjectId, Ref, RefUpdate, Seq, SessionEvent, SessionId, SetOutcome } from "@nyte-ai/schema";
+import type {
+  BlobId,
+  ByteReader,
+  Json,
+  ObjectId,
+  Ref,
+  RefUpdate,
+  Seq,
+  SessionEvent,
+  SessionId,
+  SetOutcome,
+} from "@nyte-ai/schema";
 
 export interface Store {
   readonly kind: string;
@@ -9,7 +20,6 @@ export interface Store {
 export interface StoreConnection {
   readonly objects: ObjectStore;
   readonly refs: RefStore;
-  close(): Promise<void>;
 }
 
 export interface ObjectStore {

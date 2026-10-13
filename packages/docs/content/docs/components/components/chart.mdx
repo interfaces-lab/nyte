@@ -1,0 +1,126 @@
+---
+title: Chart
+description: "Stacked bars and sparklines for figures beside their own numbers"
+---
+
+```ts title="Import"
+import { BarChart, Sparkline } from "@nyte-ai/ui/chart";
+import type { ChartSeries, ChartBucket } from "@nyte-ai/ui/chart";
+```
+
+`BarChart` compares stacked values across buckets. `Sparkline` shows a row's trend without axes or
+labels, so keep the numbers in nearby text. Both are drawn by [nivo](https://nivo.rocks), with each
+series painted inside its tint's scope so theme and display-mode changes repaint them.
+
+## Usage
+
+- Give each series and bucket a stable `key`. Put each bucket's `values` in `series` order, with
+  one nonnegative, finite number per series. Missing entries render as zero.
+- `BarChart` stacks series bottom to top and scales every bar against the largest bucket total.
+  It fills its container's width; `height` is the bars, and the labels sit in 20px below.
+- Pass `format` to format the readout's values and total. Pointing at any segment opens a readout of
+  its whole bucket. The first and last labels hang inward so neither is cut at the edge.
+- `ticks` selects evenly spaced bucket labels below the bars. Use an integer of at least `2`.
+- `Sparkline` scales against its own largest value. Use nonnegative, finite values and do not
+  compare line heights across sparklines as absolute quantities.
+
+## Examples
+
+### Stacked bars
+
+```tsx
+const series = [
+  { key: "input", label: "Input", tint: "blue" },
+  { key: "output", label: "Output", tint: "purple" },
+] satisfies readonly ChartSeries[];
+
+const buckets = [
+  { key: "mon", label: "Mon", values: [1200, 400] },
+  { key: "tue", label: "Tue", values: [1800, 600] },
+  { key: "wed", label: "Wed", values: [900, 300] },
+] satisfies readonly ChartBucket[];
+
+<BarChart
+  label="Daily token usage, Monday to Wednesday"
+  series={series}
+  buckets={buckets}
+  format={(value) => `${value.toLocaleString()} tokens`}
+  ticks={3}
+/>;
+```
+
+### A row's trend
+
+```tsx
+<div>
+  <span>Requests this week: 42</span>
+  <Sparkline values={[2, 8, 4, 6, 10, 5, 7]} tint="blue" />
+</div>
+```
+
+### A named sparkline
+
+```tsx
+<Sparkline
+  values={[2, 8, 4, 6, 10, 5, 7]}
+  label="Daily requests this week, peaking at 10"
+  width={96}
+  height={24}
+/>
+```
+
+## Props
+
+### BarChart
+
+| Prop        | Type                        | Default  | Description                                                         |
+| ----------- | --------------------------- | -------- | ------------------------------------------------------------------- |
+| `label`     | `string`                    | Required | Accessible name of the plot.                                        |
+| `series`    | `readonly ChartSeries[]`    | Required | Layers in bottom-to-top order.                                      |
+| `buckets`   | `readonly ChartBucket[]`    | Required | Bars in left-to-right order.                                        |
+| `format`    | `(value: number) => string` | Required | Formats each readout value and the total.                           |
+| `height`    | `number`                    | `88`     | Bar height in pixels, without the labels.                           |
+| `ticks`     | `number`                    | `5`      | Number of bucket labels below the plot, capped at the bucket count. |
+| `xstyle`    | `XStyle`                    |          | Styles the outer container.                                         |
+| `className` | `string`                    |          | Class on the outer container.                                       |
+| `style`     | `React.CSSProperties`       |          | Inline styles on the outer container.                               |
+
+### ChartSeries
+
+| Field   | Type     | Description                                |
+| ------- | -------- | ------------------------------------------ |
+| `key`   | `string` | Stable series identity.                    |
+| `label` | `string` | Series name in the readout.                |
+| `tint`  | `Tint`   | Color of the layer and its readout swatch. |
+
+### ChartBucket
+
+| Field    | Type                | Description                                    |
+| -------- | ------------------- | ---------------------------------------------- |
+| `key`    | `string`            | Stable bucket identity.                        |
+| `label`  | `string`            | Bucket name in the readout and below the plot. |
+| `values` | `readonly number[]` | One value per series, in series order.         |
+
+### Sparkline
+
+| Prop        | Type                  | Default  | Description                                                  |
+| ----------- | --------------------- | -------- | ------------------------------------------------------------ |
+| `values`    | `readonly number[]`   | Required | Points in left-to-right order.                               |
+| `tint`      | `Tint`                |          | Uses a tinted stroke instead of the secondary content color. |
+| `label`     | `string`              |          | Accessible name. Without it, the line is decorative.         |
+| `width`     | `number`              | `72`     | Width in pixels.                                             |
+| `height`    | `number`              | `20`     | Height in pixels.                                            |
+| `xstyle`    | `XStyle`              |          | Styles the wrapper.                                          |
+| `className` | `string`              |          | Class on the wrapper.                                        |
+| `style`     | `React.CSSProperties` |          | Inline styles on the wrapper.                                |
+
+`Tint` accepts `"gray"`, `"brown"`, `"orange"`, `"yellow"`, `"green"`, `"blue"`, `"purple"`,
+`"pink"`, `"red"`, `"teal"`, and `"custom"`. See [Theming](/docs/components/foundations/theming)
+for `xstyle`, `className`, and `style`.
+
+## Accessibility
+
+- `BarChart` renders one SVG with `role="img"` and the supplied `label`. The readout follows the
+  pointer only, so put the figures the chart shows in nearby text or a table as well.
+- `Sparkline` has no keyboard interaction. With `label`, it has `role="img"` and `aria-label`.
+  Without `label`, it is `aria-hidden`.

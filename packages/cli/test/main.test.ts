@@ -77,7 +77,12 @@ describe("nyte -p", () => {
       contextWindow: 100_000,
       maxTokens: 4_096,
     };
-    const fake = fakeModels({ models: [{ ...model, id: "first" }, { ...model, id: "second" }] });
+    const fake = fakeModels({
+      models: [
+        { ...model, id: "first" },
+        { ...model, id: "second" },
+      ],
+    });
     fake.reply({ content: [{ type: "text", text: "One." }] });
     fake.reply({ content: [{ type: "text", text: "Two." }] });
     const err: string[] = [];

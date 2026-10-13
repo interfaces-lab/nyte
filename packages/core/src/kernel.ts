@@ -15,12 +15,12 @@ import type {
   HostId,
   Json,
   MessageId,
+  MessageSource,
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
   Placement,
   PrincipalId,
-  PruneReport,
   RunEnd,
   RunId,
   RunView,
@@ -71,7 +71,6 @@ import type { PluginRuntime, PluginState } from "./plugin-runtime.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
 import { CORE_CONTEXT, createConnectionRegistry, createPrincipals } from "./principals.ts";
 import type { ConnectionContext, ConnectionRegistry } from "./principals.ts";
-import { prune } from "./prune.ts";
 import { runCommand, toolSource } from "./registry.ts";
 import { scanResources } from "./resources.ts";
 import { dispatchHead } from "./session-state.ts";
@@ -91,9 +90,9 @@ import type { Workspace, WorkspaceState, Workspaces } from "./workspaces.ts";
 export interface Kernel {
   /** The host this kernel runs as. */
   readonly hostId: HostId;
-  /** A random id minted per kernel, written as a lease's `instance` beside its `holder`, so two kernels over one store never both drive a head (§42b, §42j, §42q). */
+  /** A random id minted per kernel, written as a lease's `instance` beside its `holder`, so two kernels over one store never both drive a head. */
   readonly instance: string;
-  /** The interval in ms at which `pollStore` re-reads the store this kernel shares with other instances, or null when it reads only what it writes (`KernelOptions.poll`, §42h). */
+  /** The interval in ms at which `pollStore` re-reads the store this kernel shares with other instances, or null when it reads only what it writes (`KernelOptions.poll`). */
   readonly poll: number | null;
   /** The open store. */
   readonly store: StoreConnection;
@@ -105,7 +104,7 @@ export interface Kernel {
   readonly host: HostState;
   /** One shared fold per session per principal. */
   readonly folds: FoldCache;
-  /** Each live part's streamed state in this process, by session: what a feed that starts mid-stream gets first (§54b). */
+  /** Each live part's streamed state in this process, by session: what a feed that starts mid-stream gets first. */
   readonly streams: Map<SessionId, Map<PartId, LiveStream>>;
   /** The sessions this kernel's bus carries, with their feeds and publish marks. */
   readonly follows: Map<SessionId, Follow>;
@@ -122,7 +121,7 @@ export interface Kernel {
   activation(session: SessionId): Activation;
   /** Sets a session's activation in memory and publishes an `activation` event to it. */
   setActivation(session: SessionId, activation: Activation): void;
-  /** Where a root session acts when `create` names no workspace (decision 5); `composeHost` sets it once it has registered `OpenOptions.workspace` (§38p). */
+  /** Where a root session acts when `create` names no workspace (decision 5); `composeHost` sets it once it has registered `OpenOptions.workspace`. */
   defaultWorkspace: WorkspaceId | null;
   /** Whether this host runs the sessions it admits, and which; admission reads it for `covered`. Default run, covering all. */
   readonly execution: NonNullable<OpenOptions["execution"]>;
@@ -180,7 +179,7 @@ export interface Kernel {
   readonly environments: EnvironmentRegistry;
   /** The jobs this process started, in memory. Default `createJobTable`, built on first use. */
   readonly jobs: JobTable;
-  /** The browser pages held through this kernel, in memory, with their holds (§37i). Default `createPageTable`, built on first use. */
+  /** The browser pages held through this kernel, in memory, with their holds. Default `createPageTable`, built on first use. */
   readonly pages: PageTable;
   /** The open connections by principal, so revoking a principal drops its streams. Default `createConnectionRegistry`. */
   readonly connections: ConnectionRegistry;
@@ -188,18 +187,18 @@ export interface Kernel {
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
   /** The key core encrypts plugin secrets with (decision 10); null when the composer gave none, and then `secrets.set` answers `unavailable`. */
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
-  /** The decision-13 built-ins every session loads before its list, kept apart from `hostPlugins` so no `plugins.replace` drops them (§36a); f3's composer sets them. Default none. */
+  /** The decision-13 built-ins every session loads before its list, kept apart from `hostPlugins` so no `plugins.replace` drops them; f3's composer sets them. Default none. */
   readonly builtins: readonly Plugin<"core">[];
   /** The core plugins every session loads after the built-ins, in host registration order: what the composer passes; a host-wide `plugins.replace` replaces it. Default none. */
   hostPlugins: readonly Plugin<"core">[];
-  /** Where each host plugin loaded from a file came from: its `.nyte/plugins` scope and path, read by `hostPluginRows` for `HostView.plugins` (§41e); a plugin it does not hold is `inline`. Default empty. */
+  /** Where each host plugin loaded from a file came from: its `.nyte/plugins` scope and path, read by `hostPluginRows` for `HostView.plugins`; a plugin it does not hold is `inline`. Default empty. */
   readonly pluginSources: ReadonlyMap<
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** Returns a session's plugin runtime, the one place a session activates in this process (§44a): created on first use, which starts its activation, and kept until `closePlugins` or a reload installs another. */
+  /** Returns a session's plugin runtime, the one place a session activates in this process: created on first use, which starts its activation, and kept until `closePlugins` or a reload installs another. */
   pluginsFor(session: SessionId): PluginRuntime;
-  /** Installs a new runtime for a session in place of the one held (§44c) and resolves with its `ready`; callers holding the old runtime finish on it. */
+  /** Installs a new runtime for a session in place of the one held and resolves with its `ready`; callers holding the old runtime finish on it. */
   reloadPlugins(session: SessionId): Promise<void>;
   /** Returns every session's plugin runtime this kernel holds: the one map `pluginsFor` fills. */
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
@@ -219,12 +218,10 @@ export interface Kernel {
     ): ReturnType<Host["plugins"]["replace"]>;
     check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
   };
-  /** Loads plugin files by path, in path order: what `PluginsApi` hands the files it is given. Default answers `unavailable`; `openHost` passes its plugin loader (§47l). */
+  /** Loads plugin files by path, in path order: what `PluginsApi` hands the files it is given. Default answers `unavailable`; `openHost` passes its plugin loader. */
   loadPlugins(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
   /** Who may connect. Default `createPrincipals`, built on first use. */
   readonly principals: Host["principals"];
-  /** Collects unreachable history. Default `prune`, which reports reachability and leaves collection to the store driver (§37e). */
-  prune(): Promise<PruneReport>;
 }
 
 /** Holds the runs live in this process by id: each one's abort controller and whether its stop fence is passed. */
@@ -253,15 +250,16 @@ export interface Wakes {
   subscribe(listener: (session: SessionId, head: HeadName) => void): Disposer;
 }
 
-/** Returns one input a boundary landed in a run: its message and how it was delivered. */
+/** Returns one input a boundary landed in a run: its message, how it was delivered and who sent it. */
 export interface LandedInput {
   readonly message: MessageId;
   readonly delivery: Delivery;
+  readonly source: MessageSource;
 }
 
-/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs waiting since the last boundary and returns each with its delivery. */
+/** Runs one run's assistant turn until it ends; `boundary()` lands the inputs waiting since the last boundary and returns each with its delivery and source. */
 export interface TurnDriver {
-  /** Runs the turn and returns how the run ended, or `parked` when a call parked and the run waits (§34d). */
+  /** Runs the turn and returns how the run ended, or `parked` when a call parked and the run waits. */
   run(input: {
     readonly session: SessionId;
     readonly head: HeadName;
@@ -308,7 +306,7 @@ export interface ConfigurationResolver {
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
 }
 
-/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch, keyed by `message` (§35a); `run` is the sender's origin run, null for a client. */
+/** Decides whether a submission is admitted as is, modified, rejected or failed: the `before_send` dispatch, keyed by `message`; `run` is the sender's origin run, null for a client. */
 export interface AdmissionGate {
   (
     submission: Submission,
@@ -322,7 +320,7 @@ export interface AdmissionGate {
   ): Promise<Decision<Submission>>;
 }
 
-/** Runs a core command by name in a session; its caller has awaited the session's activation, or is that activation (§44b). */
+/** Runs a core command by name in a session; its caller has awaited the session's activation, or is that activation. */
 export interface CommandRunner {
   (session: SessionId, name: string, args?: Json): Promise<CommandOutcome>;
 }
@@ -353,7 +351,7 @@ export interface DurableProvider {
   }): Promise<StepOutcome<unknown>>;
 }
 
-/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch, which owns the durable step `hook:before_tool:<call>` (§35a) and may park. */
+/** Decides whether a tool call runs as is, with rewritten args, or not at all: the `before_tool` dispatch, which owns the durable step `hook:before_tool:<call>` and may park. */
 export interface ToolGate {
   (
     call: ToolCall,
@@ -396,7 +394,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional, and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it (§42h). */
+/** Describes what `createKernel` takes: the host's id, store, description and host state, every other slot optional, and `poll`, the interval in ms at which a kernel sharing its store with other instances re-reads it. */
 export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
@@ -440,13 +438,12 @@ export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "h
       | "plugins"
       | "loadPlugins"
       | "principals"
-      | "prune"
     >
   > & {
     readonly poll?: number;
   };
 
-/** Returns a kernel over an open store with every slot not given at its default: a slot with no core default answers `unavailable`, and the defaults that need the kernel are built on first use, so spreading a kernel is safe. On a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it (§42s). */
+/** Returns a kernel over an open store with every slot not given at its default: a slot with no core default answers `unavailable`, and the defaults that need the kernel are built on first use, so spreading a kernel is safe. On a `dispatch` kernel every wake is handed to `dispatchHead` after the commit that caused it. */
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const streams = trackStreams(bus);
@@ -621,7 +618,6 @@ export function createKernel(input: KernelOptions): Kernel {
     get principals() {
       return (principals ??= createPrincipals(kernel));
     },
-    prune: input.prune ?? (() => prune(kernel)),
   };
 
   const execution = kernel.execution;

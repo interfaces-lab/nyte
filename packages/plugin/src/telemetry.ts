@@ -60,7 +60,10 @@ function hold(url: string): { readonly tracer: Tracer; release(): void } {
 }
 
 /** Returns a provider with its tracer. */
-function traced(provider: TracerProvider): { readonly provider: TracerProvider; readonly tracer: Tracer } {
+function traced(provider: TracerProvider): {
+  readonly provider: TracerProvider;
+  readonly tracer: Tracer;
+} {
   return { provider, tracer: provider.getTracer("@nyte-ai/plugin/telemetry") };
 }
 
@@ -106,7 +109,11 @@ export default {
       for await (const url of api.contribute.settings.watch(endpoint.id)) {
         current?.release();
         current = typeof url === "string" && url !== "" ? hold(url) : null;
-        dev("telemetry", "endpoint", { session: api.session.id, exporting: current !== null, providers: providers.size });
+        dev("telemetry", "endpoint", {
+          session: api.session.id,
+          exporting: current !== null,
+          providers: providers.size,
+        });
       }
 
       current?.release();

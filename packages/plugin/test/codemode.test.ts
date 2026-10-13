@@ -37,44 +37,73 @@ const lookup: ToolDefinition<{ text: string }> = {
 
 it("searches tools within a namespace", async () => {
   const fake = fakeModels();
-  const script = 'const all = await searchTools("echo text"); const docs = await searchTools("echo text", { namespace: "mcp/docs" }); return JSON.stringify([["echo", "lookup"].every((name) => all.some((tool) => tool.name === name)), docs]);';
+  const script =
+    'const all = await searchTools("echo text"); const docs = await searchTools("echo text", { namespace: "mcp/docs" }); return JSON.stringify([["echo", "lookup"].every((name) => all.some((tool) => tool.name === name)), docs]);';
 
   fake.reply(
     { content: [{ type: "toolCall", id: "find", name: "codemode", arguments: { code: script } }] },
     { content: [{ type: "text", text: "Found." }] },
   );
 
-  await using host = await open(fake, [codemode, { id: "tools", contribute: { tools: [echo, lookup] } }]);
+  await using host = await open(fake, [
+    codemode,
+    { id: "tools", contribute: { tools: [echo, lookup] } },
+  ]);
   const session = await host.sessions.create();
   await (await session.send("Find tools.")).settled();
 
-  const call = (await session.view()).messages.find((message) => isPart(message, tool) && message.state.name === "codemode");
+  const call = (await session.view()).messages.find(
+    (message) => isPart(message, tool) && message.state.name === "codemode",
+  );
 
-  assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled" && call.state.outcome.kind === "ok");
+  assert(
+    call !== undefined &&
+      isPart(call, tool) &&
+      call.state.phase === "settled" &&
+      call.state.outcome.kind === "ok",
+  );
   expect(call.state.outcome.content).toEqual([
     {
       kind: "text",
-      text: JSON.stringify([true, [{ name: "lookup", namespace: "mcp/docs", description: lookup.description }]]),
+      text: JSON.stringify([
+        true,
+        [{ name: "lookup", namespace: "mcp/docs", description: lookup.description }],
+      ]),
     },
   ]);
 });
 
 it("runs a script that calls two tools, one exposed to code only, and keeps its store", async () => {
   const fake = fakeModels();
-  const script = 'const a = await tools.echo({ text: "hi" }); const b = await tools.shout({ text: a }); store("last", b.loud); return `${a} | ${b.loud}`;';
+  const script =
+    'const a = await tools.echo({ text: "hi" }); const b = await tools.shout({ text: a }); store("last", b.loud); return `${a} | ${b.loud}`;';
 
   fake.reply(
     { content: [{ type: "toolCall", id: "code", name: "codemode", arguments: { code: script } }] },
-    { content: [{ type: "toolCall", id: "again", name: "codemode", arguments: { code: 'return load("last");' } }] },
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "again",
+          name: "codemode",
+          arguments: { code: 'return load("last");' },
+        },
+      ],
+    },
     { content: [{ type: "text", text: "Done." }] },
   );
 
-  await using host = await open(fake, [codemode, { id: "tools", contribute: { tools: [echo, shout] } }]);
+  await using host = await open(fake, [
+    codemode,
+    { id: "tools", contribute: { tools: [echo, shout] } },
+  ]);
   const session = await host.sessions.create();
   await (await session.send("Script it.")).settled();
 
   const outcomes = (await session.view()).messages.flatMap((message) =>
-    isPart(message, tool) && message.state.name === "codemode" && message.state.phase === "settled" ? [message.state.outcome] : [],
+    isPart(message, tool) && message.state.name === "codemode" && message.state.phase === "settled"
+      ? [message.state.outcome]
+      : [],
   );
 
   expect(outcomes).toMatchObject([

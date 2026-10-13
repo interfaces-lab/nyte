@@ -21,7 +21,7 @@ export type TreeView = {
   readonly tip: Position;
   /** Parents before children; siblings in creation order. One pass draws it. */
   readonly nodes: readonly TreeNode[];
-}
+};
 
 /**
  * Returns one commit as a tree row.
@@ -46,7 +46,7 @@ export type TreeNode = {
   readonly preview: string;
   readonly at: number;
   readonly run: RunId | null;
-}
+};
 
 /**
  * Returns the result of creating a head.
@@ -121,7 +121,13 @@ export type RemoveHeadOutcome =
  * @since 0.1.0
  */
 export type MoveOutcome =
-  | { readonly kind: "moved"; readonly revision: Revision; readonly position: Position; readonly summary: MessageId | null; readonly handback: UserContent | null }
+  | {
+      readonly kind: "moved";
+      readonly revision: Revision;
+      readonly position: Position;
+      readonly summary: MessageId | null;
+      readonly handback: UserContent | null;
+    }
   | { readonly kind: "stale"; readonly revision: Revision }
   | { readonly kind: "busy"; readonly run: RunId }
   | { readonly kind: "pending-input"; readonly messages: readonly MessageId[] }
@@ -141,7 +147,7 @@ export type MoveOptions = {
   readonly abandoned?: "keep" | { readonly summarize: { readonly instructions?: string } };
   /** The tree revision the client showed; stale if it moved. */
   readonly expect?: Revision;
-}
+};
 
 /**
  * Describes how a send is delivered, and whether it replaces an earlier
@@ -163,14 +169,16 @@ export type SendOptions = {
   /** With replace; stale if another client moved first. */
   readonly expect?: Revision;
   /** With replace on a pending message: reorder the queue. */
-  readonly position?: { readonly kind: "last" } | { readonly kind: "before"; readonly message: MessageId };
+  readonly position?:
+    | { readonly kind: "last" }
+    | { readonly kind: "before"; readonly message: MessageId };
   /** Default user. */
   readonly source?: MessageSource;
   /** Default: capture the head's selection at admission. */
   readonly configuration?: Configuration | ConfigurationPatch;
   /** Only to retry across your own restart; same id + same content replays the receipt. */
   readonly id?: ReceiptId;
-}
+};
 
 /**
  * Returns the result of changing a head's durable selection.

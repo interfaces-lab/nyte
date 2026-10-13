@@ -3,7 +3,6 @@ import { pageSchema } from "fumadocs-core/source/schema";
 import { defineCollections } from "fumadocs-mdx/macro";
 import type { MDXContent } from "mdx/types";
 import type { TocEntry } from "~/app/(site)/_layout/toc";
-import { KERNEL } from "~/components/mdx/kernel/source";
 import { docsContentRoute, docsImageRoute, docsRoute } from "./shared";
 
 const collection = defineCollections({
@@ -18,38 +17,12 @@ const collection = defineCollections({
 interface Section {
   /** Unlabelled sections sit at the top of the sidebar. */
   label?: string;
-  /** Package path the pages were read against, shown under the table of contents. */
-  source?: string;
   files: string[];
 }
 
 /* Editorial order. Every MDX file under content/docs appears here exactly once. */
 const outline: Section[] = [
   { files: ["index", "remote-access", "build/composition"] },
-  { label: "Kernel", source: KERNEL, files: ["kernel/architecture", "kernel/life-of-a-message"] },
-  {
-    label: "Runtime",
-    source: KERNEL,
-    files: [
-      "kernel/runner",
-      "kernel/step",
-      "kernel/inbox",
-      "kernel/admission",
-      "kernel/respond",
-      "kernel/tools",
-      "kernel/stop",
-      "kernel/heads",
-      "kernel/events",
-      "kernel/plugins",
-      "kernel/agents",
-    ],
-  },
-  { label: "Storage", source: KERNEL, files: ["kernel/store", "kernel/refs", "kernel/objects"] },
-  {
-    label: "Reference",
-    source: KERNEL,
-    files: ["kernel/constants", "kernel/functions", "kernel/open-issues", "kernel/quiz"],
-  },
   {
     label: "Foundations",
     files: [
@@ -70,6 +43,7 @@ const outline: Section[] = [
       "components/components/avatar",
       "components/components/bubble",
       "components/components/button",
+      "components/components/chart",
       "components/components/checkbox",
       "components/components/collapsible",
       "components/components/command",
@@ -82,6 +56,7 @@ const outline: Section[] = [
       "components/components/menu",
       "components/components/message",
       "components/components/message-scroller",
+      "components/components/meter",
       "components/components/number-field",
       "components/components/popover",
       "components/components/preview-card",
@@ -120,7 +95,6 @@ export interface DocPage {
   Body: MDXContent;
   toc: TocEntry[];
   section: string | undefined;
-  source: string | undefined;
   previous: NavItem | undefined;
   next: NavItem | undefined;
   imageUrl: string;
@@ -159,7 +133,6 @@ function build() {
     Body: entry.body,
     toc: entry.toc,
     section: section.label,
-    source: section.source,
     previous: placed[index - 1]?.item,
     next: placed[index + 1]?.item,
     imageUrl: [docsImageRoute, ...slugs, "image.png"].join("/"),

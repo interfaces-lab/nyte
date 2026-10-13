@@ -269,7 +269,7 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
   };
 }
 
-/** Returns the in-process host: a connection as `LOCAL` with every authority, its `plugins` taking plugin objects and files alike (§47l), plus prune, inspect and execution. */
+/** Returns the in-process host: a connection as `LOCAL` with every authority, its `plugins` taking plugin objects and files alike, plus inspect and execution. */
 export function createHost(
   kernel: Kernel,
   input: { readonly credential: CredentialSource },
@@ -288,7 +288,6 @@ export function createHost(
         kernel.plugins.replace(await loaded(kernel, plugins), scope),
       check: async (plugins) => kernel.plugins.check(await loaded(kernel, plugins)),
     },
-    prune: () => kernel.prune(),
     inspect: (session) => inspect(kernel, session),
     execution: {
       cover: (coverage) => cover(kernel, coverage),

@@ -19,8 +19,10 @@ export default {
       const title = info.name ?? undefined;
       const { end } = event;
 
-      if (end.kind === "completed") api.ui.notify({ title, message: "Run finished", level: "info" });
-      else if (end.kind === "stopped") api.ui.notify({ title, message: "Run stopped", level: "warning" });
+      if (end.kind === "completed")
+        api.ui.notify({ title, message: "Run finished", level: "info" });
+      else if (end.kind === "stopped")
+        api.ui.notify({ title, message: "Run stopped", level: "warning" });
       else api.ui.notify({ title, message: `Run failed: ${line(end)}`, level: "error" });
     },
   },

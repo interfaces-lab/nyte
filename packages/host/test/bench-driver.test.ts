@@ -101,12 +101,10 @@ describe("severableStore", () => {
     await expect(connection.refs.get("a")).rejects.toMatchObject({ code: "unavailable" });
     await expect(connection.objects.get(target)).rejects.toMatchObject({ code: "unavailable" });
     await expect(severable.store.open()).rejects.toMatchObject({ code: "unavailable" });
-    await connection.close();
     await severable.store.close();
     const still = await inner.open();
 
     expect(await still.objects.get(target)).toEqual({ kind: "x" });
-    await still.close();
   });
 });
 

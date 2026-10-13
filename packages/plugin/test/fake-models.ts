@@ -60,7 +60,11 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
   const requests: Request[] = [];
   const registry = createModels();
 
-  const respond = (model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) => {
+  const respond = (
+    model: Model<Api>,
+    context: TranscriptContext,
+    options?: SimpleStreamOptions,
+  ) => {
     requests.push({ model, context, options });
 
     return streamOf(model, queue.shift() ?? { error: "No reply was scripted for this request." });
@@ -69,7 +73,12 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
   registry.setProvider({
     id: provider,
     name: provider,
-    auth: { apiKey: { name: "Test key", resolve: async () => ({ auth: { apiKey: "key" }, source: "test" }) } },
+    auth: {
+      apiKey: {
+        name: "Test key",
+        resolve: async () => ({ auth: { apiKey: "key" }, source: "test" }),
+      },
+    },
     getModels: () => models ?? [testModel("model")],
     stream: (model, context) => respond(model, context),
     streamSimple: respond,
@@ -144,7 +153,10 @@ export function open(
 }
 
 /** Resolves with the first defined value `read` returns, polling; rejects after `timeout` ms. */
-export async function until<T>(read: () => Promise<T | undefined> | T | undefined, timeout = 3000): Promise<T> {
+export async function until<T>(
+  read: () => Promise<T | undefined> | T | undefined,
+  timeout = 3000,
+): Promise<T> {
   const deadline = Date.now() + timeout;
 
   for (;;) {
@@ -185,10 +197,20 @@ function streamOf(model: Model<Api>, reply: Reply): AssistantMessageEventStream 
 
     for (const [index, block] of (reply.content ?? []).entries()) {
       if (block.type === "toolCall") {
-        const call = { type: "toolCall", id: block.id, name: block.name, arguments: block.arguments } as const;
+        const call = {
+          type: "toolCall",
+          id: block.id,
+          name: block.name,
+          arguments: block.arguments,
+        } as const;
         message.content.push(call);
         stream.push({ type: "toolcall_start", contentIndex: index, partial: message });
-        stream.push({ type: "toolcall_end", contentIndex: index, toolCall: call, partial: message });
+        stream.push({
+          type: "toolcall_end",
+          contentIndex: index,
+          toolCall: call,
+          partial: message,
+        });
         continue;
       }
 
@@ -199,12 +221,18 @@ function streamOf(model: Model<Api>, reply: Reply): AssistantMessageEventStream 
     }
 
     if (reply.error !== undefined) {
-      stream.push({ type: "error", reason: "error", error: { ...message, stopReason: "error", errorMessage: reply.error } });
+      stream.push({
+        type: "error",
+        reason: "error",
+        error: { ...message, stopReason: "error", errorMessage: reply.error },
+      });
 
       return;
     }
 
-    const stopReason = message.content.some((block) => block.type === "toolCall") ? "toolUse" : "stop";
+    const stopReason = message.content.some((block) => block.type === "toolCall")
+      ? "toolUse"
+      : "stop";
     stream.push({ type: "done", reason: stopReason, message: { ...message, stopReason } });
   })();
 

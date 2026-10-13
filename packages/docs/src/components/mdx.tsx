@@ -8,11 +8,6 @@ import { componentsMdxComponents } from "~/components/components/mdx";
 import { DocCard } from "~/components/mdx/doc-card";
 import { DesktopDownload } from "~/components/mdx/install";
 import { Mermaid } from "~/components/mdx/mermaid";
-import { Source, Sketch, Diff } from "~/components/mdx/kernel/code";
-import { Cas, LayerStack, Trace, TraceStep } from "~/components/mdx/kernel/figures";
-import { Quiz } from "~/components/mdx/kernel/quiz";
-import { Constants, Functions, OpenIssues } from "~/components/mdx/kernel/reference";
-import { C, Codes, Inline, P, Src, Table, To } from "~/components/mdx/kernel/ui";
 
 function Anchor({ href = "", className, ...rest }: ComponentProps<"a">) {
   const scopedClass = [props(intent.primary).className, className].filter(Boolean).join(" ");
@@ -43,24 +38,6 @@ export const mdxComponents = {
   DocCard,
   DesktopDownload,
   Mermaid,
-  Source,
-  Sketch,
-  Diff,
-  Cas,
-  LayerStack,
-  Trace,
-  TraceStep,
-  Quiz,
-  Constants,
-  Functions,
-  OpenIssues,
-  C,
-  Codes,
-  Inline,
-  P,
-  Src,
-  Table,
-  To,
 } satisfies MDXComponents;
 
 declare global {

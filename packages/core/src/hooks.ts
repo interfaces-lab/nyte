@@ -1,4 +1,4 @@
-import { SubmissionType, ToolCallType, asId, withJson } from "@nyte-ai/schema";
+import { SubmissionType, ToolCallType, asId, compile, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -14,7 +14,6 @@ import type {
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import { Compile } from "typebox/compile";
 import { isParked, runStep } from "./durable.ts";
 import type { StepOutcome } from "./durable.ts";
 import { dev } from "./dev-log.ts";
@@ -44,7 +43,7 @@ export interface HookContext {
   readonly principal: PrincipalId;
 }
 
-/** The durable step a decide dispatch runs as, its call keyed by what it gates (§33k: `hook:before_tool:<call>`, `hook:before_send:<message>`). */
+/** The durable step a decide dispatch runs as, its call keyed by what it gates (`hook:before_tool:<call>`, `hook:before_send:<message>`). */
 export interface HookStep {
   readonly call: CallId;
   readonly run: RunId | null;
@@ -74,7 +73,7 @@ export interface HookDispatch {
     value: HookEvent<N>,
     context: HookContext,
   ): Promise<HookEvent<N>>;
-  /** Runs the handlers as one replay-safe durable step of kind `hook` at `step.call`, each acting from the step (§35i), and resolves the recorded decision or `parked`. With no handler and no step recorded it resolves `continue` and writes nothing. */
+  /** Runs the handlers as one replay-safe durable step of kind `hook` at `step.call`, each acting from the step, and resolves the recorded decision or `parked`. With no handler and no step recorded it resolves `continue` and writes nothing. */
   decide<N extends CoreHook<"decide">>(
     name: N,
     value: HookEvent<N>,
@@ -115,9 +114,9 @@ const CONTINUE = { action: "continue" } as const;
 
 const NEVER = new AbortController().signal;
 
-const submissions = Compile(withJson(decisionType(SubmissionType)));
+const submissions = compile(withJson(decisionType(SubmissionType)));
 
-const toolCalls = Compile(withJson(decisionType(ToolCallType)));
+const toolCalls = compile(withJson(decisionType(ToolCallType)));
 
 /** One caller per hook, so a call indexed by a generic hook name is typed by that hook. */
 type Observers = {

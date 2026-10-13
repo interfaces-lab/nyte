@@ -3,7 +3,6 @@
  * every request against these schemas and the page validates every reply, so
  * neither side trusts the other's JSON.
  */
-import { schemas } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 
 const Oid = Type.String({ pattern: "^[0-9a-f]{40}$" });
@@ -85,7 +84,7 @@ export type Brief = Static<typeof BriefSchema>;
 
 /** Nyte coding on the review's branch, in its own worktree. */
 export const AuthorSchema = Type.Object({
-  sessionId: schemas.SessionId,
+  sessionId: Type.String(),
   worktree: Type.String(),
   status: Type.Union([Type.Literal("working"), Type.Literal("idle"), Type.Literal("failed")]),
   failure: Type.Optional(Type.String()),
@@ -162,7 +161,7 @@ export const ReviewDetailSchema = Type.Object({
   title: Type.String(),
   baseRef: Type.String(),
   headRef: Type.String(),
-  sessionId: schemas.SessionId,
+  sessionId: Type.String(),
   createdAt: Type.Number(),
   /** What you asked Nyte to build, for a review that started as a task. */
   task: Type.Optional(Type.String()),
@@ -238,8 +237,8 @@ export const CreatedSchema = Type.Object({ id: Type.String() });
 
 /** The review's core sessions: never changing once they exist, so a page can watch them. */
 export const SessionSchema = Type.Object({
-  sessionId: schemas.SessionId,
-  authorSessionId: Type.Optional(schemas.SessionId),
+  sessionId: Type.String(),
+  authorSessionId: Type.Optional(Type.String()),
 });
 
 export type Sessions = Static<typeof SessionSchema>;

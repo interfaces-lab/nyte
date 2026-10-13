@@ -1,16 +1,18 @@
 import { createConnection, createServer } from "node:net";
 import type { Socket } from "node:net";
 
-/** Returns a cuttable TCP link in front of an `http` listener at `target` (`http://<host>:<port>`): a `node:net` server on 127.0.0.1, port 0, whose `url` a client dials, each accepted socket piped to a fresh socket to `target`. `drop()` destroys every piped pair at once (the client's open streams reset instead of ending) and, until `restore()`, destroys each socket as it is accepted (a connection reset, so reconnect attempts fail fast rather than hang); `restore()` pipes again; both are idempotent. `close()` drops everything and closes the server, once. */
+/** Returns a cuttable TCP link in front of an `http` listener at `target` (`http://<host>:<port>`): a `node:net` server on 127.0.0.1, port 0, whose `url` a client dials, each accepted socket piped to a fresh socket to `target`. `drop()` destroys every piped pair at once (the client's open streams reset instead of ending) and, until `restore()`, destroys each socket as it is accepted (a connection reset, so reconnect attempts fail fast rather than hang); `restore()` pipes again; both are idempotent. `received()` counts the bytes the host has sent the client since the link opened. `close()` drops everything and closes the server, once. */
 export async function cuttableLink(target: string): Promise<{
   readonly url: string;
   drop(): void;
   restore(): void;
+  received(): number;
   close(): Promise<void>;
 }> {
   const { hostname, port } = new URL(target);
   const sockets = new Set<Socket>();
   let dropped = false;
+  let received = 0;
 
   const reset = (socket: Socket): void => {
     sockets.delete(socket);
@@ -41,6 +43,9 @@ export async function cuttableLink(target: string): Promise<{
 
     client.on("close", end);
     upstream.on("close", end);
+    upstream.on("data", (chunk: Buffer) => {
+      received += chunk.length;
+    });
     client.pipe(upstream);
     upstream.pipe(client);
   });
@@ -68,6 +73,7 @@ export async function cuttableLink(target: string): Promise<{
     restore() {
       dropped = false;
     },
+    received: () => received,
     close() {
       closing ??= new Promise<void>((resolve) => {
         drop();

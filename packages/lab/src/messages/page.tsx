@@ -1,8 +1,8 @@
 /**
  * Every row the chat transcript draws, in every tool call density. Each
- * specimen is SDK data (a slice of `SessionSnapshot` plus the client's live
- * overlay), staged the way `screens/thread.tsx` stages a session and drawn by
- * the app's own row surfaces, the way `Timeline` draws them.
+ * specimen is SDK data (a slice of `SessionView`), staged the way
+ * `screens/thread.tsx` stages a session and drawn by the app's own row
+ * surfaces, the way `Timeline` draws them.
  */
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
@@ -18,14 +18,13 @@ import { SubagentSessionsProvider } from "@nyte-ai/app/conversation/subagent-ses
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import { TurnView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { BranchModelPicker } from "@nyte-ai/app/conversation/turn-view.tsx";
-import type { LiveToolProgress } from "@nyte-ai/app/live-fold.ts";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { keys, queryClient } from "@nyte-ai/app/queries.ts";
 import { TranscriptSkeleton } from "@nyte-ai/app/screens/transcript-skeleton.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { labModel, modelCatalog } from "../shell/fixtures";
 import { CWD, SECTIONS, SUBAGENTS, UNSTARTED } from "./specimens";
-import type { Scene, Specimen } from "./specimens";
+import type { Specimen } from "./specimens";
 import { stage, trail } from "./stage";
 import type { Stage } from "./stage";
 import { Wiring } from "./wiring";
@@ -45,8 +44,6 @@ const STAGED = new Map<Specimen, Stage>(
 );
 
 const COUNT = STAGED.size;
-
-const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
 
 const SUBAGENT_CONTEXT = { children: SUBAGENTS, open: () => {} };
 
@@ -74,7 +71,7 @@ function RowView({
   readonly staged: Stage;
   readonly density: ToolCallDensity;
 }): ReactElement | null {
-  const { live, working, settledWork } = staged;
+  const { working, settledWork, changes } = staged;
 
   switch (row.kind) {
     case "skeleton":
@@ -88,24 +85,20 @@ function RowView({
           </Button>
         </StatusMarker>
       );
-    case "turn": {
-      const trailing = row.trailing && working;
-
+    case "turn":
       return (
         <TurnView
           turn={row.turn}
           continuations={row.continuations}
           density={density}
-          liveTools={trailing ? live.tools : NO_LIVE_TOOLS}
-          live={trailing ? live : undefined}
           cwd={CWD}
+          changes={changes}
           onEditUser={editUser}
           branchModel={BRANCH_MODEL}
           onOpenChanges={openChanges}
-          running={trailing}
+          running={row.trailing && working}
         />
       );
-    }
 
     case "landing":
       return (
@@ -113,7 +106,11 @@ function RowView({
           title={row.pending ? "Lands at the next response" : undefined}
           {...props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
         >
-          <UserMessageView content={row.content} />
+          <UserMessageView
+            content={
+              row.message.source.kind === "action" ? row.message.source.label : row.message.content
+            }
+          />
         </div>
       );
     case "retry":
@@ -123,15 +120,7 @@ function RowView({
         </StatusMarker>
       );
     case "live":
-      return (
-        <LiveTurn
-          live={live}
-          working={working}
-          settledWork={settledWork}
-          density={density}
-          cwd={CWD}
-        />
-      );
+      return <LiveTurn working={working} settledWork={settledWork} density={density} cwd={CWD} />;
     default: {
       const _exhaustive: never = row;
 
@@ -156,15 +145,6 @@ function SceneView({
   );
 }
 
-/** Maps print as objects so a LiveSnapshot shows what it holds. */
-function json(value: Scene | Stage["live"]): string {
-  return JSON.stringify(
-    value,
-    (_key, entry) => (entry instanceof Map ? Object.fromEntries(entry) : entry),
-    2,
-  );
-}
-
 function SpecimenMeta({
   specimen,
   staged,
@@ -173,7 +153,6 @@ function SpecimenMeta({
   readonly staged: Stage;
 }): ReactElement {
   const rows = trail(staged);
-  const live = specimen.scene.run !== undefined;
 
   return (
     <div {...props(styles.meta)}>
@@ -186,14 +165,8 @@ function SpecimenMeta({
       {rows.length > 0 && <pre {...props(styles.trail)}>{rows.join("\n")}</pre>}
       <details {...props(styles.details)}>
         <summary {...props(styles.summary)}>SDK data</summary>
-        <pre {...props(styles.json)}>{json(specimen.scene)}</pre>
+        <pre {...props(styles.json)}>{JSON.stringify(specimen.scene, null, 2)}</pre>
       </details>
-      {live && (
-        <details {...props(styles.details)}>
-          <summary {...props(styles.summary)}>As the app reshapes it (LiveSnapshot)</summary>
-          <pre {...props(styles.json)}>{json(staged.live)}</pre>
-        </details>
-      )}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { Fragment, useId, useRef } from "react";
 import type { ReactElement } from "react";
+import { openQuestions } from "@nyte-ai/plugin/question";
+import type { OpenQuestion } from "@nyte-ai/plugin/question";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import {
@@ -20,8 +22,7 @@ import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
-import { answerQuestion, questionAnswerOptions, waitingQuestions } from "./questions-state.ts";
-import type { WaitingQuestion } from "./questions-state.ts";
+import { answerQuestion, questionAnswerOptions } from "./questions-state.ts";
 
 const styles = create({
   list: { gap: 12, paddingTop: 6, paddingBottom: 6 },
@@ -115,7 +116,7 @@ function QuestionCard({
 }: {
   readonly sessionId: SessionId;
   readonly origin?: string;
-  readonly question: WaitingQuestion;
+  readonly question: OpenQuestion;
   readonly disabled: boolean;
 }): ReactElement {
   const id = useId();
@@ -231,7 +232,7 @@ export interface ComposerAnswer {
  * composer answers it in the user's own words, as the terminal's does.
  */
 export function useComposerAnswer(sessionId: SessionId): ComposerAnswer | undefined {
-  const [question] = waitingQuestions(useSessionView(sessionId));
+  const [question] = openQuestions(useSessionView(sessionId));
 
   if (question === undefined) return undefined;
 
@@ -249,7 +250,7 @@ function ChildQuestions({
   readonly child: SessionInfo;
   readonly disabled: boolean;
 }): ReactElement {
-  const questions = waitingQuestions(useSessionView(child.id));
+  const questions = openQuestions(useSessionView(child.id));
 
   return (
     <>
@@ -281,7 +282,7 @@ export function Questions({
   readonly sessionId: SessionId;
   readonly disabled: boolean;
 }): ReactElement {
-  const questions = waitingQuestions(useSessionView(sessionId));
+  const questions = openQuestions(useSessionView(sessionId));
   const children = useChildSessions(sessionId);
 
   return (
@@ -314,7 +315,7 @@ export function QuestionTray({
   const { ref, availableHeight } = useTrayRoot(viewport);
   const children = useChildSessions(sessionId);
   const count =
-    waitingQuestions(useSessionView(sessionId)).length +
+    openQuestions(useSessionView(sessionId)).length +
     (children.data ?? []).filter(waitsOnQuestion).length;
 
   return (

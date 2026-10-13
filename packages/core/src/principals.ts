@@ -83,7 +83,7 @@ export function gate(authority: ReadonlySet<Authority>, operation: ServedOperati
     throw new SdkError("denied", `${operation} needs ${needed} authority.`);
 }
 
-/** Returns a view of `api` in which `overrides` and a rejected `denied` for each `<kind>.<member>` row the authority lacks replace their members, every other member being the api's own, bound to it; the api itself when nothing differs. Participant rows are not checked (§56): every context in process holds participant, and protocol's server gates each wire row before core sees it. */
+/** Returns a view of `api` in which `overrides` and a rejected `denied` for each `<kind>.<member>` row the authority lacks replace their members, every other member being the api's own, bound to it; the api itself when nothing differs. Participant rows are not checked: every context in process holds participant, and protocol's server gates each wire row before core sees it. */
 export function gated<T extends object>(
   kind: string,
   api: T,
@@ -121,7 +121,7 @@ export function gated<T extends object>(
   });
 }
 
-/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds succeeds and writes or marks nothing (§65). */
+/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds succeeds and writes or marks nothing. */
 export function createPrincipals(kernel: Kernel): Host["principals"] {
   return {
     async list() {

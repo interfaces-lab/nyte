@@ -1,12 +1,10 @@
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
   CallId,
-  HeadName,
   Json,
   PartId,
   Placement,
   RefUpdate,
-  RunId,
   Schema,
   SessionId,
   ValidationIssue,
@@ -31,7 +29,7 @@ import type {
 } from "./parts.ts";
 import { PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
-import { decodePartRecord } from "./records.ts";
+import { decodePartRecord, isJsonObject } from "./records.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
 import { headRef, partRef } from "./refs.ts";
 import { unfenced } from "./runs.ts";
@@ -41,7 +39,6 @@ import {
   attempt,
   commit,
   expectOf,
-  isJsonObject,
   load,
   objectOf,
   put,
@@ -66,21 +63,16 @@ type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 /** The session each handle this module bound acts in. */
 const boundIn = new WeakMap<object, SessionId>();
 
-/** Creates a part from a definition and returns its handle; an existing id with the same kind and state is a replay, any other is `invalid`. A transcript part outside a run lands as a commit on `head` (default main) in the same set. From a durable step the creation is an acquisition recorded on the step's call first, so a re-run returns the part it created. */
+/** Creates a part from a definition and returns its handle; an existing id with the same kind and state is a replay, any other is `invalid`. A transcript part lands as a commit, in the same set, on the head the creating step runs on, else main. Any other part a step creates belongs to the step's run, so the run's stop or failure fails it; one created while the run is stopping is never written. From a durable step the creation is an acquisition recorded on the step's call first, so a re-run returns the part it created. */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
   session: SessionId,
   kind: K,
-  input: {
-    readonly state: unknown;
-    readonly placement: Placement;
-    readonly id?: PartId;
-    readonly run?: RunId | null;
-    readonly head?: HeadName;
-  },
+  input: { readonly state: unknown; readonly placement: Placement; readonly id?: PartId },
 ): Promise<Part<K>> {
   const origin = context.origin;
+  const from = origin?.session === session ? origin : null;
 
   const step =
     origin === null || origin.call === null
@@ -110,7 +102,8 @@ export async function createPart<K extends PartDefinition>(
   const acquired = step === null ? minted : await recordAcquisition(kernel, step, step.key, minted);
 
   const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
-  const run = input.run ?? null;
+  const transcript = input.placement.kind === "transcript";
+  const run = transcript ? null : (from?.run ?? null);
   const owner = registered?.owner ?? null;
   const name = partRef(session, id);
 
@@ -142,7 +135,7 @@ export async function createPart<K extends PartDefinition>(
       owner,
     } as const;
 
-    if (input.placement.kind !== "transcript" || run !== null) {
+    if (!transcript) {
       const stored: PartRecord = {
         id,
         partKind: kind.kind,
@@ -164,14 +157,14 @@ export async function createPart<K extends PartDefinition>(
           name,
           target: await put(kernel, "part", stored, at),
           expect: "absent",
-          event: { head: input.head ?? null, ...created },
+          event: { head: null, ...created },
         },
       ]);
 
       return outcome.kind === "set" ? undefined : STALE;
     }
 
-    const head = input.head ?? MAIN;
+    const head = from?.head ?? MAIN;
     const tip = await readTip(kernel, session, head);
 
     const record: CommitRecord = {
@@ -405,7 +398,7 @@ function partHandleFor<K extends PartDefinition>(
   return handle;
 }
 
-/** Keeps an act's answer on a live modal part's status, its one home, unless the part holds one (§48i); offers the winner to the step the status names as waiting and to the waits here, then settles `answer()`. Resolves false when the part is no longer live. */
+/** Keeps an act's answer on a live modal part's status, its one home, unless the part holds one; offers the winner to the step the status names as waiting and to the waits here, then settles `answer()`. Resolves false when the part is no longer live. */
 async function answered(
   kernel: Kernel,
   session: SessionId,
@@ -441,7 +434,7 @@ async function answered(
   return true;
 }
 
-/** Runs a head-less action step again when a wake recorded its outcome and no act here waits on it, as after a restart (§33j); a modal part keeps the answer once it returns. */
+/** Runs a head-less action step again when a wake recorded its outcome and no act here waits on it, as after a restart; a modal part keeps the answer once it returns. */
 export async function rerunAction(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
   const step = (await readCall(kernel, session, call))?.record;
 

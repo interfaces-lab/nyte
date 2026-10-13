@@ -27,7 +27,7 @@ const reviewRoute = createRoute({
 });
 
 function ReviewRoute(): ReactElement {
-  return <ReviewPage initialReview={reviewRoute.useSearch().id} />;
+  return <ReviewPage initialReview={reviewRoute.useSearch<typeof router>().id} />;
 }
 
 const routeTree = rootRoute.addChildren([
@@ -35,7 +35,7 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/",
     beforeLoad: () => {
-      throw redirect({ to: "/requests" });
+      throw redirect({ href: "/requests" });
     },
   }),
   createRoute({

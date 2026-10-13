@@ -136,7 +136,6 @@ export function Timeline({
     <TranscriptContent
       items={rows}
       ready={ready}
-      density={density}
       estimateSize={estimateSize}
       renderItem={renderItem}
     />

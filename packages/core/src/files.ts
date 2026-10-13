@@ -23,7 +23,8 @@ import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
 import { typedReceipt } from "./receipt-handles.ts";
 import { settleReceipt } from "./receipts.ts";
-import { isJsonObject, readReceipt, writeReceipt } from "./session-state.ts";
+import { isJsonObject } from "./records.ts";
+import { readReceipt, writeReceipt } from "./session-state.ts";
 import { waitFor } from "./waits.ts";
 
 export interface FilesApi {
@@ -66,7 +67,7 @@ export interface FileBatch {
   apply(): Promise<Receipt<BatchOutcome>>;
 }
 
-/** Names where a batch receipt lives: a session's store, or this host's memory for a workspace reached outside a session (§37b). */
+/** Names where a batch receipt lives: a session's store, or this host's memory for a workspace reached outside a session. */
 export type FileScope = { readonly session: SessionId } | { readonly workspace: WorkspaceId };
 
 /** Returns one planned write or removal. */
@@ -119,7 +120,7 @@ export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): Fi
   };
 }
 
-/** Returns a workspace-scope batch receipt this process holds (§37b, §40d); the latest 256 are held. */
+/** Returns a workspace-scope batch receipt this process holds; the latest 256 are held. */
 export function heldReceipt(kernel: Kernel, id: ReceiptId): Receipt<BatchOutcome> | undefined {
   return kernel.workspaceState.held.get(id)?.receipt;
 }
@@ -137,7 +138,7 @@ export function isBatchOutcome(value: Json): value is BatchOutcome {
   return isJsonObject(value) && typeof value.kind === "string" && BATCH_OUTCOMES.has(value.kind);
 }
 
-/** Applies a plan over a scope's files and returns its receipt at once; a replayed `id` answers that receipt when the plan's digest matches and throws `invalid` otherwise (§40e, §40x). Every `expect` is checked before anything is written (`stale`), then entries apply in order until one fails (`partial`) or `stop()` (`stopped`). */
+/** Applies a plan over a scope's files and returns its receipt at once; a replayed `id` answers that receipt when the plan's digest matches and throws `invalid` otherwise. Every `expect` is checked before anything is written (`stale`), then entries apply in order until one fails (`partial`) or `stop()` (`stopped`). */
 export async function applyBatch(
   kernel: Kernel,
   scope: FileScope,

@@ -14,7 +14,7 @@ export interface HeadPair {
   readonly revision: Revision;
 }
 
-/** One event as a feed carries it, with the head ref its write left when it moved a head (§54a). */
+/** One event as a feed carries it, with the head ref its write left when it moved a head. */
 export interface FeedItem {
   readonly event: SessionEvent | PatchEvent;
   readonly head: HeadPair | null;

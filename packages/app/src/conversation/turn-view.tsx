@@ -18,7 +18,7 @@ import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import { drawPart } from "../client-plugins.tsx";
-import { useTranscriptSession } from "./transcript.tsx";
+import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
 import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
@@ -200,6 +200,7 @@ export function UserMessageView({
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
   const rowRef = useRef<HTMLDivElement>(null);
+  const transcript = useTranscriptControls();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const canDismissEdit = edit !== undefined && !edit.saving && edit.attachmentReads === 0;
   useEffect(() => {
@@ -234,6 +235,8 @@ export function UserMessageView({
 
   const begin = (): void => {
     const text = messageDraftText(original);
+
+    if (rowRef.current !== null) transcript.hold(rowRef.current);
     flushSync(() =>
       setEdit({
         document: { text, selectionStart: text.length, selectionEnd: text.length },
@@ -248,7 +251,7 @@ export function UserMessageView({
         fast: branchModel?.fast === true,
       }),
     );
-    editorRef.current?.focus();
+    editorRef.current?.focus({ preventScroll: true });
   };
 
   const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
@@ -507,7 +510,7 @@ function TurnChangesCard({
 }
 
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
-  const sessionId = useTranscriptSession();
+  const sessionId = useTranscriptScope()?.sessionId;
 
   if (isPart(message, compaction)) {
     return message.state.summary === null ? null : (

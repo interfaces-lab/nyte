@@ -2,8 +2,8 @@
 
 /*
  * One stylesheet for /docs. Elements carry `doc-*` classes. Group-local
- * surfaces (component previews and CTAs, kernel figures, docs cards) stay in
- * components.css, kernel.css and docs.css, which load after this file.
+ * surfaces (component previews and CTAs, docs cards) stay in components.css
+ * and docs.css, which load after this file.
  *
  * Geometry: 1072 inner, 1312 once the rail fits, 24 pad, 220 sidebar, 48
  * gutter, 72ch article. Mono for eyebrows and group labels; never uppercase.
@@ -395,27 +395,6 @@
 
   .doc-toc a[aria-current="true"]::before {
     opacity: 1;
-  }
-
-  /* Where the page was read from, for kernel pages. */
-  .doc-read {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 16px 0 0 12px;
-    padding-top: 16px;
-    border-top: 1px solid;
-    @apply border-border-subtle text-tertiary-foreground;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  .doc-read a {
-    @apply text-muted-foreground;
-  }
-
-  .doc-read a:hover {
-    @apply text-foreground;
   }
 
   /* ---- footer nav ------------------------------------------------------ */

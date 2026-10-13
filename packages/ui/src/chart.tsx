@@ -1,53 +1,29 @@
 /**
- * Small charts for figures that sit beside their own numbers: a stacked bar per
- * bucket and a sparkline for a table row. Neither draws axes or gridlines. The
- * numbers live in the surrounding copy, so a chart only has to carry shape.
+ * Charts for figures that sit beside their own numbers, drawn by nivo: a
+ * stacked bar per bucket and a sparkline for a table row. Neither draws a value
+ * axis or gridlines. The numbers live in the surrounding copy, so a chart only
+ * has to carry shape.
  *
- * Bars scale on one axis only (`preserveAspectRatio="none"`), so a chart takes
- * its container's width without measuring it. Nothing in them is stroked, so
- * the stretch never thickens an edge.
+ * nivo paints with colour strings, and Nyte's hues exist only inside a scope.
+ * Each series is drawn inside its tint's scope and painted with the scoped
+ * strong role, so a theme or display-mode change repaints without a re-render.
  */
+import { BarItem, ResponsiveBar } from "@nivo/bar";
+import type { BarItemProps, BarTooltipProps } from "@nivo/bar";
+import type { AxisTickProps } from "@nivo/axes";
+import { Line } from "@nivo/line";
 import { create, props } from "@stylexjs/stylex";
-import { useState } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement } from "react";
+import { createContext, useContext, useMemo } from "react";
+import type { CSSProperties, ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
 import { radius } from "./schema.stylex.ts";
 import { mergeStyleProps, type XStyle } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, shadow, type } from "./vars.stylex.ts";
-
-/** Bucket width in viewBox units; the gap is what is left of it after the bar. */
-const SLOT = 15;
-
-const BAR = 11;
+import { role, shadow, type } from "./vars.stylex.ts";
 
 const styles = create({
-  root: { position: "relative", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
-  plot: { borderRadius: radius.indicator },
-  svg: { display: "block", width: "100%", overflow: "visible" },
-  bucket: {
-    transitionProperty: "opacity",
-    transitionDuration: motion.durationFast,
-    transitionTimingFunction: motion.easeOut,
-    "@media (prefers-reduced-motion: reduce)": { transitionProperty: "none" },
-  },
-  recede: { opacity: 0.4 },
-  segment: { fill: role.bgInteractiveStrong, fillOpacity: 0.8 },
-  axis: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
-    color: role.contentTertiary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
-    fontVariantNumeric: "tabular-nums",
-    whiteSpace: "nowrap",
-  },
+  root: { minWidth: 0 },
   tip: {
-    position: "absolute",
-    insetBlockStart: 0,
-    zIndex: 1,
     display: "flex",
     flexDirection: "column",
     gap: 2,
@@ -57,11 +33,11 @@ const styles = create({
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
     color: role.contentPrimary,
+    fontFamily: type.fontSans,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
-    pointerEvents: "none",
   },
   tipTitle: { color: role.contentSecondary },
   tipRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 },
@@ -74,16 +50,22 @@ const styles = create({
     borderRadius: 2,
     backgroundColor: role.bgInteractiveStrong,
   },
-  spark: { display: "block", flexShrink: 0, overflow: "visible" },
-  sparkLine: {
-    fill: "none",
-    stroke: role.contentSecondary,
-    strokeWidth: 1.25,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  },
-  sparkTinted: { stroke: role.bgInteractiveStrong },
+  spark: { display: "block", flexShrink: 0, color: role.contentSecondary },
+  sparkTinted: { color: role.bgInteractiveStrong },
 });
+
+/** Bucket labels under the bars: muted, tabular, in the interface face. */
+const BAR_THEME = {
+  text: {
+    fontFamily: type.fontSans,
+    fontSize: 11,
+    fill: role.contentTertiary,
+    fontVariantNumeric: "tabular-nums",
+  },
+} as const;
+
+/** Height of the bucket labels' row, below the plot. */
+const AXIS_HEIGHT = 20;
 
 /** One stacked layer: its name in the readout and the hue it paints in. */
 export interface ChartSeries {
@@ -107,7 +89,7 @@ export interface BarChartProps {
   readonly buckets: readonly ChartBucket[];
   /** How a value reads in the readout. */
   readonly format: (value: number) => string;
-  /** @default 88 */
+  /** Height of the bars, without the labels under them. @default 88 */
   readonly height?: number;
   /** Bucket labels under the bars, spread from the first bucket to the last. @default 5 */
   readonly ticks?: number;
@@ -116,12 +98,8 @@ export interface BarChartProps {
   readonly xstyle?: XStyle;
 }
 
-const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
-
 /** Evenly spaced bucket indexes, always including both ends. */
 function tickIndexes(count: number, ticks: number): readonly number[] {
-  if (count === 0) return [];
-
   if (count <= ticks) return Array.from({ length: count }, (_slot, index) => index);
 
   return Array.from({ length: ticks }, (_slot, index) =>
@@ -129,9 +107,96 @@ function tickIndexes(count: number, ticks: number): readonly number[] {
   );
 }
 
+/** nivo keys a datum by field name, so series are named by position: `s0`, `s1`… */
+const seriesKey = (index: number): string => `s${String(index)}`;
+
+/** What the bar and readout components need; nivo only hands them its own props. */
+interface BarChartContextValue {
+  readonly series: readonly ChartSeries[];
+  readonly buckets: readonly ChartBucket[];
+  readonly format: (value: number) => string;
+}
+
+const BarChartContext = createContext<BarChartContextValue>({
+  series: [],
+  buckets: [],
+  format: String,
+});
+
+type Datum = Record<string, string | number>;
+
+/** nivo's own bar, inside its series' tint scope. */
+function Segment(item: BarItemProps<Datum>): ReactElement {
+  const { series } = useContext(BarChartContext);
+  const layer = series[Number(String(item.bar.data.id).slice(1))];
+
+  return (
+    <g {...props(layer !== undefined && surfaceTheme[layer.tint])}>
+      {/* `fill` on the datum wins over nivo's resolved colour, so the scope applies. */}
+      <BarItem
+        {...item}
+        bar={{ ...item.bar, data: { ...item.bar.data, fill: role.bgInteractiveStrong } }}
+      />
+    </g>
+  );
+}
+
+/** The whole bucket under the pointer, not only the segment it touches. */
+function Readout({ indexValue }: BarTooltipProps<Datum>): ReactElement | null {
+  const { series, buckets, format } = useContext(BarChartContext);
+  const bucket = buckets[Number(indexValue)];
+
+  if (bucket === undefined) return null;
+
+  return (
+    <div {...props(styles.tip)}>
+      <span {...props(styles.tipTitle)}>{bucket.label}</span>
+      {series.map((layer, layerIndex) => {
+        const value = bucket.values[layerIndex] ?? 0;
+
+        return value <= 0 ? null : (
+          <span key={layer.key} {...props(styles.tipRow)}>
+            <span {...props(styles.tipKey)}>
+              <span aria-hidden="true" {...props(surfaceTheme[layer.tint], styles.swatch)} />
+              {layer.label}
+            </span>
+            <span>{format(value)}</span>
+          </span>
+        );
+      })}
+      {series.length > 1 && (
+        <span {...props(styles.tipRow, styles.tipTotal)}>
+          <span>Total</span>
+          <span>{format(bucket.values.reduce((sum, value) => sum + value, 0))}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A bucket label; the first and last hang inward so neither is cut at the edge. */
+function Tick({ value, x, y, textY }: AxisTickProps<string | number>): ReactElement {
+  const { buckets } = useContext(BarChartContext);
+  const index = Number(value);
+  const anchor = index === 0 ? "start" : index === buckets.length - 1 ? "end" : "middle";
+
+  return (
+    <g transform={`translate(${String(x)},${String(y)})`}>
+      <text
+        y={textY}
+        dominantBaseline="text-before-edge"
+        textAnchor={anchor}
+        style={BAR_THEME.text}
+      >
+        {buckets[index]?.label}
+      </text>
+    </g>
+  );
+}
+
 /**
- * Bars stacked by series. Pointing at a bucket, or moving through them with the
- * arrow keys, opens a readout of its values.
+ * Bars stacked by series. Pointing at a segment opens a readout of its whole
+ * bucket, so the stack reads without a legend.
  */
 export function BarChart({
   label,
@@ -144,140 +209,53 @@ export function BarChart({
   style,
   xstyle,
 }: BarChartProps): ReactElement {
-  const [active, setActive] = useState<{ index: number; byKey: boolean } | null>(null);
-  const count = buckets.length;
-  const peak = Math.max(...buckets.map((bucket) => sum(bucket.values)), Number.EPSILON);
-  const width = Math.max(count, 1) * SLOT;
-  const focused = active === null ? undefined : buckets[active.index];
-  const clamp = (index: number): number => Math.min(Math.max(index, 0), count - 1);
+  const keys = series.map((_layer, index) => seriesKey(index));
 
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
+  const data = buckets.map((bucket, index) =>
+    Object.fromEntries([
+      ["bucket", String(index)],
+      ...series.map((_layer, layerIndex) => [
+        seriesKey(layerIndex),
+        bucket.values[layerIndex] ?? 0,
+      ]),
+    ]),
+  );
 
-    if (box.width === 0 || count === 0) return;
-    setActive({
-      index: clamp(Math.floor(((event.clientX - box.left) / box.width) * count)),
-      byKey: false,
-    });
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (count === 0) return;
-    const at = active?.index;
-    const next =
-      event.key === "ArrowRight"
-        ? clamp(at === undefined ? 0 : at + 1)
-        : event.key === "ArrowLeft"
-          ? clamp(at === undefined ? count - 1 : at - 1)
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? count - 1
-              : undefined;
-
-    if (next === undefined) {
-      if (event.key === "Escape") setActive(null);
-
-      return;
-    }
-
-    event.preventDefault();
-    setActive({ index: next, byKey: true });
-  };
-
-  // The readout opens on the side of the bucket with more room.
-  const tipSide =
-    active === null
-      ? undefined
-      : active.index < count / 2
-        ? { left: `${String(((active.index + 1) / count) * 100)}%`, marginLeft: 4 }
-        : { right: `${String(((count - active.index) / count) * 100)}%`, marginRight: 4 };
+  const context = useMemo(() => ({ series, buckets, format }), [series, buckets, format]);
 
   return (
-    <div {...mergeStyleProps(props(styles.root, xstyle), className, style)}>
-      <div
-        role="group"
-        aria-label={label}
-        tabIndex={count === 0 ? undefined : 0}
-        onPointerMove={onPointerMove}
-        onPointerLeave={() => setActive(null)}
-        onKeyDown={onKeyDown}
-        onBlur={() => setActive(null)}
-        {...props(styles.plot, focus.ring)}
-      >
-        <svg
-          aria-hidden="true"
-          viewBox={`0 0 ${String(width)} ${String(height)}`}
-          preserveAspectRatio="none"
-          height={height}
-          {...props(styles.svg)}
-        >
-          {buckets.map((bucket, index) => {
-            let floor = 0;
-
-            return (
-              <g
-                key={bucket.key}
-                {...props(styles.bucket, active !== null && active.index !== index && styles.recede)}
-              >
-                {series.map((layer, layerIndex) => {
-                  const value = bucket.values[layerIndex] ?? 0;
-                  const from = floor;
-                  floor += value;
-
-                  if (value <= 0) return null;
-                  const top = height * (1 - (from + value) / peak);
-
-                  return (
-                    <rect
-                      key={layer.key}
-                      x={index * SLOT + (SLOT - BAR) / 2}
-                      y={top}
-                      width={BAR}
-                      height={height * (1 - from / peak) - top}
-                      {...props(surfaceTheme[layer.tint], styles.segment)}
-                    />
-                  );
-                })}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      <div aria-hidden="true" {...props(styles.axis)}>
-        {tickIndexes(count, ticks).map((index) => (
-          <span key={index}>{buckets[index]?.label}</span>
-        ))}
-      </div>
-      {focused !== undefined && active !== null && (
-        <div
-          aria-live={active.byKey ? "polite" : undefined}
-          aria-hidden={active.byKey ? undefined : true}
-          {...props(styles.tip)}
-          style={tipSide}
-        >
-          <span {...props(styles.tipTitle)}>{focused.label}</span>
-          {series.map((layer, layerIndex) => {
-            const value = focused.values[layerIndex] ?? 0;
-
-            return value <= 0 ? null : (
-              <span key={layer.key} {...props(styles.tipRow)}>
-                <span {...props(styles.tipKey)}>
-                  <span aria-hidden="true" {...props(surfaceTheme[layer.tint], styles.swatch)} />
-                  {layer.label}
-                </span>
-                <span>{format(value)}</span>
-              </span>
-            );
-          })}
-          {series.length > 1 && (
-            <span {...props(styles.tipRow, styles.tipTotal)}>
-              <span>Total</span>
-              <span>{format(sum(focused.values))}</span>
-            </span>
-          )}
-        </div>
-      )}
+    <div
+      {...mergeStyleProps(props(styles.root, xstyle), className, {
+        height: height + AXIS_HEIGHT,
+        ...style,
+      })}
+    >
+      <BarChartContext value={context}>
+        <ResponsiveBar
+          data={data}
+          keys={keys}
+          indexBy="bucket"
+          groupMode="stacked"
+          margin={{ top: 0, right: 0, bottom: AXIS_HEIGHT, left: 0 }}
+          padding={0.27}
+          valueScale={{ type: "linear", nice: false }}
+          barComponent={Segment}
+          enableLabel={false}
+          enableGridY={false}
+          axisLeft={null}
+          axisBottom={{
+            tickSize: 0,
+            tickPadding: 6,
+            tickValues: tickIndexes(buckets.length, ticks).map(String),
+            renderTick: Tick,
+          }}
+          theme={BAR_THEME}
+          tooltip={Readout}
+          animate={false}
+          role="img"
+          ariaLabel={label}
+        />
+      </BarChartContext>
     </div>
   );
 }
@@ -308,34 +286,41 @@ export function Sparkline({
   style,
   xstyle,
 }: SparklineProps): ReactElement {
-  const peak = Math.max(...values, Number.EPSILON);
-  const step = width / Math.max(values.length - 1, 1);
-  // The stroke's half-width, so a peak or a zero is not clipped at the edge.
-  const inset = 1;
-
-  const points = values
-    .map((value, index) => {
-      const x = values.length === 1 ? width / 2 : index * step;
-      const y = inset + (height - 2 * inset) * (1 - value / peak);
-
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
   return (
-    <svg
-      viewBox={`0 0 ${String(width)} ${String(height)}`}
-      width={width}
-      height={height}
+    <span
       role={label === undefined ? undefined : "img"}
       aria-label={label}
       aria-hidden={label === undefined ? true : undefined}
-      {...mergeStyleProps(props(styles.spark, xstyle), className, style)}
+      {...mergeStyleProps(
+        props(
+          tint !== undefined && surfaceTheme[tint],
+          styles.spark,
+          tint !== undefined && styles.sparkTinted,
+          xstyle,
+        ),
+        className,
+        { width, height, ...style },
+      )}
     >
-      <polyline
-        points={points}
-        {...props(tint !== undefined && surfaceTheme[tint], styles.sparkLine, tint !== undefined && styles.sparkTinted)}
+      <Line
+        data={[{ id: "trend", data: values.map((value, index) => ({ x: index, y: value })) }]}
+        width={width}
+        height={height}
+        // The stroke's half-width, so a peak or a zero is not clipped at the edge.
+        margin={{ top: 1, right: 1, bottom: 1, left: 1 }}
+        xScale={{ type: "linear", min: 0, max: Math.max(values.length - 1, 1) }}
+        yScale={{ type: "linear", min: 0, max: Math.max(...values, Number.EPSILON) }}
+        colors={() => "currentColor"}
+        lineWidth={1.25}
+        layers={["lines"]}
+        enablePoints={false}
+        enableGridX={false}
+        enableGridY={false}
+        axisLeft={null}
+        axisBottom={null}
+        isInteractive={false}
+        animate={false}
       />
-    </svg>
+    </span>
   );
 }

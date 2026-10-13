@@ -230,7 +230,11 @@ function kinds(events: readonly LoopEvent[]): readonly string[] {
 
 /** Returns the inputs a boundary landed, one per delivery. */
 function landed(...deliveries: readonly LoopInput["delivery"][]): readonly LoopInput[] {
-  return deliveries.map((delivery, index) => ({ message: asId(`m${index}`), delivery }));
+  return deliveries.map((delivery, index) => ({
+    message: asId(`m${index}`),
+    delivery,
+    source: { kind: "user" },
+  }));
 }
 
 describe("agentLoop", () => {

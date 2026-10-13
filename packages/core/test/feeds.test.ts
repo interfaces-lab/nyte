@@ -68,7 +68,9 @@ describe("the store is the truth", () => {
     const view = await a.host.session(session.id).head(main).view();
     const stored = await store.refs.get(headRef(session.id, main));
 
-    expect(view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []))).toEqual(["From A.", "From B."]);
+    expect(
+      view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : [])),
+    ).toEqual(["From A.", "From B."]);
     expect(view.revision).toBe(stored?.revision);
     unpoll();
     await watched.return?.();
@@ -194,8 +196,11 @@ describe("the store is the truth", () => {
     release.resolve();
     expect(
       shown.done !== true &&
-        (await (await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })).settled())
-          .kind,
+        (
+          await (
+            await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })
+          ).settled()
+        ).kind,
     ).toBe("moved");
     await watched.return?.();
   });
@@ -225,7 +230,9 @@ describe("the store is the truth", () => {
     expect(decodeRunRecord(envelope("run", run, 0))).toEqual(run);
     expect(decodeRunRecord(envelope("run", { ...run, phase: "bogus" }, 0))).toBeNull();
     expect(
-      decodeCommitRecord(envelope("commit", { parent: null, at: 0, run: null, body: { kind: "bogus" } }, 0)),
+      decodeCommitRecord(
+        envelope("commit", { parent: null, at: 0, run: null, body: { kind: "bogus" } }, 0),
+      ),
     ).toBeNull();
   });
 

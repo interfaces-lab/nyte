@@ -142,31 +142,32 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
         </Tooltip>
       </div>
       <div {...props(styles.body)}>
-        <ChangesSidebar
-          files={files.map((file) => ({
-            path: file.path,
-            status: "modified" as const,
-            stat: { kind: "text" as const, added: file.added, removed: file.removed },
-            viewed:
-              componentProps.reviewed(file.path) === "reviewed"
-                ? "viewed"
-                : componentProps.reviewed(file.path) === "changed"
-                  ? "changed"
-                  : "unviewed",
-          }))}
-          visible={componentProps.treeVisible}
-          activePath={active}
-          onRevealPath={(path) => {
-            setActive(path);
-            viewer.current?.scrollTo({
-              type: "item",
-              id: path,
-              align: "start",
-              behavior: "instant",
-            });
-          }}
-          onAllViewedChange={componentProps.onReviewed}
-        />
+        {componentProps.treeVisible && (
+          <ChangesSidebar
+            files={files.map((file) => ({
+              path: file.path,
+              status: "modified" as const,
+              stat: { kind: "text" as const, added: file.added, removed: file.removed },
+              viewed:
+                componentProps.reviewed(file.path) === "reviewed"
+                  ? "viewed"
+                  : componentProps.reviewed(file.path) === "changed"
+                    ? "changed"
+                    : "unviewed",
+            }))}
+            activePath={active}
+            onRevealPath={(path) => {
+              setActive(path);
+              viewer.current?.scrollTo({
+                type: "item",
+                id: path,
+                align: "start",
+                behavior: "instant",
+              });
+            }}
+            onAllViewedChange={componentProps.onReviewed}
+          />
+        )}
         <PierreWorkerProvider>
           <CodeView
             ref={(handle) => {

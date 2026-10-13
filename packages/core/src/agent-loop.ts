@@ -7,6 +7,7 @@ import type {
   Delivery,
   Json,
   MessageId,
+  MessageSource,
   ModelInfo,
   ModelRequest,
   ToolOutcome,
@@ -59,10 +60,11 @@ export type ToolProgress = Json;
 /** Returns how a tool call ended in the loop: its outcome, or parked until something wakes it. */
 export type ToolResult = ToolOutcome | { readonly kind: "parked" };
 
-/** Returns one input a boundary landed; only a non-attach one asks for another request. */
+/** Returns one input a boundary landed; a prompt, or a child's or job's report, asks for another request, and other attached context rides along unanswered. */
 export interface LoopInput {
   readonly message: MessageId;
   readonly delivery: Delivery;
+  readonly source: MessageSource;
 }
 
 /** Returns what the loop runs on, as plain functions. A function that throws rejects the stream. */
@@ -195,7 +197,7 @@ export function agentLoop<P extends PreparedRequest>(
   };
 }
 
-/** Runs the turns, checking the signal only before preparing a request and before each call (§45g). */
+/** Runs the turns, checking the signal only before preparing a request and before each call. */
 async function* run<P extends PreparedRequest>(
   config: LoopConfig<P>,
   signal: AbortSignal,
@@ -289,8 +291,12 @@ async function* run<P extends PreparedRequest>(
     if (parked) return yield* end({ reason: "parked", usage });
     const landed = await config.boundary(signal);
 
-    if (calls.length === 0 && landed.every((input) => input.delivery === "attach"))
-      return yield* end({ reason: "done", usage });
+    const asked = landed.some(
+      (input) =>
+        input.delivery !== "attach" || input.source.kind === "child" || input.source.kind === "job",
+    );
+
+    if (calls.length === 0 && !asked) return yield* end({ reason: "done", usage });
   }
 }
 

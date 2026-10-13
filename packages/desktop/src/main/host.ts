@@ -15,6 +15,8 @@ import { basename, join } from "node:path";
 import browserToolsPlugin from "@nyte-ai/plugin/browser-tools";
 import canvasPlugin from "@nyte-ai/plugin/canvas";
 import { codemodePlugin } from "@nyte-ai/plugin/codemode";
+import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
+import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { asId } from "@nyte-ai/schema";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Authority, Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
@@ -50,7 +52,7 @@ import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { SavedServer } from "./server-settings.ts";
-import { ensureShellEnvironment } from "./shell-environment.ts";
+import { ensureShellEnvironment } from "./shell-env.ts";
 import { findTailnetAddress } from "./tailnet.ts";
 import { TerminalSessions } from "./terminals.ts";
 
@@ -67,6 +69,7 @@ export interface DesktopHostDependencies {
   readonly home: string;
   /** The provider catalog; absent, the host's own over its credential store. Tests inject an offline one. */
   readonly models?: OpenHostOptions["models"];
+  readonly usageScan?: UsageScanReader;
   /** The renderer's origin, the one the loopback listener lets through CORS. */
   readonly rendererOrigin: string;
   /**
@@ -221,6 +224,7 @@ async function requireTailnetHost(): Promise<string> {
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
   readonly #opened: Promise<Opened>;
+  readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #terminals = new Map<HostWindow, TerminalSessions>();
   /** The folder each window selected; absent is Home. */
@@ -238,6 +242,7 @@ export class DesktopHost {
   constructor(dependencies: DesktopHostDependencies) {
     this.#deps = dependencies;
     this.#servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
+    this.#usageScan = dependencies.usageScan ?? new UsageScanner(dependencies.home);
     this.#opened = this.#open();
     this.#opened.then(
       (opened) => {
@@ -261,6 +266,8 @@ export class DesktopHost {
    */
   async #open(): Promise<Opened> {
     const { home } = this.#deps;
+    // Every process the host starts inherits `process.env`, so it must hold the login shell's first.
+    await ensureShellEnvironment();
 
     const host = await sdk.open({
       models: this.#deps.models,
@@ -346,6 +353,16 @@ export class DesktopHost {
         this.#selections.delete(window);
 
         return undefined;
+      case "host.usage": {
+        const window = CALL_INPUT_SCHEMAS[path].Parse(input);
+        await this.#opened;
+
+        return this.#usageScan.scan({
+          window,
+          catalog: this.#deps.models === undefined ? undefined : catalogForUsage(this.#deps.models),
+        });
+      }
+
       case "host.fonts":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
@@ -559,6 +576,7 @@ export class DesktopHost {
       await this.#deps.connect?.close().catch(() => undefined);
       await this.#remoteSerial(() => this.#stopRemote()).catch(() => undefined);
       const opened = await this.#opened.catch(() => undefined);
+      await this.#usageScan.close();
       await opened?.host.close();
     })();
 

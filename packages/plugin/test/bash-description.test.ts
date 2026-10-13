@@ -34,5 +34,9 @@ it("requires a description on bash and carries it on the shell call's class", as
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 
   assert(call !== undefined && isPart(call, tool));
-  expect(call.state.class).toEqual({ kind: "shell", command: "ls", description: "List the project files" });
+  expect(call.state.class).toEqual({
+    kind: "shell",
+    command: "ls",
+    description: "List the project files",
+  });
 });

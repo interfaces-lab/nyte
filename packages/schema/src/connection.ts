@@ -20,7 +20,10 @@ export type HostView = {
    * The link state. It changes without the client's action, so it is here,
    * watched.
    */
-  readonly link: { readonly kind: "connected" } | { readonly kind: "reconnecting"; readonly since: number; readonly attempts: number } | { readonly kind: "closed"; readonly reason: "client" | "revoked" | "host-gone" };
+  readonly link:
+    | { readonly kind: "connected" }
+    | { readonly kind: "reconnecting"; readonly since: number; readonly attempts: number }
+    | { readonly kind: "closed"; readonly reason: "client" | "revoked" | "host-gone" };
   /** Machine label. */
   readonly name: string;
   /** Host operating system. */
@@ -30,14 +33,25 @@ export type HostView = {
   /** Catalog generation; read `models.list()` again when it moves. */
   readonly catalog: CatalogGeneration;
   /** Every loaded plugin with where it came from and its live issues. */
-  readonly plugins: readonly { readonly id: string; readonly source: "builtin" | "user" | "project" | "inline"; readonly path: string | null; readonly issues: readonly ValidationIssue[] }[];
+  readonly plugins: readonly {
+    readonly id: string;
+    readonly source: "builtin" | "user" | "project" | "inline";
+    readonly path: string | null;
+    readonly issues: readonly ValidationIssue[];
+  }[];
   /** Host-scope settings with their current values. */
   readonly settings: readonly SettingInfo[];
   /** What the connected principal may do. A client hides owner-only controls from a participant. */
   readonly authority: ReadonlySet<Authority>;
   /** The declaration table, served: what a non-TS client binds to. */
-  readonly operations: readonly { readonly name: string; readonly kind: Declaration<unknown, unknown>["kind"]; readonly authority: Authority; readonly input: JsonSchema; readonly output: JsonSchema }[];
-}
+  readonly operations: readonly {
+    readonly name: string;
+    readonly kind: Declaration<unknown, unknown>["kind"];
+    readonly authority: Authority;
+    readonly input: JsonSchema;
+    readonly output: JsonSchema;
+  }[];
+};
 
 /**
  * Returns how a client authenticates: a static token, a one-time pairing
@@ -65,7 +79,14 @@ export type CredentialSource =
  * @category connection
  * @since 0.1.0
  */
-export type JournalEntry = { readonly id: ReceiptId; readonly session: SessionId; readonly head: HeadName; readonly content: UserContent; readonly options: SendOptions; readonly at: number }
+export type JournalEntry = {
+  readonly id: ReceiptId;
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly content: UserContent;
+  readonly options: SendOptions;
+  readonly at: number;
+};
 
 /**
  * Returns the result of writing a setting.

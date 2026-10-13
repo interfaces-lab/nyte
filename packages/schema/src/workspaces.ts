@@ -20,7 +20,9 @@ export type EnvironmentIdentity = string & { readonly __brand: "environment-iden
  * @category workspaces
  * @since 0.1.0
  */
-export type Availability = { readonly kind: "available" } | { readonly kind: "unavailable"; readonly reason: "unsupported" | "unreachable" };
+export type Availability =
+  | { readonly kind: "available" }
+  | { readonly kind: "unavailable"; readonly reason: "unsupported" | "unreachable" };
 
 /**
  * Names where a workspace lives: a local absolute path, or a locator for any
@@ -53,9 +55,16 @@ export type Activation =
   | { readonly kind: "failed"; readonly message: string };
 
 /** Returns the result of registering a workspace. */
-export type AddOutcome = { readonly kind: "added"; readonly workspace: WorkspaceId } | { readonly kind: "exists"; readonly workspace: WorkspaceId } | { readonly kind: "stale"; readonly identity: EnvironmentIdentity } | { readonly kind: "unavailable"; readonly reason: "unsupported" | "unreachable" };
+export type AddOutcome =
+  | { readonly kind: "added"; readonly workspace: WorkspaceId }
+  | { readonly kind: "exists"; readonly workspace: WorkspaceId }
+  | { readonly kind: "stale"; readonly identity: EnvironmentIdentity }
+  | { readonly kind: "unavailable"; readonly reason: "unsupported" | "unreachable" };
 /** Returns the result of forgetting a workspace. */
-export type ForgetOutcome = { readonly kind: "forgotten" } | { readonly kind: "busy"; readonly sessions: readonly SessionId[] } | { readonly kind: "missing" };
+export type ForgetOutcome =
+  | { readonly kind: "forgotten" }
+  | { readonly kind: "busy"; readonly sessions: readonly SessionId[] }
+  | { readonly kind: "missing" };
 
 /**
  * Returns what a target is before it is registered.
@@ -74,7 +83,7 @@ export type WorkspaceInspection = {
   readonly projectSources: readonly string[];
   /** The workspace already registered for this target, if any. */
   readonly registered: WorkspaceId | null;
-}
+};
 
 /**
  * Returns a registered workspace's record.
@@ -104,4 +113,4 @@ export type WorkspaceInfo = {
   readonly sessions: number;
   /** Runs editing the tree now; what git writes answer busy with. */
   readonly writers: readonly RunId[];
-}
+};

@@ -160,7 +160,7 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
   };
 }
 
-/** Returns a part handle whose `update` and `act` first await the session's activation (§44a, §48h), so the part's definition is read with its owner's plugins loaded. */
+/** Returns a part handle whose `update` and `act` first await the session's activation, so the part's definition is read with its owner's plugins loaded. */
 function activated(
   kernel: Kernel,
   part: Part<PartDefinition>,
@@ -181,7 +181,7 @@ function activated(
   };
 }
 
-/** Returns the session handle of the api a session's activation constructs (§44b): every head's `send`, `command`, `parts.create` and part handles run without awaiting the activation they are part of. */
+/** Returns the session handle of the api a session's activation constructs: every head's `send`, `command`, `parts.create` and part handles run without awaiting the activation they are part of. */
 export function activationSession(
   kernel: Kernel,
   context: ConnectionContext,
@@ -197,7 +197,7 @@ export function activationSession(
   };
 }
 
-/** Returns the session directory for a connection. A `create` from a tool's step is an acquisition recorded on that step's call, so a re-run returns the session it created; a created session logs `configured` with its effective configuration (§48c) and is activated before `create` resolves (§44a). */
+/** Returns the session directory for a connection. A `create` from a tool's step is an acquisition recorded on that step's call, so a re-run returns the session it created; a created session logs `configured` with its effective configuration and is activated before `create` resolves. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
     watch: (input) => watchSessions(kernel, context.principal, input),
@@ -388,7 +388,7 @@ async function create(
   return id;
 }
 
-/** Returns the configuration a new session resolves to from the host's static contributions, null when there is nothing to resolve to (§48c). */
+/** Returns the configuration a new session resolves to from the host's static contributions, null when there is nothing to resolve to. */
 async function defaults(kernel: Kernel, session: SessionId): Promise<Configuration | null> {
   const result = await kernel.resolveConfiguration({
     session,
@@ -425,7 +425,7 @@ async function selectedOf(
   });
 }
 
-/** Updates a session's record; a relocation detaches its environment and installs a new plugin runtime (§37k, §44c). */
+/** Updates a session's record; a relocation detaches its environment and installs a new plugin runtime. */
 async function update(
   kernel: Kernel,
   session: SessionId,

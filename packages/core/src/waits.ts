@@ -47,7 +47,7 @@ export interface ParkedWait {
  * the run's calls is parked in the store; then the head is notified so `advance` re-runs the step.
  */
 export interface WaitRegistry {
-  /** Parks a step, or judges again the one held here at the same wait; a target that already has its outcome settles at once, a job this instance does not hold as `lost` (§42w, §43k). */
+  /** Parks a step, or judges again the one held here at the same wait; a target that already has its outcome settles at once, a job this instance does not hold as `lost`. */
   park(entry: ParkedWait): Promise<void>;
   /** Wakes the waits on a run that ended and resolves whether one consumed the end; each call in `waitedBy` not parked here is offered only the run's outcome, as `partAnswered` offers its call. */
   runEnded(
@@ -56,9 +56,9 @@ export interface WaitRegistry {
     end: RunEnd,
     waitedBy: RunRecord["waitedBy"],
   ): Promise<boolean>;
-  /** Wakes the waits on a job that ended and resolves whether one consumed the end or still holds it: a wait whose write the store refused stays parked here and takes the end when `repair` or the poll judges it again (§43k). */
+  /** Wakes the waits on a job that ended and resolves whether one consumed the end or still holds it: a wait whose write the store refused stays parked here and takes the end when `repair` or the poll judges it again. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
-  /** Wakes the waits on an answered part; `call`, the step its live status names, is offered the part's outcome from its stored wait (§42x, §42z). */
+  /** Wakes the waits on an answered part; `call`, the step its live status names, is offered the part's outcome from its stored wait. */
   partAnswered(
     session: SessionId,
     part: PartId,
@@ -81,11 +81,11 @@ export interface WaitRegistry {
   tick(now: number): Promise<void>;
   /** Returns the earliest timer or deadline among a head's parked waits, or null. */
   nextDeadline(session: SessionId, head: HeadName): number | null;
-  /** Judges every wait held here again from its stored call record, dropping those another instance settled (§42h, §42x), and resumes each act here whose step another runner settled. */
+  /** Judges every wait held here again from its stored call record, dropping those another instance settled, and resumes each act here whose step another runner settled. */
   settleFromStore(): Promise<void>;
-  /** Runs a head-less step again once its wake is recorded: the act here waiting on it resumes, else the action re-runs here (§33j). */
+  /** Runs a head-less step again once its wake is recorded: the act here waiting on it resumes, else the action re-runs here. */
   rerun(session: SessionId, call: CallId): void;
-  /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again; with none, a wake written here re-runs the action (§33j). */
+  /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again; with none, a wake written here re-runs the action. */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 }
 
@@ -96,7 +96,7 @@ interface Slot {
   outcomes: readonly (WaitOutcome | null)[];
 }
 
-/** How a job this instance does not hold ends for a wait on it (§42w, §43k). */
+/** How a job this instance does not hold ends for a wait on it. */
 const LOST: JobEnd = { kind: "lost" };
 
 /** Returns an empty wait registry over a kernel: what `kernel.waits` holds. */
@@ -514,7 +514,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   return registry;
 }
 
-/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions' (§42p); `cover` and `repair` call it. A woken step whose re-run claim lapsed is re-run (§66). */
+/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions'; `cover` and `repair` call it. A woken step whose re-run claim lapsed is re-run. */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
   const refs: readonly Ref[] =
     sessions === undefined
@@ -637,7 +637,7 @@ export function waitFor<T>(input: {
   });
 }
 
-/** Returns the update writing a live run's parked calls and wait (§54f) with `run waiting`, or `run phase executing` once it waits on nothing; none once the run has ended or `change` keeps it. */
+/** Returns the update writing a live run's parked calls and wait with `run waiting`, or `run phase executing` once it waits on nothing; none once the run has ended or `change` keeps it. */
 export async function runWait(
   kernel: Kernel,
   session: SessionId,

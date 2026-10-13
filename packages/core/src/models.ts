@@ -23,7 +23,8 @@ import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { Agent, ModelContextPolicy, SettingDefinition } from "./plugin.ts";
 import { kvRef } from "./refs.ts";
 import { bumpGeneration, jsonSchemaOf } from "./registry.ts";
-import { commit, isJsonObject, put } from "./session-state.ts";
+import { isJsonObject } from "./records.ts";
+import { commit, put } from "./session-state.ts";
 
 type LoginStep = Login["steps"] extends () => AsyncIterable<infer Step> ? Step : never;
 
@@ -39,7 +40,7 @@ interface Pending {
 
 const DEFAULT_MODEL = kvRef("host", "models", "default");
 
-/** Returns the host's models api over `@nyte-ai/ai`'s `Models`. `verify` caches a proven verdict per kernel for the catalog's `credential` (an unverified `ok` caches nothing, §38d); `refresh`, `setDefault`, `verify`, `login` and `logout` bump the catalog generation when what the catalog shows moved. `refresh` throws `unavailable` naming each provider that failed. */
+/** Returns the host's models api over `@nyte-ai/ai`'s `Models`. `verify` caches a proven verdict per kernel for the catalog's `credential` (an unverified `ok` caches nothing); `refresh`, `setDefault`, `verify`, `login` and `logout` bump the catalog generation when what the catalog shows moved. `refresh` throws `unavailable` naming each provider that failed. */
 export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
   const remember = (provider: string, verdict: Verdict): void => {
     const known = pluginState(kernel).verdicts;
@@ -111,7 +112,7 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
   };
 }
 
-/** Projects `Models` as the host's catalog: one row per provider, its credential refined by the cached verdict, its login methods, account limits (§38c) and base models. Models are projected as `modelInfo` does under the static `ModelContextPolicy` contributions of the built-ins and host plugins. */
+/** Projects `Models` as the host's catalog: one row per provider, its credential refined by the cached verdict, its login methods, account limits and base models. Models are projected as `modelInfo` does under the static `ModelContextPolicy` contributions of the built-ins and host plugins. */
 export async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
@@ -137,7 +138,7 @@ export async function modelCatalog(kernel: Kernel, models: Models): Promise<Mode
   return { generation, default: preferred, providers };
 }
 
-/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels` (§38i), `fast` its fast sibling, and `compactAt` 80 % of the window. The last `ModelContextPolicy` for it in `runtime`'s registry overrides the window and threshold. */
+/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels`, `fast` its fast sibling, and `compactAt` 80 % of the window. The last `ModelContextPolicy` for it in `runtime`'s registry overrides the window and threshold. */
 export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime): ModelInfo | null {
   const model = models.getModel(ref.provider, ref.id);
 
@@ -150,7 +151,7 @@ export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime)
   return projectModel(models, model, policy);
 }
 
-/** Returns one login attempt: iterating `steps()` starts `models.login` and yields its events and prompts as steps (§38a, §38b); the iterator's `return()` cancels it. `answer` resolves the pending prompt and throws `invalid` when none is pending or a `choose` gets an unknown id. A finished login drops the cached verdict and bumps the catalog generation. */
+/** Returns one login attempt: iterating `steps()` starts `models.login` and yields its events and prompts as steps; the iterator's `return()` cancels it. `answer` resolves the pending prompt and throws `invalid` when none is pending or a `choose` gets an unknown id. A finished login drops the cached verdict and bumps the catalog generation. */
 export function createLogin(
   kernel: Kernel,
   models: Models,
@@ -352,7 +353,7 @@ function methodsOf(provider: Provider): readonly LoginMethod[] {
   return methods;
 }
 
-/** Returns a provider's account limits as its catalog row shows them (§38c). */
+/** Returns a provider's account limits as its catalog row shows them. */
 function limitsOf(models: Models, provider: string): ProviderRow["limits"] {
   return (models.getAccountLimits(provider)?.windows ?? []).map((window) => ({
     label: window.id,

@@ -19,8 +19,6 @@ const config = {
     return [
       { source: "/cloud", destination: "/docs/components/introduction", permanent: true },
       { source: "/cloud/:path*", destination: "/docs/components/:path*", permanent: true },
-      { source: "/kernel", destination: "/docs/kernel/architecture", permanent: true },
-      { source: "/kernel/:path*", destination: "/docs/kernel/:path*", permanent: true },
       { source: "/docs/composition", destination: "/docs/build/composition", permanent: true },
       { source: "/docs/sdk", destination: "/docs/build/composition", permanent: true },
       { source: "/docs/build/sdk", destination: "/docs/build/composition", permanent: true },

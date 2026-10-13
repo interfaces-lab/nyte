@@ -104,7 +104,14 @@ const cardClass = `row-span-3 grid min-h-[17rem] sm:min-h-[22rem] w-full grid-ro
 
 export function ProductCards() {
   return (
-    <Section id="products-title" title="Where it runs.">
+    <Section
+      id="products-title"
+      title={
+        <>
+          The same kernel, <span className="text-muted-foreground">wherever you host it.</span>
+        </>
+      }
+    >
       <ul className="grid auto-rows-[auto_1fr_auto] gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
         {CARDS.map((card) => (
           <li key={card.title} className="row-span-3 grid grid-rows-subgrid gap-0">

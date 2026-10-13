@@ -58,7 +58,13 @@ async function title(api: PluginApi): Promise<void> {
     signal: api.signal,
   });
 
-  const name = outcome.kind === "ok" ? (outcome.value.split("\n").find((line) => line.trim() !== "")?.trim() ?? "") : "";
+  const name =
+    outcome.kind === "ok"
+      ? (outcome.value
+          .split("\n")
+          .find((line) => line.trim() !== "")
+          ?.trim() ?? "")
+      : "";
 
   dev("rename", "title", { session: info.id, outcome: outcome.kind, named: name !== "" });
 
@@ -73,7 +79,9 @@ function transcript(messages: readonly Message[]): string {
         const words =
           typeof message.content === "string"
             ? message.content
-            : message.content.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join(" ");
+            : message.content
+                .flatMap((block) => (block.kind === "text" ? [block.text] : []))
+                .join(" ");
 
         return [`User: ${words}`];
       }

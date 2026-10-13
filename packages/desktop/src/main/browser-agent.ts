@@ -15,8 +15,8 @@ import type { SessionId } from "@nyte-ai/sdk";
 
 /**
  * The surface an agent session's pages live on. One per session, so a chat's
- * agent keeps its own page across calls; the renderer reveals it as a Browser
- * tab in the workbench of the workspace the page belongs to.
+ * agent keeps its own page across calls; the Browser tab of the workspace the
+ * page belongs to follows it.
  */
 export function sessionSurfaceId(sessionId: SessionId): string {
   return `stage:session:${encodeURIComponent(sessionId)}`;

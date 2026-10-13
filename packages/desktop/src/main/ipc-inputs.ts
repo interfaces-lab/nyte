@@ -44,10 +44,35 @@ const noInput = Type.Optional(Type.Undefined());
 
 const remotePlugin = Type.Literal("cloudflare");
 
+const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+
+const usageWindow = compile(
+  strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
+);
+
+const checkedUsageWindow: typeof usageWindow = {
+  Parse(value) {
+    const window = usageWindow.Parse(value);
+    const days = window.sinceDay === null ? [window.untilDay] : [window.sinceDay, window.untilDay];
+
+    const valid = days.every((day) => {
+      const date = new Date(`${day}T12:00:00Z`);
+
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === day;
+    });
+
+    if (!valid || (window.sinceDay !== null && window.sinceDay > window.untilDay))
+      throw new ExpectedHostError({ code: "invalid", message: "The usage window is invalid." });
+
+    return window;
+  },
+};
+
 export const CALL_INPUT_SCHEMAS = {
   "host.endpoint": compile(noInput),
   "host.state": compile(noInput),
   "host.fonts": compile(noInput),
+  "host.usage": checkedUsageWindow,
   "host.openWorkspace": compile(strict({ path: nonEmpty })),
   "host.pickWorkspace": compile(noInput),
   "host.closeWorkspace": compile(noInput),

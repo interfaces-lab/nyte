@@ -15,7 +15,7 @@ export const brandTileClass =
 
 interface SectionProps {
   id: string;
-  title: string;
+  title: ReactNode;
   line?: string;
   children: ReactNode;
 }

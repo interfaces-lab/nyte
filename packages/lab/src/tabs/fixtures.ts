@@ -3,7 +3,7 @@
  * places, folders, then the chats you opened this session. Every status the
  * desktop can report is in the set, so each indication can be checked at once.
  */
-import type { SessionMark } from "@nyte-ai/client";
+import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 export type TabKind = "pinned" | "folder" | "chat";

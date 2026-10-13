@@ -22,6 +22,7 @@ import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -43,11 +44,11 @@ import type { GuideWriting } from "./guide";
 import { useReviewState } from "./review-state";
 import type { ReviewDetail } from "./wire";
 
-const NO_LIVE_TOOLS = new Map();
+const NO_TURNS: readonly ConversationTurn[] = [];
 
 const NO_SUGGESTIONS = {
   status: "ready",
-  data: { plugins: [], commands: [], skills: [], settings: [] },
+  data: { commands: [], skills: [] },
 } satisfies ComposerSuggestionCatalog;
 
 const NO_FILES = { status: "ready", data: [] } satisfies ComposerMentionFiles;
@@ -170,11 +171,12 @@ export function SideChat({
           )}
           {turns.map((turn, index) => (
             <TurnView
-              key={turn.id}
+              key={turn.info.id}
               turn={turn}
+              continuations={NO_TURNS}
               density={density}
-              liveTools={NO_LIVE_TOOLS}
               cwd={root}
+              changes={[]}
               onOpenChanges={() => {}}
               running={running && index === turns.length - 1}
             />
@@ -188,7 +190,7 @@ export function SideChat({
       </div>
       {last !== undefined && playing(last) && (
         <span
-          key={`${last.turn.id}:${last.shown}`}
+          key={`${last.turn.info.id}:${last.shown}`}
           aria-hidden="true"
           onAnimationEnd={() =>
             updateLast((exchange) => ({ ...exchange, shown: exchange.shown + 1 }))

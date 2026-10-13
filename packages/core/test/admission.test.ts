@@ -112,7 +112,9 @@ describe("admission", () => {
     expect(await message(session, steer.message)).toMatchObject({
       status: { kind: "pending", schedule: { kind: "joined", run: turn.input.run.id } },
     });
-    expect(await turn.input.boundary()).toEqual([{ message: steer.message, delivery: "steer" }]);
+    expect(await turn.input.boundary()).toEqual([
+      { message: steer.message, delivery: "steer", source: { kind: "user" } },
+    ]);
     expect(await steer.landed()).toMatchObject({ kind: "landed", run: turn.input.run.id });
     expect(await turn.input.boundary()).toEqual([]);
 
@@ -390,13 +392,13 @@ describe("admission", () => {
     await next;
   });
 
-  it("A-2 N2: on an idle head a child's report blocks neither an edit nor a move", async () => {
+  it("A-2 N2: on a head whose last run stopped, a child's report starts nothing and blocks neither an edit nor a move", async () => {
     const { host, script } = await setup({ execution: { kind: "admit-only" } });
     const session = await host.sessions.create();
     const child = await host.sessions.create({ parent: session.id });
     const first = await session.send("First.");
     const step = host.execution.advance({ session: session.id, head: main });
-    (await script.started(1)).finish(completed);
+    (await script.started(1)).finish({ kind: "stopped" });
     await step;
 
     await session.send("Child report.", {

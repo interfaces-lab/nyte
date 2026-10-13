@@ -15,7 +15,6 @@ import type {
   Owned,
   Paged,
   PrincipalId,
-  PruneReport,
   Ref,
   RepairPage,
   Seq,
@@ -30,7 +29,6 @@ import { closable, coalesce, latest } from "./watch.ts";
 export interface Host extends Connection {
   listen(options: ListenOptions): Promise<Listener>;
   readonly plugins: PluginsApi<Plugin<"core"> | PluginFile>;
-  prune(): Promise<PruneReport>;
   inspect(session: SessionId): {
     refs(): Promise<readonly Ref[]>;
     objects(input?: { readonly cursor?: Cursor }): Promise<Paged<DecodedObjectView>>;
@@ -39,7 +37,10 @@ export interface Host extends Connection {
   };
   readonly execution: {
     cover(coverage: ExecutionCoverage): Promise<Owned>;
-    advance(input: { readonly session: SessionId; readonly head: HeadName }): Promise<AdvanceReport>;
+    advance(input: {
+      readonly session: SessionId;
+      readonly head: HeadName;
+    }): Promise<AdvanceReport>;
     repair(input: { readonly cursor?: Cursor; readonly limit: number }): Promise<RepairPage>;
   };
 }
@@ -50,8 +51,18 @@ export interface ListenOptions {
     | { readonly kind: "fetch" };
   readonly auth:
     | { readonly kind: "token"; readonly token: string }
-    | { readonly kind: "custom"; authorize(request: Request): Awaitable<{ readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> } | { readonly deny: "unauthorized" | "forbidden" }> };
-  readonly execution?: { readonly kind: "run"; readonly coverage: ExecutionCoverage } | { readonly kind: "admit-only" };
+    | {
+        readonly kind: "custom";
+        authorize(
+          request: Request,
+        ): Awaitable<
+          | { readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> }
+          | { readonly deny: "unauthorized" | "forbidden" }
+        >;
+      };
+  readonly execution?:
+    | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
+    | { readonly kind: "admit-only" };
   readonly origins?: readonly string[];
   readonly maxBodyBytes?: number;
   readonly identity?: { readonly id: HostId; sign(nonce: string): Awaitable<IdentityChallenge> };
@@ -67,7 +78,6 @@ export interface Listener {
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-
 /** Returns the `HostView` fields the composing host supplies and changes: catalog generation, plugins, settings, operations. */
 export type HostViewFields = Pick<HostView, "catalog" | "plugins" | "settings" | "operations">;
 
@@ -77,7 +87,7 @@ export interface HostState {
   current(): HostViewFields;
   /** Replaces the given fields and notifies every subscriber. */
   update(patch: Partial<HostViewFields>): void;
-  /** Adds a host-level row of issues no plugin runtime owns (§43e), merged by id into `plugins` for the state's life; a report with no issues withdraws it (§49a). */
+  /** Adds a host-level row of issues no plugin runtime owns, merged by id into `plugins` for the state's life; a report with no issues withdraws it. */
   report(row: HostViewFields["plugins"][number]): void;
   /** Calls the listener after every update; the disposer stops it. */
   subscribe(listener: (fields: HostViewFields) => void): Disposer;

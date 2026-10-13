@@ -58,7 +58,7 @@ type Decided =
   | { readonly kind: "moved"; readonly outcome: MoveOutcome; readonly stopped: RunId | null }
   | { readonly kind: "replayed" };
 
-/** Moves a head to a position as a durable command and returns its receipt (§40e). The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing, settling one its crashed first request left pending; only a branch summary settles later. */
+/** Moves a head to a position as a durable command and returns its receipt. The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing, settling one its crashed first request left pending; only a branch summary settles later. */
 export async function move(
   kernel: Kernel,
   session: SessionId,
@@ -283,7 +283,7 @@ async function summarized(
   });
 }
 
-/** Settles each move of a session whose set landed but whose settlement was lost with its process, as `repair` runs it after a restart (§40e). */
+/** Settles each move of a session whose set landed but whose settlement was lost with its process, as `repair` runs it after a restart. */
 export async function recoverMoves(kernel: Kernel, session: SessionId): Promise<void> {
   const prefix = receiptRef(session, asId<"receipt">(""));
 

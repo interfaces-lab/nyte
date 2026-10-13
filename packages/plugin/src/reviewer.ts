@@ -27,19 +27,31 @@ const review: Command<{ readonly focus?: string }> = {
   name: "review",
   title: "Review changes",
   description: "Ask the reviewer agent to review the working changes.",
-  arguments: standard(Type.Object({ focus: Type.Optional(Type.String({ description: "What to look at most closely." })) })),
+  arguments: standard(
+    Type.Object({
+      focus: Type.Optional(Type.String({ description: "What to look at most closely." })),
+    }),
+  ),
   category: "agents",
   async run(args, { api }) {
     if (api.side !== "core") return "Review runs on the host.";
     const focus = args.focus?.trim() ?? "";
-    const changed = (await api.session.view()).changes.map((change) => `- ${change.path} (${change.status})`);
+    const changed = (await api.session.view()).changes.map(
+      (change) => `- ${change.path} (${change.status})`,
+    );
 
     const receipt = await api.session.send(
       [
         `Review the working changes${focus === "" ? "" : `, focusing on ${focus}`}.`,
-        changed.length === 0 ? "This session changed no files; review what the user points you to." : `Files this session changed:\n${changed.join("\n")}`,
+        changed.length === 0
+          ? "This session changed no files; review what the user points you to."
+          : `Files this session changed:\n${changed.join("\n")}`,
       ].join("\n"),
-      { configuration: { agent: reviewer.id }, source: { kind: "action", label: "Review changes", command: "review" }, delivery: "queue" },
+      {
+        configuration: { agent: reviewer.id },
+        source: { kind: "action", label: "Review changes", command: "review" },
+        delivery: "queue",
+      },
     );
 
     return `The reviewer is on it (${receipt.id}).`;

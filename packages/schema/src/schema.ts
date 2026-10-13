@@ -1,7 +1,10 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
-import type { StaticDecode, TSchema } from "typebox";
+import { IsCyclic } from "typebox";
+import type { StaticDecode, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
+import type { TLocalizedValidationError } from "typebox/error";
+import { HasCodec, ParseError } from "typebox/value";
 
 /**
  * Accepts any validator that implements both Standard Schema halves.
@@ -67,9 +70,48 @@ export type Schema<T> = StandardSchemaV1<unknown, T> & StandardJSONSchemaV1<unkn
  */
 export type Infer<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
 
-/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself, compiled on first validation. Validating is the compiled validator's `Check`; a value that passes is returned as its typed `Decode`, which runs TypeBox's codec pipeline only when the schema holds a codec and is otherwise its `Parse`, the same check (§39e, §40k). */
+/** Returns a cyclic schema's `$defs` as a compile context, each definition without its `$id` and under both its name and the canonical `urn:typebox:root:<name>` the engine looks up; an `$id` on a definition makes the dynamic checker re-anchor the whole subtree on every reference, and a miss on the canonical key makes it walk the root instead. */
+function definitions(schema: TSchema): TProperties {
+  if (!IsCyclic(schema)) return {};
+
+  return Object.fromEntries(
+    Object.entries(schema.$defs).flatMap(([name, definition]) => {
+      const plain = Object.fromEntries(Object.entries(definition).filter(([key]) => key !== "$id"));
+
+      return [
+        [name, plain],
+        [`urn:typebox:root:${name}`, plain],
+      ];
+    }),
+  );
+}
+
+/**
+ * Compiles a TypeBox schema with its own `$defs` as the compile context.
+ *
+ * Where code generation is blocked (the desktop renderer's CSP, the web app, the Cloudflare worker)
+ * TypeBox falls back to its dynamic checker, which resolves every `$ref` by searching the whole schema
+ * tree unless the context already names the target. Schemas built with `withJson`/`Cyclic` reference
+ * their `$defs` by name on every nested `Json` value, so an empty context costs an order of magnitude per
+ * frame.
+ */
+export function compile<T extends TSchema>(schema: T): Validator<{}, T> {
+  return Compile<{}, T>(definitions(schema), schema);
+}
+
+function issues(errors: TLocalizedValidationError[]): StandardSchemaV1.FailureResult {
+  return {
+    issues: errors.map((error) => ({
+      message: error.message,
+      path: error.instancePath.split("/").filter(Boolean),
+    })),
+  };
+}
+
+/** Adapts a TypeBox schema to both Standard Schema halves; the JSON Schema is the schema itself, compiled on first validation. A schema without a codec validates once: its `Decode` is `Parse`, whose failure carries the errors. A schema with a codec is checked first, because its `Decode` pipeline converts the value before asserting it (§39e, §40k). */
 export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> {
   let validator: Validator<{}, T> | undefined;
+  let codec = false;
   const json: Record<string, unknown> = Object.fromEntries(Object.entries(schema));
 
   return {
@@ -77,16 +119,23 @@ export function standard<T extends TSchema>(schema: T): Schema<StaticDecode<T>> 
       version: 1,
       vendor: "typebox",
       validate: (value) => {
-        validator ??= Compile(schema);
+        if (!validator) {
+          validator = compile(schema);
+          codec = HasCodec(validator.Context(), schema);
+        }
 
-        if (validator.Check(value)) return { value: validator.Decode(value) };
+        if (codec) {
+          return validator.Check(value)
+            ? { value: validator.Decode(value) }
+            : issues(validator.Errors(value));
+        }
 
-        return {
-          issues: validator.Errors(value).map((error) => ({
-            message: error.message,
-            path: error.instancePath.split("/").filter(Boolean),
-          })),
-        };
+        try {
+          return { value: validator.Decode(value) };
+        } catch (error) {
+          if (error instanceof ParseError) return issues(error.cause.errors);
+          throw error;
+        }
       },
       jsonSchema: { input: () => json, output: () => json },
       types: undefined,

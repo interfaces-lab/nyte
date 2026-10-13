@@ -10,7 +10,7 @@ export const products: readonly [Product, ...Product[]] = [
   {
     title: "Core",
     description: "Sessions built like git.",
-    href: "/docs/kernel/architecture",
+    href: "https://github.com/interfaces-lab/nyte/tree/main/packages/core",
   },
   {
     title: "Terminal",

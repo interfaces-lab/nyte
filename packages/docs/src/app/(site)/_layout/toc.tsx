@@ -16,7 +16,7 @@ export interface TocEntry {
  * crossed the top third of the viewport, so the mark moves as you read, not
  * only when a heading enters view.
  */
-export function Toc({ entries, aside }: { entries: TocEntry[]; aside?: ReactNode }) {
+export function Toc({ entries }: { entries: TocEntry[] }) {
   const [current, setCurrent] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export function Toc({ entries, aside }: { entries: TocEntry[]; aside?: ReactNode
     };
   }, [entries]);
 
-  if (entries.length === 0) return <div className="doc-toc">{aside}</div>;
+  if (entries.length === 0) return <div className="doc-toc" />;
 
   return (
     <aside className="doc-toc" aria-label="On this page">
@@ -61,7 +61,6 @@ export function Toc({ entries, aside }: { entries: TocEntry[]; aside?: ReactNode
           </li>
         ))}
       </ol>
-      {aside}
     </aside>
   );
 }

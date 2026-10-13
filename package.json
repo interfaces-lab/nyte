@@ -9,6 +9,8 @@
     "package": "turbo package --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
     "package:tui": "turbo package --filter=@nyte-ai/tui",
     "package:desktop": "turbo package --filter=@nyte-ai/desktop",
+    "package:desktop:dev": "pnpm --dir packages/desktop package:dev",
+    "clean": "turbo clean",
     "dev:tui": "pnpm --filter @nyte-ai/tui dev",
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
     "format": "oxfmt --check",
@@ -22,22 +24,23 @@
     "e2e": "pnpm --dir packages/app e2e",
     "e2e:desktop": "pnpm --dir packages/app e2e:desktop",
     "test:benchmark": "node --test packages/core/benchmark/smoke.test.ts",
-    "typecheck:benchmark": "tsc --noEmit -p packages/core/benchmark/tsconfig.json",
+    "typecheck:benchmark": "tsgo --noEmit -p packages/core/benchmark/tsconfig.json",
     "typecheck": "turbo typecheck",
     "sdk:check": "bun scripts/sdk-packages.mjs check",
     "sdk:pack": "bun scripts/sdk-packages.mjs pack",
     "sdk:verify": "bun scripts/verify-sdk-packages.mjs"
   },
   "devDependencies": {
-    "@oxlint/plugins": "^1.86.0",
-    "@types/node": "^26.6.3",
-    "oxfmt": "^0.71.0",
-    "oxlint": "^1.86.0",
-    "oxlint-tsgolint": "^7.0.2003",
-    "turbo": "^2.11.4",
-    "typescript": "^7.0.2"
+    "@oxlint/plugins": "^1.87.0",
+    "@types/node": "^26.6.5",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "turbo": "^2.11.7",
+    "typescript": "6.0.3"
   },
-  "packageManager": "pnpm@12.6.0",
+  "packageManager": "pnpm@12.11.2",
   "intent": {
     "skills": [
       "@tanstack/*"

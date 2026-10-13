@@ -12,7 +12,11 @@ function fakeServer(drop = false): McpTransport {
 
   const answer = (method: string, params: unknown): unknown => {
     if (method === "initialize")
-      return { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: { tools: {} }, serverInfo: { name: "fake", version: "0" } };
+      return {
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+        capabilities: { tools: {} },
+        serverInfo: { name: "fake", version: "0" },
+      };
 
     if (method === "tools/list")
       return {
@@ -20,12 +24,19 @@ function fakeServer(drop = false): McpTransport {
           {
             name: "echo",
             description: "Repeat the text.",
-            inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+            inputSchema: {
+              type: "object",
+              properties: { text: { type: "string" } },
+              required: ["text"],
+            },
           },
         ],
       };
 
-    const text = typeof params === "object" && params !== null && "arguments" in params ? JSON.stringify(params.arguments) : "";
+    const text =
+      typeof params === "object" && params !== null && "arguments" in params
+        ? JSON.stringify(params.arguments)
+        : "";
 
     return { content: [{ type: "text", text: `echo ${text}` }] };
   };
@@ -50,7 +61,9 @@ it("lists a fake server's tools in the session as <server>_<tool> and calls one 
   );
 
   await using host = await open(fake, [mcpPlugin(() => fakeServer())]);
-  expect(await host.settings.apply("mcp.servers", { fake: { url: "memory://fake" } })).toMatchObject({ kind: "applied" });
+  expect(
+    await host.settings.apply("mcp.servers", { fake: { url: "memory://fake" } }),
+  ).toMatchObject({ kind: "applied" });
 
   const session = await host.sessions.create();
 
@@ -58,13 +71,20 @@ it("lists a fake server's tools in the session as <server>_<tool> and calls one 
     (await session.view()).catalog.tools.find((info) => info.name === "fake_echo"),
   );
 
-  expect(listed).toMatchObject({ owner: "mcp", description: "Repeat the text.", parameters: { required: ["text"] } });
+  expect(listed).toMatchObject({
+    owner: "mcp",
+    description: "Repeat the text.",
+    parameters: { required: ["text"] },
+  });
 
   await (await session.send("Echo hi.")).settled();
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 
   assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
-  expect(call.state.outcome).toMatchObject({ kind: "ok", content: [{ kind: "text", text: 'echo {"text":"hi"}' }] });
+  expect(call.state.outcome).toMatchObject({
+    kind: "ok",
+    content: [{ kind: "text", text: 'echo {"text":"hi"}' }],
+  });
 });
 
 it("reports a dropped link, lists no tools from it, and reconnects", async () => {
@@ -83,5 +103,11 @@ it("reports a dropped link, lists no tools from it, and reconnects", async () =>
   );
 
   expect(dropped).toMatchObject({ severity: "warning", path: ["mcp.servers", "fake"] });
-  expect(await until(async () => (connects === 2 ? (await session.view()).catalog.tools.find((info) => info.name === "fake_echo") : undefined))).toMatchObject({ namespace: "mcp/fake" });
+  expect(
+    await until(async () =>
+      connects === 2
+        ? (await session.view()).catalog.tools.find((info) => info.name === "fake_echo")
+        : undefined,
+    ),
+  ).toMatchObject({ namespace: "mcp/fake" });
 });

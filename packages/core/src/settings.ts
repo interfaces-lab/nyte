@@ -22,7 +22,7 @@ interface Layer {
   readonly from: "host" | "session";
 }
 
-/** Returns the host's settings api: `apply` finds the definition (§35c), validates the value and stores it at `kvRef("host", "settings", id)`, then republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. */
+/** Returns the host's settings api: `apply` finds the definition, validates the value and stores it at `kvRef("host", "settings", id)`, then republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. */
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
     async apply(id, value) {
@@ -129,7 +129,7 @@ export function settingHandle<T>(
   };
 }
 
-/** Returns every setting with its owner, JSON Schema, choices, value and the layer that set it, leaving out one without JSON Schema. With a session: its plugins' settings (`SessionCatalogView.settings`); with null: the host-scope settings, first owner per id (`HostView.settings`, §35c). */
+/** Returns every setting with its owner, JSON Schema, choices, value and the layer that set it, leaving out one without JSON Schema. With a session: its plugins' settings (`SessionCatalogView.settings`); with null: the host-scope settings, first owner per id (`HostView.settings`). */
 export async function settingInfos(
   kernel: Kernel,
   session: SessionId | null,
@@ -224,7 +224,7 @@ async function sessionValue(
   return settings !== undefined && Object.hasOwn(settings, id) ? settings[id] : undefined;
 }
 
-/** Returns a setting's definition and owner: a host plugin's static host-scope entry first (§35c), then a live session's. */
+/** Returns a setting's definition and owner: a host plugin's static host-scope entry first, then a live session's. */
 function definitionOf(kernel: Kernel, id: string): Defined | undefined {
   return (
     staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
@@ -256,7 +256,7 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   });
 }
 
-/** Returns the static host-scope settings of `kernel.builtins` then `kernel.hostPlugins` (§35c). */
+/** Returns the static host-scope settings of `kernel.builtins` then `kernel.hostPlugins`. */
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   return [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
     (plugin.contribute?.settings ?? []).flatMap((definition) =>

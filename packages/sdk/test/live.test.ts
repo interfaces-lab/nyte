@@ -65,7 +65,7 @@ async function land(kernel: Kernel, session: SessionId, text: string): Promise<C
   } as const;
 
   const id = asId<"commit">(
-    await kernel.store.objects.put(envelope("commit", { parent, at, run: null, body }, at, parent)),
+    await kernel.store.objects.put(envelope("commit", { parent, at, run: null, body }, at)),
   );
 
   const updates: readonly RefUpdate[] = [
@@ -132,7 +132,14 @@ async function updatePart(kernel: Kernel, session: SessionId, record: PartRecord
       target: await kernel.store.objects.put(
         envelope("part", { ...record, state, version: 2 }, Date.now()),
       ),
-      event: { head: main, kind: "part", part: record.id, change: "updated", state, version: 2 } as const,
+      event: {
+        head: main,
+        kind: "part",
+        part: record.id,
+        change: "updated",
+        state,
+        version: 2,
+      } as const,
     },
   ];
 
@@ -336,7 +343,11 @@ describe("live parts across a reconnect", () => {
               async pull() {
                 const next = await iterator.next();
 
-                if (next.done !== true && armed && JSON.stringify(next.value.data).includes('"kind":"revision"')) {
+                if (
+                  next.done !== true &&
+                  armed &&
+                  JSON.stringify(next.value.data).includes('"kind":"revision"')
+                ) {
                   armed = false;
                   await new Promise((resolve) => setTimeout(resolve, 100));
                 }
@@ -350,7 +361,13 @@ describe("live parts across a reconnect", () => {
           });
         },
       },
-      { hostId: kernel.hostId, principal: TOKEN, credential: { kind: "token", token: TOKEN_SECRET }, journal: memoryJournal(), journaled: [] },
+      {
+        hostId: kernel.hostId,
+        principal: TOKEN,
+        credential: { kind: "token", token: TOKEN_SECRET },
+        journal: memoryJournal(),
+        journaled: [],
+      },
     );
 
     cleanups.push(() => client.close());
@@ -380,9 +397,13 @@ describe("live parts across a reconnect", () => {
     const stored = await kernel.store.refs.get(headRef(created.id, main));
 
     expect(shown.revision).toBe(stored?.revision);
-    expect((await (await session.move({ kind: "start" }, { expect: shown.revision ?? undefined })).settled()).kind).toBe(
-      "moved",
-    );
+    expect(
+      (
+        await (
+          await session.move({ kind: "start" }, { expect: shown.revision ?? undefined })
+        ).settled()
+      ).kind,
+    ).toBe("moved");
     await views.return?.();
   });
 });

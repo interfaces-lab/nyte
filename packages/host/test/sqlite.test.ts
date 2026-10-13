@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -88,5 +88,73 @@ describe("sqliteStore", () => {
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(["set", "stale"]);
     await left.close();
     await right.close();
+  });
+
+  it("rewrites records written before the fields the decoders require, once, with a backup", async () => {
+    const dir = await folder();
+    const path = join(dir, "nyte.db");
+    const seeded = new DatabaseSync(path);
+
+    seeded.exec(
+      "CREATE TABLE objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL); CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL)",
+    );
+
+    const call = { kind: "call", parent: null, at: 1, body: { id: "c1", replay: "safe" } };
+    const inbox = { kind: "inbox", parent: null, at: 1, body: { messages: ["m1"] } };
+
+    for (const [id, object, name] of [
+      ["old-call", call, "sessions/s1/calls/c1"],
+      ["old-inbox", inbox, "sessions/s1/inbox"],
+    ] as const) {
+      seeded
+        .prepare("INSERT INTO objects (id, body) VALUES (?, ?)")
+        .run(id, JSON.stringify(object));
+      seeded.prepare("INSERT INTO refs (name, target, revision) VALUES (?, ?, 'r0')").run(name, id);
+    }
+
+    seeded.close();
+
+    const store = sqliteStore({ path });
+    const { objects, refs } = await store.open();
+    const callRef = await refs.get("sessions/s1/calls/c1");
+    const inboxRef = await refs.get("sessions/s1/inbox");
+    assert(callRef?.target && inboxRef?.target);
+
+    expect(callRef.target).not.toBe("old-call");
+    expect(callRef.revision).not.toBe("r0");
+    expect(await objects.get(callRef.target)).toMatchObject({
+      body: { id: "c1", replay: "safe", reran: null },
+    });
+    expect(await objects.get(inboxRef.target)).toMatchObject({
+      body: { messages: ["m1"], pendingInput: [] },
+    });
+    await store.close();
+
+    const probe = new DatabaseSync(path);
+
+    expect(probe.prepare("SELECT name, rewritten FROM migrations").all()).toEqual([
+      { name: "2026-10-12-record-fields", rewritten: 2 },
+    ]);
+    probe.close();
+
+    const backups = (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db"));
+
+    expect(backups).toHaveLength(1);
+    const backup = new DatabaseSync(join(dir, "backups", backups[0] ?? ""), { readOnly: true });
+
+    expect(
+      backup.prepare("SELECT target FROM refs WHERE name = ?").get("sessions/s1/calls/c1"),
+    ).toEqual({
+      target: "old-call",
+    });
+    backup.close();
+
+    const again = sqliteStore({ path });
+    await again.open();
+    await again.close();
+
+    expect(
+      (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db")),
+    ).toHaveLength(1);
   });
 });

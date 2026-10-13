@@ -1,4 +1,12 @@
-import type { MessageId, MoveOutcome, ReceiptId, RequestOptions, RunEnd, StopOutcome, UserStatus } from "@nyte-ai/schema";
+import type {
+  MessageId,
+  MoveOutcome,
+  ReceiptId,
+  RequestOptions,
+  RunEnd,
+  StopOutcome,
+  UserStatus,
+} from "@nyte-ai/schema";
 
 /**
  * Returns a handle on one durable command: its status, its settlement and
@@ -44,7 +52,11 @@ export interface Receipt<Outcome> {
    *
    * @authority participant
    */
-  status(): Promise<{ readonly kind: "pending" } | { readonly kind: "settled"; readonly outcome: Outcome } | { readonly kind: "missing" }>;
+  status(): Promise<
+    | { readonly kind: "pending" }
+    | { readonly kind: "settled"; readonly outcome: Outcome }
+    | { readonly kind: "missing" }
+  >;
   /**
    * Waits for the outcome. Abort stops the wait, never the work.
    *
@@ -73,7 +85,9 @@ export interface Receipt<Outcome> {
  * @category receipts
  * @since 0.1.0
  */
-export interface SendReceipt extends Receipt<RunEnd | { readonly kind: "withdrawn" } | Exclude<MoveOutcome, { readonly kind: "moved" }>> {
+export interface SendReceipt extends Receipt<
+  RunEnd | { readonly kind: "withdrawn" } | Exclude<MoveOutcome, { readonly kind: "moved" }>
+> {
   /** The same id as the receipt. Everything admission decided is on the message: delivery, schedule, status, siblings, configuration. */
   readonly message: MessageId;
   /**
@@ -81,5 +95,9 @@ export interface SendReceipt extends Receipt<RunEnd | { readonly kind: "withdraw
    *
    * @authority participant
    */
-  landed(): Promise<Extract<UserStatus, { readonly kind: "landed" }> | { readonly kind: "withdrawn" } | Exclude<MoveOutcome, { readonly kind: "moved" }>>;
+  landed(): Promise<
+    | Extract<UserStatus, { readonly kind: "landed" }>
+    | { readonly kind: "withdrawn" }
+    | Exclude<MoveOutcome, { readonly kind: "moved" }>
+  >;
 }

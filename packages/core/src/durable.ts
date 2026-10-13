@@ -16,10 +16,10 @@ import { SdkError } from "./error.ts";
 import { LEASE_MS } from "./execution.ts";
 import type { Kernel } from "./kernel.ts";
 import { storedAnswer } from "./parts.ts";
-import { decodePartRecord, decodeRunRecord } from "./records.ts";
+import { decodePartRecord, decodeRunRecord, isJsonObject } from "./records.ts";
 import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
-import { changeCall, isJsonObject, load, put, readCall } from "./session-state.ts";
+import { changeCall, load, put, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
 import { parkedOf, runWait, waitingOn } from "./waits.ts";
 
@@ -80,7 +80,7 @@ export function parkStep(durable: Durable): never {
  * it creates or loads: a recorded result replays as `done`; a `never` step with no result is
  * settled `interrupted`; otherwise `body` runs with a `Durable` replaying the record by call order.
  * A settled step returns the result its record holds, decoded; an execution that parked is
- * `parked` however its body ended (§33g).
+ * `parked` however its body ended.
  */
 export async function runStep<T>(
   kernel: Kernel,
@@ -250,7 +250,7 @@ export async function runAction(
   }
 }
 
-/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake (§33j): a claim naming this instance that lapses with the lease (§66). Resolves true when this runner won or the step has a result to replay, false while another runner holds a live claim or the step waits. */
+/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake: a claim naming this instance that lapses with the lease. Resolves true when this runner won or the step has a result to replay, false while another runner holds a live claim or the step waits. */
 export async function reserveRerun(
   kernel: Kernel,
   session: SessionId,
@@ -277,7 +277,7 @@ export async function reserveRerun(
   return reserved.wrote || (reserved.record?.result ?? null) !== null;
 }
 
-/** Returns whether a woken step's re-run is claimed by another instance whose claim lapsed with no result: its holder is gone, so another runner takes it over (§66). */
+/** Returns whether a woken step's re-run is claimed by another instance whose claim lapsed with no result: its holder is gone, so another runner takes it over. */
 export function lapsed(kernel: Kernel, record: CallRecord): boolean {
   return (
     record.result === null &&
@@ -289,7 +289,7 @@ export function lapsed(kernel: Kernel, record: CallRecord): boolean {
   );
 }
 
-/** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as (§33j). */
+/** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as. */
 export async function openAction(
   kernel: Kernel,
   input: {
@@ -316,7 +316,7 @@ export async function openAction(
   );
 }
 
-/** Records what a durable step acquired under a key unless one is recorded, and returns the recorded winner (§33a). */
+/** Records what a durable step acquired under a key unless one is recorded, and returns the recorded winner. */
 export async function recordAcquisition(
   kernel: Kernel,
   step: { readonly session: SessionId; readonly call: CallId },
@@ -355,7 +355,7 @@ function durableOf(
   let waits = 0;
   let readings = 0;
 
-  /** The one unchecked widening in core: a replayed memo is stored `Json`, returned as `V` (§34a). */
+  /** The one unchecked widening in core: a replayed memo is stored `Json`, returned as `V`. */
   function memo<V extends Json>(name: string, compute: () => Awaitable<V>): Promise<V>;
   async function memo(name: string, compute: () => Awaitable<Json>): Promise<Json> {
     const known = memos.get(name);
@@ -427,7 +427,7 @@ function durableOf(
   return durable;
 }
 
-/** Settles a wait on one modal part at once when the part already holds its answer (§48i); the answer stays on the part, its one home. */
+/** Settles a wait on one modal part at once when the part already holds its answer; the answer stays on the part, its one home. */
 async function takeAnswer(
   kernel: Kernel,
   place: Place,
@@ -459,7 +459,7 @@ async function takeAnswer(
 /**
  * Writes a step's wait at `index` in one set: `waiting` with an empty slot per target of a
  * combination, `call waiting`, the run's `run waiting`, the step in the `waitedBy` of each run it
- * waits on, and `waiting: <call>` on each live modal part it waits on (§42z, §42ac); then parks it.
+ * waits on, and `waiting: <call>` on each live modal part it waits on; then parks it.
  */
 async function park(
   kernel: Kernel,

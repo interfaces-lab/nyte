@@ -82,7 +82,7 @@ export interface JobOutput {
   tail(): string;
 }
 
-/** Holds the jobs this process started, in memory: a restart loses them, and an id the table does not hold reads `lost`. A change announces the workspace's views and publishes an owned job's `background` item unlogged when it changed (§37c). */
+/** Holds the jobs this process started, in memory: a restart loses them, and an id the table does not hold reads `lost`. A change announces the workspace's views and publishes an owned job's `background` item unlogged when it changed. */
 export interface JobTable {
   get(id: JobId): JobEntry | undefined;
   byKey(key: JobKey): JobEntry | undefined;
@@ -210,7 +210,7 @@ export function createJobs(
   };
 }
 
-/** Returns a handle on a job by id; binds synchronously. For an id the table does not hold (§42w) `output` throws `unavailable` as it is called (§42aa), `write` throws `unknown`, `resize` and `stop` answer `missing` and `settled` `lost`. */
+/** Returns a handle on a job by id; binds synchronously. For an id the table does not hold `output` throws `unavailable` as it is called, `write` throws `unknown`, `resize` and `stop` answer `missing` and `settled` `lost`. */
 export function jobHandle(kernel: Kernel, id: JobId): Job {
   const readers = new Set<() => void>();
 
@@ -427,7 +427,7 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
-/** Runs a durable step's acquisition keyed `key`, else `acq:<n>` (§33a): what the step recorded, else `create()` recorded once; a loser to a concurrent run releases what it created and answers the winner's id. Outside a step it creates. Jobs and pages acquire through it. */
+/** Runs a durable step's acquisition keyed `key`, else `acq:<n>`: what the step recorded, else `create()` recorded once; a loser to a concurrent run releases what it created and answers the winner's id. Outside a step it creates. Jobs and pages acquire through it. */
 export async function acquire<T extends { readonly id: string }>(
   kernel: Kernel,
   step: {

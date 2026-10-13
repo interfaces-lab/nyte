@@ -11,7 +11,7 @@ import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { ProvidersSettings } from "../chrome/models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
-import { UsageSettings } from "../chrome/usage-settings.tsx";
+import { UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
 import { AdvancedSettings } from "./advanced.tsx";
 import { AgentSettings } from "./agent.tsx";
 import { AppearanceSettings } from "./appearance.tsx";
@@ -57,7 +57,7 @@ export function available(needs: readonly Capability[], context = settingsContex
   return needs.every((need) => context[need]);
 }
 
-interface PageInfo {
+export interface PageInfo {
   readonly icon: IconName;
   readonly title: string;
   /** Consecutive pages of one group sit together in the nav; space separates groups. */
@@ -66,6 +66,8 @@ interface PageInfo {
   /** What the page holds beyond its title, as lowercase substrings, for the nav search. */
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
+  /** Controls beside the page title, for a page whose every figure they change. */
+  readonly Actions?: ComponentType;
 }
 
 export const SETTINGS_PAGES = {
@@ -129,6 +131,15 @@ export const SETTINGS_PAGES = {
     ],
     Page: AppearanceSettings,
   },
+  usage: {
+    icon: "trending",
+    title: "Usage",
+    group: "app",
+    needs: ["usage"],
+    keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
+    Page: UsageSettings,
+    Actions: UsageRangePicker,
+  },
   agent: {
     icon: "agent",
     title: "Agent",
@@ -188,14 +199,6 @@ export const SETTINGS_PAGES = {
     needs: ["providers"],
     keywords: ["api key", "sign in", "anthropic", "openai", "opencode", "fast"],
     Page: ProvidersSettings,
-  },
-  usage: {
-    icon: "trending",
-    title: "Usage",
-    group: "providers",
-    needs: ["usage"],
-    keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
-    Page: UsageSettings,
   },
 } as const satisfies Record<string, PageInfo>;
 

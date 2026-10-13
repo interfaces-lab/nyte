@@ -20,6 +20,7 @@ import { sessionsDirectory } from "./scenarios/sessions-directory.ts";
 import { stopFence } from "./scenarios/stop-fence.ts";
 import { storeCas } from "./scenarios/store-cas.ts";
 import { watchCoalescing } from "./scenarios/watch-coalescing.ts";
+import { watchReopen } from "./scenarios/watch-reopen.ts";
 
 const scenarios: readonly Scenario[] = [
   storeCas,
@@ -32,11 +33,13 @@ const scenarios: readonly Scenario[] = [
   reconnectResume,
   gitPatchesBatching,
   sessionsDirectory,
+  watchReopen,
 ];
 
 const benchDriver = createBenchDriver({ connect: sdk.connect });
 const selected = new Set(process.argv.slice(2));
-const toRun = selected.size === 0 ? scenarios : scenarios.filter((scenario) => selected.has(scenario.name));
+const toRun =
+  selected.size === 0 ? scenarios : scenarios.filter((scenario) => selected.has(scenario.name));
 const results = [];
 
 for (const scenario of toRun) {
@@ -45,5 +48,9 @@ for (const scenario of toRun) {
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const ok = await report(results, `${root}budgets.json`, `${root}results/${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+const ok = await report(
+  results,
+  `${root}budgets.json`,
+  `${root}results/${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+);
 process.exitCode = ok ? 0 : 1;

@@ -4,9 +4,8 @@ The desktop app treats startup and thread navigation as paint problems. It shows
 first, then fills that page with local data. Local storage is fast, but waiting for every local read,
 React module, and formatter before changing the screen still feels slow.
 
-This note records the design after the 2026-09-03 first-shell pass. It supplements the
-[Core guide](../lab/src/core/guide.tsx) and [kernel guide](../core/src/kernel/README.md), which
-own SDK and storage contracts.
+This note records the design after the 2026-09-03 first-shell pass. The
+[core README](../core/README.md) owns SDK and storage contracts.
 
 ## Result
 
@@ -53,6 +52,8 @@ The budgets are the promise; the sizes on a given day are not. Run
 `scripts/check-startup-bundle.mjs` prints for current figures. The temporary timing harness was
 removed after the measurements. That script remains because it is a build
 guard, not a benchmark. It fails a normal desktop build if a startup entry crosses its size budget.
+For a local development package, run `pnpm package:desktop:dev` to print the same budget
+table without failing on size overruns. Other guard errors still fail the build.
 
 ## Startup path
 

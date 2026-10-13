@@ -16,6 +16,7 @@ import { asId } from "@nyte-ai/schema";
 import { toast } from "@nyte-ai/ui/toast";
 import type {
   ChangeSet,
+  CommandInfo,
   Connection,
   Cursor,
   FilesApi,
@@ -728,18 +729,41 @@ export function useAccountLimits() {
   };
 }
 
+/** The app's own `/compact`, offered beside a session's plugin commands and run through `head.compact`. */
+export const COMPACT_COMMAND = {
+  name: "compact",
+  owner: "",
+  side: "client",
+  title: "Compact",
+  description: "Summarize the conversation to free up context",
+  arguments: null,
+} satisfies CommandInfo;
+
 /** What plugins contribute to a session: commands, settings, skills. Empty before a chat exists. */
 export function usePluginCatalog(sessionId?: SessionId) {
-  const view = useSessionView(sessionId);
+  const catalog = useSessionView(sessionId)?.catalog;
 
-  return { data: view?.catalog, isError: false };
+  const data = useMemo(
+    () =>
+      catalog === undefined
+        ? undefined
+        : { ...catalog, commands: [...catalog.commands, COMPACT_COMMAND] },
+    [catalog],
+  );
+
+  return { data, isError: false };
 }
 
-/** The commands a session's palette offers, as its view carries them. */
+/** The commands a session's palette offers: its view's, then the app's own. */
 export function useSessionCommands(sessionId: SessionId) {
-  const view = useSessionView(sessionId);
+  const commands = useSessionView(sessionId)?.catalog.commands;
 
-  return { data: view?.catalog.commands };
+  const data = useMemo(
+    () => (commands === undefined ? undefined : [...commands, COMPACT_COMMAND]),
+    [commands],
+  );
+
+  return { data };
 }
 
 /** Sets the model a new chat starts with; the picker paints the choice until the host answers. */

@@ -5,13 +5,14 @@
   "description": "Benchmarks and invariants for the baseline guarantees in packages/lab/sdk-shape.ts. Imports @nyte-ai/sdk and @nyte-ai/host/bench; @nyte-ai/sdk joins the dependencies when it exists.",
   "type": "module",
   "scripts": {
-    "bench": "node --conditions=nyte-source src/main.ts"
+    "bench": "node --conditions=nyte-source src/main.ts",
+    "bench:no-eval": "node --disallow-code-generation-from-strings --conditions=nyte-source src/main.ts"
   },
   "dependencies": {
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3"
+    "@types/node": "^26.6.5"
   }
 }

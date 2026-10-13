@@ -2,9 +2,9 @@ import { threadStyles } from "./thread.stylex.ts";
 /**
  * The persistent desktop stage. Pane hosts are keyed only by PaneId, so a
  * pane's chrome, size and view-state owner survive a selection change. The
- * conversation inside is keyed by SessionId instead: the virtualized transcript and
- * the composer share one scrollport, and a chat's absolutely positioned rows
- * only leave that scrollport when the surface holding them is replaced.
+ * conversation inside is keyed by SessionId instead: the virtualized
+ * transcript's rows only leave their scrollport when the surface holding
+ * them is replaced, and the composer docks over that scrollport's bottom.
  */
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -89,7 +89,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
-import { TranscriptProvider, TranscriptViewport } from "../conversation/transcript.tsx";
+import { TranscriptProvider } from "../conversation/transcript.tsx";
 import { QuestionTray, useComposerAnswer } from "../conversation/tray/questions.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import { conversationMessages, transcriptRows } from "../conversation/transcript-rows.ts";
@@ -336,6 +336,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   // The scrollport arrives as state so everything below it re-runs on the
   // commit that creates the node, not one commit late.
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
+  const [column, setColumn] = useState<HTMLDivElement | null>(null);
 
   const ready = view !== undefined;
   const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
@@ -551,107 +552,98 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
         )}
 
         <div {...props(threadStyles.body)}>
-          <div {...props(threadStyles.conversation)}>
-            <TranscriptProvider
-              paneId={paneId}
-              sessionId={sessionId}
-              ready={ready}
-              autoScroll
-              scrollEdgeThreshold={60}
-            >
-              <TranscriptViewport ref={setScroll}>
-                <Timeline
+          <div ref={setColumn} {...props(threadStyles.conversation)}>
+            <TranscriptProvider paneId={paneId} sessionId={sessionId} viewportRef={setScroll}>
+              <Timeline
+                sessionId={sessionId}
+                changes={view?.changes ?? NO_CHANGES}
+                ready={ready}
+                rows={rows}
+                working={working}
+                settledWork={settledWork}
+                cwd={cwd}
+                branchModel={branchModel}
+                onEditUser={editUserMessage}
+                onOpenChanges={openChanges}
+                onRetry={refetchSnapshot}
+              />
+
+              {presentation === "full" && (
+                <Composer
                   sessionId={sessionId}
-                  changes={view?.changes ?? NO_CHANGES}
-                  ready={ready}
-                  rows={rows}
-                  working={working}
-                  settledWork={settledWork}
-                  cwd={cwd}
-                  branchModel={branchModel}
-                  onEditUser={editUserMessage}
-                  onOpenChanges={openChanges}
-                  onRetry={refetchSnapshot}
+                  floatingMount={conversation.floatingMount}
+                  answer={answer}
+                  backgroundWork={{
+                    content: (
+                      <>
+                        <QuestionTray
+                          sessionId={sessionId}
+                          disabled={snapshotError || navigating}
+                          viewport={scroll}
+                        />
+                        <SubagentTray
+                          parentSessionId={sessionId}
+                          agents={childSessions}
+                          view={subagentTray}
+                          onViewChange={setTrayView}
+                          onExpand={(childSessionId) => {
+                            setTrayView({ kind: "closed" });
+                            paneActions.openSessionInPane(paneId, childSessionId);
+                          }}
+                          onRelease={() => composerRef.current?.focus({ preventScroll: true })}
+                          viewport={scroll}
+                          detail={
+                            subagentTray.kind === "detail" ? (
+                              <SessionConversation
+                                key={subagentTray.sessionId}
+                                presentation="tray"
+                                paneId={paneId}
+                                sessionId={subagentTray.sessionId}
+                                onOpenSubagentTray={openSubagentTray}
+                              />
+                            ) : null
+                          }
+                        />
+                        <BackgroundWork
+                          sessionId={sessionId}
+                          open={trayView.kind === "terminals"}
+                          onOpenChange={(open) =>
+                            setTrayView({ kind: open ? "terminals" : "closed" })
+                          }
+                          onOpenTerminal={(job) =>
+                            openJobTerminal({
+                              controller: workbenchController,
+                              view: workbenchViewKey(cwd),
+                              sessionId,
+                              job,
+                            })
+                          }
+                          viewport={scroll}
+                        />
+                      </>
+                    ),
+                    onEscape: () => {
+                      if (trayView.kind === "closed") return false;
+                      setTrayView({ kind: "closed" });
+
+                      return true;
+                    },
+                  }}
+                  execution={view?.execution}
+                  pending={messages.queued}
+                  unsent={messages.unsent}
+                  disabled={view === undefined}
+                  fileDropRoot={column}
+                  initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                  onViewStateChange={(composer) =>
+                    viewStore.updateSession(sessionId, paneId, (current) => ({
+                      ...current,
+                      composer,
+                    }))
+                  }
+                  inputRef={attachComposer}
                 />
-
-                {presentation === "full" && (
-                  <Composer
-                    sessionId={sessionId}
-                    floatingMount={conversation.floatingMount}
-                    answer={answer}
-                    backgroundWork={{
-                      content: (
-                        <>
-                          <QuestionTray
-                            sessionId={sessionId}
-                            disabled={snapshotError || navigating}
-                            viewport={scroll}
-                          />
-                          <SubagentTray
-                            parentSessionId={sessionId}
-                            agents={childSessions}
-                            view={subagentTray}
-                            onViewChange={setTrayView}
-                            onExpand={(childSessionId) => {
-                              setTrayView({ kind: "closed" });
-                              paneActions.openSessionInPane(paneId, childSessionId);
-                            }}
-                            onRelease={() => composerRef.current?.focus({ preventScroll: true })}
-                            viewport={scroll}
-                            detail={
-                              subagentTray.kind === "detail" ? (
-                                <SessionConversation
-                                  key={subagentTray.sessionId}
-                                  presentation="tray"
-                                  paneId={paneId}
-                                  sessionId={subagentTray.sessionId}
-                                  onOpenSubagentTray={openSubagentTray}
-                                />
-                              ) : null
-                            }
-                          />
-                          <BackgroundWork
-                            sessionId={sessionId}
-                            open={trayView.kind === "terminals"}
-                            onOpenChange={(open) =>
-                              setTrayView({ kind: open ? "terminals" : "closed" })
-                            }
-                            onOpenTerminal={(job, activate) =>
-                              openJobTerminal({
-                                controller: workbenchController,
-                                view: workbenchViewKey(cwd),
-                                sessionId,
-                                job,
-                                activate,
-                              })
-                            }
-                            viewport={scroll}
-                          />
-                        </>
-                      ),
-                      onEscape: () => {
-                        if (trayView.kind === "closed") return false;
-                        setTrayView({ kind: "closed" });
-
-                        return true;
-                      },
-                    }}
-                    execution={view?.execution}
-                    pending={messages.queued}
-                    unsent={messages.unsent}
-                    disabled={view === undefined}
-                    fileDropRoot={scroll}
-                    initialViewState={viewStore.readSession(sessionId, paneId).composer}
-                    onViewStateChange={(composer) =>
-                      viewStore.updateSession(sessionId, paneId, (current) => ({
-                        ...current,
-                        composer,
-                      }))
-                    }
-                    inputRef={attachComposer}
-                  />
-                )}
-              </TranscriptViewport>
+              )}
             </TranscriptProvider>
           </div>
         </div>

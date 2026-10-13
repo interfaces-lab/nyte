@@ -6,7 +6,14 @@ import type { HostId, ValidationIssue } from "@nyte-ai/schema";
  * @category errors
  * @since 0.1.0
  */
-export type SdkErrorCode = "unauthenticated" | "denied" | "unknown" | "invalid" | "stale" | "unavailable" | "internal";
+export type SdkErrorCode =
+  | "unauthenticated"
+  | "denied"
+  | "unknown"
+  | "invalid"
+  | "stale"
+  | "unavailable"
+  | "internal";
 
 /**
  * Throws for acquisition failures and defects; domain results are outcomes,
@@ -30,7 +37,15 @@ export class SdkError extends Error {
   /** For `internal`; matches the host's logs. */
   readonly correlation: string | null;
 
-  constructor(code: SdkErrorCode, message: string, options?: { readonly hostId?: HostId | null; readonly issues?: readonly ValidationIssue[]; readonly correlation?: string | null }) {
+  constructor(
+    code: SdkErrorCode,
+    message: string,
+    options?: {
+      readonly hostId?: HostId | null;
+      readonly issues?: readonly ValidationIssue[];
+      readonly correlation?: string | null;
+    },
+  ) {
     super(message);
     this.code = code;
     this.hostId = options?.hostId ?? null;

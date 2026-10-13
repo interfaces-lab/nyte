@@ -1094,14 +1094,11 @@ export function createBrowserSurfaces(
 
         apply(surface);
 
-        // Tell the renderer so it can reveal the Browser tab for this surface.
+        // Tell the renderer so the workspace's Browser tab follows this page.
         dependencies.emit({
           kind: "browser_agent_opened",
-          surface: surfId,
-          session: input.session,
           owner: input.owner.kind === "project" ? input.owner.path : null,
           url: target,
-          state: stateOf(surface),
         });
 
         await waitForSettle(contents, input.signal);

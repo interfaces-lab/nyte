@@ -1,1 +1,1 @@
-{"extends":"../../tsconfig.json","include":["src","workflows","nitro.config.ts"]}
+{ "extends": "../../tsconfig.json", "include": ["src", "workflows", "nitro.config.ts"] }

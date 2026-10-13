@@ -4,21 +4,30 @@ import { collect, invariant, timed } from "../scenario.ts";
 /** §2 Run.stop fence: stop() resolves synchronously in effect; the next yield already shows stopped; no later yield appends to that run. The 10 ms budget covers a contended stop: stop() runs while the run's part open is landing, so the fence's first set loses its compare-and-set and retries once (§61). */
 export const stopFence: Scenario = {
   name: "stop-fence",
-  guarantee: "After stop() the very next view shows the run's parts failed { class: aborted } and no later view carries more of its text.",
+  guarantee:
+    "After stop() the very next view shows the run's parts failed { class: aborted } and no later view carries more of its text.",
   async run(driver) {
     const bench = await driver.open();
     const session = await bench.host.sessions.create();
     bench.model.script({ text: "y".repeat(5_000), tokens: 5_000 });
     const receipt = await session.send("go");
     const landed = await receipt.landed();
-    if (landed.kind !== "landed" || landed.run === null) throw new Error("the send did not land on a run");
+    if (landed.kind !== "landed" || landed.run === null)
+      throw new Error("the send did not land on a run");
     const run = landed.run;
     await bench.model.pauseAfter(1_000);
     const lengthAtStop = textLength(await session.view());
     const stop = await timed(() => session.run(run).stop());
     bench.model.release();
     const { views } = await collect(session.watch(), (view) => view.execution.kind === "idle");
-    const firstStopped = views.findIndex((view) => view.messages.some((message) => message.kind === "part" && message.status.kind === "failed" && message.status.failure.class === "aborted"));
+    const firstStopped = views.findIndex((view) =>
+      view.messages.some(
+        (message) =>
+          message.kind === "part" &&
+          message.status.kind === "failed" &&
+          message.status.failure.class === "aborted",
+      ),
+    );
     const grewAfterStop = views.some((view) => textLength(view) > lengthAtStop);
     await bench.close();
 
@@ -33,10 +42,20 @@ export const stopFence: Scenario = {
   },
 };
 
-function textLength(view: { readonly messages: readonly { readonly kind: string; readonly state?: unknown }[] }): number {
+function textLength(view: {
+  readonly messages: readonly { readonly kind: string; readonly state?: unknown }[];
+}): number {
   return view.messages.reduce((sum, message) => {
     const state = message.kind === "part" ? message.state : null;
 
-    return sum + (typeof state === "object" && state !== null && "markdown" in state && typeof state.markdown === "string" ? state.markdown.length : 0);
+    return (
+      sum +
+      (typeof state === "object" &&
+      state !== null &&
+      "markdown" in state &&
+      typeof state.markdown === "string"
+        ? state.markdown.length
+        : 0)
+    );
   }, 0);
 }

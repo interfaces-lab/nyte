@@ -49,7 +49,7 @@ import type { Found } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
 import { failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
-/** Returns one merged thought's share of a thinking part's `signature` (§38f). */
+/** Returns one merged thought's share of a thinking part's `signature`. */
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;
@@ -87,7 +87,7 @@ interface Turn {
   readonly head: HeadName;
   readonly signal: AbortSignal;
   readonly where: HookContext;
-  /** The runtimes the turn's requests hold, the latest last: each from its preparation until a later request streams, the turn's signal aborts or the turn ends (§44c). */
+  /** The runtimes the turn's requests hold, the latest last: each from its preparation until a later request streams, the turn's signal aborts or the turn ends. */
   readonly holds: { readonly runtime: PluginRuntime; readonly release: Disposer }[];
 }
 
@@ -127,8 +127,8 @@ const ORPHANED: Failure = {
 
 /**
  * Returns the turn driver `advance` runs a run's turn with, the adapter between the kernel and
- * `agentLoop` (§45d). `done` ends `completed` with the run record's usage, `parked` leaves the run
- * live for `advance` (§34d); `stopped` fails the open parts with `aborted` when the run is stopping.
+ * `agentLoop`. `done` ends `completed` with the run record's usage, `parked` leaves the run
+ * live for `advance`; `stopped` fails the open parts with `aborted` when the run is stopping.
  */
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   return {
@@ -183,7 +183,7 @@ async function turn(
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
-    /** Builds one request on the session's runtime, held from here, once it is ready, in the baseline's hook order (§38s), any failure failing the request rather than the loop. */
+    /** Builds one request on the session's runtime, held from here, once it is ready, in the baseline's hook order, any failure failing the request rather than the loop. */
     async prepareRequest(asked) {
       const runtime = kernel.pluginsFor(session);
       context.holds.push({ runtime, release: runtime.hold() });
@@ -298,7 +298,7 @@ async function turn(
       };
     },
     tools: {
-      /** Runs the call through the durable `executeCall` on its response's runtime, its id `${run}:${requests}:${providerCallId}` (§38w). */
+      /** Runs the call through the durable `executeCall` on its response's runtime, its id `${run}:${requests}:${providerCallId}`. */
       execute: (call, called) =>
         executeCall(kernel, {
           runtime: context.holds.at(-1)?.runtime ?? kernel.pluginsFor(session),
@@ -312,7 +312,7 @@ async function turn(
           signal: called,
         }),
     },
-    /** Observes `after_request` on the request's runtime, charges the response with its `request` event (§38v, w), and sets `run phase executing` when it has calls. */
+    /** Observes `after_request` on the request's runtime, charges the response with its `request` event, and sets `run phase executing` when it has calls. */
     async finishTurn({ calls, usage, prepared }) {
       observe(context, prepared, usage);
 
@@ -415,7 +415,7 @@ async function opened(
   state.starts.set(index, merging.markdown.length);
 }
 
-/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature (§38f). Once the run is stopping nothing more lands, so a stopped part keeps the text it streamed. */
+/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature. Once the run is stopping nothing more lands, so a stopped part keeps the text it streamed. */
 async function updated(
   context: Turn,
   state: AttemptState,
@@ -622,7 +622,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed keeps what it streamed instead (§66). */
+/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed keeps what it streamed instead. */
 async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
   const { kernel, session, head } = context;
 
@@ -699,7 +699,7 @@ async function readPart(context: Turn, entry: OpenPart): Promise<Found<PartRecor
   return load(kernel, await kernel.store.refs.get(partRef(session, entry.part)), decodePartRecord);
 }
 
-/** Returns the updates keeping what an open part streamed on its unsettled record (§66): `part updated` with its streamed state, then `part failed` with `failure` while it is still live. */
+/** Returns the updates keeping what an open part streamed on its unsettled record: `part updated` with its streamed state, then `part failed` with `failure` while it is still live. */
 async function keep(
   context: Turn,
   entry: OpenPart,
@@ -729,7 +729,7 @@ async function keep(
   ];
 }
 
-/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge (§38t, v, w). Once the run is stopping only the charge lands; the stop fails the parts. */
+/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge. Once the run is stopping only the charge lands; the stop fails the parts. */
 async function retry(
   context: Turn,
   state: AttemptState,
@@ -761,7 +761,7 @@ async function retry(
     retried = view;
 
     return {
-      record: { ...paid, view, retrying: { attempt: next, until, reason } },
+      record: { ...paid, view, retrying: { until, reason } },
       events: [
         { head, kind: "run", run, change: "retrying", attempt: next, until, reason },
         ...request,
@@ -773,7 +773,7 @@ async function retry(
   return retried === null ? state : fresh(retried, 0);
 }
 
-/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed with what they streamed (§66), and the response the loop failed on charged and observed on its request's runtime (§38v, w). */
+/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed with what they streamed, and the response the loop failed on charged and observed on its request's runtime. */
 async function failOpen(
   context: Turn,
   state: AttemptState,

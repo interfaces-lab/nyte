@@ -14,7 +14,7 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import type { SessionMark } from "@nyte-ai/client";
+import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";

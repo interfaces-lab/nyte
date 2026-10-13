@@ -65,7 +65,10 @@ test("each change builds on the last, and a fresh store reads what was written",
       result: undefined,
     })),
     store.update((file) => ({
-      file: { ...file, linkKey: { kind: "session", origin: ORIGIN, key: linkKey, owner: "user_a" } },
+      file: {
+        ...file,
+        linkKey: { kind: "session", origin: ORIGIN, key: linkKey, owner: "user_a" },
+      },
       result: undefined,
     })),
   ]);
@@ -131,7 +134,12 @@ test("a file that does not parse, or is from another version, is failed, not rep
     JSON.stringify({
       ...EMPTY_CONNECT_FILE,
       unlinks: [
-        { origin: ORIGIN, environmentId: "3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f", key: "not-a-key", at: 1 },
+        {
+          origin: ORIGIN,
+          environmentId: "3f0c2a4e-8d2b-4c1a-9e3f-1a2b3c4d5e6f",
+          key: "not-a-key",
+          at: 1,
+        },
       ],
     }),
     JSON.stringify({

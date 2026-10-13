@@ -33,7 +33,7 @@
     "clean": "rm -rf node_modules .turbo dist",
     "package": "pnpm pack --pack-destination dist",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@nyte-ai/host": "workspace:*",
@@ -41,9 +41,9 @@
     "@nyte-ai/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.2"
+    "@types/node": "^26.6.5",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.4"
   },
   "engines": {
     "node": ">=26"

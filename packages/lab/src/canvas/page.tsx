@@ -1,7 +1,8 @@
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import { conversationTurns, isBusy } from "@nyte-ai/app/view-helpers.ts";
 import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
 import type {
   ComposerDocumentState,
@@ -97,7 +98,11 @@ function DemoConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
           </p>
         )}
         {turns.map((turn, index) => (
-          <CanvasTurn key={turn.id} turn={turn} running={playing && index === turns.length - 1} />
+          <CanvasTurn
+            key={turn.info.id}
+            turn={turn}
+            running={playing && index === turns.length - 1}
+          />
         ))}
       </section>
       {playing && (
@@ -120,36 +125,35 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
   });
 
   const session = useMutation({ mutationFn: openCanvasSession });
-  const sessionId = session.data?.sessionId;
+
+  const sessionId =
+    session.data === undefined ? undefined : asId<"session">(session.data.sessionId);
+
   const live = useCanvasSession(sessionId);
 
   const send = useMutation({
     mutationFn: async (text: string) => {
       const current = session.data ?? (await session.mutateAsync());
-      await canvasClient().messages.send({
-        sessionId: current.sessionId,
-        key: crypto.randomUUID(),
-        content: text,
-      });
+      const connection = await canvasClient();
+      await connection.session(asId<"session">(current.sessionId)).send(text);
     },
   });
 
   const stop = useMutation({
     mutationFn: async () => {
-      if (sessionId !== undefined) await canvasClient().runs.abort({ sessionId });
+      if (sessionId !== undefined) await (await canvasClient()).session(sessionId).stop();
     },
   });
 
-  const phase = live.snapshot?.run?.phase;
-
   const running =
     send.isPending ||
-    (phase !== undefined && !isTerminalPhase(phase)) ||
-    (live.snapshot?.pending.length ?? 0) > 0;
+    (live.view !== undefined &&
+      (isBusy(live.view.execution) ||
+        live.view.messages.some(
+          (message) => message.kind === "user" && message.status.kind !== "landed",
+        )));
 
-  const turns = (live.snapshot?.transcript ?? []).flatMap((turn) =>
-    turn.kind === "turn" ? [turn] : [],
-  );
+  const turns = live.view === undefined ? [] : conversationTurns(live.view).turns;
 
   const submit = async ({ text }: ComposerSubmission): Promise<boolean> => {
     if (text.trim() === "" || running) return false;
@@ -176,7 +180,11 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
           </p>
         )}
         {turns.map((turn, index) => (
-          <CanvasTurn key={turn.id} turn={turn} running={running && index === turns.length - 1} />
+          <CanvasTurn
+            key={turn.info.id}
+            turn={turn}
+            running={running && index === turns.length - 1}
+          />
         ))}
         {error !== null && (
           <p role="alert" {...props(styles.status)}>
@@ -195,7 +203,7 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
           placeholder="Ask Nyte to make a chart or diagram"
           suggestionCatalog={{
             status: "ready",
-            data: { plugins: [], commands: [], skills: [], settings: [] },
+            data: { commands: [], skills: [] },
           }}
           mentionFiles={{ status: "ready", data: [] }}
         />

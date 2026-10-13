@@ -13,7 +13,8 @@ import type { Host } from "./host.ts";
 import type { Kernel } from "./kernel.ts";
 import type { CommitRecord } from "./records.ts";
 import { sessionRef } from "./refs.ts";
-import { isJsonObject, objectOf, readCommit } from "./session-state.ts";
+import { decodeCommitRecord, isJsonObject } from "./records.ts";
+import { objectOf, readCommit } from "./session-state.ts";
 
 const PAGE = 100;
 
@@ -27,6 +28,8 @@ const RECORDS: ReadonlyMap<string, string> = new Map([
   ["receipts", "receipt"],
   ["seen", "seen"],
   ["leases", "lease"],
+  ["calls", "call"],
+  ["changes", "changes"],
 ]);
 
 type Issue = IntegrityReport["issues"][number];
@@ -183,12 +186,11 @@ function recordOf(session: SessionId, name: string): string | null {
 function decodeView(id: ObjectId, object: Json | null): DecodedObjectView | null {
   if (!isJsonObject(object) || typeof object.kind !== "string" || typeof object.at !== "number")
     return null;
-  const parent = object.parent;
 
   return {
     id,
     kind: object.kind,
-    parent: typeof parent === "string" ? asId<"commit">(parent) : null,
+    parent: decodeCommitRecord(object)?.parent ?? null,
     body: object.body ?? null,
     at: object.at,
   };

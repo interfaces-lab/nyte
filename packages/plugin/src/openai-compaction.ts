@@ -1,4 +1,8 @@
-import { compactOpenAICodexContext, compactOpenAIResponsesContext, providerIdentity } from "@nyte-ai/ai";
+import {
+  compactOpenAICodexContext,
+  compactOpenAIResponsesContext,
+  providerIdentity,
+} from "@nyte-ai/ai";
 import type { Models, Usage as ProviderUsage } from "@nyte-ai/ai";
 import type { Usage } from "@nyte-ai/schema";
 import type { Plugin } from "./core.ts";
@@ -34,13 +38,23 @@ export function openaiCompaction(models: Pick<Models, "getModel" | "getAuth">): 
         const context = {
           messages: [
             ...plan.summarise,
-            ...(plan.instructions === null ? [] : [{ role: "system" as const, content: plan.instructions, timestamp: Date.now() }]),
+            ...(plan.instructions === null
+              ? []
+              : [{ role: "system" as const, content: plan.instructions, timestamp: Date.now() }]),
           ],
         };
 
         const compacted = codex
-          ? await compactOpenAICodexContext({ ...base, api: "openai-codex-responses" }, context, options)
-          : await compactOpenAIResponsesContext({ ...base, api: "openai-responses" }, context, options);
+          ? await compactOpenAICodexContext(
+              { ...base, api: "openai-codex-responses" },
+              context,
+              options,
+            )
+          : await compactOpenAIResponsesContext(
+              { ...base, api: "openai-responses" },
+              context,
+              options,
+            );
 
         return {
           ...plan,

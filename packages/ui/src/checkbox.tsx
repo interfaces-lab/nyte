@@ -5,6 +5,7 @@ import { useId, type ComponentProps, type ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
 import { checkbox, row, radius, target } from "./schema.stylex.ts";
+import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, role, type } from "./vars.stylex.ts";
@@ -163,10 +164,7 @@ export function CheckboxField({
             )
               return;
 
-            if (
-              event.shiftKey ||
-              currentTarget.ownerDocument.getSelection()?.isCollapsed === false
-            ) {
+            if (event.shiftKey || selectionWithin(currentTarget)) {
               event.preventDefault();
               event.stopPropagation();
             }

@@ -187,7 +187,16 @@ describe("execution", () => {
 
     for await (const event of inspect.events({ after: asSeq(0) })) kinds.push(event.kind);
 
-    expect(kinds).toEqual(["session", "configured", "input", "run", "input", "commit", "run", "session"]);
+    expect(kinds).toEqual([
+      "session",
+      "configured",
+      "input",
+      "run",
+      "input",
+      "commit",
+      "run",
+      "session",
+    ]);
 
     await kernel.store.refs.set([
       { name: headRef(session.id, asId("broken")), target: asId("missing-object") },

@@ -13,7 +13,7 @@ import type { Schema } from "./schema.ts";
  * - `owner`: workspaces, providers, settings, git writes.
  * - `maintenance`: `plugins.*` and `principals.*`.
  *
- * `inspect`, `prune` and `execution` are in-process only and have no
+ * `inspect` and `execution` are in-process only and have no
  * authority. A token principal has participant + owner.
  *
  * @category host
@@ -76,7 +76,7 @@ export type Declaration<Input, Output> = {
   readonly capability?: "files" | "git" | "browser";
   /** Commands only: same id + same digest replays the receipt; volatile actions (pty write, page click) never. */
   readonly recovery?: "replay" | "never";
-}
+};
 
 /** The authority and scope of every served operation, keyed by Connection path: the one declaration protocol's table and core's gate both read (§56). */
 export const OPERATION_AUTHORITY = {

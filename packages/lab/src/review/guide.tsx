@@ -19,6 +19,7 @@ import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
+import { isToolMessage, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { glyph, radius, row } from "@nyte-ai/ui/schema.stylex";
@@ -36,7 +37,7 @@ import {
   type ReviewFile,
 } from "./code";
 import { workspace } from "../shell/host-stub";
-import { useHeadTurns, type ConversationTurn } from "./api";
+import { useHeadTurns } from "./api";
 import { plural, sectionFiles } from "./files";
 import { linkProse, type LineTarget, type ProseSegment } from "./prose-links";
 import type { Brief, Guide, ReviewDetail } from "./wire";
@@ -47,7 +48,7 @@ const OPEN_FILES = 3;
 /** Past this many changed lines a file starts folded; its header still counts them. */
 const LONG_DIFF = 240;
 
-const NO_LIVE_TOOLS = new Map();
+const NO_TURNS: readonly ConversationTurn[] = [];
 
 export interface GuideFiles {
   readonly files: readonly ReviewFile[];
@@ -72,15 +73,11 @@ export interface GuideNavigation {
 export const sectionNumber = (index: number): string => String(index + 1).padStart(2, "0");
 
 function lastStep(turns: readonly ConversationTurn[]): string | undefined {
-  const part = turns
-    .flatMap((turn) => turn.parts)
-    .findLast((candidate) => candidate.kind === "tool");
+  const step = turns.flatMap((turn) => turn.messages).findLast(isToolMessage)?.state.class;
 
-  if (part?.kind !== "tool") return undefined;
+  if (step?.kind === "read") return `Reading ${step.path}`;
 
-  if (part.class.kind === "file_read") return `Reading ${part.class.path}`;
-
-  return part.class.kind === "custom" ? part.class.label : undefined;
+  return step?.kind === "custom" ? step.label : undefined;
 }
 
 /** Writing the guide: the page's one way to spend on it, and whether that request is in flight. */
@@ -188,12 +185,16 @@ export function StatusLine({
       </div>
       {shown === undefined &&
         turns.map((turn) => (
-          <div key={turn.id} {...props(styles.steps)}>
+          <div key={turn.info.id} {...props(styles.steps)}>
             <TurnView
-              turn={{ ...turn, parts: turn.parts.filter((part) => part.kind !== "user") }}
+              turn={{
+                ...turn,
+                messages: turn.messages.filter((message) => message.kind !== "user"),
+              }}
+              continuations={NO_TURNS}
               density={density}
-              liveTools={NO_LIVE_TOOLS}
               cwd={workspace.path}
+              changes={[]}
               onOpenChanges={() => {}}
               running
             />

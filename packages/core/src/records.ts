@@ -16,6 +16,7 @@ import {
   WaitOutcomeType,
   WaitTargetType,
   WorkspaceTargetType,
+  compile,
   cyclicWithJson,
   idSchema,
 } from "@nyte-ai/schema";
@@ -25,14 +26,13 @@ import type {
   CommitBody,
   CommitId,
   Configuration,
-  Delivery,
   EnvironmentIdentity,
   FileChange,
   HeadInfo,
   HeadName,
+  HostId,
   Json,
   MessageId,
-  MessageSource,
   PartId,
   PartStatus,
   Placement,
@@ -43,12 +43,10 @@ import type {
   RunEnd,
   RunId,
   RunView,
-  Schedule,
   SessionId,
   SnapshotId,
   ToolOutcome,
   Usage,
-  UserContent,
   WaitOutcome,
   WaitTarget,
   WorkspaceId,
@@ -56,8 +54,6 @@ import type {
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import { Compile } from "typebox/compile";
-import { isJsonObject } from "./session-state.ts";
 
 /** What `sessions/<id>` holds. */
 export type SessionRecord = {
@@ -101,31 +97,16 @@ export type InboxRecord = {
   readonly pendingInput: readonly MessageId[];
 };
 
-/** One admitted input. */
-export type MessageRecord = {
-  readonly id: MessageId;
-  readonly at: number;
-  readonly content: UserContent;
-  readonly source: MessageSource;
-  readonly delivery: Delivery;
-  readonly schedule: Schedule;
-  readonly covered: boolean;
-  readonly configuration: Configuration;
-  readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
-  readonly position: number;
-};
-
 /** What `sessions/<id>/changes` holds: the files the session's runs changed, latest per path in first-seen order. */
 export type ChangesRecord = { readonly files: readonly FileChange[] };
 
-/** What `sessions/<id>/runs/<run>` holds while the run is live (§38v: `usage` sums every charged request; §38w: `requests` counts its `request` events). */
+/** What `sessions/<id>/runs/<run>` holds while the run is live (`usage` sums every charged request; `requests` counts its `request` events). */
 export type RunRecord = {
   readonly view: RunView;
   readonly phase: "responding" | "executing";
   readonly stopping: boolean;
   readonly waiting: WaitTarget | null;
   readonly retrying: {
-    readonly attempt: number;
     readonly until: number;
     readonly reason: string;
   } | null;
@@ -136,7 +117,7 @@ export type RunRecord = {
   readonly requests: number;
   /** The durable steps parked on this run, each written by its park in the same set as its wait. */
   readonly waitedBy: readonly { readonly session: SessionId; readonly call: CallId }[];
-  /** This run's own calls parked on a wait: written by the park, cleared by completion (§54f). */
+  /** This run's own calls parked on a wait: written by the park, cleared by completion. */
   readonly parked: readonly CallId[];
 };
 
@@ -152,7 +133,7 @@ export type PartRecord = {
   readonly status: PartStatus;
 };
 
-/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. A record whose `id` is another receipt's names it: a revise's names its target (§62). A move's pending record, written in the set that moves its head, names the head and position, so its settlement survives a crash (§40e). */
+/** What `sessions/<id>/receipts/<receipt>` holds; `outcome` is null until settled. A record whose `id` is another receipt's names it: a revise's names its target. A move's pending record, written in the set that moves its head, names the head and position, so its settlement survives a crash. */
 export type ReceiptRecord = {
   readonly id: ReceiptId;
   readonly kind: "send" | "move" | "batch";
@@ -190,7 +171,7 @@ export type CallRecord = {
   readonly acquisitions: Readonly<Record<string, Json>>;
   readonly result: Json | null;
   readonly replay: "safe" | "never";
-  /** The claim on the step's latest re-run: the count of `waits` it started after, the kernel instance holding it and when it lapses, as a lease does; a lapsed claim's step is re-run by another runner (§33j, §66). */
+  /** The claim on the step's latest re-run: the count of `waits` it started after, the kernel instance holding it and when it lapses, as a lease does; a lapsed claim's step is re-run by another runner. */
   readonly reran: {
     readonly waits: number;
     readonly holder: string;
@@ -226,12 +207,24 @@ export type PrincipalRecord = {
   }[];
 };
 
+/** What `sessions/<id>/leases/<head>` holds: the host running the head, the kernel instance within it that holds the lease (`kernel.instance`), and when the lease expires. */
+export type Lease = {
+  readonly holder: HostId;
+  readonly instance: string;
+  readonly expiresAt: number;
+};
+
+/** What `host/identity` holds: the host's id and when it was first opened. */
+export type HostIdentity = {
+  readonly id: HostId;
+  readonly createdAt: number;
+};
+
 export type RecordKind =
   | "session"
   | "commit"
   | "inbox"
   | "changes"
-  | "message"
   | "run"
   | "part"
   | "receipt"
@@ -245,18 +238,17 @@ export type RecordKind =
 
 type Decode<T> = (object: Json | null) => T | null;
 
-/** Returns a record in the stored-object envelope; `parent` is a commit's parent and null for every other record. */
-export function envelope(
-  kind: RecordKind,
-  body: Json,
-  at: number,
-  parent: CommitId | null = null,
-): Json {
-  return { kind, parent, at, body };
+/** Returns a record in the stored-object envelope. */
+export function envelope(kind: RecordKind, body: Json, at: number): Json {
+  return { kind, at, body };
+}
+
+/** Returns whether a JSON value is an object, not an array or a scalar. */
+export function isJsonObject(value: Json | undefined): value is { readonly [key: string]: Json } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const RetryingType = Type.Object({
-  attempt: Type.Number(),
   until: Type.Number(),
   reason: Type.String(),
 });
@@ -435,6 +427,20 @@ export const decodePrincipalRecord: Decode<PrincipalRecord> = decoder(
   }),
 );
 
+export const decodeLease: Decode<Lease> = decoder(
+  "lease",
+  Type.Object({
+    holder: idSchema<"host">(),
+    instance: Type.String(),
+    expiresAt: Type.Number(),
+  }),
+);
+
+export const decodeHostIdentity: Decode<HostIdentity> = decoder(
+  "identity",
+  Type.Object({ id: idSchema<"host">(), createdAt: Type.Number() }),
+);
+
 /** Returns the value a stored `kv` object holds (a setting, a plugin's stored value, a sealed secret), or undefined when it holds another record. */
 export function decodeKvValue(object: Json | null): Json | undefined {
   return isJsonObject(object) && object.kind === "kv" ? object.body : undefined;
@@ -442,7 +448,7 @@ export function decodeKvValue(object: Json | null): Json | undefined {
 
 /** Returns the decoder of one record kind: the body of an envelope of that kind that its schema accepts, compiled once. */
 function decoder<S extends TSchema>(kind: RecordKind, schema: S) {
-  const validator = Compile(cyclicWithJson({ Root: schema, WaitOutcome: WaitOutcomeType }, "Root"));
+  const validator = compile(cyclicWithJson({ Root: schema, WaitOutcome: WaitOutcomeType }, "Root"));
 
   return (object: Json | null) =>
     isJsonObject(object) && object.kind === kind && validator.Check(object.body)

@@ -58,10 +58,14 @@ const provider: SettingDefinition<SearchProvider> = {
   scope: "host",
 };
 
-const textBlocks = Type.Object({ content: Type.Array(Type.Object({ type: Type.String(), text: Type.Optional(Type.String()) })) });
+const textBlocks = Type.Object({
+  content: Type.Array(Type.Object({ type: Type.String(), text: Type.Optional(Type.String()) })),
+});
 
 const tavilyResponse = Type.Object({
-  results: Type.Array(Type.Object({ url: Type.String(), title: Type.String(), content: Type.String() })),
+  results: Type.Array(
+    Type.Object({ url: Type.String(), title: Type.String(), content: Type.String() }),
+  ),
 });
 
 const firecrawlResponse = Type.Object({
@@ -96,13 +100,17 @@ const parallelResponse = Type.Object({
  * @category plugins
  * @since 0.1.0
  */
-export const adapters: { readonly [P in SearchProvider]: (input: SearchInput) => Promise<readonly SearchResult[]> } = {
+export const adapters: {
+  readonly [P in SearchProvider]: (input: SearchInput) => Promise<readonly SearchResult[]>;
+} = {
   async tavily({ query, key, fetch, signal }) {
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(key === undefined ? { "X-Tavily-Access-Mode": "keyless" } : { Authorization: `Bearer ${key}` }),
+        ...(key === undefined
+          ? { "X-Tavily-Access-Mode": "keyless" }
+          : { Authorization: `Bearer ${key}` }),
       },
       body: JSON.stringify({ query, search_depth: "basic", max_results: 8 }),
       signal,
@@ -118,26 +126,63 @@ export const adapters: { readonly [P in SearchProvider]: (input: SearchInput) =>
     const url = new URL("https://mcp.exa.ai/mcp");
 
     if (key !== undefined) url.searchParams.set("exaApiKey", key);
-    const result = await callTool(fetch, url, undefined, "web_search_exa", { query, numResults: 8 }, signal);
-    const text = Value.Check(textBlocks, result) ? (result.content.find((block) => block.text !== undefined)?.text ?? "") : "";
+    const result = await callTool(
+      fetch,
+      url,
+      undefined,
+      "web_search_exa",
+      { query, numResults: 8 },
+      signal,
+    );
+    const text = Value.Check(textBlocks, result)
+      ? (result.content.find((block) => block.text !== undefined)?.text ?? "")
+      : "";
 
     return text.split(/\n\n---\n\n/).flatMap((block) => {
       const url = field(block, "URL");
 
-      return url === null ? [] : [{ url, title: field(block, "Title"), content: block.match(/^(?:Highlights|Text):\s*\n?([\s\S]*)$/m)?.[1]?.trim() ?? null }];
+      return url === null
+        ? []
+        : [
+            {
+              url,
+              title: field(block, "Title"),
+              content: block.match(/^(?:Highlights|Text):\s*\n?([\s\S]*)$/m)?.[1]?.trim() ?? null,
+            },
+          ];
     });
   },
   async firecrawl({ query, key, fetch, signal }) {
-    const result = await callTool(fetch, new URL("https://mcp.firecrawl.dev/v2/mcp"), key, "firecrawl_search", { query, limit: 8 }, signal);
-    const text = Value.Check(textBlocks, result) ? (result.content.find((block) => block.text !== undefined)?.text ?? "") : "";
+    const result = await callTool(
+      fetch,
+      new URL("https://mcp.firecrawl.dev/v2/mcp"),
+      key,
+      "firecrawl_search",
+      { query, limit: 8 },
+      signal,
+    );
+    const text = Value.Check(textBlocks, result)
+      ? (result.content.find((block) => block.text !== undefined)?.text ?? "")
+      : "";
     const body = parse(text);
 
     return Value.Check(firecrawlResponse, body)
-      ? body.data.web.map((hit) => ({ url: hit.url, title: hit.title ?? null, content: hit.description ?? null }))
+      ? body.data.web.map((hit) => ({
+          url: hit.url,
+          title: hit.title ?? null,
+          content: hit.description ?? null,
+        }))
       : [];
   },
   async parallel({ query, key, fetch, signal }) {
-    const result = await callTool(fetch, new URL("https://search.parallel.ai/mcp"), key, "web_search", { objective: query, search_queries: [query] }, signal);
+    const result = await callTool(
+      fetch,
+      new URL("https://search.parallel.ai/mcp"),
+      key,
+      "web_search",
+      { objective: query, search_queries: [query] },
+      signal,
+    );
 
     return Value.Check(parallelResponse, result)
       ? result.structuredContent.results.map((hit) => ({
@@ -165,17 +210,26 @@ async function callTool(
       "Content-Type": "application/json",
       ...(key === undefined ? {} : { Authorization: `Bearer ${key}` }),
     },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: args } }),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: tool, arguments: args },
+    }),
     signal,
   });
 
   const body = await answered(response);
-  const frames = [body, ...body.split("\n").flatMap((line) => (line.startsWith("data: ") ? [line.slice(6)] : []))];
+  const frames = [
+    body,
+    ...body.split("\n").flatMap((line) => (line.startsWith("data: ") ? [line.slice(6)] : [])),
+  ];
 
   for (const frame of frames) {
     const message = parse(frame);
 
-    if (typeof message === "object" && message !== null && "result" in message) return message.result;
+    if (typeof message === "object" && message !== null && "result" in message)
+      return message.result;
   }
 
   return undefined;
@@ -185,7 +239,8 @@ async function callTool(
 async function answered(response: Response): Promise<string> {
   const body = await response.text();
 
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.trim().slice(0, 200) || response.statusText}`);
+  if (!response.ok)
+    throw new Error(`HTTP ${response.status}: ${body.trim().slice(0, 200) || response.statusText}`);
 
   return body;
 }
@@ -206,13 +261,16 @@ function field(block: string, name: string): string | null {
   return value === undefined || value === "" || value === "N/A" ? null : value;
 }
 
-const parameters = standard(Type.Object({ query: Type.String({ minLength: 1, description: "What to search the web for." }) }));
+const parameters = standard(
+  Type.Object({ query: Type.String({ minLength: 1, description: "What to search the web for." }) }),
+);
 
 /** Returns the `web_search` tool over the plugin's provider setting and its secret keys. */
 function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
   return {
     name: "web_search",
-    description: "Search the web for current information beyond your knowledge cutoff. Returns titles, URLs and excerpts.",
+    description:
+      "Search the web for current information beyond your knowledge cutoff. Returns titles, URLs and excerpts.",
     parameters,
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
     replay: "safe",
@@ -222,7 +280,11 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
 
       const results = await invocation.memo("results", async () => {
         const key = await api.storage.secrets.get(name);
-        dev("web-search", "search", { call: invocation.call, provider: name, keyed: key !== undefined });
+        dev("web-search", "search", {
+          call: invocation.call,
+          provider: name,
+          keyed: key !== undefined,
+        });
         const hits = await adapters[name]({
           query: args.query,
           key,
@@ -236,7 +298,12 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
       const text =
         results.length === 0
           ? "No results. Try a different query."
-          : results.map((hit) => `## ${hit.title ?? hit.url}\n${hit.url}${hit.content === null ? "" : `\n\n${hit.content}`}`).join("\n\n");
+          : results
+              .map(
+                (hit) =>
+                  `## ${hit.title ?? hit.url}\n${hit.url}${hit.content === null ? "" : `\n\n${hit.content}`}`,
+              )
+              .join("\n\n");
 
       return { content: [{ kind: "text", text }] };
     },

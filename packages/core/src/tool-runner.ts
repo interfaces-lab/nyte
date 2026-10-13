@@ -1,4 +1,4 @@
-import { ToolOutcomeType, asId, isJson, withJson } from "@nyte-ai/schema";
+import { ToolOutcomeType, asId, compile, isJson, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -21,7 +21,6 @@ import type {
   ToolPartState,
   ToolResult,
 } from "@nyte-ai/schema";
-import { Compile } from "typebox/compile";
 import { settling } from "./transcript.ts";
 import { isParked, runStep } from "./durable.ts";
 import type { StepEnd } from "./durable.ts";
@@ -33,7 +32,7 @@ import type { PluginRuntime } from "./plugin-runtime.ts";
 import { definePart, tool } from "./parts.ts";
 import type { ActionContext, ActionOutput } from "./parts.ts";
 import type { ConnectionContext } from "./principals.ts";
-import { decodeChangesRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
+import { decodeChangesRecord, decodePartRecord, decodeRunRecord, isJsonObject } from "./records.ts";
 import type { CallRecord, PartRecord } from "./records.ts";
 import { changesRef, partRef, runRef } from "./refs.ts";
 import { FENCED, abortHere, unfenced } from "./runs.ts";
@@ -43,7 +42,6 @@ import {
   changeCall,
   commit,
   expectOf,
-  isJsonObject,
   load,
   put,
   readCall,
@@ -113,7 +111,7 @@ const INTERRUPTED: ToolOutcome = { kind: "interrupted" };
 
 const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
-const outcomes = Compile(withJson(ToolOutcomeType));
+const outcomes = compile(withJson(ToolOutcomeType));
 
 /** Returns the tool intent a call record's `intent` holds, or null when it holds another shape. */
 export function decodeToolIntent(value: Json): ToolIntent | null {
@@ -126,10 +124,10 @@ export function decodeToolIntent(value: Json): ToolIntent | null {
 }
 
 /**
- * Runs one tool call to its outcome, or parks it: `before_tool` through `kernel.beforeTool` (§35a),
+ * Runs one tool call to its outcome, or parks it: `before_tool` through `kernel.beforeTool`,
  * the arguments validated, the tool part opened with `call intent`, then `execute` as a durable step
  * of kind `tool` that settles the part, the head commit and the session's `changes` in one set. The
- * tool resolves on `runtime`, the one the call's request holds (§63). The call runs
+ * tool resolves on `runtime`, the one the call's request holds. The call runs
  * under its own abort controller, so the part's `stop` aborts it alone.
  */
 export async function executeCall(
@@ -392,7 +390,7 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
-/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced (§61); none when the part exists. A run stopping or ended gets the part settled `stopped` and failed with the step's result `stopped`, its tool never run, and the run aborted here (§66). */
+/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced; none when the part exists. A run stopping or ended gets the part settled `stopped` and failed with the step's result `stopped`, its tool never run, and the run aborted here. */
 async function partOpening(
   kernel: Kernel,
   where: Where,

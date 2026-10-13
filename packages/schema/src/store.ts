@@ -7,7 +7,11 @@ import type { ObjectId, Revision, Seq } from "./ids.ts";
  * @category store
  * @since 0.1.0
  */
-export type Ref = { readonly name: string; readonly target: ObjectId | null; readonly revision: Revision }
+export type Ref = {
+  readonly name: string;
+  readonly target: ObjectId | null;
+  readonly revision: Revision;
+};
 
 /**
  * Describes one entry of a ref publish.
@@ -23,7 +27,7 @@ export type RefUpdate = {
   readonly expect?: Revision | "absent";
   /** What this update means, for the log and the fold. */
   readonly event?: DurableEvent;
-}
+};
 
 /**
  * Returns the result of a ref publish.

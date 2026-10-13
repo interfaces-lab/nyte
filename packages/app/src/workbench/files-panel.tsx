@@ -4,8 +4,8 @@ import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { worktreeFiles } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/client";
+import { worktreeFiles } from "../view-helpers.ts";
+import type { MentionFile } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
@@ -20,6 +20,7 @@ import type { HostBridge } from "../bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
+import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
@@ -270,13 +271,13 @@ export function FilesPanel({
     )
       return;
 
-    if (window.getSelection()?.toString()) return;
-
     const row = event
       .composedPath()
       .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
 
     if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
+
+    if (selectionWithin(row)) return;
     const file = files.data?.find((candidate) => candidate.displayPath === row.dataset.itemPath);
 
     if (file !== undefined) fileActions.open(viewKey, { ...file, preview });

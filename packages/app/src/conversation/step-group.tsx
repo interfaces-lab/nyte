@@ -30,7 +30,7 @@ import {
   followOnScroll,
   overflows,
 } from "./step-group-follow.ts";
-import { useStepGroupOpen } from "./transcript.tsx";
+import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
 import {
   durableStepGroupPresentation,
@@ -150,7 +150,7 @@ export function StepGroupView({
     [messages, thinkingOnly],
   );
 
-  const [open, setOpen] = useStepGroupOpen(first?.id, undefined);
+  const [open, setOpen] = useStepGroupOpen(first?.id);
 
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);
@@ -336,7 +336,9 @@ export function StepGroupView({
                   flushSync(() => setShowEarlier(true));
                   const first = callsRef.current?.firstElementChild;
                   const step = first?.matches(FOCUSABLE) ? first : first?.querySelector(FOCUSABLE);
-                  (step instanceof HTMLElement ? step : triggerRef.current)?.focus();
+                  (step instanceof HTMLElement ? step : triggerRef.current)?.focus({
+                    preventScroll: true,
+                  });
                 }}
                 xstyle={stepGroupStyles.earlier}
               >

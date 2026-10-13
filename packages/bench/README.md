@@ -16,9 +16,17 @@ and never reaches into core. It depends on `@nyte-ai/host`; add
 ```sh
 pnpm --dir packages/bench bench                       # all
 pnpm --dir packages/bench bench -- stop-fence store-cas
+pnpm --dir packages/bench bench:no-eval                # with code generation disallowed
 ```
 
 Results land in `results/<timestamp>.json`. Exit code 1 on any failure.
+
+`bench:no-eval` runs the same scenarios under
+`--disallow-code-generation-from-strings`, the condition the desktop renderer,
+the web app and the Cloudflare worker decode frames in (no `'unsafe-eval'` in
+their CSP). TypeBox cannot JIT a validator there and falls back to its dynamic
+checker, so a schema that resolves badly costs an order of magnitude per frame
+that the JIT run hides. `openMs` budgets are set for this mode.
 
 ## Scenarios
 
@@ -34,6 +42,7 @@ Results land in `results/<timestamp>.json`. Exit code 1 on any failure.
 | `reconnect-resume` | §1 `connect` | drop the socket mid-stream: no gap, no repeat; a send made offline lands exactly once | resume ms |
 | `git-patches-batching` | §3b `git.patches` | 500 paths cost ≤ ⌈500 / batch⌉ git reads; after a write the old entry stands in until the fresh one lands | host reads; full-expand ms |
 | `sessions-directory` | §1 `sessions.watch({ limit })` | a rename on a 5,000-session host yields ≤ 50 rows containing the renamed one | yield bytes; rename-to-yield ms |
+| `watch-reopen` | §47f shared folds | a 5,000-message session's first view over the wire is the default tail; closing its watch and reopening yields the same transcript for under 2% of the bytes | open ms and bytes; reopen ms and bytes |
 
 ## What the host package must supply
 
@@ -41,7 +50,7 @@ Results land in `results/<timestamp>.json`. Exit code 1 on any failure.
 `Store`, the local environment provider over a temp directory, a `FakeModel`
 that streams scripted text and tool calls on demand and can pause mid-stream,
 `crash()`/`restart()` over the same store, a listener plus `connect()` whose
-link can be dropped, counters (`gitDiffReads`, `bench_memo_runs`), and branded
+link can be dropped and reports the bytes received from the host, counters (`gitDiffReads`, `bench_memo_runs`), and branded
 id constructors. Two bench tools are registered: `bench_wait_job` (replay
 `safe`; memos a value, starts a job, waits on it) and `bench_never` (replay
 `never`; sleeps).

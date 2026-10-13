@@ -13,13 +13,23 @@ it("lists the reviewer agent and sends /review under it, its prompt replacing th
   ]);
   expect(await session.command("review", { focus: "the parser" })).toMatchObject({ kind: "ran" });
 
-  await until(async () => ((await session.view()).execution.kind === "idle" && fake.requests.length === 1 ? true : undefined));
+  await until(async () =>
+    (await session.view()).execution.kind === "idle" && fake.requests.length === 1
+      ? true
+      : undefined,
+  );
 
   const [system, user] = fake.requests[0]?.context.messages ?? [];
 
   expect(system).toMatchObject({ role: "system", content: REVIEW_PROMPT });
   assert(system?.role === "system");
   expect(system.toolsAdded?.map((declared) => declared.name)).toEqual(["read", "list"]);
-  expect(user).toMatchObject({ role: "user", content: expect.stringContaining("focusing on the parser") });
-  expect((await session.view()).messages[0]).toMatchObject({ kind: "user", source: { kind: "action", label: "Review changes" } });
+  expect(user).toMatchObject({
+    role: "user",
+    content: expect.stringContaining("focusing on the parser"),
+  });
+  expect((await session.view()).messages[0]).toMatchObject({
+    kind: "user",
+    source: { kind: "action", label: "Review changes" },
+  });
 });

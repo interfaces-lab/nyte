@@ -18,13 +18,13 @@ import { settleReceipt } from "./receipts.ts";
 import type { ReceiptRecord } from "./records.ts";
 import { inboxRef, receiptRef } from "./refs.ts";
 import { stopRun } from "./runs.ts";
+import { isJsonObject } from "./records.ts";
 import {
   STALE,
   attempt,
   commit,
   expectOf,
   inboxWithout,
-  isJsonObject,
   put,
   readInbox,
   readReceipt,
@@ -78,7 +78,7 @@ export async function reserve(
   return outcome.kind === "set";
 }
 
-/** Returns whether the session holds a receipt id for the same command; throws `invalid` when another command took it (§40e). */
+/** Returns whether the session holds a receipt id for the same command; throws `invalid` when another command took it. */
 export async function known(
   kernel: Kernel,
   session: SessionId,
@@ -96,7 +96,7 @@ export async function known(
   return true;
 }
 
-/** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. A record naming another receipt (a revise's names its target, §62) is followed to it. */
+/** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. A record naming another receipt (a revise's names its target) is followed to it. */
 export function typedReceipt<O extends Json>(
   kernel: Kernel,
   session: SessionId,

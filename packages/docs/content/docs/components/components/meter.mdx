@@ -1,0 +1,111 @@
+---
+title: Meter
+description: "A measured value within a known range"
+---
+
+```ts title="Import"
+import { Meter } from "@nyte-ai/ui/meter";
+```
+
+`Meter` displays a measurement such as storage use or a quota. Its label, value, and 4px track
+have default styling, and the indicator uses the primary blue intent.
+
+## Usage
+
+- Pass the current `value` to `Meter.Root`. The range defaults to `0` through `100`.
+- Nest `Meter.Label` and `Meter.Value` inside the root, then put `Meter.Indicator` inside
+  `Meter.Track`. The indicator calculates its width from the value and range.
+- Without `format`, `Meter.Value` displays the percentage of the range. Pass
+  `Intl.NumberFormatOptions` to `format` on the root to display the measurement instead.
+- Set `locale` on the root when the number needs a specific locale. Otherwise it uses the
+  runtime locale.
+
+## Anatomy
+
+```tsx
+<Meter.Root value={64}>
+  <Meter.Label />
+  <Meter.Value />
+  <Meter.Track>
+    <Meter.Indicator />
+  </Meter.Track>
+</Meter.Root>
+```
+
+## Examples
+
+### A percentage
+
+```tsx
+<Meter.Root value={64}>
+  <Meter.Label>Storage used</Meter.Label>
+  <Meter.Value />
+  <Meter.Track>
+    <Meter.Indicator />
+  </Meter.Track>
+</Meter.Root>
+```
+
+### A measurement with units
+
+```tsx
+<Meter.Root
+  value={180}
+  min={0}
+  max={500}
+  locale="en-US"
+  format={{ maximumFractionDigits: 0 }}
+  getAriaValueText={(formattedValue) => `${formattedValue} of 500 GB used`}
+>
+  <Meter.Label>Storage used</Meter.Label>
+  <Meter.Value>{(formattedValue) => `${formattedValue} GB`}</Meter.Value>
+  <Meter.Track>
+    <Meter.Indicator />
+  </Meter.Track>
+</Meter.Root>
+```
+
+## Props
+
+All five parts add `xstyle` and preserve Base UI's `className` and `style` callbacks.
+In the table, `State` is the state of the corresponding Base UI part.
+
+| Prop        | Type                                                                          | Default | Description                     |
+| ----------- | ----------------------------------------------------------------------------- | ------- | ------------------------------- |
+| `xstyle`    | `XStyle`                                                                      |         | Adds StyleX styles to the part. |
+| `className` | `string \| ((state: State) => string \| undefined)`                           |         | Adds a class to the part.       |
+| `style`     | `React.CSSProperties \| ((state: State) => React.CSSProperties \| undefined)` |         | Adds inline styles to the part. |
+
+See [Theming](/docs/components/foundations/theming).
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../../base-ui-reference/meter/Root.md</include>
+
+### Label
+
+<include>../../../base-ui-reference/meter/Label.md</include>
+
+### Value
+
+<include>../../../base-ui-reference/meter/Value.md</include>
+
+### Track
+
+<include>../../../base-ui-reference/meter/Track.md</include>
+
+### Indicator
+
+<include>../../../base-ui-reference/meter/Indicator.md</include>
+
+## Accessibility
+
+- `Meter.Root` has `role="meter"` with `aria-valuemin`, `aria-valuemax`, and `aria-valuenow`.
+  `Meter.Label` names it through `aria-labelledby`. Without a visible label, set `aria-label`
+  on the root.
+- The root supplies formatted `aria-valuetext`. Set `getAriaValueText` or `aria-valuetext` on
+  the root when the announcement needs units or context. `Meter.Value` is `aria-hidden`.
+- The meter is read-only. It adds no tab stop or keyboard controls and does not move focus.
+- Indicator transitions stop under reduced motion.

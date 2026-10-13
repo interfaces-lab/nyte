@@ -1,11 +1,9 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { Rect, VirtualItem } from "@tanstack/react-virtual";
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
-import type { ToolCallDensity } from "../preferences/index.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;
@@ -15,9 +13,6 @@ const IMAGE_CONTENT = Type.Object({
   data: Type.String(),
   mimeType: Type.String(),
 });
-
-/** Sessions whose measured row heights survive a visit; matches the snapshot cache's entry budget. */
-const MEASURED_SESSIONS = 12;
 
 const strict = { additionalProperties: false };
 
@@ -29,33 +24,20 @@ export interface ComposerViewState {
   readonly focused: boolean;
 }
 
-interface ScrollViewState {
-  readonly top: number;
-  readonly bottomPinned: boolean;
-}
+/** Where a thread reopens: at its end, or with a row at an offset below the scrollport's top. */
+export type ScrollViewState =
+  | { readonly kind: "end" }
+  | { readonly kind: "anchor"; readonly key: string; readonly offset: number };
 
 interface SplitViewState {
   readonly direction: SplitDirection;
   readonly ratio: number;
 }
 
-/**
- * What the transcript virtualizer knew when the session was last shown:
- * measured row heights by row key and the scrollport's size. A return visit
- * starts from these instead of estimates, so the first render already holds
- * the rows the reader left and nothing shifts once they measure.
- */
-interface TranscriptViewState {
-  readonly measurements: readonly VirtualItem[];
-  readonly viewport: Rect | undefined;
-  /** The density these heights were measured under; a switch discards them. */
-  readonly density: ToolCallDensity | undefined;
-}
-
 interface SessionViewState {
   readonly composer: ComposerViewState;
-  readonly scroll: ScrollViewState;
-  readonly transcript: TranscriptViewState;
+  /** Each pane keeps its own place in the thread. */
+  readonly scroll: Partial<Record<PaneId, ScrollViewState>>;
   readonly stepGroups: ReadonlyMap<string, boolean>;
   readonly focusedPaneId: PaneId;
   readonly split: SplitViewState | undefined;
@@ -83,8 +65,7 @@ export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
 function defaultSessionViewState(paneId: PaneId): SessionViewState {
   return {
     composer: DEFAULT_COMPOSER_VIEW_STATE,
-    scroll: { top: 0, bottomPinned: true },
-    transcript: { measurements: [], viewport: undefined, density: undefined },
+    scroll: {},
     stepGroups: new Map(),
     focusedPaneId: paneId,
     split: undefined,
@@ -304,15 +285,7 @@ export class SessionViewStateStore {
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
     const previous = this.#sessions.get(sessionId);
-
-    const measured =
-      state.transcript.measurements.length > 0 &&
-      previous?.transcript.measurements !== state.transcript.measurements;
-
-    if (measured) this.#sessions.delete(sessionId);
     this.#sessions.set(sessionId, state);
-
-    if (measured) this.#trimMeasurements();
 
     if (composerChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
       this.#persist();
@@ -483,26 +456,6 @@ export class SessionViewStateStore {
       id,
       updatedAt: Date.now(),
     };
-  }
-
-  /**
-   * Row heights are the bulk of a session's view state and only speed up the
-   * next visit. Sessions past the recent-measurement budget keep
-   * their draft, scroll, and viewport and start the next visit from estimates.
-   */
-  #trimMeasurements(): void {
-    let measured = 0;
-
-    for (const [id, state] of [...this.#sessions].toReversed()) {
-      if (state.transcript.measurements.length === 0) continue;
-      measured += 1;
-
-      if (measured <= MEASURED_SESSIONS) continue;
-      this.#sessions.set(id, {
-        ...state,
-        transcript: { ...state.transcript, measurements: [] },
-      });
-    }
   }
 
   #restore(): void {

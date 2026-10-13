@@ -9,7 +9,14 @@ import { Input } from "@nyte-ai/ui/input";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 
 const styles = create({
-  popup: { gap: 0, width: "min(610px, calc(100vw - 48px))", padding: 0 },
+  popup: {
+    gap: 0,
+    top: "min(20dvh, 160px)",
+    width: "min(610px, calc(100vw - 48px))",
+    maxHeight: "calc(100dvh - min(20dvh, 160px) - 24px)",
+    padding: 0,
+    transform: "translate(-50%, 0)",
+  },
 });
 
 interface Result {
@@ -32,6 +39,19 @@ function parseResults(value: unknown): Result[] {
   return results;
 }
 
+/* The index wraps each match in <mark>; split on the tags so they render as text. */
+function Highlighted({ content }: { content: string }) {
+  return content.split(/<\/?mark>/).map((part, index) =>
+    index % 2 === 1 ? (
+      <mark key={index} className="bg-transparent font-medium text-foreground">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
+}
+
 /*
  * ⌘K over the shared /api/search index, drawn with the shared Dialog and
  * Input. Results outside the current section are kept: an agent searching
@@ -40,10 +60,12 @@ function parseResults(value: unknown): Result[] {
 export function SiteSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Result[]>([]);
+  const [response, setResponse] = useState<{ query: string; results: Result[] } | null>(null);
   const [active, setActive] = useState(0);
   const router = useRouter();
   const listId = useId();
+  const trimmed = query.trim();
+  const results = trimmed === "" ? [] : (response?.results ?? []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -57,7 +79,6 @@ export function SiteSearch() {
   }, []);
 
   useEffect(() => {
-    const trimmed = query.trim();
     if (!open || trimmed === "") return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
@@ -67,14 +88,14 @@ export function SiteSearch() {
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null);
       if (controller.signal.aborted) return;
-      setResults(parseResults(body));
+      setResponse({ query: trimmed, results: parseResults(body) });
       setActive(0);
     }, 89);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, query]);
+  }, [open, trimmed]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {
@@ -108,20 +129,20 @@ export function SiteSearch() {
           <Input
             autoFocus
             variant="bare"
-            className="min-h-12 border-b border-b-border-subtle px-4 text-[15px]"
+            className="min-h-12 px-4 text-[15px]"
             placeholder="Search docs"
             aria-label="Search"
             aria-controls={listId}
             value={query}
             onKeyDown={onKeyDown}
-            onValueChange={(value: string) => {
-              setQuery(value);
-              setResults([]);
-              setActive(0);
-            }}
+            onValueChange={setQuery}
           />
           {results.length > 0 ? (
-            <ul id={listId} className="max-h-90 overflow-y-auto p-2" role="listbox">
+            <ul
+              id={listId}
+              className="max-h-90 overflow-y-auto border-t border-border-subtle p-2"
+              role="listbox"
+            >
               {results.map((result, index) => (
                 <li key={result.id} role="option" aria-selected={index === active}>
                   <Link
@@ -132,7 +153,9 @@ export function SiteSearch() {
                     onClick={() => setOpen(false)}
                     onMouseEnter={() => setActive(index)}
                   >
-                    {result.content}
+                    <span>
+                      <Highlighted content={result.content} />
+                    </span>
                     {result.type === "page" && (
                       <small className="text-xs/5 text-muted-foreground">{result.url}</small>
                     )}
@@ -140,11 +163,11 @@ export function SiteSearch() {
                 </li>
               ))}
             </ul>
-          ) : (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {query.trim() === "" ? null : "No results. Try a function or ref name."}
+          ) : response?.query === trimmed && trimmed !== "" ? (
+            <div className="border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground">
+              No results. Try a function or ref name.
             </div>
-          )}
+          ) : null}
         </Dialog.Popup>
       </Dialog.Root>
     </>

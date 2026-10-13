@@ -8,5 +8,6 @@
   "watch-coalescing": { "yieldsPerSecondMax": 70 },
   "reconnect-resume": { "resumeMs": 300 },
   "git-patches-batching": { "hostReadsMax": 63 },
-  "sessions-directory": { "watchPayloadBytesMax": 65536 }
+  "sessions-directory": { "watchPayloadBytesMax": 65536 },
+  "watch-reopen": { "openMs": 2500, "reopenMs": 300 }
 }

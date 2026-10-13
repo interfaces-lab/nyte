@@ -49,11 +49,14 @@ import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
+import { dev } from "@nyte-ai/core";
 import { defaultSecrets } from "@nyte-ai/host";
+import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
+import { models } from "./models.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import { registerUpdates } from "./updates.ts";
-import { ensureShellEnvironment } from "./shell-environment.ts";
+import { ensureShellEnvironment } from "./shell-env.ts";
 
 import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-inputs.ts";
 
@@ -82,6 +85,8 @@ let rendererUrl: string;
 let canvasShell: string;
 
 registerBunOAuthFlows();
+
+if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "desktop");
 
 function macOSTrafficLightPosition(zoomFactor: number) {
   const diameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
@@ -271,6 +276,8 @@ let awakeBlocker: number | undefined;
 
 const hostDependencies = {
   home,
+  models,
+  usageScan: new UsageScanWorker(home, new URL("./usage-worker.js", import.meta.url)),
   settingsChanged: (next) => {
     settings = next;
     browserSurfaces.settingsChanged();

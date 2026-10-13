@@ -23,11 +23,11 @@ import type { PartDefinition } from "./parts.ts";
 import type { HookName, Plugin, PluginApi, Registries, Registry, RegistryDraft } from "./plugin.ts";
 import { CORE_CONTEXT, LOCAL } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
-import { decodeKvValue } from "./records.ts";
+import { decodeKvValue, isJsonObject } from "./records.ts";
 import { kvRef } from "./refs.ts";
 import { bumpGeneration, createRegistrySet, jsonSchemaOf, publishCatalog } from "./registry.ts";
 import type { CoreRegistry, RegistrySet } from "./registry.ts";
-import { commit, isCovered, isJsonObject, put, requireSession } from "./session-state.ts";
+import { commit, isCovered, put, requireSession } from "./session-state.ts";
 import { activationSession, sessionHandle } from "./session.ts";
 import type { Session } from "./session.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
@@ -37,7 +37,7 @@ import { activateSession } from "./workspaces.ts";
 export interface PluginRuntime {
   readonly registries: RegistrySet;
   readonly hooks: HookDispatch;
-  /** The session's activation, settled once (§44a): admission, `session.command` and `advance` await it. A rejected activation rejects `unavailable` unless it failed with an `SdkError`, and drops the runtime and the session's attach while it is still the one held, so the next `pluginsFor` activates and attaches again. */
+  /** The session's activation, settled once: admission, `session.command` and `advance` await it. A rejected activation rejects `unavailable` unless it failed with an `SdkError`, and drops the runtime and the session's attach while it is still the one held, so the next `pluginsFor` activates and attaches again. */
   readonly ready: Promise<void>;
   /** Loads plugins after those already loaded, one outcome per plugin in order, after `checkPlugins`' preflight. A plugin rejected in preflight or by its `activate` falls back to the version the replaced runtime ran (`kept-previous`). Rejects when the session's resources cannot be read. */
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
@@ -49,17 +49,17 @@ export interface PluginRuntime {
   api(owner: string): PluginApi<"core"> | undefined;
   /** Returns the active plugins in load order. */
   plugins(): readonly Plugin<"core">[];
-  /** Returns the activation of the active plugin with this id: what the next runtime keeps when it rejects that plugin's new version (§36b). */
+  /** Returns the activation of the active plugin with this id: what the next runtime keeps when it rejects that plugin's new version. */
   instance(id: string): PluginInstance | undefined;
-  /** Returns the list `Host.plugins.replace(plugins, { session })` gave this session (§37l); null while it follows `kernel.hostPlugins`. */
+  /** Returns the list `Host.plugins.replace(plugins, { session })` gave this session; null while it follows `kernel.hostPlugins`. */
   assigned(): readonly Plugin<"core">[] | null;
-  /** Keeps this runtime open until the disposer runs: a request holds the runtime it was prepared on until its calls and `after_request` finish (§44c). */
+  /** Keeps this runtime open until the disposer runs: a request holds the runtime it was prepared on until its calls and `after_request` finish. */
   hold(): Disposer;
   /** Once nothing holds it, lets every plugin go in reverse load order and runs a last reload pass; a plugin no other runtime runs deactivates. `load` and `close` run one at a time. */
   close(): Promise<void>;
 }
 
-/** One plugin's activation, shared by the runtimes that run it, so a kept-previous plugin moves to a new runtime without activating again (§36b). */
+/** One plugin's activation, shared by the runtimes that run it, so a kept-previous plugin moves to a new runtime without activating again. */
 export interface PluginInstance {
   readonly plugin: Plugin<"core">;
   readonly api: PluginApi<"core">;
@@ -121,7 +121,7 @@ const BUILT_IN: ReadonlySet<string> = new Set([
   "parts",
 ]);
 
-/** The plugin ids the host owns (§43b). */
+/** The plugin ids the host owns. */
 const RESERVED_IDS: ReadonlySet<string> = new Set(["models", "settings"]);
 
 const NEVER = new AbortController().signal;
@@ -146,7 +146,7 @@ export function pluginState(kernel: Kernel): PluginState {
   return kernel.pluginState;
 }
 
-/** Returns a session's plugin runtime and starts its activation once `previous` settled: `activateSession` loads `sessionPlugins` into it, then `previous` closes (§44c). After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` (a reserved kind from a non-built-in is a collision, §34b), publishes the catalog and republishes `HostView.plugins`. */
+/** Returns a session's plugin runtime and starts its activation once `previous` settled: `activateSession` loads `sessionPlugins` into it, then `previous` closes. After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` (a reserved kind from a non-built-in is a collision), publishes the catalog and republishes `HostView.plugins`. */
 export function createPluginRuntime(
   kernel: Kernel,
   session: SessionId,
@@ -224,7 +224,7 @@ export function createPluginRuntime(
     decide: (name, value, context, step) => held(() => dispatch.decide(name, value, context, step)),
   };
 
-  /** The predecessor serves this runtime's dispatches until its activation settles, so no hook meets a half-activated runtime (§44c). */
+  /** The predecessor serves this runtime's dispatches until its activation settles, so no hook meets a half-activated runtime. */
   let serving = previous?.hooks ?? own;
 
   const hooks: HookDispatch = {
@@ -449,7 +449,7 @@ export function pluginRuntimes(kernel: Kernel): readonly PluginRuntime[] {
   return [...kernel.runtimes().values()];
 }
 
-/** Runs the preflight over `plugins` as one set and touches nothing: what `Host.plugins.check` answers. A duplicate or reserved id (`models`, `settings`, §43b), a second provider of one environment kind or a schema without JSON Schema rejects a plugin; collisions between plugins are warnings. */
+/** Runs the preflight over `plugins` as one set and touches nothing: what `Host.plugins.check` answers. A duplicate or reserved id (`models`, `settings`), a second provider of one environment kind or a schema without JSON Schema rejects a plugin; collisions between plugins are warnings. */
 export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
   return {
     plugins: preflight(plugins, []).map(({ plugin, issues, ok }) => ({
@@ -461,12 +461,12 @@ export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckRep
   };
 }
 
-/** Returns what a session runs: `kernel.builtins` (§36a), then its assigned list or `kernel.hostPlugins` (§37l). */
+/** Returns what a session runs: `kernel.builtins`, then its assigned list or `kernel.hostPlugins`. */
 export function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
   return [...kernel.builtins, ...(runtime.assigned() ?? kernel.hostPlugins)];
 }
 
-/** Replaces one session's plugins, or the host's, by installing a new runtime for each session (§44c) and answers each plugin's outcome, its worst across sessions host-wide. Host-wide, a removed session is skipped and an existing session whose activation fails rejects every plugin that passed preflight, with the failure as an issue; `kernel.hostPlugins` becomes the versions that activated or were kept where sessions loaded. The built-ins stay ahead of either list (§36a). */
+/** Replaces one session's plugins, or the host's, by installing a new runtime for each session and answers each plugin's outcome, its worst across sessions host-wide. Host-wide, a removed session is skipped and an existing session whose activation fails rejects every plugin that passed preflight, with the failure as an issue; `kernel.hostPlugins` becomes the versions that activated or were kept where sessions loaded. The built-ins stay ahead of either list. */
 export async function replacePlugins(
   kernel: Kernel,
   plugins: readonly Plugin<"core">[],
@@ -568,7 +568,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Returns `HostView.plugins` before any session's issues: the built-ins, then `kernel.hostPlugins` with the source and path `kernel.pluginSources` holds (§41e), else `inline`. */
+/** Returns `HostView.plugins` before any session's issues: the built-ins, then `kernel.hostPlugins` with the source and path `kernel.pluginSources` holds, else `inline`. */
 export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
   const rows = new Map<string, HostView["plugins"][number]>();
 
@@ -821,7 +821,7 @@ function unique(issues: readonly ValidationIssue[]): readonly ValidationIssue[] 
 /** A session's environment as its runtime attached it, null where this host does not attach the session. */
 export type Attached = { readonly env: ExecutionEnv | null };
 
-/** Activates nothing: returns one plugin's api in a session, its registrations recorded so every runtime that joins the instance gets them. `session` is the activation's own handle, whose sends do not wait on the activation (§44b); `contribute`, `hook` and `wrapEnv` are undone at deactivation. Reading `env` throws `unavailable` where nothing attached. */
+/** Activates nothing: returns one plugin's api in a session, its registrations recorded so every runtime that joins the instance gets them. `session` is the activation's own handle, whose sends do not wait on the activation; `contribute`, `hook` and `wrapEnv` are undone at deactivation. Reading `env` throws `unavailable` where nothing attached. */
 function createInstance(
   kernel: Kernel,
   input: {
@@ -953,7 +953,7 @@ function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
   return typeof value === "function";
 }
 
-/** Returns core's own api in a session (§31f), what an ownerless part definition's action receives: owner `core`, a signal that never aborts, and no-op `hook`, `report` and `reload`. */
+/** Returns core's own api in a session, what an ownerless part definition's action receives: owner `core`, a signal that never aborts, and no-op `hook`, `report` and `reload`. */
 export function corePluginApi(
   kernel: Kernel,
   input: {
@@ -977,7 +977,7 @@ export function corePluginApi(
   });
 }
 
-/** Returns a plugin's api for one execution of a durable decide step (§35i): `session` and `sdk` act from `context`, so what the handler acquires is the step's and comes back on a re-run. */
+/** Returns a plugin's api for one execution of a durable decide step: `session` and `sdk` act from `context`, so what the handler acquires is the step's and comes back on a re-run. */
 export function stepPluginApi(
   kernel: Kernel,
   api: PluginApi<"core">,
@@ -1057,7 +1057,7 @@ function build(
   };
 }
 
-/** Returns one plugin's storage in a session: `kv` envelopes at `kvRef(scope, owner, key)`, scope `session:<id>`, `host` or `workspace:<id>`, last write wins, `get` widening `Json` to `T` unchecked (§35g). `secrets` are host-scope at `kvRef("secret", owner, key)` (§35e), AES-256-GCM under `kernel.secrets.key()` with a random 12-byte IV. Without `kernel.secrets`, `secrets.set` throws `unavailable` and `secrets.get` resolves undefined. */
+/** Returns one plugin's storage in a session: `kv` envelopes at `kvRef(scope, owner, key)`, scope `session:<id>`, `host` or `workspace:<id>`, last write wins, `get` widening `Json` to `T` unchecked. `secrets` are host-scope at `kvRef("secret", owner, key)`, AES-256-GCM under `kernel.secrets.key()` with a random 12-byte IV. Without `kernel.secrets`, `secrets.set` throws `unavailable` and `secrets.get` resolves undefined. */
 export function createPluginStorage(
   kernel: Kernel,
   input: { readonly owner: string; readonly session: SessionId },

@@ -248,7 +248,7 @@ export const EditCallView = memo(function EditCallView({
   const name = basename(path);
   const added = facts?.added ?? 0;
   const removed = facts?.removed ?? 0;
-  const created = message.state.name === "write" && removed === 0;
+  const created = facts?.created === true;
 
   const verb =
     status.tense === "none"

@@ -100,7 +100,9 @@ for (const [name, budget] of Object.entries(budgets)) {
   const size = sizes[name];
   const over = size > budget;
 
-  if (over) problems.push(`${name} startup entry is over budget`);
+  if (over && !process.argv.includes("--warn-budgets")) {
+    problems.push(`${name} startup entry is over budget`);
+  }
   rows.push([
     name,
     formatSize(size),

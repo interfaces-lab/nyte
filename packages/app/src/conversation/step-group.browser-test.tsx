@@ -219,13 +219,7 @@ export async function run() {
       flushSync(() =>
         root.render(
           <PaneControllerProvider workspaceKey="step-group-test">
-            <TranscriptProvider
-              paneId="primary"
-              sessionId={asId<"session">("step-group-test")}
-              ready
-              autoScroll
-              scrollEdgeThreshold={60}
-            >
+            <TranscriptProvider paneId="primary" sessionId={asId<"session">("step-group-test")}>
               {node}
             </TranscriptProvider>
           </PaneControllerProvider>,

@@ -34,6 +34,7 @@ import type { ConnectionContext } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
 import type { CommitRecord, PartRecord, SessionRecord } from "./records.ts";
 import { headRef, sessionRef } from "./refs.ts";
+import { isJsonObject } from "./records.ts";
 import {
   EMPTY_REVISION,
   MAIN,
@@ -42,7 +43,6 @@ import {
   attempt,
   commit,
   expectOf,
-  isJsonObject,
   liveRun,
   objectOf,
   pathOf,
@@ -89,7 +89,7 @@ interface Commit {
   readonly record: CommitRecord;
 }
 
-/** Returns a handle on one head of a session for a connection, its `send` admitting through `admit`: `send`, or `sendNow` for the api an activation constructs (§44b). Binds synchronously; no I/O. */
+/** Returns a handle on one head of a session for a connection, its `send` admitting through `admit`: `send`, or `sendNow` for the api an activation constructs. Binds synchronously; no I/O. */
 export function headHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -297,7 +297,7 @@ export async function removeHead(
   });
 }
 
-/** Returns the session's commit DAG as rows for a head: every commit on every branch, parents first, siblings in creation order, the head's path active; tip and revision from the one folded head, the revision null when no pair names that tip (§54a). */
+/** Returns the session's commit DAG as rows for a head: every commit on every branch, parents first, siblings in creation order, the head's path active; tip and revision from the one folded head, the revision null when no pair names that tip. */
 export async function tree(kernel: Kernel, session: SessionId, head: HeadName): Promise<TreeView> {
   return withFold(kernel, session, (state) => rows(state, head));
 }

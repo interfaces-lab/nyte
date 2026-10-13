@@ -321,7 +321,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   };
 }
 
-/** Returns the kind of a workspace's files capability for its provider: the baseline requires `snapshots` "wherever files are served", so a provider without it (chat-only) or no provider at all answers `unsupported` (§59). */
+/** Returns the kind of a workspace's files capability for its provider: the baseline requires `snapshots` "wherever files are served", so a provider without it (chat-only) or no provider at all answers `unsupported`. */
 export function filesOf(
   provider: EnvironmentProvider | undefined,
 ): Extract<Capability<FilesApi>["kind"], "available" | "unsupported"> {

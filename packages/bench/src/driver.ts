@@ -36,7 +36,11 @@ export interface BenchHost {
   /** Counts of what the environment and the bench tools did, by name. */
   readonly counters: Readonly<Record<string, () => number>>;
   /** Branded ids the bench cannot construct itself. */
-  readonly ids: { session(name: string): SessionId; part(name: string): PartId; seq(n: number): Seq };
+  readonly ids: {
+    session(name: string): SessionId;
+    part(name: string): PartId;
+    seq(n: number): Seq;
+  };
   close(): Promise<void>;
 }
 
@@ -45,11 +49,16 @@ export interface BenchLink {
   /** Cuts the socket; the connection reports reconnecting until `restore()`. */
   drop(): void;
   restore(): void;
+  /** Bytes the host has sent this client since the link opened. */
+  received(): number;
   close(): Promise<void>;
 }
 
 export interface BenchDriver {
   readonly name: string;
-  open(options?: { readonly sessions?: number; readonly messagesPerSession?: number; readonly changedFiles?: number }): Promise<BenchHost>;
+  open(options?: {
+    readonly sessions?: number;
+    readonly messagesPerSession?: number;
+    readonly changedFiles?: number;
+  }): Promise<BenchHost>;
 }
-

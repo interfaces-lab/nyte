@@ -18,7 +18,7 @@ export interface PartDefinitions {
   list(): readonly RegisteredDefinition[];
 }
 
-/** The built-in part kinds, reserved (§34b): registering any definition under one is a no-op, whatever the owner. */
+/** The built-in part kinds, reserved: registering any definition under one is a no-op, whatever the owner. */
 export const RESERVED_PART_KINDS: ReadonlySet<string> = new Set(
   [text, thinking, tool, compaction, branchSummary].map((definition) => definition.kind),
 );

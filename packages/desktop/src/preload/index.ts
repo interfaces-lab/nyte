@@ -107,6 +107,7 @@ const bridge = {
     endpoint: none("host.endpoint"),
     state: none("host.state"),
     fonts: none("host.fonts"),
+    usage: object("host.usage"),
     openWorkspace: object("host.openWorkspace"),
     pickWorkspace: none("host.pickWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),

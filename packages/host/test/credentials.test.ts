@@ -38,7 +38,6 @@ describe("credentialStore", () => {
     const stored = ref?.target ? await connection.objects.get(ref.target) : null;
 
     expect(JSON.stringify(stored)).not.toContain("sk-secret");
-    await connection.close();
 
     await credentials.delete("anthropic");
     expect(await credentials.read("anthropic")).toBeUndefined();
