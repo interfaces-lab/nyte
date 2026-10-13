@@ -31,7 +31,7 @@ function scrolled(
   };
 }
 
-/** Esc back · ↑/↓ PgUp/PgDn scroll · Ctrl+O follow · Ctrl+↑/↓ previous/next task · Ctrl+X stop-task. */
+/** Esc back · ↑/↓ PgUp/PgDn scroll · Ctrl+O follow · Ctrl+End latest · Ctrl+↑/↓ previous/next task · Ctrl+X stop-task. */
 export function reduceInspector(
   dialog: InspectorDialog,
   command: DialogCommand,
@@ -56,6 +56,8 @@ export function reduceInspector(
     case "picker.page.down":
     case "chat.scroll.page.down":
       return scrolled(dialog, "page-down", false);
+    case "chat.scroll.latest":
+      return scrolled(dialog, "bottom", true);
     case "chat.tools.toggle":
       return dialog.following
         ? { dialog: { ...dialog, following: false }, intents: [], push: null }

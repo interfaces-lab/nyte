@@ -18,6 +18,8 @@ export interface TreeDialog {
     | { readonly kind: "failed"; readonly message: string };
   readonly filter: TreeFilter;
   readonly query: string;
+  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
+  readonly caret?: number;
   readonly folded: ReadonlySet<CommitId>;
   /** The commit the cursor is on; null opens on the tip. A filtered-out pick falls back to its nearest visible ancestor. */
   readonly selected: CommitId | null;
@@ -436,6 +438,8 @@ export function reduceTree(dialog: TreeDialog, command: DialogCommand): DialogSt
 
   if (command.kind === "pick")
     return accept(select(dialog, rows, command.index), rows[command.index]);
+
+  if (command.kind === "highlight") return unchanged(select(dialog, rows, command.index));
   const row = rows[index];
 
   switch (command.name) {

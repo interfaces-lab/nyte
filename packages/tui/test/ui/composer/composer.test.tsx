@@ -5,7 +5,7 @@
  * extmarks, and the port the runner drives.
  */
 import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
-import { RGBA } from "@opentui/core";
+import { BoxRenderable, RGBA } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../../src/lib/tasks.ts";
 import { DARK_THEME } from "../../../src/lib/theme.ts";
@@ -88,6 +88,30 @@ describe("composer", () => {
 
     expect(marked?.bg.equals(RGBA.fromHex(DARK_THEME.pasteBackground))).toBe(true);
     expect(plain?.text.includes("[File")).toBe(false);
+  });
+
+  test("the frame dims while the terminal is out of focus", async () => {
+    await using app = await mount(ready(idle), () => <Composer markers={[]} />);
+    const input = app.renderer.root.findDescendantById("input");
+
+    const border = (): string | undefined => {
+      const box = app.renderer.root.findDescendantById("input-box");
+
+      return box instanceof BoxRenderable ? box.borderColor.toString() : undefined;
+    };
+
+    expect(input?.focused).toBe(true);
+    const lit = border();
+
+    app.renderer.emit("blur");
+    await app.renderOnce();
+    expect(input?.focused).toBe(false);
+    expect(border()).not.toBe(lit);
+
+    app.renderer.emit("focus");
+    await app.renderOnce();
+    expect(input?.focused).toBe(true);
+    expect(border()).toBe(lit);
   });
 
   test("the port edits the textarea and the edit is reported", async () => {

@@ -14,7 +14,7 @@ One loop: `dispatch(msg) → reduce(state, msg, now) → { state, effects }`, th
 - `src/app/`: wiring: renderer, store, keymap layers, sinks, tickers, crash hooks.
 - `src/lib/` (pure helpers) and `src/services/` (IO behind ports).
 
-What Enter, Ctrl+Enter, Esc and Ctrl+C do is the situation table in `src/model/interactions.ts`; hints, placeholder and help read the same record. Change a key's behavior there, not in a handler. Shortcuts and keycaps are defined in `src/lib/constants.ts` (`CHAT_KEYBINDS`); production and QA reference them by name.
+What Enter, Ctrl+Enter, Esc and Ctrl+C do is the situation table in `src/model/interactions.ts`; hints, placeholder and help read the same record. Change a key's behavior there, not in a handler. Shortcuts and keycaps are defined in `src/lib/constants.ts` (`CHAT_KEYBINDS`, and `FIELD_KEYBINDS` for the editing keys of a dialog's typed field, whose text and caret the dialog value holds); production and QA reference them by name.
 
 Boundary rules, enforced by `test/boundaries.test.ts`:
 

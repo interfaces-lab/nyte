@@ -7,7 +7,7 @@
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
-import { Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
@@ -89,12 +89,16 @@ export function Panel(props: {
   );
 }
 
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 /**
- * The query line: the typed text with a caret, or the placeholder. `marker`
- * reserves the two prompt cells of a typed-answer row, lit while `active`.
+ * The query line: the typed text with the model's caret (a UTF-16 offset,
+ * absent at the end), or the placeholder. `marker` reserves the two prompt
+ * cells of a typed-answer row, lit while `active`.
  */
 export function QueryLine(props: {
   readonly text: string;
+  readonly caret?: number;
   readonly placeholder: string;
   readonly marker?: boolean;
   readonly active?: boolean;
@@ -104,7 +108,22 @@ export function QueryLine(props: {
 }): JSX.Element {
   const { kit } = useApp();
   const active = () => props.active ?? true;
-  const shown = () => (props.masked ? "•".repeat(Array.from(props.text).length) : props.text);
+
+  const mask = (text: string): string =>
+    props.masked ? "•".repeat(Array.from(text).length) : text;
+
+  /** The text before the caret, the cell under it (a space at the end), and the rest. */
+  const parts = createMemo(() => {
+    const caret = Math.max(0, Math.min(props.caret ?? props.text.length, props.text.length));
+    const rest = props.text.slice(caret);
+    const under = GRAPHEMES.segment(rest)[Symbol.iterator]().next().value?.segment ?? "";
+
+    return {
+      before: mask(props.text.slice(0, caret)),
+      under: under === "" ? " " : mask(under),
+      after: mask(rest.slice(under.length)),
+    };
+  });
 
   return (
     <text
@@ -136,15 +155,21 @@ export function QueryLine(props: {
           </>
         }
       >
-        <span
-          style={{
-            fg: props.marker && active() ? kit.theme().selectionForeground : kit.theme().foreground,
-          }}
+        <Show
+          when={active()}
+          fallback={<span style={{ fg: kit.theme().foreground }}>{mask(props.text)}</span>}
         >
-          {shown()}
-        </span>
-        <Show when={active()}>
-          <span style={{ attributes: TextAttributes.INVERSE }}> </span>
+          <span
+            style={{ fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground }}
+          >
+            {parts().before}
+          </span>
+          <span style={{ attributes: TextAttributes.INVERSE }}>{parts().under}</span>
+          <span
+            style={{ fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground }}
+          >
+            {parts().after}
+          </span>
         </Show>
       </Show>
       <Show when={props.trailing}>

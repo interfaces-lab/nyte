@@ -3,6 +3,7 @@
  * header table: `tableInput({ run: "working", draft: "fix it", followUp: "queue" })`.
  */
 import { asId } from "@nyte-ai/schema";
+import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
 import type { CompletionModel } from "../../src/model/completion.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import { draftModel, NO_PARTS } from "../../src/model/draft.ts";
@@ -20,7 +21,7 @@ export interface TableSpec {
   readonly question?: "head" | "child";
   readonly editing?: "steer" | "queue";
   readonly shell?: boolean;
-  readonly completion?: "slash" | "skill" | "cd";
+  readonly completion?: "slash" | "skill" | "cd" | "empty";
   readonly blocked?: "starting" | "switching" | "authenticating";
   readonly dialog?: boolean;
   readonly followUp?: "steer" | "queue";
@@ -69,10 +70,21 @@ function blockedOf(spec: TableSpec["blocked"]): Blocked | null {
 function completionOf(spec: TableSpec["completion"]): CompletionModel | null {
   if (spec === undefined) return null;
 
+  if (spec === "empty")
+    return {
+      token: { trigger: "/", query: "zz", from: 0, to: 3 },
+      items: [],
+      loading: false,
+      highlighted: 0,
+      ownsEnter: false,
+      queueable: false,
+    };
+
   if (spec === "cd")
     return {
       token: { trigger: "cd", query: "sr", from: 4, to: 6 },
       items: [{ id: "src/", label: "src/", detail: "", kind: "directory" }],
+      loading: false,
       highlighted: 0,
       ownsEnter: false,
       queueable: false,
@@ -85,6 +97,7 @@ function completionOf(spec: TableSpec["completion"]): CompletionModel | null {
         ? { id: "review", label: "/review", detail: "Review code", kind: "skill" }
         : { id: "resume", label: "/resume", detail: "Resume a chat", kind: "action" },
     ],
+    loading: false,
     highlighted: 0,
     ownsEnter: true,
     queueable: spec === "skill",
@@ -125,6 +138,8 @@ export function tableInput(spec: TableSpec): TableInput {
     editing: false,
   }));
 
+  const typed = draftModel(draft);
+
   return {
     run: runOf(spec.run),
     question:
@@ -138,7 +153,9 @@ export function tableInput(spec: TableSpec): TableInput {
             owner: spec.question === "head" ? { kind: "head" } : { kind: "child", short: "s9" },
             panel: false,
           },
-    draft: draftModel(draft),
+    draft: typed,
+    runsCommand:
+      typed.kind === "message" && SLASH_COMMANDS.some((command) => command.name === typed.command),
     editing:
       spec.editing === undefined
         ? null
@@ -147,6 +164,7 @@ export function tableInput(spec: TableSpec): TableInput {
       spec.shell === true
         ? {
             id: "shell-1",
+            session: null,
             command: "sleep 9",
             include: true,
             startedAt: 1_000,

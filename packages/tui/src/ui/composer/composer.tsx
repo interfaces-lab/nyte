@@ -6,10 +6,12 @@
  * extmarks styled `attachment`, so each moves, selects, deletes and undoes as
  * one unit. Paste events dispatch `paste`; nothing here classifies, uploads
  * or sends. The placeholder comes from `screen()`; it never decides it.
+ * When the terminal loses focus the textarea blurs, so the frame dims and
+ * the caret hides; focus coming back restores it.
  */
 import { decodePasteBytes, RenderableEvents, SyntaxStyle } from "@opentui/core";
 import type { KeyEvent, PasteEvent, TextareaRenderable } from "@opentui/core";
-import { useRenderer, useTerminalDimensions } from "@opentui/solid";
+import { onBlur, onFocus, useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
@@ -134,6 +136,7 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
   const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
   const [focused, setFocused] = createSignal(false);
+  let terminalFocused = true;
   const theme = () => app.kit.theme();
   const tiny = () => dimensions().height <= 3;
   let area: TextareaRenderable | undefined;
@@ -224,10 +227,21 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
         if (area === undefined) return;
         area.focusable = free;
 
-        if (free && wasFree === false) area.focus();
+        if (free && wasFree === false && terminalFocused) area.focus();
       },
     ),
   );
+
+  onBlur(() => {
+    terminalFocused = false;
+    area?.blur();
+  });
+
+  onFocus(() => {
+    terminalFocused = true;
+
+    if (area?.focusable === true) area.focus();
+  });
 
   const focusIn = (): void => {
     setFocused(true);

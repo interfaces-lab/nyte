@@ -153,6 +153,7 @@ describe("hints", () => {
       kind: "shell-job",
       job: {
         id: "j",
+        session: S1,
         command: "sleep 9",
         include: true,
         startedAt: 1,

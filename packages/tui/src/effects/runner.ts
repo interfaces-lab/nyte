@@ -36,6 +36,7 @@ import {
   openExternal,
   readClipboard,
   readPreview,
+  resolveMention,
   resolvePaste,
   scroll,
   selfUpdate,
@@ -170,5 +171,6 @@ export const HANDLERS: Handlers = {
   "apply-setting": applySetting,
   "login-answer": loginAnswer,
   "list-directory": listDirectory,
+  "resolve-mention": resolveMention,
   "read-preview": readPreview,
 };

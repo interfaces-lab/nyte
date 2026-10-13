@@ -13,6 +13,7 @@ import type { ModelDialog, ModelRow } from "../../model/dialogs/model-picker.ts"
 import {
   activeField,
   currentRowId,
+  modelFields,
   rowDraft,
   visibleModels,
 } from "../../model/dialogs/model-picker.ts";
@@ -81,7 +82,7 @@ function Row(props: {
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
-        app.dispatch({ kind: "dialog", command: { kind: "pick", index: props.index } });
+        app.dispatch({ kind: "dialog", command: { kind: "highlight", index: props.index } });
       }}
     >
       <span style={{ fg: color() }}>
@@ -177,6 +178,7 @@ function Details(props: {
 }
 
 export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.Element {
+  const app = useApp();
   const dimensions = useTerminalDimensions();
   const width = useBodyWidth();
   const rows = createMemo(() => visibleModels(props.dialog));
@@ -230,7 +232,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
 
   const hints = () => {
     const row = selected();
-    const fields = row === undefined ? 0 : 1 + (row.info.fast === null ? 0 : 1);
+    const fields = row === undefined ? 0 : modelFields(row).length;
     const active = row === undefined ? null : activeField(props.dialog, row);
     const move = `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")}`;
     const change = `${keycap("model.decrease", "symbol")}${keycap("model.increase", "symbol")}`;
@@ -258,9 +260,10 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
   };
 
   return (
-    <Panel title="Model" hints={hints()}>
+    <Panel title="Models" hints={hints()}>
       <QueryLine
         text={props.dialog.query}
+        caret={props.dialog.caret}
         placeholder="Type to search"
         trailing={width() >= 35 ? ` ${String(rows().length)}/${String(total())}` : ""}
       />
@@ -268,18 +271,34 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
         <Note text={start() > 0 ? "  ↑ more above" : ""} />
       </Show>
       <Show when={rows().length > 0} fallback={<Note text={empty().text} tone={empty().tone} />}>
-        <For each={shown()}>
-          {(row, index) => (
-            <Row
-              dialog={props.dialog}
-              row={row}
-              index={start() + index()}
-              selected={start() + index() === props.dialog.highlighted}
-              current={modelId(row.ref) === current()}
-              width={width()}
-            />
-          )}
-        </For>
+        <box
+          flexDirection="column"
+          flexShrink={0}
+          onMouseScroll={(event) => {
+            const direction = event.scroll?.direction;
+
+            if (direction !== "up" && direction !== "down") return;
+            event.preventDefault();
+            event.stopPropagation();
+            app.dispatch({
+              kind: "dialog",
+              command: { kind: "key", name: direction === "up" ? "model.previous" : "model.next" },
+            });
+          }}
+        >
+          <For each={shown()}>
+            {(row, index) => (
+              <Row
+                dialog={props.dialog}
+                row={row}
+                index={start() + index()}
+                selected={start() + index() === props.dialog.highlighted}
+                current={modelId(row.ref) === current()}
+                width={width()}
+              />
+            )}
+          </For>
+        </box>
       </Show>
       <Show when={markers() > 0}>
         <Note text={start() + visibleCount() < rows().length ? "  ↓ more below" : ""} />

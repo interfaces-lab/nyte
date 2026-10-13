@@ -19,6 +19,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
 import { shortId } from "../lib/format.ts";
+import { indexedMention } from "../model/completion.ts";
 import type { Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
@@ -134,11 +135,15 @@ export async function follow(
   unavailable(info.activation, dispatch);
 }
 
-/** Host-wide: catalog generations, each listed once and guarded by generation in the reducer. */
+/**
+ * Host-wide: catalog generations, each listed once and guarded by generation
+ * in the reducer; and the session directory, so a rename of the followed chat
+ * (automatic naming included) reaches the terminal title.
+ */
 export async function watchHost(context: HandlerContext): Promise<void> {
-  const { ports, dispatch, scope } = context;
+  const { ports, dispatch, read, scope } = context;
 
-  await each(ports.host.catalog(), context.signal, (entry) => {
+  const catalogs = each(ports.host.catalog(), context.signal, (entry) => {
     const generation = (scope.catalogGeneration += 1);
     void entry
       .list()
@@ -147,6 +152,16 @@ export async function watchHost(context: HandlerContext): Promise<void> {
         ports.log.write("watch", error);
       });
   });
+
+  const renames = each(ports.host.sessionInfos(), context.signal, (sessions) => {
+    const followed = read().facts.session;
+    const info = sessions.find((candidate) => candidate.id === followed?.id);
+
+    if (followed === null || info === undefined || info.name === followed.info.name) return;
+    dispatch({ kind: "session-info", session: followed.id, info });
+  });
+
+  await Promise.all([catalogs, renames]);
 }
 
 /**
@@ -176,10 +191,11 @@ export async function refreshWorkspace(
   dispatch({ kind: "workspace", workspace: facts });
 
   if (options === undefined || facts.mentions !== null || options.signal.aborted) return;
-  const mentions = await options.mentions.mentions(options.signal);
+  const entries = await options.mentions.mentions(options.signal);
   const latest = read().facts.workspace;
 
   if (options.signal.aborted || latest.cwd !== cwd) return;
+  const mentions = entries.map((entry) => indexedMention(cwd, entry));
   dispatch({ kind: "workspace", workspace: { ...latest, mentions } });
 }
 

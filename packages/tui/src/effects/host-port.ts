@@ -53,6 +53,10 @@ export function hostPort(host: TuiHost): HostPort {
         yield { generation, list: () => host.models.list() };
       }
     },
+    async *sessionInfos() {
+      for await (const sessions of host.sessions.watch({ parents: { kind: "all" } }))
+        yield sessions;
+    },
     listModels: () => host.models.list(),
     refreshModels: (provider) => host.models.refresh(provider),
     async setDefaultModel(ref) {

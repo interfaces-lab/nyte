@@ -150,6 +150,7 @@ describe("settings", () => {
     expect(run("fast-mode", "on")).toEqual({
       kind: "apply-setting",
       id: "fast-mode",
+      label: "Fast mode",
       scope: "session",
       value: true,
     });
@@ -164,6 +165,14 @@ describe("settings", () => {
     const state = ready(busy);
 
     expect(resolveCommand(state, "follow-up")?.run("queue")).toMatchObject({ kind: "refuse" });
+    expect(resolveCommand(state, "follow-up")?.run("")).toEqual({
+      kind: "refuse",
+      reason: "Wait for the current run before changing Follow-up behavior",
+    });
+    expect(resolveCommand(state, "model")?.run("")).toEqual({
+      kind: "open",
+      dialog: { kind: "model" },
+    });
     expect(resolveCommand(state, "effort")?.run("high")).toEqual({
       kind: "configure",
       selection: { effort: "high" },

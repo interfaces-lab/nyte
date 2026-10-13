@@ -5,11 +5,13 @@
  * Transcript fill while mounted.
  */
 import { readFile, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, extname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { imageInfo } from "@opentui/core";
 import { DirectoryListing, directorySuggestions } from "../lib/directory-completion.ts";
+import type { MentionFile } from "../model/completion.ts";
 import type { DraftInsert, DraftPart } from "../model/draft.ts";
 import { editInExternalEditor, resolveExternalEditor } from "../services/external-editor.ts";
 import { startLocalShell } from "../services/local-shell.ts";
@@ -96,6 +98,7 @@ export function filesPort(): FilesPort {
   return {
     resolvePaste,
     listDirectory: (path, cwd) => directorySuggestions({ path, cwd }, listing),
+    resolveMention,
     readText: readAttachmentText,
     async editor(text, command) {
       const result = await editInExternalEditor(text, resolveExternalEditor(command ?? undefined));
@@ -203,6 +206,24 @@ function pastedPath(value: string, cwd: string): string | null {
   }
 
   return resolve(cwd, process.platform === "win32" ? raw : raw.replace(/\\(.)/g, "$1"));
+}
+
+/** A typed path resolved directly; a folder keeps a trailing `/`, anything but a file or folder is null. */
+export async function resolveMention(query: string, cwd: string): Promise<MentionFile | null> {
+  const path = resolve(cwd, query.startsWith("~") ? join(homedir(), query.slice(2)) : query);
+  const info = await stat(path).catch(() => undefined);
+
+  if (info === undefined) return null;
+  const display = relative(cwd, path).split("\\").join("/");
+
+  if (info.isDirectory())
+    return {
+      path: `${path}/`,
+      display: display === "" ? "./" : `${display}/`,
+      label: `${basename(path)}/`,
+    };
+
+  return info.isFile() ? { path, display, label: basename(path) } : null;
 }
 
 /** Only text bodies inline; folders, binaries, and oversized files fall back to a mention. */

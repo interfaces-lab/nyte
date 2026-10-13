@@ -19,6 +19,8 @@ export interface ListDialog {
     | { readonly kind: "ready"; readonly items: readonly Choice[] }
     | { readonly kind: "failed"; readonly message: string };
   readonly query: string;
+  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
+  readonly caret?: number;
   /** Index into `visibleChoices`; `visibleChoices(…).length` is the typed row. */
   readonly highlighted: number;
   /** The typed answer for purposes that take free text ("" until typed); null for every other purpose. */
@@ -215,10 +217,12 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
     return unchanged({ ...dialog, query: command.text, highlighted: 0 });
   }
 
-  if (command.kind === "pick") {
+  if (command.kind === "pick" || command.kind === "highlight") {
     if (command.index < 0 || command.index >= positions(dialog)) return unchanged(dialog);
 
-    return accept(moved(dialog, command.index), null);
+    return command.kind === "pick"
+      ? accept(moved(dialog, command.index), null)
+      : unchanged(moved(dialog, command.index));
   }
 
   const count = positions(dialog);

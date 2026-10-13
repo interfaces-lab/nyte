@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   command,
@@ -697,6 +697,47 @@ export const tui: Scenario = {
             );
             assert.equal(kept.prompt.match(/<shell /gu)?.length, 1, kept.prompt);
             assert.ok(kept.prompt.endsWith("with the shell output"), kept.prompt);
+          },
+        );
+
+        await context.beat(
+          "an @./ path the index lacks is offered first and its file rides with the message",
+          async () => {
+            await mkdir(join(workspace.cwd, "notes"), { recursive: true });
+            await writeFile(join(workspace.cwd, "notes", "qa-mention.md"), "QA mention body\n");
+            provider.enqueue({
+              name: "mention",
+              model: FIXTURE_CHILD_MODEL,
+              prompt: "summarize the note",
+              action: { kind: "reply", text: "The note arrived." },
+            });
+            await type(terminal, "@./notes/qa-mention.md");
+            await terminal.waitForScreen(
+              (screen) =>
+                screen.lines.some(
+                  (line) =>
+                    line.includes("❯ qa-mention.md") && line.includes("notes/qa-mention.md"),
+                ),
+              deadline(),
+            );
+            await press(terminal, "completion.accept", (screen) =>
+              composer(screen, "[File qa-mention.md] "),
+            );
+            await type(terminal, "summarize the note", { prefix: "[File qa-mention.md] " });
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => screen.text.includes("The note arrived.") && idle(screen),
+            );
+
+            const request = await provider.waitForRequest((item) => item.script === "mention");
+
+            assert.ok(
+              /<file src="file:\/\/[^"]*\/notes\/qa-mention\.md">\nQA mention body\n\n<\/file>/u.test(
+                request.prompt,
+              ),
+              request.prompt,
+            );
           },
         );
 

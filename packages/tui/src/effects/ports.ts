@@ -31,6 +31,7 @@ import type {
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
+import type { MentionFile } from "../model/completion.ts";
 import type { DraftInsert } from "../model/draft.ts";
 import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
@@ -65,6 +66,8 @@ export interface HostPort {
     readonly generation: number;
     readonly list: () => Promise<ModelCatalogView>;
   }>;
+  /** Every session's info, again whenever one changes (a rename included). */
+  sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
   refreshModels(provider: string): Promise<void>;
   setDefaultModel(ref: ModelRef): Promise<void>;
@@ -191,6 +194,8 @@ export interface ShellPort {
 export interface FilesPort {
   resolvePaste(text: string, bytes: Uint8Array | null, cwd: string): Promise<DraftInsert>;
   listDirectory(path: string, cwd: string): Promise<readonly string[]>;
+  /** What an `@` query spelled as a path names under `cwd`: a file or folder, else null. */
+  resolveMention(query: string, cwd: string): Promise<MentionFile | null>;
   /** Reads a file's body for inlining, or null when it is binary, oversized or unreadable. */
   readText(path: string): Promise<string | null>;
   editor(text: string, command: string | null): Promise<string | null>;

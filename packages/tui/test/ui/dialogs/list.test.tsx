@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
+import { RGBA } from "@opentui/core";
+import { DARK_THEME } from "../../../src/lib/theme.ts";
 import type { Choice, ListDialog } from "../../../src/model/dialogs/list.ts";
 import { key, query, renderDialog, rows } from "./harness.tsx";
 
@@ -163,4 +165,55 @@ test("a purpose with row actions lists them in the hints", async () => {
   expect(frame).toContain("enter send now");
   expect(frame).toContain("ctrl+e edit");
   expect(frame).toContain("ctrl+d delete");
+});
+
+test("the row under the pointer is highlighted until the pointer leaves", async () => {
+  await using app = await renderDialog(RESUME);
+  const at = (label: string) => rows(app.frame()).findIndex((line) => line.includes(label));
+
+  const background = (label: string) =>
+    app
+      .captureSpans()
+      .lines[at(label)]?.spans.find((span) => span.text.includes(label))
+      ?.bg.toString();
+
+  const plain = background("gamma");
+
+  await app.mockMouse.moveTo(10, at("beta"));
+  await app.renderOnce();
+  expect(background("beta")).toBe(RGBA.fromHex(DARK_THEME.hover).toString());
+  expect(background("gamma")).toBe(plain);
+
+  await app.mockMouse.moveTo(10, at("gamma"));
+  await app.renderOnce();
+  expect(background("beta")).toBe(plain);
+  expect(background("gamma")).toBe(RGBA.fromHex(DARK_THEME.hover).toString());
+});
+
+test("the search line draws the caret where the model put it", async () => {
+  await using app = await renderDialog({ ...RESUME, query: "abc", caret: 1 });
+  const row = rows(app.frame()).findIndex((line) => line.includes("abc"));
+  const texts = (app.captureSpans().lines[row]?.spans ?? []).map((span) => span.text);
+
+  expect(texts.slice(texts.indexOf("a"), texts.indexOf("a") + 3)).toEqual(["a", "b", "c"]);
+
+  await app.show([{ ...RESUME, query: "abc" }]);
+  const end = rows(app.frame()).findIndex((line) => line.includes("abc"));
+  const after = (app.captureSpans().lines[end]?.spans ?? []).map((span) => span.text);
+
+  expect(after).toContain("abc");
+});
+
+test("clicking the typed-answer row activates it; only Enter submits", async () => {
+  await using app = await renderDialog({ ...QUESTION, answering: "my own" });
+  const row = rows(app.frame()).findIndex((line) => line.includes("my own"));
+
+  await app.mockMouse.click(6, row);
+  expect(app.dispatched.at(-1)).toEqual({
+    kind: "dialog",
+    command: { kind: "highlight", index: 2 },
+  });
+  await app.send({ kind: "highlight", index: 2 });
+  expect(app.frame()).toContain("❯ my own");
+  expect(app.dispatched.some((msg) => msg.kind === "choose")).toBe(false);
 });

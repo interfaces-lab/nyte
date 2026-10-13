@@ -64,6 +64,10 @@ test("the forest draws with role labels, the active path and the footer at width
     expect(frame).toContain("(2/4)");
     expect(frame).toContain("filter");
   }
+
+  await using wide = await renderDialog(TREE, { width: 140 });
+
+  expect(wide.frame()).toContain("alt+←/→ fold · ctrl+x copy · ctrl+t/u/a/d filter");
 });
 
 test("the users filter keeps user rows and the tip, and names itself in the footer", async () => {

@@ -11,20 +11,28 @@ import {
   completionModel,
   completionToken,
   dismissCompletion,
+  explicitMentionQuery,
+  indexedMention,
   inlineTokenRange,
   mentionSuggestions,
   nextCompletion,
   splice,
 } from "../../src/model/completion.ts";
-import type { CompletionModel } from "../../src/model/completion.ts";
+import type { CompletionModel, MentionFile } from "../../src/model/completion.ts";
 
 const SOURCES = {
   commands: [
     ...SLASH_COMMANDS,
     { name: "review", description: "Review code", kind: "prompt" as const },
   ],
-  files: ["src/app.ts", "src/", "test/app.test.ts", "README.md"],
+  files: ["src/app.ts", "src/", "test/app.test.ts", "README.md"].map((entry) =>
+    indexedMention("/w", entry),
+  ),
 };
+
+function displays(query: string, files: readonly MentionFile[] = SOURCES.files): readonly string[] {
+  return mentionSuggestions(query, files).map((file) => file.display);
+}
 
 function at(text: string, cursor = text.length) {
   return { text, cursor };
@@ -61,6 +69,14 @@ describe("tokens", () => {
   test("mid-prompt, a slash with no matches is a path, not a menu", () => {
     expect(model("see 1/zzz")).toBeNull();
   });
+
+  test("a leading slash with no matches is an empty menu that does not take Enter", () => {
+    expect(model("/zzz")).toMatchObject({ items: [], loading: false, ownsEnter: false });
+  });
+
+  test("a /cd path waits for its listing", () => {
+    expect(model("/cd sr")).toMatchObject({ items: [], loading: true, ownsEnter: false });
+  });
 });
 
 describe("accepting", () => {
@@ -71,7 +87,7 @@ describe("accepting", () => {
     expect(
       leading === null || item === undefined
         ? null
-        : completionEdit(leading, item, at("/usa"), "return", SOURCES, "/w"),
+        : completionEdit(leading, item, at("/usa"), "return", SOURCES),
     ).toEqual({
       kind: "execute",
       name: "usage",
@@ -87,7 +103,7 @@ describe("accepting", () => {
     expect(
       withText === null || first === undefined
         ? null
-        : completionEdit(withText, first, draft, "return", SOURCES, "/w"),
+        : completionEdit(withText, first, draft, "return", SOURCES),
     ).toEqual({
       kind: "replace",
       from: 0,
@@ -103,7 +119,7 @@ describe("accepting", () => {
     expect(
       skill === null || skill.items[0] === undefined
         ? null
-        : completionEdit(skill, skill.items[0], at("/revi"), "return", SOURCES, "/w"),
+        : completionEdit(skill, skill.items[0], at("/revi"), "return", SOURCES),
     ).toEqual({
       kind: "replace",
       from: 0,
@@ -127,16 +143,67 @@ describe("accepting", () => {
 });
 
 describe("@ mentions", () => {
-  test("prefix matches on the name or path come first, then letters in order", () => {
-    expect(mentionSuggestions("app", SOURCES.files)).toEqual(["src/app.ts", "test/app.test.ts"]);
-    expect(mentionSuggestions("rdm", SOURCES.files)).toEqual(["README.md"]);
-    expect(mentionSuggestions("", SOURCES.files)).toHaveLength(4);
+  test("prefix matches on the name or path come first, then fuzzy matches", () => {
+    expect(displays("app")).toEqual(["src/app.ts", "test/app.test.ts"]);
+    expect(displays("rdm")).toEqual(["README.md"]);
+    expect(displays("")).toHaveLength(4);
   });
 
-  test("a directory is offered as one", () => {
-    expect(model("@sr")?.items.find((item) => item.id === "src/")).toMatchObject({
-      kind: "directory",
+  test("at most ten; an empty query lists the first ten in index order", () => {
+    const many = Array.from({ length: 14 }, (_, index) =>
+      indexedMention("/w", `lib/mod${String(index)}.ts`),
+    );
+
+    expect(displays("", many)).toEqual(many.slice(0, 10).map((file) => file.display));
+    expect(displays("mod", many)).toEqual(many.slice(0, 10).map((file) => file.display));
+    expect(displays("lbmd1", many)).toHaveLength(5);
+  });
+
+  test("a prefix match is not repeated by the fuzzy pass", () => {
+    const files = ["app.ts", "src/app.ts", "zapp.ts"].map((entry) => indexedMention("/w", entry));
+
+    expect(displays("app", files)).toEqual(["app.ts", "src/app.ts", "zapp.ts"]);
+  });
+
+  test("a directory is offered as one, by its absolute path", () => {
+    expect(model("@sr")?.items.find((item) => item.label === "src/")).toEqual({
+      id: "/w/src/",
       label: "src/",
+      detail: "src/",
+      kind: "directory",
     });
+  });
+
+  test("queries spelled as paths are resolved on disk", () => {
+    for (const query of ["./a", "../a", "~/a", "/a", "C:\\a", ".\\a"])
+      expect(explicitMentionQuery(query)).toBe(true);
+
+    for (const query of ["", "a/b", ".a", "~a", "C:a"])
+      expect(explicitMentionQuery(query)).toBe(false);
+  });
+
+  test("a resolved path comes first unless the index already lists it", () => {
+    const typed = at("@./src/app");
+    const open = nextCompletion(CLOSED, typed);
+
+    const resolved = (file: MentionFile) =>
+      completionModel(
+        open.kind === "open" ? { ...open, explicit: file } : open,
+        typed,
+        SOURCES,
+      )?.items.map((item) => item.id);
+
+    expect(resolved({ path: "/w/src/app.ts", display: "src/app.ts", label: "app.ts" })).toEqual([
+      "/w/src/app.ts",
+    ]);
+    expect(
+      completionModel(
+        open.kind === "open"
+          ? { ...open, explicit: { path: "/w/a.ts", display: "a.ts", label: "a.ts" } }
+          : open,
+        typed,
+        { ...SOURCES, files: null },
+      )?.items.map((item) => item.id),
+    ).toEqual(["/w/a.ts"]);
   });
 });

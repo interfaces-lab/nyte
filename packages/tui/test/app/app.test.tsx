@@ -23,6 +23,14 @@ function userTexts(store: Store): readonly string[] {
 }
 
 const working = (store: Store): boolean => store.screen().run.kind === "working";
+
+/** The open list's search text and caret. */
+function field(store: Store) {
+  const dialog = store.screen().dialog;
+
+  return dialog?.kind === "list" ? { query: dialog.query, caret: dialog.caret } : null;
+}
+
 const idle = (store: Store): boolean => store.screen().run.kind === "idle";
 
 test("boots to a ready composer", async () => {
@@ -172,6 +180,30 @@ test("a question shows, and a typed answer answers it", async () => {
   expect(JSON.stringify((await fixture.requested(2)).context.messages)).toContain("Green");
   await app.state(idle);
   expect(userTexts(app.store).some((text) => text.includes("Green"))).toBe(false);
+});
+
+test("a dialog's search field moves its caret and deletes by word, as an input does", async () => {
+  await using fixture = await openTestHost();
+  await using app = await startApp(fixture);
+  await app.ready();
+
+  app.mockInput.pressKey("k", { ctrl: true });
+  await app.state((store) => field(store) !== null);
+  await app.mockInput.typeText("mdel");
+  app.mockInput.pressArrow("left");
+  app.mockInput.pressArrow("left");
+  app.mockInput.pressArrow("left");
+  await app.mockInput.typeText("o");
+  await app.state((store) => field(store)?.query === "model");
+  expect(field(app.store)).toEqual({ query: "model", caret: 2 });
+
+  app.mockInput.pressKey("e", { ctrl: true });
+  await app.mockInput.typeText(" x");
+  app.mockInput.pressKey("w", { ctrl: true });
+  await app.state((store) => field(store)?.query === "model ");
+  app.mockInput.pressKey("u", { ctrl: true });
+  await app.state((store) => field(store)?.query === "");
+  expect(app.store.state().local.draft.text).toBe("");
 });
 
 test("a render throw shows the error screen, logs it, and R recovers", async () => {

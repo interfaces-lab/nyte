@@ -1,5 +1,7 @@
 /** What the usage panel shows: the providers' account windows and what this chat has spent. */
 import type { ModelCatalogView, SessionView, Usage } from "@nyte-ai/sdk";
+import type { TextLine } from "../model/dialogs/dialog.ts";
+import { GLYPHS } from "./constants.ts";
 import { formatTokens } from "./format.ts";
 import { sessionUsage } from "./view-helpers.ts";
 
@@ -61,12 +63,21 @@ export function usageCard(view: SessionView, catalog: ModelCatalogView | undefin
 
 const BAR_CELLS = 20;
 
-/** The `/usage` panel's lines: each account window with its share and reset, then this chat's spend. */
-export function usageLines(card: UsageCard): readonly string[] {
-  const accounts = card.accounts.flatMap((account) => [
-    `${account.name} · account limits`,
-    ...account.limits.flatMap((window) => {
+/** Share used at which a window's bar turns warning, then error. */
+const WARNING_SHARE = 85;
+
+const ERROR_SHARE = 95;
+
+/**
+ * The `/usage` panel's lines: each account's windows with their share, reset
+ * and a bar that turns warning at 85% and error at 95%, then this chat's spend.
+ */
+export function usageLines(card: UsageCard): readonly TextLine[] {
+  const accounts = card.accounts.flatMap((account): TextLine[] => [
+    [{ text: `${account.name} · account limits`, bold: true }],
+    ...account.limits.flatMap((window): TextLine[] => {
       const used = window.limit <= 0 ? 0 : Math.round((window.used / window.limit) * 100);
+
       const fill =
         used <= 0 ? 0 : Math.max(1, Math.min(BAR_CELLS, Math.round((used / 100) * BAR_CELLS)));
 
@@ -81,10 +92,16 @@ export function usageLines(card: UsageCard): readonly string[] {
 
       return [
         `${window.label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`,
-        `${"━".repeat(fill)}${"─".repeat(BAR_CELLS - fill)}`,
-        "",
+        [
+          {
+            text: "━".repeat(fill),
+            tone: used >= ERROR_SHARE ? "error" : used >= WARNING_SHARE ? "warning" : "accent",
+          },
+          { text: GLYPHS.rule.repeat(BAR_CELLS - fill), tone: "muted" },
+        ],
       ];
     }),
+    "",
   ]);
 
   const { chat } = card;
@@ -94,7 +111,7 @@ export function usageLines(card: UsageCard): readonly string[] {
     "",
     ...accounts,
     ...(chat.kind === "message"
-      ? [`this chat · ${chat.message}`]
-      : [`this chat · ${chat.total}`, ...chat.breakdown]),
+      ? [[{ text: `this chat · ${chat.message}`, bold: true }]]
+      : [[{ text: `this chat · ${chat.total}`, bold: true }], ...chat.breakdown]),
   ];
 }

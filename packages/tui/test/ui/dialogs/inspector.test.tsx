@@ -40,7 +40,26 @@ test("the host draws the inspector as a screen with the task id until the task i
   expect(frame).toContain("Tasks");
   expect(frame).toContain("job-1 · Loading…");
   expect(frame).toContain("esc back");
-  expect(frame).toContain("ctrl+x cancel");
+  expect(frame).not.toContain("ctrl+x cancel");
+});
+
+test("cancel is offered only while the task can still be stopped", async () => {
+  const done: Task = {
+    ...JOB,
+    job: { ...JOB.job, state: { kind: "exited", code: 0, reason: "exited" }, endedAt: 5 },
+  };
+
+  for (const [task, offered] of [
+    [JOB, true],
+    [done, false],
+  ] as const) {
+    await using app = await renderDialog(DIALOG, {
+      width: 120,
+      node: () => <InspectorView dialog={DIALOG} task={task} />,
+    });
+
+    expect(app.frame().includes("ctrl+x cancel")).toBe(offered);
+  }
 });
 
 test("a job's inspector shows its status and output tail at widths 40 and 100", async () => {

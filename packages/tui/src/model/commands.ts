@@ -5,10 +5,15 @@
  * Intent, so the palette and `/name` execute the same way.
  */
 import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
-import { availableSlashCommands, SLASH_COMMANDS } from "../lib/slash.ts";
+import {
+  availableSlashCommands,
+  hasInlineSkills,
+  parseComposerSubmission,
+  SLASH_COMMANDS,
+} from "../lib/slash.ts";
 import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
-import { applyChoice, matchChoice, settingRows } from "./settings.ts";
+import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
 import type { SettingRow } from "./settings.ts";
 import type { State } from "./state.ts";
 
@@ -106,6 +111,10 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
 }
 
 function setting(state: State, row: SettingRow, argument: string): Intent {
+  const refused = busyRefusal(state, row);
+
+  if (refused !== null) return refused;
+
   if (argument === "") {
     if (row.id === "model") return { kind: "open", dialog: { kind: "model" } };
 
@@ -196,4 +205,25 @@ export function resolveCommand(state: State, name: string): CommandEntry | null 
     commandRegistry(state).find((entry) => entry.name === name || entry.aliases.includes(name)) ??
     null
   );
+}
+
+/**
+ * The command a `/name args` draft runs here, with its argument; null when
+ * the draft goes out as a prompt (a skill, a client-side plugin command, an
+ * unknown name, or any draft that names a skill inline, `/cd` excepted).
+ */
+export function runnableCommand(
+  state: State,
+  text: string,
+): { readonly entry: CommandEntry; readonly argument: string } | null {
+  const parsed = parseComposerSubmission(text);
+
+  if (parsed.kind !== "command") return null;
+  const entry = resolveCommand(state, parsed.command.name);
+
+  if (entry === null || entry.prompt) return null;
+
+  if (entry.name !== "cd" && hasInlineSkills(text, skillsOf(state))) return null;
+
+  return { entry, argument: parsed.command.argument };
 }

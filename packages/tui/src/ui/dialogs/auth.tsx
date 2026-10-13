@@ -72,6 +72,7 @@ export function AuthView(props: { readonly dialog: AuthDialog }): JSX.Element {
               <Note text={step().prompt} />
               <QueryLine
                 text={String.fromCodePoint(...step().codePoints)}
+                caret={step().caret}
                 placeholder=""
                 masked={step().masked}
               />

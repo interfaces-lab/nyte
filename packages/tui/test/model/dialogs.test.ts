@@ -9,8 +9,9 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionInfo, TreeNode, TreeView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../src/lib/tasks.ts";
-import { dialogCommandOf, reduceDialog } from "../../src/model/dialogs/dialog.ts";
+import { dialogField, reduceDialog } from "../../src/model/dialogs/dialog.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
+import type { FieldEdit } from "../../src/model/dialogs/field.ts";
 import { reduceList, visibleChoices } from "../../src/model/dialogs/list.ts";
 import type { ListDialog } from "../../src/model/dialogs/list.ts";
 import { rowDraft, visibleModels } from "../../src/model/dialogs/model-picker.ts";
@@ -584,6 +585,9 @@ describe("task inspector", () => {
       following: true,
       scroll: { seq: 2, by: "bottom" },
     });
+    expect(
+      up === null ? null : reduceDialog(up, { kind: "key", name: "chat.scroll.latest" }).dialog,
+    ).toMatchObject({ following: true, scroll: { seq: 2, by: "bottom" } });
   });
 
   test("Ctrl+Up/Down step tasks, Ctrl+X stops this one, Esc goes back", () => {
@@ -646,6 +650,10 @@ describe("auth", () => {
     ]);
     expect(top(answered.state)).toMatchObject({ step: { kind: "waiting" } });
 
+    expect(play(secret, key("auth.submit")).effects).toEqual([
+      { kind: "login-answer", dialog: "dialog-1", answer: "" },
+    ]);
+
     const cancelled = play(secret, key("auth.cancel"));
 
     expect(cancelled.effects).toEqual([{ kind: "login-answer", dialog: "dialog-1", answer: null }]);
@@ -697,23 +705,26 @@ describe("text panel", () => {
   });
 });
 
-describe("paste", () => {
-  const secret: Dialog = {
-    kind: "auth",
-    id: "a1",
-    mode: "login",
-    provider: "test",
-    step: { kind: "secret", prompt: "Paste your API key", masked: true, codePoints: [] },
-  };
+const secret: Dialog = {
+  kind: "auth",
+  id: "a1",
+  mode: "login",
+  provider: "test",
+  step: { kind: "secret", prompt: "Paste your API key", masked: true, codePoints: [] },
+};
 
-  test("a paste appends to the typed field as one trimmed line", () => {
-    expect(dialogCommandOf(secret, { kind: "paste", text: "sk-key\n" })).toEqual({
-      kind: "query",
-      text: "sk-key",
-    });
-    expect(
-      dialogCommandOf(list(["a"], { query: "fi" }), { kind: "paste", text: "nd\r\nme" }),
-    ).toEqual({ kind: "query", text: "find me" });
+describe("paste", () => {
+  test("a paste goes in at the caret as one trimmed line", () => {
+    const pasted = reduceDialog(secret, { kind: "paste", text: "sk-key\n" }).dialog;
+
+    expect(pasted === null ? null : dialogField(pasted)).toEqual({ text: "sk-key", caret: 6 });
+
+    const inserted = reduceDialog(list(["a"], { query: "fi", caret: 1 }), {
+      kind: "paste",
+      text: "nd\r\nme",
+    }).dialog;
+
+    expect(field(inserted)).toEqual({ text: "fnd mei", caret: 6 });
   });
 
   test("a dialog without a typed field, or an empty paste, takes nothing", () => {
@@ -725,8 +736,95 @@ describe("paste", () => {
       scroll: 0,
     };
 
-    expect(dialogCommandOf(text, { kind: "paste", text: "hello" })).toBeNull();
-    expect(dialogCommandOf(secret, { kind: "paste", text: "\n" })).toBeNull();
-    expect(dialogCommandOf(secret, { kind: "close" })).toEqual({ kind: "close" });
+    expect(reduceDialog(text, { kind: "paste", text: "hello" }).dialog).toBe(text);
+    expect(reduceDialog(secret, { kind: "paste", text: "\n" }).dialog).toBe(secret);
+  });
+});
+
+function edit(dialog: Dialog, ...edits: readonly FieldEdit[]): Dialog | null {
+  return edits.reduce<Dialog | null>(
+    (current, next) =>
+      current === null ? null : reduceDialog(current, { kind: "edit", edit: next }).dialog,
+    dialog,
+  );
+}
+
+function field(dialog: Dialog | null) {
+  return dialog === null ? null : dialogField(dialog);
+}
+
+describe("typed field", () => {
+  test("the caret moves and text goes in where it is; the list filters on the result", () => {
+    const moved = edit(
+      list(["alpha", "beta"]),
+      { kind: "insert", text: "bta" },
+      { kind: "move", to: "left" },
+      { kind: "move", to: "left" },
+      { kind: "insert", text: "e" },
+    );
+
+    expect(field(moved)).toEqual({ text: "beta", caret: 2 });
+    expect(moved?.kind === "list" ? visibleChoices(moved).map((row) => row.id) : []).toEqual([
+      "beta",
+    ]);
+    expect(field(edit(list(["a"], { query: "one two" }), { kind: "move", to: "home" }))).toEqual({
+      text: "one two",
+      caret: 0,
+    });
+  });
+
+  test("word and line deletes act from the caret", () => {
+    const words = list(["a"], { query: "find the bug", caret: 8 });
+
+    expect(field(edit(words, { kind: "delete", to: "word-left" }))).toEqual({
+      text: "find  bug",
+      caret: 5,
+    });
+    expect(field(edit(words, { kind: "delete", to: "home" }))).toEqual({ text: " bug", caret: 0 });
+    expect(field(edit(words, { kind: "delete", to: "end" }))).toEqual({
+      text: "find the",
+      caret: 8,
+    });
+  });
+
+  test("a secret is edited by code point and keeps its caret on the step", () => {
+    const entered = edit(
+      secret,
+      { kind: "insert", text: "sk-ky" },
+      { kind: "move", to: "left" },
+      { kind: "insert", text: "e" },
+    );
+
+    expect(entered?.kind === "auth" ? entered.step : null).toMatchObject({
+      codePoints: Array.from("sk-key", (character) => character.codePointAt(0)),
+      caret: 5,
+    });
+  });
+
+  test("a whole new text puts the caret at the end", () => {
+    const set = reduceDialog(list(["a"], { query: "abc", caret: 1 }), {
+      kind: "query",
+      text: "xyz",
+    }).dialog;
+
+    expect(field(set)).toEqual({ text: "xyz", caret: 3 });
+  });
+
+  test("the question keeps its typed answer's caret between keys", () => {
+    const asking = viewOf((v) =>
+      v
+        .turn("t", (t) => t.user("go"))
+        .question("Which?", ["a", "b"], { id: "q1" })
+        .waiting("q1"),
+    );
+
+    const step = play(
+      ready(asking),
+      { kind: "dialog", command: { kind: "edit", edit: { kind: "insert", text: "abc" } } },
+      { kind: "dialog", command: { kind: "edit", edit: { kind: "move", to: "left" } } },
+      { kind: "dialog", command: { kind: "edit", edit: { kind: "insert", text: "x" } } },
+    );
+
+    expect(step.state.local.question).toMatchObject({ answering: "abxc", caret: 3 });
   });
 });

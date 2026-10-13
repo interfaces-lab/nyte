@@ -94,3 +94,40 @@ test("loading and failed catalogs say so", async () => {
   await using failed = await renderDialog({ ...LOADING, models: { kind: "failed", message: "x" } });
   expect(failed.frame()).toContain("Close and try /model again");
 });
+
+test("the wheel moves the highlight and a click only highlights", async () => {
+  await using app = await renderDialog(READY);
+  const fast = rows(app.frame()).findIndex((line) => line.includes("Model Fast"));
+
+  await app.mockMouse.scroll(10, fast, "down");
+  expect(app.dispatched).toContainEqual({
+    kind: "dialog",
+    command: { kind: "key", name: "model.next" },
+  });
+  await app.mockMouse.scroll(10, fast, "up");
+  expect(app.dispatched.at(-1)).toEqual({
+    kind: "dialog",
+    command: { kind: "key", name: "model.previous" },
+  });
+
+  await app.mockMouse.click(10, fast);
+  expect(app.dispatched.at(-1)).toEqual({
+    kind: "dialog",
+    command: { kind: "highlight", index: 1 },
+  });
+  await app.send({ kind: "highlight", index: 1 });
+  expect(app.frame()).toContain("❯ Model Fast");
+  expect(app.frame()).toContain("enter confirm");
+});
+
+test("a model with one level and no fast sibling offers no field to change", async () => {
+  await using app = await renderDialog(READY, { width: 100 });
+
+  expect(app.frame()).toContain("Models");
+  expect(app.frame()).toContain("←→ reasoning effort");
+  await app.send(key("model.next"));
+  expect(app.frame()).toContain("❯ Model Fast");
+  expect(app.frame()).not.toContain("←→");
+  await app.send(key("model.increase"));
+  expect(rows(app.frame()).find((line) => line.includes("❯ Model Fast"))).toContain("Off");
+});

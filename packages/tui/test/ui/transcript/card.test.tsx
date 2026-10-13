@@ -17,6 +17,7 @@ const KEYWORD = RGBA.fromHex("#ff0000");
 const card = shellCard(
   {
     id: "j1",
+    session: null,
     command: "echo kept",
     include: true,
     startedAt: 0,

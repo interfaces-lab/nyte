@@ -89,6 +89,7 @@ export function questionPanel(
     query: local.query,
     highlighted: local.highlighted,
     answering: local.answering ?? "",
+    caret: local.caret,
     busy: false,
   };
 }

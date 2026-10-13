@@ -6,7 +6,9 @@
  */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, mock, test } from "bun:test";
+import { RGBA } from "@opentui/core";
 import { testRender } from "@opentui/solid";
+import { DARK_THEME } from "../../../src/lib/theme.ts";
 import { ErrorScreen } from "../../../src/ui/chrome/error-screen.tsx";
 import { Footer } from "../../../src/ui/chrome/footer.tsx";
 import { Hints } from "../../../src/ui/chrome/hints.tsx";
@@ -104,6 +106,26 @@ describe("notice line", () => {
 
     expect(app.dispatched).toContainEqual({ kind: "retry-watch" });
   });
+
+  test("a two-line notice shows both lines, a confirmation in the ok colour", async () => {
+    const state = play(ready(idle), {
+      kind: "inform",
+      tone: "ok",
+      text: "Signed in to Test.\nModel: test/model",
+    }).state;
+
+    await using app = await mount(state, () => <NoticeLine />, { width: 60, height: 4 });
+    const lines = app.captureCharFrame().split("\n");
+    const first = lines.findIndex((line) => line.includes("Signed in to Test."));
+
+    expect(lines[first + 1]).toContain("Model: test/model");
+
+    const span = app
+      .captureSpans()
+      .lines[first]?.spans.find((candidate) => candidate.text.includes("Signed in"));
+
+    expect(span?.fg.toString()).toBe(RGBA.fromHex(DARK_THEME.ok).toString());
+  });
 });
 
 describe("tasks line", () => {
@@ -132,7 +154,7 @@ describe("tasks line", () => {
 
     await using app = await mount(state, () => <TasksLine />, { width: 60, height: 2 });
 
-    expect(app.captureCharFrame()).toContain("1 running in background");
+    expect(app.captureCharFrame()).toContain("● 1 running in background · ↓ view");
     await app.mockMouse.click(5, 0);
     expect(app.dispatched).toContainEqual({
       kind: "open",

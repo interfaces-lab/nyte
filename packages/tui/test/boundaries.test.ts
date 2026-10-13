@@ -1,7 +1,7 @@
 /**
  * Import rules that keep internals unreachable, checked by reading sources:
- * - src/model/** imports only @nyte-ai/* types, @nyte-ai/plugin/question, src/lib/**, src/model/**;
- *   never solid-js, @opentui/*, node:*, src/effects, src/services, src/ui, src/app.
+ * - src/model/** imports only @nyte-ai/* types, @nyte-ai/plugin/question, fuzzysort (pure JS),
+ *   src/lib/**, src/model/**; never solid-js, @opentui/*, node:*, src/effects, src/services, src/ui, src/app.
  * - src/ui/** never imports src/effects or src/services, and imports @nyte-ai/sdk only as types.
  * - Only src/effects/host-port.ts imports SDK values.
  * - No source registers `setFrameCallback` or adds a raw `keyInput` listener.
@@ -65,12 +65,12 @@ function all(dirs: readonly string[]): readonly Import[] {
 
 const describe = (entry: Import): string => `${entry.file} → ${entry.spec}`;
 
-test("model imports only lib, model and @nyte-ai types (question rule values)", () => {
+test("model imports only lib, model, fuzzysort and @nyte-ai types (question rule values)", () => {
   const offending = all(["model"]).filter((entry) => {
     if (entry.target !== null)
       return !(entry.target.startsWith("lib/") || entry.target.startsWith("model/"));
 
-    if (entry.spec === "@nyte-ai/plugin/question") return false;
+    if (entry.spec === "@nyte-ai/plugin/question" || entry.spec === "fuzzysort") return false;
 
     return !entry.spec.startsWith("@nyte-ai/") || entry.value;
   });

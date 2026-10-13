@@ -11,15 +11,16 @@
  *   100 selection  Ctrl+C copies, Esc clears, while a selection exists (above dialogs); with
  *                  copy-on-select, Ctrl+C on a transcript selection clears it and falls through
  *    20 dialog     every non-composer command → its interaction (enabled iff screen.dialog)
+ *    10 field      FIELD_KEYBINDS → an edit of the dialog's typed field, when it takes text
  *     5 completion completion.* (enabled iff screen.completion and no dialog)
  *     1 chat       chat.* (enabled iff no dialog)
  *    -1 textarea   managed textarea editing keys, composer.newline, composer.delete.to.line.start
  *
  * Two intercepts run before the layers: every key dismisses the notice and
- * any other key clears a transcript selection, and
- * printable keys and Backspace become the open dialog's `query` when it takes
- * text. After the layers, a key nobody handled while a dialog or the error
- * screen shows is consumed, so it never edits the composer underneath.
+ * any other key clears a transcript selection, and a printable key is
+ * inserted at the open dialog's caret when it takes text. After the layers, a
+ * key nobody handled while a dialog or the error screen shows is consumed,
+ * so it never edits the composer underneath.
  * No component adds a raw `keyInput` listener.
  */
 import { InputRenderable, TextareaRenderable } from "@opentui/core";
@@ -38,10 +39,11 @@ import {
 import { commandBindings } from "@opentui/keymap/extras";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
 import type { Accessor } from "solid-js";
-import { CHAT_KEYBINDS } from "../lib/constants.ts";
-import type { ChatCommand } from "../lib/constants.ts";
+import { CHAT_KEYBINDS, FIELD_KEYBINDS } from "../lib/constants.ts";
+import type { ChatCommand, FieldCommand } from "../lib/constants.ts";
 import { dialogText } from "../model/dialogs/dialog.ts";
 import type { Dialog } from "../model/dialogs/dialog.ts";
+import { FIELD_EDITS } from "../model/dialogs/field.ts";
 import { chatCommands } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
 import type { Store } from "./store.ts";
@@ -107,6 +109,16 @@ export function installKeymap(options: KeymapOptions): () => void {
 
   const names = chatCommands().filter((name) => !name.startsWith("composer."));
 
+  const typing = (): boolean => {
+    const open = dialog();
+
+    return open !== null && dialogText(open) !== null;
+  };
+
+  const fields = Object.keys(FIELD_KEYBINDS).filter((name): name is FieldCommand =>
+    Object.hasOwn(FIELD_EDITS, name),
+  );
+
   const layers: readonly LayerSpec[] = [
     {
       priority: 200,
@@ -156,6 +168,17 @@ export function installKeymap(options: KeymapOptions): () => void {
       ...table(names.filter((name) => !name.startsWith("completion."))),
     },
     {
+      priority: 10,
+      enabled: () => live() && typing(),
+      commands: fields.map((name) => ({
+        name,
+        run() {
+          store.dispatch({ kind: "dialog", command: { kind: "edit", edit: FIELD_EDITS[name] } });
+        },
+      })),
+      keys: Object.fromEntries(fields.map((name) => [name, FIELD_KEYBINDS[name]])),
+    },
+    {
       priority: 5,
       enabled: () => live() && dialog() === null && store.screen().completion !== null,
       ...table(names.filter((name) => name.startsWith("completion."))),
@@ -198,15 +221,13 @@ export function installKeymap(options: KeymapOptions): () => void {
 
       if (renderer.hasSelection && !selectionKey(event) && !editingSelection(renderer))
         renderer.clearSelection();
-      const open = dialog();
-      const text = open === null ? null : dialogText(open);
 
-      if (text === null) return;
-      const query = typed(event, text);
-
-      if (query === null) return;
+      if (!typing() || !printable(event)) return;
       consume();
-      store.dispatch({ kind: "dialog", command: { kind: "query", text: query } });
+      store.dispatch({
+        kind: "dialog",
+        command: { kind: "edit", edit: { kind: "insert", text: event.sequence } },
+      });
     }),
     keymap.intercept("key:after", ({ handled, consume }) => {
       if (!handled && (!live() || dialog() !== null)) consume();
@@ -227,16 +248,12 @@ function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
     : null;
 }
 
-/** The field's next text for a printable key or Backspace, or null for any other key. */
-function typed(event: KeyEvent, text: string): string | null {
-  if (event.ctrl || event.meta || event.option || event.super === true) return null;
-
-  if (event.name === "backspace") return Array.from(text).slice(0, -1).join("");
+/** A key that types its sequence: no modifier but Shift, no control character. */
+function printable(event: KeyEvent): boolean {
+  if (event.ctrl || event.meta || event.option || event.super === true) return false;
   const first = event.sequence.codePointAt(0);
 
-  if (first === undefined || first < 32 || first === 127) return null;
-
-  return text + event.sequence;
+  return first !== undefined && first >= 32 && first !== 127;
 }
 
 /** Ctrl+C and Esc: the keys the selection layer answers, so they keep the selection. */

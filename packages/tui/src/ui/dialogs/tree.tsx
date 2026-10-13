@@ -2,7 +2,7 @@
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, For, on } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
 import type { CliTheme } from "../../lib/theme.ts";
@@ -61,6 +61,7 @@ function TreeRowView(props: {
 }): JSX.Element {
   const app = useApp();
   const theme = app.kit.theme;
+  const [hovered, setHovered] = createSignal(false);
 
   const segments = createMemo(() =>
     fit(
@@ -82,8 +83,10 @@ function TreeRowView(props: {
       wrapMode="none"
       selectable={false}
       flexShrink={0}
-      bg={props.selected ? theme().selectionBackground : undefined}
+      bg={props.selected ? theme().selectionBackground : hovered() ? theme().hover : undefined}
       attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -121,9 +124,9 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
 
   const help = joinHints([
     `${keycap("tree.page.up", "symbol")}/${keycap("tree.page.down", "symbol")} page`,
-    `${keycap("tree.fold", "symbol").replace("meta+", "alt+")}/${keycap("tree.unfold", "symbol").replace("meta+", "alt+")} fold`,
+    `${keycap("tree.fold", "symbol").replace("meta+", "alt+")}/${keycap("tree.unfold", "symbol").replace("meta+", "")} fold`,
     hint("tree.copy", "copy"),
-    `${keycap("tree.filter.tools")}/${keycap("tree.filter.users")}/${keycap("tree.filter.all")}/${keycap("tree.filter.default")} filter`,
+    `${keycap("tree.filter.tools")}/${keycap("tree.filter.users").replace("ctrl+", "")}/${keycap("tree.filter.all").replace("ctrl+", "")}/${keycap("tree.filter.default").replace("ctrl+", "")} filter`,
     hint("tree.filter.next", "cycle"),
   ]);
 
@@ -147,7 +150,11 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
   return (
     <Panel title="Session Tree" hints={hints} fill>
       <Note text={help} />
-      <QueryLine text={props.dialog.query} placeholder="type to filter" />
+      <QueryLine
+        text={props.dialog.query}
+        caret={props.dialog.caret}
+        placeholder="type to filter"
+      />
       <scrollbox
         ref={(box) => {
           scroll = box;

@@ -13,8 +13,9 @@
  *  ─────────────  ───────────────────────────  ──────────────────────  ───────────────────────  ──────────────────────
  *  blocked        refuse(reason)               refuse(reason)          auth? cancel : PASS      PASS
  *  completion     accept                       queueable? accept+alt   close completion         PASS
- *  shell-running  refuse "a command is         refuse                  stop-shell               stop-shell
- *                 running"
+ *                                              : owns Enter? noop
+ *  shell-running  !cmd or prompt? refuse;     same as Enter           stop-shell               stop-shell
+ *                 a /command runs: PASS
  *  editing        save-edit(own delivery)      save-edit(steer)        cancel-edit              draft? clear : cancel-edit
  *  shell-draft    run-shell(! include,         PASS                    PASS                     PASS
  *                 !! private)
@@ -65,6 +66,8 @@ export interface TableInput {
   readonly run: RunModel;
   readonly question: QuestionModel | null;
   readonly draft: DraftModel;
+  /** The draft is a `/command` this client runs (not one that goes out as a prompt). */
+  readonly runsCommand: boolean;
   readonly editing: EditingModel | null;
   readonly shell: ShellJob | null;
   readonly completion: CompletionModel | null;
@@ -162,13 +165,12 @@ export function blockedReason(blocked: Blocked): string {
     case "starting":
       return "Still starting. Your draft is saved here.";
     case "no-session":
-      return "Wait for the session to open";
+      return "Loading session. Your draft is saved here.";
     case "switching":
-      return "Wait for the chat switch";
     case "changing-directory":
-      return "Wait for the workspace switch";
+      return "Switching workspace. Your draft is saved here.";
     case "authenticating":
-      return "Finish authentication first";
+      return "Finish signing in or out first. Esc cancels.";
     case "editor":
       return "Finish editing in your editor";
     default: {
@@ -201,8 +203,10 @@ function acceptCompletion(input: TableInput): Interaction | null {
     : null;
 }
 
+/** A menu that owns Enter owns Ctrl+Enter too: only a skill fills and sends; a half-typed token never goes out. */
 function acceptCompletionThenAlternate(input: TableInput): Interaction | null {
-  if (input.completion?.queueable !== true) return null;
+  if (input.completion?.queueable !== true)
+    return input.completion?.ownsEnter === true ? on({ kind: "noop" }, "send", true) : null;
   const alternate = alternateDelivery(input);
 
   return on({ kind: "completion", action: { kind: "accept", alternate } }, alternate, true);
@@ -212,8 +216,25 @@ function closeCompletion(): Interaction | null {
   return on({ kind: "completion", action: { kind: "close" } }, "close", true);
 }
 
-function refuseWhileShell(): Interaction | null {
-  return on({ kind: "refuse", reason: "A command is running; esc stops it" }, "send", true);
+/** A local command holds `!` drafts and prompts, so its result never lands after the prompt that cites it; a `/command` still runs. */
+function refuseWhileShell(input: TableInput): Interaction | null {
+  if (input.draft.kind === "shell")
+    return on(
+      { kind: "refuse", reason: "A local command is running. Esc stops it; your draft is kept." },
+      "send",
+      true,
+    );
+
+  if (input.draft.kind !== "message" || input.runsCommand) return null;
+
+  return on(
+    {
+      kind: "refuse",
+      reason: "A local command is running. Wait or press Esc; your draft is kept.",
+    },
+    "send",
+    true,
+  );
 }
 
 function stopShell(): Interaction | null {
@@ -500,6 +521,7 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
         "picker.page.up",
         "picker.page.down",
         "chat.tools.toggle",
+        "chat.scroll.latest",
         "chat.message.previous",
         "chat.message.next",
         "chat.task.stop",
@@ -722,6 +744,8 @@ function completionInteraction(
   completion: CompletionModel | null,
 ): Interaction {
   if (completion === null) return OFF;
+
+  if (completion.items.length === 0 && command !== "completion.close") return OFF;
 
   switch (command) {
     case "completion.accept":

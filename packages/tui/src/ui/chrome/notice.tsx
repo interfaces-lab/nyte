@@ -17,6 +17,8 @@ export function NoticeLine(): JSX.Element {
   const toneColor = (tone: Notice["tone"]): string => {
     if (tone === "error") return theme().error;
 
+    if (tone === "ok") return theme().ok;
+
     return tone === "warning" ? theme().warning : theme().dim;
   };
 

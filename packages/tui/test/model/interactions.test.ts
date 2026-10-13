@@ -42,7 +42,7 @@ describe("blocked", () => {
   test("Ctrl+Enter refuses the same way", () => {
     expect(at({ blocked: "switching", draft: "hi" }, CTRL_ENTER).intent).toEqual({
       kind: "refuse",
-      reason: "Wait for the chat switch",
+      reason: "Switching workspace. Your draft is saved here.",
     });
   });
 
@@ -90,11 +90,31 @@ describe("completion", () => {
     });
   });
 
-  test("Ctrl+Enter on a non-skill passes", () => {
+  test("Ctrl+Enter on a non-skill does nothing, so the half-typed token is not sent", () => {
     expect(at({ completion: "slash", draft: "/re", run: "working" }, CTRL_ENTER).intent).toEqual({
+      kind: "noop",
+    });
+  });
+
+  test("Ctrl+Enter on /cd passes, so the typed path runs", () => {
+    expect(at({ completion: "cd", draft: "/cd sr", run: "working" }, CTRL_ENTER).intent).toEqual({
       kind: "send",
       delivery: "queue",
     });
+  });
+
+  test("an empty menu only closes: Enter sends, Tab and the arrows do nothing", () => {
+    expect(at({ completion: "empty", draft: "/zz" }, ENTER).intent).toEqual({
+      kind: "send",
+      delivery: "queue",
+    });
+    expect(at({ completion: "empty", draft: "/zz" }, "completion.close").intent).toEqual({
+      kind: "completion",
+      action: { kind: "close" },
+    });
+
+    for (const command of ["completion.fill", "completion.next", "completion.page.up"] as const)
+      expect(at({ completion: "empty", draft: "/zz" }, command).intent).toBeNull();
   });
 
   test("Esc closes the menu", () => {
@@ -112,12 +132,24 @@ describe("completion", () => {
 });
 
 describe("shell running", () => {
-  test("Enter refuses", () => {
-    expect(at({ shell: true, draft: "next" }, ENTER).intent).toMatchObject({ kind: "refuse" });
+  test("Enter and Ctrl+Enter refuse a prompt and a ! command, keeping the draft", () => {
+    for (const key of [ENTER, CTRL_ENTER] as const) {
+      expect(at({ shell: true, draft: "next" }, key).intent).toEqual({
+        kind: "refuse",
+        reason: "A local command is running. Wait or press Esc; your draft is kept.",
+      });
+      expect(at({ shell: true, draft: "!ls" }, key).intent).toEqual({
+        kind: "refuse",
+        reason: "A local command is running. Esc stops it; your draft is kept.",
+      });
+    }
   });
 
-  test("Ctrl+Enter refuses", () => {
-    expect(at({ shell: true, draft: "next" }, CTRL_ENTER).intent).toMatchObject({ kind: "refuse" });
+  test("a /command still runs", () => {
+    expect(at({ shell: true, draft: "/usage" }, ENTER).intent).toEqual({
+      kind: "send",
+      delivery: "queue",
+    });
   });
 
   test("Esc stops the command", () => {
@@ -558,7 +590,14 @@ describe("invariants over every situation", () => {
       if (spec.blocked !== undefined && sends(interactions, ENTER))
         fail("Enter sends while blocked");
 
-      if (spec.shell && sends(interactions, ENTER)) fail("Enter sends while a shell runs");
+      if (
+        spec.shell &&
+        sends(interactions, ENTER) &&
+        !input.runsCommand &&
+        input.draft.kind !== "empty" &&
+        input.draft.kind !== "blank"
+      )
+        fail("Enter sends a prompt while a shell runs");
 
       if (
         spec.blocked === undefined &&

@@ -336,7 +336,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     const plugins = await pluginsPort(host, {
       notify: (title, body, sound) => terminal.notify(title, body, sound),
       report: (plugin, message) =>
-        app.store.dispatch({ kind: "inform", tone: "error", text: `${plugin}: ${message}` }),
+        app.store.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
     });
 
     opened = { host, port: hostPort(host), plugins };

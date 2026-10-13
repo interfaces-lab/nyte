@@ -5,6 +5,7 @@
  * something derivable.
  */
 import type {
+  Delivery,
   MessageId,
   ModelCatalogView,
   PartId,
@@ -17,7 +18,7 @@ import type {
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
-import type { CompletionState } from "./completion.ts";
+import type { CompletionState, MentionFile } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftParts, DraftSnapshot } from "./draft.ts";
@@ -76,6 +77,8 @@ export interface CatalogFacts {
 /** A local `!` command. The runner owns the process; these rows are what it reported. */
 export interface ShellJob {
   readonly id: string;
+  /** The chat it ran in: its card and its result marker belong to that chat only. */
+  readonly session: SessionId | null;
   readonly command: string;
   readonly include: boolean;
   readonly startedAt: number;
@@ -94,7 +97,7 @@ export interface WorkspaceFacts {
   readonly cwd: string;
   readonly branch: string | null;
   readonly dirty: boolean;
-  readonly mentions: readonly string[] | null;
+  readonly mentions: readonly MentionFile[] | null;
 }
 
 export interface TerminalFacts {
@@ -118,6 +121,8 @@ export interface Local {
   readonly pending: readonly PendingOp[];
   readonly handbacks: Readonly<Record<SessionId, readonly Handback[]>>;
   readonly drafts: Readonly<Record<SessionId, DraftSnapshot>>;
+  /** A queue edit left open in another chat; it comes back with that chat's draft. */
+  readonly edits: Readonly<Record<SessionId, Editing>>;
   readonly history: HistoryCursor | null;
   readonly escapeArmedAt: number | null;
   readonly transcript: TranscriptLocal;
@@ -126,6 +131,10 @@ export interface Local {
   readonly sequence: number;
   /** Bumped on a session switch or directory change; a paste resolved for an older generation is dropped. */
   readonly pasteGeneration: number;
+  /** Pastes the runner is still resolving. */
+  readonly pasting: number;
+  /** A send pressed while pastes were resolving; it goes once the last lands, and a refused paste cancels it. */
+  readonly sendAfterPaste: { readonly delivery: Delivery; readonly warning: string | null } | null;
   /** The run this client watched while it was live; OSC 7501 reports `done`/`error` only for it, until a key marks it seen. */
   readonly watchedRun: RunId | null;
   /** The move in flight, so its outcome lands the handback with the right notice. */
@@ -167,10 +176,13 @@ export interface QuestionLocal {
   readonly query: string;
   /** The typed answer while the "Type an answer" row is active; null otherwise. */
   readonly answering: string | null;
+  /** The caret in the typed answer; absent at the end. */
+  readonly caret?: number;
 }
 
 export interface Notice {
-  readonly tone: "info" | "warning" | "error";
+  /** `ok` confirms a change took (model, level, theme, directory, move, sign-in, reload, handback). */
+  readonly tone: "info" | "ok" | "warning" | "error";
   readonly text: string;
   readonly at: number;
 }
@@ -248,6 +260,7 @@ export function initialState(bootstrap: Bootstrap): State {
       pending: [],
       handbacks: {},
       drafts: {},
+      edits: {},
       history: null,
       escapeArmedAt: null,
       transcript: {
@@ -259,9 +272,18 @@ export function initialState(bootstrap: Bootstrap): State {
       submissions: [],
       sequence: 0,
       pasteGeneration: 0,
+      pasting: 0,
+      sendAfterPaste: null,
       watchedRun: null,
       move: null,
       preview: null,
     },
   };
+}
+
+/** The `!` commands run in the followed chat, the ones its transcript and draft show. */
+export function followedShells(state: State): readonly ShellJob[] {
+  const followed = state.facts.session?.id ?? null;
+
+  return state.facts.shells.filter((job) => job.session === followed);
 }

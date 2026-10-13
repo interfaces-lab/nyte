@@ -17,6 +17,8 @@ export interface ModelDialog {
     | { readonly kind: "ready"; readonly list: ModelList }
     | { readonly kind: "failed"; readonly message: string };
   readonly query: string;
+  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
+  readonly caret?: number;
   /** Index into `visibleModels`. */
   readonly highlighted: number;
   readonly field: "effort" | "fast";
@@ -105,9 +107,19 @@ export function rowDraft(dialog: ModelDialog, row: ModelRow): RowDraft {
   };
 }
 
-/** The field Left/Right change on a row: fast only when the model has a fast sibling. */
-export function activeField(dialog: ModelDialog, row: ModelRow): "effort" | "fast" {
-  return row.info.fast === null ? "effort" : dialog.field;
+/** The fields a row offers: effort when the model has more than one level, fast when it has a fast sibling. */
+export function modelFields(row: ModelRow): readonly ("effort" | "fast")[] {
+  return [
+    ...(row.info.thinking.length > 1 ? ["effort" as const] : []),
+    ...(row.info.fast === null ? [] : ["fast" as const]),
+  ];
+}
+
+/** The field Left/Right change on a row: the chosen one when the row has it, else its first; null when it has none. */
+export function activeField(dialog: ModelDialog, row: ModelRow): "effort" | "fast" | null {
+  const fields = modelFields(row);
+
+  return fields.includes(dialog.field) ? dialog.field : (fields[0] ?? null);
 }
 
 function unchanged(dialog: ModelDialog): DialogStep<ModelDialog> {
@@ -118,11 +130,13 @@ function change(dialog: ModelDialog, delta: -1 | 1): ModelDialog {
   const row = visibleModels(dialog)[dialog.highlighted];
 
   if (row === undefined) return dialog;
+  const field = activeField(dialog, row);
+
+  if (field === null) return dialog;
   const draft = rowDraft(dialog, row);
   const drafts = new Map(dialog.drafts);
 
-  if (activeField(dialog, row) === "fast")
-    drafts.set(modelId(row.ref), { ...draft, fast: delta === 1 });
+  if (field === "fast") drafts.set(modelId(row.ref), { ...draft, fast: delta === 1 });
   else {
     const levels = row.info.thinking;
     const index = Math.max(0, Math.min(levels.length - 1, levels.indexOf(draft.effort) + delta));
@@ -175,10 +189,11 @@ export function reduceModel(dialog: ModelDialog, command: DialogCommand): Dialog
     return unchanged({ ...next, highlighted: Math.max(0, index) });
   }
 
-  if (command.kind === "pick") {
+  if (command.kind === "pick" || command.kind === "highlight") {
     if (rows[command.index] === undefined) return unchanged(dialog);
+    const highlighted = { ...dialog, highlighted: command.index };
 
-    return confirm({ ...dialog, highlighted: command.index });
+    return command.kind === "pick" ? confirm(highlighted) : unchanged(highlighted);
   }
 
   const count = rows.length;

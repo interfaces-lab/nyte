@@ -7,11 +7,10 @@
  * exhaustive over `Msg["kind"]`, so a new message without a handler fails
  * the build.
  */
-import type { Delivery, MessageId, MoveOptions } from "@nyte-ai/sdk";
+import type { Delivery, MessageId, MoveOptions, SessionId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
 import { shortId } from "../lib/format.ts";
 import { canStopTask } from "../lib/tasks.ts";
-import { hasInlineSkills, parseComposerSubmission } from "../lib/slash.ts";
 import {
   initialHighlight,
   listTitle,
@@ -19,7 +18,7 @@ import {
   resumeChoices,
   shortcutLines,
 } from "./choices.ts";
-import { resolveCommand, slashNamespace } from "./commands.ts";
+import { resolveCommand, runnableCommand, slashNamespace } from "./commands.ts";
 import {
   completionEdit,
   completionModel,
@@ -31,7 +30,7 @@ import {
 } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
-import { dialogCommandOf, reduceDialog } from "./dialogs/dialog.ts";
+import { reduceDialog } from "./dialogs/dialog.ts";
 import { withPrompt } from "./dialogs/auth.ts";
 import type { AuthDialog } from "./dialogs/auth.ts";
 import { typedLabel } from "./dialogs/list.ts";
@@ -45,19 +44,22 @@ import {
   draftModel,
   liveMarkers,
   markerAt,
+  NO_PARTS,
   PASTE_COLLAPSE_LINES,
   sameSnapshot,
   snapshot,
 } from "./draft.ts";
+import type { DraftSnapshot } from "./draft.ts";
 import type { Effect } from "./effect.ts";
 import { promptEntries } from "./history.ts";
 import { chatCommands, interactionsFor } from "./interactions.ts";
 import type { Intent, Msg, Outcome } from "./msg.ts";
 import { queueRows, rowMessage } from "./queue.ts";
 import { keyboardDialog, runModel, tableInputFor } from "./screen.ts";
-import { facts, listDirectories, stageHandback } from "./session.ts";
+import { completionLookup, facts, stageHandback } from "./session.ts";
 import { settingRows, applyChoice } from "./settings.ts";
-import type { PendingOp, Selection, State } from "./state.ts";
+import { followedShells } from "./state.ts";
+import type { Notice, PendingOp, Selection, State } from "./state.ts";
 import {
   andThen,
   clearDraft,
@@ -176,6 +178,8 @@ export function reduce(state: State, msg: Msg, now: number): Step {
     case "effect-failed":
     case "inform":
     case "directory-listed":
+    case "mention-resolved":
+    case "command-unknown":
     case "preview-loaded":
       return outcomes(state, msg, now);
     default: {
@@ -194,12 +198,7 @@ function all(state: State, intents: readonly Intent[], now: number): Step {
   );
 }
 
-function refuse(
-  state: State,
-  reason: string,
-  now: number,
-  tone: "info" | "warning" | "error" = "warning",
-): Step {
+function refuse(state: State, reason: string, now: number, tone: Notice["tone"] = "warning"): Step {
   return stay(withNotice(state, reason, tone, now));
 }
 
@@ -276,6 +275,7 @@ export function composer(
           {
             kind: "shell-start",
             id: minted.id,
+            session: current.facts.session?.id ?? null,
             command: msg.command,
             include: msg.include,
             cwd: current.facts.workspace.cwd,
@@ -297,8 +297,13 @@ export function composer(
       return history(state, msg.direction);
     case "paste": {
       const generation = state.local.pasteGeneration;
+
       // A paste is input like a key: it takes the notice back.
-      const next = withLocal(state, { history: null, notice: null });
+      const next = withLocal(state, {
+        history: null,
+        notice: null,
+        pasting: state.local.pasting + 1,
+      });
 
       if (msg.source.kind === "clipboard")
         return { state: next, effects: [{ kind: "read-clipboard", generation }] };
@@ -366,52 +371,55 @@ export function composer(
 function send(state: State, delivery: Delivery, warning: string | null, now: number): Step {
   const followed = state.facts.session;
 
-  if (followed === null) return refuse(state, "Wait for the followed to open", now);
+  if (followed === null) return refuse(state, "Wait for the session to open", now);
+
+  if (state.local.pasting > 0)
+    return stay(withLocal(state, { sendAfterPaste: { delivery, warning } }));
   const draft = draftModel(state.local.draft);
 
   if (draft.kind !== "message") return stay(state);
+  const command = draft.command === null ? null : runnableCommand(state, draft.text);
 
-  if (draft.command !== null) {
-    const entry = resolveCommand(state, draft.command);
-    const parsed = parseComposerSubmission(draft.text);
+  if (command?.entry.name === "cd" && command.argument === "")
+    return refuse(state, "error: Directory is required. Use /cd <path>.", now, "error");
 
-    // A skill named inside the draft makes the whole draft a prompt; `/cd` still runs.
-    const skills = new Map(
-      (followed.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
+  if (command !== null) {
+    const intent = command.entry.run(command.argument) ?? {
+      kind: "prefill",
+      text: `/${command.entry.name} `,
+    };
+
+    return andThen(clearDraft(state), (current) =>
+      reduce(current, intent.kind === "plugin-command" ? { ...intent, delivery } : intent, now),
     );
-    const prompting = entry?.name !== "cd" && hasInlineSkills(draft.text, skills);
-
-    if (entry !== null && !entry.prompt && parsed.kind === "command" && !prompting) {
-      const argument = parsed.command.argument;
-
-      return andThen(clearDraft(state), (current) =>
-        reduce(current, entry.run(argument) ?? { kind: "prefill", text: `/${entry.name} ` }, now),
-      );
-    }
   }
 
+  const noticed = warning === null ? state : withNotice(state, warning, "warning", now);
+
+  return andThen(clearDraft(noticed), (current) =>
+    submitSnapshot(current, followed.id, snapshot(state.local.draft), delivery),
+  );
+}
+
+/** Sends a snapshot as a new message and follows the tail; the runner answers `sent` or `send-refused`. */
+function submitSnapshot(
+  state: State,
+  to: SessionId,
+  draft: DraftSnapshot,
+  delivery: Delivery,
+): Step {
   const minted = mint(state, "submission");
+  const submission = { id: minted.id, session: to, snapshot: draft, replace: null };
 
-  const submission = {
-    id: minted.id,
-    session: followed.id,
-    snapshot: snapshot(state.local.draft),
-    replace: null,
-  };
-
-  const queued = withLocal(minted.state, {
-    submissions: [...minted.state.local.submissions, submission],
-  });
-
-  const noticed = warning === null ? queued : withNotice(queued, warning, "warning", now);
-
-  return andThen(clearDraft(noticed), (current) => ({
-    state: following(current),
+  return {
+    state: following(
+      withLocal(minted.state, { submissions: [...minted.state.local.submissions, submission] }),
+    ),
     effects: [
       { kind: "send", submission, delivery },
       { kind: "scroll", op: { kind: "latest" } },
     ],
-  }));
+  };
 }
 
 /** Back at the transcript's tail, following new output: what Ctrl+End and every send do. */
@@ -515,7 +523,7 @@ function completion(
 
 /** Re-derives the completion after an edit the reducer made, asking for a `/cd` listing when needed. */
 function recomplete(current: State): Step {
-  return listDirectories(
+  return completionLookup(
     current.local.completion,
     withLocal(current, {
       completion: nextCompletion(current.local.completion, current.local.draft),
@@ -535,14 +543,10 @@ function acceptCompletion(
 
   if (item === undefined) return stay(state);
 
-  const edit = completionEdit(
-    model,
-    item,
-    state.local.draft,
-    alternate === null ? via : "tab",
-    { commands: slashNamespace(state), files: state.facts.workspace.mentions },
-    state.facts.workspace.cwd,
-  );
+  const edit = completionEdit(model, item, state.local.draft, alternate === null ? via : "tab", {
+    commands: slashNamespace(state),
+    files: state.facts.workspace.mentions,
+  });
 
   if (edit === null) return stay(state);
 
@@ -640,7 +644,7 @@ export function queue(
       const next = withNotice(
         withLocal(state, { editing }),
         "Editing queued message. Enter saves; Esc cancels.",
-        "info",
+        "ok",
         now,
       );
 
@@ -822,7 +826,7 @@ export function run(
       if (followed === null) return stay(state);
 
       if (busy(state))
-        return refuse(state, "Wait for the current run before changing the followed branch", now);
+        return refuse(state, "Wait for the current run before changing the session branch", now);
 
       const landed = followed.view?.messages.find(
         (message) =>
@@ -978,10 +982,19 @@ export function session(
               )
             : { ...state.local.drafts, [followed.id]: draft };
 
+      const { editing } = state.local;
+
+      const edits =
+        followed === null || editing === null || draft.text === ""
+          ? state.local.edits
+          : { ...state.local.edits, [followed.id]: editing };
+
       const switching = withLocal(state, {
         drafts,
+        edits,
         pending: [...pending, { kind: "switch", session: msg.session, announce: msg.announce }],
         pasteGeneration: state.local.pasteGeneration + 1,
+        sendAfterPaste: null,
         editing: null,
         dialogs: [],
       });
@@ -1006,7 +1019,12 @@ export function session(
         return refuse(state, "Wait for the current run before changing directories", now);
 
       if (queueRows(followed, null).length > 0)
-        return refuse(state, "Send or remove the queued messages first", now);
+        return refuse(
+          state,
+          "error: Wait for queued messages before changing directories.",
+          now,
+          "error",
+        );
 
       if (pending.some((op) => op.kind === "switch" || op.kind === "cd"))
         return refuse(state, "Wait for the workspace switch to finish.", now);
@@ -1044,10 +1062,17 @@ export function session(
 
       if (followed === null || level === undefined || msg.selection.model !== undefined)
         return step;
-      const text =
-        followed.selection.effort === level ? `Already using ${level}` : `Thinking level: ${level}`;
+      const already = followed.selection.effort === level;
 
-      return { ...step, state: withNotice(step.state, text, "info", now) };
+      return {
+        ...step,
+        state: withNotice(
+          step.state,
+          already ? `Already using ${level}` : `Thinking level: ${level}`,
+          already ? "info" : "ok",
+          now,
+        ),
+      };
     }
 
     case "write-settings": {
@@ -1057,7 +1082,7 @@ export function session(
         state:
           msg.patch.theme === undefined
             ? settings
-            : withNotice(settings, `Theme: ${msg.patch.theme}`, "info", now),
+            : withNotice(settings, `Theme: ${msg.patch.theme}`, "ok", now),
         effects: [{ kind: "write-settings", patch: msg.patch }],
       };
     }
@@ -1071,6 +1096,7 @@ export function session(
             kind: "apply-setting",
             session: followed.id,
             id: msg.id,
+            label: msg.label,
             scope: msg.scope,
             value: msg.value,
           },
@@ -1129,6 +1155,7 @@ export function session(
             session: followed.id,
             name: msg.name,
             argument: msg.argument === "" ? null : msg.argument,
+            delivery: msg.delivery ?? (busy(state) ? state.facts.settings.followUp : "queue"),
           },
         ],
       };
@@ -1172,7 +1199,7 @@ function configure(state: State, selection: Partial<Selection>, now: number): St
   const told =
     selection.model === undefined
       ? next
-      : withNotice(next, `Model: ${modelId(merged.model)} · ${merged.effort}`, "info", now);
+      : withNotice(next, `Model: ${modelId(merged.model)} · ${merged.effort}`, "ok", now);
 
   return { state: told, effects: [{ kind: "configure", session: followed.id, selection }] };
 }
@@ -1223,7 +1250,7 @@ export function transcript(
     case "reveal-earlier": {
       const model = deriveTranscript(
         state.facts.session?.view ?? null,
-        state.facts.shells,
+        followedShells(state),
         local,
         null,
       );
@@ -1509,10 +1536,9 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
 /** Forwards a key or typed text to the dialog that owns the keyboard, then reduces what it asked for. */
 function dialogCommand(state: State, input: DialogInput, now: number): Step {
   const dialog = keyboardDialog(state);
-  const command = dialog === null ? null : dialogCommandOf(dialog, input);
 
-  if (dialog === null || command === null) return stay(state);
-  const result = reduceDialog(dialog, command);
+  if (dialog === null) return stay(state);
+  const result = reduceDialog(dialog, input);
   const onStack = state.local.dialogs.at(-1)?.id === dialog.id;
   let next: State;
 
@@ -1534,6 +1560,7 @@ function dialogCommand(state: State, input: DialogInput, now: number): Step {
               highlighted: after.highlighted,
               query: after.query,
               answering: after.answering,
+              caret: after.caret,
             },
     });
   } else next = state;
@@ -1857,7 +1884,7 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
     }
 
     case "effect-failed":
-      return stay(withNotice(released(state, msg.effect), msg.message, "error", now));
+      return stay(withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now));
     case "inform":
       return stay(withNotice(state, msg.text, msg.tone, now));
     case "preview-loaded": {
@@ -1887,6 +1914,27 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
       );
     }
 
+    case "command-unknown":
+      return submitSnapshot(
+        state,
+        msg.session,
+        { text: `/${msg.name}${msg.argument === null ? "" : ` ${msg.argument}`}`, parts: NO_PARTS },
+        msg.delivery,
+      );
+    case "mention-resolved": {
+      const current = state.local.completion;
+
+      if (
+        current.kind !== "open" ||
+        current.token.trigger !== "@" ||
+        current.token.query !== msg.query ||
+        state.facts.workspace.cwd !== msg.cwd
+      )
+        return stay(state);
+
+      return stay(withLocal(state, { completion: { ...current, explicit: msg.file } }));
+    }
+
     default: {
       const _exhaustive: never = msg;
 
@@ -1906,6 +1954,11 @@ function released(state: State, effect: string): State {
     ["open-editor", "editor"],
   ]);
 
+  if (effect === "resolve-paste" || effect === "read-clipboard")
+    return withLocal(state, {
+      pasting: Math.max(0, state.local.pasting - 1),
+      sendAfterPaste: null,
+    });
   const kind = holds.get(effect);
 
   if (kind === undefined) return state;
@@ -1945,14 +1998,14 @@ function moved(state: State, msg: Extract<Outcome, { kind: "moved" }>, now: numb
 
     return context.purpose === "retract"
       ? stay(next)
-      : stay(withNotice(next, "Moved. The next message starts a branch here.", "info", now));
+      : stay(withNotice(next, "Moved. The next message starts a branch here.", "ok", now));
   }
 
   if (context.purpose === "retract") return stay(next);
 
   return refuse(
     next,
-    outcome.kind === "summary-failed" ? outcome.reason : MOVE_REFUSALS[outcome.kind],
+    `error: ${outcome.kind === "summary-failed" ? outcome.reason : MOVE_REFUSALS[outcome.kind]}`,
     now,
     "error",
   );
@@ -2025,19 +2078,44 @@ function linkNotice(step: { readonly url: string; readonly code: string | null }
     : `Visit ${step.url} and enter the code ${step.code}`;
 }
 
+/** A paste landed: insert it, then send what Enter held once no paste is left (a refused one cancels it). */
 function pasted(
   state: State,
   msg: Extract<Outcome, { kind: "paste-resolved" }>,
   now: number,
 ): Step {
-  if (msg.generation !== state.local.pasteGeneration) return stay(state);
+  const pasting = Math.max(0, state.local.pasting - 1);
+  const held = state.local.sendAfterPaste;
+  const refused = msg.insert.kind === "refused";
+
+  const landed = withLocal(state, {
+    pasting,
+    sendAfterPaste: pasting > 0 && !refused ? held : null,
+  });
+
+  const step =
+    msg.generation === state.local.pasteGeneration ? insertPaste(landed, msg, now) : stay(landed);
+
+  return held === null || pasting > 0 || refused
+    ? step
+    : andThen(step, (current) => send(current, held.delivery, held.warning, now));
+}
+
+function insertPaste(
+  state: State,
+  msg: Extract<Outcome, { kind: "paste-resolved" }>,
+  now: number,
+): Step {
   const { insert } = msg;
   const { draft } = state.local;
 
   if (insert.kind === "refused") return refuse(state, insert.reason, now);
 
   if (insert.kind === "text") {
-    const before = liveMarkers(draft).find((span) => span.to === draft.cursor);
+    // Pasting a collapsed paste again, right after its marker (and its space), expands it.
+    const before = liveMarkers(draft).find(
+      (span) => span.to === draft.cursor || span.to + 1 === draft.cursor,
+    );
     const part = before === undefined ? undefined : draft.parts.get(before.marker);
 
     if (before !== undefined && part?.kind === "paste" && part.text === insert.text)
@@ -2049,16 +2127,19 @@ function pasted(
 
     return insertText(
       withLocal(state, { draft: { ...draft, parts: added.parts } }),
-      added.marker,
+      `${added.marker} `,
       "cursor",
     );
   }
 
   const added = addPart(draft.parts, insert.part);
 
+  // The same image pasted again is already in the draft once.
+  if (insert.part.kind === "image" && draft.text.includes(added.marker)) return stay(state);
+
   return insertText(
     withLocal(state, { draft: { ...draft, parts: added.parts } }),
-    added.marker,
+    `${added.marker} `,
     "cursor",
   );
 }

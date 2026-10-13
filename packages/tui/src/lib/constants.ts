@@ -97,6 +97,28 @@ export const CHAT_KEYBINDS = {
 
 export type ChatCommand = keyof typeof CHAT_KEYBINDS;
 
+/**
+ * Editing keys of a dialog's typed field, as OpenTUI's input binds them. A
+ * key the open dialog binds itself (Left in the model picker, Ctrl+U in the
+ * tree) stays the dialog's.
+ */
+export const FIELD_KEYBINDS = {
+  "field.left": "left,ctrl+b",
+  "field.right": "right,ctrl+f",
+  "field.home": "home,ctrl+a,meta+a,super+left",
+  "field.end": "end,ctrl+e,meta+e,super+right",
+  "field.word.left": "meta+b,meta+left,ctrl+left",
+  "field.word.right": "meta+f,meta+right,ctrl+right",
+  "field.delete.left": "backspace,shift+backspace",
+  "field.delete.right": "delete,shift+delete,ctrl+d",
+  "field.delete.word.left": "ctrl+w,ctrl+backspace,meta+backspace",
+  "field.delete.word.right": "meta+d,meta+delete,ctrl+delete",
+  "field.delete.home": "ctrl+u,super+backspace",
+  "field.delete.end": "ctrl+k",
+} as const satisfies Readonly<Record<string, string>>;
+
+export type FieldCommand = keyof typeof FIELD_KEYBINDS;
+
 /** Parse single-stroke alternatives with the installed keymap grammar, not a second parser. */
 export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
   return CHAT_KEYBINDS[command].split(",").map((input) => {

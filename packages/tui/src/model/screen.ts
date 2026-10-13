@@ -18,7 +18,7 @@ import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
 import { liveDialog } from "./choices.ts";
-import { slashNamespace } from "./commands.ts";
+import { runnableCommand, slashNamespace } from "./commands.ts";
 import { completionModel } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
@@ -33,6 +33,7 @@ import { queuedCount, queueRows, reportRows, sameQueueRow, sameReportRow } from 
 import type { QueueRow, ReportRow } from "./queue.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
+import { followedShells } from "./state.ts";
 import type { FailureReport, Notice, ShellJob, State } from "./state.ts";
 import { deriveTranscript } from "./transcript.ts";
 import type { TranscriptModel } from "./transcript.ts";
@@ -243,11 +244,16 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
 
   const queue = queueRows(session, state.local.editing);
   const { draft } = state.local;
+  const typed = draftModel(draft);
 
   return {
     run: runModel(session),
     question,
-    draft: draftModel(draft),
+    draft: typed,
+    runsCommand:
+      typed.kind === "message" &&
+      typed.command !== null &&
+      runnableCommand(state, draft.text) !== null,
     editing: editingModel(state, queue),
     shell: runningShell(state),
     completion:
@@ -364,7 +370,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     reports,
     transcript: deriveTranscript(
       view,
-      state.facts.shells,
+      followedShells(state),
       state.local.transcript,
       previous?.transcript ?? null,
     ),
@@ -385,7 +391,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
       },
       state.local.watchedRun ?? undefined,
     ),
-    welcome: view !== null && view.turns.length === 0 && state.facts.shells.length === 0,
+    welcome: view !== null && view.turns.length === 0 && followedShells(state).length === 0,
     followUp: input.followUp,
     selectionActive: state.facts.terminal.selection,
   };

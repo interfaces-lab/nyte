@@ -60,6 +60,47 @@ describe("views", () => {
     expect(restored.state.local.pending).toEqual([]);
   });
 
+  test("a queue edit left open in a chat is still open on coming back to it", () => {
+    const queued = viewOf((v) =>
+      v
+        .turn("t1", (t) => t.user("go"))
+        .live()
+        .pending(
+          "later",
+          { schedule: { kind: "next-turn", reason: "requested" } },
+          { id: "m2", delivery: "queue" },
+        ),
+    );
+
+    const editing = play(
+      ready(queued),
+      { kind: "edit-queued", message: asId("m2") },
+      typed("later, edited"),
+    ).state;
+
+    expect(editing.local.editing?.message).toBe(asId("m2"));
+
+    const s2 = followed(retracted, "s2");
+    const s1 = followed(queued);
+
+    const back = play(
+      editing,
+      { kind: "switch-session", session: asId("s2"), announce: false },
+      { kind: "session-opened", session: s2.id, info: s2.info, selection: s2.selection },
+      { kind: "view", session: s2.id, view: retracted },
+      { kind: "switch-session", session: S1, announce: false },
+      { kind: "session-opened", session: s1.id, info: s1.info, selection: s1.selection },
+      { kind: "view", session: s1.id, view: queued },
+    );
+
+    expect(back.state.local.editing?.message).toBe(asId("m2"));
+    expect(back.state.local.edits).toEqual({});
+    expect(back.effects).toContainEqual({
+      kind: "composer",
+      op: { kind: "set", draft: { text: "later, edited", parts: new Map() } },
+    });
+  });
+
   test("an older catalog listing that resolves late is dropped", () => {
     const state = play(blank(), { kind: "catalog", generation: 5, catalog: CATALOG }).state;
 
@@ -276,6 +317,7 @@ describe("shell commands", () => {
 
     const job = {
       id: "shell-1",
+      session: S1,
       command: "echo kept",
       include: true,
       startedAt: 1,
@@ -302,9 +344,37 @@ describe("shell commands", () => {
     expect(play(first.state, { kind: "shell-job", job }).effects).toEqual([]);
   });
 
+  test("a `!cmd` from another chat neither shows nor reaches this chat's draft", () => {
+    const other = {
+      id: "shell-9",
+      session: asId<"session">("s9"),
+      command: "echo elsewhere",
+      include: true,
+      startedAt: 1,
+      output: "elsewhere\n",
+      state: { kind: "exited", code: 0 },
+      delivered: false,
+    } as const;
+
+    const step = play(ready(working), { kind: "shell-job", job: other });
+
+    expect(step.effects).toEqual([]);
+    expect(deriveScreen(step.state, null).welcome).toBe(false);
+    expect(
+      deriveScreen(step.state, null).transcript.rows.some((row) => row.key.includes("shell-9")),
+    ).toBe(false);
+  });
+
   test("a private `!!cmd` or a cancelled one puts nothing in the draft", () => {
     const state = ready(working);
-    const base = { id: "j", command: "x", startedAt: 1, output: "", delivered: false } as const;
+    const base = {
+      id: "j",
+      session: S1,
+      command: "x",
+      startedAt: 1,
+      output: "",
+      delivered: false,
+    } as const;
 
     expect(
       play(

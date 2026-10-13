@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
 import type { Notice, State } from "../model/state.ts";
+import { messageOf } from "./runner.ts";
 import type { HandlerContext } from "./runner.ts";
 import { fallback, patchOf, refreshWorkspace, selectionOf } from "./session.ts";
 
@@ -102,26 +103,8 @@ export async function applySetting(
       ? await ports.host.session(effect.session).applySetting(effect.id, effect.value)
       : await ports.host.applySetting(effect.id, effect.value);
 
-  switch (outcome.kind) {
-    case "applied":
-    case "configured":
-      return;
-    case "invalid":
-      throw new Error(
-        outcome.issues.map((issue) => issue.message).join("; ") || `Invalid value for ${effect.id}`,
-      );
-    case "unknown":
-      throw new Error(`Unknown setting: ${effect.id}`);
-    case "unknown-model":
-      throw new Error(`Unknown model: ${outcome.model.provider}/${outcome.model.id}`);
-    case "unknown-agent":
-      throw new Error(`Unknown agent: ${outcome.agent}`);
-    default: {
-      const _exhaustive: never = outcome;
-
-      return _exhaustive;
-    }
-  }
+  if (outcome.kind !== "applied" && outcome.kind !== "configured")
+    throw new Error(`Could not set ${effect.label}`);
 }
 
 /** A core-side plugin command; what it prints comes back as a notice. */
@@ -144,7 +127,15 @@ export async function runCommand(
         outcome.issues.map((issue) => issue.message).join("; ") || "Invalid argument",
       );
     case "unknown":
-      throw new Error(`Unknown command: /${effect.name}`);
+      dispatch({
+        kind: "command-unknown",
+        session: effect.session,
+        name: effect.name,
+        argument: effect.argument,
+        delivery: effect.delivery,
+      });
+
+      return;
     case "failed":
       throw new Error(outcome.message);
     default: {
@@ -189,16 +180,16 @@ export async function changeDirectory(
     const outcome = await port.changeDirectory(path);
 
     if (outcome.kind === "refused") {
-      finish(noticeOf(context, "error", outcome.reason));
+      finish(noticeOf(context, "error", `error: ${outcome.reason}`));
 
       return;
     }
 
     dispatch({ kind: "session-info", session: effect.session, info: await port.info() });
     await refreshWorkspace(context, outcome.cwd, { mentions: port, signal: context.signal });
-    finish(noticeOf(context, "info", `Working directory: ${outcome.cwd}`));
+    finish(noticeOf(context, "ok", `Working directory: ${outcome.cwd}`));
   } catch (error) {
-    finish(noticeOf(context, "error", error instanceof Error ? error.message : String(error)));
+    finish(errorNotice(context, error));
   }
 }
 
@@ -236,7 +227,7 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
       op: "reload",
       notice: noticeOf(
         context,
-        "info",
+        "ok",
         `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
       ),
     });
@@ -266,6 +257,11 @@ export function resolveDirectory(argument: string, cwd: string): string {
 
 export function noticeOf(context: HandlerContext, tone: Notice["tone"], text: string): Notice {
   return { tone, text, at: context.ports.clock.now() };
+}
+
+/** A failure as the notice line says it: `error: <message>`. */
+export function errorNotice(context: HandlerContext, error: unknown): Notice {
+  return noticeOf(context, "error", `error: ${messageOf(error)}`);
 }
 
 /** What the latest view says about a user message: still pending, landed, this client's unsent, or not there. */

@@ -123,10 +123,14 @@ export function liveMarkers(draft: Pick<Draft, "text" | "parts">): readonly Mark
   return spans.toSorted((left, right) => left.from - right.from);
 }
 
-/** The marker the cursor sits in or right after, the one Ctrl+Space acts on. */
+/** The marker the cursor sits in or right after (past its trailing space too), the one Ctrl+Space acts on. */
 export function markerAt(draft: Draft): MarkerSpan | null {
   return (
-    liveMarkers(draft).find((span) => span.from <= draft.cursor && draft.cursor <= span.to) ?? null
+    liveMarkers(draft).find(
+      (span) =>
+        span.from <= draft.cursor &&
+        draft.cursor <= span.to + (draft.text[span.to] === " " ? 1 : 0),
+    ) ?? null
   );
 }
 

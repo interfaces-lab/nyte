@@ -8,6 +8,7 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../src/lib/tasks.ts";
+import { indexedMention } from "../../src/model/completion.ts";
 import type { Effect } from "../../src/model/effect.ts";
 import { reduce } from "../../src/model/reduce.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
@@ -463,7 +464,12 @@ describe("completion", () => {
       ready(idle),
       {
         kind: "workspace",
-        workspace: { cwd: "/w", branch: null, dirty: false, mentions: ["src/app.ts", "src/"] },
+        workspace: {
+          cwd: "/w",
+          branch: null,
+          dirty: false,
+          mentions: [indexedMention("/w", "src/app.ts"), indexedMention("/w", "src/")],
+        },
       },
       typed("look @app"),
     ).state;
@@ -475,6 +481,50 @@ describe("completion", () => {
       kind: "file",
       path: "/w/src/app.ts",
       directory: false,
+    });
+  });
+
+  test("an @ path is resolved on disk, offered first, and a stale answer is dropped", () => {
+    const outside = { path: "/notes/", display: "../notes/", label: "notes/" };
+    const asked = play(ready(idle), typed("see @../no"));
+
+    expect(asked.effects).toContainEqual({ kind: "resolve-mention", query: "../no", cwd: "/w" });
+    expect(play(ready(idle), typed("see @no")).effects).not.toContainEqual(
+      expect.objectContaining({ kind: "resolve-mention" }),
+    );
+
+    const narrowed = play(asked.state, typed("see @../not"));
+
+    const stale = play(narrowed.state, {
+      kind: "mention-resolved",
+      query: "../no",
+      cwd: "/w",
+      file: outside,
+    });
+
+    expect(deriveScreen(stale.state, null).completion?.items).toEqual([]);
+
+    const resolved = play(narrowed.state, {
+      kind: "mention-resolved",
+      query: "../not",
+      cwd: "/w",
+      file: outside,
+    });
+
+    expect(deriveScreen(resolved.state, null).completion?.items).toEqual([
+      { id: "/notes/", label: "notes/", detail: "../notes/", kind: "directory" },
+    ]);
+
+    const step = play(resolved.state, {
+      kind: "completion",
+      action: { kind: "accept", alternate: null },
+    });
+
+    expect(step.state.local.draft.text).toBe("see [Folder notes] ");
+    expect(step.state.local.draft.parts.get("[Folder notes]")).toEqual({
+      kind: "file",
+      path: "/notes/",
+      directory: true,
     });
   });
 
@@ -493,6 +543,61 @@ describe("completion", () => {
 
   test("a draft starting with ! never completes", () => {
     expect(deriveScreen(play(ready(idle), typed("!ls /tm")).state, null).completion).toBeNull();
+  });
+});
+
+describe("plugin commands", () => {
+  const view = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+
+  const withProbe: SessionView = {
+    ...view,
+    catalog: {
+      ...view.catalog,
+      commands: [
+        {
+          name: "qa-probe",
+          owner: "plugin",
+          side: "core",
+          title: "Probe",
+          description: "Probe",
+          arguments: null,
+        },
+      ],
+    },
+  };
+
+  test("a typed core command runs with the delivery Enter used", () => {
+    const step = play(ready(withProbe), typed("/qa-probe x"), { kind: "send", delivery: "queue" });
+
+    expect(step.effects).toContainEqual({
+      kind: "run-command",
+      session: S1,
+      name: "qa-probe",
+      argument: "x",
+      delivery: "queue",
+    });
+    expect(step.state.local.draft.text).toBe("");
+  });
+
+  test("a command the plugin did not know is sent as the command line", () => {
+    const step = play(ready(withProbe), {
+      kind: "command-unknown",
+      session: S1,
+      name: "qa-probe",
+      argument: "x",
+      delivery: "steer",
+    });
+
+    expect(step.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "send",
+        delivery: "steer",
+        submission: expect.objectContaining({
+          session: S1,
+          snapshot: expect.objectContaining({ text: "/qa-probe x" }),
+        }),
+      }),
+    );
   });
 });
 
@@ -524,6 +629,78 @@ describe("paste", () => {
     ).toEqual([]);
   });
 
+  test("a pasted marker is followed by a space; the same image pasted twice goes in once", () => {
+    const image = {
+      kind: "image",
+      bytes: new Uint8Array([1]),
+      blob: null,
+      mime: "image/png",
+    } as const;
+
+    const once = play(ready(idle), {
+      kind: "paste-resolved",
+      generation: 0,
+      insert: { kind: "part", part: image },
+    });
+
+    expect(once.effects).toEqual([
+      { kind: "composer", op: { kind: "insert", text: "[Image 1] ", at: "cursor" } },
+    ]);
+    expect(
+      play(once.state, typed("[Image 1] "), {
+        kind: "paste-resolved",
+        generation: 0,
+        insert: { kind: "part", part: image },
+      }).effects,
+    ).toEqual([]);
+  });
+
+  test("Enter while a paste resolves waits for it, then sends the draft with the paste", () => {
+    const pasting = play(ready(idle), typed("see "), {
+      kind: "paste",
+      source: { kind: "terminal", text: "/tmp/a.ts", bytes: null },
+    });
+
+    const held = play(pasting.state, { kind: "send", delivery: "queue" });
+
+    expect(held.effects).toEqual([]);
+    expect(held.state.local.draft.text).toBe("see ");
+
+    const landed = play(held.state, {
+      kind: "paste-resolved",
+      generation: 0,
+      insert: { kind: "part", part: { kind: "file", path: "/tmp/a.ts", directory: false } },
+    });
+
+    expect(landed.effects).toContainEqual(
+      expect.objectContaining({
+        kind: "send",
+        delivery: "queue",
+        submission: expect.objectContaining({
+          snapshot: expect.objectContaining({ text: "see [File a.ts] " }),
+        }),
+      }),
+    );
+  });
+
+  test("a refused paste cancels the held send and keeps the draft", () => {
+    const held = play(
+      ready(idle),
+      typed("keep me"),
+      { kind: "paste", source: { kind: "clipboard" } },
+      { kind: "send", delivery: "queue" },
+      {
+        kind: "paste-resolved",
+        generation: 0,
+        insert: { kind: "refused", reason: "Clipboard has no supported text or image." },
+      },
+    );
+
+    expect(held.effects.some((effect) => effect.kind === "send")).toBe(false);
+    expect(held.state.local.draft.text).toBe("keep me");
+    expect(held.state.local.sendAfterPaste).toBeNull();
+  });
+
   test("a tall paste collapses to a marker, pasting it again expands it", () => {
     const tall = Array.from({ length: 9 }, (_, index) => `line ${String(index)}`).join("\n");
 
@@ -534,7 +711,7 @@ describe("paste", () => {
     });
 
     expect(collapsed.effects).toEqual([
-      { kind: "composer", op: { kind: "insert", text: "[Paste #1 9 lines]", at: "cursor" } },
+      { kind: "composer", op: { kind: "insert", text: "[Paste #1 9 lines] ", at: "cursor" } },
     ]);
 
     const expanded = play(collapsed.state, {
@@ -582,7 +759,7 @@ describe("failures release what they held", () => {
     const failed = play(switching, { kind: "effect-failed", effect: "follow", message: "no host" });
 
     expect(failed.state.local.pending).toEqual([]);
-    expect(failed.state.local.notice).toMatchObject({ tone: "error", text: "no host" });
+    expect(failed.state.local.notice).toMatchObject({ tone: "error", text: "error: no host" });
   });
 });
 
@@ -592,7 +769,14 @@ describe("session and view intents", () => {
       play(ready(idle), typed("!ls"), { kind: "run-shell", command: "ls", include: true }).effects,
     ).toEqual([
       { kind: "composer", op: { kind: "clear" } },
-      { kind: "shell-start", id: "shell-1", command: "ls", include: true, cwd: "/w" },
+      {
+        kind: "shell-start",
+        id: "shell-1",
+        session: S1,
+        command: "ls",
+        include: true,
+        cwd: "/w",
+      },
       { kind: "scroll", op: { kind: "latest" } },
     ]);
   });
@@ -770,5 +954,17 @@ describe("session and view intents", () => {
     expect(play(state, { kind: "stop-task", task: "j1" }).state.local.notice?.text).toBe(
       "This task has already finished. /tasks opens its output.",
     );
+  });
+});
+
+describe("refusals the old shell gave", () => {
+  test("/cd without a path says one is required", () => {
+    const step = play(ready(idle), typed("/cd "), { kind: "send", delivery: "queue" });
+
+    expect(step.state.local.notice).toMatchObject({
+      tone: "error",
+      text: "error: Directory is required. Use /cd <path>.",
+    });
+    expect(step.state.local.draft.text).toBe("/cd ");
   });
 });

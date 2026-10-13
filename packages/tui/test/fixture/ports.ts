@@ -11,6 +11,7 @@
  */
 import { asId } from "@nyte-ai/schema";
 import type {
+  CommandOutcome,
   ModelCatalogView,
   ModelRef,
   SessionId,
@@ -57,12 +58,16 @@ export interface FakeSession extends SessionPort {
   /** Scripted answers, e.g. `withdrawResult = "landed-first"`. */
   withdrawResult: "withdrawn" | "landed-first" | "gone";
   answerResult: boolean;
+  /** What a plugin command answers; null runs it and prints `ran <name>`. */
+  commandResult: CommandOutcome | null;
 }
 
 export interface FakeHost extends HostPort {
   addSession(id: string): FakeSession;
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
+  /** Pushes a session directory snapshot to `sessionInfos` readers. */
+  publishSessions(sessions: readonly SessionInfo[]): void;
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
 }
@@ -155,6 +160,7 @@ function fakeSession(id: string): FakeSession {
     calls,
     withdrawResult: "withdrawn",
     answerResult: true,
+    commandResult: null,
     push: (view) => views.push(view),
     end: (failure) => (failure === null ? views.close() : views.fail(new Error(failure))),
     pushTasks: (list) => tasks.push(list),
@@ -222,7 +228,7 @@ function fakeSession(id: string): FakeSession {
     async command(name, argument) {
       calls.commands.push({ name, argument });
 
-      return { kind: "ran", output: `ran ${name}` };
+      return session.commandResult ?? { kind: "ran", output: `ran ${name}` };
     },
     async stopTask(task) {
       calls.stoppedTasks.push(task);
@@ -244,6 +250,8 @@ export function fakeHost(): FakeHost {
     readonly generation: number;
     readonly list: () => Promise<ModelCatalogView>;
   }>();
+
+  const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
   let generation = 0;
@@ -271,6 +279,8 @@ export function fakeHost(): FakeHost {
       return [...sessions.keys()].map(infoOf);
     },
     catalog: () => catalogs,
+    sessionInfos: () => directory,
+    publishSessions: (list) => directory.push(list),
     publishCatalog(catalog) {
       generation += 1;
       catalogs.push({ generation, list: async () => catalog });
@@ -418,6 +428,7 @@ export function fakePorts(host: FakeHost): FakePorts {
       return files.pasteResult.kind === "text" ? { kind: "text", text } : files.pasteResult;
     },
     listDirectory: async () => [],
+    resolveMention: async () => null,
     readText: async (path) => files.texts.get(path) ?? null,
     editor: async () => files.editorResult,
   };

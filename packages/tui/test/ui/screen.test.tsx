@@ -4,8 +4,9 @@
  * the welcome on an empty session, completion in the slot, and a screen
  * dialog taking the transcript's place without dropping the draft.
  */
-import { ScrollBoxRenderable } from "@opentui/core";
+import { RGBA, ScrollBoxRenderable } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
+import { DARK_THEME } from "../../src/lib/theme.ts";
 import { NO_PARTS } from "../../src/model/draft.ts";
 import { Screen } from "../../src/ui/screen.tsx";
 import { viewOf } from "../fixture/view.ts";
@@ -62,6 +63,44 @@ describe("screen", () => {
     const frame = app.captureCharFrame();
 
     expect(row(frame, "/cd")).toBeGreaterThan(row(frame, "╰"));
+  });
+
+  test("the highlighted completion row is a selection band; narrow menus drop the details", async () => {
+    const state = play(ready(idle), typed("/")).state;
+
+    await using wide = await mount(state, () => <Screen />);
+    const lines = wide.captureCharFrame().split("\n");
+    const first = lines.findIndex((line) => line.includes("❯ /"));
+
+    expect(lines[first]).toContain("Auto-update");
+    expect(
+      wide
+        .captureSpans()
+        .lines[first]?.spans.find((span) => span.text.includes("/"))
+        ?.bg.toString(),
+    ).toBe(RGBA.fromHex(DARK_THEME.selectionBackground).toString());
+
+    await using narrow = await mount(state, () => <Screen />, { width: 40, height: 32 });
+
+    const highlighted = narrow
+      .captureCharFrame()
+      .split("\n")
+      .find((line) => line.includes("❯ /"));
+
+    expect(highlighted).toContain("/auto-update");
+    expect(highlighted).not.toContain("Auto-update");
+  });
+
+  test("an empty menu says why: no command, no file, or a listing still loading", async () => {
+    for (const [draft, text] of [
+      ["/zzz", "no matching commands"],
+      ["see @zzz", "no matching files or folders"],
+      ["/cd ", "loading directories…"],
+    ] as const) {
+      await using app = await mount(play(ready(idle), typed(draft)).state, () => <Screen />);
+
+      expect(app.captureCharFrame()).toContain(text);
+    }
   });
 
   test("a screen dialog replaces the transcript and hides the composer; the draft survives", async () => {

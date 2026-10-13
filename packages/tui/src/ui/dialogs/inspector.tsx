@@ -12,6 +12,7 @@ import { keycap } from "../../lib/constants.ts";
 import { formatDuration } from "../../lib/format.ts";
 import type { Task } from "../../lib/tasks.ts";
 import {
+  canStopTask,
   statusMark,
   taskAgent,
   taskConfiguration,
@@ -34,6 +35,7 @@ function AgentTranscript(props: {
   readonly task: Extract<Task, { kind: "agent" }>;
   readonly dialog: InspectorDialog;
 }): JSX.Element {
+  const app = useApp();
   let previous: TranscriptModel | null = null;
   let port: ScrollPort | null = null;
 
@@ -101,7 +103,9 @@ function AgentTranscript(props: {
       }}
       onScrolled={() => {}}
       onRevealEarlier={() => {}}
-      onLatest={() => {}}
+      onLatest={() =>
+        app.dispatch({ kind: "dialog", command: { kind: "key", name: "chat.scroll.latest" } })
+      }
     />
   );
 }
@@ -225,17 +229,18 @@ export function InspectorView(props: {
   const { kit } = useApp();
   const theme = kit.theme;
 
-  const hints = joinHints([
-    hint("picker.close", "back"),
-    `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} scroll`,
-    `${keycap("picker.page.up")}/${keycap("picker.page.down")} page`,
-    hint("chat.tools.toggle", "follow"),
-    `${keycap("chat.message.previous", "symbol")}${keycap("picker.next", "symbol")} task`,
-    hint("chat.task.stop", "cancel"),
-  ]);
+  const hints = () =>
+    joinHints([
+      hint("picker.close", "back"),
+      `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} scroll`,
+      `${keycap("picker.page.up")}/${keycap("picker.page.down")} page`,
+      hint("chat.tools.toggle", "follow"),
+      `${keycap("chat.message.previous", "symbol")}${keycap("picker.next", "symbol")} task`,
+      ...(props.task !== null && canStopTask(props.task) ? [hint("chat.task.stop", "cancel")] : []),
+    ]);
 
   return (
-    <Panel title="Tasks" hints={hints} fill>
+    <Panel title="Tasks" hints={hints()} fill>
       <Show when={props.task} fallback={<Note text={`${props.dialog.task} · Loading…`} />}>
         {(task: Accessor<Task>) => {
           const mark = () => statusMark(taskStatus(task()));

@@ -110,6 +110,32 @@ test("withdraw reaches the session port only while the latest state shows the ro
   expect(app.dispatched.at(-1)).toEqual({ kind: "withdrawn", message: asId("m9"), result: "gone" });
 });
 
+test("a plugin command the plugin does not know goes back as a message with its delivery", async () => {
+  const app = harness(stateOf(followed(LANDED)));
+  const session = app.ports.host.addSession("s1");
+  session.commandResult = { kind: "unknown" };
+
+  app.runner.run({
+    kind: "run-command",
+    session: asId("s1"),
+    name: "qa-probe",
+    argument: "x",
+    delivery: "steer",
+  });
+
+  await app.runner.settled();
+  expect(session.calls.commands).toEqual([{ name: "qa-probe", argument: "x" }]);
+  expect(app.dispatched).toEqual([
+    {
+      kind: "command-unknown",
+      session: asId("s1"),
+      name: "qa-probe",
+      argument: "x",
+      delivery: "steer",
+    },
+  ]);
+});
+
 test("the adapter's honest answer passes through: a stop that settled as a run end is landed-first", async () => {
   const app = harness(stateOf(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
@@ -439,7 +465,14 @@ test("at boot --effort wins over the remembered level, and a resumed session kee
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
   const app = harness(stateOf(followed(PENDING)));
-  app.runner.run({ kind: "shell-start", id: "sh1", command: "ls", include: true, cwd: "/tmp" });
+  app.runner.run({
+    kind: "shell-start",
+    id: "sh1",
+    session: null,
+    command: "ls",
+    include: true,
+    cwd: "/tmp",
+  });
   await until(() => (app.ports.shell.started.length > 0 ? true : undefined));
   expect(app.dispatched[0]).toMatchObject({
     kind: "shell-job",
@@ -455,6 +488,7 @@ test("a local shell reports its job as facts from start to end and can be stoppe
 
   app.runner.run({
     kind: "shell-start",
+    session: null,
     id: "sh2",
     command: "sleep 9",
     include: false,
@@ -474,4 +508,69 @@ test("exit resolves the runner's exited promise with the code", async () => {
   const app = harness(stateOf(null));
   app.runner.run({ kind: "exit", code: 3 });
   expect(await app.runner.exited).toEqual({ code: 3 });
+});
+
+test("a sign-in keeps its line when the catalog refresh after it fails, and says how to retry", async () => {
+  const app = harness(stateOf(followed(LANDED)));
+  app.ports.host.login = async () => ({ provider: "test", name: "Test" });
+
+  app.ports.host.refreshModels = async () => {
+    throw new Error("catalog offline");
+  };
+
+  app.runner.run({ kind: "login", dialog: "auth-1", provider: "test" });
+
+  expect(await app.received("op-finished")).toMatchObject({
+    op: "auth",
+    notice: {
+      tone: "warning",
+      text: "Signed in to Test.\nModel selection could not refresh: catalog offline. Use /model to retry.",
+    },
+  });
+});
+
+test("a sign-out that leaves the model in place confirms in the ok tone; a failure says error:", async () => {
+  const app = harness(stateOf(followed(LANDED)));
+  app.ports.host.logout = async () => ({ provider: "other", name: "Other" });
+  app.runner.run({ kind: "logout", provider: "other" });
+
+  expect(await app.received("op-finished")).toMatchObject({
+    notice: { tone: "ok", text: "Signed out of Other." },
+  });
+
+  const failing = harness(stateOf(followed(LANDED)));
+
+  failing.ports.host.logout = async () => {
+    throw new Error("keychain locked");
+  };
+
+  failing.runner.run({ kind: "logout", provider: "other" });
+
+  expect(await failing.received("op-finished")).toMatchObject({
+    notice: { tone: "error", text: "error: keychain locked" },
+  });
+});
+
+test("a rename of the followed chat in the session directory reaches its info, so the title follows", async () => {
+  const state = stateOf(followed(LANDED));
+  const app = harness(state);
+  const info = state.facts.session?.info;
+
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
+
+  if (info === undefined) throw new Error("The fixture follows s1.");
+  app.ports.host.publishSessions([info]);
+  app.ports.host.publishSessions([{ ...info, name: "Renamed chat" }]);
+
+  expect(await app.received("session-info")).toMatchObject({
+    session: asId("s1"),
+    info: { name: "Renamed chat" },
+  });
+  expect(app.dispatched.filter((msg) => msg.kind === "session-info")).toHaveLength(1);
 });

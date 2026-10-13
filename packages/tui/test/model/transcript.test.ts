@@ -21,6 +21,7 @@ const LOCAL: TranscriptLocal = {
 function shell(id: string, startedAt: number): ShellJob {
   return {
     id,
+    session: null,
     command: "ls",
     include: true,
     startedAt,

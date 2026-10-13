@@ -2,8 +2,10 @@
  * Slash, `@` mention and `/cd` completion as a pure state machine over the
  * draft mirror. Suggestions come from lib/slash.ts (`slashCompletion`,
  * `acceptSlashCommand`), the workspace's mention index (a fact the runner
- * keeps) and directory listings (a `list-directory` effect).
+ * keeps), directory listings (a `list-directory` effect) and a typed path
+ * resolved against the filesystem (a `resolve-mention` effect).
  */
+import fuzzysort from "fuzzysort";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand } from "../lib/slash.ts";
@@ -18,7 +20,19 @@ export type CompletionState =
       readonly highlighted: number;
       /** `/cd` only: the listing for `token.query`, null while the runner lists it. */
       readonly directories: { readonly path: string; readonly entries: readonly string[] } | null;
+      /** `@` only: what a query spelled as a path names on disk, null until resolved or when nothing. */
+      readonly explicit: MentionFile | null;
     };
+
+/** One file or folder an `@` mention can name. */
+export interface MentionFile {
+  /** Absolute path; folders end in `/`. */
+  readonly path: string;
+  /** Relative to the workspace, `/` suffix for folders. */
+  readonly display: string;
+  /** Basename, `/` suffix for folders. */
+  readonly label: string;
+}
 
 export interface CompletionToken {
   readonly trigger: "/" | "@" | "cd";
@@ -29,9 +43,12 @@ export interface CompletionToken {
 
 export interface CompletionModel {
   readonly token: CompletionToken;
+  /** Empty while `loading`, or when nothing matches: the menu says so and only Esc acts on it. */
   readonly items: readonly CompletionItem[];
+  /** `/cd` only: the listing for the typed path has not arrived. */
+  readonly loading: boolean;
   readonly highlighted: number;
-  /** Enter belongs to the menu (false for `/cd`, where Enter runs the typed path). */
+  /** Enter belongs to the menu (false for `/cd`, where Enter runs the typed path, and for an empty menu). */
   readonly ownsEnter: boolean;
   /** Ctrl+Enter on a highlighted skill fills the token, then submits with the alternate delivery. */
   readonly queueable: boolean;
@@ -47,8 +64,8 @@ export interface CompletionItem {
 export interface CompletionSources {
   /** The slash namespace in claim order (`availableSlashCommands`). */
   readonly commands: readonly SlashCommand[];
-  /** Workspace-relative paths for `@`, directories with a `/` suffix; null until indexed. */
-  readonly files: readonly string[] | null;
+  /** The workspace's files and folders for `@`; null until indexed. */
+  readonly files: readonly MentionFile[] | null;
 }
 
 /** What accepting an item does to the draft. */
@@ -71,6 +88,18 @@ export type CompletionEdit =
     };
 
 const MAX_MENTIONS = 10;
+
+/** A query spelled as a path (`./x`, `../x`, `~/x`, `/x`, `C:\x`) the runner resolves on disk. */
+const EXPLICIT_PATH = /^(?:\.{1,2}[/\\]|~[/\\]|[/\\]|[A-Za-z]:[/\\])/u;
+
+export function explicitMentionQuery(query: string): boolean {
+  return EXPLICIT_PATH.test(query);
+}
+
+/** An index entry (workspace-relative, `/` suffix for folders) as a mention under `cwd`. */
+export function indexedMention(cwd: string, entry: string): MentionFile {
+  return { path: `${cwd.replace(/\/+$/u, "")}/${entry}`, display: entry, label: baseName(entry) };
+}
 
 export const CLOSED: CompletionState = { kind: "closed", dismissed: null };
 
@@ -104,12 +133,12 @@ export function nextCompletion(
   if (state.kind === "closed")
     return state.dismissed === tokenKey(token)
       ? state
-      : { kind: "open", token, highlighted: 0, directories: null };
+      : { kind: "open", token, highlighted: 0, directories: null, explicit: null };
 
   if (tokenKey(state.token) === tokenKey(token) && state.token.query === token.query)
     return { ...state, token };
 
-  return { kind: "open", token, highlighted: 0, directories: null };
+  return { kind: "open", token, highlighted: 0, directories: null, explicit: null };
 }
 
 /** Esc: closed until the token under the cursor goes away. */
@@ -130,45 +159,59 @@ function baseName(path: string): string {
   return path.endsWith("/") ? `${name}/` : name;
 }
 
-function subsequence(needle: string, haystack: string): boolean {
-  let at = 0;
-
-  for (const character of haystack) {
-    if (character === needle[at]) at += 1;
-
-    if (at === needle.length) return true;
-  }
-
-  return needle.length === 0;
-}
-
-/** Prefix matches on the name or path first, then the rest whose letters appear in order. */
-export function mentionSuggestions(query: string, files: readonly string[]): readonly string[] {
+/** Prefix matches on the name or path first, then fuzzysort over both; the first ten when the query is empty. */
+export function mentionSuggestions(
+  query: string,
+  files: readonly MentionFile[],
+): readonly MentionFile[] {
   if (query === "") return files.slice(0, MAX_MENTIONS);
   const needle = query.toLowerCase();
+  const prefixed: MentionFile[] = [];
 
-  const prefixed = files.filter(
-    (file) =>
-      baseName(file).toLowerCase().startsWith(needle) || file.toLowerCase().startsWith(needle),
-  );
+  for (const file of files) {
+    if (prefixed.length >= MAX_MENTIONS) break;
 
-  if (prefixed.length >= MAX_MENTIONS) return prefixed.slice(0, MAX_MENTIONS);
-  const seen = new Set(prefixed);
-  const loose = files.filter((file) => !seen.has(file) && subsequence(needle, file.toLowerCase()));
+    if (
+      file.label.toLowerCase().startsWith(needle) ||
+      file.display.toLowerCase().startsWith(needle)
+    )
+      prefixed.push(file);
+  }
 
-  return [...prefixed, ...loose].slice(0, MAX_MENTIONS);
+  if (prefixed.length === MAX_MENTIONS) return prefixed;
+  const seen = new Set(prefixed.map((file) => file.path));
+
+  const fuzzy = fuzzysort
+    .go(query, files, { keys: ["display", "label"], limit: MAX_MENTIONS })
+    .flatMap((result) => (seen.has(result.obj.path) ? [] : [result.obj]));
+
+  return [...prefixed, ...fuzzy].slice(0, MAX_MENTIONS);
 }
 
+/** The typed path first when it names something the list lacks, then the ranked index (none until indexed). */
+function mentionItems(
+  query: string,
+  explicit: MentionFile | null,
+  files: readonly MentionFile[] | null,
+): readonly MentionFile[] {
+  const ranked = files === null ? [] : mentionSuggestions(query, files);
+
+  if (explicit === null || ranked.some((file) => file.path === explicit.path)) return ranked;
+
+  return [explicit, ...ranked];
+}
+
+/** The menu's rows, "loading" while a `/cd` listing is out, or null for no menu (a mid-prompt slash nothing matches is a path). */
 function itemsFor(
   state: Extract<CompletionState, { kind: "open" }>,
   draft: Pick<Draft, "text" | "cursor">,
   sources: CompletionSources,
-): readonly CompletionItem[] | null {
+): readonly CompletionItem[] | "loading" | null {
   switch (state.token.trigger) {
     case "/": {
       const slash = slashCompletion(draft.text, sources.commands, draft.cursor);
 
-      if (slash === undefined || slash.commands.length === 0) return null;
+      if (slash === undefined || (slash.commands.length === 0 && !slash.leading)) return null;
 
       return slash.commands.map((command) => ({
         id: command.name,
@@ -179,17 +222,15 @@ function itemsFor(
     }
 
     case "@":
-      return sources.files === null
-        ? null
-        : mentionSuggestions(state.token.query, sources.files).map((file) => ({
-            id: file,
-            label: baseName(file),
-            detail: file,
-            kind: file.endsWith("/") ? "directory" : "file",
-          }));
+      return mentionItems(state.token.query, state.explicit, sources.files).map((file) => ({
+        id: file.path,
+        label: file.label,
+        detail: file.display,
+        kind: file.path.endsWith("/") ? "directory" : "file",
+      }));
     case "cd":
       return state.directories === null
-        ? null
+        ? "loading"
         : state.directories.entries.map((entry) => ({
             id: entry,
             label: entry,
@@ -210,16 +251,18 @@ export function completionModel(
   sources: CompletionSources,
 ): CompletionModel | null {
   if (state.kind === "closed") return null;
-  const items = itemsFor(state, draft, sources);
+  const found = itemsFor(state, draft, sources);
 
-  if (items === null || items.length === 0) return null;
+  if (found === null) return null;
+  const items = found === "loading" ? [] : found;
   const highlighted = Math.max(0, Math.min(items.length - 1, state.highlighted));
 
   return {
     token: state.token,
     items,
+    loading: found === "loading",
     highlighted,
-    ownsEnter: state.token.trigger !== "cd",
+    ownsEnter: state.token.trigger !== "cd" && items.length > 0,
     queueable: items[highlighted]?.kind === "skill",
   };
 }
@@ -230,8 +273,9 @@ export function moveCompletion(
   model: CompletionModel,
   by: -1 | 1 | "page-up" | "page-down",
 ): CompletionState {
-  if (state.kind !== "open") return state;
   const count = model.items.length;
+
+  if (state.kind !== "open" || count === 0) return state;
   const page = Math.max(1, Math.min(count, MAX_MENTIONS) - 1);
 
   const highlighted =
@@ -256,18 +300,11 @@ export function completionEdit(
   draft: Pick<Draft, "text">,
   via: "return" | "tab",
   sources: CompletionSources,
-  cwd: string,
 ): CompletionEdit | null {
   const { from, to } = model.token;
 
   if (model.token.trigger === "@")
-    return {
-      kind: "file",
-      from,
-      to,
-      path: `${cwd.replace(/\/+$/u, "")}/${item.id}`,
-      directory: item.id.endsWith("/"),
-    };
+    return { kind: "file", from, to, path: item.id, directory: item.id.endsWith("/") };
 
   if (model.token.trigger === "cd") return { kind: "replace", from, to, text: item.id };
   const command = sources.commands.find((candidate) => candidate.name === item.id);

@@ -12,6 +12,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, pendingHint } from "../../lib/constants.ts";
+import { displayWidth } from "../../lib/width.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import type { Intent } from "../../model/msg.ts";
 import { placeLabel } from "../../model/queue.ts";
@@ -19,6 +20,15 @@ import type { Place, QueueRow, ReportRow } from "../../model/queue.ts";
 
 /** The rows never take more than this share of the terminal. */
 const MAX_ROW_SHARE = 0.3;
+
+/** Below this the message is a stub, so the row sheds its hint, then its label, to keep the text. */
+const MIN_TEXT_COLUMNS = 12;
+
+/** The rows' side margins, the lead (space, glyph, space) and the trailing space. */
+const FIXED_COLUMNS = 2 + 3 + 1;
+
+/** The two spaces before the label. */
+const GAP_COLUMNS = 2;
 
 type ReorderTo = Extract<Intent, { readonly kind: "reorder" }>["to"];
 
@@ -86,7 +96,7 @@ function reportTone(tone: ReportRow["tone"], theme: CliTheme): string {
   }
 }
 
-/** ` <glyph> <text…>  <label> · <hint> `: the text takes what the fixed parts leave. */
+/** ` <glyph> <text…>  <label> · <hint> `: the text takes what the fixed parts leave, at least 12 columns. */
 function Line(props: {
   readonly id: string;
   readonly glyph: string;
@@ -101,8 +111,17 @@ function Line(props: {
   readonly onMouseDrop?: () => void;
 }): JSX.Element {
   const app = useApp();
+  const dimensions = useTerminalDimensions();
   const [hovered, setHovered] = createSignal(false);
   const theme = () => app.kit.theme();
+
+  const fits = (right: string): boolean =>
+    dimensions().width - FIXED_COLUMNS - GAP_COLUMNS - displayWidth(right) >= MIN_TEXT_COLUMNS;
+
+  const label = () => (fits(props.label) ? props.label : null);
+
+  const hint = () =>
+    props.hint !== null && fits(`${props.label} · ${props.hint}`) ? props.hint : null;
 
   return (
     <box
@@ -148,13 +167,19 @@ function Line(props: {
         {props.text}
       </text>
       <text flexShrink={0} wrapMode="none" selectable={false}>
-        <span style={{ fg: theme().muted }}>{"  "}</span>
-        <span style={{ fg: props.tone }}>{props.label}</span>
-        <Show when={props.hint}>
-          {(hint: Accessor<string>) => (
+        <Show when={label()}>
+          {(shown: Accessor<string>) => (
+            <>
+              <span style={{ fg: theme().muted }}>{"  "}</span>
+              <span style={{ fg: props.tone }}>{shown()}</span>
+            </>
+          )}
+        </Show>
+        <Show when={hint()}>
+          {(shown: Accessor<string>) => (
             <>
               <span style={{ fg: theme().muted }}>{" · "}</span>
-              <span style={{ fg: theme().dim }}>{hint()}</span>
+              <span style={{ fg: theme().dim }}>{shown()}</span>
             </>
           )}
         </Show>
@@ -207,7 +232,13 @@ export function ReportLine(props: { readonly row: ReportRow }): JSX.Element {
       onMouseUp={() => {
         const task = props.row.task;
 
-        if (task !== null) app.dispatch({ kind: "open", dialog: { kind: "inspector", task } });
+        if (task === null) return;
+        // Through the task list, so Esc in the inspector goes back to it.
+        app.dispatch({
+          kind: "open",
+          dialog: { kind: "list", purpose: { kind: "tasks", section: "active" } },
+        });
+        app.dispatch({ kind: "open", dialog: { kind: "inspector", task } });
       }}
     />
   );

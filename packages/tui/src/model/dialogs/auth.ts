@@ -34,6 +34,8 @@ export type AuthStep =
       readonly prompt: string;
       readonly masked: boolean;
       readonly codePoints: readonly number[];
+      /** The caret, a UTF-16 offset into the secret's text; absent at the end. */
+      readonly caret?: number;
     }
   | {
       readonly kind: "choose";
@@ -88,6 +90,8 @@ export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogSt
     });
   }
 
+  if (command.kind === "highlight") return unchanged(dialog);
+
   if (command.kind === "pick") {
     if (step.kind !== "choose") return unchanged(dialog);
     const option = step.options[command.index];
@@ -115,7 +119,8 @@ export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogSt
 
       return unchanged(dialog);
     case "secret":
-      if (!submit || step.codePoints.length === 0) return unchanged(dialog);
+      // An empty answer is an answer: an optional prompt is skipped this way.
+      if (!submit) return unchanged(dialog);
 
       return answer(dialog, String.fromCodePoint(...step.codePoints));
     case "choose": {

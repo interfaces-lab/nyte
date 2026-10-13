@@ -58,6 +58,7 @@ export type Effect =
   | {
       readonly kind: "shell-start";
       readonly id: string;
+      readonly session: SessionId | null;
       readonly command: string;
       readonly include: boolean;
       readonly cwd: string;
@@ -94,6 +95,8 @@ export type Effect =
       readonly session: SessionId;
       readonly name: string;
       readonly argument: string | null;
+      /** How the command line goes out as a message when the plugin answers `unknown`. */
+      readonly delivery: Delivery;
     }
   | {
       readonly kind: "stop-task";
@@ -107,6 +110,7 @@ export type Effect =
       readonly kind: "apply-setting";
       readonly session: SessionId;
       readonly id: string;
+      readonly label: string;
       readonly scope: "host" | "session";
       readonly value: Json;
     }
@@ -115,7 +119,9 @@ export type Effect =
   /** Reads an attached file's body for its preview, answered by `preview-loaded`. */
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
   /** `/cd` completion: list directories for the typed path, answered by `directory-listed`. */
-  | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string };
+  | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
+  /** `@` completion: what a query spelled as a path names on disk, answered by `mention-resolved`. */
+  | { readonly kind: "resolve-mention"; readonly query: string; readonly cwd: string };
 
 /** The textarea is a native renderable; the Composer attaches a port, these are its verbs. */
 export type ComposerOp =

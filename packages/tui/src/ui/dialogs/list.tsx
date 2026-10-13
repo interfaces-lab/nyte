@@ -2,7 +2,7 @@
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
@@ -75,6 +75,7 @@ function ListRow(props: {
   const theme = app.kit.theme;
   const foreground = () => (props.selected ? theme().selectionForeground : theme().foreground);
   const markWidth = () => (props.marked ? MARK_WIDTH : 0);
+  const [hovered, setHovered] = createSignal(false);
 
   /** The detail cut to its column; the status keeps its tone where it survived the cut. */
   const detail = createMemo((): Detail | null => {
@@ -99,7 +100,9 @@ function ListRow(props: {
       wrapMode="none"
       selectable={false}
       flexShrink={0}
-      bg={props.selected ? theme().selectionBackground : undefined}
+      bg={props.selected ? theme().selectionBackground : hovered() ? theme().hover : undefined}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -201,6 +204,7 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
       <Show when={typed() === null}>
         <QueryLine
           text={props.dialog.query}
+          caret={props.dialog.caret}
           placeholder="type to filter"
           trailing={count()}
           active={!props.dialog.busy}
@@ -236,10 +240,14 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
           <QueryLine
             marker
             text={props.dialog.answering ?? ""}
+            caret={props.dialog.caret}
             placeholder={placeholder()}
             active={answering()}
             onClick={() =>
-              app.dispatch({ kind: "dialog", command: { kind: "pick", index: rows().length } })
+              app.dispatch({
+                kind: "dialog",
+                command: { kind: "highlight", index: rows().length },
+              })
             }
           />
         )}

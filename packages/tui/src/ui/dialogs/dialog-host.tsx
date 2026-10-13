@@ -1,8 +1,8 @@
 /**
  * Draws `screen().dialog` by kind in its placement: the slot under the
  * composer, an overlay over the transcript, or the whole screen. Keys never
- * come from here: the keymap's dialog layer turns them into
- * `{ kind: "dialog", command }`, typed text included (`query`). Clicks on
+ * come from here: the keymap's dialog and field layers turn them into
+ * `{ kind: "dialog", command }`, typed text included (`edit`). Clicks on
  * rows dispatch `pick`. The dialog's frame takes focus while it shows, so a
  * terminal paste lands in its typed field.
  */

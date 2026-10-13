@@ -269,7 +269,8 @@ already sent in a prompt remains in the saved conversation.
 restores composer focus.
 
 Each provider that reported account windows on its last response gets a section: each window
-labels the percentage used and remaining, with the reset time when known. Percentages always
+labels the percentage used and remaining, with the reset time when known, over a bar that turns
+the warning colour at 85% and the error colour at 95%. Percentages always
 come from the provider; no quota is inferred from local token history.
 
 The panel also shows this chat's consumption: total tokens, input/output and cache breakdowns,
@@ -279,4 +280,6 @@ and estimated API cost from its completed runs. API cost estimates are not subsc
 
 The TUI's `@` mentions list the workspace's files through its files capability, ignored files
 left out, and rank them fuzzily on every platform. No native filename library is embedded in the
-CLI.
+CLI. A mention spelled as a path (`@./`, `@../`, `@~/`, an absolute path) is checked on disk and
+offered first, so files outside the index or the workspace can be attached. The list is read when
+the workspace opens or changes; files created later are reachable through such a path.

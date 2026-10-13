@@ -1,4 +1,5 @@
 /** Usage, keyboard shortcuts and the plugins report: selectable text in a scrollbox, position line. */
+import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable, TextRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
@@ -86,7 +87,26 @@ export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
                   fg={kit.theme().foreground}
                   wrapMode="word"
                 >
-                  {line === "" ? " " : line}
+                  {typeof line === "string" ? (
+                    line === "" ? (
+                      " "
+                    ) : (
+                      line
+                    )
+                  ) : (
+                    <For each={line}>
+                      {(span) => (
+                        <span
+                          style={{
+                            fg: kit.theme()[span.tone ?? "foreground"],
+                            attributes: span.bold ? TextAttributes.BOLD : TextAttributes.NONE,
+                          }}
+                        >
+                          {span.text}
+                        </span>
+                      )}
+                    </For>
+                  )}
                 </text>
               )}
             </For>

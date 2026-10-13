@@ -22,6 +22,7 @@ import type {
 import type { ChatCommand } from "../lib/constants.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
+import type { MentionFile } from "./completion.ts";
 import type { DialogData, DialogId, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
 import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
@@ -105,6 +106,8 @@ export type Intent =
   | {
       readonly kind: "apply-setting";
       readonly id: string;
+      /** The setting's label, for "Could not set <label>". */
+      readonly label: string;
       readonly scope: "host" | "session";
       readonly value: Json;
     }
@@ -133,8 +136,17 @@ export type Intent =
   | { readonly kind: "auth-answer"; readonly dialog: DialogId; readonly answer: string }
   | { readonly kind: "open-external"; readonly target: string }
   | { readonly kind: "copy-text"; readonly text: string }
-  /** A core-side plugin command, by name, with its typed argument. */
-  | { readonly kind: "plugin-command"; readonly name: string; readonly argument: string }
+  /**
+   * A core-side plugin command, by name, with its typed argument. `delivery`
+   * is the one the command line was sent with; when the plugin does not know
+   * the command, it goes out as a message that way.
+   */
+  | {
+      readonly kind: "plugin-command";
+      readonly name: string;
+      readonly argument: string;
+      readonly delivery?: Delivery;
+    }
   /** The task inspector's previous/next task. */
   | { readonly kind: "step-task"; readonly dialog: DialogId; readonly direction: -1 | 1 };
 
@@ -232,6 +244,21 @@ export type Outcome =
       readonly kind: "directory-listed";
       readonly path: string;
       readonly entries: readonly string[];
+    }
+  /** The plugin did not know the command: the command line goes out as a message. */
+  | {
+      readonly kind: "command-unknown";
+      readonly session: SessionId;
+      readonly name: string;
+      readonly argument: string | null;
+      readonly delivery: Delivery;
+    }
+  /** `@` completion: the file or folder `query` names under `cwd`, or null. */
+  | {
+      readonly kind: "mention-resolved";
+      readonly query: string;
+      readonly cwd: string;
+      readonly file: MentionFile | null;
     };
 
 export type Msg = Intent | Fact | Outcome;

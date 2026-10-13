@@ -77,6 +77,7 @@ export function settingRows(state: State): readonly SettingRow[] {
               apply: {
                 kind: "apply-setting",
                 id: setting.id,
+                label: setting.label,
                 scope: setting.scope,
                 value: choice.value,
               },
@@ -210,12 +211,15 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
   );
 }
 
-/** Applying a row's choice, refused while a run is live for rows that are not per-message. */
-export function applyChoice(state: State, row: SettingRow, choice: SettingChoice): Intent {
+/** Changing a row that is not per-message is refused while a run is live. */
+export function busyRefusal(state: State, row: SettingRow): Intent | null {
   const execution = state.facts.session?.view?.execution;
 
-  if (execution !== undefined && execution.kind !== "idle" && !row.whileBusy)
-    return { kind: "refuse", reason: `Wait for the current run before changing ${row.label}` };
+  return execution !== undefined && execution.kind !== "idle" && !row.whileBusy
+    ? { kind: "refuse", reason: `Wait for the current run before changing ${row.label}` }
+    : null;
+}
 
-  return choice.apply;
+export function applyChoice(state: State, row: SettingRow, choice: SettingChoice): Intent {
+  return busyRefusal(state, row) ?? choice.apply;
 }

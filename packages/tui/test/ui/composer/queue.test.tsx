@@ -68,6 +68,33 @@ describe("labels", () => {
     expect(rowOf(frame, "trying again")).toContain("ctrl+q pending");
   });
 
+  test("a narrow row sheds its hint, then its label, to keep twelve columns of text", async () => {
+    const one = viewOf((v) =>
+      v
+        .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
+        .pending("a message worth reading", {
+          schedule: { kind: "next-turn", reason: "requested" },
+        }),
+    );
+
+    await using wide = await mount(ready(one), () => <QueueRows />, { width: 60, height: 20 });
+
+    expect(rowOf(wide.captureCharFrame(), "a message")).toContain("queued · ctrl+q pending");
+
+    await using medium = await mount(ready(one), () => <QueueRows />, { width: 32, height: 20 });
+    const row = rowOf(medium.captureCharFrame(), "a mess");
+
+    expect(row).toContain("queued");
+    expect(row).not.toContain("ctrl+q");
+
+    await using narrow = await mount(ready(one), () => <QueueRows />, { width: 22, height: 20 });
+
+    const stub = rowOf(narrow.captureCharFrame(), "a mess");
+
+    expect(stub).toContain("↓ a mess");
+    expect(stub).not.toContain("queued");
+  });
+
   test("reports draw above the queue, labelled waiting", async () => {
     await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
     const frame = app.captureCharFrame();

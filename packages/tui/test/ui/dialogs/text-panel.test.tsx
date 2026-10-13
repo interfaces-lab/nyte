@@ -1,4 +1,6 @@
+import { RGBA } from "@opentui/core";
 import { expect, test } from "bun:test";
+import { DARK_THEME } from "../../../src/lib/theme.ts";
 import type { TextDialog } from "../../../src/model/dialogs/dialog.ts";
 import { key, renderDialog, rows } from "./harness.tsx";
 
@@ -62,4 +64,28 @@ test("loading and failed bodies say so", async () => {
   });
 
   expect(failed.frame()).toContain("No usage recorded");
+});
+
+test("spans draw in their tone", async () => {
+  await using app = await renderDialog({
+    ...TEXT,
+    body: {
+      kind: "ready",
+      lines: [
+        [
+          { text: "━━━━", tone: "error" },
+          { text: "────", tone: "muted" },
+        ],
+      ],
+    },
+  });
+
+  const spans = app.captureSpans().lines.flatMap((line) => line.spans);
+
+  expect(spans.find((span) => span.text.includes("━━━━"))?.fg.toString()).toBe(
+    RGBA.fromHex(DARK_THEME.error).toString(),
+  );
+  expect(spans.find((span) => span.text.includes("────"))?.fg.toString()).toBe(
+    RGBA.fromHex(DARK_THEME.muted).toString(),
+  );
 });

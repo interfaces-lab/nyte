@@ -23,6 +23,7 @@ export async function shellStart(
 
   const job: ShellJob = {
     id: effect.id,
+    session: effect.session,
     command: effect.command,
     include: effect.include,
     startedAt: ports.clock.now(),
@@ -250,6 +251,14 @@ export async function listDirectory(
 ): Promise<void> {
   const entries = await context.ports.files.listDirectory(effect.path, effect.cwd);
   context.dispatch({ kind: "directory-listed", path: effect.path, entries });
+}
+
+export async function resolveMention(
+  effect: Of<"resolve-mention">,
+  context: HandlerContext,
+): Promise<void> {
+  const file = await context.ports.files.resolveMention(effect.query, effect.cwd);
+  context.dispatch({ kind: "mention-resolved", query: effect.query, cwd: effect.cwd, file });
 }
 
 export async function readPreview(

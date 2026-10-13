@@ -6,11 +6,12 @@
  */
 import type { MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
 import { shortId } from "../lib/format.ts";
-import { CLOSED, nextCompletion } from "./completion.ts";
+import { CLOSED, explicitMentionQuery, nextCompletion } from "./completion.ts";
 import { addPart } from "./draft.ts";
 import type { Fact } from "./msg.ts";
 import { currentQuestion } from "./question.ts";
 import type { Step } from "./reduce.ts";
+import { followedShells } from "./state.ts";
 import type { Handback, ShellJob, State } from "./state.ts";
 import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "./step.ts";
 import { deriveTranscript } from "./transcript.ts";
@@ -175,13 +176,23 @@ function firstView(state: State, now: number): Step {
     );
   const saved = next.local.drafts[session.id];
 
-  if (saved === undefined || next.local.draft.text !== "") return stay(next);
+  if (saved === undefined || next.local.draft.text !== "") return deliverShells(next);
 
   const drafts = Object.fromEntries(
     Object.entries(next.local.drafts).filter(([key]) => key !== session.id),
   );
 
-  return setDraft(withLocal(next, { drafts }), saved);
+  const edits = Object.fromEntries(
+    Object.entries(next.local.edits).filter(([key]) => key !== session.id),
+  );
+
+  const restored = withLocal(next, {
+    drafts,
+    edits,
+    editing: next.local.edits[session.id] ?? null,
+  });
+
+  return andThen(setDraft(restored, saved), deliverShells);
 }
 
 /** The last turn's lone landed prompt, which a stop before any answer hands back. */
@@ -337,40 +348,55 @@ export function landHandback(next: State, now: number): Step {
 
   return head.notice === null
     ? landed
-    : { ...landed, state: withNotice(landed.state, head.notice, "info", now) };
+    : { ...landed, state: withNotice(landed.state, head.notice, "ok", now) };
 }
 
-/**
- * A finished `!command` that sends its output with the next prompt: its
- * marker goes at the front of the draft once (`delivered`), whatever paints.
- */
 function shellReported(state: State, job: ShellJob): Step {
   const known = state.facts.shells.find((candidate) => candidate.id === job.id);
-  const merged = { ...job, delivered: known?.delivered ?? job.delivered };
-  const deliver = merged.include && !merged.delivered && merged.state.kind === "exited";
-  const reported = { ...merged, delivered: merged.delivered || deliver };
+  const reported = { ...job, delivered: known?.delivered ?? job.delivered };
 
   const shells =
     known === undefined
       ? [...state.facts.shells, reported]
       : state.facts.shells.map((candidate) => (candidate.id === job.id ? reported : candidate));
 
-  const next = withFacts(state, { shells });
+  return deliverShells(withFacts(state, { shells }));
+}
 
-  if (!deliver || merged.state.kind !== "exited") return stay(next);
+/**
+ * Finished `!commands` of the followed chat that send their output with the
+ * next prompt: each marker goes at the front of its chat's draft once
+ * (`delivered`). With a dialog open it waits for the next finish or for the
+ * chat to be followed again.
+ */
+export function deliverShells(state: State): Step {
+  if (state.local.dialogs.length > 0) return stay(state);
 
-  const added = addPart(next.local.draft.parts, {
-    kind: "shell",
-    command: merged.command,
-    output: merged.output,
-    exit: merged.state.code,
-  });
+  return followedShells(state).reduce<Step>((step, job) => {
+    if (!job.include || job.delivered || job.state.kind !== "exited") return step;
+    const exit = job.state.code;
 
-  return insertText(
-    withLocal(next, { draft: { ...next.local.draft, parts: added.parts } }),
-    `${added.marker} `,
-    "start",
-  );
+    return andThen(step, (current) => {
+      const shells = current.facts.shells.map((candidate) =>
+        candidate.id === job.id ? { ...candidate, delivered: true } : candidate,
+      );
+
+      const added = addPart(current.local.draft.parts, {
+        kind: "shell",
+        command: job.command,
+        output: job.output,
+        exit,
+      });
+
+      return insertText(
+        withLocal(withFacts(current, { shells }), {
+          draft: { ...current.local.draft, parts: added.parts },
+        }),
+        `${added.marker} `,
+        "start",
+      );
+    });
+  }, stay(state));
 }
 
 function draftChanged(
@@ -391,29 +417,36 @@ function draftChanged(
     preview: preview !== null && !msg.text.includes(preview) ? null : preview,
   });
 
-  const listing = listDirectories(state.local.completion, next);
+  const lookup = completionLookup(state.local.completion, next);
 
-  return andThen(listing, (current) => landHandback(current, now));
+  return andThen(lookup, (current) => landHandback(current, now));
 }
 
-/** A `/cd` completion that needs a listing for a query it has not asked about yet asks the runner for one. */
-export function listDirectories(before: State["local"]["completion"], next: State): Step {
+/**
+ * A completion whose query it has not asked about yet asks the runner: a
+ * `/cd` listing, or what an `@` query spelled as a path names on disk.
+ */
+export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
-  if (after.kind !== "open" || after.token.trigger !== "cd" || after.directories !== null)
+  if (after.kind !== "open" || after.directories !== null || after.explicit !== null)
     return stay(next);
 
   if (
     before.kind === "open" &&
-    before.token.trigger === "cd" &&
+    before.token.trigger === after.token.trigger &&
     before.token.query === after.token.query
   )
     return stay(next);
+  const { cwd } = next.facts.workspace;
 
-  return {
-    state: next,
-    effects: [{ kind: "list-directory", path: after.token.query, cwd: next.facts.workspace.cwd }],
-  };
+  if (after.token.trigger === "cd")
+    return { state: next, effects: [{ kind: "list-directory", path: after.token.query, cwd }] };
+
+  if (after.token.trigger === "@" && explicitMentionQuery(after.token.query))
+    return { state: next, effects: [{ kind: "resolve-mention", query: after.token.query, cwd }] };
+
+  return stay(next);
 }
 
 /** The scrollbox's stickiness mirrored: at the bottom the window follows the tail, away from it the first row is held. */
@@ -430,7 +463,7 @@ function scrolled(state: State, atBottom: boolean): State {
 
   const model = deriveTranscript(
     state.facts.session?.view ?? null,
-    state.facts.shells,
+    followedShells(state),
     transcript,
     null,
   );

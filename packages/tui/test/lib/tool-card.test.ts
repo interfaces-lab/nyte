@@ -238,6 +238,7 @@ describe("toolCard", () => {
 describe("shellCard", () => {
   const job: ShellJob = {
     id: "j1",
+    session: null,
     command: "ls -la",
     include: true,
     startedAt: 1_000,

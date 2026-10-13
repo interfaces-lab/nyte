@@ -5,10 +5,12 @@
  * changes recover the model selection the way the old shell did: a model
  * that vanished is replaced by the first the provider still serves.
  */
-import { availableModels, findModel } from "../lib/catalog.ts";
+import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import type { Effect } from "../model/effect.ts";
+import type { Notice } from "../model/state.ts";
 import type { LoginDriver } from "../services/auth.ts";
-import { noticeOf } from "./commands.ts";
+import { errorNotice, noticeOf } from "./commands.ts";
+import { messageOf } from "./runner.ts";
 import type { HandlerContext } from "./runner.ts";
 import { fallback, selectionOf } from "./session.ts";
 
@@ -70,12 +72,16 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
 
   try {
     const result = await ports.host.login(effect.provider, driver);
-    await ports.host.refreshModels(result.provider);
-    await recoverModel(context, "login", result.provider);
+
     dispatch({
       kind: "op-finished",
       op: "auth",
-      notice: noticeOf(context, "info", `Signed in to ${result.name}.`),
+      notice: await afterCredentials(
+        context,
+        "login",
+        result.provider,
+        `Signed in to ${result.name}.`,
+      ),
     });
   } catch (error) {
     dispatch({
@@ -83,7 +89,7 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
       op: "auth",
       notice: controller.signal.aborted
         ? noticeOf(context, "info", "Authentication cancelled.")
-        : noticeOf(context, "error", error instanceof Error ? error.message : String(error)),
+        : errorNotice(context, error),
     });
   } finally {
     controller.abort();
@@ -117,18 +123,50 @@ export async function logout(effect: Of<"logout">, context: HandlerContext): Pro
 
   try {
     const result = await ports.host.logout(effect.provider === "" ? null : effect.provider, driver);
-    await recoverModel(context, "logout", result.provider);
+
     dispatch({
       kind: "op-finished",
       op: "auth",
-      notice: noticeOf(context, "info", `Signed out of ${result.name}.`),
+      notice: await afterCredentials(
+        context,
+        "logout",
+        result.provider,
+        `Signed out of ${result.name}.`,
+      ),
     });
   } catch (error) {
     dispatch({
       kind: "op-finished",
       op: "auth",
-      notice: noticeOf(context, "error", error instanceof Error ? error.message : String(error)),
+      notice: errorNotice(context, error),
     });
+  }
+}
+
+/**
+ * The notice a credential change ends with: what was done, then what became
+ * of the selected model. A failed catalog refresh keeps the sign-in and says
+ * how to retry.
+ */
+async function afterCredentials(
+  context: HandlerContext,
+  action: "login" | "logout",
+  provider: string,
+  done: string,
+): Promise<Notice> {
+  try {
+    if (action === "login") await context.ports.host.refreshModels(provider);
+    const recovered = await recoverModel(context, action, provider);
+
+    return recovered === null
+      ? noticeOf(context, "ok", done)
+      : noticeOf(context, recovered.tone, `${done}\n${recovered.text}`);
+  } catch (error) {
+    return noticeOf(
+      context,
+      "warning",
+      `${done}\nModel selection could not refresh: ${messageOf(error)}. Use /model to retry.`,
+    );
   }
 }
 
@@ -137,39 +175,39 @@ async function recoverModel(
   context: HandlerContext,
   action: "login" | "logout",
   provider: string,
-): Promise<void> {
+): Promise<{ readonly tone: "ok" | "warning"; readonly text: string } | null> {
   const { dispatch, ports, read, scope } = context;
   const catalog = await ports.host.listModels();
   const generation = (scope.catalogGeneration += 1);
   dispatch({ kind: "catalog", generation, catalog });
   const followed = scope.followed;
 
-  if (followed === null) return;
+  if (followed === null) return null;
   const state = read();
   const current = selectionOf(state, followed.id) ?? fallback(state);
   const models = availableModels(catalog);
 
-  if (findModel(models, current.model) !== undefined) return;
+  if (findModel(models, current.model) !== undefined) return null;
 
-  if (action === "logout" && current.model.provider !== provider) return;
+  if (action === "logout" && current.model.provider !== provider) return null;
 
   const candidates =
     action === "login" ? models.filter((model) => model.ref.provider === provider) : models;
 
   const first = candidates[0];
 
-  if (first === undefined) {
-    dispatch({
-      kind: "inform",
+  if (first === undefined)
+    return {
       tone: "warning",
       text:
         models.length === 0
           ? "No authenticated models available. /login connects a provider; /model refreshes the catalog."
           : "No models available for this provider. /model selects another.",
-    });
+    };
 
-    return;
-  }
+  const result = await followed.configurator.request({ model: first.ref });
 
-  await followed.configurator.request({ model: first.ref });
+  if (result.kind === "failed") throw new Error(result.message);
+
+  return { tone: "ok", text: `Model: ${modelId(first.ref)}` };
 }
