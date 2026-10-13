@@ -10,8 +10,8 @@
     "clean": "rm -rf node_modules .turbo ../../bin",
     "dev": "bun --watch src/binary.ts",
     "start": "bun src/binary.ts",
-    "test": "pnpm build && node qa/run.mjs",
-    "test:unit": "bun test test",
+    "test": "pnpm test:unit && pnpm build && node qa/run.mjs",
+    "test:unit": "bun test",
     "test:show": "pnpm build && node qa/run.mjs --show",
     "typecheck": "tsgo --noEmit"
   },
@@ -27,7 +27,6 @@
     "diff": "9.0.0",
     "fuzzysort": "3.1.0",
     "open": "^11.0.4",
-    "opentui-spinner": "0.0.7",
     "semver": "7.8.5",
     "solid-js": "1.9.12",
     "string-width": "7.2.0",

@@ -196,7 +196,7 @@ export function taskConfiguration(task: Extract<Task, { kind: "agent" }>): strin
 }
 
 /** What a child was asked to do: its first user message. */
-export function taskPrompt(view: SessionView): string | undefined {
+function taskPrompt(view: SessionView): string | undefined {
   const user = view.messages.find((message) => message.kind === "user");
 
   return user?.kind === "user" ? oneLine(userText(user.content)) : undefined;
@@ -227,7 +227,7 @@ interface TaskStep {
  * What a child did, oldest first: each tool call and each answer. Thinking
  * is not a step; a running call shows its progress line.
  */
-export function taskSteps(view: SessionView): TaskStep[] {
+function taskSteps(view: SessionView): TaskStep[] {
   const steps: TaskStep[] = [];
 
   for (const message of view.messages) {

@@ -174,7 +174,6 @@ export default {
     }
 
     const env = {
-      ...(process.env["NYTE_TUI"] === undefined ? {} : { NYTE_TUI: process.env["NYTE_TUI"] }),
       HOME: home,
       NYTE_HOME: nyteHome,
       NYTE_OFFLINE: "1",

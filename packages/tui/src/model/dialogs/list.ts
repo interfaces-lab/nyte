@@ -228,6 +228,24 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
       if (dialog.answering === null && dialog.query !== "")
         return unchanged({ ...dialog, query: "", highlighted: 0 });
 
+      if (dialog.answering !== null && dialog.answering !== "")
+        return unchanged({ ...dialog, answering: "" });
+
+      if (dialog.purpose.kind === "tasks" && dialog.purpose.section === "finished")
+        return {
+          dialog,
+          intents: [
+            {
+              kind: "choose",
+              dialog: dialog.id,
+              choice: "section:active",
+              typed: null,
+              action: null,
+            },
+          ],
+          push: null,
+        };
+
       return { dialog: null, intents: [], push: null };
     case "picker.accept":
       return accept(dialog, null);

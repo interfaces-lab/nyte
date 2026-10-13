@@ -12,7 +12,6 @@ import type {
   PartStatus,
   SessionView,
   ToolPartState,
-  TurnInfo,
   Usage,
   UserContent,
 } from "@nyte-ai/sdk";
@@ -41,32 +40,9 @@ export type PartMessage = Extract<Message, { readonly kind: "part" }>;
 /** A tool part, its state narrowed to `ToolPartState`. */
 export type ToolMessage = PartMessage & { readonly state: ToolPartState };
 
-/** One turn with the messages the fold put in it, in conversation order. */
-export interface TurnEntry {
-  readonly turn: TurnInfo;
-  readonly messages: readonly Message[];
-}
-
 /** Returns true when a part message is a tool call. */
 export function isToolMessage(message: Message): message is ToolMessage {
   return isPart(message, tool);
-}
-
-/**
- * Buckets the transcript by turn in one pass, the view's own turn order. User
- * messages still unsent or pending are the queue's, not the transcript's.
- */
-export function turnEntries(view: SessionView): readonly TurnEntry[] {
-  const byTurn = new Map<string, Message[]>();
-
-  for (const message of view.messages) {
-    if (message.kind === "user" && message.status.kind !== "landed") continue;
-    const bucket = byTurn.get(message.turn) ?? [];
-    bucket.push(message);
-    byTurn.set(message.turn, bucket);
-  }
-
-  return view.turns.map((turn) => ({ turn, messages: byTurn.get(turn.id) ?? [] }));
 }
 
 /** Returns the user's messages not yet placed: this client's unsent sends, then the host's pending inputs. Reports are not the user's to edit or send, so they wait apart. */

@@ -108,7 +108,7 @@ function trimSection(lines: readonly string[]): string | undefined {
 }
 
 /** One section per hunk, following OpenCode's per-hunk layout; `source` stands in for a hunkless file. */
-export function patchSections(file: StructuredPatch, source: string): readonly DiffSection[] {
+function patchSections(file: StructuredPatch, source: string): readonly DiffSection[] {
   let previousEnd = 1;
 
   const sections = file.hunks.map((hunk) => {

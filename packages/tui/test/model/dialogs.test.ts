@@ -9,7 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionInfo, TreeNode, TreeView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../src/lib/tasks.ts";
-import { reduceDialog } from "../../src/model/dialogs/dialog.ts";
+import { dialogCommandOf, reduceDialog } from "../../src/model/dialogs/dialog.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import { reduceList, visibleChoices } from "../../src/model/dialogs/list.ts";
 import type { ListDialog } from "../../src/model/dialogs/list.ts";
@@ -108,6 +108,16 @@ describe("the choice list", () => {
     expect(
       answered === null ? [] : reduceList(answered, { kind: "key", name: "picker.accept" }).intents,
     ).toEqual([{ kind: "choose", dialog: "d", choice: null, typed: "my own", action: null }]);
+  });
+
+  test("Esc clears a typed answer before it closes", () => {
+    const typing = list(["a"], { answering: "my own", highlighted: 1 });
+    const cleared = reduceList(typing, { kind: "key", name: "picker.close" }).dialog;
+
+    expect(cleared).toMatchObject({ answering: "" });
+    expect(
+      cleared === null ? "gone" : reduceList(cleared, { kind: "key", name: "picker.close" }).dialog,
+    ).toBeNull();
   });
 
   test("per-row actions exist only for purposes that define them", () => {
@@ -327,8 +337,11 @@ describe("accepting a row", () => {
       },
     ).state;
 
-    expect(top(play(open, key("picker.next"), key("picker.accept")).state)).toMatchObject({
-      title: "Tasks · Finished",
+    const finished = play(open, key("picker.next"), key("picker.accept")).state;
+
+    expect(top(finished)).toMatchObject({ title: "Tasks · Finished" });
+    expect(top(play(finished, key("picker.close")).state)).toMatchObject({
+      purpose: { kind: "tasks", section: "active" },
     });
     expect(top(play(open, key("picker.accept")).state)).toMatchObject({
       kind: "inspector",
@@ -681,5 +694,39 @@ describe("text panel", () => {
     );
     expect(top(play(opened, key("picker.previous")).state)).toMatchObject({ scroll: 0 });
     expect(top(play(opened, key("picker.next")).state)).toMatchObject({ scroll: 1 });
+  });
+});
+
+describe("paste", () => {
+  const secret: Dialog = {
+    kind: "auth",
+    id: "a1",
+    mode: "login",
+    provider: "test",
+    step: { kind: "secret", prompt: "Paste your API key", masked: true, codePoints: [] },
+  };
+
+  test("a paste appends to the typed field as one trimmed line", () => {
+    expect(dialogCommandOf(secret, { kind: "paste", text: "sk-key\n" })).toEqual({
+      kind: "query",
+      text: "sk-key",
+    });
+    expect(
+      dialogCommandOf(list(["a"], { query: "fi" }), { kind: "paste", text: "nd\r\nme" }),
+    ).toEqual({ kind: "query", text: "find me" });
+  });
+
+  test("a dialog without a typed field, or an empty paste, takes nothing", () => {
+    const text: Dialog = {
+      kind: "text",
+      id: "x",
+      title: "Usage",
+      body: { kind: "ready", lines: [] },
+      scroll: 0,
+    };
+
+    expect(dialogCommandOf(text, { kind: "paste", text: "hello" })).toBeNull();
+    expect(dialogCommandOf(secret, { kind: "paste", text: "\n" })).toBeNull();
+    expect(dialogCommandOf(secret, { kind: "close" })).toEqual({ kind: "close" });
   });
 });

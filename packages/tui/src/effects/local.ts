@@ -4,7 +4,7 @@
  * editor, settings writes, the self-update, notifications and exit.
  */
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
-import { usageCard } from "../lib/usage.ts";
+import { usageCard, usageLines } from "../lib/usage.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
 import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
@@ -191,28 +191,9 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       const view = state.facts.session?.view ?? null;
 
       if (view === null) throw new Error("No chat is open");
-      const card = usageCard(view, state.facts.catalog.catalog ?? undefined);
-
-      const accounts = card.accounts.flatMap((account) => [
-        account.name,
-        ...account.limits.map(
-          (limit) =>
-            `  ${limit.label}: ${String(limit.used)} / ${String(limit.limit)}${
-              limit.resetsAt === null
-                ? ""
-                : ` · resets ${new Date(limit.resetsAt).toLocaleString()}`
-            }`,
-        ),
-      ]);
-
-      const chat =
-        card.chat.kind === "message"
-          ? [card.chat.message]
-          : [card.chat.total, ...card.chat.breakdown];
-
       return {
         kind: "text",
-        lines: [...accounts, ...(accounts.length > 0 ? [""] : []), ...chat],
+        lines: usageLines(usageCard(view, state.facts.catalog.catalog ?? undefined)),
       };
     }
 

@@ -162,10 +162,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  opentui-spinner@0.0.7>@opentui/core: 0.5.11
-  opentui-spinner@0.0.7>typescript: 6.0.3
-
 patchedDependencies:
   '@use-voltra/ios-client@2.3.2': 8e80a781ccc4867385127cc3066d7fa7a78f32fb744c1b49feb7b96abf96b7ad
 
@@ -1348,9 +1344,6 @@ importers:
       open:
         specifier: ^11.0.4
         version: 11.0.4
-      opentui-spinner:
-        specifier: 0.0.7
-        version: 0.0.7(@opentui/core@0.6.1(typescript@6.0.3)(web-tree-sitter@0.25.10))(@opentui/solid@0.6.1(solid-js@1.9.12)(supports-color@7.2.0)(typescript@6.0.3)(web-tree-sitter@0.25.10))(typescript@6.0.3)
       semver:
         specifier: 7.8.5
         version: 7.8.5
@@ -6464,9 +6457,6 @@ packages:
   '@types/node@26.6.2':
     resolution: {integrity: sha512-X1P21scMv4zGKLYqjdGjaKa7COa0RKVYYZZN/NfvLQ1JegxFhdhpZG/Lyn8AXx6CDUavKAd11v6BvfpkDByK8g==}
 
-  '@types/node@26.6.4':
-    resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
-
   '@types/node@26.6.5':
     resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
 
@@ -11015,19 +11005,6 @@ packages:
       ws:
         optional: true
       zod:
-        optional: true
-
-  opentui-spinner@0.0.7:
-    resolution: {integrity: sha512-nPzwAvJG+y9rVEwwHLHqbsMzLnIk2zw+F9LqwA7aYJvpM5gsrKC2rrGi36A+tZpA+1RnWxXeWEgVZMchnaH18Q==}
-    peerDependencies:
-      '@opentui/core': 0.5.11
-      '@opentui/react': ^0.3.4
-      '@opentui/solid': ^0.3.4
-      typescript: 6.0.3
-    peerDependenciesMeta:
-      '@opentui/react':
-        optional: true
-      '@opentui/solid':
         optional: true
 
   ora@3.4.0:
@@ -19043,10 +19020,6 @@ snapshots:
     dependencies:
       undici-types: 8.9.0
 
-  '@types/node@26.6.4':
-    dependencies:
-      undici-types: 8.9.0
-
   '@types/node@26.6.5':
     dependencies:
       undici-types: 8.9.0
@@ -20495,7 +20468,7 @@ snapshots:
 
   bun-types@1.4.3:
     dependencies:
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       undici-types: 8.9.0
 
   bundle-name@4.1.0:
@@ -24893,14 +24866,6 @@ snapshots:
       ws: 8.21.3
       zod: 4.5.4
 
-  opentui-spinner@0.0.7(@opentui/core@0.6.1(typescript@6.0.3)(web-tree-sitter@0.25.10))(@opentui/solid@0.6.1(solid-js@1.9.12)(supports-color@7.2.0)(typescript@6.0.3)(web-tree-sitter@0.25.10))(typescript@6.0.3):
-    dependencies:
-      '@opentui/core': 0.6.1(typescript@6.0.3)(web-tree-sitter@0.25.10)
-      cli-spinners: 3.4.0
-      typescript: 6.0.3
-    optionalDependencies:
-      '@opentui/solid': 0.6.1(solid-js@1.9.12)(supports-color@7.2.0)(typescript@6.0.3)(web-tree-sitter@0.25.10)
-
   ora@3.4.0:
     dependencies:
       chalk: 2.4.2
@@ -25413,7 +25378,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 26.6.4
+      '@types/node': 26.6.5
       long: 5.3.2
 
   proxy-addr@2.0.8:

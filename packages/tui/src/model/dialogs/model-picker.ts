@@ -1,6 +1,6 @@
 /**
- * Model picker state. Pure parts ported from model-picker.ts: base rows with
- * the fast sibling riding on them, per-row effort/fast drafts until Enter,
+ * Model picker state: base rows with the fast sibling riding on them,
+ * per-row effort/fast drafts until Enter,
  * effort clamped to the model's levels (lib/catalog.ts), cost meter scaled to
  * the priciest model, responsive detail rows.
  */

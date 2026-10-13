@@ -11,7 +11,7 @@ import type { Delivery, MessageId, MoveOptions } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
 import { shortId } from "../lib/format.ts";
 import { canStopTask } from "../lib/tasks.ts";
-import { parseComposerSubmission } from "../lib/slash.ts";
+import { hasInlineSkills, parseComposerSubmission } from "../lib/slash.ts";
 import {
   initialHighlight,
   listTitle,
@@ -30,8 +30,8 @@ import {
   splice,
 } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
-import type { Dialog, DialogCommand, DialogRequest } from "./dialogs/dialog.ts";
-import { reduceDialog } from "./dialogs/dialog.ts";
+import type { Dialog, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
+import { dialogCommandOf, reduceDialog } from "./dialogs/dialog.ts";
 import { withPrompt } from "./dialogs/auth.ts";
 import type { AuthDialog } from "./dialogs/auth.ts";
 import { typedLabel } from "./dialogs/list.ts";
@@ -271,7 +271,7 @@ export function composer(
       const minted = mint(state, "shell");
 
       return andThen(clearDraft(minted.state), (current) => ({
-        state: current,
+        state: following(current),
         effects: [
           {
             kind: "shell-start",
@@ -280,6 +280,7 @@ export function composer(
             include: msg.include,
             cwd: current.facts.workspace.cwd,
           },
+          { kind: "scroll", op: { kind: "latest" } },
         ],
       }));
     }
@@ -374,7 +375,13 @@ function send(state: State, delivery: Delivery, warning: string | null, now: num
     const entry = resolveCommand(state, draft.command);
     const parsed = parseComposerSubmission(draft.text);
 
-    if (entry !== null && !entry.prompt && parsed.kind === "command") {
+    // A skill named inside the draft makes the whole draft a prompt; `/cd` still runs.
+    const skills = new Map(
+      (followed.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
+    );
+    const prompting = entry?.name !== "cd" && hasInlineSkills(draft.text, skills);
+
+    if (entry !== null && !entry.prompt && parsed.kind === "command" && !prompting) {
       const argument = parsed.command.argument;
 
       return andThen(clearDraft(state), (current) =>
@@ -399,9 +406,19 @@ function send(state: State, delivery: Delivery, warning: string | null, now: num
   const noticed = warning === null ? queued : withNotice(queued, warning, "warning", now);
 
   return andThen(clearDraft(noticed), (current) => ({
-    state: current,
-    effects: [{ kind: "send", submission, delivery }],
+    state: following(current),
+    effects: [
+      { kind: "send", submission, delivery },
+      { kind: "scroll", op: { kind: "latest" } },
+    ],
   }));
+}
+
+/** Back at the transcript's tail, following new output: what Ctrl+End and every send do. */
+function following(state: State): State {
+  return withLocal(state, {
+    transcript: { ...state.local.transcript, following: true, window: { kind: "tail" } },
+  });
 }
 
 function saveEdit(state: State, delivery: Delivery, now: number): Step {
@@ -1021,13 +1038,29 @@ export function session(
       };
     case "update":
       return { state, effects: [{ kind: "self-update", version: msg.version }] };
-    case "configure":
-      return configure(state, msg.selection, now);
-    case "write-settings":
+    case "configure": {
+      const step = configure(state, msg.selection, now);
+      const level = msg.selection.effort;
+
+      if (followed === null || level === undefined || msg.selection.model !== undefined)
+        return step;
+      const text =
+        followed.selection.effort === level ? `Already using ${level}` : `Thinking level: ${level}`;
+
+      return { ...step, state: withNotice(step.state, text, "info", now) };
+    }
+
+    case "write-settings": {
+      const settings = withFacts(state, { settings: { ...state.facts.settings, ...msg.patch } });
+
       return {
-        state: withFacts(state, { settings: { ...state.facts.settings, ...msg.patch } }),
+        state:
+          msg.patch.theme === undefined
+            ? settings
+            : withNotice(settings, `Theme: ${msg.patch.theme}`, "info", now),
         effects: [{ kind: "write-settings", patch: msg.patch }],
       };
+    }
     case "apply-setting":
       if (followed === null) return stay(state);
 
@@ -1175,12 +1208,7 @@ export function transcript(
         case "page-down":
           return { state, effects: [{ kind: "scroll", op: { kind: "page", direction: 1 } }] };
         case "latest":
-          return {
-            state: withLocal(state, {
-              transcript: { ...local, following: true, window: { kind: "tail" } },
-            }),
-            effects: [{ kind: "scroll", op: { kind: "latest" } }],
-          };
+          return { state: following(state), effects: [{ kind: "scroll", op: { kind: "latest" } }] };
         case "previous-turn":
           return { state, effects: [{ kind: "scroll", op: { kind: "turn", direction: -1 } }] };
         case "next-turn":
@@ -1479,10 +1507,11 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
 }
 
 /** Forwards a key or typed text to the dialog that owns the keyboard, then reduces what it asked for. */
-function dialogCommand(state: State, command: DialogCommand, now: number): Step {
+function dialogCommand(state: State, input: DialogInput, now: number): Step {
   const dialog = keyboardDialog(state);
+  const command = dialog === null ? null : dialogCommandOf(dialog, input);
 
-  if (dialog === null) return stay(state);
+  if (dialog === null || command === null) return stay(state);
   const result = reduceDialog(dialog, command);
   const onStack = state.local.dialogs.at(-1)?.id === dialog.id;
   let next: State;
@@ -1696,7 +1725,7 @@ const MOVE_REFUSALS = {
  * send-refused:  stage the snapshot as a handback (a plugin reject keeps the draft) and say why
  * withdrawn:     landed-first → "Already sent"; gone → "No longer queued"; withdrawn → "Removed from the queue"
  * answered:      !ok → "That question is no longer waiting"; a typed answer comes back to the composer
- * moved:         notice per outcome (interactive.ts:3304-3346); a handed-back message lands in the composer
+ * moved:         notice per outcome; a handed-back message lands in the composer
  * loaded:        routed to the dialog with that id; dropped when no such dialog is open (stale)
  * paste-resolved: generation matches the local paste generation? composer insert : drop
  * effect-failed: notice the error (the failure is already in the crash log) and release what it held

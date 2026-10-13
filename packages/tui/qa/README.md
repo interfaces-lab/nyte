@@ -9,7 +9,8 @@ pnpm --dir packages/tui run test:show --step            # same, Enter runs each 
 ```
 
 Each command builds `bin/nyte` and runs that executable. `node qa/run.mjs --binary <path>` tests
-an existing executable without rebuilding. There are no other tests in this package.
+an existing executable without rebuilding. `pnpm --dir packages/tui run test` runs the `bun test`
+unit suite first.
 
 ## The two scenarios
 

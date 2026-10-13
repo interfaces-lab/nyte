@@ -5,6 +5,7 @@
  * outcomes are reported honestly.
  */
 import { asId } from "@nyte-ai/schema";
+import type { SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../src/lib/tasks.ts";
 import type { Effect } from "../../src/model/effect.ts";
@@ -187,8 +188,16 @@ describe("queue operations", () => {
 });
 
 describe("send", () => {
-  test("a prompt snapshots the draft, clears the composer at once and sends", () => {
-    const step = play(ready(idle), typed("fix the bug"), { kind: "send", delivery: "queue" });
+  test("a prompt snapshots the draft, clears the composer at once, sends and returns to the latest output", () => {
+    const scrolledUp = ready(idle);
+    const reading = {
+      ...scrolledUp,
+      local: {
+        ...scrolledUp.local,
+        transcript: { ...scrolledUp.local.transcript, following: false },
+      },
+    };
+    const step = play(reading, typed("fix the bug"), { kind: "send", delivery: "queue" });
 
     expect(step.effects).toEqual([
       { kind: "composer", op: { kind: "clear" } },
@@ -202,7 +211,9 @@ describe("send", () => {
         },
         delivery: "queue",
       },
+      { kind: "scroll", op: { kind: "latest" } },
     ]);
+    expect(step.state.local.transcript.following).toBe(true);
     expect(step.state.local.draft.text).toBe("");
     expect(step.state.local.submissions).toHaveLength(1);
   });
@@ -219,6 +230,22 @@ describe("send", () => {
     ]);
   });
 
+  test("a skill named inside a /command draft makes the whole draft a prompt", () => {
+    const withSkill: SessionView = {
+      ...idle,
+      catalog: {
+        ...idle.catalog,
+        skills: [{ name: "review", owner: "project", description: "", location: "/r" }],
+      },
+    };
+    const step = play(ready(withSkill), typed("/compact then /review"), {
+      kind: "send",
+      delivery: "queue",
+    });
+
+    expect(kinds(step.effects)).toEqual(["composer:clear", "send", "scroll"]);
+  });
+
   test("a setting command applies its argument", () => {
     const step = play(ready(idle), typed("/effort high"), { kind: "send", delivery: "queue" });
 
@@ -228,12 +255,23 @@ describe("send", () => {
       selection: { effort: "high" },
     });
     expect(step.state.facts.session?.selection.effort).toBe("high");
+    expect(step.state.local.notice?.text).toBe("Thinking level: high");
+
+    const again = play(step.state, typed("/effort high"), { kind: "send", delivery: "queue" });
+
+    expect(again.state.local.notice?.text).toBe("Already using high");
+  });
+
+  test("choosing a theme says which", () => {
+    const step = play(ready(idle), { kind: "write-settings", patch: { theme: "light" } });
+
+    expect(step.state.local.notice?.text).toBe("Theme: light");
   });
 
   test("an unknown /name goes out as a message", () => {
     expect(
       kinds(play(ready(idle), typed("/nope"), { kind: "send", delivery: "queue" }).effects),
-    ).toEqual(["composer:clear", "send"]);
+    ).toEqual(["composer:clear", "send", "scroll"]);
   });
 
   test("a /command that takes no argument says so", () => {
@@ -549,12 +587,13 @@ describe("failures release what they held", () => {
 });
 
 describe("session and view intents", () => {
-  test("`!cmd` clears the draft and starts the shell in the workspace", () => {
+  test("`!cmd` clears the draft, starts the shell in the workspace and returns to the latest output", () => {
     expect(
       play(ready(idle), typed("!ls"), { kind: "run-shell", command: "ls", include: true }).effects,
     ).toEqual([
       { kind: "composer", op: { kind: "clear" } },
       { kind: "shell-start", id: "shell-1", command: "ls", include: true, cwd: "/w" },
+      { kind: "scroll", op: { kind: "latest" } },
     ]);
   });
 

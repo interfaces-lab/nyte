@@ -1,27 +1,47 @@
 # TUI
 
-- Terminal rendering and keyboard interaction live here; session behavior belongs in core, and the client fold in `@nyte-ai/client`.
-- The screen is a Solid component (`src/app/App.tsx`) painted from the UI store in `src/app/ui.ts`. Feature code changes state through `setUi`, `notice`, `setHints`, `patchStatus`, `openPanel`; it never sets a renderable's content. Leaf widgets that only draw (transcript view, pickers, gutter) stay renderables and are mounted where the store says.
+- Terminal rendering and keyboard interaction live here; session behavior belongs in core.
+- The interactive app is a Solid app on `@opentui/solid`, started by `runTui` in `src/app/main.tsx`. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
 - `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`; from source, `src/binary.ts` installs the same transform before loading the app.
-- Reusable shortcuts and displayed keycaps are defined in `src/constants.ts`; reference named actions from production and QA.
-- The package's tests are two scenarios in `qa/`, both against the compiled binary: `headless` (piped CLI, `-p`/`--json`) and `tui` (a real PTY observed with OpenTUI's `EmbeddedTerminalRenderable`). Add coverage as a named step in one of them, not as a new suite.
-- Assert visible screens, provider requests, task/process outcomes, and clean exit output. Do not import the application controller into QA.
-- The terminal driver and isolated loopback fixtures live in `qa/`. Record input-to-matching-screen latency per action.
-- Cover relevant widths, scrolling, resize, and cancellation. Wait for observable states with deadlines; close every process, PTY, renderer and fixture.
-- SQLite runs through `WorkerStore`; usage history runs through the host package's shared `UsageScanWorker`. Both stay off the rendering thread. `scripts/build-binary.ts` embeds their entries under `/$bunfs/root/core/src/kernel/store-worker.js` and `/$bunfs/root/host/src/usage-worker.js`; source runs load the corresponding `.ts` files.
-- Each workspace has one store for every client at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
-- Every local input paints before host work starts: notices for stop and task actions, selected model and effort, and the composer's own text. Keys are blocked with a reason until the session is open.
+
+## Architecture
+
+One loop: `dispatch(msg) → reduce(state, msg, now) → { state, effects }`, then `deriveScreen(state)` for components and the runner for effects, whose results come back as messages.
+
+- `src/model/`: pure. `reduce.ts` is the only writer of `State` (`state.ts`); `screen.ts` derives everything shown; `msg.ts` and `effect.ts` are the vocabularies; dialogs are values in `model/dialogs/`.
+- `src/effects/`: IO as handlers, one per `Effect` kind in `runner.ts`. Ports (`ports.ts`) are the only way out; `host-port.ts` is the SDK adapter.
+- `src/ui/`: components. They read `useApp().screen()`, send `dispatch(intent)` and draw with the kit; they decide nothing.
+- `src/app/`: wiring: renderer, store, keymap layers, sinks, tickers, crash hooks.
+- `src/lib/` (pure helpers) and `src/services/` (IO behind ports).
+
+What Enter, Ctrl+Enter, Esc and Ctrl+C do is the situation table in `src/model/interactions.ts`; hints, placeholder and help read the same record. Change a key's behavior there, not in a handler. Shortcuts and keycaps are defined in `src/lib/constants.ts` (`CHAT_KEYBINDS`); production and QA reference them by name.
+
+Boundary rules, enforced by `test/boundaries.test.ts`:
+
+- `model/` imports no Solid, OpenTUI, `node:*`, effects, services, ui or app, and the SDK only as types (`@nyte-ai/plugin/question` excepted).
+- `ui/` imports no effects or services, and the SDK only as types.
+- Only `effects/host-port.ts` imports SDK values.
+- No `setFrameCallback` and no raw `keyInput` listeners; keys go through `@opentui/keymap` layers.
+
+Local input paints before host work: notices, the chosen model and level, and the composer's text change in `reduce` at once. Until the session is open, keys are refused with the `blocked` reason.
+
+Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as owner; layout reads use `getComputedLayout()`.
+
+## Storage
+
+- SQLite runs through `WorkerStore`; usage history runs through the host package's `UsageScanWorker`. Both stay off the rendering thread; `scripts/build-binary.ts` embeds their entries.
+- Each workspace has one store at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
+
+## Tests
+
+- Unit: `bun test` with `testRender` from `@opentui/solid` and helpers from `@opentui/core/testing` (`bunfig.toml` preloads the Solid transform). Model tests are plain functions over `test/fixture/view.ts`; effect tests run the runner over `fakeHost`/`fakePorts`; app tests run a real in-process host (`test/fixture/host.ts`).
+- End to end: two scenarios in `qa/` against the compiled binary: `headless` (piped CLI) and `tui` (a real PTY observed with OpenTUI's `EmbeddedTerminalRenderable`). Assert visible screens, provider requests, process outcomes and clean exit output; never import the app into QA. Wait for observable states with deadlines and close every process, PTY, renderer and fixture.
 
 ## Verification
 
 From the repository root:
 
-- Build, then both scenarios: `pnpm --dir packages/tui run test`.
-- One scenario: `pnpm --dir packages/tui run test --scenario headless` or `--scenario tui`.
-- Visible PTY playback of `tui`: `pnpm --dir packages/tui run test:show` (add `--step` to advance with Enter).
-- Check source and QA types: `pnpm --dir packages/tui typecheck`.
-- QA needs ripgrep 12 or later on PATH.
-
-Every mode runs the binary, not an in-process reconstruction. Results and input/output evidence
-are saved under the printed temporary run directory. A matching emulated screen does not prove
-physical terminal scanout, OS clipboard behavior, or image-protocol display.
+- Unit tests: `pnpm --dir packages/tui test:unit`.
+- Unit tests, build and both QA scenarios: `pnpm --dir packages/tui test`; one scenario with `--scenario headless` or `--scenario tui`.
+- Visible PTY playback: `pnpm --dir packages/tui test:show` (add `--step` to advance with Enter).
+- Types: `pnpm --dir packages/tui typecheck`. QA needs ripgrep 12 or later on PATH.

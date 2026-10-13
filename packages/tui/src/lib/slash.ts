@@ -319,7 +319,6 @@ function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): Skil
 
   return tokens;
 }
-
 /** Whether a draft invokes a skill from inside the prompt rather than at its head. */
 export function hasInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): boolean {
   return skillTokens(text, skills).some((token) => !opensDraft(text, token.start));
@@ -399,12 +398,6 @@ export function extractSkillInvocations(text: string): SkillInvocation[] {
   }
 
   return invocations;
-}
-
-export function resolveSlashCommand(name: string): BuiltinSlashCommand | undefined {
-  return SLASH_COMMANDS.find(
-    (command) => command.name === name || aliasesFor(command).includes(name),
-  );
 }
 
 export function slashCommandLabel(command: SlashCommand): string {

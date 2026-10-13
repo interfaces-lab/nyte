@@ -7,5 +7,12 @@
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "qa/**/*.ts", "scripts/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "qa/**/*.ts",
+    "scripts/**/*.ts"
+  ]
 }

@@ -15,8 +15,9 @@ import type {
   SessionId,
   SessionInfo,
   Thinking,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
-import { availableModels, findModel } from "../lib/catalog.ts";
+import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
 import { shortId } from "../lib/format.ts";
 import type { Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
@@ -57,10 +58,15 @@ export async function follow(
         selection: toSelection(selected, catalogOf(read())),
       }),
     onAcknowledged: (choice, patch) => {
-      if (patch.model === undefined) return;
-      void ports.host.setDefaultModel(choice.model).catch((error: unknown) => {
-        ports.log.write("effect", error);
-      });
+      if (patch.model !== undefined)
+        void ports.host.setDefaultModel(choice.model).catch((error: unknown) => {
+          ports.log.write("effect", error);
+        });
+
+      if (patch.thinkingLevel !== undefined)
+        void rememberThinking(choice.thinkingLevel, context).catch((error: unknown) => {
+          ports.log.write("effect", error);
+        });
     },
   });
 
@@ -339,5 +345,46 @@ function unavailable(
 async function created(context: HandlerContext): Promise<SessionId> {
   const workspace = context.read().facts.session?.info.workspace ?? null;
 
-  return context.ports.host.create({ workspace, selection: null });
+  return createSession({ workspace, selection: null, effort: null }, context);
+}
+
+/**
+ * Creates a session and configures it at the remembered thinking level,
+ * clamped to its model, before anything follows it; an `effort` the command
+ * line chose wins and is created with instead.
+ */
+export async function createSession(
+  input: {
+    readonly workspace: WorkspaceId | null;
+    readonly selection: Selection | null;
+    readonly effort: Thinking | null;
+  },
+  context: HandlerContext,
+): Promise<SessionId> {
+  const { ports, read } = context;
+  const id = await ports.host.create({ workspace: input.workspace, selection: input.selection });
+  const remembered = read().facts.settings.thinkingLevel;
+
+  if (input.effort !== null || remembered === undefined) return id;
+  const catalog = catalogOf(read());
+  const model = input.selection?.model ?? fallbackSelection(catalog, remembered)?.model;
+  const info =
+    model === undefined || catalog === null
+      ? undefined
+      : findModel(availableModels(catalog), model);
+  const effort = info === undefined ? remembered : clampThinking(info, remembered);
+  const outcome = await ports.host.session(id).configure({ effort });
+
+  if (outcome.kind !== "configured")
+    ports.log.write("effect", new Error(`Couldn't start at ${effort} thinking: ${outcome.kind}`));
+
+  return id;
+}
+
+async function rememberThinking(level: Thinking, context: HandlerContext): Promise<void> {
+  const { ports, read, dispatch } = context;
+
+  if (read().facts.settings.thinkingLevel === level) return;
+  const settings = await ports.settings.write(read().facts.workspace.cwd, { thinkingLevel: level });
+  dispatch({ kind: "settings", settings });
 }

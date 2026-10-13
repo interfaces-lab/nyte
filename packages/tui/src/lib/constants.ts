@@ -20,11 +20,11 @@ export const THINKING_LEVELS = [
 ] as const satisfies readonly Thinking[];
 
 /** Acceptance modes used by the slash command API, including mouse activation. */
-export const COMPLETION_METHODS = { accept: "return", fill: "tab" } as const;
+const COMPLETION_METHODS = { accept: "return", fill: "tab" } as const;
 
 /**
  * The default key for each chat command, and the list of chat commands.
- * `src/keymap.ts` binds them and the hint rows below read their keycaps
+ * `src/app/keymap.ts` binds them and the hint rows below read their keycaps
  * straight off this record, so a rebind cannot leave the shell advertising a
  * key that no longer does anything.
  */
@@ -245,12 +245,6 @@ export const GLYPHS = {
   frameBottomLeft: "╰",
   frameBottomRight: "╯",
   ellipsis: "…",
-} as const;
-
-export const SPACING = {
-  block: 1,
-  inset: 2,
-  insetRight: 1,
 } as const;
 
 /** Rows the transcript keeps clear under its last line. */

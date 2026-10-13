@@ -1,7 +1,7 @@
 import { isPart, tool } from "@nyte-ai/plugin/client";
 import { openQuestions } from "@nyte-ai/plugin/question";
 import { expect, test } from "bun:test";
-import { pendingReports, queuedMessages, turnEntries } from "../../src/lib/view-helpers.ts";
+import { pendingReports, queuedMessages } from "../../src/lib/view-helpers.ts";
 import { viewOf } from "../fixture/view.ts";
 
 test("viewOf builds a view the TUI's helpers and the question rule read", () => {
@@ -16,13 +16,11 @@ test("viewOf builds a view the TUI's helpers and the question rule read", () => 
       .live(),
   );
 
-  expect(
-    turnEntries(view).map((entry): [string, number] => [entry.turn.id, entry.messages.length]),
-  ).toEqual([
-    ["t1", 2],
-    ["t2", 2],
-    ["pending:p1", 0],
-    ["pending:m5", 0],
+  expect(view.turns.map((turn): string => turn.id)).toEqual([
+    "t1",
+    "t2",
+    "pending:p1",
+    "pending:m5",
   ]);
   expect(
     queuedMessages(view).map((message): [string, string] => [message.id, message.status.kind]),

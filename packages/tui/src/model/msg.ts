@@ -22,7 +22,7 @@ import type {
 import type { ChatCommand } from "../lib/constants.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
-import type { DialogCommand, DialogData, DialogId, DialogRequest } from "./dialogs/dialog.ts";
+import type { DialogData, DialogId, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
 import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
   FailureReport,
@@ -87,7 +87,7 @@ export type Intent =
   /** Input aimed elsewhere (a paste over the transcript) belongs in the composer. */
   | { readonly kind: "focus-composer" }
   | { readonly kind: "open"; readonly dialog: DialogRequest }
-  | { readonly kind: "dialog"; readonly command: DialogCommand }
+  | { readonly kind: "dialog"; readonly command: DialogInput }
   | { readonly kind: "run-command"; readonly name: string; readonly argument: string }
   | {
       readonly kind: "switch-session";

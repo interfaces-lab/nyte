@@ -15,6 +15,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Host, SessionId } from "@nyte-ai/sdk";
 import {
   CliRenderEvents,
+  MouseButton,
   NativeSession,
   createCliRenderer,
   maybeMakeRenderable,
@@ -183,12 +184,29 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   renderer.on(CliRenderEvents.THEME_MODE, syncTerminal);
   renderer.on(CliRenderEvents.SELECTION, onSelection);
 
+  // Without copy-on-select, a right-click copies the highlight and keeps it.
+  renderer.root.onMouseDown = (event) => {
+    if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
+      return;
+    const selection = renderer.getSelection();
+    const text =
+      selection === null || (selection.isStart && selection.behavior === "cell")
+        ? ""
+        : selection.getSelectedText();
+
+    if (text === "") return;
+    event.preventDefault();
+    event.stopPropagation();
+    store.dispatch({ kind: "copy-text", text });
+  };
+
   renderer.once(CliRenderEvents.DESTROY, () => {
     // A signal can destroy the renderer before `close`; the native session takes writes until this returns.
     root.sinks.dispose();
     renderer.off(CliRenderEvents.RESIZE, syncTerminal);
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
     renderer.off(CliRenderEvents.SELECTION, onSelection);
+    renderer.root.onMouseDown = undefined;
     root.tickers.dispose();
     root.kit.dispose();
     store.dispose();
@@ -383,9 +401,6 @@ export function exitText(input: {
 
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
 }
-
-/** `index.ts` runs this instead of the old app while `NYTE_TUI=solid`; the alias goes at cut-over. */
-export const runSolidTui = runTui;
 
 /** What the renderer reports about the terminal, as the `terminal` fact carries it. */
 function terminalFacts(renderer: CliRenderer): TerminalFacts {

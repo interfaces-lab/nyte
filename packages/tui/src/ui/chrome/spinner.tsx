@@ -1,8 +1,7 @@
 /**
- * Replaces opentui-spinner (it calls `_lib.encodeUnicode`, removed in
- * OpenTUI 0.6). A `<text>` whose content is `SPINNER_FRAMES[tick % n]`
- * from the shared 130 ms ticker. No native buffer calls, no frame callback;
- * nothing to throw inside `flushVisual`.
+ * A `<text>` whose content is `SPINNER_FRAMES[tick % n]` from the shared
+ * 130 ms ticker. No native buffer calls, no frame callback; nothing to throw
+ * inside `flushVisual`.
  */
 import type { JSX } from "@opentui/solid";
 import { useApp } from "../../app/context.tsx";

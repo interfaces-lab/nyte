@@ -1,10 +1,11 @@
 /**
- * The status row: spinner + "Working · <activity>" / "Thinking…" / "Retrying",
+ * The status row: spinner + "Working · <activity>" / "Thinking…" /
+ * "Retrying in 4s (attempt 2) · <cause>", counting down each second,
  * "• Waiting for your answer", or settled "Worked for 12s" (from the turn's
  * own startedAt/endedAt) / the failure notice / "! Stopped".
  */
 import type { JSX } from "@opentui/solid";
-import { createMemo, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import {
@@ -15,7 +16,7 @@ import {
   ACTIVITY_WORKING_LABEL,
   GLYPHS,
 } from "../../lib/constants.ts";
-import { formatDuration } from "../../lib/format.ts";
+import { clockDuration, formatDuration, retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import { failureNotice } from "../../lib/tool-copy.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
@@ -27,7 +28,9 @@ interface Line {
   readonly spinner: string | null;
 }
 
-function lineOf(status: TurnStatus, theme: CliTheme): Line {
+const CLOCK_INTERVAL_MS = 1_000;
+
+function lineOf(status: TurnStatus, theme: CliTheme, now: number): Line {
   switch (status.kind) {
     case "unanswered":
       return { text: "", color: theme.dim, spinner: null };
@@ -46,7 +49,11 @@ function lineOf(status: TurnStatus, theme: CliTheme): Line {
         spinner: null,
       };
     case "retrying":
-      return { text: ACTIVITY_RETRY_LABEL, color: theme.warning, spinner: theme.warning };
+      return {
+        text: `${ACTIVITY_RETRY_LABEL} in ${clockDuration(status.until - now)} (attempt ${String(status.attempt)}) · ${retryCause(status.reason)}`,
+        color: theme.warning,
+        spinner: theme.warning,
+      };
     case "settled": {
       if (status.failure !== null) {
         const notice = failureNotice(status.failure);
@@ -73,7 +80,20 @@ export function TurnStatusRow(props: {
   readonly turn?: string;
 }): JSX.Element {
   const { kit } = useApp();
-  const line = createMemo(() => lineOf(props.status, kit.theme()));
+  const [now, setNow] = createSignal(kit.now());
+
+  /** The countdown ticks only while the run is retrying; the ticker is released when the effect re-runs. */
+  createEffect(() => {
+    if (props.status.kind !== "retrying") return;
+    const tick = kit.ticker(CLOCK_INTERVAL_MS);
+
+    createEffect(() => {
+      tick();
+      setNow(kit.now());
+    });
+  });
+
+  const line = createMemo(() => lineOf(props.status, kit.theme(), now()));
 
   return (
     <box

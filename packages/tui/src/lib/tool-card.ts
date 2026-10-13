@@ -84,14 +84,14 @@ type DelegationClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 const NONE: CardBody = { kind: "none" };
 
-export function previewCut(toolClass: ToolClass | undefined): PreviewCut {
+function previewCut(toolClass: ToolClass | undefined): PreviewCut {
   return toolClass?.kind === "shell"
     ? { kind: "tail", max: RESULT_TAIL_ONLY_LINES }
     : { kind: "head-tail", head: RESULT_PREVIEW_LINES, tail: RESULT_TAIL_LINES };
 }
 
 /** A single short line goes in the heading instead of a body. */
-export function inlineToolPreview(text: string): string | undefined {
+function inlineToolPreview(text: string): string | undefined {
   const value = text.trim();
 
   if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH)

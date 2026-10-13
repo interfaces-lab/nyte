@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
+import { MouseButtons } from "@opentui/core/testing";
 import { createSignal } from "solid-js";
 import { exitText } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
@@ -44,6 +45,31 @@ test("typing and Enter sends the draft", async () => {
   expect(JSON.stringify((await fixture.requested(1)).context.messages)).toContain("hello there");
   await app.state(idle);
   expect(app.store.state().local.draft.text).toBe("");
+});
+
+test("without copy-on-select, a right-click copies the transcript selection and another key clears it", async () => {
+  await using fixture = await openTestHost();
+  fixture.reply({ content: [{ type: "text", text: "Select this answer." }] });
+  await using app = await startApp(fixture);
+  await app.ready();
+
+  await app.mockInput.typeText("hello");
+  app.mockInput.pressEnter();
+  const frame = await app.frame((text) => text.includes("Select this answer."));
+  const row = frame.split("\n").findIndex((line) => line.includes("Select this answer."));
+  const column = (frame.split("\n")[row] ?? "").indexOf("Select");
+
+  await app.mockMouse.drag(column, row, column + 5, row);
+  await app.renderOnce();
+  expect(app.renderer.hasSelection).toBe(true);
+
+  await app.mockMouse.pressDown(column + 2, row, MouseButtons.RIGHT);
+  expect(app.terminal.copies).toEqual(["Select"]);
+  expect(app.renderer.hasSelection).toBe(true);
+
+  app.mockInput.pressKey("x");
+  await app.renderOnce();
+  expect(app.renderer.hasSelection).toBe(false);
 });
 
 test("Ctrl+Enter while working queues the draft for the next turn", async () => {

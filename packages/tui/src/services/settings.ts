@@ -1,7 +1,7 @@
 /**
  * The terminal's own preferences, global and project: theme, keys, editor and
- * updates. Project values override global values. Model, thinking and
- * compaction are the host's: head configuration and host settings.
+ * updates. Project values override global values. Model and compaction are
+ * the host's; the thinking level kept here only seeds sessions the TUI creates.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/settings-manager.ts
  */
@@ -50,8 +50,10 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
   };
 
   const editor = project.externalEditor ?? global.externalEditor;
+  const thinkingLevel = project.thinkingLevel ?? global.thinkingLevel;
+  const withEditor = editor === undefined ? resolved : { ...resolved, externalEditor: editor };
 
-  return editor === undefined ? resolved : { ...resolved, externalEditor: editor };
+  return thinkingLevel === undefined ? withEditor : { ...withEditor, thinkingLevel };
 }
 
 /**

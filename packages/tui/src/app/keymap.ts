@@ -8,13 +8,15 @@
  *
  * Layers, by priority:
  *   200 error      R resets the root boundary, Q and Ctrl+C quit (enabled iff the error screen shows)
- *   100 selection  Ctrl+C copies, Esc clears, while a selection exists (above dialogs)
+ *   100 selection  Ctrl+C copies, Esc clears, while a selection exists (above dialogs); with
+ *                  copy-on-select, Ctrl+C on a transcript selection clears it and falls through
  *    20 dialog     every non-composer command → its interaction (enabled iff screen.dialog)
  *     5 completion completion.* (enabled iff screen.completion and no dialog)
  *     1 chat       chat.* (enabled iff no dialog)
  *    -1 textarea   managed textarea editing keys, composer.newline, composer.delete.to.line.start
  *
- * Two intercepts run before the layers: every key dismisses the notice, and
+ * Two intercepts run before the layers: every key dismisses the notice and
+ * any other key clears a transcript selection, and
  * printable keys and Backspace become the open dialog's `query` when it takes
  * text. After the layers, a key nobody handled while a dialog or the error
  * screen shows is consumed, so it never edits the composer underneath.
@@ -38,6 +40,7 @@ import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
 import type { Accessor } from "solid-js";
 import { CHAT_KEYBINDS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
+import { dialogText } from "../model/dialogs/dialog.ts";
 import type { Dialog } from "../model/dialogs/dialog.ts";
 import { chatCommands } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
@@ -123,6 +126,12 @@ export function installKeymap(options: KeymapOptions): () => void {
           run() {
             const text = selectedText(renderer);
 
+            if (store.state().facts.settings.copyOnSelect && !editingSelection(renderer)) {
+              renderer.clearSelection();
+
+              return false;
+            }
+
             if (text === "") return false;
             store.dispatch({ kind: "copy-text", text });
 
@@ -186,6 +195,9 @@ export function installKeymap(options: KeymapOptions): () => void {
 
       if (local.notice !== null || local.watchedRun !== null)
         store.dispatch({ kind: "dismiss-notice" });
+
+      if (renderer.hasSelection && !selectionKey(event) && !editingSelection(renderer))
+        renderer.clearSelection();
       const open = dialog();
       const text = open === null ? null : dialogText(open);
 
@@ -215,27 +227,6 @@ function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
     : null;
 }
 
-/** The text a dialog's typed field holds, or null when the dialog takes no text now. */
-function dialogText(dialog: Dialog): string | null {
-  switch (dialog.kind) {
-    case "list":
-      return dialog.answering ?? dialog.query;
-    case "model":
-    case "tree":
-      return dialog.query;
-    case "auth":
-      return dialog.step.kind === "secret" ? String.fromCodePoint(...dialog.step.codePoints) : null;
-    case "inspector":
-    case "text":
-      return null;
-    default: {
-      const _exhaustive: never = dialog;
-
-      return _exhaustive;
-    }
-  }
-}
-
 /** The field's next text for a printable key or Backspace, or null for any other key. */
 function typed(event: KeyEvent, text: string): string | null {
   if (event.ctrl || event.meta || event.option || event.super === true) return null;
@@ -246,6 +237,27 @@ function typed(event: KeyEvent, text: string): string | null {
   if (first === undefined || first < 32 || first === 127) return null;
 
   return text + event.sequence;
+}
+
+/** Ctrl+C and Esc: the keys the selection layer answers, so they keep the selection. */
+function selectionKey(event: KeyEvent): boolean {
+  // Kitty can report a non-Latin key name with a Latin base-layout C.
+  const c = event.name === "c" || event.baseCode === 99 || event.baseCode === 67;
+
+  return (event.ctrl && c) || event.name === "escape";
+}
+
+/** The selection is inside the focused editor, which handles its own keys. */
+function editingSelection(renderer: CliRenderer): boolean {
+  const focus = renderer.currentFocusedEditor;
+  const selection = renderer.getSelection();
+
+  return (
+    focus !== null &&
+    selection !== null &&
+    focus.hasSelection() &&
+    selection.selectedRenderables.includes(focus)
+  );
 }
 
 function selectedText(renderer: CliRenderer): string {

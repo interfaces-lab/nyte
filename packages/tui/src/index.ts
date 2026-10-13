@@ -23,8 +23,7 @@ import { flagConfiguration, targetSession } from "./run.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
-import { runTui } from "./interactive.ts";
-import { runSolidTui } from "./app/main.tsx";
+import { runTui } from "./app/main.tsx";
 
 const invocationArgs = process.argv.slice(2);
 
@@ -376,8 +375,7 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   signal.throwIfAborted();
   invocation.handoff();
-  const tui = process.env["NYTE_TUI"] === "solid" ? runSolidTui : runTui;
-  const exit = await tui(resolveTuiResume(flags));
+  const exit = await runTui(resolveTuiResume(flags));
 
   if (exit.kind === "signal") process.kill(process.pid, exit.signal);
   // Bun's watch mode stays alive when main returns, even after the TUI closes.

@@ -58,3 +58,43 @@ export function usageCard(view: SessionView, catalog: ModelCatalogView | undefin
     },
   };
 }
+
+const BAR_CELLS = 20;
+
+/** The `/usage` panel's lines: each account window with its share and reset, then this chat's spend. */
+export function usageLines(card: UsageCard): readonly string[] {
+  const accounts = card.accounts.flatMap((account) => [
+    `${account.name} · account limits`,
+    ...account.limits.flatMap((window) => {
+      const used = window.limit <= 0 ? 0 : Math.round((window.used / window.limit) * 100);
+      const fill =
+        used <= 0 ? 0 : Math.max(1, Math.min(BAR_CELLS, Math.round((used / 100) * BAR_CELLS)));
+
+      const reset =
+        window.resetsAt === null
+          ? "reset unknown"
+          : `resets ${new Date(window.resetsAt).toLocaleString(undefined, {
+              weekday: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`;
+
+      return [
+        `${window.label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`,
+        `${"━".repeat(fill)}${"─".repeat(BAR_CELLS - fill)}`,
+        "",
+      ];
+    }),
+  ]);
+
+  const { chat } = card;
+
+  return [
+    "Recorded usage · API cost estimates, not subscription charges",
+    "",
+    ...accounts,
+    ...(chat.kind === "message"
+      ? [`this chat · ${chat.message}`]
+      : [`this chat · ${chat.total}`, ...chat.breakdown]),
+  ];
+}

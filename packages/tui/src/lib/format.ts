@@ -168,7 +168,6 @@ function usageLevel(pct: number): UsageLevel {
 
   return "ok";
 }
-
 /** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
 export function clockDuration(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -260,34 +259,6 @@ export function fitPowerlineSegments(
   }
 
   return kept;
-}
-
-interface HintGroup {
-  readonly key: string;
-  readonly label: string;
-}
-
-const HINT_SEPARATOR = " · ";
-
-/**
- * Split a hint row into keycaps and what they do. Every hint string is written
- * `<keycap> <what it does>`, so the first token is the cap and the rest is the
- * description.
- */
-export function hintGroups(text: string): HintGroup[] {
-  const groups: HintGroup[] = [];
-
-  for (const chunk of text.split(HINT_SEPARATOR)) {
-    const trimmed = chunk.trim();
-
-    if (trimmed === "") continue;
-    const space = trimmed.indexOf(" ");
-
-    if (space < 0) groups.push({ key: trimmed, label: "" });
-    else groups.push({ key: trimmed.slice(0, space), label: trimmed.slice(space + 1) });
-  }
-
-  return groups;
 }
 
 export const TERMINAL_TITLE_BASE = "nyte";

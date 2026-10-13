@@ -143,31 +143,27 @@ keeps the visible text at the same screen row as new output arrives. Press Ctrl+
 `ctrl+end latest ↓` row to follow live output again. Plain Up and Down still browse composer
 history at the start and end of a draft.
 
-Notices, completion lists, and pickers use rows below the transcript. They do not cover transcript
-or composer cells.
+Notices, completion lists, and pickers use rows below the composer. Text panels such as `/usage`
+draw over the transcript; the tree and task inspection take the whole screen.
 
 ## Pending messages
 
-Enter steers the live run; Ctrl+Enter queues a follow-up for after it. The two wait in different
-places.
+Enter steers the live run; Ctrl+Enter queues a follow-up for after it (`followUp` in settings
+swaps the two). Both wait in rows between the transcript and the composer, labelled by where core
+scheduled them rather than how they were sent: `steer · next response`, `queued`, `next`,
+`after this run`, `next turn · new model`, `attached`, `sending…`, or `waiting for a host`.
+Reports from subagents and background jobs wait above them and are never yours to edit.
 
-A steer message is drawn once, at the end of the conversation, in the shape of the turn it becomes:
-the same user block, with a lane row (`… sending`, then `↑ steer`) where the run's status row will
-go. The store's receipt and the admission each change only that row; the message keeps its screen
-row and its block, and the next draft stays in the composer. An admitted request whose run has not
-started yet keeps that row blank rather than dropping it, so nothing moves when the run arrives.
-A message the store has accepted stays drawn until the watch shows it, matched by its change, never
-by its text; a receipt that arrives after the watch already landed or cancelled the change draws
-nothing. When a fresh snapshot cannot place an accepted message, the session is re-read in full and
-the row stays until that read is on screen: it then shows the message pending or in the record, or
-the row goes because the message was cancelled.
+Ctrl+Q opens the queue to send, edit, remove, or reorder pending messages. Clicking a row opens the
+queue on that message; dragging one onto another reorders it. Removing a message that already
+landed reports `Already sent`.
 
-Follow-ups take compact rows between the transcript and the composer: one row each with the
-message, its lane, and on the last row the key that opens the queue. The rows never take more than
-about a third of the terminal; the rest is counted as `+N more`.
+## Thinking level
 
-Ctrl+Q opens the queue to send, edit, remove, or reorder pending messages. Clicking a row or a
-steer block opens the queue on that message; dragging one onto another reorders within a lane.
+Shift+Tab, `/effort` and the model picker set the level for the session's next run. The last
+level you chose is saved as `thinkingLevel` in `~/.nyte/settings.json`, and a session the TUI
+creates starts at it, clamped to the model. `--effort` overrides it for that launch; a resumed
+session keeps its own level.
 
 ## Tasks
 
@@ -230,15 +226,18 @@ creation, and Nyte never substitutes another model or provider.
 From the repository root:
 
 ```sh
+pnpm --dir packages/tui run test:unit
 pnpm --dir packages/tui run test
-pnpm --dir packages/tui run test --filter tasks
-pnpm --dir packages/tui run test:show --filter tasks
+pnpm --dir packages/tui run test --scenario tui
+pnpm --dir packages/tui run test:show
 pnpm --dir packages/tui typecheck
 ```
 
+Unit tests run under `bun test` with OpenTUI's test renderer.
+
 QA builds and runs the actual CLI executable in a Bun PTY. OpenTUI's embedded terminal decodes
 its output and encodes input; Nyte is not reconstructed in the test process. Scenarios use isolated
-workspaces and loopback providers, and read keys from `src/constants.ts`.
+workspaces and loopback providers, and read keys from `src/lib/constants.ts`.
 
 Each run prints its evidence directory, binary identity, scenario outcomes, and per-action latency
 measurements. Visible mode displays the same PTY session. Emulator measurements do not establish
@@ -266,8 +265,7 @@ already sent in a prompt remains in the saved conversation.
 
 ## Usage
 
-`/usage` opens a scrollable panel below the composer, capped at 16 rows and roughly
-40% of terminal height. The conversation stays visible. Escape closes the panel and
+`/usage` opens a scrollable panel over the transcript. Escape closes the panel and
 restores composer focus.
 
 Each provider that reported account windows on its last response gets a section: each window

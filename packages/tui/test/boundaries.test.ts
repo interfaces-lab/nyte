@@ -14,9 +14,7 @@ import { expect, test } from "bun:test";
 const ROOT = resolve(import.meta.dir, "..");
 const SRC = join(ROOT, "src");
 
-/** The rewrite's modules; the old app's files at src/ root and in src/app go at cut-over. */
-const NEW_DIRS = ["app", "model", "effects", "ui", "lib", "services"] as const;
-const LEGACY = new Set(["app/App.tsx", "app/ui.ts"]);
+const DIRS = ["app", "model", "effects", "ui", "lib", "services"] as const;
 
 interface Import {
   readonly file: string;
@@ -30,7 +28,7 @@ interface Import {
 const STATEMENT = /^\s*(import|export)\s+(type\s+)?(?:([^"';]*?)\s+from\s+)?["']([^"']+)["']/gmu;
 
 function sources(dir: string): readonly string[] {
-  return [...new Glob(`${dir}/**/*.{ts,tsx}`).scanSync(SRC)].filter((file) => !LEGACY.has(file));
+  return [...new Glob(`${dir}/**/*.{ts,tsx}`).scanSync(SRC)];
 }
 
 function importsOf(file: string): readonly Import[] {
@@ -92,7 +90,7 @@ test("ui imports no effects or services, and the SDK only as types", () => {
 });
 
 test("only effects/host-port.ts imports SDK values", () => {
-  const offending = all(NEW_DIRS).filter(
+  const offending = all(DIRS).filter(
     (entry) =>
       entry.spec.startsWith("@nyte-ai/sdk") && entry.value && entry.file !== "effects/host-port.ts",
   );
@@ -101,7 +99,7 @@ test("only effects/host-port.ts imports SDK values", () => {
 });
 
 test("no frame callbacks and no raw keyInput listeners", () => {
-  const offending = NEW_DIRS.flatMap(sources).filter((file) =>
+  const offending = DIRS.flatMap(sources).filter((file) =>
     /setFrameCallback\s*\(|keyInput\s*\.\s*(on|once|addListener|prependListener)\s*\(/u.test(
       readFileSync(join(SRC, file), "utf8"),
     ),

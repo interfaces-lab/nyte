@@ -79,6 +79,9 @@ export type DialogCommand =
   | { readonly kind: "pick"; readonly index: number }
   | { readonly kind: "close" };
 
+/** What reaches the top dialog: a command, or a terminal paste into its typed field. */
+export type DialogInput = DialogCommand | { readonly kind: "paste"; readonly text: string };
+
 /** One dialog's reaction: its next value (null closes it) and the intents it emits. */
 export interface DialogStep<D extends Dialog> {
   readonly dialog: D | null;
@@ -122,6 +125,18 @@ function reduceText(dialog: TextDialog, command: DialogCommand): DialogStep<Text
   }
 }
 
+/** A paste becomes the typed field's next text, as one line; null when the dialog takes no text now. */
+export function dialogCommandOf(dialog: Dialog, input: DialogInput): DialogCommand | null {
+  if (input.kind !== "paste") return input;
+  const text = dialogText(dialog);
+  const pasted = input.text
+    .replaceAll(/[\r\n]+/gu, " ")
+    .replaceAll(/\p{Cc}/gu, "")
+    .trim();
+
+  return text === null || pasted === "" ? null : { kind: "query", text: text + pasted };
+}
+
 export function reduceDialog(dialog: Dialog, command: DialogCommand): DialogStep<Dialog> {
   switch (dialog.kind) {
     case "list":
@@ -156,6 +171,27 @@ export function placement(dialog: Dialog): "slot" | "overlay" | "screen" {
     case "tree":
     case "inspector":
       return "screen";
+    default: {
+      const _exhaustive: never = dialog;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** The text a dialog's typed field holds, or null when the dialog takes no text now. */
+export function dialogText(dialog: Dialog): string | null {
+  switch (dialog.kind) {
+    case "list":
+      return dialog.answering ?? dialog.query;
+    case "model":
+    case "tree":
+      return dialog.query;
+    case "auth":
+      return dialog.step.kind === "secret" ? String.fromCodePoint(...dialog.step.codePoints) : null;
+    case "inspector":
+    case "text":
+      return null;
     default: {
       const _exhaustive: never = dialog;
 

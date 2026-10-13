@@ -1,12 +1,8 @@
-import { TextBuffer, TextBufferView } from "@opentui/core";
+import { TextBuffer } from "@opentui/core";
 import type { NativeResourceOwner, WidthMethod } from "@opentui/core";
 import stringWidth from "string-width";
 
 const segmenter = new Intl.Segmenter();
-
-export function graphemes(text: string): string[] {
-  return Array.from(segmenter.segment(text), (segment) => segment.segment);
-}
 
 /** Unicode display width for chrome, not native editor offsets. */
 export function displayWidth(text: string): number {
@@ -36,29 +32,6 @@ export function truncateDisplay(text: string, width: number, ellipsis = ""): str
 
   return `${kept}${displayWidth(ellipsis) <= width ? ellipsis : ""}`;
 }
-
-/** Rows `text` takes word-wrapped to `width` cells, counted by the renderer's own wrap; `owner` holds the scratch buffer, as the renderer's scene does. */
-export function wrappedRows(
-  text: string,
-  width: number,
-  widthMethod: WidthMethod,
-  owner: NativeResourceOwner,
-): number {
-  const buffer = TextBuffer.create(widthMethod, owner);
-  const view = TextBufferView.create(buffer);
-
-  try {
-    buffer.setText(text);
-    view.setWrapMode("word");
-    view.setWrapWidth(Math.max(1, width));
-
-    return view.getVirtualLineCount();
-  } finally {
-    view.destroy();
-    buffer.destroy();
-  }
-}
-
 /** Measure a string prefix in the editor's native cell space; `owner` holds the scratch buffer. */
 export function cellOffset(
   text: string,

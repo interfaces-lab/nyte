@@ -71,3 +71,14 @@ test("the host switches placement with the top dialog", async () => {
   await app.show([]);
   expect(app.frame().trim()).toBe("");
 });
+
+test("a terminal paste reaches the dialog that shows", async () => {
+  await using app = await renderDialog(LIST);
+
+  await app.mockInput.pasteBracketedText("blue");
+
+  expect(app.dispatched).toContainEqual({
+    kind: "dialog",
+    command: { kind: "paste", text: "blue" },
+  });
+});

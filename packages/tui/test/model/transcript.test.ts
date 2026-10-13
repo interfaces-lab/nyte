@@ -135,7 +135,12 @@ describe("turn status", () => {
       [...deriveTranscript(view, [], LOCAL, null).turns.values()][0]?.status;
 
     expect(status(thinking)).toMatchObject({ kind: "thinking" });
-    expect(status(retrying)).toEqual({ kind: "retrying", until: 9_000, reason: "rate limited" });
+    expect(status(retrying)).toEqual({
+      kind: "retrying",
+      until: 9_000,
+      reason: "rate limited",
+      attempt: 0,
+    });
     expect(status(working)).toMatchObject({ kind: "working", activity: "Exploring" });
     expect(status(unanswered)?.kind).not.toBe("settled");
   });

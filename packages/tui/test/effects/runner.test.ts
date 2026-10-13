@@ -7,17 +7,29 @@
  * - a watch that ends dispatches `watch-ended`, never hangs `follow`.
  */
 import { asId } from "@nyte-ai/schema";
-import type { Configuration, SessionView } from "@nyte-ai/sdk";
-import { expect, test } from "bun:test";
+import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import type { BootOptions } from "../../src/effects/boot.ts";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
 import type { Msg } from "../../src/model/msg.ts";
-import type { State, Submission } from "../../src/model/state.ts";
+import type { FollowedSession, State, Submission } from "../../src/model/state.ts";
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakePorts } from "../fixture/ports.ts";
-import { stateOf } from "../fixture/state.ts";
+import { SETTINGS, stateOf } from "../fixture/state.ts";
 import { CONFIGURATION, followed, viewOf } from "../fixture/view.ts";
+
+const skipVersionCheck = process.env["NYTE_SKIP_VERSION_CHECK"];
+
+beforeAll(() => {
+  process.env["NYTE_SKIP_VERSION_CHECK"] = "1";
+});
+
+afterAll(() => {
+  if (skipVersionCheck === undefined) delete process.env["NYTE_SKIP_VERSION_CHECK"];
+  else process.env["NYTE_SKIP_VERSION_CHECK"] = skipVersionCheck;
+});
 
 interface Harness {
   readonly runner: Runner;
@@ -353,6 +365,76 @@ test("configure goes through the configurator: the session port receives the pat
   });
 
   expect(app.ports.host.defaults).toEqual([{ provider: "test", id: "model-fast" }]);
+});
+
+function remembering(level: Thinking, session: FollowedSession | null = null): State {
+  const state = stateOf(session);
+
+  return { ...state, facts: { ...state.facts, settings: { ...SETTINGS, thinkingLevel: level } } };
+}
+
+test("an acknowledged thinking level is saved as the default; a model-only choice saves none", async () => {
+  const app = harness(stateOf(followed(PENDING)));
+  app.ports.host.addSession("s1");
+  app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+  await app.runner.settled();
+  app.runner.run({
+    kind: "configure",
+    session: asId("s1"),
+    selection: { model: { provider: "test", id: "model-fast" } },
+  });
+  await app.runner.settled();
+  app.runner.run({ kind: "configure", session: asId("s1"), selection: { effort: "high" } });
+  await app.runner.settled();
+
+  const saved = await app.received("settings");
+  expect(saved.settings.thinkingLevel).toBe("high");
+  expect(await app.ports.settings.read("/tmp")).toMatchObject({ thinkingLevel: "high" });
+  expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
+});
+
+test("a session the TUI creates starts at the remembered level, clamped to its model", async () => {
+  const app = harness(remembering("xhigh"));
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  await app.runner.settled();
+
+  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([{ effort: "high" }]);
+  expect(app.dispatched[0]).toMatchObject({ kind: "session-opened", session: asId("created-1") });
+});
+
+test("without a remembered level a created session keeps the level core gave it", async () => {
+  const app = harness(stateOf(null));
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  await app.runner.settled();
+
+  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([]);
+});
+
+test("at boot --effort wins over the remembered level, and a resumed session keeps its own", async () => {
+  const boots: readonly {
+    readonly target: BootOptions["target"];
+    readonly effort: Thinking | null;
+    readonly session: string;
+    readonly configure: readonly { readonly effort: Thinking }[];
+  }[] = [
+    { target: { kind: "new" }, effort: null, session: "created-1", configure: [{ effort: "low" }] },
+    { target: { kind: "new" }, effort: "high", session: "created-1", configure: [] },
+    { target: { kind: "session", id: asId("s1") }, effort: null, session: "s1", configure: [] },
+  ];
+
+  for (const boot of boots) {
+    const app = harness(remembering("low"));
+    app.runner.boot({
+      home: "/tmp",
+      cwd: "/tmp",
+      target: boot.target,
+      model: null,
+      effort: boot.effort,
+    });
+    await app.runner.settled();
+    expect(await app.received("session-opened")).toMatchObject({ session: asId(boot.session) });
+    expect(app.ports.host.sessions.get(boot.session)?.calls.configure).toEqual([...boot.configure]);
+  }
 });
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {

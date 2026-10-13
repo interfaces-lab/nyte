@@ -505,7 +505,7 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
         "chat.task.stop",
       ];
     case "text":
-      return [...LIST_KEYS, "chat.message.previous", "chat.message.next"];
+      return [...LIST_KEYS, "tree.close", "chat.message.previous", "chat.message.next"];
     case "auth":
       return [
         "auth.cancel",

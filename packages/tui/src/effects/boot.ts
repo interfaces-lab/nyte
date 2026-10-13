@@ -11,7 +11,7 @@ import { describeUpdateOutcome, selfUpdate } from "../update.ts";
 import { checkForUpdate } from "../version.ts";
 import { configure } from "./commands.ts";
 import type { HandlerContext } from "./runner.ts";
-import { fallbackSelection, follow, watchHost } from "./session.ts";
+import { createSession, fallbackSelection, follow, watchHost } from "./session.ts";
 
 export interface BootOptions {
   readonly home: string;
@@ -98,7 +98,10 @@ async function resolveTarget(
   const { host } = context.ports;
 
   const create = async (): Promise<SessionId> =>
-    host.create({ workspace: null, selection: flagged ? selection : null });
+    createSession(
+      { workspace: null, selection: flagged ? selection : null, effort: options.effort },
+      context,
+    );
 
   switch (options.target.kind) {
     case "new":

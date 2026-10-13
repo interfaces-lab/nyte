@@ -117,6 +117,17 @@ describe("turn", () => {
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[1]} Working`);
   });
 
+  test("a retrying run shows its countdown, attempt and cause", async () => {
+    const view = viewOf((v) =>
+      v.turn("t1", (t) => t.user("question")).retrying("rate limited", 9_000),
+    );
+
+    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+
+    expect(app.captureCharFrame()).toContain("Retrying in 9s (attempt 0) · rate limited.");
+    expect(app.clock.active()).toBeGreaterThan(0);
+  });
+
   test("a report row click opens the task", async () => {
     const view = viewOf((v) =>
       v.turn("t1", (t) =>

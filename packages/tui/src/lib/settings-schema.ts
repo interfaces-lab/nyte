@@ -2,8 +2,9 @@
  * The terminal's own preferences as stored and as resolved: theme, keys,
  * editor and updates. Parsing trusts nothing until the whole file checks out.
  */
-import type { Json } from "@nyte-ai/sdk";
+import type { Json, Thinking } from "@nyte-ai/sdk";
 import { isJsonObject, type JsonObject } from "../json.ts";
+import { THINKING_LEVELS } from "./constants.ts";
 import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 
 export interface SettingsFile {
@@ -16,6 +17,8 @@ export interface SettingsFile {
   /** Use timing-sensitive wheel acceleration instead of the fixed three-row step. */
   readonly scrollAcceleration?: boolean;
   readonly followUp?: "steer" | "queue";
+  /** The last thinking level the user chose; a session the TUI creates starts at it. */
+  readonly thinkingLevel?: Thinking;
 }
 
 export interface ResolvedSettings {
@@ -25,6 +28,7 @@ export interface ResolvedSettings {
   readonly copyOnSelect: boolean;
   readonly scrollAcceleration: boolean;
   readonly followUp: "steer" | "queue";
+  readonly thinkingLevel?: Thinking;
 }
 
 export type SettingsPatch = SettingsFile;
@@ -82,6 +86,16 @@ export function parseSettingsFile(value: Json, path = "settings"): SettingsFile 
     if (followUp !== "steer" && followUp !== "queue")
       throw new Error(`${path}.followUp must be steer or queue`);
     settings = { ...settings, followUp };
+  }
+
+  const thinkingLevel = value.thinkingLevel;
+
+  if (thinkingLevel !== undefined) {
+    const level = THINKING_LEVELS.find((candidate) => candidate === thinkingLevel);
+
+    if (level === undefined)
+      throw new Error(`${path}.thinkingLevel must be one of: ${THINKING_LEVELS.join(", ")}`);
+    settings = { ...settings, thinkingLevel: level };
   }
 
   const theme = value["theme"];

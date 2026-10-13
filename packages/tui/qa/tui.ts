@@ -49,6 +49,32 @@ const longList = Array.from(
 const rowOf = (screen: Screen, entry: string) =>
   screen.lines.findIndex((line) => line.includes(entry));
 
+/** A tool result in the request carries `text`. */
+const toolResult = (request: { readonly payload: ProviderPayload }, text: string) =>
+  request.payload.messages.some(
+    (message) => message.role === "tool" && JSON.stringify(message.content).includes(text),
+  );
+
+/** User messages the request carries. */
+const users = (request: { readonly payload: ProviderPayload }) =>
+  request.payload.messages.filter((message) => message.role === "user").length;
+
+/** The subagent id the create call's result names. */
+const createdChild = (payload: ProviderPayload): string => {
+  const text = payload.messages
+    .map((message) =>
+      Array.isArray(message.content)
+        ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+        : (message.content ?? ""),
+    )
+    .join("\n");
+
+  const id = /Created subagent ([0-9a-f-]{36})\./u.exec(text)?.[1];
+  assert.ok(id !== undefined, "The create call's result names the subagent");
+
+  return id;
+};
+
 export const tui: Scenario = {
   name: "tui",
   localInputs: ["text.idle"],
@@ -463,20 +489,13 @@ export const tui: Scenario = {
               },
             );
 
-            const toolResult = (request: { readonly payload: ProviderPayload }, text: string) =>
-              request.payload.messages.some(
-                (message) => message.role === "tool" && JSON.stringify(message.content).includes(text),
-              );
-
-            const users = (request: { readonly payload: ProviderPayload }) =>
-              request.payload.messages.filter((message) => message.role === "user").length;
-
             await type(terminal, "ask me something");
             await press(
               terminal,
               "chat.submit",
               (screen) =>
-                screen.text.includes("Choose a QA answer") && screen.text.includes("Type an answer"),
+                screen.text.includes("Choose a QA answer") &&
+                screen.text.includes("Type an answer"),
             );
             await press(terminal, "picker.next", (screen) =>
               screen.lines.some((line) => /❯.*Second/u.test(line)),
@@ -484,7 +503,8 @@ export const tui: Scenario = {
             await press(
               terminal,
               "picker.accept",
-              (screen) => screen.text.includes("Name a QA colour") && screen.text.includes("esc later"),
+              (screen) =>
+                screen.text.includes("Name a QA colour") && screen.text.includes("esc later"),
             );
             await press(
               terminal,
@@ -501,11 +521,16 @@ export const tui: Scenario = {
             );
 
             const asked = await provider.waitForRequest((item) => item.script === "question");
-            const second = await provider.waitForRequest((item) => item.script === "second question");
+            const second = await provider.waitForRequest(
+              (item) => item.script === "second question",
+            );
             const answered = await provider.waitForRequest((item) => item.script === "answered");
 
             assert.ok(toolResult(second, "Second"), "The picked answer reaches the model");
-            assert.ok(toolResult(answered, "Green"), "An answer in the user's words reaches the model");
+            assert.ok(
+              toolResult(answered, "Green"),
+              "An answer in the user's words reaches the model",
+            );
             assert.equal(users(answered), users(asked), "Answering adds no user message");
 
             await type(terminal, "plain after questions");
@@ -525,7 +550,8 @@ export const tui: Scenario = {
               terminal,
               "chat.submit",
               (screen) =>
-                screen.text.includes("Stop me before I answer") && screen.text.includes("esc later"),
+                screen.text.includes("Stop me before I answer") &&
+                screen.text.includes("esc later"),
             );
             await press(terminal, "picker.close", (screen) =>
               screen.text.includes("Type an answer, or press"),
@@ -552,21 +578,6 @@ export const tui: Scenario = {
         await context.beat(
           "a background subagent's report wakes the finished parent and shows as a report, not the user's message",
           async () => {
-            const createdChild = (payload: ProviderPayload): string => {
-              const text = payload.messages
-                .map((message) =>
-                  Array.isArray(message.content)
-                    ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
-                    : (message.content ?? ""),
-                )
-                .join("\n");
-
-              const id = /Created subagent ([0-9a-f-]{36})\./u.exec(text)?.[1];
-              assert.ok(id !== undefined, "The create call's result names the subagent");
-
-              return id;
-            };
-
             provider.enqueue(
               {
                 name: "create helper",

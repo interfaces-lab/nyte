@@ -35,7 +35,7 @@ function methodLabel(method: LoginMethod): string {
 }
 
 /** Returns the providers a login can reach, or the ones a logout can remove a credential from. */
-export function authProviderChoices(
+function authProviderChoices(
   catalog: ModelCatalogView,
   action: "login" | "logout",
 ): readonly ProviderChoice[] {

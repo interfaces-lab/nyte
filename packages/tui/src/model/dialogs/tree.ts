@@ -1,7 +1,7 @@
 /**
- * Session tree state. The forest build, `describe`, `passes`,
- * `visibleForest`, `layoutTree`, `nearestRowIndex` port pure from
- * tree-selector.ts; folds, filters and search are fields here.
+ * Session tree state: the forest build, `describe`, `passes`,
+ * `visibleForest`, `layoutTree`, `nearestRowIndex`; folds, filters and
+ * search are fields here.
  */
 import type { CommitId, HeadName, TreeNode, TreeView } from "@nyte-ai/sdk";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";

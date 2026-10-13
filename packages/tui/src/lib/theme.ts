@@ -61,10 +61,6 @@ export interface CliTheme {
   readonly diffAddedEmphasis: string;
   readonly diffRemovedEmphasis: string;
 }
-
-/** The theme store's shape: a palette whose roles the screen may replace. */
-export type ActiveCliTheme = { -readonly [Role in keyof CliTheme]: CliTheme[Role] };
-
 /**
  * Pierre's dark roles. Diff rows are `codeBackground` mixed 80% in CIELAB
  * with Pierre's added and removed bases, gutters 85%, and a changed word is
@@ -127,7 +123,7 @@ export const DARK_THEME: CliTheme = Object.freeze({
  * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/light.ts
  * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
  */
-export const LIGHT_THEME: CliTheme = Object.freeze({
+const LIGHT_THEME: CliTheme = Object.freeze({
   mode: "light",
   transparent: "transparent",
   terminal: "#f5f5f5",

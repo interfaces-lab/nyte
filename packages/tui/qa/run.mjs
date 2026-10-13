@@ -91,8 +91,6 @@ try {
     VISUAL: "/usr/bin/false",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
-    // Selects the Solid app while both exist; dropped with the old app at cut-over.
-    ...(process.env.NYTE_TUI === undefined ? {} : { NYTE_TUI: process.env.NYTE_TUI }),
   };
 
   process.stderr.write(`Terminal QA evidence: ${root}\n`);

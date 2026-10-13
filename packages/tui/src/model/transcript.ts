@@ -43,7 +43,12 @@ export type TurnStatus =
   | { readonly kind: "working"; readonly activity: string | null; readonly startedAt: number }
   | { readonly kind: "thinking"; readonly startedAt: number }
   | { readonly kind: "waiting"; readonly question: boolean }
-  | { readonly kind: "retrying"; readonly until: number; readonly reason: string }
+  | {
+      readonly kind: "retrying";
+      readonly until: number;
+      readonly reason: string;
+      readonly attempt: number;
+    }
   | {
       readonly kind: "settled";
       readonly durationMs: number | null;
@@ -220,7 +225,12 @@ export function turnStatus(
         return { kind: "unanswered" };
 
       if (live && execution.kind === "retrying")
-        return { kind: "retrying", until: execution.until, reason: execution.reason };
+        return {
+          kind: "retrying",
+          until: execution.until,
+          reason: execution.reason,
+          attempt: execution.run.attempt,
+        };
       const last = blocks.at(-1);
 
       if (last?.kind === "part" && last.partKind === "thinking" && last.status.kind === "live")

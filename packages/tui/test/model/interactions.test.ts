@@ -11,7 +11,9 @@
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import type { ChatCommand } from "../../src/lib/constants.ts";
-import { chatCommands, interactionsFor } from "../../src/model/interactions.ts";
+import { reduceDialog } from "../../src/model/dialogs/dialog.ts";
+import type { Dialog } from "../../src/model/dialogs/dialog.ts";
+import { chatCommands, dialogKeys, interactionsFor } from "../../src/model/interactions.ts";
 import type { CoreCommand, Interactions } from "../../src/model/interactions.ts";
 import { tableInput } from "../fixture/table.ts";
 import type { TableSpec } from "../fixture/table.ts";
@@ -442,6 +444,19 @@ describe("other commands", () => {
       command: { kind: "key", name: "picker.next" },
     });
     expect(at({ dialog: true, draft: "x" }, ENTER).intent).toBeNull();
+  });
+
+  test("a text panel closes on Ctrl+C as well as Esc", () => {
+    const panel: Dialog = {
+      kind: "text",
+      id: "x",
+      title: "Plugins",
+      body: { kind: "ready", lines: [] },
+      scroll: 0,
+    };
+
+    expect(dialogKeys(panel)).toContain("tree.close");
+    expect(reduceDialog(panel, { kind: "key", name: "tree.close" }).dialog).toBeNull();
   });
 });
 
