@@ -1,14 +1,15 @@
+import { openQuestions } from "@nyte-ai/plugin/question";
+import type { OpenQuestion } from "@nyte-ai/plugin/question";
 import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { BoxRenderable, ScrollBoxRenderable, StyledText, TextRenderable, fg } from "@opentui/core";
-import { keycap } from "./constants.ts";
-import { formatDuration } from "./format.ts";
+import { keycap } from "./lib/constants.ts";
+import { formatDuration } from "./lib/format.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { InlineMenu, MenuScreen } from "./picker.ts";
 import { closePanel, notice, openInlineMenu, setHints } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
 
 import {
-  TaskIndex,
   statusMark,
   taskAgent,
   taskConfiguration,
@@ -18,13 +19,12 @@ import {
   taskActivity,
   unfinishedTask,
   canStopTask,
-} from "./tasks.ts";
-import type { Task } from "./tasks.ts";
+} from "./lib/tasks.ts";
+import type { Task } from "./lib/tasks.ts";
+import { TaskIndex } from "./services/task-index.ts";
 import { Timeline } from "./timeline.ts";
 import { ToolOutputExpansion } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
-import { openQuestions } from "./view-helpers.ts";
-import type { OpenQuestion } from "./view-helpers.ts";
 
 class TaskInspector {
   readonly container: BoxRenderable;
@@ -168,6 +168,10 @@ export class TaskBrowser {
   constructor(options: TaskBrowserOptions) {
     this.options = options;
     options.shell.transcript.tasks = () => this.rows;
+    options.shell.transcript.openTask = (id) => {
+      this.open();
+      this.inspect(id);
+    };
     options.shell.taskStatus.onMouseDown = (event) => {
       if (event.button !== 0) return;
       event.preventDefault();

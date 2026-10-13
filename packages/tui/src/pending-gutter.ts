@@ -1,7 +1,9 @@
 /**
  * Follow-ups not yet answered, drawn between the transcript and the composer:
- * the view's user messages still unsent or pending in the queue delivery.
- * Steer messages take the other shape, in `pending-tail.ts`.
+ * the view's user messages still unsent or pending in the queue delivery, and
+ * above them the reports of subagents and jobs waiting for the next turn,
+ * which a click opens in the task list rather than the queue. Steer messages
+ * take the other shape, in `pending-tail.ts`.
  *
  * These messages have not been answered, so they do not belong in the record.
  * One row per item: the glyph and one word say when it goes, and the row
@@ -14,14 +16,17 @@
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
 import type { Delivery, UserContent } from "@nyte-ai/sdk";
-import { GLYPHS, pendingHint } from "./constants.ts";
+import { GLYPHS, pendingHint } from "./lib/constants.ts";
 import { extractFileAttachments } from "./composer.ts";
 import { basename } from "node:path";
-import { userText } from "./format.ts";
+import { userText } from "./lib/format.ts";
 import type { DeliveryChoices } from "./lanes.ts";
-import type { CliTheme } from "./theme.ts";
-import type { UserMessage } from "./view-helpers.ts";
-import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
+import { reportRow } from "./lib/tasks.ts";
+import type { Task } from "./lib/tasks.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { isReport, shownContent } from "./lib/view-helpers.ts";
+import type { UserMessage } from "./lib/view-helpers.ts";
+import { displayWidth, padDisplay, truncateDisplay } from "./lib/width.ts";
 
 /** One row: a user message the view holds as unsent or pending; its id stays the same through both. */
 export type GutterRow = UserMessage;
@@ -94,6 +99,7 @@ function pendingRow(
   mark: RowMark,
   width: number,
   theme: CliTheme,
+  textTone: string,
   hint?: string,
 ): StyledText {
   const room = Math.max(0, Math.floor(width));
@@ -121,7 +127,7 @@ function pendingRow(
 
   const chunks = [
     fg(mark.tone)(lead),
-    fg(theme.user)(padDisplay(truncateDisplay(text, textRoom, GLYPHS.ellipsis), textRoom)),
+    fg(textTone)(padDisplay(truncateDisplay(text, textRoom, GLYPHS.ellipsis), textRoom)),
   ];
 
   if (showLabel) chunks.push(fg(theme.muted)("  "), fg(mark.tone)(mark.label));
@@ -137,6 +143,8 @@ export class PendingGutter {
   readonly container: BoxRenderable;
   onOpen: ((row: GutterRow) => void) | undefined;
   onReorder: ((item: GutterRow, before: GutterRow | null) => void) | undefined;
+  /** The session's tasks, which name a report's sender; installed once a session is followed. */
+  tasks: () => readonly Task[] = () => [];
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
   private readonly nextId: (prefix?: string) => string;
@@ -226,7 +234,7 @@ export class PendingGutter {
         event.preventDefault();
         event.stopPropagation();
 
-        if (item.status.kind === "pending" && event.x < row.x + LEAD_COLUMNS) {
+        if (item.status.kind === "pending" && !isReport(item) && event.x < row.x + LEAD_COLUMNS) {
           this.drag = { item, index, moving: false };
 
           return;
@@ -285,14 +293,23 @@ export class PendingGutter {
 
       if (item === undefined) continue;
       const last = index === shown - 1;
-      const text = queuedPromptText(item.content);
-      row.content = pendingRow(
-        text,
-        rowMark(item, this.roles, this.theme),
-        width,
-        this.theme,
-        last ? pendingHint(hidden) : undefined,
-      );
+
+      row.content = isReport(item)
+        ? pendingRow(
+            reportRow(item, this.tasks()).title,
+            { glyph: GLYPHS.report, label: "waiting", tone: this.theme.dim },
+            width,
+            this.theme,
+            this.theme.dim,
+          )
+        : pendingRow(
+            queuedPromptText(shownContent(item)),
+            rowMark(item, this.roles, this.theme),
+            width,
+            this.theme,
+            this.theme.user,
+            last ? pendingHint(hidden) : undefined,
+          );
     }
   };
 }

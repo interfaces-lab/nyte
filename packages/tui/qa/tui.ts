@@ -14,6 +14,7 @@ import {
   type,
 } from "./drive.ts";
 import { bashRequest, TITLE_SCRIPT } from "./provider.ts";
+import type { ProviderPayload } from "./provider.ts";
 import {
   FIXTURE_CHILD_MODEL,
   FIXTURE_MODEL,
@@ -104,6 +105,59 @@ export const tui: Scenario = {
           );
           assert.ok((await pluginSetups()) > 0, "The project plugin activated");
         });
+
+        await context.beat(
+          "Cmd+Backspace deletes to the line start; undo and other deletion keys still work",
+          async () => {
+            const preserved = "kept 前";
+            const draft = `${preserved}\ndelete me tail`;
+            const pasted = terminal.raw(`\x1b[200~${draft}\x1b[201~`, "paste.editing");
+            await terminal.waitForScreen(
+              (screen) => composer(screen, preserved) && screen.text.includes("delete me tail"),
+              deadline(),
+              pasted,
+            );
+            const end = terminal.screen().cursor;
+            const moved = terminal.raw("\x1b[D".repeat(4), "cursor.left");
+            await terminal.waitForScreen(
+              (screen) => screen.cursor.y === end.y && screen.cursor.x === end.x - 4,
+              deadline(),
+              moved,
+            );
+
+            const deleted = (screen: Screen) =>
+              composer(screen, preserved) &&
+              screen.lines.some((line) => /^\s*│\s+tail\s+│\s*$/u.test(line)) &&
+              !screen.text.includes("delete me");
+
+            await press(terminal, "composer.delete.to.line.start", deleted);
+            const undo = terminal.raw("\x1b[122;9u", "super+z");
+            await terminal.waitForScreen(
+              (screen) => screen.text.includes("delete me tail"),
+              deadline(),
+              undo,
+            );
+            const cleared = terminal.raw("\x15", "ctrl+u");
+            await terminal.waitForScreen(deleted, deadline(), cleared);
+            await press(terminal, "chat.quit", emptyComposer);
+            await type(terminal, "word remove");
+            const word = terminal.raw("\x1b\x7f", "option+backspace");
+
+            const shortened = await terminal.waitForScreen(
+              (screen) => composer(screen, "word ") && !screen.text.includes("remove"),
+              deadline(),
+              word,
+            );
+
+            const character = terminal.raw("\x7f", "backspace");
+            await terminal.waitForScreen(
+              (screen) => composer(screen, "word") && screen.cursor.x === shortened.cursor.x - 1,
+              deadline(),
+              character,
+            );
+            await press(terminal, "chat.quit", emptyComposer);
+          },
+        );
 
         await context.beat(
           "typed keys echo at once; the reply streams in before the provider finishes",
@@ -356,7 +410,7 @@ export const tui: Scenario = {
         );
 
         await context.beat(
-          "a question waits for a picked answer, which reaches the model as the tool result",
+          "answered questions close: a second question shows, the composer sends again, and a stop clears an open one",
           async () => {
             provider.enqueue(
               {
@@ -366,22 +420,63 @@ export const tui: Scenario = {
                 action: {
                   kind: "tool",
                   name: "question",
-                  arguments: {
-                    question: "Choose a QA answer",
-                    options: [{ label: "First" }, { label: "Second" }],
-                  },
+                  arguments: { prompt: "Choose a QA answer", options: ["First", "Second"] },
+                },
+              },
+              {
+                name: "second question",
+                model: FIXTURE_CHILD_MODEL,
+                prompt: "ask me something",
+                action: {
+                  kind: "tool",
+                  name: "question",
+                  arguments: { prompt: "Name a QA colour", options: ["Red", "Blue"] },
                 },
               },
               {
                 name: "answered",
                 model: FIXTURE_CHILD_MODEL,
                 prompt: "ask me something",
-                action: { kind: "reply", text: "You picked an answer." },
+                action: { kind: "reply", text: "You answered both." },
+              },
+              {
+                name: "after questions",
+                model: FIXTURE_CHILD_MODEL,
+                prompt: "plain after questions",
+                action: { kind: "reply", text: "The plain message arrived." },
+              },
+              {
+                name: "question to stop",
+                model: FIXTURE_CHILD_MODEL,
+                prompt: "ask then stop",
+                action: {
+                  kind: "tool",
+                  name: "question",
+                  arguments: { prompt: "Stop me before I answer", options: ["Keep", "Drop"] },
+                },
+              },
+              {
+                name: "after stop",
+                model: FIXTURE_CHILD_MODEL,
+                prompt: "message after the stop",
+                action: { kind: "reply", text: "Sent after the stop." },
               },
             );
+
+            const toolResult = (request: { readonly payload: ProviderPayload }, text: string) =>
+              request.payload.messages.some(
+                (message) => message.role === "tool" && JSON.stringify(message.content).includes(text),
+              );
+
+            const users = (request: { readonly payload: ProviderPayload }) =>
+              request.payload.messages.filter((message) => message.role === "user").length;
+
             await type(terminal, "ask me something");
-            await press(terminal, "chat.submit", (screen) =>
-              /type your own answer/iu.test(screen.text),
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) =>
+                screen.text.includes("Choose a QA answer") && screen.text.includes("Type an answer"),
             );
             await press(terminal, "picker.next", (screen) =>
               screen.lines.some((line) => /❯.*Second/u.test(line)),
@@ -389,22 +484,152 @@ export const tui: Scenario = {
             await press(
               terminal,
               "picker.accept",
-              (screen) => screen.text.includes("You picked an answer.") && idle(screen),
+              (screen) => screen.text.includes("Name a QA colour") && screen.text.includes("esc later"),
+            );
+            await press(
+              terminal,
+              "picker.close",
+              (screen) =>
+                !screen.lines.some((line) => /❯.*Red/u.test(line)) &&
+                screen.text.includes("Type an answer, or press"),
+            );
+            await type(terminal, "Green");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => screen.text.includes("You answered both.") && idle(screen),
             );
 
             const asked = await provider.waitForRequest((item) => item.script === "question");
+            const second = await provider.waitForRequest((item) => item.script === "second question");
             const answered = await provider.waitForRequest((item) => item.script === "answered");
 
-            const users = (request: typeof asked) =>
-              request.payload.messages.filter((message) => message.role === "user").length;
-
+            assert.ok(toolResult(second, "Second"), "The picked answer reaches the model");
+            assert.ok(toolResult(answered, "Green"), "An answer in the user's words reaches the model");
             assert.equal(users(answered), users(asked), "Answering adds no user message");
+
+            await type(terminal, "plain after questions");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => screen.text.includes("The plain message arrived.") && idle(screen),
+            );
+            assert.equal(
+              users(await provider.waitForRequest((item) => item.script === "after questions")),
+              users(answered) + 1,
+              "After the questions, a message sends as the user's own",
+            );
+
+            await type(terminal, "ask then stop");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) =>
+                screen.text.includes("Stop me before I answer") && screen.text.includes("esc later"),
+            );
+            await press(terminal, "picker.close", (screen) =>
+              screen.text.includes("Type an answer, or press"),
+            );
+            await press(
+              terminal,
+              "chat.interrupt",
+              (screen) =>
+                screen.lines.some(
+                  (line) => line.includes("✗") && line.includes("Stop me before I answer"),
+                ) &&
+                emptyComposer(screen) &&
+                idle(screen),
+            );
+            await type(terminal, "message after the stop");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => screen.text.includes("Sent after the stop.") && idle(screen),
+            );
+          },
+        );
+
+        await context.beat(
+          "a background subagent's report wakes the finished parent and shows as a report, not the user's message",
+          async () => {
+            const createdChild = (payload: ProviderPayload): string => {
+              const text = payload.messages
+                .map((message) =>
+                  Array.isArray(message.content)
+                    ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+                    : (message.content ?? ""),
+                )
+                .join("\n");
+
+              const id = /Created subagent ([0-9a-f-]{36})\./u.exec(text)?.[1];
+              assert.ok(id !== undefined, "The create call's result names the subagent");
+
+              return id;
+            };
+
+            provider.enqueue(
+              {
+                name: "create helper",
+                prompt: "start a background helper",
+                action: { kind: "tool", name: "create", arguments: { title: "QA helper" } },
+              },
+              {
+                name: "send helper",
+                prompt: "start a background helper",
+                action: {
+                  kind: "tool",
+                  name: "send",
+                  arguments: (payload) => ({
+                    session: createdChild(payload),
+                    prompt: "do the qa child task",
+                  }),
+                },
+              },
+              {
+                name: "helper started",
+                prompt: "start a background helper",
+                action: { kind: "reply", text: "Helper started in the background." },
+              },
+              {
+                name: "child task",
+                prompt: "do the qa child task",
+                action: { kind: "hold", text: "Child finished the QA task." },
+              },
+              {
+                name: "parent woken",
+                prompt: "Child finished the QA task",
+                action: { kind: "reply", text: "The helper reported back." },
+              },
+            );
+            await type(terminal, "start a background helper");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => screen.text.includes("Helper started in the background.") && idle(screen),
+            );
+
+            const child = await provider.waitForRequest((item) => item.script === "child task");
+            await provider.waitForStage(child.id, "held");
+            provider.release(child.id);
+
+            await terminal.waitForScreen(
+              (screen) =>
+                screen.text.includes("The helper reported back.") &&
+                screen.lines.some((line) => /↳ subagent .*completed/u.test(line)) &&
+                !/Child [0-9a-f-]{36} completed:/u.test(screen.text) &&
+                idle(screen),
+              deadline(),
+            );
+
+            const woken = await provider.waitForRequest((item) => item.script === "parent woken");
+
             assert.ok(
-              answered.payload.messages.some(
+              woken.payload.messages.some(
                 (message) =>
-                  message.role === "tool" && JSON.stringify(message.content).includes("Second"),
+                  message.role === "user" &&
+                  JSON.stringify(message.content).includes("Child finished the QA task."),
               ),
-              "The picked answer reaches the provider as the tool result",
+              "The report reaches the woken parent",
             );
           },
         );

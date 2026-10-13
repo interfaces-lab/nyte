@@ -11,11 +11,11 @@ import type {
   SyntaxStyle,
   TextBufferRenderable,
 } from "@opentui/core";
-import type { LabelSyntax } from "./label-syntax.ts";
+import type { LabelSyntax } from "./services/label-syntax.ts";
 import type { BlobId } from "@nyte-ai/sdk";
-import type { Task } from "./tasks.ts";
-import type { CliTheme } from "./theme.ts";
-import type { PartMessage } from "./view-helpers.ts";
+import type { Task } from "./lib/tasks.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import type { PartMessage } from "./lib/view-helpers.ts";
 
 // Native text buffers retain their construction-time width rules after capability replies.
 export const bufferWidths = new WeakMap<TextBufferRenderable, CliRenderer["widthMethod"]>();
@@ -106,6 +106,8 @@ export interface Transcript {
    * follows them and installs this once it exists; until then there are none.
    */
   tasks: () => readonly Task[];
+  /** Opens one of those tasks in the task list, as a report's row does; installed with `tasks`. */
+  openTask: (id: string) => void;
   /** Reads an attached file's bytes, for an image a message carried; installed once a host is open. */
   blob: (id: BlobId) => Promise<Uint8Array>;
   /** Returns a client plugin's view of a part kind the transcript has no block for, or undefined. */

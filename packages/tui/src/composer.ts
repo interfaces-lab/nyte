@@ -28,12 +28,12 @@ import type {
   TextareaRenderable,
   WidthMethod,
 } from "@opentui/core";
-import type { CliTheme } from "./theme.ts";
+import type { CliTheme } from "./lib/theme.ts";
 import type { BlobId, UserContent } from "@nyte-ai/sdk";
 import fuzzysort from "fuzzysort";
-import { cellOffset } from "./width.ts";
-import { promptDraft } from "./slash.ts";
-import { completionTrigger } from "./view-helpers.ts";
+import { cellOffset } from "./lib/width.ts";
+import { promptDraft } from "./lib/slash.ts";
+import { completionTrigger } from "./lib/view-helpers.ts";
 
 const MAX_MENTION_RESULTS = 10;
 
@@ -605,7 +605,13 @@ export class ComposerParts {
       let index = text.indexOf(part.marker);
 
       if (index === -1) continue;
-      const width = cellOffset(part.marker, part.marker.length, widthMethod, tabWidth);
+      const width = cellOffset(
+        part.marker,
+        part.marker.length,
+        widthMethod,
+        tabWidth,
+        input.ctx.nativeScene,
+      );
 
       while (index !== -1) {
         occurrences.push({ index, width });
@@ -620,7 +626,7 @@ export class ComposerParts {
 
     for (const occurrence of occurrences) {
       const between = text.slice(previousIndex, occurrence.index);
-      start += cellOffset(between, between.length, widthMethod, tabWidth);
+      start += cellOffset(between, between.length, widthMethod, tabWidth, input.ctx.nativeScene);
       previousIndex = occurrence.index;
       const end = start + occurrence.width;
       const mark = ranges.get(`${start}:${end}`);
@@ -676,7 +682,13 @@ export class ComposerParts {
     input.replaceText(next);
     input.cursorOffset =
       extmark.start +
-      cellOffset(part.text, part.text.length, widthMethod, input.editBuffer.getTabWidth());
+      cellOffset(
+        part.text,
+        part.text.length,
+        widthMethod,
+        input.editBuffer.getTabWidth(),
+        input.ctx.nativeScene,
+      );
 
     return true;
   }

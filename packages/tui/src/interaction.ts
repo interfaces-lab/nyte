@@ -1,7 +1,7 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import type { LoginDriver } from "./auth.ts";
+import type { LoginDriver } from "./services/auth.ts";
 import { ansiEnabled, bold, cyan, dim } from "./cli-style.ts";
 
 async function ask(

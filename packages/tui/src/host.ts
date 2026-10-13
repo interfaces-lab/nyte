@@ -3,10 +3,11 @@
  * machine's store, serving the folder the launch started in through the
  * local environment, with the terminal's core plugins.
  */
+import process from "node:process";
 import { codemodePlugin } from "@nyte-ai/plugin/codemode";
 import questionPlugin from "@nyte-ai/plugin/question";
 import telemetryPlugin from "@nyte-ai/plugin/telemetry";
-import { sdk } from "@nyte-ai/sdk";
+import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host } from "@nyte-ai/sdk";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 
@@ -18,6 +19,8 @@ import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
  * are the host's defaults; closing the host closes its store.
  */
 export function openTerminalHost(): Promise<Host> {
+  if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "tui");
+
   return sdk.open({
     plugins: [questionPlugin, telemetryPlugin, codemodePlugin(codemodeRuntimeOptions())],
   });

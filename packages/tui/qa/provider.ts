@@ -68,7 +68,14 @@ export type ProviderAction =
   | { readonly kind: "reply"; readonly text: string }
   | { readonly kind: "hold"; readonly text: string; readonly tail?: string }
   | { readonly kind: "fail"; readonly status?: number; readonly message: string }
-  | { readonly kind: "tool"; readonly name: string; readonly arguments: Record<string, Json> };
+  | {
+      readonly kind: "tool";
+      readonly name: string;
+      /** Fixed, or read from the request, as a call naming a subagent an earlier call created. */
+      readonly arguments:
+        | Record<string, Json>
+        | ((payload: ProviderPayload) => Record<string, Json>);
+    };
 
 export interface ProviderStep {
   readonly name: string;
@@ -321,9 +328,9 @@ export async function openProvider(
           },
         ],
       });
-      chunk({
-        tool_calls: [{ index: 0, function: { arguments: JSON.stringify(action.arguments) } }],
-      });
+      const args =
+        typeof action.arguments === "function" ? action.arguments(payload) : action.arguments;
+      chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify(args) } }] });
       finish();
 
       return;

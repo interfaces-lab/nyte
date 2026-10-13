@@ -11,14 +11,15 @@
  * ctrl+enter take the compact rows in `pending-gutter.ts` instead.
  */
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
-import { pendingHint, SPACING } from "./constants.ts";
+import { pendingHint, SPACING } from "./lib/constants.ts";
 import type { DeliveryChoices } from "./lanes.ts";
 import { appendMessage } from "./message.ts";
 import { rowMark } from "./pending-gutter.ts";
 import type { GutterRow, RowMark } from "./pending-gutter.ts";
 import { repaintTree } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
-import type { CliTheme } from "./theme.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { shownContent } from "./lib/view-helpers.ts";
 
 /** `<glyph> <word> · <key>` where the turn's status row will be. */
 function statusLine(mark: RowMark, theme: CliTheme, hint: string | undefined): StyledText {
@@ -106,7 +107,7 @@ export class PendingTail {
 
     if (before === undefined) this.container.add(root);
     else this.container.insertBefore(root, before);
-    appendMessage(this.transcript, { align: "end", content: item.content }, root);
+    appendMessage(this.transcript, { align: "end", content: shownContent(item) }, root);
 
     const statusRow = new BoxRenderable(renderer, {
       id: nextId("pending-status"),

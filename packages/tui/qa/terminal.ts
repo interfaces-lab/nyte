@@ -13,7 +13,7 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
-import { keycap, keyStrokes } from "../src/constants.ts";
+import { keycap, keyStrokes } from "../src/lib/constants.ts";
 import { supervisorReport } from "./supervisor-protocol.ts";
 import type { InputRecord, Terminal, TerminalOptions } from "./types.ts";
 
@@ -109,6 +109,10 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   let controlTail = "";
   let synchronizedUpdateOpen = false;
   let completedUpdates = 0;
+  // The emulator applies written bytes only when it composes a frame, so a screen
+  // is judged by the updates it had composed, not by the bytes that had arrived.
+  let composedUpdateOpen = false;
+  let composedUpdates = 0;
   let pty: Bun.Terminal | undefined;
   let connected = false;
   let closed = false;
@@ -136,6 +140,10 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     selectable: false,
     onData: forward,
     onTerminalResize: (cols, rows) => pty?.resize(cols, rows),
+    onScreenChange: () => {
+      composedUpdateOpen = synchronizedUpdateOpen;
+      composedUpdates = completedUpdates;
+    },
   });
 
   renderer.root.add(terminal);
@@ -409,7 +417,7 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
           try {
             const requiredUpdate = input === undefined ? 0 : (updateAtInput.get(input) ?? 0);
 
-            if (synchronizedUpdateOpen || completedUpdates <= requiredUpdate) return;
+            if (composedUpdateOpen || composedUpdates <= requiredUpdate) return;
             const screen = finalScreen ?? terminal.screen();
 
             if (!predicate(screen)) return;

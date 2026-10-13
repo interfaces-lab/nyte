@@ -11,16 +11,18 @@
     "dev": "bun --watch src/binary.ts",
     "start": "bun src/binary.ts",
     "test": "pnpm build && node qa/run.mjs",
+    "test:unit": "bun test test",
     "test:show": "pnpm build && node qa/run.mjs --show",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
-    "@opentui/core": "^0.5.12",
-    "@opentui/keymap": "^0.5.12",
-    "@opentui/solid": "^0.5.12",
+    "@opentui/core": "^0.6.1",
+    "@opentui/keymap": "^0.6.1",
+    "@opentui/solid": "^0.6.1",
     "beautiful-mermaid": "1.1.3",
     "diff": "9.0.0",
     "fuzzysort": "3.1.0",
@@ -32,10 +34,12 @@
     "typebox": "1.3.36"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.2",
-    "@types/node": "^26.6.3",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@types/bun": "^1.4.3",
+    "@types/node": "^26.6.5",
     "@types/semver": "7.7.1",
-    "typescript": "^7.0.2"
+    "typescript": "6.0.3"
   },
   "engines": {
     "node": ">=26"

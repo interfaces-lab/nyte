@@ -8,7 +8,7 @@ import { BoxRenderable, CliRenderEvents, TextRenderable } from "@opentui/core";
 import type { CliRenderer, TextareaRenderable } from "@opentui/core";
 import { commandBindings } from "@opentui/keymap/extras";
 import { isComposerTextKey } from "./keymap.ts";
-import { CHAT_KEYBINDS, COMPLETION_METHODS } from "./constants.ts";
+import { CHAT_KEYBINDS, COMPLETION_METHODS } from "./lib/constants.ts";
 import type { Shell } from "./app/ui.ts";
 import { explicitMentionFile, fileMentionSuggestions } from "./composer.ts";
 import type { FileMentionSuggestions, MentionFile } from "./composer.ts";
@@ -16,15 +16,20 @@ import {
   DirectoryListing,
   directoryCompletionQuery,
   directorySuggestions,
-} from "./directory-completion.ts";
-import type { DirectoryQuery } from "./directory-completion.ts";
+} from "./lib/directory-completion.ts";
+import type { DirectoryQuery } from "./lib/directory-completion.ts";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
-import { acceptSlashCommand, slashCommandLabel, slashCompletion, SLASH_COMMANDS } from "./slash.ts";
-import type { SlashCommand } from "./slash.ts";
-import type { CliTheme } from "./theme.ts";
-import { completionTrigger } from "./view-helpers.ts";
-import { cellOffset } from "./width.ts";
+import {
+  acceptSlashCommand,
+  slashCommandLabel,
+  slashCompletion,
+  SLASH_COMMANDS,
+} from "./lib/slash.ts";
+import type { SlashCommand } from "./lib/slash.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { completionTrigger } from "./lib/view-helpers.ts";
+import { cellOffset } from "./lib/width.ts";
 
 type SlashInput = Pick<
   TextareaRenderable,
@@ -523,6 +528,7 @@ export class SlashAutocomplete {
       span.start + text.length,
       this.widthMethod,
       this.input.editBuffer.getTabWidth(),
+      this.renderer.nativeScene,
     );
 
     this.close();

@@ -27,6 +27,7 @@ import type {
   CliRenderer,
   MarkdownCodeBlockRenderer,
   MarkdownOptions,
+  NativeResourceOwner,
   Renderable,
   SimpleHighlight,
   TextChunk,
@@ -34,8 +35,7 @@ import type {
 } from "@opentui/core";
 import type { Failure, Message, ToolClass } from "@nyte-ai/sdk";
 import { diffWordsWithSpace } from "diff";
-import { SpinnerRenderable } from "opentui-spinner";
-import type { ShellExecution } from "./local-shell.ts";
+import type { ShellExecution } from "./services/local-shell.ts";
 import {
   ACTIVITY_RETRY_LABEL,
   ACTIVITY_THINKING_LABEL,
@@ -53,7 +53,7 @@ import {
   SPINNER_FRAMES,
   SPINNER_INTERVAL_MS,
   TOOL_INLINE_PREVIEW_LENGTH,
-} from "./constants.ts";
+} from "./lib/constants.ts";
 import {
   earlierLinesLabel,
   formatDuration,
@@ -62,18 +62,25 @@ import {
   previewLines,
   resultSummary,
   unchangedLinesLabel,
-} from "./format.ts";
-import { diffFromOutput, type ChangedLinePair, type OutputDiff } from "./output-diff.ts";
+} from "./lib/format.ts";
+import {
+  diffFromOutput,
+  patchDiff,
+  textPatch,
+  type ChangedLinePair,
+  type OutputDiff,
+} from "./lib/output-diff.ts";
 import { appendMessage } from "./message.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
 import {
+  reportRow,
   statusMark,
   taskActivity,
   taskConfiguration,
   taskLabel,
   taskStatus,
   toneStatus,
-} from "./tasks.ts";
+} from "./lib/tasks.ts";
 import {
   bufferWidths,
   repaints,
@@ -81,17 +88,25 @@ import {
   TranscriptTextRenderable,
 } from "./surface.ts";
 import type { ExpandableToolOutput, Transcript } from "./surface.ts";
-import type { CliTheme } from "./theme.ts";
-import { delegateSubject, failureNotice, toolLabel, toolNoun, toolSubject } from "./tool-copy.ts";
+import type { CliTheme } from "./lib/theme.ts";
 import {
+  delegateSubject,
+  failureNotice,
+  toolLabel,
+  toolNoun,
+  toolSubject,
+} from "./lib/tool-copy.ts";
+import {
+  isReport,
   isTextMessage,
   isThinkingMessage,
   isToolMessage,
+  shownContent,
   toolOutput,
   toolStatus,
-} from "./view-helpers.ts";
-import type { PartMessage, ToolMessage, ToolStatus } from "./view-helpers.ts";
-import { displayWidth } from "./width.ts";
+} from "./lib/view-helpers.ts";
+import type { PartMessage, ReportMessage, ToolMessage, ToolStatus } from "./lib/view-helpers.ts";
+import { displayWidth } from "./lib/width.ts";
 
 /** The callback leaves chunks untouched, including OpenTUI's link metadata. */
 export const highlightSources = new WeakMap<
@@ -491,11 +506,12 @@ function toolOutputPreview(text: string, expanded: boolean, cut: PreviewCut): st
   return preview.text.replace(omission, `${omission} · ${keycap("chat.tools.toggle")} expand`);
 }
 
-/** Highlight groups, named as the shipped grammars emit them. */
-function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
+/** Highlight groups, named as the shipped grammars emit them; `owner` holds the native style, as the renderer's scene does. */
+function syntaxStyle(theme: CliTheme, subtle: boolean, owner: NativeResourceOwner): SyntaxStyle {
   const color = (value: string): string => (subtle ? theme.dim : value);
 
-  return SyntaxStyle.fromStyles({
+  return SyntaxStyle.fromStyles(
+    {
     default: { fg: color(theme.foreground) },
     markup: { fg: color(theme.foreground) },
     keyword: { fg: color(theme.code) },
@@ -529,16 +545,21 @@ function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
     conceal: { fg: color(theme.dim) },
     "diff.plus": { bg: theme.diffAddedEmphasis },
     "diff.minus": { bg: theme.diffRemovedEmphasis },
-  });
+    },
+    owner,
+  );
 }
 
-export function createSyntaxStyle(theme: CliTheme): SyntaxStyle {
-  return syntaxStyle(theme, false);
+export function createSyntaxStyle(theme: CliTheme, owner: NativeResourceOwner): SyntaxStyle {
+  return syntaxStyle(theme, false, owner);
 }
 
 /** Keep reasoning markdown structure while lowering every syntax foreground. */
-export function createSubtleSyntaxStyle(theme: CliTheme): SyntaxStyle {
-  return syntaxStyle(theme, true);
+export function createSubtleSyntaxStyle(
+  theme: CliTheme,
+  owner: NativeResourceOwner,
+): SyntaxStyle {
+  return syntaxStyle(theme, true, owner);
 }
 
 export function section(
@@ -782,6 +803,102 @@ class ReasoningBlock implements ExpandableToolOutput {
   }
 }
 
+/**
+ * A subagent's or job's report, which the view carries as an input nobody
+ * typed: one row naming its sender and how it ended, its text folded below
+ * like a thought. A click on the row opens the sender in the task list.
+ */
+class ReportBlock implements ExpandableToolOutput {
+  readonly box: BoxRenderable;
+  private readonly heading: TextRenderable;
+  private readonly markdown: TranscriptMarkdownRenderable;
+  private readonly transcript: Transcript;
+  private readonly report: ReportMessage;
+  private expanded = false;
+  private painted: { readonly heading: string; readonly body: string } | undefined;
+
+  constructor(
+    transcript: Transcript,
+    report: ReportMessage,
+    parent: Renderable,
+    before: Renderable | undefined,
+  ) {
+    this.transcript = transcript;
+    this.report = report;
+    this.box = section(transcript, "report", parent, before);
+    this.heading = new TranscriptTextRenderable(transcript.renderer, {
+      id: transcript.nextId("report-heading"),
+      content: "",
+      wrapMode: "none",
+      selectable: false,
+    });
+    this.markdown = new TranscriptMarkdownRenderable(transcript.renderer, {
+      renderNode: createMermaidMarkdownRenderer(
+        transcript.renderer,
+        transcript.theme,
+        transcript.disclosures,
+        { key: report.id },
+      ),
+      tableOptions: { selectable: true, cellPaddingX: 1 },
+      id: transcript.nextId("report-md"),
+      content: "",
+      syntaxStyle: transcript.subtleSyntaxStyle,
+      streaming: false,
+      internalBlockMode: "top-level",
+      fg: transcript.theme.dim,
+    });
+    this.heading.onMouseUp = (event) => {
+      const task = reportRow(this.report, this.transcript.tasks()).task;
+
+      if (event.button !== 0 || task === undefined) return;
+
+      if (transcript.renderer.getSelection()?.getSelectedText()) return;
+      transcript.openTask(task.id);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    repaints.set(this.box, () => {
+      this.painted = undefined;
+      this.refresh();
+      this.markdown.retheme(transcript.theme, transcript.subtleSyntaxStyle, true);
+    });
+    this.box.add(this.heading);
+    this.box.add(this.markdown);
+    const unregister = transcript.toolOutput.register(this);
+    this.box.once(RenderableEvents.DESTROYED, unregister);
+    this.refresh();
+  }
+
+  /** The sender's name arrives with the task list, which may come after the report. */
+  refresh(): void {
+    const row = reportRow(this.report, this.transcript.tasks());
+
+    const body = toolOutputPreview(row.body, this.expanded, {
+      kind: "head-tail",
+      head: RESULT_PREVIEW_LINES,
+      tail: RESULT_TAIL_LINES,
+    });
+
+    const heading = `${row.mark.tone}\u0000${row.title}`;
+
+    if (this.painted?.heading === heading && this.painted.body === body) return;
+    this.painted = { heading, body };
+    const { theme } = this.transcript;
+    this.heading.content = new StyledText([
+      fg(theme[row.mark.tone])(`${GLYPHS.report} `),
+      fg(theme.foreground)(row.title),
+    ]);
+    this.markdown.content = body;
+    this.markdown.visible = body !== "";
+  }
+
+  setExpanded(expanded: boolean): void {
+    this.expanded = expanded;
+    this.refresh();
+  }
+}
+
 /** `unanswered` holds the row blank: the space a run's status takes, before there is a run. */
 type ActivityMode = "unanswered" | "working" | "thinking" | "waiting" | "retrying" | "compacting";
 
@@ -789,12 +906,49 @@ function spins(mode: ActivityMode): boolean {
   return mode !== "waiting" && mode !== "unanswered";
 }
 
+/** A spinner drawn as text frames; OpenTUI 0.6 removed the native call opentui-spinner relied on. */
+class FrameSpinner {
+  readonly text: TextRenderable;
+  private frame = 0;
+  private timer: ReturnType<typeof setInterval> | undefined;
+
+  constructor(transcript: Transcript, color: string) {
+    this.text = new TextRenderable(transcript.renderer, {
+      id: transcript.nextId("activity-spinner"),
+      content: SPINNER_FRAMES[0],
+      fg: color,
+      flexShrink: 0,
+      wrapMode: "none",
+      selectable: false,
+    });
+    this.text.once(RenderableEvents.DESTROYED, () => this.stop());
+  }
+
+  setColor(color: string): void {
+    this.text.fg = color;
+  }
+
+  start(): void {
+    if (this.timer !== undefined) return;
+    this.timer = setInterval(() => {
+      this.frame = (this.frame + 1) % SPINNER_FRAMES.length;
+      this.text.content = SPINNER_FRAMES[this.frame] ?? "";
+    }, SPINNER_INTERVAL_MS);
+  }
+
+  stop(): void {
+    if (this.timer === undefined) return;
+    clearInterval(this.timer);
+    this.timer = undefined;
+  }
+}
+
 /** The turn's single live status row. It never competes with another spinner. */
 class ActivityBlock {
   private readonly transcript: Transcript;
   private readonly section: BoxRenderable;
   private readonly line: TextRenderable;
-  private readonly spinner: SpinnerRenderable;
+  private readonly spinner: FrameSpinner;
   private startedAt = performance.now();
   private readonly durationMs: number;
   private mode: ActivityMode | "settled";
@@ -816,15 +970,8 @@ class ActivityBlock {
     this.section = section(transcript, "activity", parent);
     this.section.flexDirection = "row";
     this.section.height = 1;
-    this.spinner = new SpinnerRenderable(transcript.renderer, {
-      frames: [...SPINNER_FRAMES],
-      interval: SPINNER_INTERVAL_MS,
-      autoplay: false,
-      color: transcript.theme.running,
-    });
-    this.spinner.id = transcript.nextId("activity-spinner");
-    this.spinner.flexShrink = 0;
-    this.section.add(this.spinner);
+    this.spinner = new FrameSpinner(transcript, transcript.theme.running);
+    this.section.add(this.spinner.text);
     this.line = new TranscriptTextRenderable(transcript.renderer, {
       id: transcript.nextId("activity-line"),
       content: "",
@@ -833,7 +980,7 @@ class ActivityBlock {
     this.section.add(this.line);
     repaints.set(this.line, () => this.paint());
     this.paint();
-    this.spinner.visible = spins(mode);
+    this.spinner.text.visible = spins(mode);
 
     if (spins(mode)) this.spinner.start();
   }
@@ -851,7 +998,7 @@ class ActivityBlock {
     this.mode = mode;
 
     if (!spins(mode)) this.spinner.stop();
-    this.spinner.visible = spins(mode);
+    this.spinner.text.visible = spins(mode);
     this.paint();
 
     if (spins(mode)) this.spinner.start();
@@ -862,7 +1009,7 @@ class ActivityBlock {
     const { theme } = this.transcript;
     const elapsed = this.durationMs + performance.now() - this.startedAt;
     this.spinner.stop();
-    this.spinner.visible = false;
+    this.spinner.text.visible = false;
     this.mode = "settled";
 
     const paint = (): void => {
@@ -894,14 +1041,14 @@ class ActivityBlock {
     switch (this.mode) {
       case "working":
       case "compacting":
-        this.spinner.color = theme.running;
+        this.spinner.setColor(theme.running);
         this.line.content = new StyledText([
           fg(theme.dim)(this.mode === "compacting" ? " Compacting context…" : this.workingLabel),
         ]);
 
         return;
       case "thinking":
-        this.spinner.color = theme.thinking;
+        this.spinner.setColor(theme.thinking);
         this.line.content = new StyledText([fg(theme.thinking)(ACTIVITY_THINKING_LABEL)]);
 
         return;
@@ -912,7 +1059,7 @@ class ActivityBlock {
 
         return;
       case "retrying":
-        this.spinner.color = theme.warning;
+        this.spinner.setColor(theme.warning);
         this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_RETRY_LABEL)]);
 
         return;
@@ -1342,10 +1489,25 @@ export class ToolCard {
     const toolClass = this.toolClass;
     const outputDiff = isError ? undefined : diffFromOutput(output);
 
-    const changes =
+    const settled =
       this.current.kind === "part" && this.current.state.phase === "settled"
-        ? this.current.state.changes
-        : null;
+        ? this.current.state
+        : undefined;
+
+    const patch = settled?.outcome.kind === "ok" ? textPatch(settled.outcome.output) : undefined;
+
+    if (toolClass?.kind === "edit" && patch !== undefined) {
+      this.heading.content = this.headingContent(
+        GLYPHS.check,
+        theme.ok,
+        `+${String(patch.added)} -${String(patch.removed)}`,
+      );
+      this.showDiff(patchDiff(patch));
+
+      return;
+    }
+
+    const changes = settled?.changes ?? null;
 
     if (toolClass?.kind === "edit" && !isError && changes !== null) {
       this.heading.content = this.headingContent(
@@ -1582,6 +1744,7 @@ export class TurnBlock {
   /** The message object each id was last drawn from; the fold keeps an unchanged message's identity. */
   private readonly drawn = new Map<string, Message>();
   private readonly users = new Set<string>();
+  private readonly reports = new Map<string, ReportBlock>();
   private readonly tools = new Map<string, ToolCard>();
   /** Text and thinking by message id: the same block while it streams and once committed. */
   private readonly prose = new Map<string, PartBlock>();
@@ -1611,6 +1774,8 @@ export class TurnBlock {
     }
 
     for (const card of this.tools.values()) card.refresh();
+
+    for (const report of this.reports.values()) report.refresh();
 
     switch (status.kind) {
       case "open":
@@ -1647,12 +1812,22 @@ export class TurnBlock {
     if (this.drawn.get(message.id) === message) return;
     this.drawn.set(message.id, message);
 
+    if (message.kind === "user" && isReport(message)) {
+      if (this.reports.has(message.id)) return;
+      this.reports.set(
+        message.id,
+        new ReportBlock(this.transcript, message, this.root, this.contentAnchor()),
+      );
+
+      return;
+    }
+
     if (message.kind === "user") {
       if (this.users.has(message.id)) return;
       this.users.add(message.id);
       appendMessage(
         this.transcript,
-        { align: "end", content: message.content },
+        { align: "end", content: shownContent(message) },
         this.root,
         this.contentAnchor(),
       );

@@ -1,0 +1,125 @@
+/**
+ * The screen's layout from `deriveScreen`: the loading line on top, the live
+ * column (queue rows, composer and its powerline, the slot) above the hints,
+ * the welcome on an empty session, completion in the slot, and a screen
+ * dialog taking the transcript's place without dropping the draft.
+ */
+import { ScrollBoxRenderable } from "@opentui/core";
+import { describe, expect, test } from "bun:test";
+import { NO_PARTS } from "../../src/model/draft.ts";
+import { Screen } from "../../src/ui/screen.tsx";
+import { viewOf } from "../fixture/view.ts";
+import { blank, play, ready, typed } from "../model/support.ts";
+import { mount } from "./chrome/support.tsx";
+
+const empty = viewOf((v) => v);
+
+const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+
+const queued = viewOf((v) =>
+  v
+    .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
+    .pending("later please", { schedule: { kind: "next-turn", reason: "requested" } }),
+);
+
+function row(frame: string, text: string): number {
+  return frame.split("\n").findIndex((line) => line.includes(text));
+}
+
+describe("screen", () => {
+  test("starting shows the loading line above everything", async () => {
+    await using app = await mount(blank(), () => <Screen />);
+
+    expect(row(app.captureCharFrame(), "Opening workspace…")).toBe(0);
+  });
+
+  test("queue rows sit above the composer, the notice under its rule, the hints last", async () => {
+    const state = play(ready(queued), { kind: "refuse", reason: "Nothing to stop" }).state;
+
+    await using app = await mount(state, () => <Screen />);
+    const frame = app.captureCharFrame();
+    const lines = frame.split("\n");
+
+    const prompt = row(frame, "❯");
+    const rule = lines.findIndex((line) => line.includes("╰"));
+
+    expect(row(frame, "later please")).toBeLessThan(prompt);
+    expect(rule).toBeGreaterThan(prompt);
+    expect(row(frame, "Nothing to stop")).toBeGreaterThan(rule);
+    expect(row(frame, "enter send")).toBe(lines.findLastIndex((line) => line.trim() !== ""));
+  });
+
+  test("an empty session shows the welcome", async () => {
+    await using app = await mount(ready(empty), () => <Screen />);
+
+    expect(app.captureCharFrame()).toContain("Welcome to Nyte");
+  });
+
+  test("completion takes the slot under the composer", async () => {
+    const state = play(ready(idle), typed("/")).state;
+
+    await using app = await mount(state, () => <Screen />);
+    const frame = app.captureCharFrame();
+
+    expect(row(frame, "/cd")).toBeGreaterThan(row(frame, "╰"));
+  });
+
+  test("a screen dialog replaces the transcript and hides the composer; the draft survives", async () => {
+    const state = ready(idle);
+
+    await using app = await mount(state, () => <Screen />);
+    app.composer().set({ text: "keep me", parts: NO_PARTS });
+    await app.renderOnce();
+    expect(app.captureCharFrame()).toContain("keep me");
+
+    await app.show(
+      play(state, { kind: "open", dialog: { kind: "tree", filter: "default" } }).state,
+    );
+    expect(app.captureCharFrame()).not.toContain("keep me");
+
+    await app.show(state);
+    expect(app.captureCharFrame()).toContain("keep me");
+  });
+
+  test("an open attachment preview shows its body above the composer; its title closes it", async () => {
+    const attached = play(ready(idle), {
+      kind: "paste-resolved",
+      generation: 0,
+      insert: { kind: "part", part: { kind: "file", path: "/w/a.ts", directory: false } },
+    }).state;
+
+    const state = play(play(attached, { kind: "open-attachment" }).state, {
+      kind: "preview-loaded",
+      marker: "[File a.ts]",
+      path: "/w/a.ts",
+      body: "export const answer = 42;",
+    }).state;
+
+    await using app = await mount(state, () => <Screen />);
+    await app.renderOnce();
+    const frame = app.captureCharFrame();
+    const title = row(frame, "[File a.ts] · click to close");
+
+    expect(title).toBeGreaterThan(-1);
+    expect(row(frame, "export const answer = 42;")).toBeGreaterThan(title);
+    expect(row(frame, "export const answer = 42;")).toBeLessThan(row(frame, "❯"));
+
+    await app.mockMouse.click(5, title);
+    expect(app.dispatched).toContainEqual({ kind: "close-preview" });
+  });
+
+  test("a paste over the transcript goes to the composer", async () => {
+    await using app = await mount(ready(idle), () => <Screen />);
+    const transcript = app.renderer.root.findDescendantById("transcript");
+
+    if (!(transcript instanceof ScrollBoxRenderable)) throw new Error("No transcript scrollbox");
+    transcript.focusable = true;
+    transcript.focus();
+    await app.mockInput.pasteBracketedText("pasted text");
+
+    expect(app.dispatched.slice(-2)).toEqual([
+      { kind: "focus-composer" },
+      { kind: "paste", source: { kind: "terminal", text: "pasted text", bytes: null } },
+    ]);
+  });
+});

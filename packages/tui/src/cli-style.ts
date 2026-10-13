@@ -5,7 +5,7 @@
  * redirected output stays unstyled, so scripts keep parsing bare text.
  */
 import process from "node:process";
-import { GLYPHS, THINKING_LEVELS } from "./constants.ts";
+import { GLYPHS, THINKING_LEVELS } from "./lib/constants.ts";
 import type { UpdateOutcome } from "./update.ts";
 import { VERSION } from "./version.ts";
 

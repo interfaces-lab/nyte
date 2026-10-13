@@ -1,13 +1,13 @@
 import { matchesKey, matchesKeyName } from "./keymap.ts";
 import { CliRenderEvents, InputRenderableEvents, TextRenderable } from "@opentui/core";
 import type { BoxRenderable, CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
-import { CHAT_KEYBINDS, GLYPHS, keycap } from "./constants.ts";
-import type { ChatCommand } from "./constants.ts";
+import { CHAT_KEYBINDS, GLYPHS, keycap } from "./lib/constants.ts";
+import type { ChatCommand } from "./lib/constants.ts";
 import type { createChatKeymap } from "./keymap.ts";
 import { commandBindings } from "@opentui/keymap/extras";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
-import type { CliTheme } from "./theme.ts";
+import type { CliTheme } from "./lib/theme.ts";
 import { PanelLayout } from "./panel-layout.ts";
 
 export type Choice = MenuItem;

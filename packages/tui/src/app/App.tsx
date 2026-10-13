@@ -16,19 +16,14 @@ import {
 import { onBlur, onFocus, render, useTerminalDimensions } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount } from "solid-js";
 import { createStore } from "solid-js/store";
-import {
-  COMPOSER_PLACEHOLDER,
-  keycap,
-  keyStrokes,
-  TRANSCRIPT_BOTTOM_PADDING,
-} from "../constants.ts";
-import { createScrollAcceleration } from "../scrolling.ts";
+import { COMPOSER_PLACEHOLDER, keycap, TRANSCRIPT_BOTTOM_PADDING } from "../lib/constants.ts";
+import { createScrollAcceleration } from "../services/scrolling.ts";
 import { createChatKeymap } from "../keymap.ts";
-import { LabelSyntax } from "../label-syntax.ts";
+import { LabelSyntax } from "../services/label-syntax.ts";
 import type { DeliveryChoices } from "../lanes.ts";
 import { PendingGutter } from "../pending-gutter.ts";
 import { PendingTail } from "../pending-tail.ts";
-import type { ActiveCliTheme, CliTheme } from "../theme.ts";
+import type { ActiveCliTheme, CliTheme } from "../lib/theme.ts";
 import { ToolOutputExpansion, type Transcript } from "../surface.ts";
 import { Timeline } from "../timeline.ts";
 import { createSubtleSyntaxStyle, createSyntaxStyle } from "../transcript.ts";
@@ -41,8 +36,8 @@ import {
   type Chunk,
   type Shell,
 } from "./ui.ts";
-import { MOON_FRAMES, MOON_RAMP } from "./moon.ts";
-import { displayWidth } from "../width.ts";
+import { MOON_FRAMES, MOON_RAMP } from "../lib/moon.ts";
+import { displayWidth } from "../lib/width.ts";
 
 const MAX_COMPOSER_ROWS = 8;
 
@@ -463,13 +458,6 @@ function App(props: AppProps): BoxRenderable {
               cursorColor={theme.user}
               selectionBg={theme.selectionBackground}
               selectionFg={theme.selectionForeground}
-              keyBindings={[
-                ...keyStrokes("chat.submit").map((key) => ({ ...key, action: "submit" as const })),
-                ...keyStrokes("composer.newline").map((key) => ({
-                  ...key,
-                  action: "newline" as const,
-                })),
-              ]}
             />
           </box>
           <text
@@ -590,8 +578,8 @@ function App(props: AppProps): BoxRenderable {
   const transcript: Transcript = {
     renderer,
     container: scroll,
-    syntaxStyle: createSyntaxStyle(theme),
-    subtleSyntaxStyle: createSubtleSyntaxStyle(theme),
+    syntaxStyle: createSyntaxStyle(theme, renderer.nativeScene),
+    subtleSyntaxStyle: createSubtleSyntaxStyle(theme, renderer.nativeScene),
     theme,
     labelSyntax: new LabelSyntax(),
     toolOutput: new ToolOutputExpansion(),
@@ -600,6 +588,7 @@ function App(props: AppProps): BoxRenderable {
     onFollowModeChange: setFollowingLatest,
     onEmptyChange: setTranscriptEmpty,
     tasks: () => [],
+    openTask: () => undefined,
     blob: async () => {
       throw new Error("No host is open.");
     },
@@ -616,8 +605,8 @@ function App(props: AppProps): BoxRenderable {
     on(
       () => Object.values(theme),
       () => {
-        transcript.syntaxStyle = createSyntaxStyle(theme);
-        transcript.subtleSyntaxStyle = createSubtleSyntaxStyle(theme);
+        transcript.syntaxStyle = createSyntaxStyle(theme, renderer.nativeScene);
+        transcript.subtleSyntaxStyle = createSubtleSyntaxStyle(theme, renderer.nativeScene);
         pendingGutter.retheme();
         pendingTail.retheme();
         view.retheme();

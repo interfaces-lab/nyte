@@ -9,8 +9,8 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import type { CliTheme } from "./theme.ts";
-import { wrappedRows } from "./width.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { wrappedRows } from "./lib/width.ts";
 
 export class PanelLayout {
   readonly container: BoxRenderable;
@@ -84,6 +84,7 @@ export class PanelLayout {
         this.title,
         this.container.width > 0 ? this.container.width - 3 : this.renderer.width - 5,
         this.renderer.widthMethod,
+        this.renderer.nativeScene,
       ) +
       (this.searchRow.visible ? 1 : 0)
     );

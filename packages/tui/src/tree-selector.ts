@@ -29,10 +29,10 @@ import type {
   RGBA,
 } from "@opentui/core";
 import type { CommitId, TreeNode, TreeView } from "@nyte-ai/sdk";
-import { GLYPHS, keycap } from "./constants.ts";
-import type { CliTheme } from "./theme.ts";
+import { GLYPHS, keycap } from "./lib/constants.ts";
+import type { CliTheme } from "./lib/theme.ts";
 import { PanelLayout } from "./panel-layout.ts";
-import { displayWidth, truncateDisplay } from "./width.ts";
+import { displayWidth, truncateDisplay } from "./lib/width.ts";
 
 /**
  * `default` hides bookkeeping and text-less assistant steps; `no-tools` also

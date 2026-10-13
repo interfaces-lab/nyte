@@ -8,11 +8,11 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { BoxRenderable } from "@opentui/core";
-import { GLYPHS, keycap } from "./constants.ts";
+import { GLYPHS, keycap } from "./lib/constants.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
-import type { CliTheme } from "./theme.ts";
-import type { UsageCard } from "./usage.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import type { UsageCard } from "./lib/usage.ts";
 import { PanelLayout } from "./panel-layout.ts";
 
 const BAR_CELLS = 20;

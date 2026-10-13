@@ -1,0 +1,166 @@
+/**
+ * The rows beside the composer: labels come from the schedule core gave each
+ * message, reports sit above and take no queue input, a click opens the queue
+ * menu, and a drag reorders against the whole inbox through `revise`.
+ */
+import { asId } from "@nyte-ai/schema";
+import { describe, expect, test } from "bun:test";
+import type { Msg } from "../../../src/model/msg.ts";
+import { reduce } from "../../../src/model/reduce.ts";
+import { dropTarget, QueueRows } from "../../../src/ui/composer/queue.tsx";
+import { deriveScreen } from "../../../src/model/screen.ts";
+import { viewOf } from "../../fixture/view.ts";
+import { NOW, ready } from "../../model/support.ts";
+import { mount } from "../chrome/support.tsx";
+
+const SIZE = { width: 100, height: 40 } as const;
+
+function rowOf(frame: string, text: string): string {
+  return frame.split("\n").find((line) => line.includes(text)) ?? "";
+}
+
+function lineIndex(frame: string, text: string): number {
+  return frame.split("\n").findIndex((line) => line.includes(text));
+}
+
+const everySchedule = viewOf((v) =>
+  v
+    .turn("t1", (t) => t.user("hi").tool("bash", { running: true }), { run: "r1" })
+    .pending("join me", { schedule: { kind: "joined", run: "r1" } })
+    .pending("asked for later", { schedule: { kind: "next-turn", reason: "requested" } })
+    .pending("when idle", { schedule: { kind: "next-turn", reason: "idle" } })
+    .pending("after the run", { schedule: { kind: "next-turn", reason: "run-ended" } })
+    .pending("on the new model", { schedule: { kind: "next-turn", reason: "configuration" } })
+    .pending("ride along", { schedule: { kind: "attached" } })
+    .pending("nobody runs this", {
+      schedule: { kind: "next-turn", reason: "requested" },
+      covered: false,
+    })
+    .unsent("on its way")
+    .unsent("trying again", { retrying: { at: 5_000, reason: "offline" } })
+    .report({ child: "s9" }, "Child s9 completed:\nall done")
+    .live(),
+);
+
+const three = viewOf((v) =>
+  v
+    .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
+    .pending("first", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q1" })
+    .pending("second", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q2" })
+    .pending("third", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q3" })
+    .report({ child: "s9" }, "Child s9 completed:\nall done"),
+);
+
+describe("labels", () => {
+  test("each row reads where core scheduled it, not how it was sent", async () => {
+    await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
+    const frame = app.captureCharFrame();
+
+    expect(rowOf(frame, "join me")).toContain("steer · next response");
+    expect(rowOf(frame, "asked for later")).toContain("queued");
+    expect(rowOf(frame, "when idle")).toContain("next");
+    expect(rowOf(frame, "after the run")).toContain("after this run");
+    expect(rowOf(frame, "on the new model")).toContain("next turn · new model");
+    expect(rowOf(frame, "ride along")).toContain("attached");
+    expect(rowOf(frame, "nobody runs this")).toContain("waiting for a host");
+    expect(rowOf(frame, "on its way")).toContain("sending…");
+    expect(rowOf(frame, "trying again")).toContain("retrying · offline");
+    expect(rowOf(frame, "trying again")).toContain("ctrl+q pending");
+  });
+
+  test("reports draw above the queue, labelled waiting", async () => {
+    await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
+    const frame = app.captureCharFrame();
+
+    expect(rowOf(frame, "subagent completed")).toContain("waiting");
+    expect(lineIndex(frame, "subagent completed")).toBeLessThan(lineIndex(frame, "join me"));
+  });
+});
+
+describe("input", () => {
+  test("clicking a queue row opens the queue menu for it", async () => {
+    await using app = await mount(ready(three), () => <QueueRows />, SIZE);
+    await app.mockMouse.click(10, lineIndex(app.captureCharFrame(), "second"));
+
+    expect(app.dispatched).toEqual([
+      {
+        kind: "open",
+        dialog: { kind: "list", purpose: { kind: "queue", message: asId("q2") } },
+      },
+    ]);
+  });
+
+  test("reports are read-only: clicking or dragging one changes no queue", async () => {
+    await using app = await mount(ready(three), () => <QueueRows />, SIZE);
+    const frame = app.captureCharFrame();
+    const report = lineIndex(frame, "subagent completed");
+
+    await app.mockMouse.click(10, report);
+    await app.mockMouse.drag(10, report, 10, lineIndex(frame, "second"));
+
+    expect(app.dispatched).toEqual([]);
+  });
+
+  test("dragging a row onto another dispatches a reorder that revises its inbox position", async () => {
+    const state = ready(three);
+
+    const dragged = async (from: string, onto: string): Promise<readonly Msg[]> => {
+      await using app = await mount(state, () => <QueueRows />, SIZE);
+      const frame = app.captureCharFrame();
+      await app.mockMouse.drag(10, lineIndex(frame, from), 10, lineIndex(frame, onto));
+
+      return app.dispatched;
+    };
+
+    const position = (msgs: readonly Msg[]) =>
+      msgs.flatMap((msg) =>
+        reduce(state, msg, NOW).effects.flatMap((effect) =>
+          effect.kind === "revise" ? [{ message: effect.message, position: effect.position }] : [],
+        ),
+      );
+
+    const up = await dragged("third", "first");
+
+    expect(up).toEqual([{ kind: "reorder", message: asId("q3"), to: { before: asId("q1") } }]);
+    expect(position(up)).toEqual([
+      { message: asId("q3"), position: { kind: "before", message: asId("q1") } },
+    ]);
+
+    const down = await dragged("first", "second");
+
+    expect(position(down)).toEqual([
+      { message: asId("q1"), position: { kind: "before", message: asId("q3") } },
+    ]);
+
+    const last = await dragged("second", "third");
+
+    expect(position(last)).toEqual([{ message: asId("q2"), position: { kind: "last" } }]);
+
+    const lastFromTop = await dragged("first", "third");
+
+    expect(lastFromTop).toEqual([{ kind: "reorder", message: asId("q1"), to: { before: null } }]);
+    expect(position(lastFromTop)).toEqual([{ message: asId("q1"), position: { kind: "last" } }]);
+  });
+
+  test("dropping a row on itself does nothing", async () => {
+    await using app = await mount(ready(three), () => <QueueRows />, SIZE);
+    const row = lineIndex(app.captureCharFrame(), "second");
+    await app.mockMouse.drag(5, row, 30, row);
+
+    expect(app.dispatched).toEqual([]);
+  });
+});
+
+describe("dropTarget", () => {
+  test("takes the target's place, counting only pending rows", () => {
+    const { queue } = deriveScreen(ready(three), null);
+    const [q1, q2, q3] = [asId<"message">("q1"), asId<"message">("q2"), asId<"message">("q3")];
+
+    expect(dropTarget(queue, q3, q1)).toEqual({ before: q1 });
+    expect(dropTarget(queue, q3, q2)).toEqual({ before: q2 });
+    expect(dropTarget(queue, q1, q2)).toEqual({ before: q3 });
+    expect(dropTarget(queue, q2, q3)).toEqual({ before: null });
+    expect(dropTarget(queue, q1, q3)).toEqual({ before: null });
+    expect(dropTarget(queue, q2, q2)).toBeNull();
+  });
+});

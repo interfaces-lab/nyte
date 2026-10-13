@@ -10,9 +10,9 @@
  * runs under `@opentui/keymap/testing` without a terminal.
  *
  * Based on OpenCode's keymap wiring:
- * https://github.com/anomalyco/opencode/blob/main/packages/tui/src/keymap.tsx
+ * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/context/keymap.tsx
  */
-import { MouseButton } from "@opentui/core";
+import { InputRenderable, MouseButton, TextareaRenderable } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
 import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput, Command, Keymap, KeymapEvent } from "@opentui/keymap";
@@ -22,10 +22,13 @@ import {
   registerEnabledFields,
   registerMetadataFields,
 } from "@opentui/keymap/addons";
-import { registerBaseLayoutFallback } from "@opentui/keymap/addons/opentui";
+import {
+  registerBaseLayoutFallback,
+  registerManagedTextareaLayer,
+} from "@opentui/keymap/addons/opentui";
 import { commandBindings } from "@opentui/keymap/extras";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
-import { CHAT_KEYBINDS, keyStrokes, type ChatCommand } from "./constants.ts";
+import { CHAT_KEYBINDS, keyStrokes, type ChatCommand } from "./lib/constants.ts";
 
 interface ChatCommandSpec {
   readonly title: string;
@@ -64,6 +67,22 @@ export function createChatKeymap(renderer: CliRenderer): Keymap<Renderable, KeyE
   // Fall back to the key's base layout code, so Dvorak and AZERTY keep the
   // same physical shortcuts.
   registerBaseLayoutFallback(keymap);
+  registerManagedTextareaLayer(keymap, renderer, {
+    priority: -1,
+    enabled: () => {
+      const editor = renderer.currentFocusedEditor;
+
+      return editor instanceof TextareaRenderable && !(editor instanceof InputRenderable);
+    },
+    bindings: [
+      { key: CHAT_KEYBINDS["chat.submit"], cmd: "input.submit" },
+      { key: CHAT_KEYBINDS["composer.newline"], cmd: "input.newline" },
+      {
+        key: CHAT_KEYBINDS["composer.delete.to.line.start"],
+        cmd: "input.delete.to.line.start",
+      },
+    ],
+  });
 
   return keymap;
 }

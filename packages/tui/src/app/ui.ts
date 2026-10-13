@@ -15,18 +15,18 @@ import type {
   TextRenderable,
 } from "@opentui/core";
 import { createStore, type SetStoreFunction } from "solid-js/store";
-import { GLYPHS } from "../constants.ts";
-import { fitPowerlineSegments, hintGroups, powerlineSegments } from "../format.ts";
-import type { PowerlineSegment, PowerlineState } from "../format.ts";
+import { GLYPHS } from "../lib/constants.ts";
+import { fitPowerlineSegments, hintGroups, powerlineSegments } from "../lib/format.ts";
+import type { PowerlineSegment, PowerlineState } from "../lib/format.ts";
 import type { createChatKeymap } from "../keymap.ts";
 import type { PendingGutter } from "../pending-gutter.ts";
 import type { PendingTail } from "../pending-tail.ts";
 import { InlineMenu, PickerCancelled } from "../picker.ts";
 import type { Choice, ChoiceAction, MenuScreen } from "../picker.ts";
-import type { ActiveCliTheme, CliTheme } from "../theme.ts";
+import type { ActiveCliTheme, CliTheme } from "../lib/theme.ts";
 import type { Timeline } from "../timeline.ts";
 import type { Transcript } from "../surface.ts";
-import { displayWidth, truncateDisplay } from "../width.ts";
+import { displayWidth, truncateDisplay } from "../lib/width.ts";
 
 /** Keeps the active editor stable across terminal and pane focus changes. */
 export class FocusController {

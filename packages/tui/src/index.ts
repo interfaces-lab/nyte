@@ -1,7 +1,7 @@
 import process from "node:process";
 import type { Host, LoginMethod } from "@nyte-ai/sdk";
-import { loginProvider, logoutProvider } from "./auth.ts";
-import { availableModels } from "./catalog.ts";
+import { loginProvider, logoutProvider } from "./services/auth.ts";
+import { availableModels } from "./lib/catalog.ts";
 import {
   alignedRows,
   ansiEnabled,
@@ -24,6 +24,7 @@ import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
 import { runTui } from "./interactive.ts";
+import { runSolidTui } from "./app/main.tsx";
 
 const invocationArgs = process.argv.slice(2);
 
@@ -277,7 +278,9 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
     const set = await host.models.setDefault(configuration.model);
 
     if (set.kind === "unknown-model")
-      throw new Error(`Unavailable model: ${configuration.model.provider}/${configuration.model.id}`);
+      throw new Error(
+        `Unavailable model: ${configuration.model.provider}/${configuration.model.id}`,
+      );
   }
 
   const session = await targetSession(host, flags.resume, undefined);
@@ -373,7 +376,8 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   signal.throwIfAborted();
   invocation.handoff();
-  const exit = await runTui(resolveTuiResume(flags));
+  const tui = process.env["NYTE_TUI"] === "solid" ? runSolidTui : runTui;
+  const exit = await tui(resolveTuiResume(flags));
 
   if (exit.kind === "signal") process.kill(process.pid, exit.signal);
   // Bun's watch mode stays alive when main returns, even after the TUI closes.

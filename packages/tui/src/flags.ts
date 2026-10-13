@@ -1,7 +1,7 @@
 import process from "node:process";
 import { parseArgs } from "node:util";
 import type { SessionId, Thinking } from "@nyte-ai/sdk";
-import { THINKING_LEVELS } from "./constants.ts";
+import { THINKING_LEVELS } from "./lib/constants.ts";
 
 export type ResumeTarget =
   | { readonly kind: "new" }

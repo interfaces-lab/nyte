@@ -112,7 +112,8 @@ try {
   const binaryProcess = child;
   binaryExit = child.exited.then((code) => {
     const signal = binaryProcess.signalCode;
-    send({ kind: "exited", code: signal === null ? code : 128 + constants.signals[signal] });
+    const number = signal === null || typeof signal === "number" ? signal : constants.signals[signal];
+    send({ kind: "exited", code: number === null ? code : 128 + number });
   });
 } catch (error) {
   clearInterval(keepAlive);

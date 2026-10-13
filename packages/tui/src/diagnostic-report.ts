@@ -7,10 +7,10 @@ import {
 import type { BoxRenderable } from "@opentui/core";
 import { PanelLayout } from "./panel-layout.ts";
 import { commandBindings, formatCommandBindings } from "@opentui/keymap/extras";
-import { CHAT_KEYBINDS } from "./constants.ts";
+import { CHAT_KEYBINDS } from "./lib/constants.ts";
 import { closePanel, openPanel } from "./app/ui.ts";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
-import { displayWidth } from "./width.ts";
+import { displayWidth } from "./lib/width.ts";
 
 /** Explicit diagnostics keep their own viewport and never edit the composer. */
 class DiagnosticReport implements EphemeralPanel {

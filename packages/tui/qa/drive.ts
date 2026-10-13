@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
-import type { ChatCommand } from "../src/constants.ts";
+import type { ChatCommand } from "../src/lib/constants.ts";
 import { openProvider } from "./provider.ts";
 import type { ProviderController, ProviderStep } from "./provider.ts";
 import { createWorkspace } from "./workspace.ts";

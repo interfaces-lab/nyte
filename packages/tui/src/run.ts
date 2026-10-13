@@ -7,7 +7,7 @@ import notificationsPlugin from "@nyte-ai/plugin/notifications";
 import tuiRenderersPlugin from "@nyte-ai/plugin/renderers/tui";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import type { ConfigurationPatch, Connection, Cursor, Session, SessionInfo } from "@nyte-ai/sdk";
-import { availableModels } from "./catalog.ts";
+import { availableModels } from "./lib/catalog.ts";
 import type { ResumeTarget, RunFlags } from "./flags.ts";
 
 /** The terminal's client plugins: run notifications and the part renderers it draws with. */

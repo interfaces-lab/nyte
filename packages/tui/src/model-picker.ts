@@ -11,10 +11,10 @@ import {
 } from "@opentui/core";
 import type { CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
 import type { EphemeralPanel } from "./app/ui.ts";
-import { clampThinking, modelId } from "./catalog.ts";
-import { GLYPHS, keycap } from "./constants.ts";
-import type { CliTheme } from "./theme.ts";
-import { padDisplay, truncateDisplay } from "./width.ts";
+import { clampThinking, modelId } from "./lib/catalog.ts";
+import { GLYPHS, keycap } from "./lib/constants.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { padDisplay, truncateDisplay } from "./lib/width.ts";
 import { PanelLayout } from "./panel-layout.ts";
 
 /** The model is the row's fast sibling when fast mode was turned on. */

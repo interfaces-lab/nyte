@@ -1,5 +1,5 @@
 import type { EmbeddedTerminalScreen, MouseEvent } from "@opentui/core";
-import type { ChatCommand } from "../src/constants.ts";
+import type { ChatCommand } from "../src/lib/constants.ts";
 
 export type Screen = EmbeddedTerminalScreen;
 

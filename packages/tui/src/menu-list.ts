@@ -8,9 +8,9 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
-import { GLYPHS } from "./constants.ts";
-import type { CliTheme } from "./theme.ts";
-import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
+import { GLYPHS } from "./lib/constants.ts";
+import type { CliTheme } from "./lib/theme.ts";
+import { displayWidth, padDisplay, truncateDisplay } from "./lib/width.ts";
 
 /** Row text is cut to the cells it has, with a marker that it was cut. */
 function truncate(text: string, width: number): string {

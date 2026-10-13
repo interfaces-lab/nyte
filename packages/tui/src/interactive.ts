@@ -14,10 +14,13 @@ import {
   CliRenderEvents,
   createCliRenderer,
   decodePasteBytes,
+  NativeSession,
   PasteEvent,
   SyntaxStyle,
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
+import { openQuestions } from "@nyte-ai/plugin/question";
+import type { OpenQuestion } from "@nyte-ai/plugin/question";
 import type {
   BlobId,
   CommandInfo,
@@ -42,10 +45,10 @@ import type {
   UserContent,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import { authProviderChoices, loginProvider, logoutProvider } from "./auth.ts";
-import type { LoginDriver } from "./auth.ts";
+import { authProviderChoices, loginProvider, logoutProvider } from "./services/auth.ts";
+import type { LoginDriver } from "./services/auth.ts";
 import { readAuthPrompt } from "./auth-prompt.ts";
-import { availableModels, clampThinking, findModel, modelId } from "./catalog.ts";
+import { availableModels, clampThinking, findModel, modelId } from "./lib/catalog.ts";
 import {
   DialogImagePreview,
   ComposerParts,
@@ -59,15 +62,15 @@ import {
 } from "./composer.ts";
 import type { ComposerDraft, MentionFile } from "./composer.ts";
 import { ComposerDocument } from "./composer-document.ts";
-import { startLocalShell } from "./local-shell.ts";
-import type { ShellExecution, ShellProcess } from "./local-shell.ts";
+import { startLocalShell } from "./services/local-shell.ts";
+import type { ShellExecution, ShellProcess } from "./services/local-shell.ts";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
   BUSY_COMPOSER_PLACEHOLDER,
   COMPOSER_PLACEHOLDER,
   keycap,
-} from "./constants.ts";
-import { editInExternalEditor, resolveExternalEditor } from "./external-editor.ts";
+} from "./lib/constants.ts";
+import { editInExternalEditor, resolveExternalEditor } from "./services/external-editor.ts";
 import { ComposerActions, composerHints, openActionPalette } from "./composer-actions.ts";
 import type { ComposerOperation } from "./composer-actions.ts";
 import { openDiagnosticReport } from "./diagnostic-report.ts";
@@ -80,8 +83,8 @@ import {
   TERMINAL_TITLE_BASE,
   terminalTitle,
   userText,
-} from "./format.ts";
-import type { PowerlineState } from "./format.ts";
+} from "./lib/format.ts";
+import type { PowerlineState } from "./lib/format.ts";
 import { openTerminalHost } from "./host.ts";
 import {
   ctrlCAction,
@@ -100,16 +103,17 @@ import { deliveryMark, queuedPromptText } from "./pending-gutter.ts";
 import type { GutterRow } from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
-import { mountClientPlugins } from "./plugins.ts";
-import type { ClientPlugins } from "./plugins.ts";
-import { browseHistory, PromptHistory } from "./prompt-history.ts";
+import { mountClientPlugins } from "./services/plugins.ts";
+import type { ClientPlugins } from "./services/plugins.ts";
+import { browseHistory, PromptHistory } from "./lib/prompt-history.ts";
 import { flagConfiguration, targetSession, tuiPlugins } from "./run.ts";
-import { TUI_RENDERER_CONFIG } from "./rendering.ts";
-import { SessionConfigurator } from "./session-config.ts";
-import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
+import { TUI_RENDERER_CONFIG } from "./services/rendering.ts";
+import { SessionConfigurator } from "./services/session-config.ts";
+import type { ConfigPatch, RunChoice, SubmissionSlot } from "./services/session-config.ts";
 import { TaskBrowser } from "./task-browser.ts";
-import { FileSettingsStore } from "./settings.ts";
-import type { ResolvedSettings, SettingsPatch } from "./settings.ts";
+import { reportRow } from "./lib/tasks.ts";
+import { FileSettingsStore } from "./services/settings.ts";
+import type { ResolvedSettings, SettingsPatch } from "./lib/settings-schema.ts";
 import { mountShell } from "./app/App.tsx";
 import {
   clearNotice,
@@ -135,28 +139,34 @@ import {
   parseComposerSubmission,
   promptDraft,
   resolveSlashCommand,
-} from "./slash.ts";
+} from "./lib/slash.ts";
 import type {
   BuiltinSlashName,
   ComposerSubmission,
   ParsedSlashCommand,
   SlashSetting,
-} from "./slash.ts";
+} from "./lib/slash.ts";
 import { SlashAutocomplete } from "./slash-autocomplete.ts";
-import { registerSyntaxParsers } from "./syntax-parsers.ts";
-import { isThemeChoice, resolveThemeMode, themeForMode } from "./theme.ts";
-import type { ThemeMode } from "./theme.ts";
+import { registerSyntaxParsers } from "./services/syntax-parsers.ts";
+import { isThemeChoice, resolveThemeMode, themeForMode } from "./lib/theme.ts";
+import type { ThemeMode } from "./lib/theme.ts";
 import { TreeSelector } from "./tree-selector.ts";
 import type { TreeFilter } from "./tree-selector.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import type { UpdateProgress } from "./update.ts";
 import { updateSeverity } from "./cli-style.ts";
 import { UsagePanel } from "./usage-panel.ts";
-import { usageCard } from "./usage.ts";
+import { usageCard } from "./lib/usage.ts";
 import { checkForUpdate } from "./version.ts";
-import { follow, openQuestions, queuedMessages } from "./view-helpers.ts";
-import type { OpenQuestion, UserMessage } from "./view-helpers.ts";
-import { readWorkspaceStatus } from "./workspace.ts";
+import {
+  follow,
+  isReport,
+  pendingReports,
+  queuedMessages,
+  shownContent,
+} from "./lib/view-helpers.ts";
+import type { UserMessage } from "./lib/view-helpers.ts";
+import { readWorkspaceStatus } from "./services/workspace.ts";
 import { reportProgramStatus } from "./program-status.ts";
 
 type TuiExit =
@@ -262,18 +272,26 @@ function modelChoices(catalog: ModelCatalogView | undefined): Choice[] {
   );
 }
 
-function createTuiRenderer(): Promise<CliRenderer> {
+/** Opens the renderer over a native session the TUI keeps, as the writer of the reports OpenTUI does not draw; the renderer owns its lifecycle. */
+async function createTuiRenderer(): Promise<{
+  readonly renderer: CliRenderer;
+  readonly terminal: NativeSession;
+}> {
   // Grammars are registered before the first renderer so the tree-sitter
   // worker knows them the moment it starts.
   registerSyntaxParsers();
+  const terminal = new NativeSession(process.stdout);
 
-  return createCliRenderer({
+  const renderer = await createCliRenderer({
     ...TUI_RENDERER_CONFIG,
+    nativeSession: terminal,
     exitOnCtrlC: false,
     autoFocus: false,
     enableMouseMovement: true,
     clearOnShutdown: true,
   });
+
+  return { renderer, terminal };
 }
 
 /**
@@ -316,14 +334,9 @@ function skillsOf(session: FollowedSession): ReadonlyMap<string, SkillInfo> {
   return new Map((session.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]));
 }
 
-export async function runTui(
-  flags: RunFlags,
-  suppliedRenderer?: CliRenderer,
-  output: Pick<typeof process.stdout, "write"> | undefined = suppliedRenderer === undefined
-    ? process.stdout
-    : undefined,
-): Promise<TuiExit> {
-  const renderer = suppliedRenderer ?? (await createTuiRenderer());
+export async function runTui(flags: RunFlags): Promise<TuiExit> {
+  const output = process.stdout;
+  const { renderer, terminal } = await createTuiRenderer();
   const roles = deliveryChoices;
 
   const shell = await mountShell({
@@ -453,6 +466,7 @@ export async function runTui(
     renderer.off(CliRenderEvents.THEME_MODE, updateTheme);
     app = new Interactive({
       renderer,
+      terminal,
       shell,
       host,
       catalog,
@@ -495,7 +509,12 @@ export async function runTui(
     renderer.off(CliRenderEvents.THEME_MODE, onStartupTheme);
     renderer.keyInput.off("keypress", onStartupKey);
     renderer.keyInput.off("keypress", takeNoticeBack);
-    await cleanup("Terminal", () => renderer.destroy());
+    // OpenTUI 0.6 restores (and clears) the terminal after destroy returns; output written
+    // before `closed` settles would be wiped by that restore.
+    await cleanup("Terminal", async () => {
+      renderer.destroy();
+      await renderer.closed;
+    });
     await cleanup("Host", () => host?.close());
     process.off("SIGINT", onSigint);
     process.off("SIGTERM", onSigterm);
@@ -503,12 +522,12 @@ export async function runTui(
 
   // Restoration ends in escape bytes, not a newline. Keep the final two lines
   // plain even in raw PTY captures, and report every failure before them.
-  if (failures.length > 0 || resumeId !== undefined) output?.write("\n");
+  if (failures.length > 0 || resumeId !== undefined) output.write("\n");
 
-  for (const failure of failures) output?.write(`${failure}\n`);
+  for (const failure of failures) output.write(`${failure}\n`);
 
   if (resumeId !== undefined) {
-    output?.write(`To resume previous session\n${sessionRecovery(resumeId).command}\n`);
+    output.write(`To resume previous session\n${sessionRecovery(resumeId).command}\n`);
   }
 
   if (failures.length > 0 && exit.kind === "quit") process.exit(1);
@@ -518,6 +537,8 @@ export async function runTui(
 
 interface InteractiveOptions {
   readonly renderer: CliRenderer;
+  /** The renderer's native session, which writes the program status. */
+  readonly terminal: NativeSession;
   readonly shell: Shell;
   readonly host: Host;
   /** The catalog as read at startup; re-read when the host's catalog generation moves. */
@@ -628,7 +649,7 @@ class Interactive {
     this.document = new ComposerDocument(options.shell.input);
     this.renderer.setFrameCallback(this.flushVisual);
     this.disposers.push(() => this.renderer.removeFrameCallback(this.flushVisual));
-    reportProgramStatus(this.renderer, () => ({
+    reportProgramStatus(this.renderer, options.terminal, () => ({
       busy: this.busy,
       execution: this.view?.execution,
       question: this.waiting?.question.prompt,
@@ -651,8 +672,9 @@ class Interactive {
       onChange: () => {
         this.refreshQuestion();
 
-        // A child's step lands in its delegation card in the parent transcript.
+        // A child's step lands in its delegation card in the parent transcript, and its name on its waiting report.
         if (this.session === undefined) return;
+        this.syncGutter(this.session);
         this.pendingVisual ??= {
           session: this.session,
           previous: this.session.view,
@@ -662,6 +684,7 @@ class Interactive {
       },
       onError: (cause) => this.reportError(cause),
     });
+    options.shell.pendingGutter.tasks = () => this.tasks.tasks;
     options.shell.transcript.blob = async (id: BlobId) => {
       const reader = await options.host.blob(id);
       const chunks: Uint8Array[] = [];
@@ -673,6 +696,14 @@ class Interactive {
 
     options.shell.transcript.drawPart = (message) => this.plugins?.draw(message);
     options.shell.pendingGutter.onOpen = (row) => {
+      if (isReport(row)) {
+        const task = reportRow(row, this.tasks.tasks).task;
+
+        if (task !== undefined) options.shell.transcript.openTask(task.id);
+
+        return;
+      }
+
       void this.openQueue(row.id).catch(this.reportError);
     };
 
@@ -1163,7 +1194,7 @@ class Interactive {
     const session = this.session;
 
     if (this.disposed || session === undefined) return;
-    const own = session.view === undefined ? undefined : openQuestions(session.view)[0];
+    const own = openQuestions(session.view)[0];
 
     const waiting =
       own === undefined ? this.tasks.waiting : { session: session.sessionId, question: own };
@@ -1262,8 +1293,9 @@ class Interactive {
     const running = session.view !== undefined && session.view.execution.kind !== "idle";
     const steering = rows.filter((row) => !running || row.delivery === this.roles.steer);
     const queued = rows.filter((row) => running && row.delivery !== this.roles.steer);
+    const reports = session.view === undefined ? [] : pendingReports(session.view);
     this.shell.pendingTail.sync(steering, { hint: queued.length === 0, running });
-    this.shell.pendingGutter.sync(queued);
+    this.shell.pendingGutter.sync([...reports, ...queued]);
 
     if (this.queueMenu !== undefined || this.queueSelection !== undefined) {
       const choices = this.queueChoices();
@@ -1372,7 +1404,7 @@ class Interactive {
   // -------------------------------------------------------------------------
 
   private wireComposer(): void {
-    const syntax = SyntaxStyle.create();
+    const syntax = SyntaxStyle.create(this.renderer.nativeScene);
     this.shell.input.syntaxStyle = syntax;
 
     const styleId = syntax.registerStyle("attachment", {
@@ -2182,7 +2214,7 @@ class Interactive {
 
     return queuedMessages(session.view).map((row, index) => ({
       id: row.id,
-      label: queuedPromptText(row.content),
+      label: queuedPromptText(shownContent(row)),
       description: `${String(index + 1)} · ${row.status.kind === "pending" ? deliveryMark(row.delivery, this.roles, this.shell.theme).label : "sending"}`,
     }));
   }
@@ -2215,6 +2247,12 @@ class Interactive {
       const row = rows().find((candidate) => candidate.id === id);
 
       if (row === undefined) return;
+
+      if (row.source.kind === "action") {
+        notice(this.shell, `"${row.source.label}" is an action; it can't be edited.`);
+
+        return;
+      }
 
       if (this.queueEdits.has(session.sessionId)) {
         notice(this.shell, "Save or cancel the current queue edit first.");
@@ -2377,7 +2415,7 @@ class Interactive {
         const blocked = this.composerBlocked();
         const draft = blocked === undefined ? this.document.read() : this.document.latest;
         const input = draft === undefined ? undefined : parseComposerSubmission(draft.text);
-        const asked = this.view === undefined ? undefined : openQuestions(this.view)[0];
+        const asked = openQuestions(this.view)[0];
 
         return {
           busy: this.busy,

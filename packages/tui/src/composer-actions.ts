@@ -2,14 +2,14 @@ import type { Delivery } from "@nyte-ai/sdk";
 import { commandBindings, formatCommandBindings } from "@opentui/keymap/extras";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { CHAT_KEYBINDS } from "./constants.ts";
+import { CHAT_KEYBINDS } from "./lib/constants.ts";
 import { openDiagnosticReport } from "./diagnostic-report.ts";
 import type { DeliveryChoices } from "./lanes.ts";
 import { notice, selectChoice } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
-import { slashCommandLabel } from "./slash.ts";
-import type { SlashCommand } from "./slash.ts";
-import { displayWidth } from "./width.ts";
+import { slashCommandLabel } from "./lib/slash.ts";
+import type { SlashCommand } from "./lib/slash.ts";
+import { displayWidth } from "./lib/width.ts";
 
 export type ComposerOperation =
   | { readonly kind: "submit" | "save-edit"; readonly delivery: Delivery }

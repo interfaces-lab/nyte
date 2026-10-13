@@ -23,8 +23,8 @@ import {
   pasteLineCount,
 } from "./composer.ts";
 import type { ShellRun } from "./composer.ts";
-import { SPACING } from "./constants.ts";
-import { extractSkillInvocations } from "./slash.ts";
+import { SPACING } from "./lib/constants.ts";
+import { extractSkillInvocations } from "./lib/slash.ts";
 import { repaints, TranscriptCodeRenderable, TranscriptTextRenderable } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
 

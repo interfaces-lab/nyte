@@ -3,9 +3,10 @@
  * head's view, and exit with the run's outcome. The same SDK handles the shell
  * uses, over an output the caller supplies.
  */
+import { openQuestions } from "@nyte-ai/plugin/question";
 import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
 import { sessionRecovery } from "./flags.ts";
-import { isTextMessage, isToolMessage, openQuestions } from "./view-helpers.ts";
+import { isTextMessage, isToolMessage } from "./lib/view-helpers.ts";
 
 export interface PrintOutput {
   write(text: string): void;

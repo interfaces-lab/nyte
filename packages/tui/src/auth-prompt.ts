@@ -6,7 +6,7 @@ import {
 } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { commandBindings } from "@opentui/keymap/extras";
-import { CHAT_KEYBINDS, keycap } from "./constants.ts";
+import { CHAT_KEYBINDS, keycap } from "./lib/constants.ts";
 import { PickerCancelled } from "./picker.ts";
 import { closePanel, openPanel, setHints } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";

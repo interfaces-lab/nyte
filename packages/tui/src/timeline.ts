@@ -15,12 +15,12 @@ import type {
   Selection,
   SimpleHighlight,
 } from "@opentui/core";
-import { Edge } from "@opentui/core/yoga";
 import { branchSummary, compaction, isPart } from "@nyte-ai/plugin/client";
+import { openQuestions } from "@nyte-ai/plugin/question";
 import type { Message, SessionView, TurnId } from "@nyte-ai/sdk";
 import { diffChars } from "diff";
-import type { ShellExecution } from "./local-shell.ts";
-import { SPACING } from "./constants.ts";
+import type { ShellExecution } from "./services/local-shell.ts";
+import { SPACING } from "./lib/constants.ts";
 import { appendMarker, type MarkerProps } from "./marker.ts";
 import { bufferWidths, repaintTree, TranscriptDisclosures, type Transcript } from "./surface.ts";
 import {
@@ -30,9 +30,9 @@ import {
   type TurnSection,
   type TurnStatus,
 } from "./transcript.ts";
-import { openQuestions, turnEntries } from "./view-helpers.ts";
-import type { PartMessage, TurnEntry } from "./view-helpers.ts";
-import { cellOffset } from "./width.ts";
+import { turnEntries } from "./lib/view-helpers.ts";
+import type { PartMessage, TurnEntry } from "./lib/view-helpers.ts";
+import { cellOffset } from "./lib/width.ts";
 
 // ---------------------------------------------------------------------------
 // The whole transcript
@@ -182,7 +182,7 @@ function entryTime(entry: Entry): number {
 
 function layoutY(node: Renderable): number {
   return (
-    node.getLayoutNode().getComputedLayout().top +
+    node.getComputedLayout().top +
     node.translateY +
     (node.parent === null ? 0 : layoutY(node.parent))
   );
@@ -700,7 +700,7 @@ export class Timeline {
    * rather than the rows requested since.
    */
   private naturalHeight(): number {
-    const measuredSlack = this.navigationSpacer.getLayoutNode().getComputedLayout().height || 0;
+    const measuredSlack = this.navigationSpacer.getComputedLayout().height || 0;
 
     return this.transcript.container.scrollHeight - measuredSlack;
   }
@@ -822,7 +822,7 @@ export class Timeline {
     let offset = Math.min(column, text.length);
 
     if (!/^[\x20-\x7e\n]*$/.test(text)) {
-      const buffer = TextBuffer.create(widthMethod);
+      const buffer = TextBuffer.create(widthMethod, this.transcript.renderer.nativeScene);
 
       try {
         buffer.setText(text);
@@ -866,14 +866,15 @@ export class Timeline {
     if (text === undefined || text.node.isDestroyed || !text.node.visible) return undefined;
     const node = text.node;
     const prefix = node.plainText.slice(0, textOffset(node, text.offset, false));
-    const column = cellOffset(prefix, prefix.length, text.widthMethod, 4);
-    const width = node.getLayoutNode().getComputedLayout().width;
+    const owner = this.transcript.renderer.nativeScene;
+    const column = cellOffset(prefix, prefix.length, text.widthMethod, 4, owner);
+    const width = node.getComputedLayout().width;
     let info = node.lineInfo;
 
     // Yoga has measured the new width, but OpenTUI applies text viewports later.
     // Measure only this reading buffer before scroll translation is inherited.
     if (measured && width !== node.width) {
-      const buffer = TextBuffer.create(text.widthMethod);
+      const buffer = TextBuffer.create(text.widthMethod, owner);
       const view = TextBufferView.create(buffer);
 
       try {
@@ -909,14 +910,8 @@ export class Timeline {
       anchor.text === undefined ? this.indexTarget(anchor) : this.textTarget(anchor, true);
 
     if (target === undefined) return;
-    // Apply the scroll ancestors first. Otherwise viewport resize clamps against
-    // the old content height and falsely re-engages the native bottom pin.
-    const ancestors: Renderable[] = [];
-
-    for (let node: Renderable | null = scroll.content; node !== null; node = node.parent)
-      ancestors.unshift(node);
-
-    for (const node of ancestors) node.updateFromLayout();
+    // The native scene resizes every node before the root hears LAYOUT_CHANGED,
+    // so the scroll range already holds the new content height here.
     scroll.scrollTo(target);
   };
 
@@ -930,12 +925,13 @@ export class Timeline {
 
     if (root === undefined || !root.visible) return this.offset(anchor.index) + anchor.row;
     const scroll = this.transcript.container;
+    const margin = root.marginTop;
 
     return (
       scroll.scrollTop +
       layoutY(root) -
       layoutY(scroll.viewport) -
-      root.getLayoutNode().getComputedMargin(Edge.Top) +
+      (typeof margin === "number" ? margin : 0) +
       anchor.row
     );
   }
@@ -1111,6 +1107,7 @@ export class Timeline {
         ...this.transcript,
         disclosures: item.disclosures,
         tasks: () => owner.tasks(),
+        openTask: (id) => owner.openTask(id),
         blob: (id) => owner.blob(id),
         drawPart: (message) => owner.drawPart(message),
         get syntaxStyle() {

@@ -1,0 +1,429 @@
+/**
+ * A tool card as data: the heading's coloured words and the body under it.
+ * This is the settled-card decision tree (edit patch, changes, unified diff
+ * in output, collapsed read, inline or head/tail preview, delegation, local
+ * shell) as a pure function, so the component only draws and the rules are
+ * tested without a renderer.
+ */
+import { pathToFiletype } from "@opentui/core";
+import type { ToolClass } from "@nyte-ai/sdk";
+import type { ShellJob } from "../model/state.ts";
+import {
+  keycap,
+  RESULT_PREVIEW_LINES,
+  RESULT_TAIL_LINES,
+  RESULT_TAIL_ONLY_LINES,
+  TOOL_INLINE_PREVIEW_LENGTH,
+} from "./constants.ts";
+import {
+  earlierLinesLabel,
+  formatDuration,
+  omittedLabel,
+  previewLines,
+  resultSummary,
+} from "./format.ts";
+import type { PreviewCut } from "./format.ts";
+import { diffFromOutput, patchDiff, textPatch } from "./output-diff.ts";
+import type { OutputDiff } from "./output-diff.ts";
+import {
+  statusMark,
+  taskActivity,
+  taskConfiguration,
+  taskLabel,
+  taskStatus,
+  toneStatus,
+} from "./tasks.ts";
+import type { Task } from "./tasks.ts";
+import { delegateSubject, toolLabel, toolNoun, toolSubject } from "./tool-copy.ts";
+import { toolOutput, toolStatus } from "./view-helpers.ts";
+import type { ToolMessage, ToolStatus } from "./view-helpers.ts";
+import { displayWidth } from "./width.ts";
+
+/** The theme role a heading word takes. */
+export type Role =
+  | "muted"
+  | "running"
+  | "warning"
+  | "ok"
+  | "error"
+  | "user"
+  | "foreground"
+  | "dim"
+  | "tool";
+
+export interface HeadingChunk {
+  readonly text: string;
+  readonly role: Role;
+  /** The chunk is a shell command, drawn with bash highlights once the grammar answers. */
+  readonly code?: "bash";
+}
+
+export type CardBody =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "text";
+      readonly text: string;
+      readonly role: "dim" | "error";
+      readonly filetype: string | undefined;
+    }
+  | {
+      readonly kind: "diff";
+      readonly before: string | undefined;
+      readonly diff: OutputDiff;
+      readonly after: string | undefined;
+    }
+  /** A delegation card's one fixed row: the child's latest step. */
+  | { readonly kind: "activity"; readonly text: string };
+
+export interface ToolCardModel {
+  readonly heading: readonly HeadingChunk[];
+  readonly body: CardBody;
+}
+
+type DelegationClass = Extract<ToolClass, { readonly kind: "delegate" }>;
+
+const NONE: CardBody = { kind: "none" };
+
+export function previewCut(toolClass: ToolClass | undefined): PreviewCut {
+  return toolClass?.kind === "shell"
+    ? { kind: "tail", max: RESULT_TAIL_ONLY_LINES }
+    : { kind: "head-tail", head: RESULT_PREVIEW_LINES, tail: RESULT_TAIL_LINES };
+}
+
+/** A single short line goes in the heading instead of a body. */
+export function inlineToolPreview(text: string): string | undefined {
+  const value = text.trim();
+
+  if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH)
+    return undefined;
+
+  return value;
+}
+
+/** The collapsed body of a tool card, thought or report; the cut's label names the key that expands it. */
+export function toolOutputPreview(text: string, expanded: boolean, cut: PreviewCut): string {
+  const trimmed = text.replace(/\n+$/u, "");
+
+  if (expanded || trimmed === "") return trimmed;
+  const preview = previewLines(trimmed, cut);
+
+  if (preview.omitted === 0) return preview.text;
+
+  const omission =
+    cut.kind === "tail" ? earlierLinesLabel(preview.omitted) : omittedLabel(preview.omitted);
+
+  return preview.text.replace(omission, `${omission} · ${keycap("chat.tools.toggle")} expand`);
+}
+
+function tail(parts: readonly (string | undefined)[]): readonly HeadingChunk[] {
+  const text = parts.filter((part) => part !== undefined && part !== "").join(" · ");
+
+  return text === "" ? [] : [{ text: `  ${text}`, role: "dim" }];
+}
+
+/** The title, with the shell command it ends with split off so it can be highlighted as code. */
+function titleChunks(title: string, command: string | undefined): readonly HeadingChunk[] {
+  if (command === undefined || command === "" || !title.endsWith(command))
+    return [{ text: ` ${title}`, role: "foreground" }];
+
+  return [
+    { text: ` ${title.slice(0, title.length - command.length)}`, role: "foreground" },
+    { text: command, role: "foreground", code: "bash" },
+  ];
+}
+
+function heading(
+  glyph: string,
+  role: Role,
+  title: string,
+  parts: readonly (string | undefined)[],
+  command?: string,
+): readonly HeadingChunk[] {
+  return [{ text: glyph, role }, ...titleChunks(title, command), ...tail(parts)];
+}
+
+function shellCommand(toolClass: ToolClass): string | undefined {
+  return toolClass.kind === "shell" ? toolSubject(toolClass) : undefined;
+}
+
+/** The call's verb and subject, or the subject and the tool's noun when no verb is true. */
+function partTitle(toolClass: ToolClass, status: ToolStatus): string {
+  const subject = toolSubject(toolClass);
+  const verb = toolLabel(toolClass, status.tense);
+  const words = verb === undefined ? [subject, toolNoun(toolClass)] : [verb, subject];
+
+  return words.filter((word) => word !== undefined).join(" ");
+}
+
+function textBody(
+  text: string,
+  expanded: boolean,
+  cut: PreviewCut,
+  role: "dim" | "error",
+  filetype: string | undefined,
+): CardBody {
+  const preview = toolOutputPreview(text, expanded, cut);
+
+  return preview === "" ? NONE : { kind: "text", text: preview, role, filetype };
+}
+
+function diffBody(diff: OutputDiff, expanded: boolean, cut: PreviewCut): CardBody {
+  const panel = (text: string | undefined): string | undefined => {
+    if (text === undefined) return undefined;
+    const preview = toolOutputPreview(text, expanded, cut);
+
+    return preview === "" ? undefined : preview;
+  };
+
+  return { kind: "diff", before: panel(diff.before), diff, after: panel(diff.after) };
+}
+
+/** A settled shell call's clock: how long it took. */
+function partClock(message: ToolMessage): string | undefined {
+  const { status } = message;
+
+  return message.state.class.kind === "shell" && status.kind === "settled"
+    ? formatDuration(Math.max(0, status.endedAt - message.at))
+    : undefined;
+}
+
+function settled(
+  message: ToolMessage,
+  status: ToolStatus,
+  expanded: boolean,
+  isError: boolean,
+): ToolCardModel {
+  const toolClass = message.state.class;
+  const output = message.state.phase === "settled" ? toolOutput(message.state) : "";
+  const outputDiff = isError ? undefined : diffFromOutput(output);
+  const state = message.state.phase === "settled" ? message.state : undefined;
+  const patch = state?.outcome.kind === "ok" ? textPatch(state.outcome.output) : undefined;
+  const word = status.word?.toLowerCase();
+  const clock = partClock(message);
+  const cut = previewCut(toolClass);
+  const title = partTitle(toolClass, status);
+  const command = shellCommand(toolClass);
+  const check = statusMark("done");
+
+  if (toolClass.kind === "edit" && patch !== undefined)
+    return {
+      heading: heading(
+        check.glyph,
+        check.tone,
+        title,
+        [`+${String(patch.added)} -${String(patch.removed)}`, word, clock],
+        command,
+      ),
+      body: diffBody(patchDiff(patch), expanded, cut),
+    };
+
+  const changes = state?.changes ?? null;
+
+  if (toolClass.kind === "edit" && !isError && changes !== null)
+    return {
+      heading: heading(
+        check.glyph,
+        check.tone,
+        title,
+        [`+${String(changes.added)} -${String(changes.removed)}`, word, clock],
+        command,
+      ),
+      body:
+        outputDiff === undefined
+          ? textBody(output, expanded, cut, "dim", undefined)
+          : diffBody(outputDiff, expanded, cut),
+    };
+
+  if (outputDiff !== undefined) {
+    const hunks = outputDiff.files.reduce((count, file) => count + file.sections.length, 0);
+
+    return {
+      heading: heading(
+        check.glyph,
+        check.tone,
+        title,
+        [`${String(hunks)} ${hunks === 1 ? "hunk" : "hunks"}`, word, clock],
+        command,
+      ),
+      body: diffBody(outputDiff, expanded, cut),
+    };
+  }
+
+  const inline = inlineToolPreview(output);
+  const summary = inline ?? resultSummary(output);
+  const collapsedRead = toolClass.kind === "read" && !isError && !expanded && inline === undefined;
+
+  const result = collapsedRead
+    ? [summary, `${keycap("chat.tools.toggle")} expand`]
+        .filter((value) => value !== undefined)
+        .join(" · ")
+    : summary;
+
+  const mark = statusMark(isError ? "failed" : "done");
+
+  if (collapsedRead || inline !== undefined)
+    return {
+      heading: heading(mark.glyph, mark.tone, title, [result, word, clock], command),
+      body: NONE,
+    };
+
+  const filetype =
+    status.tense !== "running" && toolClass.kind === "read"
+      ? pathToFiletype(toolClass.path)
+      : undefined;
+
+  return {
+    heading: heading(mark.glyph, mark.tone, title, [result, word, clock], command),
+    body: textBody(output, expanded, cut, isError ? "error" : "dim", filetype),
+  };
+}
+
+/**
+ * The call that made the child is its card: its title, then the child's
+ * latest step. Every other call on a child is one line naming it.
+ */
+function delegation(
+  toolClass: DelegationClass,
+  status: ToolStatus,
+  tasks: readonly Task[],
+): ToolCardModel {
+  const task = tasks.find(
+    (candidate) => candidate.kind === "agent" && candidate.id === toolClass.child,
+  );
+  const word = status.word?.toLowerCase();
+
+  if (toolClass.role !== "create" && toolClass.role !== "task") {
+    const own = statusMark(toneStatus(status.tone));
+    const name = task === undefined ? delegateSubject(toolClass) : taskLabel(task);
+    const verb = toolLabel(toolClass, status.tense);
+
+    return {
+      heading: [
+        { text: `${own.glyph} `, role: own.tone },
+        ...(verb === undefined ? [] : [{ text: `${verb} `, role: "foreground" } as const]),
+        { text: name, role: "tool" },
+        ...(verb === undefined
+          ? [{ text: ` ${toolNoun(toolClass) ?? ""}`, role: "foreground" } as const]
+          : []),
+        ...(word === undefined ? [] : [{ text: `  ${word}`, role: "dim" } as const]),
+      ],
+      body: NONE,
+    };
+  }
+
+  const mark = statusMark(task === undefined ? toneStatus(status.tone) : taskStatus(task));
+  const config = task?.kind === "agent" ? taskConfiguration(task) : "";
+  const rest = task === undefined ? word : config === "" ? undefined : config;
+
+  return {
+    heading: [
+      { text: `${mark.glyph} `, role: mark.tone },
+      { text: delegateSubject(toolClass), role: "foreground" },
+      ...(rest === undefined ? [] : [{ text: `  ${rest}`, role: "dim" } as const]),
+    ],
+    body: { kind: "activity", text: task === undefined ? "" : taskActivity(task) },
+  };
+}
+
+/** The card for a tool call, from its part, the session's tasks and the global ctrl+o state. */
+export function toolCard(
+  message: ToolMessage,
+  tasks: readonly Task[],
+  expanded: boolean,
+): ToolCardModel {
+  const status = toolStatus(message.state, message.status);
+  const toolClass = message.state.class;
+
+  if (toolClass.kind === "delegate") return delegation(toolClass, status, tasks);
+
+  switch (status.tone) {
+    case "running":
+    case "attention":
+    case "stopped": {
+      const text =
+        message.state.phase === "settled"
+          ? toolOutput(message.state)
+          : message.state.phase === "running"
+            ? (message.state.progress?.text ?? "")
+            : "";
+
+      const inline = inlineToolPreview(text);
+      const mark = statusMark(toneStatus(status.tone));
+
+      return {
+        heading: heading(
+          mark.glyph,
+          status.tone === "running" && text !== "" ? "user" : mark.tone,
+          partTitle(toolClass, status),
+          [inline ?? resultSummary(text), status.word?.toLowerCase(), partClock(message)],
+          shellCommand(toolClass),
+        ),
+        body:
+          inline !== undefined || text === ""
+            ? NONE
+            : textBody(text, expanded, previewCut(toolClass), "dim", undefined),
+      };
+    }
+
+    case "failure":
+      return settled(message, status, expanded, true);
+    case "success":
+      return settled(message, status, expanded, false);
+    default: {
+      const _exhaustive: never = status.tone;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function shellOutcome(job: ShellJob): string | undefined {
+  const { state } = job;
+
+  switch (state.kind) {
+    case "running":
+      return undefined;
+    case "exited":
+      return state.code === 0 ? undefined : `exit ${String(state.code)}`;
+    case "signalled":
+      return state.signal;
+    case "cancelled":
+      return "cancelled";
+    case "failed":
+      return state.message;
+    default: {
+      const _exhaustive: never = state;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** The card for a local `!` command: `!`, or `!!` when its output is not sent to the model. */
+export function shellCard(job: ShellJob, now: number, expanded: boolean): ToolCardModel {
+  const outcome = shellOutcome(job);
+  const running = job.state.kind === "running";
+  const mark = statusMark(running ? "running" : outcome === undefined ? "done" : "failed");
+
+  return {
+    heading: heading(
+      mark.glyph,
+      mark.tone,
+      `${job.include ? "!" : "!!"} ${job.command}`,
+      [
+        resultSummary(job.output),
+        outcome,
+        running ? formatDuration(Math.max(0, now - job.startedAt)) : undefined,
+        job.include ? undefined : "not sent to model",
+      ],
+      job.command,
+    ),
+    body: textBody(
+      job.output,
+      expanded,
+      { kind: "tail", max: RESULT_TAIL_ONLY_LINES },
+      outcome === undefined ? "dim" : "error",
+      undefined,
+    ),
+  };
+}

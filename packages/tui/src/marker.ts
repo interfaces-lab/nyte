@@ -4,8 +4,8 @@
  * nothing about scrolling or the session item it stands for.
  */
 import { BoxRenderable, fg, StyledText } from "@opentui/core";
-import { SPACING } from "./constants.ts";
-import { omittedLabel, previewLines } from "./format.ts";
+import { SPACING } from "./lib/constants.ts";
+import { omittedLabel, previewLines } from "./lib/format.ts";
 import { repaints, TranscriptTextRenderable } from "./surface.ts";
 import type { Transcript } from "./surface.ts";
 import {

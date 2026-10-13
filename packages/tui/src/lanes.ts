@@ -1,5 +1,5 @@
 import type { Delivery } from "@nyte-ai/sdk";
-import type { UserMessage } from "./view-helpers.ts";
+import type { UserMessage } from "./lib/view-helpers.ts";
 
 export interface DeliveryChoices {
   readonly steer: Delivery;
