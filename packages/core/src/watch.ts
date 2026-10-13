@@ -20,16 +20,28 @@ import type {
 } from "@nyte-ai/schema";
 import type { FeedItem, HeadPair, SessionBus } from "./bus.ts";
 import { dev } from "./dev-log.ts";
-import { emptyFold, fold, project, withPair } from "./fold.ts";
+import { emptyFold, fold, project, seenOf, withPair } from "./fold.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { settleAnswersFrom } from "./parts.ts";
-import { decodeRunRecord, isJsonObject } from "./records.ts";
+import { decodeRunRecord, decodeSeenRecord, isJsonObject } from "./records.ts";
 import type { SeenRecord } from "./records.ts";
 import { headOf, headRef, runRef, seenRef, sessionOf } from "./refs.ts";
-import { EMPTY_REVISION, commit, load, put } from "./session-state.ts";
+import {
+  EMPTY_REVISION,
+  STALE,
+  START,
+  attempt,
+  commit,
+  expectOf,
+  load,
+  pathOf,
+  put,
+  tipOf,
+  withFold,
+} from "./session-state.ts";
 
-/** Holds one shared fold per session per principal: built on first acquire, dropped on last release. */
+/** Holds one shared fold per session, whatever principal acquires it: built on first acquire, kept `FOLD_LINGER` ms after the last release so the next acquire reuses it, then dropped. */
 export interface FoldCache {
   acquire(
     session: SessionId,
@@ -37,17 +49,19 @@ export interface FoldCache {
   ): {
     /** Resolves once the fold holds the session's log through its tail. */
     ready(): Promise<void>;
+    /** The shared fold, projecting for this hold's principal. */
     state(): FoldState;
     subscribe(listener: (state: FoldState) => void): Disposer;
     release(): void;
   };
 }
 
-/** One session this kernel's bus carries: how many feeds follow it, the seq the first read the log through, and the seq through which its log was published here. */
+/** One session this kernel's bus carries: how many feeds follow it, the seq the first read the log through, and the seq through which its log was published here. Dropped once no feed follows it and no publish is under way. */
 export interface Follow {
   feeds: number;
   from: Seq | null;
   published: Seq | null;
+  publishing: number;
 }
 
 /** One live part's streamed state as this process published it: its run, its text so far (text and thinking parts) and its last tool progress. */
@@ -60,6 +74,7 @@ export interface LiveStream {
 type Entry = {
   state: FoldState;
   holders: number;
+  linger: ReturnType<typeof setTimeout> | undefined;
   ready: Promise<void>;
   catchUp: () => Promise<void>;
   dispose: Disposer;
@@ -73,16 +88,22 @@ type Feeds = Pick<
 
 const LOG_PAGE = 512;
 
+/** How long an unheld fold stays built, in ms. */
+const FOLD_LINGER = 30_000;
+
+const SEEN_DELAY = 16;
+
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a fold cache over the kernel's store and bus, fed by `sessionEvents`' feed. Each item is folded with its head pair in one step: a head's revision is the pair's when the pair's tip is the head's tip, else null. */
+/** Returns a fold cache over the kernel's store and bus, fed by `sessionEvents`' feed. Each item is folded with its head pair in one step: a head's revision is the pair's when the pair's tip is the head's tip, else null. A hold's state is the shared state with the hold's principal, so seen marks and unread are that principal's. */
 export function createFoldCache(kernel: Feeds): FoldCache {
-  const entries = new Map<string, Entry>();
+  const entries = new Map<SessionId, Entry>();
 
   const build = (session: SessionId, principal: PrincipalId): Entry => {
     const entry: Entry = {
       state: emptyFold({ session, principal }),
       holders: 0,
+      linger: undefined,
       ready: Promise.resolve(),
       catchUp: async () => {},
       dispose: () => {},
@@ -110,21 +131,31 @@ export function createFoldCache(kernel: Feeds): FoldCache {
 
   return {
     acquire(session, principal) {
-      const key = JSON.stringify([session, principal]);
-      const entry = entries.get(key) ?? build(session, principal);
+      const entry = entries.get(session) ?? build(session, principal);
       const own = new Set<(state: FoldState) => void>();
       let released = false;
-      entries.set(key, entry);
+      let mine: { readonly shared: FoldState; readonly state: FoldState } | null = null;
+      entries.set(session, entry);
       entry.holders += 1;
+      clearTimeout(entry.linger);
+      entry.linger = undefined;
+
+      const as = (shared: FoldState): FoldState => {
+        if (shared.principal === principal) return shared;
+
+        if (mine?.shared !== shared) mine = { shared, state: { ...shared, principal } };
+
+        return mine.state;
+      };
 
       return {
         async ready() {
           await entry.ready;
           await entry.catchUp();
         },
-        state: () => entry.state,
+        state: () => as(entry.state),
         subscribe(listener) {
-          const relay = (state: FoldState) => listener(state);
+          const relay = (state: FoldState) => listener(as(state));
           entry.listeners.add(relay);
           own.add(relay);
 
@@ -141,9 +172,15 @@ export function createFoldCache(kernel: Feeds): FoldCache {
           entry.holders -= 1;
 
           if (entry.holders > 0) return;
-          entry.dispose();
 
-          if (entries.get(key) === entry) entries.delete(key);
+          entry.linger = setTimeout(() => {
+            if (entry.holders > 0) return;
+            entry.dispose();
+
+            if (entries.get(session) === entry) entries.delete(session);
+          }, FOLD_LINGER);
+
+          if (typeof entry.linger === "object") entry.linger.unref();
         },
       };
     },
@@ -198,7 +235,7 @@ export function sessionEvents(
   });
 }
 
-/** Publishes a successful set's events on the bus through `followLog`, each event that moved a head written in this set paired with the tip and revision the `SetOutcome` gave it. A session's first mark is where the set's own events start, or where a feed following it finished reading the log, whichever is earlier. */
+/** Publishes a successful set's events on the bus through `followLog`, each event that moved a head written in this set paired with the tip and revision the `SetOutcome` gave it. The outcome's seq is the set's last event's, so it marks and pairs only the session of the set's last event. A session's first mark is where the set's own events start, or where a feed following it finished reading the log, whichever is earlier. */
 export async function publishSet(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   updates: readonly RefUpdate[],
@@ -206,14 +243,16 @@ export async function publishSet(
 ): Promise<void> {
   if (outcome.kind !== "set") return;
   const counts = new Map<SessionId, number>();
+  let last: SessionId | null = null;
 
   for (const update of updates) {
     const session = update.event === undefined ? null : sessionOf(update.name);
 
-    if (session !== null) counts.set(session, (counts.get(session) ?? 0) + 1);
+    if (session === null) continue;
+    counts.set(session, (counts.get(session) ?? 0) + 1);
+    last = session;
   }
 
-  const last = [...counts.keys()].at(-1);
   const written = new Map<HeadName, HeadPair>();
 
   for (const [index, update] of updates.entries()) {
@@ -232,19 +271,25 @@ export async function publishSet(
 
   for (const [session, count] of counts) {
     const follow = followOf(kernel.follows, session);
+    follow.publishing += 1;
 
-    if (follow.published === null) {
-      const through = session === last ? outcome.seq : await kernel.store.refs.tail(session);
-      const own = Math.max(0, through - count);
-      follow.published = asSeq(Math.min(follow.from ?? own, own));
+    try {
+      if (follow.published === null) {
+        const through = session === last ? outcome.seq : await kernel.store.refs.tail(session);
+        const own = Math.max(0, through - count);
+        follow.published = asSeq(Math.min(follow.from ?? own, own));
+      }
+
+      await followLog(
+        kernel,
+        session,
+        follow.published,
+        session === last ? { through: outcome.seq, heads: written } : null,
+      );
+    } finally {
+      follow.publishing -= 1;
+      unfollow(kernel.follows, session, follow);
     }
-
-    await followLog(
-      kernel,
-      session,
-      follow.published,
-      session === last ? { through: outcome.seq, heads: written } : null,
-    );
   }
 }
 
@@ -256,22 +301,28 @@ export async function followLog(
   known: { readonly through: Seq; readonly heads: ReadonlyMap<HeadName, HeadPair> } | null = null,
 ): Promise<void> {
   const follow = followOf(kernel.follows, session);
+  follow.publishing += 1;
 
-  for (;;) {
-    const events = await kernel.store.refs.log(session, follow.published ?? from, LOG_PAGE);
-    const items = await paired(kernel, session, events, known);
+  try {
+    for (;;) {
+      const events = await kernel.store.refs.log(session, follow.published ?? from, LOG_PAGE);
+      const items = await paired(kernel, session, events, known);
 
-    for (const { event, head } of items) {
-      if (event.seq <= (follow.published ?? from)) continue;
-      follow.published = event.seq;
-      kernel.bus.publish(session, event, head);
+      for (const { event, head } of items) {
+        if (event.seq <= (follow.published ?? from)) continue;
+        follow.published = event.seq;
+        kernel.bus.publish(session, event, head);
+      }
+
+      if (events.length < LOG_PAGE) return;
     }
-
-    if (events.length < LOG_PAGE) return;
+  } finally {
+    follow.publishing -= 1;
+    unfollow(kernel.follows, session, follow);
   }
 }
 
-/** Writes a principal's seen mark for a head and publishes its `seen` event. */
+/** Moves a principal's seen mark for a head forward to a commit and publishes its `seen` event: written against the mark's revision, re-read when another write wins, and skipped when the mark already names the commit or is newer (the commit is behind a mark that is still on the head's path). */
 export async function advanceSeen(
   kernel: Kernel,
   input: {
@@ -281,20 +332,84 @@ export async function advanceSeen(
     readonly commit: CommitId | null;
   },
 ): Promise<void> {
+  const name = seenRef(input.session, input.principal, input.head);
   const record: SeenRecord = { commit: input.commit };
 
-  await commit(kernel, [
-    {
-      name: seenRef(input.session, input.principal, input.head),
-      target: await put(kernel, "seen", record),
-      event: {
-        head: input.head,
-        kind: "seen",
-        principal: input.principal,
-        commit: input.commit,
+  await attempt(`Marking ${input.head} seen`, async () => {
+    const ref = await kernel.store.refs.get(name);
+    const mark = (await load(kernel, ref, decodeSeenRecord))?.record.commit ?? null;
+
+    if (ref !== null && mark === input.commit) return true;
+
+    if (
+      mark !== null &&
+      (await withFold(kernel, input.session, (state) => {
+        const tip = state.heads.get(input.head)?.info.tip ?? START;
+
+        return (
+          pathOf(state.commits, tipOf(tip)).includes(mark) &&
+          (input.commit === null || pathOf(state.commits, mark).includes(input.commit))
+        );
+      }))
+    )
+      return true;
+
+    const outcome = await commit(kernel, [
+      {
+        name,
+        target: await put(kernel, "seen", record),
+        expect: expectOf(ref),
+        event: {
+          head: input.head,
+          kind: "seen",
+          principal: input.principal,
+          commit: input.commit,
+        },
       },
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
+}
+
+/** Returns a principal's seen-mark writer for one head: `note` schedules `advanceSeen` to a tip one frame later, the newest tip winning; `flush` writes a pending tip at once and resolves when every write has finished. A failed write is a `dev` line, never an error. */
+export function seenWriter(
+  kernel: Kernel,
+  input: {
+    readonly session: SessionId;
+    readonly principal: PrincipalId;
+    readonly head: HeadName;
+  },
+): { note(tip: CommitId | null): void; flush(): Promise<void> } {
+  let pending: { readonly tip: CommitId | null } | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let writing: Promise<void> = Promise.resolve();
+
+  const flush = (): Promise<void> => {
+    clearTimeout(timer);
+    timer = undefined;
+    const next = pending;
+    pending = null;
+
+    if (next === null) return writing;
+
+    writing = writing
+      .then(() => advanceSeen(kernel, { ...input, commit: next.tip }))
+      .catch((error: unknown) =>
+        dev("watch", "seen failed", { session: input.session, head: input.head, error: String(error) }),
+      );
+
+    return writing;
+  };
+
+  return {
+    note(tip) {
+      pending = { tip };
+      clearTimeout(timer);
+      timer = setTimeout(() => void flush(), SEEN_DELAY);
     },
-  ]);
+    flush,
+  };
 }
 
 /** Keeps `streams` current from what the bus carries: a part's text from its creation, durable updates and appends, its tool progress, dropped when it settles, fails or closes or its run ends. */
@@ -330,7 +445,10 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
     else if (event.kind === "call" && event.change === "intent" && current !== undefined)
       parts.set(event.part, { ...current, markdown: null, progress: null });
     else if (
-      (event.kind === "part" && event.change !== "updated" && event.change !== "waiting") ||
+      (event.kind === "part" &&
+        event.change !== "updated" &&
+        event.change !== "waiting" &&
+        event.change !== "answered") ||
       (event.kind === "call" && event.change === "settled")
     )
       parts.delete(event.part);
@@ -384,8 +502,7 @@ function openFeed(
     open = false;
     unsubscribe();
     follow.feeds -= 1;
-
-    if (follow.feeds === 0) follow.from = null;
+    unfollow(kernel.follows, session, follow);
   };
 
   const catchUp = async (): Promise<void> => {
@@ -484,10 +601,15 @@ function movedHead(event: SessionEvent | PatchEvent): HeadName | null {
 }
 
 function followOf(follows: Map<SessionId, Follow>, session: SessionId): Follow {
-  const follow = follows.get(session) ?? { feeds: 0, from: null, published: null };
+  const follow = follows.get(session) ?? { feeds: 0, from: null, published: null, publishing: 0 };
   follows.set(session, follow);
 
   return follow;
+}
+
+function unfollow(follows: Map<SessionId, Follow>, session: SessionId, follow: Follow): void {
+  if (follow.feeds === 0 && follow.publishing === 0 && follows.get(session) === follow)
+    follows.delete(session);
 }
 
 /** Yields `initial`, then the newest value pushed since the last pull; `return()` unsubscribes at once, even while a pull waits. */
@@ -685,7 +807,7 @@ export function coalesce<T>(source: AsyncIterable<T>, frameMs = 16): AsyncIterab
   });
 }
 
-/** Yields the head's view on every change, coalesced; after each yield whose tip moved, writes the principal's seen mark. `return()` releases the fold at once. */
+/** Yields the head's view on every change, coalesced; after each yield whose tip is not the principal's seen mark, moves the mark there through `seenWriter`, written by `return()` at the latest. `return()` releases the fold at once. */
 export function watchHead(
   kernel: Kernel,
   input: {
@@ -697,16 +819,14 @@ export function watchHead(
 ): AsyncIterable<SessionView> {
   return closable<SessionView>(() => {
     const hold = kernel.folds.acquire(input.session, input.principal);
+    const seen = seenWriter(kernel, input);
     let states: AsyncIterator<FoldState> | null = null;
     let closed = false;
     let shown: SessionView | null = null;
     let marked: CommitId | null | undefined;
-    let seeing: Promise<void> = Promise.resolve();
 
     return {
       async pull() {
-        await seeing;
-
         if (states === null) {
           await hold.ready();
 
@@ -728,9 +848,9 @@ export function watchHead(
           const head = state.heads.get(input.head);
           const tip = head?.info.tip.kind === "commit" ? head.info.tip.id : null;
 
-          if (head !== undefined && tip !== head.seen && tip !== marked) {
+          if (head !== undefined && tip !== seenOf(state, input.head) && tip !== marked) {
             marked = tip;
-            seeing = advanceSeen(kernel, { ...input, commit: tip });
+            seen.note(tip);
           }
 
           return { done: false, value: view };
@@ -741,7 +861,7 @@ export function watchHead(
         void states?.return?.();
         hold.release();
 
-        return seeing;
+        return seen.flush();
       },
     };
   });
@@ -777,17 +897,13 @@ export function pollStore(kernel: Kernel): Disposer {
   let stopped = false;
 
   const pass = async (): Promise<void> => {
-    const followed = [...kernel.follows];
-    dev("poll", "pass", { sessions: followed.length });
-
-    for (const [session, follow] of followed) {
+    for (const [session, follow] of Array.from(kernel.follows)) {
       if (follow.feeds === 0 || follow.from === null || stopped) continue;
       await followLog(kernel, session, follow.from);
     }
 
     if (stopped) return;
-    const woke = await kernel.waits.settleFromStore();
-    dev("poll", "waits", { woke });
+    await kernel.waits.settleFromStore();
     await settleAnswersFrom(kernel);
     await rereadFences(kernel);
   };
@@ -810,8 +926,6 @@ export function pollStore(kernel: Kernel): Disposer {
 
 /** Aborts each run a turn drives here whose stop fence another instance wrote: marks it stopping, aborts its signal and wakes its parked waits with `stopped`. */
 export async function rereadFences(kernel: Kernel): Promise<void> {
-  dev("poll", "fences", { runs: kernel.driving.size });
-
   for (const [run, session] of Array.from(kernel.driving)) {
     if (kernel.runs.isStopping(run)) continue;
 

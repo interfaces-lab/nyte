@@ -9,7 +9,7 @@ import type {
   RefUpdate,
   SessionId,
 } from "@nyte-ai/schema";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import {
   coalesce,
   createHostState,
@@ -291,8 +291,22 @@ describe("watch", () => {
 
     await Promise.all([left.return?.(), right.return?.()]);
     const kept = hold.state();
-    hold.release();
-    other.release();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    try {
+      hold.release();
+      other.release();
+      const reused = kernel.folds.acquire(first, ada);
+
+      expect(reused.state()).toBe(kept);
+      reused.release();
+      vi.advanceTimersByTime(30_000);
+
+      expect(kernel.follows.has(first)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+
     const rebuilt = kernel.folds.acquire(first, ada);
     await rebuilt.ready();
 

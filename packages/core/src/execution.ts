@@ -14,6 +14,7 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import { landing, startOf } from "./admission.ts";
+import { objectId } from "./content.ts";
 import { dev } from "./dev-log.ts";
 import type { FoldInput } from "./fold.ts";
 import type { Kernel, LandedInput } from "./kernel.ts";
@@ -25,7 +26,6 @@ import { leaseRef, runRef } from "./refs.ts";
 import { begin, endRun, newRun } from "./runs.ts";
 import { listSessions } from "./session.ts";
 import {
-  addDriven,
   commit,
   covers,
   liveRun,
@@ -58,15 +58,14 @@ interface Held {
   readonly owners: Set<object>;
 }
 
-/** What `kernel.executionState` holds: the leases, the open covers, the heads an advance steps now, the claim queue per lease, the renew timer and the host-closing controller. */
+/** What `kernel.executionState` holds: the leases, the open covers, the heads an advance steps now, the claim queue per lease, the pending dispatches (true once a wake arrived meanwhile), the branch summaries this process is writing by receipt, the call queues, the renew timer and the host-closing controller. */
 export interface ExecutionState {
   readonly held: Map<string, Held>;
   readonly covers: Map<object, ExecutionCoverage>;
   readonly advancing: Set<string>;
   readonly queue: Map<string, Promise<unknown>>;
-  readonly driven: Set<ExecutionCoverage>;
-  readonly pending: Set<string>;
-  readonly landedRuns: Map<RunId, MessageId[]>;
+  readonly pending: Map<string, boolean>;
+  readonly summaries: Set<string>;
   readonly callQueues: Map<string, Promise<unknown>>;
   timer: ReturnType<typeof setInterval> | null;
   closing: AbortController;
@@ -78,9 +77,8 @@ export function createExecutionState(): ExecutionState {
     covers: new Map(),
     advancing: new Set(),
     queue: new Map(),
-    driven: new Set(),
-    pending: new Set(),
-    landedRuns: new Map(),
+    pending: new Map(),
+    summaries: new Set(),
     callQueues: new Map(),
     timer: null,
     closing: new AbortController(),
@@ -92,7 +90,6 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   const state = kernel.executionState;
   const handle = {};
   state.covers.set(handle, { ...coverage });
-  const unregister = addDriven(kernel, coverage);
 
   state.timer ??= setInterval(() => {
     renew(kernel).catch(() => undefined);
@@ -102,7 +99,6 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      unregister();
       state.covers.delete(handle);
 
       if (state.covers.size === 0 && state.timer !== null) {
@@ -202,7 +198,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
 }
 
-/** Returns one page of heads owed a step and wakes each. It first parks the page's recorded waits, so a wait whose target settled while no instance held it is settled and its head woken, and settles the moves a crash left pending. */
+/** Returns one page of heads owed a step and wakes each. It first parks the page's recorded waits, so a wait whose target settled while no instance held it is settled and its head woken, and settles the moves and branch summaries a crash left pending. */
 export async function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
@@ -375,21 +371,22 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
 
 /** Renews the leases open covers own; a lease only an advance holds is renewed by its drive. */
 async function renew(kernel: Kernel): Promise<void> {
-  const held = kernel.executionState.held;
-  dev("execution", "renew", { held: held.size });
-
-  for (const entry of Array.from(held.values()))
+  for (const entry of Array.from(kernel.executionState.held.values()))
     if (entry.owners.size > 0) await claim(kernel, entry.session, entry.head);
 }
 
 function inOrder<T>(kernel: Kernel, name: string, task: () => Promise<T>): Promise<T> {
   const queue = kernel.executionState.queue;
   const done = (queue.get(name) ?? Promise.resolve()).then(task);
-
-  queue.set(
-    name,
-    done.catch(() => undefined),
+  const settled = done.then(
+    () => undefined,
+    () => undefined,
   );
+
+  queue.set(name, settled);
+  void settled.then(() => {
+    if (queue.get(name) === settled) queue.delete(name);
+  });
 
   return done;
 }
@@ -480,13 +477,17 @@ async function settleLive(
     kernel.runs.markStopping(run);
     kernel.runs.abort(run);
     await kernel.waits.runStopped(session, run);
-    await resume(kernel, session, head, run);
+    const refused = await resume(kernel, session, head, run);
+
+    if (refused !== null) return refused;
     await endRun(kernel, session, run, { kind: "stopped" });
 
     return null;
   }
 
-  await resume(kernel, session, head, run);
+  const refused = await resume(kernel, session, head, run);
+
+  if (refused !== null) return refused;
 
   const record = (
     await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
@@ -516,14 +517,18 @@ async function holding(
     : null;
 }
 
-/** Re-runs, one at a time, a run's tool calls owed a re-run with the principal their intent recorded, on the session's runtime held from here and ready. */
+/** Re-runs, one at a time, a run's tool calls owed a re-run with the principal their intent recorded, on the session's runtime held from here and ready, renewing the head's lease as `drive` does. A refused renewal aborts the calls, leaves the run live for its new holder and is returned. */
 async function resume(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   run: RunId,
-): Promise<void> {
-  const signal = kernel.runs.signal(run) ?? kernel.runs.start(run).signal;
+): Promise<Refused | null> {
+  const renewal = renewing(kernel, session, head);
+  const signal = AbortSignal.any([
+    kernel.runs.signal(run) ?? kernel.runs.start(run).signal,
+    renewal.signal,
+  ]);
   const runtime = kernel.pluginsFor(session);
   const release = runtime.hold();
 
@@ -531,6 +536,8 @@ async function resume(
     await runtime.ready;
 
     for (const owed of await owedCalls(kernel, session, run)) {
+      if (renewal.signal.aborted) break;
+
       if (owed.parked) continue;
 
       await executeCall(kernel, {
@@ -551,8 +558,34 @@ async function resume(
       });
     }
   } finally {
+    renewal.stop();
     release();
   }
+
+  const refused = renewal.refused();
+
+  if (refused !== null) kernel.runs.end(run);
+
+  return refused;
+}
+
+/** Renews a head's lease every 10 s until stopped; a refused renewal aborts `signal` and is what `refused()` returns. */
+function renewing(kernel: Kernel, session: SessionId, head: HeadName) {
+  const fenced = new AbortController();
+  let refused: Refused | null = null;
+
+  const timer = setInterval(() => {
+    claim(kernel, session, head).then(
+      (report) => {
+        if (report === null) return;
+        refused = report;
+        fenced.abort();
+      },
+      () => undefined,
+    );
+  }, RENEW_MS);
+
+  return { signal: fenced.signal, refused: () => refused, stop: () => clearInterval(timer) };
 }
 
 /** Runs a run's turn here and ends the run with its end; a parked turn leaves its run live. The turn is abandoned, its run left live, when the host closes or when a lease renewal is refused, which it returns for `advance` to report. */
@@ -564,27 +597,15 @@ async function drive(
 ): Promise<Refused | null> {
   kernel.driving.set(run.id, session);
   const closing = kernel.executionState.closing.signal;
-  const fenced = new AbortController();
-  let refused: Refused | null = null;
+  const renewal = renewing(kernel, session, head);
 
   const signal = AbortSignal.any([
     kernel.runs.signal(run.id) ?? kernel.runs.start(run.id).signal,
     closing,
-    fenced.signal,
+    renewal.signal,
   ]);
 
-  const renewal = setInterval(() => {
-    claim(kernel, session, head).then(
-      (report) => {
-        if (report === null) return;
-        refused = report;
-        fenced.abort();
-      },
-      () => undefined,
-    );
-  }, RENEW_MS);
-
-  const unrenew = (): void => clearInterval(renewal);
+  const unrenew = (): void => renewal.stop();
   closing.addEventListener("abort", unrenew, { once: true });
 
   const turned = kernel.turn
@@ -593,7 +614,7 @@ async function drive(
       head,
       run,
       signal,
-      boundary: () => boundary(kernel, session, head, run.id),
+      boundary: () => boundary(kernel, session, head, run),
     })
     .then(
       (end) => ({ end }),
@@ -612,6 +633,7 @@ async function drive(
 
   const ended = await Promise.race([turned, closed]);
   const stopping = kernel.runs.isStopping(run.id);
+  const refused = renewal.refused();
 
   if (refused !== null) {
     kernel.runs.end(run.id);
@@ -633,25 +655,29 @@ async function drive(
   return null;
 }
 
+/** Lands, in inbox order, what a live run takes at a boundary: attached inputs, steers joined to it, and steers admitted with its configuration while no run was live to join. */
 async function boundary(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
-  run: RunId,
+  run: RunView,
 ): Promise<readonly LandedInput[]> {
   const inbox = await readInbox(kernel, session, head);
 
-  const due = await withFold(kernel, session, (state) =>
-    inbox.messages.flatMap((id): readonly LandedInput[] => {
-      const input = state.inputs.get(id);
-
-      return input !== undefined &&
-        (input.delivery === "attach" ||
-          (input.schedule.kind === "joined" && input.schedule.run === run))
-        ? [{ message: id, delivery: input.delivery, source: input.source }]
-        : [];
-    }),
+  const inputs = await withFold(kernel, session, (state) =>
+    inbox.messages.flatMap((id) => state.inputs.get(id) ?? []),
   );
+
+  const key = await objectId(run.configuration);
+  const due: LandedInput[] = [];
+
+  for (const input of inputs)
+    if (
+      input.delivery === "attach" ||
+      (input.schedule.kind === "joined" && input.schedule.run === run.id) ||
+      (input.delivery === "steer" && (await objectId(input.configuration)) === key)
+    )
+      due.push({ message: input.id, delivery: input.delivery, source: input.source });
 
   if (due.length === 0) return [];
 
@@ -660,12 +686,13 @@ async function boundary(
     session,
     head,
     due.map((input) => input.message),
-    run,
+    run.id,
   );
 
   return due.filter((input) => landed.includes(input.message));
 }
 
+/** Returns what starts a run on an idle head: `startOf`'s origin and prompt, and the inputs that land with it in inbox order: the prompt, attached inputs, and every steer admitted with the prompt's configuration, so no earlier steer waits behind a later one. */
 async function dueInputs(
   kernel: Kernel,
   session: SessionId,
@@ -679,19 +706,27 @@ async function dueInputs(
 
   if (inbox.messages.length === 0) return null;
 
-  return withFold(kernel, session, (state) => {
+  const read = await withFold(kernel, session, (state) => {
     const inputs = inbox.messages.flatMap((id) => state.inputs.get(id) ?? []);
-    const start = startOf(state, head, inputs);
 
-    if (start === null) return null;
-
-    return {
-      ...start,
-      ids: inputs.flatMap((input) =>
-        input === start.input || input.delivery === "attach" ? [input.id] : [],
-      ),
-    };
+    return { inputs, start: startOf(state, head, inputs) };
   });
+
+  const { inputs, start } = read;
+
+  if (start === null) return null;
+  const key = await objectId(start.input.configuration);
+  const ids: MessageId[] = [];
+
+  for (const input of inputs)
+    if (
+      input === start.input ||
+      input.delivery === "attach" ||
+      (input.delivery === "steer" && (await objectId(input.configuration)) === key)
+    )
+      ids.push(input.id);
+
+  return { ...start, ids };
 }
 
 /** Returns what a head needs after a step drove it: `continue` when an input is due, a stop or a call re-run is owed, or the run waits on nothing; `waiting` while a call is parked; `retry` until a retrying run's `until`; `idle` when nothing is live or due, or another drive here holds the run. */
