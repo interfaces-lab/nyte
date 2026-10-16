@@ -742,7 +742,7 @@ export const COMPACT_COMMAND = {
   owner: "",
   side: "client",
   title: "Compact",
-  description: "Summarize the conversation to free up context",
+  description: "Summarize the chat to free up context",
   arguments: null,
 } satisfies CommandInfo;
 

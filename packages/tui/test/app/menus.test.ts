@@ -46,8 +46,8 @@ test("every slash menu opens under the composer and closes without sending", asy
     ["follow-up", "Follow-up behavior"],
     ["resume", "Resume chat"],
     ["tasks", "Tasks"],
-    ["tree", "Session Tree"],
-    ["edit", "Session Tree"],
+    ["tree", "Chat Tree"],
+    ["edit", "Chat Tree"],
     ["plugins", "Plugins"],
     ["accounts", "Accounts"],
     ["login", "Sign in to a provider"],
@@ -98,12 +98,12 @@ test("/tree opens under the composer, Enter on the latest message says it is alr
   await answered(tui, "Hello from the fake provider.");
 
   await tui.send("/tree");
-  await tui.frame((frame) => belowComposer(frame, "Session Tree"));
+  await tui.frame((frame) => belowComposer(frame, "Chat Tree"));
   tui.press("picker.accept");
   await tui.frame((frame) => belowComposer(frame, "Already at that point in the chat"));
   tui.press("tree.close");
   await tui.frame(
-    (frame) => !frame.includes("Session Tree") && composerShows(frame, COMPOSER_PLACEHOLDER),
+    (frame) => !frame.includes("Chat Tree") && composerShows(frame, COMPOSER_PLACEHOLDER),
   );
 });
 

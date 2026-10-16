@@ -263,7 +263,7 @@ function send(
 ): Step {
   const followed = state.facts.session;
 
-  if (followed === null) return refuse(state, "Wait for the session to open", now);
+  if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
   if (state.local.pasting > 0)
     return stay(withLocal(state, { sendAfterPaste: { delivery, warning } }));

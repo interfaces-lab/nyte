@@ -124,7 +124,7 @@ describe("screen", () => {
 
     expect(row(frame, "Here it is.")).toBeLessThan(rule);
     expect(row(frame, "Already at that point in the chat")).toBeGreaterThan(rule);
-    expect(row(frame, "Session Tree")).toBeGreaterThan(
+    expect(row(frame, "Chat Tree")).toBeGreaterThan(
       row(frame, "Already at that point in the chat"),
     );
   });

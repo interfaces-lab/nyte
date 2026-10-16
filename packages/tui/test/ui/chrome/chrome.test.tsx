@@ -84,7 +84,7 @@ describe("notice line", () => {
     await using app = await mount(state, () => <NoticeLine />, { width: 100, height: 4 });
     const frame = app.captureCharFrame();
 
-    expect(frame).toContain("Session updates stopped · socket closed · retry");
+    expect(frame).toContain("Chat updates stopped · socket closed · retry");
     expect(frame).toContain("Something failed in effect: boom · /home/.nyte/logs/tui.log");
     expect(frame).toContain("Already sent");
 

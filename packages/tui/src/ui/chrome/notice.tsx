@@ -24,8 +24,8 @@ export function NoticeLine(): JSX.Element {
           <box id="watch-failed" flexDirection="row" height={1}>
             <text fg={theme().warning} wrapMode="none" flexShrink={1}>
               {watch().failure === null
-                ? "Session updates stopped · "
-                : `Session updates stopped · ${watch().failure ?? ""} · `}
+                ? "Chat updates stopped · "
+                : `Chat updates stopped · ${watch().failure ?? ""} · `}
             </text>
             <text
               id="watch-retry"

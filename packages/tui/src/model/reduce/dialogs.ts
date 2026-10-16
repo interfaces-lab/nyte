@@ -152,7 +152,7 @@ export function openDialog(
     }
 
     case "model": {
-      if (followed === null) return refuse(state, "Wait for the session to open", now);
+      if (followed === null) return refuse(state, "Wait for the chat to open", now);
       const catalog = state.facts.catalog.catalog;
 
       const dialog: ModelDialog = {
@@ -175,10 +175,10 @@ export function openDialog(
     }
 
     case "tree":
-      if (followed === null) return refuse(state, "Wait for the session to open", now);
+      if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
       if (busy(state))
-        return refuse(state, "Wait for the current run before changing the session branch", now);
+        return refuse(state, "Wait for the current run before changing the chat branch", now);
 
       return push(
         minted.state,
@@ -217,7 +217,7 @@ export function openDialog(
         });
 
       if (request.content === "usage" && followed === null)
-        return refuse(state, "Wait for the session to open", now);
+        return refuse(state, "Wait for the chat to open", now);
 
       return push(minted.state, { kind: "text", id, title, body: { kind: "loading" }, scroll: 0 }, [
         {
@@ -232,7 +232,7 @@ export function openDialog(
     }
 
     case "mcp":
-      if (followed === null) return refuse(state, "Wait for the session to open", now);
+      if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
       return openDialog(
         state,

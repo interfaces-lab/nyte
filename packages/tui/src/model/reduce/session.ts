@@ -169,7 +169,7 @@ export const sessionHandlers = {
   "review-trust": (state, _msg, now) => {
     const followed = state.facts.session;
 
-    if (followed === null) return refuse(state, "Wait for the session to open", now);
+    if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
     return {
       state,
@@ -352,7 +352,7 @@ export const sessionHandlers = {
 function configure(state: State, selection: Partial<Selection>, now: number): Step {
   const followed = state.facts.session;
 
-  if (followed === null) return refuse(state, "Wait for the session to open", now);
+  if (followed === null) return refuse(state, "Wait for the chat to open", now);
   const merged = { ...followed.selection, ...selection };
   const next = withFacts(state, { session: { ...followed, selection: merged } });
 

@@ -101,7 +101,7 @@ export const runHandlers = {
     if (followed === null) return stay(state);
 
     if (busy(state))
-      return refuse(state, "Wait for the current run before changing the session branch", now);
+      return refuse(state, "Wait for the current run before changing the chat branch", now);
 
     const landed = followed.view?.messages.find(
       (message) =>

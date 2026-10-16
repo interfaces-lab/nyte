@@ -51,7 +51,7 @@ test("the composer journey", async ({ desktop }) => {
     const skills = page.getByRole("listbox", { name: "Commands and skills" });
     await expect(skills.getByRole("option")).toHaveCount(1);
     await expect(
-      skills.getByRole("option", { name: "compact Summarize the conversation to free up context" }),
+      skills.getByRole("option", { name: "compact Summarize the chat to free up context" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(skills).toBeHidden();
