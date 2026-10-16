@@ -148,7 +148,7 @@ describe("handler", () => {
       refs: {
         ...opened.refs,
         set: async (updates) =>
-          updates.some((update) => update.event?.kind === "seen")
+          updates.some((update) => update.events?.some((event) => event.kind === "seen"))
             ? Promise.reject(new Error("The seen write was refused."))
             : opened.refs.set(updates),
       },
