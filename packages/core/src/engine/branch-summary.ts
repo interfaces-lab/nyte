@@ -32,7 +32,7 @@ import { fence } from "./fence.ts";
 
 const NOTE: Placement = { kind: "transcript", role: "note" };
 
-export type Summarized =
+type Summarized =
   | { readonly kind: "failed"; readonly outcome: MoveFailure }
   | { readonly kind: "settled" }
   | {

@@ -359,7 +359,7 @@ export function workspaceHandle(
   };
 }
 
-export async function workspaceInfo(
+async function workspaceInfo(
   kernel: Kernel,
   id: WorkspaceId,
   trust?: TrustResolver,
@@ -389,7 +389,7 @@ export async function workspaceInfo(
   };
 }
 
-export async function sessionsOn(
+async function sessionsOn(
   kernel: Kernel,
   workspace: WorkspaceId,
 ): Promise<readonly SessionId[]> {
@@ -614,7 +614,7 @@ function changed(kernel: Kernel, id: WorkspaceId): void {
   for (const listener of kernel.workspaceState.listeners) listener(id);
 }
 
-export function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {
+function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {
   const table = kernel.workspaceState.scans;
 
   for (const [session, cached] of table) if (cached.workspace === workspace) table.delete(session);

@@ -246,7 +246,7 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
   };
 }
 
-export async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
+async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const entry = kernel.jobs.get(id);
 
   if (entry === undefined || entry.view.state.kind !== "running") return;

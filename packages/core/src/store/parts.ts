@@ -47,7 +47,7 @@ export function dismiss(table: PartTable, name: string): void {
   table.waiters.delete(name);
 }
 
-export function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly {
+function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly {
   readonly part: PartId;
   readonly answer: Answered;
 }[] {

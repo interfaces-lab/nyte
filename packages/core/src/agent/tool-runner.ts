@@ -49,7 +49,7 @@ import {
 import { dev } from "../util/dev-log.ts";
 import { isJsonObject } from "../util/json-schema.ts";
 
-export type ToolIntent = {
+type ToolIntent = {
   readonly name: string;
   readonly args: Json;
   readonly principal: PrincipalId;
@@ -96,7 +96,7 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = compile(withJson(ToolOutcomeType));
 
-export function decodeToolIntent(value: Json): ToolIntent | null {
+function decodeToolIntent(value: Json): ToolIntent | null {
   if (!isJsonObject(value) || !("args" in value)) return null;
   const { name, args, principal } = value;
 
@@ -136,7 +136,7 @@ export async function executeCall(
   }
 }
 
-export async function executeNested(
+async function executeNested(
   kernel: Kernel,
   input: Where & { readonly args: Json; readonly key: string; readonly runtime: PluginRuntime },
 ): Promise<ToolOutcome | typeof PARKED> {

@@ -153,7 +153,7 @@ export function createRegistrySet(input: {
   return set;
 }
 
-export function createRegistry<T, Handle = Disposer>(input: {
+function createRegistry<T, Handle = Disposer>(input: {
   key(item: T, owner: string): string;
   handle?(item: T, owner: string): Handle;
   readonly overrides?: boolean;
@@ -290,7 +290,7 @@ function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
   return typeof value === "function";
 }
 
-export async function sessionCatalog(
+async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,
 ): Promise<SessionCatalogView | null> {

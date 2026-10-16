@@ -146,7 +146,7 @@ async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<
   ]);
 }
 
-export async function settingsConfigured(
+async function settingsConfigured(
   kernel: Kernel,
   session: SessionId,
   ids: readonly string[],

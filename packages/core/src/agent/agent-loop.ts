@@ -121,7 +121,7 @@ export type LoopEvent<P extends PreparedRequest = PreparedRequest> =
     }
   | { readonly type: "loop_end"; readonly end: LoopEnd<P> };
 
-export interface LoopStream<P extends PreparedRequest = PreparedRequest> extends AsyncIterable<
+interface LoopStream<P extends PreparedRequest = PreparedRequest> extends AsyncIterable<
   LoopEvent<P>
 > {
   result(): Promise<LoopEnd<P>>;

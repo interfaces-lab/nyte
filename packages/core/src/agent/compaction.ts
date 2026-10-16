@@ -103,7 +103,7 @@ const COMPACTION_SYSTEM =
 const BRANCH_SYSTEM =
   "You summarise an abandoned branch of a coding agent's conversation so that the conversation can continue without it.";
 
-export async function latestCompaction(
+async function latestCompaction(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,

@@ -400,7 +400,7 @@ function attachment(
   };
 }
 
-export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi {
+function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi {
   const plan = (entries: readonly BatchEntry[]): FileBatch => ({
     put: (input) => plan([...entries, { kind: "put", ...input }]),
     remove: (input) => plan([...entries, { kind: "remove", ...input }]),

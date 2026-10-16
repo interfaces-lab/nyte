@@ -6,19 +6,19 @@ import { isJsonObject } from "../util/json-schema.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 
-export interface SchemaStep {
+interface SchemaStep {
   readonly kind: "schema";
   readonly name: string;
   readonly sql: { readonly [D in StoreDialect]: readonly string[] };
 }
 
-export interface RewriteStep {
+interface RewriteStep {
   readonly kind: "rewrite";
   readonly name: string;
   rewrite(record: Json): Json | null;
 }
 
-export type StoreStep = SchemaStep | RewriteStep;
+type StoreStep = SchemaStep | RewriteStep;
 
 export interface StoreStamp {
   readonly version: number;
@@ -31,7 +31,7 @@ export interface StoredRecord {
   readonly body: string;
 }
 
-export interface Repoint {
+interface Repoint {
   readonly name: string;
   readonly expect: string;
   readonly id: ObjectId;
@@ -185,7 +185,7 @@ const workspaceTrust: RewriteStep = {
   },
 };
 
-export const STORE_STEPS: readonly StoreStep[] = [
+const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
   sessionIndex,

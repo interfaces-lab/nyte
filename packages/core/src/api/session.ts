@@ -202,7 +202,7 @@ async function describeSession(
   };
 }
 
-export async function listSessions(
+async function listSessions(
   kernel: Kernel,
   principal: PrincipalId,
   input?: { readonly parents?: ParentFilter; readonly cursor?: Cursor; readonly limit?: number },

@@ -102,7 +102,7 @@ export type InboxRecord = Static<typeof InboxRecordType>;
 
 const ChangesRecordType = record({ files: list(typed<FileChange>()(FileChangeType)) });
 
-export type ChangesRecord = Static<typeof ChangesRecordType>;
+type ChangesRecord = Static<typeof ChangesRecordType>;
 
 const RunRecordType = record({
   view: typed<RunView>()(RunViewType),
@@ -262,7 +262,7 @@ const LeaseType = record({
   expiresAt: Type.Number(),
 });
 
-export type Lease = Static<typeof LeaseType>;
+type Lease = Static<typeof LeaseType>;
 
 const HostIdentityType = record({ id: idSchema<"host">(), createdAt: Type.Number() });
 

@@ -105,7 +105,7 @@ const NO_MODELS: ModelsApi = {
   logout: async () => unavailable("models"),
 };
 
-export const BUILTINS: readonly Plugin<"core">[] = [
+const BUILTINS: readonly Plugin<"core">[] = [
   systemPromptPlugin,
   environmentPlugin,
   resourcesPlugin,
@@ -296,7 +296,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
   return kernel;
 }
 
-export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
+type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
       Kernel,

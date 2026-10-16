@@ -91,6 +91,6 @@ function classifyActivationFailure(workspace: WorkspaceId, error: unknown): Acti
     : { kind: "failed", message: error instanceof Error ? error.message : String(error) };
 }
 
-export function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
+function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
   return [...kernel.builtins, ...(runtime.assigned() ?? kernel.hostPlugins)];
 }

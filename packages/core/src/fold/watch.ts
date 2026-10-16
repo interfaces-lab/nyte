@@ -429,7 +429,7 @@ export async function publishSet(
   }
 }
 
-export async function followLog(
+async function followLog(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   session: SessionId,
   from: Seq,
@@ -700,7 +700,7 @@ export function pollStore(kernel: Kernel): Disposer {
   };
 }
 
-export async function rereadFences(kernel: Kernel): Promise<void> {
+async function rereadFences(kernel: Kernel): Promise<void> {
   for (const [run, session] of Array.from(kernel.driving)) {
     if (kernel.runs.isStopping(run)) continue;
 

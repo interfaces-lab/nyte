@@ -41,7 +41,7 @@ export function matchesOutput<T>(schema: Schema<T>, value: unknown): value is T 
   return matches(value);
 }
 
-export type Checked<T> =
+type Checked<T> =
   | { readonly kind: "valid"; readonly value: T }
   | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] };
 

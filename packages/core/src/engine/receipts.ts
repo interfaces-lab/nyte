@@ -29,9 +29,7 @@ import { SdkError } from "../util/error.ts";
 import { stopRun } from "./fence.ts";
 import { notifyReceipt, onReceipt, waitFor } from "./waits.ts";
 
-export type SendOutcome = Awaited<ReturnType<SendReceipt["settled"]>>;
-
-export type Landing = Awaited<ReturnType<SendReceipt["landed"]>>;
+type Landing = Awaited<ReturnType<SendReceipt["landed"]>>;
 
 const RECEIPT_EVENTS: ReadonlySet<string> = new Set(["input", "run", "head"]);
 
@@ -162,7 +160,7 @@ export function typedReceipt<O extends Json>(
   };
 }
 
-export async function landed(
+async function landed(
   kernel: Kernel,
   session: SessionId,
   id: ReceiptId,
@@ -317,7 +315,7 @@ function both(left: Disposer, right: Disposer): Disposer {
   };
 }
 
-export function stopBatch(kernel: Kernel, id: ReceiptId): boolean {
+function stopBatch(kernel: Kernel, id: ReceiptId): boolean {
   const controller = kernel.workspaceState.batches.get(id);
   controller?.abort();
 

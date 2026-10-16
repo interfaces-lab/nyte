@@ -165,7 +165,7 @@ export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["sec
   };
 }
 
-export function createPluginStorage(
+function createPluginStorage(
   kernel: Kernel,
   input: { readonly owner: string; readonly session: SessionId },
 ): PluginStorage {

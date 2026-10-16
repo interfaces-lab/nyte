@@ -150,7 +150,7 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
   };
 }
 
-export async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
+async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
   const [preferred, credentials] = await Promise.all([
@@ -350,7 +350,7 @@ export async function withLimits<T>(
   }
 }
 
-export async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | null> {
+async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | null> {
   const stored = await readModelSelection(kernel.store);
 
   if (stored !== null) return stored;
