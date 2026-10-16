@@ -182,7 +182,7 @@ function applyAppends(messages: readonly Message[], appends: readonly ViewAppend
   return next;
 }
 
-/** Returns the text `after` appended to `before`'s markdown when that, and its version, is all that changed. */
+/** Returns the text `after` appended to `before`'s markdown when that, and its version, is all that changed: every other field of the message and of its state is the same value. */
 function appendedText(
   before: Message,
   after: Message,
@@ -190,25 +190,12 @@ function appendedText(
   if (
     before.kind !== "part" ||
     after.kind !== "part" ||
-    before.id !== after.id ||
-    before.turn !== after.turn ||
-    before.at !== after.at ||
-    before.part !== after.part ||
-    before.partKind !== after.partKind ||
-    before.role !== after.role ||
-    before.status !== after.status ||
     !streamed.Check(before.state) ||
     !streamed.Check(after.state) ||
     after.state.markdown.length <= before.state.markdown.length ||
-    !after.state.markdown.startsWith(before.state.markdown)
-  )
-    return null;
-  const kept = new Map(Object.entries(before.state));
-  const entries = Object.entries(after.state);
-
-  if (
-    entries.length !== kept.size ||
-    entries.some(([key, value]) => key !== "markdown" && kept.get(key) !== value)
+    !after.state.markdown.startsWith(before.state.markdown) ||
+    !sameBesides(before, after, ["version", "state"]) ||
+    !sameBesides(before.state, after.state, ["markdown"])
   )
     return null;
 
@@ -216,6 +203,22 @@ function appendedText(
     append: after.state.markdown.slice(before.state.markdown.length),
     version: after.version,
   };
+}
+
+function sameBesides<T extends Readonly<Record<string, unknown>>>(
+  before: T,
+  after: T,
+  besides: readonly (keyof T)[],
+): boolean {
+  const kept = new Map(Object.entries(before));
+  const entries = Object.entries(after);
+
+  return (
+    entries.length === kept.size &&
+    entries.every(
+      ([key, value]) => besides.includes(key) || (kept.has(key) && kept.get(key) === value),
+    )
+  );
 }
 
 function unfit(message: string): SdkError {
