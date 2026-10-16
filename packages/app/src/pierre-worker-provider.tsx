@@ -208,15 +208,15 @@ function retain(): () => void {
 
 type HighlightNode = ThemedFileResult["code"][number];
 
-const HTML_ESCAPES: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-};
+const HTML_ESCAPES = new Map([
+  ["&", "&amp;"],
+  ["<", "&lt;"],
+  [">", "&gt;"],
+  ['"', "&quot;"],
+]);
 
 function escapeHtml(text: string): string {
-  return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES[character] ?? character);
+  return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
 }
 
 /** A line's tokens as HTML: each token a span carrying its `--diffs-token-*` colours. */
