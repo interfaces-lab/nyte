@@ -608,7 +608,7 @@ async function editGated(
   return sendReceipt(kernel, session, id);
 }
 
-/** The updates that store a starting chat's first message on main, deciding for `principal` until its before_send hooks decide it, with its pending receipt under the chat's id. */
+/** The updates that store a starting chat's first message on main, deciding until its before_send hooks decide it, with its pending receipt under the chat's id. The receipt keeps `principal`, the one the hooks decide for. */
 export async function admitDeciding(
   kernel: Kernel,
   session: SessionId,
@@ -629,7 +629,7 @@ export async function admitDeciding(
     content: first.content,
     source: USER,
     delivery: "steer",
-    schedule: { kind: "deciding", principal: first.principal },
+    schedule: { kind: "deciding" },
     covered: first.covered,
     configuration: first.configuration,
     replaced: null,
@@ -652,6 +652,7 @@ export async function admitDeciding(
         kind: "send",
         digest: first.digest,
         outcome: null,
+        principal: first.principal,
       }),
       expect: "absent",
     },

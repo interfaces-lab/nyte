@@ -205,7 +205,7 @@ describe("sessions.start", () => {
     expect(await store.refs.log(id, asSeq(0), 100)).toContainEqual(
       expect.objectContaining({
         change: "admitted",
-        schedule: { kind: "deciding", principal: TOKEN },
+        schedule: { kind: "deciding" },
       }),
     );
   });

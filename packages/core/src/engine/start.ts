@@ -10,7 +10,15 @@ import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { releaseParts } from "../store/parts.ts";
 import { inboxRef, sessionRef } from "../store/refs.ts";
-import { attempt, MAIN, readInbox, readSession, sessionEvent, STALE } from "../store/session.ts";
+import {
+  attempt,
+  MAIN,
+  readInbox,
+  readReceipt,
+  readSession,
+  sessionEvent,
+  STALE,
+} from "../store/session.ts";
 import type { Found, Inbox } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { readmitDeciding } from "./admission.ts";
@@ -62,11 +70,15 @@ export async function recoverStarts(kernel: Kernel, session: SessionId): Promise
     await readInbox(kernel.store, session, MAIN),
   );
 
-  if (deciding?.schedule.kind !== "deciding") return;
+  if (deciding === null) return;
+  const receipt = (await readReceipt(kernel.store, session, deciding.id))?.record;
+  const principal = receipt?.kind === "send" ? receipt.principal : undefined;
+
+  if (principal === undefined) return;
 
   const context: ConnectionContext = {
     ...CORE_CONTEXT,
-    principal: deciding.schedule.principal,
+    principal,
     authority: PARTICIPANT_AUTHORITY,
   };
 
