@@ -411,7 +411,7 @@ async function openService(input: {
   return {
     host: hostPort(connection, input.cwd),
     plugins,
-    drawPart: (message) => maybeMakeRenderable(input.renderer, plugins.draw(message)),
+    drawPart: (message) => drawnPart(input.renderer, plugins.draw(message)),
     async close() {
       try {
         await plugins.dispose();
@@ -436,6 +436,11 @@ export function exitText(input: {
   ];
 
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
+}
+
+/** The renderable a client plugin drew for a part, or null when none drew one and the transcript shows its fallback. */
+export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
+  return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
 }
 
 function terminalFacts(renderer: CliRenderer): TerminalFacts {
