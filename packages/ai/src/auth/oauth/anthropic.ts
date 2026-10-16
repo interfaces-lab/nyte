@@ -15,6 +15,7 @@ import {
 } from "../types.ts";
 import { parseAuthorizationInput } from "./authorization-input.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
+import { registerOAuthFlow } from "./load.ts";
 import { generatePKCE } from "./pkce.ts";
 
 type CallbackServerInfo = {
@@ -423,3 +424,5 @@ export const anthropicOAuth: OAuthAuth = {
     return { apiKey: credential.access };
   },
 };
+
+registerOAuthFlow("anthropic", anthropicOAuth);

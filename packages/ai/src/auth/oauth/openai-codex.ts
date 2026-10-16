@@ -17,6 +17,7 @@ import {
 import { parseAuthorizationInput } from "./authorization-input.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
+import { registerOAuthFlow } from "./load.ts";
 import { generatePKCE } from "./pkce.ts";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -606,3 +607,5 @@ export const openaiCodexOAuth: OAuthAuth = {
     return { apiKey: credential.access, headers: { "chatgpt-account-id": accountId } };
   },
 };
+
+registerOAuthFlow("openaiCodex", openaiCodexOAuth);
