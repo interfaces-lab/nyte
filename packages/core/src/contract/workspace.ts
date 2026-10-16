@@ -570,6 +570,15 @@ export interface McpHub {
    */
   tools(workspace: McpWorkspace): readonly ToolDefinition[];
 
+  /**
+   * Resolves once every server of the workspace's watched connections has
+   * finished its first connection attempt (connected, failed or waiting for
+   * sign-in), or when `signal` aborts. A server retrying after a failure is
+   * not waited for. Core awaits it, bounded, before each model request so the
+   * first request after launch carries the servers' tools.
+   */
+  ready(workspace: WorkspaceId, signal: AbortSignal): Promise<void>;
+
   /** See {@link McpApi.reconnect}. */
   reconnect(workspace: McpWorkspace, server: string): Promise<McpChange>;
 

@@ -60,6 +60,8 @@ type Link = {
   /** The server's last OAuth challenge, which a sign-in follows for its scope and metadata. */
   readonly challenge: () => OAuthChallenge | null;
   readonly tools: () => readonly ToolDefinition[];
+  /** Settles once the first connection attempt has connected, failed or asked for sign-in, or the link closed. */
+  readonly attempted: Promise<void>;
   close(): Promise<void>;
 };
 
@@ -130,11 +132,14 @@ function hub(input: {
     let ended = false;
     let delay = 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempted = Promise.withResolvers<void>();
 
     const set = (next: LinkState): void => {
       if (ended) return;
       state = next;
       bridged = null;
+
+      if (next.kind !== "connecting") attempted.resolve();
       notify(pool);
     };
 
@@ -253,8 +258,10 @@ function hub(input: {
 
         return bridged.tools;
       },
+      attempted: attempted.promise,
       async close() {
         ended = true;
+        attempted.resolve();
         clearTimeout(timer);
         const previous = client;
         client = null;
@@ -493,6 +500,25 @@ function hub(input: {
       const pool = pools.get(poolKey(workspace));
 
       return pool === undefined ? [] : [...pool.links.values()].flatMap((link) => link.tools());
+    },
+    async ready(workspace, signal) {
+      const attempts = Promise.all(
+        [...pools.values()].flatMap((pool) =>
+          pool.workspace.id === workspace
+            ? [
+                pool.loaded.then(() =>
+                  Promise.all([...pool.links.values()].map((link) => link.attempted)),
+                ),
+              ]
+            : [],
+        ),
+      );
+      const aborted = Promise.withResolvers<void>();
+
+      signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+
+      if (signal.aborted) return;
+      await Promise.race([attempts, aborted.promise]);
     },
     reconnect: (workspace, server) =>
       held(workspace, async (pool) => {
