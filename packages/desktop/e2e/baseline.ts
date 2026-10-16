@@ -25,7 +25,7 @@ export const FIXTURES = {
   long: "Long transcript",
 } as const;
 
-export type Fixture = keyof typeof FIXTURES;
+type Fixture = keyof typeof FIXTURES;
 
 const TRANSCRIPTS: Record<Fixture, readonly string[]> = {
   alpha: ["Hello from alpha"],

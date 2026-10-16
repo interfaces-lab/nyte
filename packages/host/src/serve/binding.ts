@@ -45,7 +45,7 @@ export type BindingRequest = {
 };
 
 /** Returns a byte row's answer: the reader and the headers the response adds (`X-Nyte-Version` for `files.bytes`, §40p). */
-export type ByteBody = {
+type ByteBody = {
   readonly reader: ByteReader;
   readonly headers?: Readonly<Record<string, string>>;
 };
@@ -75,7 +75,7 @@ export type ByteBinding = {
 };
 
 /** Returns the binding of `job.output`, whose frames are framed bytes and control frames (§40h). */
-export type OutputBinding = {
+type OutputBinding = {
   readonly "job.output": (
     input: OperationInput<"job.output">,
     request: BindingRequest,

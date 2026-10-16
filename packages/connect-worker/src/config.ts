@@ -29,7 +29,7 @@ export interface Env {
   readonly BROKER_SIGNING_KEYS: string;
 }
 
-export const SigningKey = Type.Object({
+const SigningKey = Type.Object({
   kty: Type.Literal("OKP"),
   crv: Type.Literal("Ed25519"),
   x: Base64Url32,
@@ -37,7 +37,7 @@ export const SigningKey = Type.Object({
   kid: Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }),
 });
 
-export type SigningKey = Static<typeof SigningKey>;
+type SigningKey = Static<typeof SigningKey>;
 
 const SigningKeys = Type.Array(SigningKey, { minItems: 1, maxItems: 4 });
 

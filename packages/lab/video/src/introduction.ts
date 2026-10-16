@@ -71,6 +71,4 @@ export const scenes = [
 
 export type Scene = (typeof scenes)[number];
 
-export const plateFrames = [165, 435, 615, 1005, 1260, 1530, 2055];
-
 export const soundtrack = "music/introduction.mp3";

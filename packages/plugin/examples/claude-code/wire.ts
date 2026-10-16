@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Static } from "typebox";
 
-export const recordSchema = Type.Record(Type.String(), Type.Unknown());
+const recordSchema = Type.Record(Type.String(), Type.Unknown());
 
 const usageSchema = Type.Object({
   input_tokens: Type.Number(),

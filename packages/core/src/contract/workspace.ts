@@ -331,7 +331,7 @@ export type BatchEntry =
     }
   | { readonly kind: "remove"; readonly path: string; readonly expect?: FileVersion };
 
-export type HeldBatch = {
+type HeldBatch = {
   readonly receipt: Receipt<BatchOutcome>;
   readonly workspace: WorkspaceId;
   readonly digest: string;
@@ -427,7 +427,7 @@ export type PageHolder = {
   } | null;
 };
 
-export type PageRelease =
+type PageRelease =
   | { readonly session: SessionId }
   | { readonly run: RunId }
   | { readonly client: object };

@@ -47,7 +47,7 @@ const EXPOSURE: Readonly<Record<Static<typeof ExposureName>, McpExposure>> = {
   hidden: "hidden",
 };
 
-export type McpTransportConfig =
+type McpTransportConfig =
   | {
       readonly kind: "stdio";
       readonly command: string;

@@ -68,7 +68,7 @@ export interface WatchModel {
   readonly failure: string | null;
 }
 
-export interface TasksLine {
+interface TasksLine {
   readonly text: string;
   readonly attention: boolean;
 }

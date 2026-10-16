@@ -38,8 +38,6 @@ import type { Selection } from "../model/state.ts";
 import type { McpAction } from "../model/effect.ts";
 import type { LoginDriver } from "../services/auth.ts";
 
-export type { ComposerPort, ScrollPort };
-
 export interface Ports {
   readonly host: HostPort;
   readonly terminal: TerminalPort;

@@ -54,10 +54,10 @@ const STARTUP_SETTINGS: ResolvedSettings = {
 };
 
 /** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
-export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
+type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
 /** The host once it is reachable, and what the app closes with it. */
-export interface OpenedHost {
+interface OpenedHost {
   readonly host: HostPort;
   readonly plugins: PluginsPort;
   readonly drawPart: (message: PartMessage) => Renderable | null;

@@ -267,7 +267,7 @@ export const textStyles = css.create({
 /** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
-export const AGENT_LINK = "^agent:.";
+const AGENT_LINK = "^agent:.";
 
 export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
 

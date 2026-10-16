@@ -5,7 +5,7 @@ import { basename, dirname, join, sep } from "node:path";
 import type { Disposer } from "@nyte-ai/schema";
 import ignore from "ignore";
 
-export type TreeEntry = {
+type TreeEntry = {
   readonly path: string;
   readonly kind: "file" | "directory" | "symlink";
   readonly size: number | null;

@@ -22,7 +22,7 @@ import {
 } from "./revocation.ts";
 import { toast } from "../ui/toast.tsx";
 
-export type AccountStatus =
+type AccountStatus =
   | { readonly kind: "loading" }
   | { readonly kind: "signedOut" }
   | {

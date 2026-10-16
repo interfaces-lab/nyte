@@ -5,7 +5,7 @@ import Animated from "react-native-reanimated";
 import { controls, useTheme } from "../theme.ts";
 
 /** False on iOS before 26, where GlassView is a stub with no fill of its own. */
-export const HAS_GLASS = isLiquidGlassAvailable();
+const HAS_GLASS = isLiquidGlassAvailable();
 
 type GlassSurfaceProps = GlassViewProps;
 

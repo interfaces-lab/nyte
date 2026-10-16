@@ -119,7 +119,7 @@ const covers = (entry: string, path: string): boolean =>
   entry.endsWith("/") ? path.startsWith(entry) : entry === path;
 
 /** Every reason the page could not draw this guide over these changed files. */
-export function guideProblems(
+function guideProblems(
   sections: readonly GuideSection[],
   changed: readonly string[],
 ): readonly string[] {

@@ -20,7 +20,7 @@ import type {
   Transport,
 } from "@nyte-ai/protocol";
 
-export type LinkState = HostView["link"];
+type LinkState = HostView["link"];
 
 type WaitName = {
   [N in OperationName]: Declarations[N] extends { readonly wait: true } ? N : never;

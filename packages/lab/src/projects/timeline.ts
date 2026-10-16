@@ -1,6 +1,6 @@
-export type AgentPlace = "cloud" | "local";
+type AgentPlace = "cloud" | "local";
 
-export type AgentState = "working" | "done" | "archived";
+type AgentState = "working" | "done" | "archived";
 
 export interface Agent {
   readonly id: string;

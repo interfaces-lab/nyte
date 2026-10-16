@@ -3,12 +3,12 @@ import process from "node:process";
 import type { Readable, Writable } from "node:stream";
 
 /** The signals that end a Nyte command. A command whose terminal goes away ends as `SIGHUP`. */
-export const ENDINGS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+const ENDINGS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 export type Ending = (typeof ENDINGS)[number];
 
 /** How long a command may shut down once it ends before the process exits regardless. */
-export const SHUTDOWN_DEADLINE_MS = 1_500;
+const SHUTDOWN_DEADLINE_MS = 1_500;
 
 /** The status a shell reports for a process `ending` stops: 128 plus the signal's number, so 130, 143 or 129. */
 export function exitStatus(ending: Ending): number {

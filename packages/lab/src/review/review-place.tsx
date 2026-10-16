@@ -126,7 +126,7 @@ export function ReviewDiff({
 }
 
 /** Title, who opened it, its state and number, and the branches it joins. */
-export function PullRequestHeader({ review }: { readonly review: ReviewDetail }): ReactElement {
+function PullRequestHeader({ review }: { readonly review: ReviewDetail }): ReactElement {
   const { files } = review;
 
   const draft = review.author?.status === "working";

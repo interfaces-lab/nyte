@@ -2,7 +2,7 @@ import type { CommitId, HeadName, TreeNode, TreeView } from "@nyte-ai/sdk";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 import { matchesTerms } from "./list.ts";
 
-export type TreeFilter = "default" | "no-tools" | "users" | "all";
+type TreeFilter = "default" | "no-tools" | "users" | "all";
 
 export interface TreeDialog {
   readonly kind: "tree";
@@ -25,7 +25,7 @@ export interface TreeLoad {
   readonly tip: CommitId | null;
 }
 
-export type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
+type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
 
 export interface TreeRow {
   readonly oid: CommitId;

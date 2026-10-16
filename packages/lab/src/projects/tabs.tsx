@@ -34,11 +34,11 @@ export interface TabItem {
   readonly preview?: string;
 }
 
-export type TabStyle = "pill" | "connected";
+type TabStyle = "pill" | "connected";
 
-export type TabWidth = "fit" | "fixed";
+type TabWidth = "fit" | "fixed";
 
-export type TabOverflow = "scroll" | "menu";
+type TabOverflow = "scroll" | "menu";
 
 export interface TabDesign {
   readonly style: TabStyle;

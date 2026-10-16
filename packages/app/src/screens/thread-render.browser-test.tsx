@@ -485,7 +485,7 @@ function first<T>(value: T | undefined | null, what: string): T {
   return value;
 }
 
-export function runTest(): Promise<string> {
+export function run(): Promise<string> {
   const watchdog = new Promise<string>((resolve) =>
     window.setTimeout(() => resolve(`timed out at ${step}\n${failures.join("\n")}`), 35_000),
   );
@@ -844,7 +844,5 @@ async function checkRules(): Promise<string> {
     queryClient.clear();
   }
 }
-
-export const run = runTest;
 
 applyDisplayMode("light");

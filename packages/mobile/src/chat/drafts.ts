@@ -10,20 +10,6 @@ export function useChatScope(): string {
   return useHost().scope;
 }
 
-export function clearChatDraft({
-  scope,
-  sessionId,
-  submitted,
-}: {
-  scope: string;
-  sessionId?: SessionId;
-  submitted: string;
-}): void {
-  const key = JSON.stringify([scope, sessionId ?? "new"]);
-
-  if (drafts.getString(key) === submitted) drafts.remove(key);
-}
-
 export function useChatDraft(sessionId?: SessionId): [string, Dispatch<SetStateAction<string>>] {
   const scope = useChatScope();
   const key = JSON.stringify([scope, sessionId ?? "new"]);

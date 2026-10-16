@@ -147,7 +147,7 @@ function truncateErrorText(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
 }
 
-export function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
 

@@ -64,7 +64,7 @@ export interface Selection {
   readonly fast: boolean;
 }
 
-export interface CatalogFacts {
+interface CatalogFacts {
   readonly generation: number;
   readonly catalog: ModelCatalogView | null;
 }
@@ -126,7 +126,7 @@ export interface Local {
   readonly preview: string | null;
 }
 
-export interface MoveContext {
+interface MoveContext {
   readonly purpose: "retract" | "tree";
   readonly message: MessageId | null;
 }
@@ -138,7 +138,7 @@ export interface Draft {
   readonly parts: DraftParts;
 }
 
-export interface Editing {
+interface Editing {
   readonly message: MessageId;
   readonly delivery: "steer" | "queue";
   readonly saved: DraftSnapshot;
@@ -212,7 +212,7 @@ export interface Handback {
   readonly unlessLanded: MessageId | null;
 }
 
-export interface HistoryCursor {
+interface HistoryCursor {
   readonly index: number;
   readonly saved: DraftSnapshot;
 }

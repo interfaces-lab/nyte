@@ -61,7 +61,7 @@ async function request<T extends TSchema>(
   throw new ReviewError("This lab build has no review core. Run it with `pnpm dev`.", true);
 }
 
-export const keys = {
+const keys = {
   repo: ["review", "repo"] as const,
   list: ["review", "list"] as const,
   detail: (id: string) => ["review", "detail", id] as const,
@@ -115,7 +115,7 @@ export function useReviews(version: number) {
   });
 }
 
-export function useReview(id: string | undefined, version: number) {
+function useReview(id: string | undefined, version: number) {
   return useQuery({
     queryKey: [...keys.detail(id ?? ""), version],
     queryFn: () => request(ReviewDetailSchema, `/reviews/${encodeURIComponent(id ?? "")}`),
@@ -152,7 +152,7 @@ export function useCreateReview() {
  * streams can start before the review loads. Nyte's session appears with the
  * first change request; that request refetches this.
  */
-export function useSessions(id: string | undefined) {
+function useSessions(id: string | undefined) {
   const { data } = useQuery({
     queryKey: keys.session(id ?? ""),
     queryFn: () => request(SessionSchema, `/reviews/${encodeURIComponent(id ?? "")}/session`),
@@ -226,7 +226,7 @@ interface Seen {
 const reviewMark = (view: SessionView): string =>
   JSON.stringify([view.seq, view.execution.kind, view.heads]);
 
-export function useCoreEvents(session: string | undefined): number {
+function useCoreEvents(session: string | undefined): number {
   const { data } = useQuery({
     queryKey: keys.events(session ?? ""),
     queryFn: experimental_streamedQuery({

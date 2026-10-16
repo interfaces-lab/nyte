@@ -22,7 +22,7 @@ import type { NativeContentBlock, NativeFrame, NativeMessage } from "./wire.ts";
 
 export const TOOL_PREFIX = "mcp__nyte__";
 
-export const NATIVE_REPLAY_DIAGNOSTIC = "claude-code.native-assistant.v1";
+const NATIVE_REPLAY_DIAGNOSTIC = "claude-code.native-assistant.v1";
 
 export const NATIVE_TOOL_CHANGES_BETA = "mid-conversation-tool-changes-2026-07-01";
 
@@ -292,7 +292,7 @@ function withoutNullVariant(schema: unknown): unknown {
   return output;
 }
 
-export function normalizeInputSchema(schema: unknown): JsonRecord {
+function normalizeInputSchema(schema: unknown): JsonRecord {
   const normalized = withoutNullVariant(schema);
 
   if (!matchesRecord(normalized)) throw new Error("Tool input schema must be an object");

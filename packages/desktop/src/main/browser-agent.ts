@@ -94,7 +94,7 @@ export type BrowserActionResult =
   | { readonly kind: "ok"; readonly state: BrowserPageState }
   | { readonly kind: "failed"; readonly failure: BrowserActionFailure };
 
-export interface BrowserTypeInput {
+interface BrowserTypeInput {
   readonly ref: string;
   readonly text: string;
   readonly clear?: boolean;

@@ -18,7 +18,7 @@ export type MsgOf<K extends Msg["kind"]> = Extract<Msg, { readonly kind: K }>;
 export type Reduce = (state: State, msg: Msg, now: number) => Step;
 
 /** Handles one message kind. */
-export type Handler<K extends Msg["kind"]> = (
+type Handler<K extends Msg["kind"]> = (
   state: State,
   msg: MsgOf<K>,
   now: number,

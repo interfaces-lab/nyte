@@ -197,7 +197,7 @@ export interface SessionDirectory {
   forget(session: SessionId): void;
 }
 
-export interface Handles {
+interface Handles {
   connection(context: ConnectionContext): Connection;
 
   session(context: ConnectionContext, session: SessionId): Session;

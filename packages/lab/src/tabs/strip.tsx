@@ -11,17 +11,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ShellTab, TabKind } from "./fixtures";
 
-export type ActiveStyle = "connected" | "card" | "flat";
+type ActiveStyle = "connected" | "card" | "flat";
 
-export type InactiveStyle = "chip" | "ghost";
+type InactiveStyle = "chip" | "ghost";
 
-export type ClosePlacement = "hover" | "beside" | "active";
+type ClosePlacement = "hover" | "beside" | "active";
 
-export type PinnedStyle = "icon" | "label" | "off";
+type PinnedStyle = "icon" | "label" | "off";
 
-export type WidthRule = "shrink" | "fixed";
+type WidthRule = "shrink" | "fixed";
 
-export type StatusPlacement = "glyph" | "badge" | "dot";
+type StatusPlacement = "glyph" | "badge" | "dot";
 
 export interface StripDesign {
   readonly active: ActiveStyle;

@@ -101,7 +101,7 @@ export interface FoldRun {
   readonly turn: TurnId;
 }
 
-export interface FoldCall {
+interface FoldCall {
   readonly part: PartId;
   readonly class: ToolClass;
   readonly waiting: WaitTarget | null;

@@ -41,8 +41,7 @@ import {
 import { transformMessages } from "./transform-messages.ts";
 
 /** A function tool as sent; `strict` is omitted for providers that reject or ignore the field. */
-export type ResponsesFunctionTool = Omit<FunctionTool, "strict"> &
-  Partial<Pick<FunctionTool, "strict">>;
+type ResponsesFunctionTool = Omit<FunctionTool, "strict"> & Partial<Pick<FunctionTool, "strict">>;
 
 export type ResponsesTool = CustomTool | ResponsesFunctionTool;
 
@@ -69,7 +68,7 @@ const ReplayedReasoningSchema = Type.Object({ type: Type.Literal("reasoning") })
 
 type ReplayedResponsesItem = Static<typeof ReplayedItemSchema>;
 
-export type ResponsesInputItem =
+type ResponsesInputItem =
   | ResponseInputItem
   | ResponsesAdditionalToolsItem
   | ResponsesToolSearchOutputItem

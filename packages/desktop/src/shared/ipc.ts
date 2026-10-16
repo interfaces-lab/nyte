@@ -42,7 +42,7 @@ export const MAIN_OPERATION_PATHS = [
 ] as const;
 
 /** Operations the host process answers: the Nyte host, its listeners and remote access. */
-export const HOST_PROCESS_PATHS = [
+const HOST_PROCESS_PATHS = [
   "host.endpoint",
   "host.state",
   "host.usage",
@@ -71,7 +71,7 @@ export const HOST_PROCESS_PATHS = [
 
 export const HOST_OPERATION_PATHS = [...MAIN_OPERATION_PATHS, ...HOST_PROCESS_PATHS] as const;
 
-export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
+type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
 export type CallPath = HostOperationPath;
 
@@ -123,7 +123,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     : never;
 
 /** The authoritative path-to-method relationship carried by Electron IPC. */
-export type CallMethodByPath = {
+type CallMethodByPath = {
   readonly [P in CallPath]: BridgeMethod<DesktopBridge, P>;
 };
 
@@ -132,7 +132,7 @@ export type CallInput<P extends CallPath> =
 
 export type CallOutput<P extends CallPath> = Awaited<ReturnType<CallMethodByPath[P]>>;
 
-export type CallRequestFor<P extends CallPath> = P extends CallPath
+type CallRequestFor<P extends CallPath> = P extends CallPath
   ? { readonly path: P; readonly input: CallInput<P> }
   : never;
 

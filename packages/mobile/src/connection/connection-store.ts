@@ -12,7 +12,7 @@ export interface ConnectionStorage {
   readonly remove: () => Promise<void>;
 }
 
-export type ConnectionSnapshot =
+type ConnectionSnapshot =
   | { readonly kind: "loading" }
   | { readonly kind: "none" }
   /**

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export type Client = "terminal" | "desktop" | "mobile";
 
-export interface ToolCall {
+interface ToolCall {
   verb: "Read" | "Edited" | "Ran";
   subject: string;
   file: string;

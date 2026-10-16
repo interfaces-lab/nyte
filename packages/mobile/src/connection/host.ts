@@ -35,7 +35,7 @@ function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
     : (input, init) => fetch(input, init);
 }
 
-export interface VerifiedHost {
+interface VerifiedHost {
   readonly connection: HostConnection;
   readonly saved: SavedConnection;
   readonly scope: string;
@@ -164,7 +164,7 @@ export async function connectHost(input: {
   return { kind: "connected" };
 }
 
-export type HostCheck =
+type HostCheck =
   | { readonly kind: "idle" }
   | { readonly kind: "verifying"; readonly saved: SavedConnection }
   | { readonly kind: "verified"; readonly saved: SavedConnection; readonly host: VerifiedHost }

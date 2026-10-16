@@ -416,7 +416,7 @@ class EventTranslator {
   }
 }
 
-export function normalizeError(error: unknown): string {
+function normalizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const usageCredits = describeUsageCreditsRejection(message);
 

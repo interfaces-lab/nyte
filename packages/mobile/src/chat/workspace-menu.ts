@@ -5,7 +5,7 @@ export type WorkspaceMenu =
   | { kind: "failed"; message: string; retry: () => void }
   | { kind: "ready"; label: string | undefined; choices: readonly WorkspaceChoice[] };
 
-export interface WorkspaceChoice {
+interface WorkspaceChoice {
   readonly key: string;
   readonly label: string;
   readonly selected: boolean;

@@ -225,7 +225,7 @@ export function suggestionNotice(completion: Completion): string | undefined {
 }
 
 /** The sentence a skill travels as, identical to the desktop composer's. */
-export function skillInstruction(name: string): string {
+function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
 }
 

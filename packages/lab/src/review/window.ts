@@ -42,17 +42,13 @@ export type WindowAction =
   | { readonly kind: "forward" };
 
 /** The pull request a place is about, if it is about one. */
-export function readReviewId(place: Place): string | undefined {
+function readReviewId(place: Place): string | undefined {
   return place.kind === "review" ? place.reviewId : undefined;
 }
 
 /** How a click asks to open a place: ⌘ or a middle click for a background tab. */
 export function readOpenTarget(event: MouseEvent): OpenTarget {
   return event.metaKey || event.ctrlKey || event.button === 1 ? "background" : "here";
-}
-
-export function samePlace(left: Place, right: Place): boolean {
-  return left.kind === right.kind && readReviewId(left) === readReviewId(right);
 }
 
 export const readPlace = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
@@ -120,15 +116,18 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
         };
       }
 
-      return updateActive(state, (tab) =>
-        samePlace(readPlace(tab), action.place)
+      return updateActive(state, (tab) => {
+        const shown = readPlace(tab);
+
+        return shown.kind === action.place.kind &&
+          readReviewId(shown) === readReviewId(action.place)
           ? tab
           : {
               ...tab,
               entries: [...tab.entries.slice(0, tab.index + 1), action.place],
               index: tab.index + 1,
-            },
-      );
+            };
+      });
     }
 
     case "replace":

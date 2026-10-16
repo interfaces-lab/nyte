@@ -741,7 +741,7 @@ async function acquireProcess(
   });
 }
 
-export async function closeClaudeProcesses(sessionId?: string): Promise<void> {
+async function closeClaudeProcesses(sessionId?: string): Promise<void> {
   const workers = await withManagerLock(() => {
     if (sessionId) {
       const worker = processCache.get(sessionId);

@@ -39,7 +39,7 @@ import {
 import type { Task, TaskStatus } from "./tasks.ts";
 import { displayWidth } from "./width.ts";
 
-export type Role =
+type Role =
   | "muted"
   | "running"
   | "warning"

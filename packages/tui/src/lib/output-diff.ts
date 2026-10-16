@@ -19,7 +19,7 @@ interface DiffSection {
   readonly pair: ChangedLinePair | undefined;
 }
 
-export interface OutputDiffFile {
+interface OutputDiffFile {
   readonly sections: readonly DiffSection[];
   readonly path: string | undefined;
 }

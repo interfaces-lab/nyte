@@ -10,7 +10,7 @@ import type { Logger } from "./log.ts";
 import type { RelayStub } from "./relay-binding.ts";
 import { hit } from "./store/replays.ts";
 
-export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface Dependencies {
   /** Outbound requests: the Clerk Backend API only. */

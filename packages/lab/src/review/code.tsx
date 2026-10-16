@@ -63,7 +63,7 @@ function readTheme(): "light" | "dark" {
 }
 
 /** The line colours the desktop's receipts use, for every Pierre surface here. */
-export const PIERRE_CSS = `
+const PIERRE_CSS = `
 ${PIERRE_TOKEN_CSS}
 [data-line-type="context"], [data-gutter-buffer] { --diffs-line-bg: var(--diffs-bg); }
 [data-line-type="change-addition"] { --diffs-line-bg: var(--diffs-bg-addition-override); }

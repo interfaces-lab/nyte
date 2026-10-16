@@ -30,7 +30,7 @@ const ManagedConnectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export type AccountBinding = Omit<Static<typeof ManagedConnectionSchema>, keyof Connection>;
+type AccountBinding = Omit<Static<typeof ManagedConnectionSchema>, keyof Connection>;
 
 export type SavedConnection =
   | { readonly kind: "manual"; readonly connection: Connection }

@@ -11,7 +11,7 @@ import type { Blocked, TableInput } from "./table-input.ts";
 
 export type CoreCommand = "chat.submit" | "chat.queue.submit" | "chat.interrupt" | "chat.quit";
 
-export interface Interaction {
+interface Interaction {
   readonly intent: Intent | null;
   readonly label: string;
   readonly hidden: boolean;

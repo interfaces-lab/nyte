@@ -20,7 +20,7 @@ const PULSE_HIGH = 0.85;
 const PULSE_MS = 850;
 
 /** Placeholder block pulsing over the fill tint, like UIKit skeletons. The pulse follows the reduced-motion setting, which can change while mounted. */
-export function Skeleton({
+function Skeleton({
   width,
   height,
   radius = radii.sm,

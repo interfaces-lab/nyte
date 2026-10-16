@@ -5,14 +5,14 @@ import type { State } from "../model/state.ts";
 import type { SessionConfigurator } from "../services/session-config.ts";
 import type { Ports, SessionPort } from "./ports.ts";
 
-export interface Followed {
+interface Followed {
   readonly id: SessionId;
   readonly port: SessionPort;
   readonly controller: AbortController;
   readonly configurator: SessionConfigurator;
 }
 
-export interface LoginChannel {
+interface LoginChannel {
   readonly dialog: DialogId;
   answer(code: string): void;
   cancel(): void;

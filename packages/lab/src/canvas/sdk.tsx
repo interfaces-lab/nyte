@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 
-export interface ChartDatum {
+interface ChartDatum {
   readonly label: string;
   readonly value: number;
 }

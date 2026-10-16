@@ -11,7 +11,7 @@ import type { DiscoveredClaudeModel } from "./model-catalog.ts";
 import { matchesRecord, parseRecord } from "./wire.ts";
 import type { JsonRecord } from "./wire.ts";
 
-export const INSTALL_HINT =
+const INSTALL_HINT =
   "Claude Code is not installed. Install it with `npm install -g @anthropic-ai/claude-code` " +
   "or set NYTE_CLAUDE_CODE_COMMAND to the executable.";
 
@@ -42,7 +42,7 @@ async function executable(path: string): Promise<boolean> {
   }
 }
 
-export async function resolveClaudeExecutable(
+async function resolveClaudeExecutable(
   env: Record<string, string | undefined> = process.env,
 ): Promise<string | undefined> {
   const command = configuredCommand(env);

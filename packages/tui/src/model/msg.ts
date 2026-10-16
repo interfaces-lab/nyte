@@ -146,14 +146,14 @@ export type Intent =
     }
   | { readonly kind: "step-task"; readonly dialog: DialogId; readonly direction: -1 | 1 };
 
-export type CompletionAction =
+type CompletionAction =
   | { readonly kind: "accept"; readonly alternate: Delivery | null }
   | { readonly kind: "fill" }
   | { readonly kind: "close" }
   | { readonly kind: "move"; readonly by: -1 | 1 | "page-up" | "page-down" }
   | { readonly kind: "pick"; readonly index: number };
 
-export type PasteSource =
+type PasteSource =
   | { readonly kind: "terminal"; readonly text: string; readonly bytes: Uint8Array | null }
   | { readonly kind: "clipboard" };
 

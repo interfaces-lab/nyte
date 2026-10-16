@@ -11,7 +11,7 @@ import type {
 import type { DraftContent } from "../media/attachments.ts";
 
 /** A composer that starts a conversation in the chosen folder. */
-export type NewTarget = { kind: "new" };
+type NewTarget = { kind: "new" };
 
 /** A composer that follows up in an open session, on the head the user is viewing. */
 export type SessionTarget = {

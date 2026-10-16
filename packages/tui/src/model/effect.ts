@@ -148,7 +148,7 @@ export type Effect =
   | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
   | { readonly kind: "resolve-mention"; readonly query: string; readonly cwd: string };
 
-export type ComposerOp =
+type ComposerOp =
   | { readonly kind: "set"; readonly draft: DraftSnapshot }
   | { readonly kind: "insert"; readonly text: string; readonly at: "cursor" | "start" }
   | {
@@ -161,7 +161,7 @@ export type ComposerOp =
   | { readonly kind: "focus" }
   | { readonly kind: "cursor"; readonly to: "start" | "end" };
 
-export type ScrollOp =
+type ScrollOp =
   | { readonly kind: "page"; readonly direction: -1 | 1 }
   | { readonly kind: "latest" }
   | { readonly kind: "row"; readonly key: string }

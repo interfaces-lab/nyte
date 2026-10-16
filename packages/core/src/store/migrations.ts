@@ -15,7 +15,7 @@ import { objectId } from "../util/content.ts";
 import { callRef, liveRef, parseSessionRef, runRef } from "./refs.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 
-export type StoreDialect = "sqlite" | "postgres";
+type StoreDialect = "sqlite" | "postgres";
 
 /** Adds structure or rebuilds tables derived from refs and objects; a change to stored records is a `RewriteStep`. */
 interface SchemaStep {
@@ -35,7 +35,7 @@ interface RewriteStep {
 
 type StoreStep = SchemaStep | RewriteStep;
 
-export interface StoreStamp {
+interface StoreStamp {
   readonly version: number;
   readonly empty: boolean;
 }
@@ -67,7 +67,7 @@ export interface LoggedRow {
 }
 
 /** A session's logged events, in seq order. */
-export interface SessionLog {
+interface SessionLog {
   readonly session: string;
   readonly events: readonly LoggedRow[];
 }

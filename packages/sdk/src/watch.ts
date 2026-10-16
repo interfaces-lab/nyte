@@ -22,7 +22,7 @@ export type Sink<T> = {
 const DONE = { done: true, value: undefined } as const;
 
 /** One `head.watch` shared by every watcher of a head in this client: the latest view and its subscribers. */
-export interface ViewHold {
+interface ViewHold {
   view(): SessionView | null;
   subscribe(sink: Sink<SessionView>): Disposer;
 }

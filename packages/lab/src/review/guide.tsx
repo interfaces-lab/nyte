@@ -91,7 +91,7 @@ export interface GuideWriting {
  * The line above the guide: progress, a failure, or, with no guide yet, the
  * page's one action under the words that explain it, where the eye already is.
  */
-export function StatusLine({
+function StatusLine({
   review,
   current,
   shown,

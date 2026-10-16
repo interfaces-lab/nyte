@@ -7,7 +7,7 @@ export type D1Value = string | number | null;
 /** One row as D1 returns it: column name to value. */
 export type D1Row = Readonly<Record<string, D1Value>>;
 
-export interface D1Result {
+interface D1Result {
   readonly results: D1Row[];
   readonly meta: { readonly changes: number };
 }
