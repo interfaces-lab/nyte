@@ -6,18 +6,21 @@ import { errorMessage } from "../errors.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 
-/** Ask about a link whose host isn't trusted; true when it should open. */
-async function confirmOpen(url: URL): Promise<boolean> {
+/** Ask about a link whose host isn't trusted, then open, copy, or trust it as answered. */
+async function confirmAndOpen(url: URL): Promise<void> {
   const trusted = preferences.trustedLinkHosts.get();
 
-  if (!preferences.confirmExternalLinks.get() || trusted.includes(url.host)) return true;
-  const choice = await nyte.host.confirmExternal({ url: url.href });
+  if (preferences.confirmExternalLinks.get() && !trusted.includes(url.host)) {
+    const choice = await nyte.host.confirmExternal({ url: url.href });
 
-  if (choice === "copy") await navigator.clipboard.writeText(url.href);
+    if (choice === "cancel") return;
 
-  if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
+    if (choice === "copy") return navigator.clipboard.writeText(url.href);
 
-  return choice === "open" || choice === "trust";
+    if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
+  }
+
+  openExternal(url.href);
 }
 
 /** Opens a link in the system browser, asking first unless its host was trusted. */
@@ -25,16 +28,12 @@ export function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;
-  void confirmOpen(url).then(
-    (open) => {
-      if (open) openExternal(url.href);
-    },
-    (cause: unknown) =>
-      toast.add({
-        type: "error",
-        title: "Couldn't open the link.",
-        description: errorMessage(cause),
-      }),
+  void confirmAndOpen(url).catch((cause: unknown) =>
+    toast.add({
+      type: "error",
+      title: "Couldn't open the link.",
+      description: errorMessage(cause),
+    }),
   );
 }
 
