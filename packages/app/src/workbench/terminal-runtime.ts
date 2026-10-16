@@ -113,12 +113,6 @@ function terminalAppearance() {
 }
 
 function sendInput(id: string, data: string): Promise<void> {
-  const tab = getTerminal(id);
-
-  if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running") {
-    return Promise.resolve();
-  }
-
   return terminalActions.write(id, data).catch((cause: unknown) => {
     const current = getTerminal(id);
 

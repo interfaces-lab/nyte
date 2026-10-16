@@ -95,6 +95,12 @@ const queued = new Map<WorkbenchTabId, string[]>();
 
 const feeds = new Map<WorkbenchTabId, Feed>();
 
+/** What the user typed into a shell tab while its shell was starting, sent in order once it runs, as a terminal emulator keeps typeahead. */
+const typedAhead = new Map<WorkbenchTabId, string[]>();
+
+/** A shell tab's typeahead on its way to the shell, which input typed after it waits for. */
+const flushing = new Map<WorkbenchTabId, Promise<void>>();
+
 const creating = new Map<WorkbenchTabId, Promise<void>>();
 
 const saving = new Map<WorkbenchTabId, ReturnType<typeof setTimeout>>();
@@ -353,8 +359,19 @@ function startShell(
     save(id);
     updateShell(id, { kind: "running" });
     void follow(id, feed);
+    const ahead = typedAhead.get(id) ?? [];
+    typedAhead.delete(id);
+
+    if (ahead.length === 0) return;
+    const flushed = feed.job.write(encoder.encode(ahead.join("")));
+    flushing.set(
+      id,
+      flushed.catch(() => undefined),
+    );
+    await flushed.finally(() => flushing.delete(id));
   })()
     .catch((cause: unknown) => {
+      typedAhead.delete(id);
       const message = errorMessage(cause);
       updateShell(id, { kind: "failed", message });
       toast.add({ type: "error", title: "Couldn't start terminal", description: message });
@@ -438,6 +455,7 @@ function remove(id: WorkbenchTabId): void {
   output.get(id)?.dispose();
   output.delete(id);
   queued.delete(id);
+  typedAhead.delete(id);
   feeds.delete(id);
   forgetSaved(id);
   const tabs = new Map(snapshot.tabs);
@@ -532,10 +550,20 @@ export const terminalActions = {
     const tab = getTerminal(id);
     const feed = feeds.get(id);
 
+    if (tab?.kind === "shell" && tab.state.kind === "starting") {
+      typedAhead.set(id, [...(typedAhead.get(id) ?? []), data]);
+
+      return Promise.resolve();
+    }
+
     if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running" || !feed)
       return Promise.resolve();
 
-    return feed.job.write(encoder.encode(data));
+    const ahead = flushing.get(id);
+
+    return ahead === undefined
+      ? feed.job.write(encoder.encode(data))
+      : ahead.then(() => feed.job.write(encoder.encode(data)));
   },
   async resize(id: WorkbenchTabId, columns: number, rows: number): Promise<void> {
     await feeds.get(id)?.job.resize({ columns, rows });
