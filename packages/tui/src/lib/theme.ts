@@ -8,6 +8,11 @@ export function isThemeChoice(value: string): value is ThemeChoice {
   return value === "auto" || value === "dark" || value === "light";
 }
 
+/**
+ * TUI colors for one terminal mode. Every text color reads at WCAG AA (4.5:1) on `background`
+ * and `codeBackground`, and the diff colors on their diff backgrounds; `muted` is for separators
+ * and shading only, never text.
+ */
 export interface CliTheme {
   readonly mode: ThemeMode;
   readonly transparent: "transparent";
@@ -52,6 +57,7 @@ export interface CliTheme {
   readonly diffAddedEmphasis: string;
   readonly diffRemovedEmphasis: string;
 }
+
 export const DARK_THEME: CliTheme = Object.freeze({
   mode: "dark",
   transparent: "transparent",
@@ -60,7 +66,7 @@ export const DARK_THEME: CliTheme = Object.freeze({
   hover: "#262626",
   codeBackground: "#171717",
   foreground: "#fafafa",
-  dim: "#737373",
+  dim: "#828282",
   muted: "#525252",
   accent: "#009fff",
   moon: "#c1d0f6",
@@ -105,24 +111,24 @@ const LIGHT_THEME: CliTheme = Object.freeze({
   hover: "#e5e5e5",
   codeBackground: "#f5f5f5",
   foreground: "#0a0a0a",
-  dim: "#737373",
+  dim: "#6f6f6f",
   muted: "#a3a3a3",
-  accent: "#1a85d4",
+  accent: "#0273bc",
   moon: "#232a44",
   user: "#404040",
   thinking: "#693acf",
   tool: "#525252",
-  error: "#d52c36",
-  warning: "#d5a910",
-  ok: "#18a46c",
-  running: "#1ca1c7",
-  link: "#1a85d4",
-  path: "#d47628",
-  code: "#d32a61",
-  number: "#1ca1c7",
-  string: "#199f43",
+  error: "#d32a35",
+  warning: "#876a0e",
+  ok: "#017f51",
+  running: "#0d7794",
+  link: "#0273bc",
+  path: "#aa580b",
+  code: "#d12860",
+  number: "#0d7794",
+  string: "#118034",
   type: "#a631be",
-  operator: "#1ca1c7",
+  operator: "#0d7794",
   promptBorder: "#d4d4d4",
   promptBorderFocused: "#a3a3a3",
   selectionBackground: "#dfebff",
@@ -132,8 +138,8 @@ const LIGHT_THEME: CliTheme = Object.freeze({
   pasteForeground: "#404040",
   scrollbarTrack: "#f5f5f5",
   scrollbarThumb: "#d4d4d4",
-  diffAdded: "#0dbe4e",
-  diffRemoved: "#ff2e3f",
+  diffAdded: "#107931",
+  diffRemoved: "#ce0427",
   diffAddedBackground: "#e0efe1",
   diffRemovedBackground: "#fce1dd",
   diffAddedGutterBackground: "#e5f1e6",

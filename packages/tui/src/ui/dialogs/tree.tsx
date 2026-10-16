@@ -37,7 +37,7 @@ function roleColor(row: TreeRow, theme: CliTheme): string {
     case "checkpoint":
       return theme.warning;
     case "tool":
-      return theme.muted;
+      return theme.dim;
     default: {
       const _exhaustive: never = row.role;
 
