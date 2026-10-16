@@ -8,7 +8,7 @@ function recording(body: string) {
 
   const fetch: typeof globalThis.fetch = async (input, init) => {
     sent.push({
-      url: String(input),
+      url: input instanceof Request ? input.url : String(input),
       headers: new Headers(init?.headers),
       body: JSON.parse(typeof init?.body === "string" ? init.body : "null"),
     });
