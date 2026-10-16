@@ -16,7 +16,8 @@ import {
   applyBrowserKey,
 } from "./workbench/browser-surfaces.ts";
 import { applyBrowserHistory } from "./workbench/browser-history.ts";
-import { workbenchController } from "./workbench/controller.ts";
+import { WORKBENCH_HOME_VIEW_KEY, workbenchController } from "./workbench/controller.ts";
+import { reattachShells } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
 import { watchClientPlugins } from "./client-plugins.tsx";
@@ -106,9 +107,25 @@ function useClientPlugins(): void {
   useMountEffect(() => watchClientPlugins(focusedSession, windowTabs.subscribe));
 }
 
+/** Re-attaches the window's saved shells as it loads, shown or not, so the host keeps them. */
+function useSavedShells(): void {
+  useMountEffect(() => {
+    reattachShells(
+      [...workbenchController.getSnapshot().views].flatMap(([key, view]) =>
+        view.tabs.flatMap((tab) =>
+          tab.kind === "terminal" && tab.owner.kind === "user"
+            ? [{ id: tab.id, workspacePath: key === WORKBENCH_HOME_VIEW_KEY ? null : key }]
+            : [],
+        ),
+      ),
+    );
+  });
+}
+
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
   useHostEvents(router);
   useClientPlugins();
+  useSavedShells();
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");

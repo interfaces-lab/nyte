@@ -380,6 +380,52 @@ function startShell(
   return pending;
 }
 
+/**
+ * Re-attaches the saved shell tabs among `shells` whose job the host still
+ * runs, shown or not. Every open shell tab holds a reader this way, as one
+ * shown since the window loaded does, and the host stops a user's shell left
+ * without a reader for a minute. A tab whose shell is gone waits for its
+ * panel, which starts a new one.
+ */
+export function reattachShells(
+  shells: Iterable<{ readonly id: WorkbenchTabId; readonly workspacePath: string | null }>,
+): void {
+  for (const { id, workspacePath } of shells) {
+    const saved = readSaved(id);
+
+    if (saved === null || saved.key === null || snapshot.tabs.has(id) || creating.has(id)) continue;
+    const { key } = saved;
+
+    const pending = (async () => {
+      const feed = await reattach(await connected(), { workspace: saved.workspace, key });
+
+      if (feed === null) return;
+
+      if (snapshot.tabs.has(id)) {
+        await feed.job.close();
+
+        return;
+      }
+
+      publish(
+        new Map(snapshot.tabs).set(id, {
+          id,
+          title: "Terminal",
+          cwd: workspacePath ?? "",
+          kind: "shell",
+          state: { kind: "running" },
+        }),
+      );
+      feeds.set(id, feed);
+      void follow(id, feed);
+    })()
+      .catch(() => undefined)
+      .finally(() => creating.delete(id));
+
+    creating.set(id, pending);
+  }
+}
+
 function syncJobs(sessionId: SessionId, jobs: readonly JobView[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);
@@ -432,7 +478,14 @@ export const terminalActions = {
     readonly id: WorkbenchTabId;
     readonly workspacePath: string | null;
   }): Promise<void> {
-    if (snapshot.tabs.has(id)) return creating.get(id) ?? Promise.resolve();
+    const pending = creating.get(id);
+
+    if (pending !== undefined)
+      return pending.then(() =>
+        snapshot.tabs.has(id) ? undefined : terminalActions.restore({ id, workspacePath }),
+      );
+
+    if (snapshot.tabs.has(id)) return Promise.resolve();
     const saved = readSaved(id);
 
     return startShell(
