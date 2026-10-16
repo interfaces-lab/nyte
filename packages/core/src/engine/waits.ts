@@ -3,6 +3,7 @@ import type {
   CallId,
   Disposer,
   JobEnd,
+  Ref,
   RefUpdate,
   RequestOptions,
   RunId,
@@ -405,6 +406,16 @@ export function createWaitRegistry(
   };
 
   return registry;
+}
+
+/** The `waits/` index refs that point at `session`'s calls: what they wait on (by run, part, job, input and time) and the `woken/` ones, which go with the session when it is removed. */
+export async function listSessionWaits(
+  store: StoreConnection,
+  session: SessionId,
+): Promise<readonly Ref[]> {
+  return (await store.refs.list(WAITS)).filter(
+    (ref) => (readWoken(ref.name) ?? readIndexed(ref.name))?.session === session,
+  );
 }
 
 /** Reads every unsettled call in `sessions` (default all), as recovery does when a process starts covering them: a parked one is checked against what it waits on, and a woken one is stepped or run again (see `wake`). */

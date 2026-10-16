@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable } from "../src/contract/tools.ts";
 import { runStep } from "../src/engine/durable.ts";
-import { WOKEN, wokenIndex } from "../src/store/wait-index.ts";
+import { readIndexed, WAITS, WOKEN, wokenIndex } from "../src/store/wait-index.ts";
 import { main, setup } from "../src/harness.ts";
 
 function waitStep(
@@ -98,9 +98,10 @@ describe("woken calls", () => {
     expect(await wokenNames(kernel)).toEqual([]);
   });
 
-  it("drops a woken call's index with its session", async () => {
+  it("drops a session's wait index, woken calls' included, with the session", async () => {
     const { kernel, host } = await setup();
     const session = await host.sessions.create();
+    const kept = await host.sessions.create();
     const soon = Date.now() + 1;
 
     await waitStep(kernel, session.id, "c1", async (durable) =>
@@ -109,7 +110,14 @@ describe("woken calls", () => {
     await kernel.waits.tick(soon + 1);
     expect(await wokenNames(kernel)).toEqual([wokenIndex(session.id, asId("c1"))]);
 
+    for (const parked of [session.id, kept.id])
+      await waitStep(kernel, parked, "c2", async (durable) =>
+        durable.wait({ kind: "timer", until: Date.now() + 60_000 }),
+      );
+
     expect(await host.session(session.id).remove()).toEqual({ kind: "removed" });
-    expect(await wokenNames(kernel)).toEqual([]);
+    expect(
+      (await kernel.store.refs.list(WAITS)).map((ref) => readIndexed(ref.name)?.session),
+    ).toEqual([kept.id]);
   });
 });
