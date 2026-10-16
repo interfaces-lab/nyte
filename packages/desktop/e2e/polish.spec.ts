@@ -224,27 +224,29 @@ async function layoutShifts(page: Page, since = 0) {
 }
 
 /**
- * Samples every frame for `ms` and counts the frames in which `text` was in
+ * Samples every frame for `ms` and lists the frames in which `text` was in
  * the transcript while a busy indicator (`aria-busy`, a progress bar, or a
- * "Loading" label) was in the chat pane.
+ * "Loading" label) was in it, with the indicator.
  */
-function busyOverContent(page: Page, text: string, ms: number): Promise<number> {
+function busyOverContent(page: Page, text: string, ms: number): Promise<readonly string[]> {
   return page.evaluate(
     ({ text, ms }) =>
-      new Promise<number>((done) => {
-        let frames = 0;
+      new Promise<string[]>((done) => {
+        const frames: string[] = [];
         const end = performance.now() + ms;
 
         const sample = (): void => {
-          const pane = document.querySelector("main");
+          const pane = document.querySelector('[role="region"][aria-label="Messages"]');
           const shown = pane?.textContent?.includes(text) === true;
 
-          const busy =
-            pane?.querySelector(
-              '[aria-busy="true"], [role="progressbar"], [aria-label^="Loading"]',
-            ) !== null && pane !== null;
+          const busy = pane?.querySelector(
+            '[aria-busy="true"], [role="progressbar"], [aria-label^="Loading"]',
+          );
 
-          if (shown && busy) frames += 1;
+          if (shown && busy !== null && busy !== undefined)
+            frames.push(
+              `${Math.round(performance.now())} ${busy.tagName} ${busy.getAttribute("aria-label") ?? ""} ${(busy.textContent ?? "").slice(0, 40)}`,
+            );
 
           if (performance.now() < end) requestAnimationFrame(sample);
           else done(frames);
@@ -765,7 +767,8 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       await capture(run, desktop, "transcript", "resume", messages(page), true);
 
       if (JUDGED) {
-        expect(run.notes["busy frames over restored content"]).toBe(0);
+        expect(run.notes["busy frames over restored content"]).toEqual([]);
+        expect(run.notes["bounds after relaunch"]).toEqual(run.notes["bounds before quit"]);
         expect(resumeShifts.score).toBeLessThan(0.005);
       }
     },
