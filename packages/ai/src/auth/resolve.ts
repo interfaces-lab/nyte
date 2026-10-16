@@ -75,6 +75,7 @@ export function resolveProviderAuth(
   );
 }
 
+/** Resolves auth from overrides, then stored accounts, then ambient sources (env vars, AWS profiles, ADC files). */
 async function resolveProviderAuthWithSignal(
   provider: { id: string; auth: ProviderAuth },
   credentials: CredentialStore,
@@ -140,7 +141,6 @@ async function resolveProviderAuthWithSignal(
     return undefined;
   }
 
-  // Ambient (env vars, AWS profiles, ADC files).
   return provider.auth.apiKey
     ? resolveApiKey(requestAuthContext, provider.auth.apiKey, provider.id, undefined, signal)
     : undefined;
@@ -165,7 +165,10 @@ export const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 15_000;
 /**
  * OAuth resolution with double-checked locking: tokens with less than five
  * minutes remaining lock, re-check expiry under the lock, refresh once
- * globally, and persist the rotated credential before release.
+ * globally, and persist the rotated credential before release. The normal
+ * five-minute window triggers a refresh but does not impose a provider contract;
+ * an explicit `minOAuthValidityMs` (such as bearer-token export) must still hold
+ * after the refresh.
  */
 async function resolveStoredOAuth(
   credentials: CredentialStore,
@@ -185,7 +188,6 @@ async function resolveStoredOAuth(
   let refreshed: { readonly token: string; readonly credential: OAuthCredential } | undefined;
 
   if (expiresSoon(credential)) {
-    // Optimistic check said expired; the authoritative check runs under the lock.
     let post: CredentialAccounts | undefined;
 
     try {
@@ -236,9 +238,6 @@ async function resolveStoredOAuth(
     if (account?.credential.type !== "oauth") return undefined;
     credential = account.credential;
 
-    // The normal five-minute window triggers a refresh but does not impose a
-    // provider contract. Explicit callers (such as bearer-token export) do
-    // require the requested minimum after the refresh.
     if (minOAuthValidityMs !== undefined && expiresSoon(credential)) {
       throw new ModelsError(
         "oauth",

@@ -56,7 +56,8 @@ export interface GoogleOptions extends StreamOptions {
   toolChoice?: "auto" | "none" | "any";
   thinking?: {
     enabled: boolean;
-    budgetTokens?: number; // -1 for dynamic, 0 to disable
+    /** -1 for dynamic, 0 to disable. */
+    budgetTokens?: number;
     level?: GoogleThinkingLevel;
   };
 }
@@ -66,6 +67,8 @@ let toolCallCounter = 0;
 /**
  * Streams a Gemini response. Only `thought: true` marks a thought summary: a thought signature
  * preserves reasoning context, but it can appear on any part and does not make that part a thought.
+ * `responseId` keeps the first non-empty one the stream sends; @google/genai documents it as an
+ * output-only field that identifies the response.
  */
 export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
   model: Model<"google-generative-ai">,
@@ -100,8 +103,6 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
     const blockIndex = () => blocks.length - 1;
 
     for await (const chunk of googleStream) {
-      // @google/genai documents GenerateContentResponse.responseId as an output-only field
-      // used to identify each response. Keep the first non-empty one from the stream.
       output.responseId ||= chunk.responseId;
       const candidate = chunk.candidates?.[0];
 
@@ -333,6 +334,7 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
   } satisfies GoogleOptions);
 };
 
+/** Creates the SDK client. A model `baseUrl` already includes the version path, so the SDK appends none. */
 function createClient(
   model: Model<"google-generative-ai">,
   apiKey: string,
@@ -342,7 +344,7 @@ function createClient(
 
   if (model.baseUrl) {
     httpOptions.baseUrl = model.baseUrl;
-    httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
+    httpOptions.apiVersion = "";
   }
 
   const headers = providerHeadersToRecord(
@@ -442,11 +444,10 @@ function usesGoogleThinkingLevel(model: Model<"google-generative-ai">): boolean 
   );
 }
 
+/** Gemini 3 and Gemma 4 cannot fully disable thinking, so they get the lowest supported level without includeThoughts, which keeps hidden thinking invisible. */
 function getDisabledThinkingConfig(model: Model<"google-generative-ai">): ThinkingConfig {
   if (!usesGoogleThinkingLevel(model)) return { thinkingBudget: 0 };
 
-  // Gemini 3 and Gemma 4 cannot fully disable thinking; use the lowest supported level without
-  // includeThoughts so hidden thinking stays invisible.
   const fallback = clampThinkingLevel(model, "off");
 
   if (fallback === "off") return { thinkingBudget: 0 };
@@ -575,11 +576,11 @@ function supportsMultimodalFunctionResponse(modelId: string): boolean {
   return majorVersion === undefined || majorVersion >= 3;
 }
 
+/** Converts the transcript to Gemini contents. Gemini has no mid-conversation system messages, so the leading prompt goes out as systemInstruction instead. */
 function convertMessages(
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
 ): Content[] {
-  // Gemini has no mid-conversation system messages; the leading prompt is sent as systemInstruction.
   const conversation = withoutInitialSystemMessage(collapseSystemMessages(context).messages);
   const contents: Content[] = [];
 
@@ -792,6 +793,7 @@ function mapStopReason(reason: FinishReason): StopReason {
   }
 }
 
+/** Retries a Google SDK request under the common policy. The SDK's errors carry a status without headers, so the missing field is added for the policy to classify them. */
 function retryGoogleRequest<T>(
   request: () => Promise<T>,
   options?: Pick<StreamOptions, "maxRetries" | "maxRetryDelayMs" | "signal">,
@@ -801,8 +803,6 @@ function retryGoogleRequest<T>(
       try {
         return await request();
       } catch (error) {
-        // The Google SDK exposes a status without headers. Add the missing field so the common
-        // retry policy can classify the error.
         if (error instanceof Error && "status" in error && !("headers" in error)) {
           Object.assign(error, { headers: undefined });
         }

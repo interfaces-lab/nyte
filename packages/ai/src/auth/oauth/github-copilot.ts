@@ -259,7 +259,10 @@ async function pollForGitHubToken(input: {
   }
 }
 
-/** A GitHub grant and a Copilot session have different shapes, so they cannot be interchanged. */
+/**
+ * A GitHub grant and a Copilot session have different shapes, so they cannot be interchanged.
+ * `expires` is the token's actual expiry: shared auth resolution already refreshes five minutes before it.
+ */
 async function loadCopilotCredential(input: {
   fetch: FetchFunction | undefined;
   github: Static<typeof GitHubToken>;
@@ -318,7 +321,6 @@ async function loadCopilotCredential(input: {
       type: "oauth",
       refresh: input.github.access_token,
       access: token.token,
-      // Shared auth resolution already refreshes five minutes before this actual expiry.
       expires: token.expires_at * 1000,
       availableModelIds: catalog.availableModelIds,
     } satisfies Static<typeof CopilotCredential>,

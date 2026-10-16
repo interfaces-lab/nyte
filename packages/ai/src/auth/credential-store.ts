@@ -69,6 +69,7 @@ export class InMemoryCredentialStore implements CredentialStore {
     );
   }
 
+  /** Stores what `fn` returns even after abort: a rotated token has no second copy. */
   modify(
     providerId: string,
     fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
@@ -80,7 +81,6 @@ export class InMemoryCredentialStore implements CredentialStore {
         const current = this.credentials.get(providerId);
         const next = await fn(current);
 
-        // A rotated token has no second copy, so `CredentialStore` stores it even after abort.
         if (next !== undefined) {
           if (next.accounts.length === 0) this.credentials.delete(providerId);
           else this.credentials.set(providerId, next);

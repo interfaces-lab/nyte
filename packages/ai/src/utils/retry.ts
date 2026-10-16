@@ -121,8 +121,6 @@ export async function retryAssistantCall(
     const delayMs = retryDelayMs(policy!, attempt);
     await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
 
-    // Normalize aborts during retry backoff to the same AssistantMessage shape as
-    // provider stream aborts, so callers do not need to care when cancellation happened.
     try {
       await abortableSleep(delayMs, signal);
     } catch (error) {

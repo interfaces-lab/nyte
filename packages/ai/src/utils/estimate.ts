@@ -94,6 +94,7 @@ export function estimateMessageTokens(message: Message): number {
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
+/** Finds the last assistant usage that still describes the current prefix: a prefix message inserted after a response (for example, a compaction summary) invalidates its usage. */
 function getLastAssistantUsageInfo(
   messages: readonly Message[],
 ): { usage: Usage; index: number } | undefined {
@@ -104,8 +105,6 @@ function getLastAssistantUsageInfo(
     const message = messages[i];
 
     if (message.role === "assistant") {
-      // A newer prefix message was inserted after this response (for example, a
-      // compaction summary), so its usage cannot describe the current prefix.
       const usageAppliesToPrefix = message.timestamp >= latestPrefixTimestamp;
 
       if (
@@ -156,6 +155,7 @@ function estimateToolsTokens(tools: readonly (Tool | ToolReference)[] | undefine
   return estimateTextTokens(safeJsonStringify(tools));
 }
 
+/** Estimates a context's tokens. A transcript carries its prompt and tools in system messages, so only a legacy context adds them separately. */
 export function estimateContextTokens(
   context: Context | TranscriptContext | readonly Message[],
 ): ContextUsageEstimate {
@@ -163,7 +163,6 @@ export function estimateContextTokens(
 
   const estimate = estimateMessages(context.messages);
 
-  // A transcript carries its prompt and tools in system messages, counted above.
   if (!("systemPrompt" in context) && !("tools" in context)) return estimate;
 
   if (estimate.lastUsageIndex !== null) {

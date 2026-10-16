@@ -46,7 +46,8 @@ export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyA
 
 /**
  * Loads an OAuth flow on first login, refresh, or auth conversion.
- * Failed loads are retried on the next call.
+ * Only a successful load is kept: a cached rejection would poison every later
+ * login, refresh, and toAuth call for the life of the process.
  */
 export function lazyOAuth(input: {
   name: string;
@@ -57,8 +58,6 @@ export function lazyOAuth(input: {
   let promise: Promise<OAuthAuth> | undefined;
 
   const loaded = () => {
-    // Memoize only successful loads: a cached rejection would poison every
-    // later login/refresh/toAuth call for the life of the process.
     promise ??= input.load().catch((error) => {
       promise = undefined;
       throw error;

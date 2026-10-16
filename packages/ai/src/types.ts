@@ -321,16 +321,18 @@ export interface SimpleStreamOptions extends StreamOptions {
   thinkingBudgets?: ThinkingBudgets;
 }
 
-// Generic StreamFunction with typed options.
-//
-// Contract:
-// - Receives a normalized transcript: the system prompt and tools live in the
-//   leading system message, never on the context itself.
-// - Must return an AssistantMessageEventStream.
-// - Once invoked, request/model/runtime failures should be encoded in the
-//   returned stream, not thrown.
-// - Error termination must produce an AssistantMessage with stopReason
-//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+/**
+ * Generic StreamFunction with typed options.
+ *
+ * Contract:
+ * - Receives a normalized transcript: the system prompt and tools live in the
+ *   leading system message, never on the context itself.
+ * - Must return an AssistantMessageEventStream.
+ * - Once invoked, request/model/runtime failures should be encoded in the
+ *   returned stream, not thrown.
+ * - Error termination must produce an AssistantMessage with stopReason
+ *   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+ */
 export type StreamFunction<
   TApi extends Api = Api,
   TOptions extends StreamOptions = StreamOptions,

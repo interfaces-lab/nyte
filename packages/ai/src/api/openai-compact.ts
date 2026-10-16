@@ -55,7 +55,6 @@ export async function readOpenAICompactResponse(
     throw new Error("OpenAI compact response did not contain valid output items and usage");
   }
 
-  // Response.json produced these JSON objects; validation establishes their item envelope.
   const data = decoded.output;
 
   if (decoded.usage === undefined) return { data };

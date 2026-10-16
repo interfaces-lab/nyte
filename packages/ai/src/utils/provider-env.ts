@@ -13,7 +13,8 @@ let procEnvCache: Map<string, string> | null = null;
  * This intentionally duplicates restoreSandboxEnv() in
  * packages/coding-agent/src/bun/restore-sandbox-env.ts. The ai package can be
  * used directly, without going through that entrypoint, so provider env lookup
- * must not depend on process.env having been patched.
+ * must not depend on process.env having been patched. A missing or unreadable
+ * /proc/self/environ reads as empty.
  */
 function getBunSandboxEnvValue(name: string): string | undefined {
   if (
@@ -36,7 +37,7 @@ function getBunSandboxEnvValue(name: string): string | undefined {
         if (variable) procEnvCache.set(variable[1], variable[2]);
       }
     } catch {
-      // /proc/self/environ may not exist or may not be readable.
+      return undefined;
     }
   }
 
