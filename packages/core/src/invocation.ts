@@ -50,7 +50,7 @@ export function createInvocation(
     },
   };
 
-  const source = kernel.tools(input.runtime, run);
+  const source = kernel.tools(input.runtime);
   const sdk = createConnection(kernel, context);
 
   return {
@@ -90,7 +90,6 @@ export function createInvocation(
 
         return outcome.kind === "parked" ? parkStep(durable) : outcome;
       },
-      activate: (names) => source.activate(names),
       list: () => source.list(),
     },
     wait: (target) => durable.wait(target),

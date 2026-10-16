@@ -13,7 +13,6 @@ import type {
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
 import { send } from "./admission.ts";
-import { dropActivations } from "./registry.ts";
 import { SdkError } from "./error.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
@@ -288,7 +287,6 @@ export async function endRun(
   });
 
   kernel.runs.end(run);
-  dropActivations(kernel, run);
 
   if (ended === null) return;
 

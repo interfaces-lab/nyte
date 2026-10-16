@@ -34,7 +34,6 @@ export interface ToolInvocation extends Durable {
       args: Json,
       options?: { readonly key?: string; readonly signal?: AbortSignal },
     ): Promise<ToolOutcome>;
-    activate(names: readonly string[]): Promise<void>;
     list(): readonly ToolInfo[];
   };
 }

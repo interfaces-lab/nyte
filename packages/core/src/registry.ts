@@ -6,7 +6,6 @@ import type {
   Disposer,
   Json,
   JsonSchema,
-  RunId,
   Schema,
   SessionCatalogView,
   SessionId,
@@ -357,7 +356,7 @@ export async function sessionCatalog(
       model: item.model ?? null,
       mode: item.mode ?? "all",
     })),
-    tools: toolSource(kernel, runtime, null).list(),
+    tools: toolSource(runtime).list(),
   };
 }
 
@@ -393,7 +392,7 @@ export function bumpGeneration(kernel: Kernel): CatalogGeneration {
   return generation;
 }
 
-export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | null): ToolSource {
+export function toolSource(runtime: PluginRuntime): ToolSource {
   const registry = runtime.registries.tools;
 
   return {
@@ -403,8 +402,6 @@ export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | 
       return found === undefined ? undefined : { definition: found.item, owner: found.owner };
     },
     list() {
-      const active = run === null ? undefined : kernel.pluginState.activated.get(run);
-
       return registry.entries().flatMap(({ item, owner }) => {
         const parameters = converted(item.parameters, "input");
         const output = item.output === undefined ? null : converted(item.output, "output");
@@ -420,22 +417,12 @@ export function toolSource(kernel: Kernel, runtime: PluginRuntime, run: RunId | 
             description: item.description,
             parameters,
             output,
-            exposure:
-              exposure === "deferred" && active?.has(item.name) === true ? "model" : exposure,
+            exposure,
           },
         ];
       });
     },
-    async activate(names) {
-      if (run === null) return;
-      const runs = kernel.pluginState.activated;
-      runs.set(run, new Set([...(runs.get(run) ?? []), ...names]));
-    },
   };
-}
-
-export function dropActivations(kernel: Kernel, run: RunId): void {
-  kernel.pluginState.activated.delete(run);
 }
 
 function converted(schema: Schema<unknown>, direction: "input" | "output"): JsonSchema | undefined {

@@ -160,7 +160,7 @@ export interface Kernel {
 
   readonly durable: DurableProvider;
 
-  tools(runtime: PluginRuntime, run: RunId | null): ToolSource;
+  tools(runtime: PluginRuntime): ToolSource;
 
   readonly beforeTool: ToolGate;
 
@@ -541,7 +541,7 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     partTable: createPartTable(),
     durable: input.durable ?? { run: (step) => runAction(kernel, step) },
-    tools: input.tools ?? ((runtime, run) => toolSource(kernel, runtime, run)),
+    tools: input.tools ?? toolSource,
     beforeTool:
       input.beforeTool ??
       ((call, { runtime, ...context }) =>

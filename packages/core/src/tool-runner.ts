@@ -53,8 +53,6 @@ export interface ToolSource {
   get(name: string): { readonly definition: ToolDefinition; readonly owner: string } | undefined;
 
   list(): readonly ToolInfo[];
-
-  activate(names: readonly string[]): Promise<void>;
 }
 
 export type ToolIntent = {
@@ -292,7 +290,7 @@ async function plan(
 ): Promise<Plan | typeof PARKED> {
   const { session, head, run, call, name } = where;
   const custom: ToolClass = { kind: "custom", label: name };
-  const definition = kernel.tools(where.runtime, run).get(name)?.definition;
+  const definition = kernel.tools(where.runtime).get(name)?.definition;
 
   if (definition === undefined)
     return {

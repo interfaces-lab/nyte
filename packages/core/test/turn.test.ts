@@ -1213,7 +1213,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     expect(transcript.tools.map((info) => info.name)).toContain("marker");
     expect(
       host.kernel
-        .tools(host.kernel.pluginsFor(session.id), null)
+        .tools(host.kernel.pluginsFor(session.id))
         .list()
         .map((info) => info.name),
     ).not.toContain("marker");

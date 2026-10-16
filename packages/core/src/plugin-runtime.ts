@@ -6,7 +6,6 @@ import type {
   PluginCheckReport,
   PluginLoadOutcome,
   PluginReplacementReport,
-  RunId,
   Schema,
   SessionId,
   ValidationIssue,
@@ -78,7 +77,6 @@ export interface PluginState {
   readonly assigned: Map<SessionId, readonly Plugin<"core">[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
-  readonly activated: Map<RunId, Set<string>>;
   readonly publishing: Map<SessionId, Promise<void>>;
   secretKey: Promise<CryptoKey> | null;
 }
@@ -128,7 +126,6 @@ export function createPluginState(): PluginState {
     assigned: new Map(),
     holds: new Map(),
     settings: new Set(),
-    activated: new Map(),
     publishing: new Map(),
     secretKey: null,
   };

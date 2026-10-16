@@ -55,7 +55,6 @@ function source(definition: ToolDefinition): () => ToolSource {
   return () => ({
     get: (name) => (name === definition.name ? { definition, owner: "test" } : undefined),
     list: () => [],
-    activate: async () => undefined,
   });
 }
 

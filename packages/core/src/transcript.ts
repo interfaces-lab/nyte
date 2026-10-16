@@ -126,7 +126,7 @@ export async function requestBody(
     where,
   );
 
-  const source = kernel.tools(runtime, run);
+  const source = kernel.tools(runtime);
   const named = agent?.tools;
 
   const tools = source

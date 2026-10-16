@@ -393,7 +393,7 @@ describe("plugin reload (D4)", () => {
     expect(runtime.plugins()).toContain(previous);
     expect(
       fixture.kernel
-        .tools(runtime, null)
+        .tools(runtime)
         .list()
         .map((info) => info.name),
     ).toContain("retained");

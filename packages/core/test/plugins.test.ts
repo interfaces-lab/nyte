@@ -222,7 +222,7 @@ describe("plugin runtime", () => {
     expect(runtime.api("broken")).toBeUndefined();
     expect(
       kernel
-        .tools(kernel.pluginsFor(session.id), null)
+        .tools(kernel.pluginsFor(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["echo"]);
@@ -918,7 +918,7 @@ describe("plugin api", () => {
     expect(passes).toBe(before + 1);
     expect(
       kernel
-        .tools(kernel.pluginsFor(session.id), null)
+        .tools(kernel.pluginsFor(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
@@ -995,41 +995,6 @@ describe("plugin api", () => {
 
     expect(hold.state().catalog.commands).toEqual([]);
     hold.release();
-  });
-
-  it("activates a deferred tool for one run until the run ends", async () => {
-    const { kernel, host, session, script } = await loaded([
-      { id: "lazy", contribute: { tools: [{ ...echo, exposure: "deferred" }] } },
-    ]);
-
-    await session.send("go");
-    const step = host.execution.advance({ session: session.id, head: main });
-    const turn = await script.started(1);
-    const run = turn.input.run.id;
-    await kernel.tools(kernel.pluginsFor(session.id), run).activate(["echo"]);
-
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), run)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["model"]);
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), null)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["deferred"]);
-
-    turn.finish();
-    await step;
-
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), run)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["deferred"]);
   });
 });
 

@@ -61,7 +61,6 @@ function source(definitions: readonly ToolDefinition[]): () => ToolSource {
       return definition === undefined ? undefined : { definition, owner: "test" };
     },
     list: () => [],
-    activate: async () => undefined,
   });
 }
 
