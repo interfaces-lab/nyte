@@ -14,8 +14,8 @@ import type { ReactElement, ReactNode } from "react";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
-import { terminalText } from "./terminal-text.ts";
 import { customTool, placeName, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
 import type { CustomTool } from "./tool-copy.ts";
 
 export type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
@@ -213,12 +213,14 @@ export const ToolLineView = memo(function ToolLineView({
   const running = status.tense === "running";
   const opener = useReferenceOpener();
   const { state } = message;
+
   const raw = running
     ? state.phase === "running"
       ? (state.progress?.text ?? "")
       : ""
     : toolOutput(state);
-  const output = useMemo(() => terminalText(raw).trimEnd(), [raw]);
+
+  const excerpt = useMemo(() => outputExcerpt(raw.trimEnd()), [raw]);
   const copy = lineCopy(toolClass, cwd, status.tense);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -229,7 +231,7 @@ export const ToolLineView = memo(function ToolLineView({
       : undefined;
 
   const open = file === undefined ? undefined : opener?.({ kind: "file", file });
-  const expandable = open === undefined && output.trim() !== "";
+  const expandable = open === undefined && (excerpt.hidden > 0 || excerpt.head.trim() !== "");
   const hasDetails = copy.name !== undefined || copy.detail !== undefined;
 
   const content: ReactNode = (
@@ -313,12 +315,12 @@ export const ToolLineView = memo(function ToolLineView({
           <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
         </PreviewCardTrigger>
         <PreviewCardContent side="bottom" align="start" sideOffset={8} xstyle={toolLineStyles.card}>
-          <div {...props(toolLineStyles.cardText)}>{output}</div>
+          <div {...props(toolLineStyles.cardText)}>{excerptText(excerpt)}</div>
         </PreviewCardContent>
       </PreviewCard>
       <Collapsible.Panel data-tool-body role="region" aria-label="Tool output">
         <div data-nyte-scrollport {...props(toolLineStyles.output)}>
-          {output}
+          <ToolOutputText raw={raw} excerpt={excerpt} />
         </div>
       </Collapsible.Panel>
     </Collapsible.Root>
