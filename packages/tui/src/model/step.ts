@@ -2,6 +2,7 @@ import type { Effect } from "./effect.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
 import type { Msg } from "./msg.ts";
+import { followedSession } from "./state.ts";
 import type { Draft, Facts, Local, Notice, State } from "./state.ts";
 import { CLOSED } from "./completion.ts";
 
@@ -56,9 +57,17 @@ export function refuse(
   return stay(withNotice(state, reason, tone, now));
 }
 
+/** Refuses what only a started session can do: a blank chat has none until its first send; an opening one has `opening` to say, or nothing. */
+export function refuseUnstarted(state: State, now: number, opening: string | null = null): Step {
+  if (state.facts.chat?.kind === "blank")
+    return refuse(state, "Send a message first.", now, "info");
+
+  return opening === null ? stay(state) : refuse(state, opening, now);
+}
+
 /** True while the followed session has a run that is not idle. */
 export function busy(state: State): boolean {
-  return (state.facts.session?.view?.execution.kind ?? "idle") !== "idle";
+  return (followedSession(state)?.view?.execution.kind ?? "idle") !== "idle";
 }
 
 /** Follows the transcript tail again. */

@@ -22,7 +22,7 @@ import { queuedCount, sameQueueRow } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
-import { followedShells } from "./state.ts";
+import { followedSession, followedShells } from "./state.ts";
 import type { FailureReport, Notice, ShellJob, State } from "./state.ts";
 import { tableInputFor } from "./table-input.ts";
 import type { Blocked, EditingModel, RunModel } from "./table-input.ts";
@@ -113,7 +113,7 @@ export function keyboardDialog(state: State): Dialog | null {
   const top = state.local.dialogs.at(-1);
 
   if (top !== undefined) return liveDialog(state, top);
-  const { session } = state.facts;
+  const session = followedSession(state);
 
   return questionPanel(
     currentQuestion(
@@ -144,8 +144,10 @@ function livePreview(
 }
 
 export function deriveScreen(state: State, previous: ScreenModel | null): ScreenModel {
-  const session = state.facts.session;
+  const session = followedSession(state);
   const view = session?.view ?? null;
+  const blank = state.facts.chat?.kind === "blank" ? state.facts.chat : null;
+  const starting = state.local.submissions.some((sent) => sent.session === blank?.id);
   const dialog = keyboardDialog(state);
   const input = tableInputFor(state, dialog);
   const queue = keepEqual(previous?.queue, input.queue, sameQueueRow);
@@ -162,7 +164,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
 
   return {
-    opening: view === null,
+    opening: view === null && (blank === null || starting),
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,
     question,
@@ -199,9 +201,8 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
       state.local.watchedRun ?? undefined,
     ),
     welcome:
-      view !== null &&
-      view.turns.length === 0 &&
-      landingMessages(view).length === 0 &&
+      (blank !== null ||
+        (view !== null && view.turns.length === 0 && landingMessages(view).length === 0)) &&
       followedShells(state).length === 0,
     followUp: input.followUp,
     selectionActive: state.facts.terminal.selection,

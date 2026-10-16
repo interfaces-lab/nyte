@@ -2,11 +2,12 @@ import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyt
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
-import type { Submission } from "../model/state.ts";
+import type { BlankChat, Submission } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
 import type { HandlerContext } from "./scope.ts";
+import { follow } from "./session.ts";
 
 export async function submit(
   submission: Submission,
@@ -14,15 +15,27 @@ export async function submit(
   context: HandlerContext,
 ): Promise<void> {
   const { dispatch, ports, read, scope } = context;
+  const refuse = (reason: string): void => refuseSubmission(submission, reason, context);
+  const { chat } = read().facts;
 
-  const refuse = (reason: string): void => {
-    dispatch({
-      kind: "send-refused",
-      submission: submission.id,
-      reason,
-      snapshot: submission.snapshot,
-    });
-  };
+  if (chat?.kind === "blank" && chat.id === submission.session) {
+    const starting = scope.starting;
+
+    if (starting?.id === chat.id) {
+      await starting.done;
+
+      return submit(submission, delivery, context);
+    }
+
+    const done = start(chat, submission, delivery, context);
+    scope.starting = { id: chat.id, done: done.catch(() => undefined) };
+
+    try {
+      return await done;
+    } finally {
+      if (scope.starting?.id === chat.id) scope.starting = null;
+    }
+  }
 
   const followed = scope.followed;
 
@@ -94,6 +107,66 @@ export async function submit(
   } finally {
     slot.release();
   }
+}
+
+/** Starts a blank chat with the submission as its first message, then follows it; a failed start leaves the chat blank, its id kept for the retry. */
+async function start(
+  chat: BlankChat,
+  submission: Submission,
+  delivery: Delivery,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, read, scope } = context;
+  const refuse = (reason: string): void => refuseSubmission(submission, reason, context);
+
+  try {
+    await Promise.allSettled(scope.pastes);
+    const workspace = ports.host.workspace(chat.workspace);
+
+    const content = await prepare(submission.snapshot, {
+      skills: indexSkills(read()),
+      upload: (bytes) => workspace.upload(bytes),
+    });
+
+    const decision = await beforeSubmit(ports.plugins, { content, delivery, session: null });
+
+    if (decision.kind === "reject") {
+      refuse(decision.reason);
+
+      return;
+    }
+
+    const current = read().facts.chat;
+
+    if (current?.kind !== "blank" || current.id !== chat.id) {
+      refuse("The chat changed before the message was sent.");
+
+      return;
+    }
+
+    const { message } = await ports.host.start({
+      id: chat.id,
+      workspace: current.workspace,
+      selection: current.selection,
+      content: decision.draft.content,
+    });
+
+    dispatch({ kind: "sent", submission: submission.id, message });
+  } catch (error) {
+    refuse(`Message not sent: ${errorMessage(error)}. It is back in the composer.`);
+    throw error;
+  }
+
+  await follow(chat.id, false, context);
+}
+
+function refuseSubmission(submission: Submission, reason: string, context: HandlerContext): void {
+  context.dispatch({
+    kind: "send-refused",
+    submission: submission.id,
+    reason,
+    snapshot: submission.snapshot,
+  });
 }
 
 async function beforeSubmit(

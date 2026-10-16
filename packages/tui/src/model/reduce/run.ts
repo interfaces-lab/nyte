@@ -12,6 +12,7 @@ import {
   storeQuestionDraft,
 } from "../question.ts";
 import { runModel, tableInputFor } from "../table-input.ts";
+import { followedSession } from "../state.ts";
 import type { QuestionTypedDraft, State } from "../state.ts";
 import { andThen, busy, clearDraft, refuse, stay, withLocal, withNotice } from "../step.ts";
 import type { SomeHandlers, Step } from "../step.ts";
@@ -29,7 +30,7 @@ const MOVE_REFUSALS = {
 
 export const runHandlers = {
   "stop-run": (state, _msg, now) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
     const current = runModel(followed);
 
     if (followed === null || current.kind === "idle")
@@ -38,7 +39,7 @@ export const runHandlers = {
     return { state, effects: [{ kind: "stop-run", session: followed.id, run: current.run }] };
   },
   answer: (state, msg) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
     const question = tableInputFor(state, null).question;
 
     if (question === null || question.part !== msg.part || question.session !== msg.session)
@@ -96,7 +97,7 @@ export const runHandlers = {
     );
   },
   "move-to": (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
 
     if (followed === null) return stay(state);
 
@@ -138,7 +139,7 @@ export const runHandlers = {
     };
   },
   "stop-task": (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
     const task = state.facts.tasks.find((candidate) => candidate.id === msg.task);
 
     if (followed === null || task === undefined)
@@ -268,7 +269,7 @@ export function advanceQuestion(
 function moved(state: State, msg: Extract<Outcome, { kind: "moved" }>, now: number): Step {
   const context = state.local.move ?? { purpose: "tree" as const, message: null };
   const next = withLocal(state, { move: null });
-  const followed = state.facts.session;
+  const followed = followedSession(state);
   const { outcome } = msg;
 
   if (outcome.kind === "moved") {

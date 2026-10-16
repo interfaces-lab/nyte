@@ -55,10 +55,16 @@ export interface Ports {
 
 export interface HostPort {
   session(id: SessionId): SessionPort;
-  create(input: {
-    readonly workspace: WorkspaceId | null;
-    readonly selection: Selection | null;
-  }): Promise<SessionId>;
+  workspace(id: WorkspaceId): WorkspacePort;
+  /** Registers `path`, or the folder the TUI opened in when `null`, as a workspace; with neither, resolves the host's default workspace. */
+  openFolder(path: string | null): Promise<WorkspaceId>;
+  /** Starts chat `id` with its first message; the same id and input start it once. */
+  start(input: {
+    readonly id: SessionId;
+    readonly workspace: WorkspaceId;
+    readonly selection: Selection;
+    readonly content: UserContent;
+  }): Promise<{ readonly message: MessageId }>;
   rootSessions(): AsyncIterable<SessionInfo>;
   catalog(): AsyncIterable<Pick<HostView, "catalog">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
@@ -92,6 +98,14 @@ export interface HostPort {
   applySetting(id: string, value: Json): Promise<SettingOutcome>;
   tasks(session: SessionId): AsyncIterable<readonly Task[]>;
   blob(id: string): AsyncIterable<Uint8Array>;
+}
+
+export interface WorkspacePort {
+  readonly id: WorkspaceId;
+  /** The folder on this machine, or `null` when the workspace is elsewhere. */
+  cwd(): Promise<string | null>;
+  upload(bytes: Uint8Array): Promise<BlobId>;
+  mentions(signal: AbortSignal): Promise<readonly string[]>;
 }
 
 export interface SessionPort {

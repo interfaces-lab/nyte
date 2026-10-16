@@ -1,4 +1,4 @@
-import { followedShells } from "../state.ts";
+import { followedSession, followedShells } from "../state.ts";
 import type { State } from "../state.ts";
 import { following, stay, withLocal, withNotice } from "../step.ts";
 import type { SomeHandlers, Step } from "../step.ts";
@@ -55,13 +55,13 @@ function reveal(state: State, direction: "earlier" | "later"): Step {
   const local = state.local.transcript;
 
   const { rows, window: current } = deriveTranscript(
-    state.facts.session?.view ?? null,
+    followedSession(state)?.view ?? null,
     followedShells(state),
     local,
     null,
   );
 
-  const session = state.facts.session;
+  const session = state.facts.chat;
 
   if (direction === "earlier" && current.start === 0)
     return session === null

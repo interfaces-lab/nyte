@@ -42,7 +42,7 @@ import {
 } from "./local.ts";
 import { createScope } from "./scope.ts";
 import type { HandlerContext, RunnerContext, Scope } from "./scope.ts";
-import { follow, loadEarlier } from "./session.ts";
+import { follow, loadEarlier, openNew } from "./session.ts";
 import { submit } from "./submit.ts";
 
 export interface Runner {
@@ -113,7 +113,8 @@ function shellsDone(scope: Scope): readonly Promise<void>[] {
 }
 
 const HANDLERS: Handlers = {
-  follow: (effect, context) => follow(effect.target, effect.announce, context),
+  follow: (effect, context) =>
+    effect.target === "new" ? openNew(context) : follow(effect.target, effect.announce, context),
   "load-earlier": loadEarlier,
   send: (effect, context) => submit(effect.submission, effect.delivery, context),
   revise,

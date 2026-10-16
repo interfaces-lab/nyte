@@ -5,7 +5,7 @@ import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
 import { addPart } from "../draft.ts";
 import type { Fact } from "../msg.ts";
 import { currentQuestion, sameQuestion } from "../question.ts";
-import { followedShells } from "../state.ts";
+import { followedSession, followedShells } from "../state.ts";
 import type { FollowedSession, Handback, ShellJob, State } from "../state.ts";
 import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "../step.ts";
 import type { MsgOf, SomeHandlers, Step } from "../step.ts";
@@ -20,7 +20,7 @@ function followedOnly<M extends { readonly session: SessionId }>(
   handle: (state: State, session: FollowedSession, msg: M, now: number) => Step,
 ): (state: State, msg: M, now: number) => Step {
   return (state, msg, now) => {
-    const { session } = state.facts;
+    const session = followedSession(state);
 
     return session !== null && session.id === msg.session
       ? handle(state, session, msg, now)
@@ -34,22 +34,32 @@ export const factHandlers = {
     state: opened(state, msg),
     effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
   }),
+  "blank-opened": (state, msg) => ({
+    state: withLocal(entered(withFacts(state, { chat: msg.chat, tasks: [] })), {
+      pending: state.local.pending.filter((op) => op.kind !== "switch"),
+    }),
+    effects: [{ kind: "check-trust", workspace: msg.chat.workspace, ask: "if-needed" }],
+  }),
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
     viewArrived(state, session, msg.view, now),
   ),
   "watch-ended": followedOnly<MsgOf<"watch-ended">>((state, session, msg) =>
     stay(
       withFacts(state, {
-        session: { ...session, watch: { kind: "failed", failure: msg.failure } },
+        chat: { ...session, watch: { kind: "failed", failure: msg.failure } },
       }),
     ),
   ),
   "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) =>
-    stay(withFacts(state, { session: { ...session, info: msg.info } })),
+    stay(withFacts(state, { chat: { ...session, info: msg.info } })),
   ),
-  selection: followedOnly<MsgOf<"selection">>((state, session, msg) =>
-    stay(withFacts(state, { session: { ...session, selection: msg.selection } })),
-  ),
+  selection: (state, msg) => {
+    const { chat } = state.facts;
+
+    return chat === null || chat.id !== msg.session
+      ? stay(state)
+      : stay(withFacts(state, { chat: { ...chat, selection: msg.selection } }));
+  },
   tasks: followedOnly<MsgOf<"tasks">>((state, _session, msg) =>
     stay(questionMoved(state, withFacts(state, { tasks: msg.tasks }))),
   ),
@@ -78,21 +88,27 @@ export const factHandlers = {
 } satisfies SomeHandlers;
 
 function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): State {
-  const next = withFacts(state, {
-    session: {
-      id: msg.session,
-      info: msg.info,
-      view: null,
-      watch: { kind: "live" },
-      selection: msg.selection,
-    },
-    tasks: [],
-  });
+  return entered(
+    withFacts(state, {
+      chat: {
+        kind: "session",
+        id: msg.session,
+        info: msg.info,
+        view: null,
+        watch: { kind: "live" },
+        selection: msg.selection,
+      },
+      tasks: [],
+    }),
+  );
+}
 
+/** Resets what belonged to the chat on screen before: its question, scroll and history. */
+function entered(next: State): State {
   return withLocal(next, {
     question: { ...next.local.question, dismissed: null, highlighted: 0 },
     transcript: {
-      ...state.local.transcript,
+      ...next.local.transcript,
       following: true,
       window: { kind: "tail" },
       disclosures: new Set(),
@@ -106,7 +122,7 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
 
 function viewArrived(state: State, session: FollowedSession, view: SessionView, now: number): Step {
   const before = session.view;
-  let next = withFacts(state, { session: { ...session, view } });
+  let next = withFacts(state, { chat: { ...session, view } });
 
   if (view.execution.kind !== "idle") next = withLocal(next, { watchedRun: view.execution.run.id });
   next = questionMoved(state, next);
@@ -122,9 +138,9 @@ function viewArrived(state: State, session: FollowedSession, view: SessionView, 
 function followedHead(
   state: State,
 ): { readonly id: SessionId; readonly view: SessionView | null } | null {
-  return state.facts.session === null
-    ? null
-    : { id: state.facts.session.id, view: state.facts.session.view };
+  const session = followedSession(state);
+
+  return session === null ? null : { id: session.id, view: session.view };
 }
 
 function questionMoved(before: State, after: State): State {
@@ -136,7 +152,7 @@ function questionMoved(before: State, after: State): State {
 
   let drafts = local.drafts;
 
-  const session = after.facts.session;
+  const session = followedSession(after);
 
   const observed = [
     ...(session?.view === null || session === null
@@ -184,7 +200,7 @@ function questionMoved(before: State, after: State): State {
 }
 
 function firstView(state: State, now: number): Step {
-  const session = state.facts.session;
+  const session = followedSession(state);
 
   if (session === null) return stay(state);
   const switching = state.local.pending.find((op) => op.kind === "switch");
@@ -236,7 +252,7 @@ function unansweredRequest(
 }
 
 function runEnded(before: SessionView | null, after: SessionView, next: State, now: number): Step {
-  const session = next.facts.session;
+  const session = followedSession(next);
 
   if (
     before === null ||
@@ -280,7 +296,7 @@ function runEnded(before: SessionView | null, after: SessionView, next: State, n
 
 function editLanded(state: State, now: number): Step {
   const { editing } = state.local;
-  const view = state.facts.session?.view;
+  const view = followedSession(state)?.view;
 
   if (editing === null || view === null || view === undefined) return stay(state);
 
@@ -318,10 +334,10 @@ export function stageHandback(
 }
 
 function landHandback(next: State, now: number): Step {
-  const session = next.facts.session;
-  const view = session?.view;
+  const session = next.facts.chat;
+  const view = session?.kind === "session" ? session.view : null;
 
-  if (session === null || view === null || view === undefined) return stay(next);
+  if (session === null || (session.kind === "session" && view === null)) return stay(next);
   const [head, ...rest] = next.local.handbacks[session.id] ?? [];
 
   if (head === undefined) return stay(next);
@@ -335,6 +351,7 @@ function landHandback(next: State, now: number): Step {
 
   if (
     head.unlessLanded !== null &&
+    view !== null &&
     view.messages.some(
       (candidate) =>
         candidate.id === head.unlessLanded &&
@@ -448,7 +465,7 @@ function scrolled(state: State, atBottom: boolean): State {
   const { transcript } = state.local;
 
   const model = deriveTranscript(
-    state.facts.session?.view ?? null,
+    followedSession(state)?.view ?? null,
     followedShells(state),
     transcript,
     null,

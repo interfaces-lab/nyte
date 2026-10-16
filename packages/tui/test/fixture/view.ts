@@ -354,6 +354,7 @@ export function followed(view: SessionView, id = "s1"): FollowedSession {
   };
 
   return {
+    kind: "session",
     id: info.id,
     info,
     view,

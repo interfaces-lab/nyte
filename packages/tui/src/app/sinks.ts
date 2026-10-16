@@ -14,9 +14,11 @@ interface Sinks {
 
 export function installSinks(store: Store, terminal: TerminalPort): Sinks {
   const title = createMemo(() => {
-    const session = store.state().facts.session;
+    const { chat } = store.state().facts;
 
-    return session === null ? null : terminalTitle(session.info.name ?? undefined);
+    if (chat === null) return null;
+
+    return terminalTitle(chat.kind === "session" ? (chat.info.name ?? undefined) : undefined);
   });
 
   const program = createMemo(() => encode(store.screen().program));

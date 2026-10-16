@@ -50,6 +50,7 @@ function placeMark(place: Place, theme: CliTheme): RowMark {
     case "sending":
       return { glyph: GLYPHS.sending, tone: theme.dim };
     case "uncovered":
+    case "deciding":
       return { glyph: GLYPHS.queue, tone: theme.dim };
     default: {
       const _exhaustive: never = place;

@@ -68,7 +68,7 @@ export function buildState(
     facts: {
       ...base.facts,
       phase: { kind: "ready" },
-      session,
+      chat: session,
       catalog: {
         generation: 1,
         catalog: overrides?.catalog === undefined ? CATALOG : overrides.catalog,

@@ -9,6 +9,7 @@ import type {
   SessionView,
   Thinking,
   ModelRef,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
@@ -27,7 +28,7 @@ export interface State {
 
 export interface Facts {
   readonly phase: Phase;
-  readonly session: FollowedSession | null;
+  readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
@@ -48,7 +49,18 @@ export type Phase =
   | { readonly kind: "ready" }
   | { readonly kind: "closing" };
 
+/** The chat on screen: a blank one is a client-side draft that the first send starts under `id`; a session is a started chat the TUI follows. */
+export type Chat = BlankChat | FollowedSession;
+
+export interface BlankChat {
+  readonly kind: "blank";
+  readonly id: SessionId;
+  readonly workspace: WorkspaceId;
+  readonly selection: Selection;
+}
+
 export interface FollowedSession {
+  readonly kind: "session";
   readonly id: SessionId;
   readonly info: SessionInfo;
   readonly view: SessionView | null;
@@ -243,7 +255,7 @@ export function initialState(bootstrap: Bootstrap): State {
   return {
     facts: {
       phase: { kind: "starting" },
-      session: null,
+      chat: null,
       catalog: { generation: -1, catalog: null },
       settings: bootstrap.settings,
       tasks: [],
@@ -284,8 +296,20 @@ export function initialState(bootstrap: Bootstrap): State {
   };
 }
 
+/** The workspace a chat starts in or runs in. */
+export function chatWorkspace(chat: Chat): WorkspaceId {
+  return chat.kind === "blank" ? chat.workspace : chat.info.workspace;
+}
+
+/** The started session on screen, or `null` while the chat is blank or opening. */
+export function followedSession(state: State): FollowedSession | null {
+  const { chat } = state.facts;
+
+  return chat?.kind === "session" ? chat : null;
+}
+
 export function followedShells(state: State): readonly ShellJob[] {
-  const followed = state.facts.session?.id ?? null;
+  const followed = state.facts.chat?.id ?? null;
 
   return state.facts.shells.filter((job) => job.session === followed);
 }

@@ -1,10 +1,10 @@
 import { asId } from "@nyte-ai/schema";
 import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { BootOptions } from "../../src/effects/boot.ts";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
 import type { Msg } from "../../src/model/msg.ts";
+import { followedSession } from "../../src/model/state.ts";
 import type { FollowedSession, State, Submission } from "../../src/model/state.ts";
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
@@ -450,51 +450,104 @@ test("an acknowledged thinking level is saved as the default; a model-only choic
   expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
 });
 
-test("a session the TUI creates starts at the remembered level, clamped to its model", async () => {
-  const app = harness(remembering("xhigh"));
+test("/new opens a blank chat at the remembered level, clamped to its model, and creates no session", async () => {
+  const app = harness(remembering("xhigh", followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([{ effort: "high" }]);
-  expect(app.dispatched[0]).toMatchObject({ kind: "session-opened", session: asId("created-1") });
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: { kind: "blank", workspace: asId("workspace"), selection: { effort: "high" } },
+  });
+  expect(app.ports.host.starts).toEqual([]);
 });
 
-test("without a remembered level a created session keeps the level core gave it", async () => {
-  const app = harness(buildState(null));
+test("without a remembered level a blank chat takes the level core would give its model", async () => {
+  const app = harness(buildState(followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([]);
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: { selection: { model: { id: "model" }, effort: "low" } },
+  });
 });
 
 test("at boot --effort wins over the remembered level, and a resumed session keeps its own", async () => {
-  const boots: readonly {
-    readonly target: BootOptions["target"];
-    readonly effort: Thinking | null;
-    readonly session: string;
-    readonly configure: readonly { readonly effort: Thinking }[];
-  }[] = [
-    { target: { kind: "new" }, effort: null, session: "created-1", configure: [{ effort: "low" }] },
-    { target: { kind: "new" }, effort: "high", session: "created-1", configure: [] },
-    { target: { kind: "session", id: asId("s1") }, effort: null, session: "s1", configure: [] },
+  const blanks: readonly { readonly effort: Thinking | null; readonly shown: Thinking }[] = [
+    { effort: null, shown: "low" },
+    { effort: "high", shown: "high" },
   ];
 
-  for (const boot of boots) {
+  for (const blank of blanks) {
     const app = harness(remembering("low"));
     app.runner.boot(
-      {
-        home: "/tmp",
-        cwd: "/tmp",
-        target: boot.target,
-        model: null,
-        effort: boot.effort,
-      },
+      { home: "/tmp", cwd: "/tmp", target: { kind: "new" }, model: null, effort: blank.effort },
       Promise.resolve(),
     );
     await app.runner.settled();
-    expect(await app.received("session-opened")).toMatchObject({ session: asId(boot.session) });
-    expect(app.ports.host.sessions.get(boot.session)?.calls.configure).toEqual([...boot.configure]);
+    expect(await app.received("blank-opened")).toMatchObject({
+      chat: { selection: { effort: blank.shown } },
+    });
+    expect(app.ports.host.starts).toEqual([]);
   }
+
+  const app = harness(remembering("high"));
+  app.runner.boot(
+    {
+      home: "/tmp",
+      cwd: "/tmp",
+      target: { kind: "session", id: asId("s1") },
+      model: null,
+      effort: null,
+    },
+    Promise.resolve(),
+  );
+  await app.runner.settled();
+  expect(await app.received("session-opened")).toMatchObject({ session: asId("s1") });
+  expect(app.ports.host.sessions.get("s1")?.calls.configure).toEqual([]);
+});
+
+test("the first send from a blank chat starts it with that message, then follows it; a refused start keeps it blank", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b1"),
+    workspace: asId<"workspace">("workspace"),
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-b1",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const app = harness({ ...buildState(null), facts: { ...buildState(null).facts, chat: blank } });
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([
+    { id: blank.id, workspace: blank.workspace, selection: blank.selection, content: "hello" },
+  ]);
+  expect(app.ports.plugins.submitted).toEqual([
+    { content: "hello", delivery: "steer", session: null },
+  ]);
+  expect(app.dispatched.map((msg) => msg.kind)).toContain("sent");
+  expect(await app.received("session-opened")).toMatchObject({ session: blank.id });
+
+  const refused = harness({
+    ...buildState(null),
+    facts: { ...buildState(null).facts, chat: blank },
+  });
+
+  refused.ports.plugins.decision = { kind: "reject", reason: "Not today." };
+  refused.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await refused.runner.settled();
+
+  expect(refused.ports.host.starts).toEqual([]);
+  expect(await refused.received("send-refused")).toMatchObject({ reason: "Not today." });
+  expect(refused.dispatched.map((msg) => msg.kind)).not.toContain("session-opened");
 });
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
@@ -588,7 +641,7 @@ test("a sign-out that leaves the model in place confirms in the ok tone; a failu
 test("a rename of the followed chat in the session directory reaches its info, so the title follows", async () => {
   const state = buildState(followed(LANDED));
   const app = harness(state);
-  const info = state.facts.session?.info;
+  const info = followedSession(state)?.info;
 
   app.runner.boot(
     {

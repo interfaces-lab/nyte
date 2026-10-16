@@ -20,6 +20,7 @@ import type { MentionFile } from "./completion.ts";
 import type { DialogData, DialogId, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
 import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
+  BlankChat,
   FailureReport,
   Notice,
   PendingOp,
@@ -165,6 +166,7 @@ export type Fact =
       readonly info: SessionInfo;
       readonly selection: Selection;
     }
+  | { readonly kind: "blank-opened"; readonly chat: BlankChat }
   | { readonly kind: "view"; readonly session: SessionId; readonly view: SessionView }
   | { readonly kind: "watch-ended"; readonly session: SessionId; readonly failure: string | null }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }

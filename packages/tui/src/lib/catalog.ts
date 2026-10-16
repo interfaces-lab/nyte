@@ -23,6 +23,11 @@ export function modelId(ref: ModelRef): string {
   return `${ref.provider}/${ref.id}`;
 }
 
+/** The level core gives `model` when a chat names none: its lowest above off, or off. */
+export function defaultThinking(model: ModelInfo): Thinking {
+  return model.reasoning ? (model.thinking.find((level) => level !== "off") ?? "off") : "off";
+}
+
 export function clampThinking(model: ModelInfo, level: Thinking): Thinking {
   const rank = THINKING_LEVELS.findIndex((candidate) => candidate === level);
 

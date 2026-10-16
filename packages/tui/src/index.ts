@@ -328,19 +328,23 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
       );
   }
 
-  const session = await targetSession(host, flags.resume, await addFolder(host, process.cwd()));
-  invocation.sessionId = session.id;
+  const resumed = await targetSession(host, flags.resume);
   signal.throwIfAborted();
+  const content = flags.rest.join(" ");
+  const options = configuration === undefined ? {} : { configuration };
 
-  return printRun({
-    session,
-    content: flags.rest.join(" "),
-    json: flags.json,
-    quiet: flags.quiet,
-    output,
-    signal,
-    configuration,
-  });
+  const { session, receipt } =
+    resumed === null
+      ? await host.sessions.start({
+          workspace: await addFolder(host, process.cwd()),
+          content,
+          ...options,
+        })
+      : { session: resumed, receipt: await resumed.send(content, options) };
+
+  invocation.sessionId = session.id;
+
+  return printRun({ session, receipt, json: flags.json, quiet: flags.quiet, output, signal });
 }
 
 /** Runs one command. After the TUI it exits explicitly, because Bun's watch mode outlives `main`. */

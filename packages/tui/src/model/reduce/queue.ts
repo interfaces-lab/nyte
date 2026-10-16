@@ -4,6 +4,7 @@ import { draftFromContent, snapshot } from "../draft.ts";
 import type { Intent } from "../msg.ts";
 import { queueRows, rowMessage } from "../queue.ts";
 import type { QueueRow } from "../queue.ts";
+import { followedSession } from "../state.ts";
 import type { State } from "../state.ts";
 import { refuse, setDraft, stay, withLocal, withNotice } from "../step.ts";
 import type { SomeHandlers, Step } from "../step.ts";
@@ -120,7 +121,7 @@ function queued(
   now: number,
   act: (row: QueueRow, message: UserMessage, session: SessionId, rows: readonly QueueRow[]) => Step,
 ): Step {
-  const followed = state.facts.session;
+  const followed = followedSession(state);
 
   if (followed === null) return stay(state);
   const rows = queueRows(followed, state.local.editing);

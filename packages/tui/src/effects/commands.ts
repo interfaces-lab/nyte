@@ -2,10 +2,19 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
-import type { Notice, State } from "../model/state.ts";
+import { followedSession } from "../model/state.ts";
+import type { Notice, Selection, State } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
 import type { HandlerContext } from "./scope.ts";
-import { fallback, buildConfigPatch, refreshWorkspace, readSelection } from "./session.ts";
+import {
+  fallback,
+  buildConfigPatch,
+  openBlank,
+  readSelection,
+  refreshWorkspace,
+  rememberThinking,
+  toSelection,
+} from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -88,6 +97,13 @@ export async function move(effect: Of<"move">, context: HandlerContext): Promise
 export async function configure(effect: Of<"configure">, context: HandlerContext): Promise<void> {
   const { read, scope } = context;
   const followed = scope.followed;
+  const { chat } = read().facts;
+
+  if (chat?.kind === "blank" && chat.id === effect.session) {
+    await configureBlank(effect, chat.selection, context);
+
+    return;
+  }
 
   if (followed === null || followed.id !== effect.session) return;
   const state = read();
@@ -98,6 +114,35 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   const result = await followed.configurator.request(patch);
 
   if (result.kind === "failed") throw new Error(result.message);
+}
+
+/** Settles a blank chat's model and thinking level and remembers them as the next chat's defaults; the first send starts the chat with them. */
+async function configureBlank(
+  effect: Of<"configure">,
+  current: Selection,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, read } = context;
+  const catalog = read().facts.catalog.catalog;
+  const patch = buildConfigPatch(effect.selection, current, catalog);
+  const model = patch.model ?? current.model;
+  const effort = patch.thinkingLevel ?? current.effort;
+
+  dispatch({
+    kind: "selection",
+    session: effect.session,
+    selection: toSelection({ model, thinkingLevel: effort }, catalog),
+  });
+
+  if (patch.model !== undefined)
+    await ports.host.setDefaultModel(patch.model).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
+
+  if (patch.thinkingLevel !== undefined)
+    await rememberThinking(patch.thinkingLevel, context).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
 }
 
 export async function checkTrust(
@@ -203,6 +248,15 @@ export async function changeDirectory(
   }
 
   try {
+    const { chat } = read().facts;
+
+    if (chat?.kind === "blank" && chat.id === effect.session) {
+      await openBlank({ ...chat, workspace: await ports.host.openFolder(path) }, context);
+      finish(stampNotice(context, "ok", `Working directory: ${path}`));
+
+      return;
+    }
+
     const port = ports.host.session(effect.session);
     const outcome = await port.changeDirectory(path);
 
@@ -229,7 +283,7 @@ export async function refreshWorkspaceFacts(
 
 export async function reload(effect: Of<"reload">, context: HandlerContext): Promise<void> {
   const { dispatch, ports, read } = context;
-  const session = read().facts.session;
+  const session = followedSession(read());
 
   if (session === null) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });
@@ -245,7 +299,7 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
     const settings = await ports.settings.read(cwd);
     dispatch({ kind: "settings", settings });
     await refreshWorkspace(context, cwd);
-    const skills = read().facts.session?.view?.catalog.skills.length ?? 0;
+    const skills = followedSession(read())?.view?.catalog.skills.length ?? 0;
 
     dispatch({
       kind: "op-finished",
@@ -292,7 +346,7 @@ export function rowStatus(
   session: SessionId,
   message: MessageId,
 ): "pending" | "landed" | "unsent" | "absent" {
-  const followed = state.facts.session;
+  const followed = followedSession(state);
 
   if (followed === null || followed.id !== session || followed.view === null) return "absent";
 

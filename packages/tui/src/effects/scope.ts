@@ -20,6 +20,8 @@ export interface LoginChannel {
 
 export interface Scope {
   followed: Followed | null;
+  /** The blank chat whose first send is starting it; later sends to it wait for `done`. */
+  starting: { readonly id: SessionId; readonly done: Promise<void> } | null;
   previous: SessionId | null;
   readonly pastes: Set<Promise<void>>;
   readonly shells: Map<string, { stop(): void; readonly done: Promise<void> }>;
@@ -45,6 +47,7 @@ export interface HandlerContext extends RunnerContext {
 export function createScope(): Scope {
   return {
     followed: null,
+    starting: null,
     previous: null,
     pastes: new Set(),
     shells: new Map(),

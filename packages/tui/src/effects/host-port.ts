@@ -2,28 +2,40 @@ import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId } from "@nyte-ai/schema";
 import { pagedViews } from "@nyte-ai/sdk/client";
-import type { Connection, MessageId, PagedViews, Session } from "@nyte-ai/sdk";
+import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import type { HostPort, PluginsPort, SessionPort } from "./ports.ts";
+import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
 
 export function hostPort(host: Connection, folder: string | null): HostPort {
   return {
     session: (id) => sessionPort(host, host.session(id)),
-    async create(input) {
-      const workspace = input.workspace ?? (folder === null ? null : await addFolder(host, folder));
-      const session = await host.sessions.create({
-        ...(workspace === null ? {} : { workspace }),
-        ...(input.selection === null
-          ? {}
-          : { configuration: { model: input.selection.model, thinking: input.selection.effort } }),
+    workspace: (id) => workspacePort(host, id),
+    async openFolder(path) {
+      const opened = path ?? folder;
+
+      if (opened !== null) return addFolder(host, opened);
+
+      for await (const view of host.watch()) {
+        if (view.defaultWorkspace !== null) return view.defaultWorkspace;
+        break;
+      }
+
+      throw new Error("Open nyte in a folder: the host has no default workspace.");
+    },
+    async start(input) {
+      const { receipt } = await host.sessions.start({
+        id: input.id,
+        workspace: input.workspace,
+        configuration: { model: input.selection.model, thinking: input.selection.effort },
+        content: input.content,
       });
 
-      return session.id;
+      return { message: receipt.message };
     },
     rootSessions: () => rootSessions(host),
     catalog: () => host.watch(),
@@ -184,8 +196,55 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
   };
 }
 
+function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
+  return {
+    id,
+    async cwd() {
+      const workspace = await host.workspace(id).info();
+
+      return workspace.target.kind === "local" && "path" in workspace.target
+        ? workspace.target.path
+        : null;
+    },
+    async upload(bytes) {
+      const files = await host.workspace(id).files();
+
+      if (files.kind !== "available") throw new Error(`Can't attach images here: ${files.reason}`);
+
+      return files.api.upload(
+        (async function* () {
+          yield bytes;
+        })(),
+      );
+    },
+    async mentions(signal) {
+      const files = await host.workspace(id).files();
+
+      if (files.kind !== "available") return [];
+      const found: string[] = [];
+
+      for await (const frame of files.api.scan({ ignored: "exclude" })) {
+        if (signal.aborted) return found;
+
+        if (frame.kind !== "entries") continue;
+
+        for (const entry of frame.entries) {
+          if (entry.kind === "symlink") continue;
+          found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
+        }
+      }
+
+      return found;
+    },
+  };
+}
+
 function sessionPort(host: Connection, session: Session): SessionPort {
   const readReceipt = (message: MessageId) => session.receipt(asId(message));
+
+  const readWorkspace = async (): Promise<WorkspacePort> =>
+    workspacePort(host, (await session.info()).workspace);
+
   let views: PagedViews | null = null;
 
   return {
@@ -194,16 +253,9 @@ function sessionPort(host: Connection, session: Session): SessionPort {
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     info: () => session.info(),
     async workspace() {
-      const info = await session.info();
-      const workspace = await host.workspace(info.workspace).info();
+      const workspace = await readWorkspace();
 
-      return {
-        id: info.workspace,
-        cwd:
-          workspace.target.kind === "local" && "path" in workspace.target
-            ? workspace.target.path
-            : null,
-      };
+      return { id: workspace.id, cwd: await workspace.cwd() };
     },
     async send(content, options) {
       const receipt = await session.send(content, options);
@@ -312,36 +364,8 @@ function sessionPort(host: Connection, session: Session): SessionPort {
 
       return outcome.kind;
     },
-    async upload(bytes) {
-      const files = await host.workspace((await session.info()).workspace).files();
-
-      if (files.kind !== "available") throw new Error(`Can't attach images here: ${files.reason}`);
-
-      return files.api.upload(
-        (async function* () {
-          yield bytes;
-        })(),
-      );
-    },
-    async mentions(signal) {
-      const files = await host.workspace((await session.info()).workspace).files();
-
-      if (files.kind !== "available") return [];
-      const found: string[] = [];
-
-      for await (const frame of files.api.scan({ ignored: "exclude" })) {
-        if (signal.aborted) return found;
-
-        if (frame.kind !== "entries") continue;
-
-        for (const entry of frame.entries) {
-          if (entry.kind === "symlink") continue;
-          found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
-        }
-      }
-
-      return found;
-    },
+    upload: async (bytes) => (await readWorkspace()).upload(bytes),
+    mentions: async (signal) => (await readWorkspace()).mentions(signal),
   };
 }
 

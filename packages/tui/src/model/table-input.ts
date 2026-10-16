@@ -9,7 +9,8 @@ import { queueRows } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { currentQuestion } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
-import type { Draft, ShellJob, State } from "./state.ts";
+import { followedSession } from "./state.ts";
+import type { Draft, FollowedSession, ShellJob, State } from "./state.ts";
 
 /** What the interaction table decides each command from. */
 export interface TableInput {
@@ -59,7 +60,7 @@ export type Blocked =
   | { readonly kind: "authenticating"; readonly link: string | null }
   | { readonly kind: "editor" };
 
-export function runModel(view: State["facts"]["session"]): RunModel {
+export function runModel(view: FollowedSession | null): RunModel {
   const execution = view?.view?.execution;
 
   if (execution === undefined) return { kind: "idle" };
@@ -93,7 +94,9 @@ export function blockedBy(state: State): Blocked | null {
 
   if (pending.some((op) => op.kind === "switch")) return { kind: "switching" };
 
-  if (state.facts.session === null || state.facts.session.view === null)
+  const { chat } = state.facts;
+
+  if (chat === null || (chat.kind === "session" && chat.view === null))
     return { kind: "no-session" };
 
   if (pending.some((op) => op.kind === "cd")) return { kind: "changing-directory" };
@@ -107,7 +110,7 @@ export function blockedBy(state: State): Blocked | null {
 }
 
 export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
-  const { session } = state.facts;
+  const session = followedSession(state);
 
   const question = currentQuestion(
     session === null ? null : { id: session.id, view: session.view },

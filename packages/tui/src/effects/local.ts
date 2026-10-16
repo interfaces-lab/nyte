@@ -6,6 +6,7 @@ import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp
 import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
 import type { Effect } from "../model/effect.ts";
+import { followedSession } from "../model/state.ts";
 import type { ShellJob } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate as selfUpdateBinary } from "../update.ts";
 import type { HandlerContext } from "./scope.ts";
@@ -188,9 +189,10 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
     case "usage": {
       const providers = await ports.host.usage();
       const state = read();
-      const view = state.facts.session?.view ?? null;
+      const view = followedSession(state)?.view ?? null;
 
-      if (view === null) throw new Error("No chat is open");
+      if (view === null && state.facts.chat?.kind !== "blank") throw new Error("No chat is open");
+
       return {
         kind: "text",
         lines: usageLines(usageCard(view, providers)),
@@ -229,7 +231,7 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
         }),
       ];
 
-      const commands = read().facts.session?.view?.catalog.commands ?? [];
+      const commands = followedSession(read())?.view?.catalog.commands ?? [];
 
       if (commands.length > 0)
         lines.push(`Commands: ${commands.map((command) => `/${command.name}`).join(" ")}`);

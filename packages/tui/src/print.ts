@@ -1,5 +1,5 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
+import type { RunEnd, SendReceipt, Session, SessionId } from "@nyte-ai/sdk";
 import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { sessionRecovery } from "./flags.ts";
 
@@ -10,8 +10,8 @@ export interface PrintOutput {
 
 interface PrintOptions {
   readonly session: Session;
-  readonly configuration?: ConfigurationPatch;
-  readonly content: string;
+  /** The prompt's receipt: its start or send already admitted it. */
+  readonly receipt: SendReceipt;
   readonly json: boolean;
   /** Skip tool lines; the answer alone is what a pipe wants. */
   readonly quiet: boolean;
@@ -43,14 +43,13 @@ function toPrintOutcome(end: RunEnd): PrintOutcome {
 }
 
 export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
-  const { session, output } = options;
+  const { session, receipt, output } = options;
 
-  if (options.signal?.aborted === true) return { kind: "cancelled" };
+  if (options.signal?.aborted === true) {
+    await receipt.stop();
 
-  const receipt = await session.send(
-    options.content,
-    options.configuration === undefined ? undefined : { configuration: options.configuration },
-  );
+    return { kind: "cancelled" };
+  }
 
   const written = new Map<string, string>();
   const tools = new Set<string>();

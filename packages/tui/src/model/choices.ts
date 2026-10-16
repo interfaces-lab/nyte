@@ -20,6 +20,7 @@ import { chatCommands, COMMAND_TITLES, interactionsFor } from "./interactions.ts
 import { placeLabel, queueRows } from "./queue.ts";
 import { tableInputFor } from "./table-input.ts";
 import { settingRows, settingValue } from "./settings.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 function choice(
@@ -123,7 +124,7 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
         .toSorted((left, right) => left.name.localeCompare(right.name))
         .map((skill) => choice(skill.name, skill.name, skill.description));
     case "queue":
-      return queueRows(state.facts.session, state.local.editing).map((row, index) =>
+      return queueRows(followedSession(state), state.local.editing).map((row, index) =>
         choice(row.id, row.text, `${String(index + 1)} · ${placeLabel(row.place)}`),
       );
     case "settings":
@@ -243,9 +244,9 @@ export function initialHighlight(
     case "setting":
       return index(settingRows(state).find((row) => row.id === purpose.key)?.current);
     case "resume":
-      return index(state.facts.session?.id);
+      return index(state.facts.chat?.id);
     case "provider":
-      return index(state.facts.session?.selection.model.provider);
+      return index(state.facts.chat?.selection.model.provider);
     case "trust":
       return index(purpose.decision === false ? "decline" : "trust");
     default:
@@ -254,10 +255,9 @@ export function initialHighlight(
 }
 
 export function resumeChoices(state: State, sessions: readonly SessionInfo[]): readonly Choice[] {
-  const current = state.facts.session?.id ?? null;
+  const current = state.facts.chat?.id ?? null;
 
   return sessions
-    .filter((session) => session.heads.some((head) => head.tip.kind !== "start"))
     .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
     .map((session) =>
       choice(

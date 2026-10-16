@@ -4,6 +4,7 @@ import { landingMessages } from "../../lib/view-helpers.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
 import { queueRows } from "../queue.ts";
+import { chatWorkspace, followedSession } from "../state.ts";
 import type { PendingOp, Selection, State } from "../state.ts";
 import {
   andThen,
@@ -11,6 +12,7 @@ import {
   clearDraft,
   mint,
   refuse,
+  refuseUnstarted,
   stay,
   withFacts,
   withLocal,
@@ -30,7 +32,7 @@ const HELD_BY_EFFECT: ReadonlyMap<string, PendingOp["kind"]> = new Map([
 
 export const sessionHandlers = {
   "switch-session": (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
     const { pending } = state.local;
 
     if (pending.some((op) => op.kind === "switch" || op.kind === "cd"))
@@ -38,6 +40,9 @@ export const sessionHandlers = {
 
     if (followed !== null && msg.session === followed.id)
       return refuse(state, `Already in ${shortId(followed.id)}`, now, "info");
+
+    if (followed?.kind === "blank" && msg.session === "new")
+      return refuse(state, "Already in a new chat", now, "info");
     const draft = snapshot(state.local.draft);
 
     const drafts =
@@ -72,28 +77,27 @@ export const sessionHandlers = {
     }));
   },
   "retry-watch": (state) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
 
     if (followed === null || followed.watch.kind === "live") return stay(state);
 
     return {
-      state: withFacts(state, { session: { ...followed, watch: { kind: "live" } } }),
+      state: withFacts(state, { chat: { ...followed, watch: { kind: "live" } } }),
       effects: [{ kind: "follow", target: followed.id, announce: false }],
     };
   },
   "change-directory": (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
     const { pending } = state.local;
 
     if (followed === null) return stay(state);
 
     if (busy(state))
       return refuse(state, "Wait for the current run before changing directories", now);
+    const session = followedSession(state);
+    const view = session?.view ?? null;
 
-    if (
-      queueRows(followed, null).length > 0 ||
-      (followed.view !== null && landingMessages(followed.view).length > 0)
-    )
+    if (queueRows(session, null).length > 0 || (view !== null && landingMessages(view).length > 0))
       return refuse(
         state,
         "error: Wait for queued messages before changing directories.",
@@ -112,6 +116,8 @@ export const sessionHandlers = {
   reload: (state, _msg, now) => {
     const { pending } = state.local;
 
+    if (followedSession(state) === null) return refuseUnstarted(state, now);
+
     if (pending.some((op) => op.kind === "reload")) return stay(state);
 
     return {
@@ -125,9 +131,9 @@ export const sessionHandlers = {
     };
   },
   compact: (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = followedSession(state);
 
-    if (followed === null) return stay(state);
+    if (followed === null) return refuseUnstarted(state, now);
 
     if (busy(state)) return refuse(state, "Wait for the current run before compacting", now);
 
@@ -138,7 +144,7 @@ export const sessionHandlers = {
   },
   update: (state, msg) => ({ state, effects: [{ kind: "self-update", version: msg.version }] }),
   configure: (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
     const step = configure(state, msg.selection, now);
     const level = msg.selection.effort;
 
@@ -167,13 +173,13 @@ export const sessionHandlers = {
     };
   },
   "review-trust": (state, _msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
 
     if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
     return {
       state,
-      effects: [{ kind: "check-trust", workspace: followed.info.workspace, ask: "always" }],
+      effects: [{ kind: "check-trust", workspace: chatWorkspace(followed), ask: "always" }],
     };
   },
   "mcp-action": (state, msg) => ({
@@ -210,7 +216,7 @@ export const sessionHandlers = {
     effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value }],
   }),
   "apply-setting": (state, msg) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
 
     if (followed === null) return stay(state);
 
@@ -229,7 +235,7 @@ export const sessionHandlers = {
     };
   },
   "cycle-thinking": (state, _msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
 
     if (followed === null) return stay(state);
 
@@ -246,7 +252,7 @@ export const sessionHandlers = {
     return next === undefined ? stay(state) : configure(state, { effort: next }, now);
   },
   "cycle-model": (state, msg, now) => {
-    const followed = state.facts.session;
+    const followed = state.facts.chat;
 
     if (followed === null) return stay(state);
 
@@ -271,10 +277,10 @@ export const sessionHandlers = {
     );
   },
   quit: (state) => ({ state, effects: [{ kind: "exit", code: 0 }] }),
-  "plugin-command": (state, msg) => {
-    const followed = state.facts.session;
+  "plugin-command": (state, msg, now) => {
+    const followed = followedSession(state);
 
-    if (followed === null) return stay(state);
+    if (followed === null) return refuseUnstarted(state, now);
 
     return {
       state,
@@ -335,7 +341,8 @@ export const sessionHandlers = {
       msg.ask === "if-needed" &&
       (msg.trusted !== null ||
         msg.sources.length === 0 ||
-        state.facts.session?.info.workspace !== msg.workspace)
+        state.facts.chat === null ||
+        chatWorkspace(state.facts.chat) !== msg.workspace)
     )
       return stay(state);
     const { workspace, path, decision, sources } = msg;
@@ -350,11 +357,11 @@ export const sessionHandlers = {
 } satisfies SomeHandlers;
 
 function configure(state: State, selection: Partial<Selection>, now: number): Step {
-  const followed = state.facts.session;
+  const followed = state.facts.chat;
 
   if (followed === null) return refuse(state, "Wait for the chat to open", now);
   const merged = { ...followed.selection, ...selection };
-  const next = withFacts(state, { session: { ...followed, selection: merged } });
+  const next = withFacts(state, { chat: { ...followed, selection: merged } });
 
   const told =
     selection.model === undefined

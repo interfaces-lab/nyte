@@ -27,7 +27,7 @@ import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Msg } from "../model/msg.ts";
-import { initialState } from "../model/state.ts";
+import { followedSession, initialState } from "../model/state.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
@@ -354,7 +354,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
 
   const unhook = installProcessHooks(app.report);
   const code = await Promise.race([app.closing, signalled.promise.then(() => 0)]);
-  const session = app.store.state().facts.session?.id ?? null;
+  const session = followedSession(app.store.state())?.id ?? null;
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 

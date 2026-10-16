@@ -57,6 +57,7 @@ export interface FakeHost extends HostPort {
   publishSessions(sessions: readonly SessionInfo[]): void;
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
+  readonly starts: Parameters<HostPort["start"]>[0][];
 }
 
 function queue<T>(): AsyncIterable<T> & {
@@ -241,8 +242,8 @@ export function fakeHost(): FakeHost {
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
+  const starts: FakeHost["starts"] = [];
   let catalog = CATALOG;
-  let created = 0;
 
   const addSession = (id: string): FakeSession => {
     const session = sessions.get(id) ?? fakeSession(id);
@@ -256,11 +257,19 @@ export function fakeHost(): FakeHost {
     defaults,
     hostSettings,
     addSession,
+    starts,
     session: (id) => addSession(id),
-    async create() {
-      created += 1;
+    workspace: (id) => ({
+      id,
+      cwd: async () => "/tmp/fake-workspace",
+      upload: async () => asId("blob-1"),
+      mentions: async () => [],
+    }),
+    openFolder: async () => asId("workspace"),
+    async start(input) {
+      starts.push(input);
 
-      return addSession(`created-${String(created)}`).id;
+      return addSession(input.id).send(input.content, { delivery: "steer" });
     },
     async *rootSessions() {
       yield* [...sessions.keys()].map(buildSessionInfo);
