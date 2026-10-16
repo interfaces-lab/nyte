@@ -1,4 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import {
   createRootRouteWithContext,
@@ -32,7 +34,7 @@ import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
 import { preferences } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
-import { readShellSearch } from "./shell/search.ts";
+import type { ShellSearch } from "./shell/search.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -358,6 +360,8 @@ function WorkspaceRouteStage(): ReactElement {
   }
 }
 
+const searchText = Type.String();
+
 interface StartupContext {
   pending: boolean;
   /** Move to the last chat once the directory arrives, if the user has not started on a new one. */
@@ -367,7 +371,12 @@ interface StartupContext {
 const rootRoute = createRootRouteWithContext<{ startup: StartupContext }>()({
   errorComponent: RouteError,
   notFoundComponent: RouteNotFound,
-  validateSearch: readShellSearch,
+  validateSearch: (search): ShellSearch => ({
+    customize: Value.Check(searchText, search.customize) ? search.customize : undefined,
+    environment: Value.Check(searchText, search.environment) ? search.environment : undefined,
+    usage: Value.Check(searchText, search.usage) ? search.usage : undefined,
+    usageRange: Value.Check(searchText, search.usageRange) ? search.usageRange : undefined,
+  }),
 });
 
 /**

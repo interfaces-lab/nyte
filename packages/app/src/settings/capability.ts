@@ -22,14 +22,16 @@ export interface SettingsContext {
 
 export type Capability = keyof SettingsContext;
 
-/** Computed per call: the installed bridge decides, and tests install different ones. */
+/**
+ * Computed per call: the installed bridge decides, and tests install different
+ * ones. Tests resolve pages under node, where there is no document to ask.
+ */
 export function settingsContext(): SettingsContext {
   const ownEnvironment = nyte.clientSurface === "desktop";
   const { browser, terminal } = clientCapabilities(nyte.host);
 
   return {
     hostSettings: nyte.host.settings !== undefined,
-    // Tests resolve pages under node, where there is no document to ask.
     mac: typeof document !== "undefined" && macPlatform(undefined),
     browser,
     terminal,
