@@ -64,7 +64,7 @@ const ToolIntentType = Type.Object({
   argumentsError: Type.Optional(Type.String()),
 });
 
-type ToolIntent = Static<typeof ToolIntentType>;
+export type ToolIntent = Static<typeof ToolIntentType>;
 
 const toolIntents = compile(withJson(ToolIntentType));
 
@@ -311,7 +311,10 @@ async function plan(
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
 
-  if (where.signal.aborted && (await readCall(kernel, session, call)) === null)
+  if (
+    where.signal.aborted &&
+    ((await readCall(kernel, session, call))?.record.part ?? null) === null
+  )
     return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
 
   if (gate.action === "reject")

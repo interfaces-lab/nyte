@@ -188,7 +188,7 @@ function scripted(
         return OK;
       },
     },
-    finishTurn: async () => undefined,
+    settleResponse: async () => undefined,
     boundary: async () => [],
     ...patch,
   };
@@ -346,7 +346,7 @@ describe("agentLoop", () => {
 
     const { config, seen } = scripted([], {
       stream: async (_prepared, signal) => respondWith(abortable(signal)),
-      finishTurn: async () => {
+      settleResponse: async () => {
         throw new Error("No response finished.");
       },
     });
@@ -368,11 +368,11 @@ describe("agentLoop", () => {
     expect(seen.requests).toHaveLength(1);
   });
 
-  it("ends stopped after an abort during finishTurn: at the next call, or at the next request", async () => {
+  it("ends stopped after an abort during settleResponse: at the next call, or at the next request", async () => {
     const calling = new AbortController();
 
     const called = scripted([{ content: [call("a", "read")] }], {
-      finishTurn: async () => {
+      settleResponse: async () => {
         calling.abort();
       },
     });
@@ -386,7 +386,7 @@ describe("agentLoop", () => {
     const asking = new AbortController();
 
     const continued = scripted([{ content: [said("One.")] }], {
-      finishTurn: async () => {
+      settleResponse: async () => {
         asking.abort();
       },
       boundary: async () => landed("steer"),

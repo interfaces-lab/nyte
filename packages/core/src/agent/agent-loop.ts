@@ -72,8 +72,9 @@ export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
     execute(call: ModelToolCall, signal: AbortSignal): Promise<ToolResult>;
   };
 
-  finishTurn(
-    turn: {
+  /** Settles a finished response in one write: its parts, its charge, and every call it asked for. */
+  settleResponse(
+    response: {
       readonly message: AssistantMessage;
       readonly calls: readonly ModelToolCall[];
       readonly usage: Usage;
@@ -259,7 +260,7 @@ async function* run<P extends PreparedRequest>(
     overflowed = false;
     const { message, calls, usage } = outcome;
     yield { type: "message_end", message, usage };
-    await config.finishTurn({ message, calls, usage, prepared }, signal);
+    await config.settleResponse({ message, calls, usage, prepared }, signal);
     let parked = false;
 
     for (const call of calls) {

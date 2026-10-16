@@ -24,7 +24,7 @@ import {
 import type { Kernel, Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import type { FakeModels, Reply } from "./fake-models.ts";
-import { configuration, label, main, until } from "./harness.ts";
+import { configuration, expireLease, label, main, until } from "./harness.ts";
 
 const nothing = standard(Type.Object({}));
 
@@ -833,6 +833,74 @@ describe("turn", () => {
     expect(prompt).toContain("echo returned: echo: BEGIN");
     expect(prompt).toContain("characters omitted");
     expect(prompt).toContain("xFINISHED");
+  });
+
+  it("owes every call of a response once it settles: a host that stops before the first call runs leaves the next host the whole batch, the response charged once", async () => {
+    const fake = fakeModels();
+    const shared = memoryStore();
+    const backing = await shared.open();
+    let crashed = false;
+
+    const crashing: Store = {
+      ...shared,
+      async open() {
+        return {
+          ...backing,
+          refs: {
+            ...backing.refs,
+            async set(updates) {
+              if (crashed) throw new Error("The host stopped.");
+              const outcome = await backing.refs.set(updates);
+              crashed = updates.some((update) => update.name.includes("/calls/"));
+
+              return outcome;
+            },
+          },
+        };
+      },
+    };
+
+    fake.reply(
+      {
+        content: [
+          { type: "toolCall", id: "a", name: "echo", arguments: { text: "one" } },
+          { type: "toolCall", id: "b", name: "echo", arguments: { text: "two" } },
+        ],
+      },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+
+    const stopped = await open(fake, { store: crashing, plugins: [recorder().plugin] });
+    const session = await stopped.sessions.create();
+    await session.send("Go.");
+    await until(() => (crashed ? true : undefined));
+    await stopped.close();
+    await expireLease(backing, session.id, main);
+
+    await using host = await open(fake, { store: shared, plugins: [recorder().plugin] });
+
+    const ended = await until(async () => {
+      const { execution } = await host.session(session.id).view();
+
+      return execution.kind === "idle" && execution.lastRun !== null
+        ? execution.lastRun
+        : undefined;
+    });
+
+    expect(ended.end).toMatchObject({
+      kind: "completed",
+      usage: { input: 20, output: 10 },
+    });
+
+    const echoed = (await host.session(session.id).view()).messages.flatMap((message) =>
+      isPart(message, tool) && message.state.phase === "settled" ? [message.state.outcome] : [],
+    );
+
+    expect(echoed).toEqual([
+      expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: one" }] }),
+      expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: two" }] }),
+    ]);
+    expect(fake.requests).toHaveLength(2);
   });
 
   it("fails every call of a response cut off at the output cap, without running any, and goes on", async () => {

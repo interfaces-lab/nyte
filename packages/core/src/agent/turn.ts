@@ -27,6 +27,7 @@ import type {
 } from "../contract/kernel.ts";
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
+import { intendedCall } from "../engine/durable.ts";
 import { abortHere, unfenced } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
@@ -34,7 +35,7 @@ import { modelInfo, withLimits } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { failedParts, settling } from "../store/parts.ts";
-import { partRef, runRef } from "../store/refs.ts";
+import { callRef, partRef, runRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, readTip, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
@@ -58,6 +59,7 @@ import {
   ZERO_USAGE,
 } from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
+import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody, withReportedUsage } from "./transcript.ts";
 
 type ThoughtSignature = {
@@ -305,42 +307,56 @@ async function turn(
       };
     },
     tools: {
-      execute: (call, called) =>
-        executeCall(kernel, {
+      execute(call, called) {
+        const id = callIds.get(call);
+
+        if (id === undefined)
+          throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
+
+        return executeCall(kernel, {
           runtime: context.holds.at(-1)?.runtime ?? kernel.pluginsFor(session),
           session,
           head,
           run,
-          call: callIds.get(call) ?? asId<"call">(`${run}:${charged.requests}:${call.id}`),
+          call: id,
           name: call.name,
           args: isJson(call.arguments) ? call.arguments : {},
           argumentsError: call.argumentsError,
           context: CALLER,
           signal: called,
-        }),
+        });
+      },
     },
 
-    async finishTurn({ message, calls, usage, prepared }) {
+    async settleResponse({ message, calls, usage, prepared }) {
       observe(context, prepared, usage);
       reported = message.usage;
+      closeThoughts(state);
 
       await changeRun(context, run, async (record) => {
         const next = charge(record, usage, true);
         const executing = calls.length > 0 && record.phase !== "executing";
         charged = { total: next.usage ?? usage, requests: next.requests };
-        const seen = new Set<string>();
+        callIds = assignCallIds(run, next.requests, message, calls);
 
-        callIds = new Map(
-          calls.map((call) => {
-            const index = message.content.indexOf(call);
-            let id = call.id;
+        const intents = record.stopping
+          ? []
+          : await Promise.all(
+              [...callIds].map(async ([call, id]): Promise<RefUpdate> => {
+                const intent: ToolIntent = {
+                  name: call.name,
+                  args: isJson(call.arguments) ? call.arguments : {},
+                  principal: CALLER.principal,
+                  ...(call.argumentsError !== undefined && { argumentsError: call.argumentsError }),
+                };
 
-            while (id === "" || seen.has(id)) id = `${id === "" ? "call" : id}_${index}`;
-            seen.add(id);
-
-            return [call, asId<"call">(`${run}:${next.requests}:${id}`)];
-          }),
-        );
+                return {
+                  name: callRef(session, id),
+                  target: await put(kernel, "call", intendedCall({ call: id, run, head, intent })),
+                  expect: "absent",
+                };
+              }),
+            );
 
         return {
           record: executing ? { ...next, phase: "executing" } : next,
@@ -350,8 +366,14 @@ async function turn(
               ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
               : []),
           ],
+          updates: [...(await settledParts(context, state.opened)), ...intents],
         };
       });
+
+      state.opened.length = 0;
+      state.parts.clear();
+      state.starts.clear();
+      state.merging = null;
     },
     boundary: () => boundary(),
   };
@@ -362,8 +384,6 @@ async function turn(
         return opened(context, state, event.kind, event.index);
       case "message_update":
         return updated(context, state, event.event);
-      case "message_end":
-        return settled(context, state);
       case "turn_retry":
         state = await retry(context, state, event.failure, event.until, event.response);
 
@@ -494,7 +514,8 @@ async function updated(
   }
 }
 
-async function settled(context: Turn, state: AttemptState): Promise<void> {
+/** Ends the thinking blocks a response left open, so each keeps its length in the part's signature. */
+function closeThoughts(state: AttemptState): void {
   for (const [index, pending] of state.parts) {
     const start = state.starts.get(index);
 
@@ -505,12 +526,6 @@ async function settled(context: Turn, state: AttemptState): Promise<void> {
         redacted: false,
       });
   }
-
-  await settle(context, state.run.id, state.opened);
-  state.opened.length = 0;
-  state.parts.clear();
-  state.starts.clear();
-  state.merging = null;
 }
 
 function append(context: Turn, state: AttemptState, target: OpenPart, delta: string): void {
@@ -641,60 +656,82 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
+/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. */
+async function settledParts(
+  context: Turn,
+  opened: readonly OpenPart[],
+): Promise<readonly RefUpdate[]> {
   const { kernel, session, head } = context;
 
-  if (opened.length === 0) return;
+  if (opened.length === 0) return [];
 
-  await attempt(`Settling the parts of run ${run}`, async () => {
-    const [found, tip] = await Promise.all([
-      Promise.all(opened.map(async (entry) => ({ entry, found: await readPart(context, entry) }))),
-      readTip(kernel, session, head),
-    ]);
+  const [found, tip] = await Promise.all([
+    Promise.all(opened.map(async (entry) => ({ entry, found: await readPart(context, entry) }))),
+    readTip(kernel, session, head),
+  ]);
 
-    const at = Date.now();
-    const updates: RefUpdate[] = [];
-    let parent = tip.id;
+  const at = Date.now();
+  const updates: RefUpdate[] = [];
+  let parent = tip.id;
 
-    for (const { entry, found: part } of found) {
-      if (part === null || part.record.status.kind === "settled") continue;
+  for (const { entry, found: part } of found) {
+    if (part === null || part.record.status.kind === "settled") continue;
 
-      if (part.record.status.kind !== "live") {
-        updates.push(...(await keep(context, entry, part, ABORTED)));
+    if (part.record.status.kind !== "live") {
+      updates.push(...(await keep(context, entry, part, ABORTED)));
 
-        continue;
-      }
-
-      const state = buildPartState(entry);
-      const version = part.record.version + 1;
-
-      const landed = await settling(kernel, {
-        session,
-        head,
-        run,
-        parent,
-        expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
-        record: { ...part.record, state, version },
-        body: { kind: "part", part: entry.part },
-        at,
-      });
-
-      updates.push(
-        {
-          name: partRef(session, entry.part),
-          target: landed.target,
-          expect: part.ref.revision,
-          event: { head, kind: "part", part: entry.part, change: "updated", state, version },
-        },
-        ...landed.updates,
-      );
-      parent = landed.landed;
+      continue;
     }
 
-    return updates.length === 0 || (await commit(kernel, updates)).kind === "set"
-      ? undefined
-      : STALE;
-  });
+    const state = buildPartState(entry);
+    const version = part.record.version + 1;
+
+    const landed = await settling(kernel, {
+      session,
+      head,
+      run: part.record.run,
+      parent,
+      expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
+      record: { ...part.record, state, version },
+      body: { kind: "part", part: entry.part },
+      at,
+    });
+
+    updates.push(
+      {
+        name: partRef(session, entry.part),
+        target: landed.target,
+        expect: part.ref.revision,
+        event: { head, kind: "part", part: entry.part, change: "updated", state, version },
+      },
+      ...landed.updates,
+    );
+    parent = landed.landed;
+  }
+
+  return updates;
+}
+
+/** Response-scoped call ids: the provider's id, made unique within the response, under the run and the response's request count. */
+function assignCallIds(
+  run: RunId,
+  requests: number,
+  message: AssistantMessage,
+  calls: readonly ModelToolCall[],
+): Map<ModelToolCall, CallId> {
+  const seen = new Set<string>();
+
+  return new Map(
+    calls.map((call) => {
+      const index = message.content.findIndex((block) => block === call);
+      let id = call.id;
+
+      while (id === "" || seen.has(id)) id = `${id === "" ? "call" : id}_${index}`;
+      seen.add(id);
+
+      return [call, asId<"call">(`${run}:${requests}:${id}`)];
+    }),
+  );
 }
 
 function buildPartState(entry: OpenPart): Json {
