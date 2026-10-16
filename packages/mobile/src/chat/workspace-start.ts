@@ -158,15 +158,12 @@ async function start(client: Connection, input: StartInput): Promise<StartReceip
   const sessionId = asId<"session">(input.requestId);
 
   try {
-    const session = await client.sessions.create({
+    await client.sessions.start({
       id: sessionId,
       workspace: workspace.id,
       name: input.name,
       configuration: { model: input.model, thinking: input.thinking },
-    });
-
-    await session.send(await uploadDraft(client.workspace(workspace.id), input.content), {
-      id: asId<"receipt">(input.requestId),
+      content: await uploadDraft(client.workspace(workspace.id), input.content),
     });
   } catch (cause) {
     if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid"))
