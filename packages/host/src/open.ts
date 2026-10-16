@@ -29,7 +29,6 @@ import question from "@nyte-ai/plugin/core/question";
 import rename from "@nyte-ai/plugin/core/rename";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
 import webSearch from "@nyte-ai/plugin/core/web-search";
-import { operations } from "@nyte-ai/protocol";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
@@ -75,7 +74,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
  * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
  * unless a plugin provides the `local` environment, every first-party plugin
  * of `@nyte-ai/plugin` that `plugins` does not replace by id, then `plugins`
- * and `filePlugins`' files, `settingsSeed`'s seed, protocol's `operations()` and
+ * and `filePlugins`' files, `settingsSeed`'s seed and
  * `hostDescription()`; each file that did not load becomes a
  * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
  * the plugin directories (§47l), which `watchPlugins` watches for hot reload
@@ -163,7 +162,6 @@ async function composeOpen(
     pluginSources: files.sources,
     secrets,
     home,
-    operations: operations(),
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
     ...(owned === null ? {} : { poll: STORE_POLL_MS }),

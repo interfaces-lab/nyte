@@ -8,7 +8,6 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
 import type {
   Api,
   AssistantMessage,
@@ -215,7 +214,6 @@ export async function open(
   options?: {
     readonly plugins?: readonly Plugin<"core">[];
     readonly store?: Store;
-    readonly operations?: HostView["operations"];
     readonly execution?: ComposeOptions["execution"];
   },
 ): ReturnType<typeof composeHost> {
@@ -226,7 +224,6 @@ export async function open(
     workspace: { kind: "chat-only", locator: null },
     execution: options?.execution,
     home: null,
-    operations: options?.operations ?? [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 }

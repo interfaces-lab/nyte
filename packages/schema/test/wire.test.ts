@@ -2043,15 +2043,6 @@ const cases = {
       settings: [settingInfo],
       authority: ["participant", "owner"],
       principal,
-      operations: [
-        {
-          name: "session.send",
-          kind: "receipt",
-          authority: "participant",
-          input: { type: "object" },
-          output: { type: "string" },
-        },
-      ],
     },
     { id: host, link: { kind: "connected" }, authority: [] },
   ),

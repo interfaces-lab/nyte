@@ -1,9 +1,8 @@
-import { Validator } from "@cfworker/json-schema";
-import { OPERATIONS, asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { Json, PatchSetWire, SessionEvent } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
-import { decodeInput, decodeOutput, encodeInput, encodeOutput, operations } from "../src/index.ts";
+import { decodeInput, decodeOutput, encodeInput, encodeOutput } from "../src/index.ts";
 import type { OperationInput, OperationOutput } from "../src/index.ts";
 
 const session = asId<"session">("s1");
@@ -185,31 +184,5 @@ describe("codec", () => {
       { path: "d.ts", version: null, kind: "removed" },
     ]);
     expect(() => decodeOutput("files.watch", [{ path: "a.ts" }])).toThrow(SdkError);
-  });
-
-  it("serves the table as loadable JSON Schemas", () => {
-    const rows = operations();
-
-    expect(rows.map((row) => row.name)).toEqual(Object.keys(OPERATIONS));
-    expect(rows.find((row) => row.name === "git.stage")).toMatchObject({
-      kind: "command",
-      authority: "owner",
-    });
-
-    for (const row of rows) {
-      const input = new Validator(structuredClone(row.input), "2020-12");
-      const output = new Validator(structuredClone(row.output), "2020-12");
-
-      expect(input.validate(1).valid, row.name).toBe(false);
-      expect(typeof output.validate(null).valid).toBe("boolean");
-    }
-
-    const send = new Validator(
-      structuredClone(rows.find((row) => row.name === "head.send")?.input ?? {}),
-      "2020-12",
-    );
-
-    expect(send.validate({ session, head, content: "Hi." }).valid).toBe(true);
-    expect(send.validate({ session, head }).valid).toBe(false);
   });
 });

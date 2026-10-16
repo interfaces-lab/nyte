@@ -36,7 +36,6 @@ export async function openTestHost(options?: {
     plugins: [chatOnly, questionPlugin, ...(options?.plugins ?? [])],
     workspace: { kind: "chat-only", locator: null },
     home: null,
-    operations: [],
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },
   });
 

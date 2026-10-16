@@ -4,7 +4,6 @@ import { SdkError, TOKEN, composeHost, memoryStore } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
-import { operations } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
@@ -267,7 +266,6 @@ describe("connect", () => {
         plugins: [chatOnly],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: operations(),
         description: { name: "test", platform: "darwin", version: "0.1.0" },
       });
 

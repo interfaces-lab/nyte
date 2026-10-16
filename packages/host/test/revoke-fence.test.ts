@@ -2,7 +2,6 @@ import { asId } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
 import type { Store } from "@nyte-ai/core";
 import { hostPrincipalsRef, memoryStore, redeemPairing } from "@nyte-ai/core";
-import { operations } from "@nyte-ai/protocol";
 import { assert, describe, expect, it } from "vitest";
 import { listen } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
@@ -39,7 +38,7 @@ describe("revoke fence", () => {
       },
     };
 
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store });
     const listener = await listen(host, {
       transport: { kind: "fetch" },
       auth: { kind: "token", token: "a-token-of-at-least-16" },

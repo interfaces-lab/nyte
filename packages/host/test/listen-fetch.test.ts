@@ -1,7 +1,7 @@
 import type { ByteReader, ExecutionCoverage, Owned } from "@nyte-ai/schema";
 import { memoryStore } from "@nyte-ai/core";
 import type { Listener, Store } from "@nyte-ai/core";
-import { decodeError, errorStatus, operations } from "@nyte-ai/protocol";
+import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
@@ -46,7 +46,7 @@ function endless(): ByteReader & { closes(): number } {
 
 describe("listenFetch", () => {
   it("serves the protocol with no socket, the token compared through Web Crypto", async () => {
-    const host = await open(fakeModels(), { operations: operations() });
+    const host = await open(fakeModels());
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {
@@ -78,7 +78,6 @@ describe("listenFetch", () => {
     const covered: ExecutionCoverage[] = [];
 
     const host = await open(fakeModels(), {
-      operations: operations(),
       execution: {
         kind: "dispatch",
         dispatch: async ({ session }) => {
@@ -113,7 +112,7 @@ describe("listenFetch", () => {
   });
 
   it("fails job.output for a job this instance does not hold before any stream opens (§42aa)", async () => {
-    const host = await open(fakeModels(), { operations: operations() });
+    const host = await open(fakeModels());
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {
@@ -151,7 +150,7 @@ describe("listenFetch", () => {
       },
     };
 
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store });
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {

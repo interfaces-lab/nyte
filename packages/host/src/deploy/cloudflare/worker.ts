@@ -4,7 +4,7 @@ import type { Models } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import { SdkError, composeHost } from "@nyte-ai/core";
 import type { Host, Kernel, Listener, OpenOptions, WaitRegistry } from "@nyte-ai/core";
-import { encodeError, errorStatus, operations } from "@nyte-ai/protocol";
+import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { Settings } from "typebox/system";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { durableObjectStore } from "@nyte-ai/host/durable-object";
@@ -199,7 +199,6 @@ async function compose(
     execution: { kind: "admit-only" },
     secrets,
     home: null,
-    operations: operations(),
     description,
   });
 

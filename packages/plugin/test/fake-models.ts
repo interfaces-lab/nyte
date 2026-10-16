@@ -139,7 +139,6 @@ export function open(
     ],
     workspace: { kind: "chat-only", locator: null },
     home: null,
-    operations: [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 }

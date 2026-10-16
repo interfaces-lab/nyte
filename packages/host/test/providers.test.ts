@@ -46,7 +46,6 @@ async function hostOver(
     workspace: target,
     execution: { kind: "admit-only" },
     home: null,
-    operations: [],
     description: { name: "test", platform: "test", version: "0" },
   });
 

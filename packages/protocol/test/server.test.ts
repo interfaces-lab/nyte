@@ -522,7 +522,6 @@ describe("handler", () => {
       id: host.hostId,
       authority: ["participant", "owner", "maintenance"],
     });
-    expect(view[0]?.data).toHaveProperty("operations");
     expect(view[0]?.data).toHaveProperty("principal");
 
     const { session } = decodeOutput(

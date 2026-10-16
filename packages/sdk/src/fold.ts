@@ -278,7 +278,6 @@ function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
     plugins: wire.plugins,
     settings: wire.settings,
     authority: new Set(wire.authority),
-    operations: wire.operations,
   };
 }
 

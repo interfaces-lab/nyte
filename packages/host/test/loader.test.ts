@@ -138,7 +138,6 @@ describe("plugin sources on the host view (§41e)", () => {
       ]),
       workspace: { kind: "chat-only", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
     });
 

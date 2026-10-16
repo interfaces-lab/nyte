@@ -1,9 +1,9 @@
-import type { Authority, Declaration } from "./declaration.ts";
+import type { Authority } from "./declaration.ts";
 import type { ValidationIssue } from "./errors.ts";
 import type { SendOptions } from "./heads.ts";
 import type { CatalogGeneration, HeadName, HostId, ReceiptId, SessionId } from "./ids.ts";
 import type { UserContent } from "./messages.ts";
-import type { Awaitable, JsonSchema } from "./primitives.ts";
+import type { Awaitable } from "./primitives.ts";
 import type { SettingInfo } from "./sessions.ts";
 
 export type HostView = {
@@ -24,13 +24,6 @@ export type HostView = {
   }[];
   readonly settings: readonly SettingInfo[];
   readonly authority: ReadonlySet<Authority>;
-  readonly operations: readonly {
-    readonly name: string;
-    readonly kind: Declaration<unknown, unknown>["kind"];
-    readonly authority: Authority;
-    readonly input: JsonSchema;
-    readonly output: JsonSchema;
-  }[];
 };
 
 export type CredentialSource =

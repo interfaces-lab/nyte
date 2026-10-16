@@ -24,7 +24,7 @@ import type {
   Plugin,
   Store,
 } from "@nyte-ai/core";
-import { createHandler, createTransport, operations } from "../src/index.ts";
+import { createHandler, createTransport } from "../src/index.ts";
 import type { HandlerOptions, Transport } from "../src/index.ts";
 
 export type FakeModels = {
@@ -212,7 +212,6 @@ export async function served(
     ],
     workspace: { kind: "chat-only", locator: null },
     home: null,
-    operations: operations(),
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 

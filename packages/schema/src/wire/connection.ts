@@ -8,7 +8,7 @@ import { ValidationIssueType } from "./errors.ts";
 import { SendOptionsType } from "./heads.ts";
 import { AuthorityType } from "./host.ts";
 import { idSchema } from "./ids.ts";
-import { JsonObjectType, withJson } from "./json.ts";
+import { withJson } from "./json.ts";
 import { UserContentType } from "./messages.ts";
 import { nullable } from "./nullable.ts";
 import { SettingInfoType } from "./sessions.ts";
@@ -49,15 +49,6 @@ export const HostViewWireType = Type.Object({
   settings: Type.Array(SettingInfoType),
   authority: Type.Array(AuthorityType),
   principal: idSchema<"principal">(),
-  operations: Type.Array(
-    Type.Object({
-      name: Type.String(),
-      kind: Type.Enum(["query", "watch", "command", "receipt", "stream"]),
-      authority: AuthorityType,
-      input: JsonObjectType,
-      output: JsonObjectType,
-    }),
-  ),
 });
 
 export const CredentialSourceWireType = Type.Union([

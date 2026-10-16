@@ -79,7 +79,6 @@ export function watchHost(
             plugins: fields.plugins,
             settings: fields.settings,
             authority: input.authority,
-            operations: fields.operations,
           },
         };
       },

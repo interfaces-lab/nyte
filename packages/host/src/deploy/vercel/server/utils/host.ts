@@ -2,7 +2,6 @@ import process from "node:process";
 import { createModels } from "@nyte-ai/ai/models";
 import { SdkError, composeHost } from "@nyte-ai/core";
 import type { Host, Kernel, Listener, OpenOptions } from "@nyte-ai/core";
-import { operations } from "@nyte-ai/protocol";
 import { postgresStore } from "@nyte-ai/host";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { seedSigner } from "@nyte-ai/host/identity";
@@ -60,7 +59,6 @@ async function build(): Promise<Served> {
     poll: 1000,
     secrets,
     home: null,
-    operations: operations(),
     description,
   });
 

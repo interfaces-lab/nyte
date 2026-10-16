@@ -1,5 +1,5 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { HostView, Json } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -200,9 +200,8 @@ describe("composeHost", () => {
     expect(host.kernel.activation(session.id)).toEqual({ kind: "active" });
   });
 
-  it("serves the host view: plugins, settings and operations", async () => {
-    const operations: HostView["operations"] = [];
-    await using host = await open(fakeModels(), { operations });
+  it("serves the host view: plugins and settings", async () => {
+    await using host = await open(fakeModels());
     await host.sessions.create();
     const iterator = host.watch()[Symbol.asyncIterator]();
     const first = await iterator.next();
@@ -212,7 +211,6 @@ describe("composeHost", () => {
     const view = first.value;
 
     expect(view.id).toBe(host.hostId);
-    expect(view.operations).toBe(operations);
     expect(view.settings.map((setting) => setting.id)).toContain("skills.paths");
     expect(view.plugins.map((plugin) => [plugin.id, plugin.source])).toEqual(
       expect.arrayContaining([
@@ -382,7 +380,6 @@ describe("composeHost", () => {
       plugins: [chatOnly],
       workspace: { kind: "elsewhere", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
     });
 
@@ -429,7 +426,6 @@ describe("composeHost", () => {
         plugins: [chatOnly, looks],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: [],
         description: { name: "test", platform: "darwin", version: "0.1.0" },
         seed: { settings, path: "/home/.nyte/settings.json" },
       });
@@ -475,7 +471,6 @@ describe("composeHost", () => {
         plugins: [chatOnly, bad, good],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: [],
         description: { name: "test", platform: "darwin", version: "0.1.0" },
         pluginSources: sources,
       });
@@ -517,7 +512,6 @@ describe("composeHost", () => {
       plugins: [chatOnly],
       workspace: { kind: "chat-only", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
       loadPlugins: async (paths) => {
         loaded.push(...paths);

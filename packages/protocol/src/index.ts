@@ -1,5 +1,4 @@
 export * from "./binding.ts";
-export * from "./catalog.ts";
 export * from "./client.ts";
 export * from "./codec.ts";
 export * from "./declarations.ts";

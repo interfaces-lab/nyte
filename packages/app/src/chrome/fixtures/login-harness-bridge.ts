@@ -81,7 +81,6 @@ const hostView = (): HostView => ({
   plugins: [],
   settings: [],
   authority: new Set(["participant", "owner"]),
-  operations: [],
 });
 
 const host = viewStream(hostView());

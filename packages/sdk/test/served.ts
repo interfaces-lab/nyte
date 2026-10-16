@@ -6,7 +6,6 @@ import type { HeadName, SessionId, SessionView } from "@nyte-ai/schema";
 import { TOKEN, TOKEN_AUTHORITY, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
 import type { Connection, Kernel, Listener, Plugin } from "@nyte-ai/core";
 import { listenFetch, localProvider, seedSigner } from "@nyte-ai/host";
-import { operations } from "@nyte-ai/protocol";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 
@@ -51,7 +50,6 @@ export async function served(options?: {
         ? { kind: "chat-only", locator: null }
         : { kind: "local", path: join(root, "workspace") },
     home: null,
-    operations: operations(),
     description: { name: "test", platform: "darwin", version: "0.1.0" },
     secrets: { key: async () => secret },
     loadPlugins: options?.loadPlugins,

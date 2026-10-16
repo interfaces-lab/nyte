@@ -3,7 +3,6 @@ import type {
   Activation,
   HeadName,
   HostDescription,
-  HostView,
   Json,
   Owned,
   RunId,
@@ -77,7 +76,6 @@ import { SdkError } from "./util/error.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
-  readonly operations: HostView["operations"];
   readonly description: HostDescription;
   readonly pluginSources?: ReadonlyMap<
     Plugin<"core">,
@@ -277,7 +275,6 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
       catalog: asId<"catalog-generation">(crypto.randomUUID()),
       plugins: [],
       settings: [],
-      operations: options.operations,
     }),
     execution: options.execution,
     models: options.models,

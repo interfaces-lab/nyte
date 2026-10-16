@@ -13,7 +13,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
 import { SdkError, memoryStore } from "@nyte-ai/core";
-import { createTransport, decodeError, operations, parseSse } from "@nyte-ai/protocol";
+import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
 import type { SseFrame } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
@@ -36,7 +36,7 @@ async function compose(
   fake: FakeModels,
   execution?: ComposeOptions["execution"],
 ): Promise<Composed> {
-  const host = await open(fake, { execution, operations: operations() });
+  const host = await open(fake, { execution });
   cleanups.push(() => host.close());
 
   return host;
@@ -280,9 +280,9 @@ describe("listen", () => {
 
   it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here (ADV C 3)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store });
     cleanups.push(() => host.close());
-    const other = await open(fakeModels(), { store, operations: operations() });
+    const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -346,9 +346,9 @@ describe("listen", () => {
 
   it("ends a head.watch opened by its own pairing request within one re-check window of another host's revoke (ADV C-3 N2, probe N2r)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store });
     cleanups.push(() => host.close());
-    const other = await open(fakeModels(), { store, operations: operations() });
+    const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
@@ -410,7 +410,6 @@ describe("listen", () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
     const host = await open(fakeModels(), {
-      operations: operations(),
       loadPlugins: pluginLoader([dir]),
     });
     cleanups.push(() => host.close());
