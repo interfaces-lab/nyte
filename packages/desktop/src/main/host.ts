@@ -32,7 +32,7 @@ import {
   desktopSettingsPlugin,
 } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
-import { ExpectedHostError } from "./errors.ts";
+import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
@@ -129,6 +129,75 @@ function working(session: SessionInfo): boolean {
   );
 }
 
+/** Every session row, across pages. */
+async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
+  let page = await host.sessions.list({ parents: { kind: "all" } });
+  const rows = [...page.items];
+
+  while (page.next !== null) {
+    page = await host.sessions.list({ parents: { kind: "all" }, cursor: page.next });
+    rows.push(...page.items);
+  }
+
+  return rows;
+}
+
+/** The first wait before a host watch that ended or failed is opened again; it doubles up to the cap. */
+const WATCH_RETRY_MS = 250;
+
+const WATCH_RETRY_CAP_MS = 30_000;
+
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const wake = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", wake);
+      resolve();
+    };
+
+    const timer = setTimeout(wake, ms);
+    signal.addEventListener("abort", wake, { once: true });
+  });
+}
+
+/**
+ * Applies each value of a host watch until `signal` aborts. A watch that ends or
+ * throws is opened again after a growing pause, so state main derives from it
+ * (settings, keep-awake) does not freeze at its last value.
+ */
+async function follow<T>(
+  open: () => AsyncIterable<T>,
+  apply: (value: T) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  let wait = WATCH_RETRY_MS;
+
+  while (!signal.aborted) {
+    const values = open()[Symbol.asyncIterator]();
+
+    const stop = (): void => {
+      void values.return?.();
+    };
+
+    signal.addEventListener("abort", stop, { once: true });
+
+    try {
+      for (let next = await values.next(); next.done !== true; next = await values.next()) {
+        wait = WATCH_RETRY_MS;
+        apply(next.value);
+      }
+    } catch (cause) {
+      retainDiagnostic({ correlationId: "desktop-host-watch", cause });
+    } finally {
+      signal.removeEventListener("abort", stop);
+    }
+
+    await pause(wait, signal);
+    wait = Math.min(wait * 2, WATCH_RETRY_CAP_MS);
+  }
+}
+
 function serverProblem(cause: unknown): ServerConnectionProblem {
   if (!(cause instanceof SdkError) || cause.code === "unavailable")
     return {
@@ -197,6 +266,9 @@ export class DesktopHost {
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #rows: readonly SessionInfo[] = [];
+  /** Aborted on close; every host watch main follows ends with it. */
+  readonly #watching = new AbortController();
+  #rowsWatch: AbortController | undefined;
   #awake = false;
   #remote: Promise<ActiveRemote> | undefined;
   #remoteLock: Promise<void> = Promise.resolve();
@@ -208,10 +280,7 @@ export class DesktopHost {
     this.#usageScan = dependencies.usageScan ?? new UsageScanner(dependencies.home);
     this.#opened = this.#open();
     this.#opened.then(
-      (opened) => {
-        this.#followView(opened.host).catch(() => undefined);
-        this.#followRows(opened.host).catch(() => undefined);
-      },
+      (opened) => this.#followView(opened.host),
       () => undefined,
     );
   }
@@ -249,19 +318,39 @@ export class DesktopHost {
     return { host, listener, url: listenerAddress(listener), token };
   }
 
-  async #followView(host: Host): Promise<void> {
-    for await (const view of host.watch()) {
-      this.#settings = desktopSettings(view);
-      this.#deps.settingsChanged?.(this.#settings);
-      this.#holdAwake();
-    }
+  #followView(host: Host): void {
+    void follow(
+      () => host.watch(),
+      (view) => {
+        this.#settings = desktopSettings(view);
+        this.#deps.settingsChanged?.(this.#settings);
+        this.#followRows(host);
+        this.#holdAwake();
+      },
+      this.#watching.signal,
+    );
   }
 
-  async #followRows(host: Host): Promise<void> {
-    for await (const rows of host.sessions.watch({ parents: { kind: "all" } })) {
-      this.#rows = rows;
-      this.#holdAwake();
-    }
+  /** Session rows matter only to keep-awake, so they are watched only while it is on. */
+  #followRows(host: Host): void {
+    const wanted = this.#settings.keepAwake;
+
+    if (wanted === (this.#rowsWatch !== undefined)) return;
+    this.#rowsWatch?.abort();
+    this.#rowsWatch = undefined;
+    this.#rows = [];
+
+    if (!wanted) return;
+    const rowsWatch = new AbortController();
+    this.#rowsWatch = rowsWatch;
+    void follow(
+      () => host.sessions.watch({ parents: { kind: "all" } }),
+      (rows) => {
+        this.#rows = rows;
+        this.#holdAwake();
+      },
+      AbortSignal.any([rowsWatch.signal, this.#watching.signal]),
+    );
   }
 
   #holdAwake(): void {
@@ -401,6 +490,8 @@ export class DesktopHost {
 
   close(): Promise<void> {
     this.#closing ??= (async () => {
+      this.#watching.abort();
+
       for (const terminals of this.#terminals.values()) terminals.dispose();
       this.#terminals.clear();
       this.#holdAwake();
@@ -414,13 +505,17 @@ export class DesktopHost {
     return this.#closing;
   }
 
-  updateActivity(): DesktopUpdateActivity {
+  /** Asks the host when called, so a relaunch is never gated on a watch that went quiet. */
+  async updateActivity(): Promise<DesktopUpdateActivity> {
     const terminalCommandCount = [...this.#terminals.values()].reduce(
       (total, terminals) => total + terminals.busyCount(),
       0,
     );
 
-    const taskCount = this.#rows.filter((row) =>
+    const opened = await this.#opened.catch(() => undefined);
+    const rows = opened === undefined ? [] : await listSessions(opened.host);
+
+    const taskCount = rows.filter((row) =>
       row.heads.some((head) => head.execution.kind !== "idle"),
     ).length;
 

@@ -664,7 +664,7 @@ if (!hasSingleInstanceLock) {
       updates = registerUpdates({
         publish: (state) => broadcast({ kind: "update_changed", state }),
         item: updateItem,
-        activity: async () => getHost().updateActivity(),
+        activity: () => getHost().updateActivity(),
         beforeRelaunch: async () => {
           await desktopHost?.close();
         },
