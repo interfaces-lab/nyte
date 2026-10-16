@@ -383,6 +383,7 @@ export interface ChangesToolbarProps {
   readonly onViewOptionsChange: (changes: Partial<ChangesViewOptions>) => void;
   readonly onToggleFileTree: () => void;
   readonly onRefresh: () => void;
+  readonly refreshing: boolean;
   /** Focuses the rail's file filter; the rail owns the only search surface. */
   readonly onFilterFiles: () => void;
   /** Every file in the scope is collapsed, so the command offers to expand instead. */
@@ -405,6 +406,7 @@ export function ChangesToolbar({
   onViewOptionsChange,
   onToggleFileTree,
   onRefresh,
+  refreshing,
   onFilterFiles,
   allFilesCollapsed,
   onToggleCollapseAll,
@@ -508,7 +510,13 @@ export function ChangesToolbar({
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
         <span {...props(styles.spacer)} />
-        <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
+        <Button
+          iconOnly
+          icon="refresh"
+          aria-label="Refresh changes"
+          loading={refreshing}
+          onClick={onRefresh}
+        />
         <Menu>
           <MenuTrigger
             render={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}

@@ -1,4 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
+import { useMutation } from "@tanstack/react-query";
 import {
   useCallback,
   useLayoutEffect,
@@ -478,6 +479,7 @@ function ChangesPanelView({
   ]);
 
   const [patches] = useState(createPatchLoader);
+  const refresh = useMutation({ mutationFn: refreshVcs });
 
   const patchSnapshot = useSyncExternalStore(
     patches.subscribe,
@@ -743,7 +745,7 @@ function ChangesPanelView({
       });
 
       if (result.kind === "stale") {
-        refreshVcs();
+        void refreshVcs();
         setRevertError("Changes changed. Review them and try again.");
 
         return;
@@ -763,7 +765,7 @@ function ChangesPanelView({
 
       // The file no longer has the patch its review mark was filed under.
       changesViewed.clearViewed(viewedScopeId, target.path);
-      refreshVcs();
+      void refreshVcs();
       setRevertTarget(undefined);
     } catch (error) {
       setRevertError(error instanceof Error ? error.message : "Couldn’t revert this file.");
@@ -809,7 +811,7 @@ function ChangesPanelView({
         }
 
         if (action === "refresh") {
-          refreshVcs();
+          refresh.mutate();
 
           return;
         }
@@ -839,7 +841,8 @@ function ChangesPanelView({
           changesViewOptions.setOptions(optionsScopeId, changes);
         }}
         onToggleFileTree={onToggleFileTree}
-        onRefresh={refreshVcs}
+        onRefresh={() => refresh.mutate()}
+        refreshing={refresh.isPending}
         onFilterFiles={filterFiles}
         allFilesCollapsed={allCollapsed}
         onToggleCollapseAll={toggleCollapseAll}

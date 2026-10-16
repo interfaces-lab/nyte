@@ -527,9 +527,21 @@ async function scanFiles(): Promise<readonly MentionFile[]> {
   return entries;
 }
 
-export function refreshVcs(): void {
-  void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
-  void queryClient.invalidateQueries({ queryKey: ["files", "document"] });
+/**
+ * Rereads the repository and the files under it: the git status watch reopens,
+ * which makes the host read status afresh, and every git query (changes, log,
+ * refs, run changes), the file list and open file documents refetch. Resolves
+ * once the active queries have refetched.
+ */
+export async function refreshVcs(): Promise<void> {
+  const workspace = selectedWorkspaceId();
+
+  if (workspace !== undefined) gitStatusWatch(workspace).retry();
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["git"] }),
+    queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true }),
+    queryClient.invalidateQueries({ queryKey: ["files", "document"] }),
+  ]);
 }
 
 export function useVcsSnapshot(enabled: boolean) {

@@ -454,7 +454,7 @@ export function ChangesCommitBar({
         const outcome = pullRequestResultMessage(opened);
 
         if (outcome.tone === "success") {
-          refreshVcs();
+          void refreshVcs();
           void queryClient.invalidateQueries({ queryKey: keys.github });
         }
 
