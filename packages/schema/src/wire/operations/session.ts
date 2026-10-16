@@ -24,7 +24,7 @@ import {
   UpdateOutcomeSchema,
 } from "../../sessions.ts";
 import {
-  MessageType,
+  HistoryPageType,
   SessionViewSchema,
   UserStatusType,
   ViewFrameSchema,
@@ -140,7 +140,7 @@ export const SESSION_OPERATIONS = {
       before: idSchema<"message">(),
       limit: Type.Number(),
     }),
-    output: wireSchema(Type.Array(MessageType)),
+    output: wireSchema(HistoryPageType),
   },
   "head.tree": { ...PARTICIPANT, kind: "query", input: wireObject(HEAD), output: TreeViewSchema },
   "head.move": {

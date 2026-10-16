@@ -35,6 +35,7 @@ import {
   SessionEventSchema,
   SessionInfoSchema,
   SessionViewSchema,
+  HistoryPageSchema,
   SetOutcomeSchema,
   SettingInfoSchema,
   SettingOutcomeSchema,
@@ -83,6 +84,7 @@ import {
   userMessage,
   partMessage,
   turnInfo,
+  usage,
   events,
   durableEvent,
 } from "./fixtures.ts";
@@ -157,6 +159,7 @@ export const sessionCases = {
         },
       ],
       turns: [turnInfo],
+      usage,
       execution: { kind: "idle", lastRun: { id: run, end: { kind: "stopped" }, endedAt: 5 } },
       background: [background],
       configuration: { selected: null, effective: configuration },
@@ -166,6 +169,11 @@ export const sessionCases = {
       catalog,
     },
     { revision, messages: [] },
+  ),
+  HistoryPageSchema: sample(
+    HistoryPageSchema,
+    { messages: [userMessage], turns: [turnInfo] },
+    { messages: [userMessage] },
   ),
   TreeNodeSchema: sample(
     TreeNodeSchema,

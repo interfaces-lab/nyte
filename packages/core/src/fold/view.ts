@@ -1,13 +1,14 @@
 import type {
   CommitId,
   HeadName,
-  Message,
+  HistoryPage,
   MessageId,
   PrincipalId,
   SessionId,
   SessionView,
   ViewOptions,
 } from "@nyte-ai/schema";
+import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
@@ -93,6 +94,7 @@ export async function viewHead(
   }
 }
 
+/** The `limit` messages of a head before `before`, with the turns they belong to. */
 export async function historyHead(
   kernel: Kernel,
   input: {
@@ -102,17 +104,29 @@ export async function historyHead(
     readonly before: MessageId;
     readonly limit: number;
   },
-): Promise<readonly Message[]> {
+): Promise<HistoryPage> {
   const hold = kernel.folds.acquire(input.session, input.principal);
 
   try {
     await hold.ready();
-    const messages = hold.state().heads.get(input.head)?.messages ?? [];
+    const state = hold.state();
+    const folded = state.heads.get(input.head);
+    const path = state[INDEX].paths.get(input.head);
+    const messages = folded?.messages ?? [];
     const end = messages.findIndex((message) => message.id === input.before);
 
-    if (end < 0 || input.limit <= 0) return [];
+    if (folded === undefined || path === undefined || end < 0 || input.limit <= 0)
+      return { messages: [], turns: [] };
+    const page = messages.slice(Math.max(0, end - input.limit), end);
 
-    return messages.slice(Math.max(0, end - input.limit), end);
+    const positions = [
+      ...new Set(page.flatMap((message) => path.turnAt.get(message.turn) ?? [])),
+    ].toSorted((left, right) => left - right);
+
+    return {
+      messages: page,
+      turns: positions.flatMap((position) => folded.turns[position] ?? []),
+    };
   } finally {
     hold.release();
   }

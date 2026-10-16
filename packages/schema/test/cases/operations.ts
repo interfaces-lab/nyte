@@ -26,6 +26,7 @@ import {
   userContent,
   sendOptions,
   userMessage,
+  turnInfo,
   sessionInput,
   headInput,
   workspaceInput,
@@ -233,8 +234,8 @@ export const operations = {
   ),
   "head.history output": operation(
     OPERATIONS["head.history"].output,
-    [userMessage],
-    [{ id: message }],
+    { messages: [userMessage], turns: [turnInfo] },
+    { messages: [{ id: message }], turns: [] },
   ),
   "head.tree input": operation(OPERATIONS["head.tree"].input, headInput, { head }),
   "head.move input": operation(

@@ -421,6 +421,7 @@ describe("fold", () => {
           },
         },
       ],
+      usage,
       execution,
       background: [],
       configuration: { selected: configuration, effective: configuration },
@@ -488,7 +489,7 @@ describe("fold", () => {
     expect(fold(elsewhere, append("missing", "x"))).toBe(elsewhere);
   });
 
-  it("carries the tail and every turn on the path", () => {
+  it("carries the tail and the turns its messages belong to", () => {
     const state = play(
       emptyFold({ session, principal: ada }),
       opened(main),
@@ -502,9 +503,11 @@ describe("fold", () => {
     expect(ids(project(state, main, { tail: 3 }))).toEqual(["r1:1:0", "m2", "r2:1:0"]);
     expect(ids(project(state, main, { tail: 2 }))).toEqual(["m2", "r2:1:0"]);
     expect(whole.turns.map((info) => info.id)).toEqual(["m1", "m2"]);
-    expect(project(state, main, { tail: 2 }).turns).toBe(whole.turns);
+    expect(project(state, main, { tail: 3 }).turns).toBe(whole.turns);
+    expect(project(state, main, { tail: 2 }).turns).toEqual([whole.turns[1]]);
     expect(project(state, main, { tail: 2 })).toBe(project(state, main, { tail: 2 }));
-    expect(project(state, main, { tail: 0 })).toMatchObject({ messages: [], turns: whole.turns });
+    expect(project(state, main, { tail: 0 })).toMatchObject({ messages: [], turns: [] });
+    expect(whole.usage).toEqual({ ...usage, input: 20, output: 10, total: 30 });
   });
 
   it("marks a head unread for the fold's principal only", () => {

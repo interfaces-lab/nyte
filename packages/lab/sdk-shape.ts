@@ -175,11 +175,12 @@ export async function forkHead(session: Session, source: Head, name: string) {
 }
 
 /**
- * The view owns conversation order, turns, execution, configuration,
- * background work, changes and the catalog. Idle carries lastRun; a live
- * execution carries run and phase. Read history before a MessageId when a
- * bounded tail needs older messages, or watch through `pagedViews`, whose
- * `earlier` pages them into the views. Tree nodes expose the commit DAG.
+ * The view owns conversation order, the turns of its messages, the head's
+ * summed usage, execution, configuration, background work, changes and the
+ * catalog. Idle carries lastRun; a live execution carries run and phase. Read
+ * history before a MessageId when a bounded tail needs older messages and
+ * their turns, or watch through `pagedViews`, whose `earlier` pages them into
+ * the views. Tree nodes expose the commit DAG.
  */
 export async function readConversation(head: Head) {
   const view = await head.view({ tail: 100 });

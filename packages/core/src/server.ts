@@ -1,4 +1,4 @@
-export { addUsage } from "./agent/request.ts";
+export { addUsage } from "./util/usage.ts";
 
 export { composeHost } from "./compose.ts";
 

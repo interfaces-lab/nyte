@@ -50,17 +50,11 @@ import type {
   PreparedRequest,
 } from "./agent-loop.ts";
 import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./compaction.ts";
-import {
-  calculateUsage,
-  charge,
-  providerContext,
-  requestEvent,
-  RETRY_POLICY,
-  ZERO_USAGE,
-} from "./request.ts";
+import { calculateUsage, charge, providerContext, requestEvent, RETRY_POLICY } from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody, withReportedUsage } from "./transcript.ts";
+import { ZERO_USAGE } from "../util/usage.ts";
 
 type ThoughtSignature = {
   readonly length: number;

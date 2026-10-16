@@ -7,11 +7,13 @@ import type {
   Revision,
   SessionView,
   TurnInfo,
+  Usage,
   ViewOptions,
 } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
-import type { FoldHead, FoldState, HeadPair } from "../contract/fold.ts";
+import type { FoldHead, FoldState, HeadPair, Path } from "../contract/fold.ts";
 import { readPositionCommit, START } from "../store/session.ts";
+import { addUsage, ZERO_USAGE } from "../util/usage.ts";
 import { emptyHead, reuse, snapshots } from "./draft.ts";
 
 const DEFAULT_TAIL = 200;
@@ -28,6 +30,10 @@ const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
 const tails = new WeakMap<readonly Message[], Map<number, readonly Message[]>>();
 
 const absent = new WeakMap<ReadonlyMap<HeadName, FoldHead>, Map<HeadName, FoldHead>>();
+
+const windows = new WeakMap<Path, Map<number, readonly TurnInfo[]>>();
+
+const usages = new WeakMap<readonly TurnInfo[], Usage>();
 
 export function project(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
   const folded = state.heads.get(head) ?? absentHead(state.heads, head);
@@ -48,13 +54,17 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
   )
     return cached;
 
+  const messages = readMessageTail(folded.messages, tail);
+  const turns = frozen(folded.turns);
+
   const view: SessionView = {
     revision: folded.revision,
     seq: state.seq,
     activation: state.activation,
-    messages: readMessageTail(folded.messages, tail),
+    messages,
     parts: state.partViews,
-    turns: frozen(folded.turns),
+    turns: readTurnWindow(turns, state[INDEX].paths.get(head), messages),
+    usage: sumCompletedUsage(turns),
     execution: folded.info.execution,
     background: folded.background,
     configuration: folded.configuration,
@@ -128,6 +138,43 @@ function readMessageTail(messages: readonly Message[], tail: number): readonly M
   tails.set(messages, known);
 
   return slice;
+}
+
+/** The turns `messages` belong to, from the earliest one on, reusing the head's last window from the same turn when it holds the same turns. */
+function readTurnWindow(
+  turns: readonly TurnInfo[],
+  path: Path | undefined,
+  messages: readonly Message[],
+): readonly TurnInfo[] {
+  if (path === undefined) return turns;
+  let first = turns.length;
+
+  for (const message of messages) first = Math.min(first, path.turnAt.get(message.turn) ?? first);
+  const known = windows.get(path) ?? new Map<number, readonly TurnInfo[]>();
+  const window = reuse(known.get(first) ?? [], first === 0 ? turns : turns.slice(first));
+  known.set(first, window);
+  windows.set(path, known);
+
+  return window;
+}
+
+/** The usage of every completed run among `turns`, summed once per snapshot of them. */
+function sumCompletedUsage(turns: readonly TurnInfo[]): Usage {
+  const known = usages.get(turns);
+
+  if (known !== undefined) return known;
+
+  const usage = turns.reduce(
+    (sum, turn) =>
+      turn.state.kind === "ended" && turn.state.end.kind === "completed"
+        ? addUsage(sum, turn.state.end.usage)
+        : sum,
+    ZERO_USAGE,
+  );
+
+  usages.set(turns, usage);
+
+  return usage;
 }
 
 function frozen(turns: readonly TurnInfo[]): readonly TurnInfo[] {

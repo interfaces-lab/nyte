@@ -327,6 +327,7 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
     messages,
     parts,
     turns,
+    usage: { ...USAGE, input: 0, output: 0, total: 0 },
     execution,
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },

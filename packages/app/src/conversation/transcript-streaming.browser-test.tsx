@@ -115,6 +115,7 @@ const unchanged = {
   activation: { kind: "active" },
   parts: [],
   turns: infos,
+  usage: USAGE,
   execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
   background: [],
   configuration: { selected: liveRun.configuration, effective: liveRun.configuration },

@@ -62,7 +62,8 @@ import type { Tip } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
 import { extractUserText } from "../util/text.ts";
-import { charge, complete, requestEvent, rideRef, ZERO_USAGE } from "./request.ts";
+import { charge, complete, requestEvent, rideRef } from "./request.ts";
+import { ZERO_USAGE } from "../util/usage.ts";
 import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";
 import type { StoreConnection } from "../contract/store.ts";
 

@@ -5,7 +5,7 @@ import { FileChangeType } from "./files.ts";
 import { idSchema, SeqType } from "./ids.ts";
 import { withJson } from "./json.ts";
 import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
-import { ContextViewType } from "./models.ts";
+import { ContextViewType, UsageType } from "./models.ts";
 import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
@@ -107,6 +107,7 @@ export const SessionViewType = Type.Object({
   messages: Type.Array(MessageType),
   parts: Type.Array(PartViewType),
   turns: Type.Array(TurnInfoType),
+  usage: UsageType,
   execution: ExecutionType,
   background: Type.Array(BackgroundItemType),
   configuration: Type.Object({
@@ -119,7 +120,16 @@ export const SessionViewType = Type.Object({
   catalog: SessionCatalogViewType,
 });
 
+/** A head's view: its last `tail` messages, the turns those messages belong to from the earliest one on (older turns arrive with older messages through `head.history`), and `usage`, the sum of every completed run on the head's history. */
 export type SessionView = Decoded<typeof SessionViewType>;
+
+export const HistoryPageType = Type.Object({
+  messages: Type.Array(MessageType),
+  turns: Type.Array(TurnInfoType),
+});
+
+/** Messages before a view's window, with the turns they belong to. */
+export type HistoryPage = Decoded<typeof HistoryPageType>;
 
 const VIEW = SessionViewType.properties;
 
@@ -147,6 +157,7 @@ export const ViewFrameType = Type.Union([
     appends: Type.Optional(Type.Array(ViewAppendType)),
     parts: Type.Optional(viewSplice(PartViewType)),
     turns: Type.Optional(viewSplice(TurnInfoType)),
+    usage: Type.Optional(VIEW.usage),
     execution: Type.Optional(VIEW.execution),
     background: Type.Optional(viewSplice(BackgroundItemType)),
     configuration: Type.Optional(VIEW.configuration),
@@ -169,6 +180,8 @@ export const MessageSchema: Schema<Message> = standard(MessageType);
 export const TurnInfoSchema: Schema<TurnInfo> = standard(TurnInfoType);
 
 export const SessionViewSchema: Schema<SessionView> = standard(withJson(SessionViewType));
+
+export const HistoryPageSchema: Schema<HistoryPage> = standard(withJson(HistoryPageType));
 
 export const ViewFrameSchema: Schema<ViewFrame> = standard(withJson(ViewFrameType));
 

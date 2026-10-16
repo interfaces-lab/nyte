@@ -6,9 +6,9 @@ import type {
   CreateHeadOutcome,
   Cursor,
   HeadName,
+  HistoryPage,
   Json,
   MergeOutcome,
-  Message,
   MessageId,
   MoveOptions,
   MoveOutcome,
@@ -148,10 +148,8 @@ export interface Head {
 
   watch(options?: ViewOptions): AsyncIterable<SessionView>;
 
-  history(input: {
-    readonly before: MessageId;
-    readonly limit: number;
-  }): Promise<readonly Message[]>;
+  /** The `limit` messages before `before`, older than the view's window, with the turns they belong to. */
+  history(input: { readonly before: MessageId; readonly limit: number }): Promise<HistoryPage>;
 
   tree(): Promise<TreeView>;
 

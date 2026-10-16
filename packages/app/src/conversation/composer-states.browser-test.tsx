@@ -27,7 +27,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
-import { COMPLETED, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
+import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 import { Composer } from "./composer.tsx";
 import { conversationMessages } from "./transcript-rows.ts";
 
@@ -122,6 +122,7 @@ function view(
         ...(busy && { state: { kind: "working", activity: null } }),
       }).info,
     ],
+    usage: USAGE,
     execution,
     background: [],
     configuration: { selected: liveRun.configuration, effective: liveRun.configuration },

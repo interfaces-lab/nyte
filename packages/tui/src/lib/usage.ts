@@ -2,7 +2,6 @@ import type { ProviderUsage, SessionView, Usage } from "@nyte-ai/sdk";
 import type { TextLine } from "../model/dialogs/dialog.ts";
 import { GLYPHS } from "./constants.ts";
 import { formatTokens } from "./format.ts";
-import { sessionUsage } from "./view-helpers.ts";
 
 type ChatUsageCard =
   | { readonly kind: "message"; readonly message: string }
@@ -31,7 +30,7 @@ function breakdownLines(total: Usage): readonly string[] {
 }
 
 export function usageCard(view: SessionView, accounts: readonly ProviderUsage[]): UsageCard {
-  const total = sessionUsage(view);
+  const total = view.usage;
 
   if (total.total === 0 && total.cost.total === 0)
     return { accounts, chat: { kind: "message", message: "No usage recorded" } };

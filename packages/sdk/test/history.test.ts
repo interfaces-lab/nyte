@@ -15,7 +15,7 @@ function users(view: SessionView) {
   return view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []));
 }
 
-it("pages a head's older messages into its views and keeps them while new ones slide the window", async () => {
+it("pages a head's older messages and their turns into its views and keeps them while new ones slide the window", async () => {
   const host = await served();
   cleanups.push(() => host.close());
 
@@ -68,6 +68,9 @@ it("pages a head's older messages into its views and keeps them while new ones s
     );
 
     expect(users(slid)).toEqual(["First.", "Second.", "Third.", "Fourth."]);
+    expect(slid.turns.map((turn) => turn.prompt)).toEqual(
+      slid.messages.flatMap((message) => (message.kind === "user" ? [message.id] : [])),
+    );
   } finally {
     await iterator.return?.();
   }

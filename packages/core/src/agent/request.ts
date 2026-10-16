@@ -36,6 +36,7 @@ import { runRef, sessionRef } from "../store/refs.ts";
 import { attempt, load, put, requireSession, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
+import { addUsage, ZERO_USAGE } from "../util/usage.ts";
 
 interface Completed {
   readonly message: AssistantMessage;
@@ -50,16 +51,6 @@ export const RETRY_POLICY: RetryPolicy = {
   maxRetries: 3,
   baseDelayMs: 2_000,
   maxAgentDelayMs: 60_000,
-};
-
-export const ZERO_USAGE: Usage = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  reasoning: null,
-  total: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
 /** A response's usage as runs record it: the adapter's price, or the model's own rates when the adapter left it unpriced. */
@@ -86,27 +77,6 @@ export function calculateUsage(message: AssistantMessage, model: Model<Api>): Us
       cacheRead: cost.cacheRead,
       cacheWrite: cost.cacheWrite,
       total: cost.total,
-    },
-  };
-}
-
-export function addUsage(left: Usage, right: Usage): Usage {
-  return {
-    input: left.input + right.input,
-    output: left.output + right.output,
-    cacheRead: left.cacheRead + right.cacheRead,
-    cacheWrite: left.cacheWrite + right.cacheWrite,
-    reasoning:
-      left.reasoning === null && right.reasoning === null
-        ? null
-        : (left.reasoning ?? 0) + (right.reasoning ?? 0),
-    total: left.total + right.total,
-    cost: {
-      input: left.cost.input + right.cost.input,
-      output: left.cost.output + right.cost.output,
-      cacheRead: left.cost.cacheRead + right.cost.cacheRead,
-      cacheWrite: left.cost.cacheWrite + right.cost.cacheWrite,
-      total: left.cost.total + right.cost.total,
     },
   };
 }

@@ -1,4 +1,4 @@
-import type { Message, SessionView, Usage } from "@nyte-ai/sdk";
+import type { Message, SessionView } from "@nyte-ai/sdk";
 import { showsReport } from "@nyte-ai/plugin/client/presentation";
 import type { ReportMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 
@@ -40,39 +40,6 @@ export function landingMessages(view: SessionView): readonly UserMessage[] {
 
 export function pendingReports(view: SessionView): readonly ReportMessage[] {
   return unlandedMessages(view.messages).filter(showsReport);
-}
-
-export function sessionUsage(view: SessionView): Usage {
-  const empty: Usage = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    reasoning: null,
-    total: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-
-  return view.turns.reduce((sum, turn) => {
-    if (turn.state.kind !== "ended" || turn.state.end.kind !== "completed") return sum;
-    const usage = turn.state.end.usage;
-
-    return {
-      input: sum.input + usage.input,
-      output: sum.output + usage.output,
-      cacheRead: sum.cacheRead + usage.cacheRead,
-      cacheWrite: sum.cacheWrite + usage.cacheWrite,
-      reasoning: usage.reasoning === null ? sum.reasoning : (sum.reasoning ?? 0) + usage.reasoning,
-      total: sum.total + usage.total,
-      cost: {
-        input: sum.cost.input + usage.cost.input,
-        output: sum.cost.output + usage.cost.output,
-        cacheRead: sum.cost.cacheRead + usage.cost.cacheRead,
-        cacheWrite: sum.cost.cacheWrite + usage.cost.cacheWrite,
-        total: sum.cost.total + usage.cost.total,
-      },
-    };
-  }, empty);
 }
 
 export function follow<T>(
