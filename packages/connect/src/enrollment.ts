@@ -98,7 +98,7 @@ export async function awaitAcceptance(input: {
 
 export const RELEASE_TIMEOUT_MS = 5_000;
 
-type Release = "removed" | "unconfirmed";
+export type Release = "removed" | "unconfirmed";
 
 /**
  * Release this device on its Mac: `DELETE /_nyte/connect/device` through its
