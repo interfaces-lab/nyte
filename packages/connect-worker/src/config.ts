@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { D1Database } from "./d1.ts";
-import type { RelayNamespace } from "./relay-stub.ts";
+import type { RelayNamespace } from "./relay-binding.ts";
 
 export interface Env {
   readonly DB: D1Database;

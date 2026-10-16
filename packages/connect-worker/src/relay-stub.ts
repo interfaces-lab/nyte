@@ -11,14 +11,7 @@
 import { relayRequestHeaders } from "@nyte-ai/connect/relay";
 import type { RelayMethod } from "@nyte-ai/connect/relay";
 import type { Context } from "./context.ts";
-
-export interface RelayStub {
-  fetch(request: Request): Promise<Response>;
-}
-
-export interface RelayNamespace {
-  getByName(name: string): RelayStub;
-}
+import type { RelayStub } from "./relay-binding.ts";
 
 export const RELAY_INTERNAL_ORIGIN = "https://relay.internal";
 
