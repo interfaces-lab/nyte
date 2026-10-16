@@ -28,6 +28,7 @@ import type {
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
 import { abortHere, unfenced } from "../engine/fence.ts";
+import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
@@ -190,6 +191,7 @@ async function turn(
 
       try {
         await runtime.ready;
+        await awaitMcpServers(kernel, runtime, session, signal);
         const configured = modelInfo(models, configuration.model, runtime);
 
         if (configured === null)
@@ -258,7 +260,7 @@ async function turn(
             await readProviderCheckpoint(kernel, session, head, model),
           ),
           at: Date.now(),
-          usage: (message) => calculateUsage(message, info),
+          usage: (message) => calculateUsage(message, model),
           runtime,
         };
       } catch (error) {

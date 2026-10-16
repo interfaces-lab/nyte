@@ -668,19 +668,16 @@ describe("request", () => {
     ]);
   });
 
-  it("prices usage from the model's rates unless the adapter priced it", () => {
-    const info = {
-      ref: basic,
-      name: "model",
-      reasoning: false,
-      thinking: ["off"] as const,
-      fast: null,
-      contextWindow: 1_000,
-      compactAt: 800,
-      maxOutput: 100,
-      input: ["text"] as const,
-      cost: { input: 2, output: 4, cacheRead: 1, cacheWrite: 0 },
-    };
+  it("prices usage from the model's rates, tiers and 1h cache writes included, unless the adapter priced it", () => {
+    const model = testModel("model", {
+      cost: {
+        input: 2,
+        output: 4,
+        cacheRead: 1,
+        cacheWrite: 3,
+        tiers: [{ inputTokensAbove: 200_000, input: 4, output: 8, cacheRead: 2, cacheWrite: 6 }],
+      },
+    });
 
     const message = {
       role: "assistant" as const,
@@ -692,7 +689,8 @@ describe("request", () => {
         input: 1_000_000,
         output: 500_000,
         cacheRead: 0,
-        cacheWrite: 0,
+        cacheWrite: 1_000_000,
+        cacheWrite1h: 500_000,
         totalTokens: 0,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
@@ -700,14 +698,14 @@ describe("request", () => {
       timestamp: 0,
     };
 
-    expect(calculateUsage(message, info)).toEqual({
+    expect(calculateUsage(message, model)).toEqual({
       input: 1_000_000,
       output: 500_000,
       cacheRead: 0,
-      cacheWrite: 0,
+      cacheWrite: 1_000_000,
       reasoning: null,
-      total: 1_500_000,
-      cost: { input: 2, output: 2, cacheRead: 0, cacheWrite: 0, total: 4 },
+      total: 2_500_000,
+      cost: { input: 4, output: 4, cacheRead: 0, cacheWrite: 7, total: 15 },
     });
 
     const priced = {
@@ -720,7 +718,7 @@ describe("request", () => {
       },
     };
 
-    expect(calculateUsage(priced, info)).toMatchObject({
+    expect(calculateUsage(priced, model)).toMatchObject({
       reasoning: 7,
       total: 1_500_010,
       cost: { total: 2 },

@@ -1,9 +1,11 @@
 import { contentText } from "@nyte-ai/schema/model";
 import type {
+  Api,
   AssistantMessage,
   Context,
   Failure,
   Message,
+  Model,
   ProviderCheckpointMaterial,
   Tool,
 } from "@nyte-ai/schema/model";
@@ -20,6 +22,7 @@ import type {
 } from "@nyte-ai/schema";
 import { retryAssistantCall } from "@nyte-ai/ai/utils/retry";
 import type { RetryPolicy } from "@nyte-ai/ai/utils/retry";
+import { calculateCost } from "@nyte-ai/ai";
 import type { Models } from "@nyte-ai/ai";
 import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
 import { LOCAL } from "../contract/host.ts";
@@ -59,17 +62,15 @@ export const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-export function calculateUsage(message: AssistantMessage, info: ModelInfo): Usage {
+/** A response's usage as runs record it: the adapter's price, or the model's own rates when the adapter left it unpriced. */
+export function calculateUsage(message: AssistantMessage, model: Model<Api>): Usage {
   const reported = message.usage;
   const { input, output, cacheRead, cacheWrite } = reported;
-  const rates = info.cost;
 
-  const priced = {
-    input: (input * rates.input) / 1_000_000,
-    output: (output * rates.output) / 1_000_000,
-    cacheRead: (cacheRead * rates.cacheRead) / 1_000_000,
-    cacheWrite: (cacheWrite * rates.cacheWrite) / 1_000_000,
-  };
+  const cost =
+    reported.cost.total > 0
+      ? reported.cost
+      : calculateCost(model, { ...reported, cost: { ...reported.cost } });
 
   return {
     input,
@@ -79,19 +80,13 @@ export function calculateUsage(message: AssistantMessage, info: ModelInfo): Usag
     reasoning: reported.reasoning ?? null,
     total:
       reported.totalTokens > 0 ? reported.totalTokens : input + output + cacheRead + cacheWrite,
-    cost:
-      reported.cost.total > 0
-        ? {
-            input: reported.cost.input,
-            output: reported.cost.output,
-            cacheRead: reported.cost.cacheRead,
-            cacheWrite: reported.cost.cacheWrite,
-            total: reported.cost.total,
-          }
-        : {
-            ...priced,
-            total: priced.input + priced.output + priced.cacheRead + priced.cacheWrite,
-          },
+    cost: {
+      input: cost.input,
+      output: cost.output,
+      cacheRead: cost.cacheRead,
+      cacheWrite: cost.cacheWrite,
+      total: cost.total,
+    },
   };
 }
 
@@ -196,7 +191,7 @@ export async function complete(
       ),
     );
 
-    const usage = calculateUsage(message, info);
+    const usage = calculateUsage(message, model);
     dev("request", "end", {
       session: where.session,
       stop: message.stopReason,
@@ -227,7 +222,7 @@ export async function complete(
 
   return {
     message,
-    usage: calculateUsage(message, info),
+    usage: calculateUsage(message, model),
     info,
     failure: isFailedResponse(message) ? classifyAssistantFailure(message) : null,
   };
