@@ -8,7 +8,7 @@ import {
   initializeResult,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import { chromium } from "../../app/node_modules/@playwright/test/index.mjs";
+import { chromium } from "@playwright/test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -198,7 +198,9 @@ for (const theme of ["light", "dark"]) {
 
           if (data.method === "ui/initialize")
             window.dispatchEvent(
-              new MessageEvent("message", { data: { ...config.initializeResult, id: data.id } }),
+              new MessageEvent("message", {
+                data: Object.assign({}, config.initializeResult, { id: data.id }),
+              }),
             );
 
           if (data.method === "ui/notifications/initialized")
