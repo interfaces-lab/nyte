@@ -16,7 +16,8 @@ import { holdLease } from "../src/engine/lease.ts";
 import { createKernel } from "../src/compose.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
-import { loadWaits } from "../src/engine/waits.ts";
+import { earliestWake, loadWaits } from "../src/engine/waits.ts";
+import { readCalls } from "../src/store/session.ts";
 import { definePart } from "../src/index.ts";
 import { callRef, decodeCallRecord, decodeRunRecord, memoryStore, runRef } from "../src/store.ts";
 import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
@@ -33,6 +34,17 @@ import {
   startRun,
   until,
 } from "./harness.ts";
+
+/** The earliest time a wait on the main head is due, read from its parked calls. */
+async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
+  const calls = await readCalls(kernel.store, session);
+
+  return earliestWake(
+    kernel.store,
+    session,
+    calls.flatMap((record) => (record.head === main ? [record.id] : [])),
+  );
+}
 
 const timedState = standard(Type.Object({}));
 
@@ -211,7 +223,7 @@ describe("durable steps", () => {
     expect(await readCall(kernel, session.id, call)).toMatchObject({ waiting: target, waits: [] });
     expect(await runWaiting(kernel, session.id, run)).toEqual(target);
     expect((await session.view()).execution).toMatchObject({ kind: "waiting", on: target });
-    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed)).toBe(true);
 
     const outcome: WaitOutcome = {
       kind: "run",
@@ -257,7 +269,7 @@ describe("durable steps", () => {
       waits: [],
       partial: [{ kind: "timer" }, null],
     });
-    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed)).toBe(true);
 
     const ended: WaitOutcome = {
       kind: "run",
@@ -285,12 +297,12 @@ describe("durable steps", () => {
       body: waiting({ kind: "run", session: session.id, run: asId("r1"), deadline }),
     });
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(deadline);
+    expect(await nextWake(kernel, session.id)).toBe(deadline);
     await kernel.waits.tick(deadline - 1);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([]);
     await kernel.waits.tick(deadline);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([{ kind: "deadline" }]);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect(await nextWake(kernel, session.id)).toBeNull();
   });
 
   it("wakes an untilInput wait when the user sends to its head, and for no other input", async () => {
@@ -370,7 +382,7 @@ describe("durable steps", () => {
     });
   });
 
-  it("rebuilds parked waits from the store on a new kernel", async () => {
+  it("wakes a wait parked by another kernel from the store's wait index", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
     const session = await first.host.sessions.create();
@@ -390,11 +402,7 @@ describe("durable steps", () => {
       host: first.kernel.host,
     });
 
-    await second.waits.tick(at);
-    expect((await readCall(second, session.id, call)).waits).toEqual([]);
-    await loadWaits(second);
-
-    expect(second.waits.nextDeadline(session.id, main)).toBe(at);
+    expect(await nextWake(second, session.id)).toBe(at);
     await second.waits.tick(at);
     expect((await readCall(second, session.id, call)).waits).toEqual([{ kind: "timer" }]);
   });
@@ -470,7 +478,7 @@ describe("durable steps", () => {
     });
 
     expect(await runWaiting(kernel, session.id, run)).toEqual(first);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(first.until);
+    expect(await nextWake(kernel, session.id)).toBe(first.until);
     await kernel.waits.tick(first.until);
     expect(await readCall(kernel, session.id, call)).toMatchObject({
       waiting: { kind: "all" },
@@ -478,7 +486,7 @@ describe("durable steps", () => {
       waits: [],
     });
     expect(await runWaiting(kernel, session.id, run)).toEqual(second);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(second.until);
+    expect(await nextWake(kernel, session.id)).toBe(second.until);
 
     const view = await session.view();
 
@@ -535,7 +543,7 @@ describe("durable steps", () => {
       }),
     });
 
-    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed)).toBe(true);
     expect(await readCall(kernel, parent.id, other)).toMatchObject({
       waiting: { kind: "all" },
       waits: [],
@@ -651,7 +659,7 @@ describe("durable steps", () => {
       }),
     });
 
-    await first.kernel.waits.partClosed(session.id, asId("p1"), null);
+    await first.kernel.waits.partClosed(session.id, asId("p1"));
 
     const second = createKernel({
       hostId: first.kernel.hostId,

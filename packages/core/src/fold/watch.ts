@@ -583,6 +583,7 @@ export function pollStore(kernel: Kernel): Disposer {
     if (stopped) return;
     await settleAnswersFrom(kernel);
     await rereadFences(kernel);
+    await kernel.waits.refresh();
     seen = mark;
 
     for (const listener of kernel.externalCommits) listener();
@@ -597,9 +598,6 @@ export function pollStore(kernel: Kernel): Disposer {
       await readExternal(mark).catch((error) =>
         dev("poll", "external read failed", { error: String(error) }),
       );
-
-    if (stopped) return;
-    await kernel.waits.settleFromStore();
   };
 
   const timer = setInterval(() => {

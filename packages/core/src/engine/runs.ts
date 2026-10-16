@@ -1,4 +1,4 @@
-import { asId, isJsonObject } from "@nyte-ai/schema";
+import { asId, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
   Configuration,
   HeadInfo,
@@ -33,7 +33,6 @@ import {
   sessionEvent,
   STALE,
 } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
 import { notifyReceipt, waitFor } from "./waits.ts";
@@ -62,7 +61,6 @@ export async function newRun(
     lastSnapshot: null,
     usage: null,
     requests: 0,
-    waitedBy: [],
     parked: [],
   };
 
@@ -184,7 +182,6 @@ export async function endRun(
           head,
           end: final,
           parent: record.parent,
-          waitedBy: found.record.waitedBy,
           pending: inbox.messages,
           settled: receipts.flatMap((updates, index) =>
             updates.length > 0 ? [landed[index]] : [],
@@ -204,7 +201,7 @@ export async function endRun(
 
   for (const id of ended.settled) notifyReceipt(kernel, session, id);
 
-  const woke = await kernel.waits.runEnded(session, run, ended.end, ended.waitedBy);
+  const woke = await kernel.waits.runEnded(session, run, ended.end);
 
   if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, ended.end);
 

@@ -346,13 +346,9 @@ describe("runs", () => {
 
     expect(await waited(x.kernel)).toEqual({ kind: "parked" });
 
-    const stored = await store.refs.get(runRef(child.id, run.id));
-
     expect(
-      decodeRunRecord(stored?.target ? await store.objects.get(stored.target) : null),
-    ).toMatchObject({
-      waitedBy: [{ session: parent.id, call }],
-    });
+      (await store.refs.list(`waits/run/${child.id}/${run.id}/`)).map((ref) => ref.name),
+    ).toEqual([`waits/run/${child.id}/${run.id}/${parent.id}/${call}/0/0`]);
 
     const y = await setup({ store, execution: { kind: "admit-only" } });
     await endRun(y.kernel, child.id, run.id, completed);

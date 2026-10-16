@@ -1,4 +1,4 @@
-import { asId, isJson, isJsonObject, standard } from "@nyte-ai/schema";
+import { asId, isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type {
   CallId,
   Json,
@@ -42,7 +42,6 @@ import {
   toCommitObjectId,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 import { check, convertJsonSchema, matchesOutput } from "../util/json-schema.ts";
 
 type Performed =
@@ -431,11 +430,7 @@ function partHandleFor<K extends PartDefinition>(
 
       if (closed === null) return;
       release(kernel.partTable, name);
-      await kernel.waits.partClosed(
-        session,
-        id,
-        closed.kind === "live" ? (closed.waiting ?? null) : null,
-      );
+      await kernel.waits.partClosed(session, id);
     },
   };
 }
@@ -454,8 +449,7 @@ async function answered(
 
     if (found === null || status?.kind !== "live") return null;
 
-    if (status.answer !== undefined)
-      return { winner: status.answer, waiting: status.waiting ?? null };
+    if (status.answer !== undefined) return status.answer;
 
     const outcome = await commit(kernel, [
       {
@@ -466,12 +460,12 @@ async function answered(
       },
     ]);
 
-    return outcome.kind === "set" ? { winner: answer, waiting: status.waiting ?? null } : STALE;
+    return outcome.kind === "set" ? answer : STALE;
   });
 
   if (kept === null) return false;
-  await kernel.waits.partAnswered(session, id, kept.winner, kept.waiting);
-  settle(kernel.partTable, name, kept.winner);
+  await kernel.waits.partAnswered(session, id, kept);
+  settle(kernel.partTable, name, kept);
 
   return true;
 }

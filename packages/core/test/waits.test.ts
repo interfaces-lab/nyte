@@ -6,7 +6,8 @@ import { executeCall } from "../src/agent/tool-runner.ts";
 import { createKernel } from "../src/compose.ts";
 import { repair } from "../src/drive/execution.ts";
 import { LEASE_MS, runStep } from "../src/engine/durable.ts";
-import { loadWaits } from "../src/engine/waits.ts";
+import { earliestWake, loadWaits } from "../src/engine/waits.ts";
+import { readCalls } from "../src/store/session.ts";
 import { LOCAL, ALL_AUTHORITY, definePart } from "../src/index.ts";
 import {
   callRef,
@@ -23,6 +24,17 @@ import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put } from "../src/store/session.ts";
 import { configuration, main, setup, startRun, until } from "./harness.ts";
+
+/** The earliest time a wait on the main head is due, read from its parked calls. */
+async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
+  const calls = await readCalls(kernel.store, session);
+
+  return earliestWake(
+    kernel.store,
+    session,
+    calls.flatMap((record) => (record.head === main ? [record.id] : [])),
+  );
+}
 
 const question = definePart({
   kind: "test/question",
@@ -290,13 +302,13 @@ describe("waits as store facts", () => {
     expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
     expect(await other.host.execution.repair({ limit: 10 })).toMatchObject({ runnable: [head] });
 
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(notified).toEqual([`${session.id}/${main}`]);
-    expect(holder.kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect(await nextWake(holder.kernel, session.id)).toBeNull();
   });
 
-  it("lists a stopping parked run as owed, so repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
+  it("ends a stopped run's parked waits from any instance, and repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
     const holder = await setup({ tools: tools(parker) });
     const other = await setup({ store: holder.kernel.store });
     const session = await holder.host.sessions.create();
@@ -328,8 +340,9 @@ describe("waits as store facts", () => {
     expect(await other.host.session(session.id).run(run).stop()).toEqual({ kind: "requested" });
     expect(await runOf(other.kernel, session.id, run)).toMatchObject({
       stopping: true,
-      parked: [asId("w1")],
+      parked: [],
     });
+    expect((await readCall(other.kernel, session.id, "w1")).waits).toEqual([{ kind: "stopped" }]);
 
     const fresh = restart(holder.kernel);
 
@@ -529,17 +542,11 @@ describe("waits as store facts", () => {
       kind: "ok",
       output: undefined,
     });
-    expect((await readCall(kernel, session.id, "s2")).waits).toEqual([
-      { kind: "part", part: part.id, answer: yes },
-    ]);
-    expect((await readCall(kernel, session.id, "s1")).waits).toEqual([]);
-
-    await loadWaits(restart(kernel));
-
-    expect(await readCall(kernel, session.id, "s1")).toMatchObject({
-      waiting: null,
-      waits: [{ kind: "part", part: part.id, answer: yes }],
-    });
+    for (const call of ["s1", "s2"])
+      expect(await readCall(kernel, session.id, call)).toMatchObject({
+        waiting: null,
+        waits: [{ kind: "part", part: part.id, answer: yes }],
+      });
   });
 
   it("re-runs a part action parked across a restart once a wake written there completes its wait (ADV B N5, §33j)", async () => {
@@ -624,7 +631,7 @@ describe("waits as store facts", () => {
     await loadWaits(other.kernel, [session.id]);
     await other.kernel.waits.tick(at);
     await until(async () => (resumed.length === 1 ? true : undefined));
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(resumed).toHaveLength(1);
@@ -632,7 +639,7 @@ describe("waits as store facts", () => {
     await until(async () =>
       (await readCall(holder.kernel, session.id, call)).result === null ? undefined : true,
     );
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
     expect(resumed).toHaveLength(1);
@@ -659,7 +666,7 @@ describe("waits as store facts", () => {
     await loadWaits(other.kernel, [session.id]);
     await other.kernel.waits.tick(at);
     await until(async () => (resumed.length === 1 ? true : undefined));
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect((await readCall(holder.kernel, session.id, call)).reran).toMatchObject({
       waits: 1,
@@ -667,7 +674,7 @@ describe("waits as store facts", () => {
     });
 
     await leaseLater(async () => {
-      await holder.kernel.waits.settleFromStore();
+      await holder.kernel.waits.refresh();
 
       expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
     });
@@ -755,12 +762,12 @@ describe("waits as store facts", () => {
     ]);
     expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
 
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(notified).toEqual([`${session.id}/${main}`, `${session.id}/${main}`]);
   });
 
-  it("drops a wait held here once its deadline finds the step settled elsewhere, so it is no longer the head's next deadline", async () => {
+  it("settles a timer once across instances: a wait another instance settled is no head's next deadline, and a tick here leaves it", async () => {
     const { kernel, host } = await setup();
     const session = await host.sessions.create();
     const at = Date.now() + 60_000;
@@ -775,9 +782,9 @@ describe("waits as store facts", () => {
     await loadWaits(elsewhere);
     await elsewhere.waits.tick(at);
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(at);
+    expect(await nextWake(kernel, session.id)).toBeNull();
     await kernel.waits.tick(at);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect((await readCall(kernel, session.id, "c1")).waits).toEqual([{ kind: "timer" }]);
   });
 
   it("judges a wait held here again from the store: repair settles one whose part went away, and a slot at an older wait gives way to the stored one (ADV E N1)", async () => {
@@ -815,9 +822,9 @@ describe("waits as store facts", () => {
     await loadWaits(elsewhere);
     await elsewhere.waits.tick(first);
     await waitStep(elsewhere, { session: session.id, call: "c2", body: twice });
-    await kernel.waits.settleFromStore();
+    await kernel.waits.refresh();
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(second);
+    expect(await nextWake(kernel, session.id)).toBe(second);
     await kernel.waits.tick(second);
     expect((await readCall(kernel, session.id, "c2")).waits).toEqual([
       { kind: "timer" },

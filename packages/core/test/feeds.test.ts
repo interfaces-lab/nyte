@@ -230,7 +230,6 @@ describe("the store is the truth", () => {
       lastSnapshot: null,
       usage: null,
       requests: 0,
-      waitedBy: [],
       parked: [],
     };
 

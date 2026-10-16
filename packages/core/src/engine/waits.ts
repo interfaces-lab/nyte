@@ -1,10 +1,9 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CallId,
   Disposer,
   JobEnd,
-  Json,
-  PartId,
+  Ref,
   RefUpdate,
   RequestOptions,
   RunId,
@@ -15,42 +14,60 @@ import type {
 import type { Kernel, ParkedWait, WaitRegistry } from "../contract/kernel.ts";
 import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { CallRecord, RunRecord } from "../contract/records.ts";
-import { changeCall } from "../fold/commit.ts";
+import { changeCall, commit } from "../fold/commit.ts";
 import type { CallChange } from "../fold/commit.ts";
 import { readRunEnd } from "../fold/reads.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { callRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import type { StoreConnection } from "../contract/store.ts";
-
-interface Slot {
-  readonly entry: ParkedWait;
-  readonly targets: readonly WaitTarget[];
-  outcomes: readonly (WaitOutcome | null)[];
-}
 
 const LOST: JobEnd = { kind: "lost" };
 
-export function createWaitRegistry(kernel: Kernel): WaitRegistry {
-  const slots = new Map<string, Slot>();
+const STOPPED: WaitOutcome = { kind: "stopped" };
 
+const WAITS = "waits/";
+
+const TIME = `${WAITS}time/`;
+
+/** Digits a time key is padded to, so the index lists times in order. */
+const TIME_DIGITS = 16;
+
+/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
+interface Indexed {
+  readonly name: string | null;
+  readonly session: SessionId;
+  readonly call: CallId;
+  readonly occurrence: number;
+  readonly target: number | null;
+}
+
+/**
+ * Returns the wait registry over the store-side wait index: a park writes one `waits/` ref per
+ * target the call waits on (by run, part, job and input, and by time for timers and deadlines),
+ * each pointing at the parked call record, and the wake that completes the wait deletes them in
+ * the same write. Every offer is a compare-and-set on the call record that completes the wait or
+ * fills its target of an `all`; an offer that finds the wait already past, or the call gone,
+ * drops the index entry that led to it. The registry keeps no copy of what is parked; only this
+ * process's live action loops are held, as resumers.
+ */
+export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const resumers = new Map<
     string,
     { readonly session: SessionId; readonly call: CallId; readonly resume: () => void }
   >();
 
-  const resumed = async (entry: ParkedWait): Promise<readonly RefUpdate[]> =>
-    entry.run === null
+  const resumed = async (session: SessionId, current: CallRecord): Promise<readonly RefUpdate[]> =>
+    current.run === null
       ? []
-      : runWait(kernel.store, entry.session, entry.run, async (record) => {
-          if (!record.parked.includes(entry.call) && record.waiting === null) return null;
+      : runWait(kernel.store, session, current.run, async (record) => {
+          if (!record.parked.includes(current.id) && record.waiting === null) return null;
 
           const others = await Promise.all(
             record.parked
-              .filter((call) => call !== entry.call)
-              .map((call) => readCall(kernel.store, entry.session, call)),
+              .filter((call) => call !== current.id)
+              .map((call) => readCall(kernel.store, session, call)),
           );
 
           const still = others.flatMap((found) => {
@@ -68,69 +85,54 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         });
 
   const completion = async (
+    session: SessionId,
     current: CallRecord,
-    entry: ParkedWait,
     outcome: WaitOutcome,
   ): Promise<CallChange> => ({
     record: { ...current, waits: [...current.waits, outcome], waiting: null, partial: [] },
-    updates: await resumed(entry),
+    updates: await resumed(session, current),
+    index: { add: [], drop: waitIndex(session, current) },
   });
 
-  const open = (current: CallRecord, entry: ParkedWait): boolean =>
-    current.result === null && current.waiting !== null && current.waits.length === entry.index;
+  const woken = (session: SessionId, record: CallRecord): void => {
+    dev("waits", "wake", { session, call: record.id });
 
-  const drop = (slot: Slot): void => {
-    const key = formatWaitKey(slot.entry.session, slot.entry.call);
-
-    if (slots.get(key) === slot) slots.delete(key);
+    if (record.head !== null) kernel.wakes.notify(session, record.head);
+    else registry.rerun(session, record.id);
   };
 
-  const woken = (slot: Slot): void => {
-    const { entry } = slot;
-    dev("waits", "wake", { session: entry.session, call: entry.call });
-    drop(slot);
+  const offer = async (entry: Indexed, outcome: WaitOutcome): Promise<boolean> => {
+    const { session, call, occurrence, target: slot } = entry;
+    let past = false;
 
-    if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
-    else registry.rerun(entry.session, entry.call);
-  };
+    const written = await changeCall(kernel, session, call, async (current) => {
+      if (
+        current === null ||
+        current.result !== null ||
+        current.waiting === null ||
+        current.waits.length !== occurrence
+      ) {
+        past = true;
 
-  const settle = async (slot: Slot, outcome: WaitOutcome): Promise<boolean> => {
-    const { entry } = slot;
-
-    const written = await changeCall(kernel, entry.session, entry.call, async (current) =>
-      current !== null && open(current, entry) ? completion(current, entry, outcome) : null,
-    );
-
-    if (!written.wrote) {
-      if (written.record === null || !open(written.record, entry)) drop(slot);
-
-      return false;
-    }
-
-    woken(slot);
-
-    return true;
-  };
-
-  const offer = async (slot: Slot, index: number, outcome: WaitOutcome): Promise<boolean> => {
-    const { entry } = slot;
-
-    if (entry.target.kind !== "all") return settle(slot, outcome);
-
-    const written = await changeCall(kernel, entry.session, entry.call, async (current) => {
-      if (current === null || !open(current, entry) || (current.partial.at(index) ?? null) !== null)
         return null;
+      }
 
-      const partial = slot.targets.map((_target, at) =>
-        at === index ? outcome : (current.partial.at(at) ?? null),
+      const target = current.waiting;
+
+      if (slot === null || target.kind !== "all") return completion(session, current, outcome);
+
+      if ((current.partial.at(slot) ?? null) !== null) return null;
+
+      const partial = target.targets.map((_target, at) =>
+        at === slot ? outcome : (current.partial.at(at) ?? null),
       );
 
       const outcomes = partial.flatMap((found) => (found === null ? [] : [found]));
 
-      if (outcomes.length === slot.targets.length)
-        return completion(current, entry, { kind: "all", outcomes });
+      if (outcomes.length === target.targets.length)
+        return completion(session, current, { kind: "all", outcomes });
 
-      const on = waitingOn(entry.target, partial);
+      const on = waitingOn(target, partial);
 
       return {
         record: { ...current, partial },
@@ -141,70 +143,60 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
                 {
                   head: current.head,
                   kind: "call",
-                  call: current.id,
+                  call,
                   part: current.part,
                   change: "waiting",
                   on,
                 },
               ],
         updates:
-          on === null || entry.run === null
+          on === null || current.run === null
             ? []
-            : await runWait(kernel.store, entry.session, entry.run, async (record) => ({
+            : await runWait(kernel.store, session, current.run, async (record) => ({
                 parked: record.parked,
                 waiting: on,
               })),
+        index: { add: [], drop: entry.name === null ? [] : [entry.name] },
       };
     });
 
-    const record = written.record;
+    if (past && entry.name !== null) await commit(kernel, [{ name: entry.name, target: null }]);
 
-    if (record === null || !open(record, entry)) drop(slot);
+    if (!written.wrote || written.record === null) return false;
 
-    if (!written.wrote || record === null) return false;
-
-    if (record.waiting !== null) slot.outcomes = record.partial;
-    else woken(slot);
+    if (written.record.waiting === null) woken(session, written.record);
 
     return true;
   };
 
-  const offers = (
-    match: (target: WaitTarget) => boolean,
-    outcome: WaitOutcome,
-  ): readonly Promise<boolean>[] =>
-    [...slots.values()].flatMap((slot) =>
-      slot.targets.flatMap((target, index) =>
-        (slot.outcomes.at(index) ?? null) === null && match(target)
-          ? [offer(slot, index, outcome)]
-          : [],
-      ),
+  const offerAll = async (prefix: string, outcome: WaitOutcome): Promise<readonly boolean[]> =>
+    Promise.all(
+      (await kernel.store.refs.list(prefix)).flatMap((ref) => {
+        const entry = readIndexed(ref.name);
+
+        return entry === null ? [] : [offer(entry, outcome)];
+      }),
     );
 
-  const expire = async (slot: Slot, now: number): Promise<void> => {
-    const deadline = findEarliestDeadline(slot.entry.target);
+  const end = async (session: SessionId, record: CallRecord | null, outcome: WaitOutcome) => {
+    const entry = readParkedWait(session, record);
 
-    if (deadline !== null && deadline <= now) {
-      await settle(slot, { kind: "deadline" });
+    if (entry === null) return false;
 
-      return;
-    }
-
-    await Promise.all(
-      slot.targets.flatMap((target, index) =>
-        target.kind === "timer" && target.until <= now && (slot.outcomes.at(index) ?? null) === null
-          ? [offer(slot, index, { kind: "timer" })]
-          : [],
-      ),
+    return offer(
+      { name: null, session, call: entry.call, occurrence: entry.index, target: null },
+      outcome,
     );
   };
 
   const settled = async (session: SessionId, target: WaitTarget): Promise<WaitOutcome | null> => {
     switch (target.kind) {
       case "run": {
-        const end = await readRunEnd(kernel, target.session, target.run);
+        const ended = await readRunEnd(kernel, target.session, target.run);
 
-        return end === null ? null : { kind: "run", session: target.session, run: target.run, end };
+        return ended === null
+          ? null
+          : { kind: "run", session: target.session, run: target.run, end: ended };
       }
 
       case "part": {
@@ -231,138 +223,95 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     }
   };
 
-  const stop = async (match: (entry: ParkedWait) => boolean): Promise<void> => {
-    await Promise.all(
-      [...slots.values()].flatMap((slot) =>
-        match(slot.entry) ? [settle(slot, { kind: "stopped" })] : [],
-      ),
-    );
-  };
-
-  const slotFor = (entry: ParkedWait): Slot => {
-    const held = slots.get(formatWaitKey(entry.session, entry.call));
-
-    if (held?.entry.index === entry.index) return held;
-    const target = entry.target;
-    const targets = "targets" in target ? target.targets : [target];
-
-    return {
-      entry,
-      targets,
-      outcomes: targets.map((_target, index) => entry.partial.at(index) ?? null),
-    };
-  };
-
-  const storedWait = async (session: SessionId, call: CallId): Promise<ParkedWait | null> =>
-    readParkedWait(session, (await readCall(kernel.store, session, call))?.record ?? null);
-
-  const offerCold = async (
-    session: SessionId,
-    call: CallId,
-    on: (target: WaitTarget) => boolean,
-    outcome: WaitOutcome,
-  ): Promise<readonly boolean[]> => {
-    const entry = await storedWait(session, call);
-
-    if (entry === null) return [];
-    const slot = slotFor(entry);
-
-    return Promise.all(
-      slot.targets.flatMap((target, index) =>
-        on(target) && (slot.outcomes.at(index) ?? null) === null
-          ? [offer(slot, index, outcome)]
-          : [],
-      ),
-    );
-  };
-
-  const offerPart = async (
-    session: SessionId,
-    part: PartId,
-    answer: { readonly action: string; readonly input: Json } | null,
-    call: CallId | null,
-  ): Promise<void> => {
-    const on = (target: WaitTarget): boolean => target.kind === "part" && target.part === part;
-    const outcome: WaitOutcome = { kind: "part", part, answer };
-
-    if (call !== null) await offerCold(session, call, on, outcome);
-    await Promise.all(offers(on, outcome));
-  };
-
   const park = async (entry: ParkedWait): Promise<void> => {
-    const key = formatWaitKey(entry.session, entry.call);
-    const slot = slotFor(entry);
-    slot.outcomes = slot.targets.map((_target, index) => entry.partial.at(index) ?? null);
-    slots.set(key, slot);
-    dev("waits", "park", {
-      session: entry.session,
-      call: entry.call,
-      targets: slot.targets.length,
+    const { session, call, target, index: occurrence } = entry;
+
+    const at = (slot: number | null): Indexed => ({
+      name: null,
+      session,
+      call,
+      occurrence,
+      target: slot,
     });
 
-    if (entry.target.kind === "all" && slot.targets.length === 0) {
-      await settle(slot, { kind: "all", outcomes: [] });
+    dev("waits", "park", { session, call });
+
+    if (target.kind === "all" && target.targets.length === 0) {
+      await offer(at(null), { kind: "all", outcomes: [] });
 
       return;
     }
 
-    await expire(slot, Date.now());
+    const now = Date.now();
+    const deadline = findEarliestDeadline(target);
 
-    for (const [index, waited] of slot.targets.entries()) {
-      if (slots.get(key) !== slot) return;
+    if (deadline !== null && deadline <= now) {
+      await offer(at(null), { kind: "deadline" });
 
-      if ((slot.outcomes.at(index) ?? null) !== null) continue;
-      const outcome = await settled(entry.session, waited);
+      return;
+    }
 
-      if (outcome !== null) await offer(slot, index, outcome);
+    const targets = "targets" in target ? target.targets : [target];
+
+    for (const [slot, waited] of targets.entries()) {
+      if ((entry.partial.at(slot) ?? null) !== null) continue;
+
+      const outcome =
+        waited.kind === "timer"
+          ? waited.until <= now
+            ? { kind: "timer" as const }
+            : null
+          : await settled(session, waited);
+
+      if (outcome !== null && (await offer(at(slot), outcome)) && target.kind !== "all") return;
     }
   };
 
   const registry: WaitRegistry = {
     park,
-    async runEnded(session, run, end, waitedBy) {
-      const on = (target: WaitTarget): boolean =>
-        target.kind === "run" && target.session === session && target.run === run;
-      const outcome: WaitOutcome = { kind: "run", session, run, end };
-
-      const cold = await Promise.all(
-        waitedBy.map((waiter) => offerCold(waiter.session, waiter.call, on, outcome)),
-      );
-
-      const taken = await Promise.all(offers(on, outcome));
-
-      return [...cold.flat(), ...taken].some(Boolean);
+    async runEnded(session, run, ended) {
+      return (
+        await offerAll(`${WAITS}run/${session}/${run}/`, {
+          kind: "run",
+          session,
+          run,
+          end: ended,
+        })
+      ).some(Boolean);
     },
-    async jobEnded(job, end) {
-      const results = await Promise.allSettled(
-        offers((target) => target.kind === "job" && target.job === job, { kind: "job", job, end }),
-      );
+    async jobEnded(job, ended) {
+      try {
+        return (await offerAll(`${WAITS}job/${job}/`, { kind: "job", job, end: ended })).some(
+          Boolean,
+        );
+      } catch (error) {
+        dev("waits", "job end refused", { job, error: String(error) });
 
-      if (results.some((found) => found.status === "rejected"))
-        dev("waits", "job end refused", { job });
-
-      return results.some((found) => found.status === "rejected" || found.value);
+        return true;
+      }
     },
-    partAnswered: offerPart,
-    partClosed: (session, part, call) => offerPart(session, part, null, call),
-    async inputAdmitted(session, head, message, parked) {
-      const calls = new Set([
-        ...parked,
-        ...[...slots.values()].flatMap((slot) =>
-          slot.entry.session === session && slot.entry.head === head ? [slot.entry.call] : [],
-        ),
-      ]);
+    async partAnswered(session, part, answer) {
+      await offerAll(`${WAITS}part/${session}/${part}/`, { kind: "part", part, answer });
+    },
+    async partClosed(session, part) {
+      await offerAll(`${WAITS}part/${session}/${part}/`, { kind: "part", part, answer: null });
+    },
+    async inputAdmitted(session, head, message) {
+      await offerAll(`${WAITS}input/${session}/${head}/`, { kind: "input", message });
+    },
+    async runStopped(session, run) {
+      const found = await load(
+        kernel.store,
+        await kernel.store.refs.get(runRef(session, run)),
+        decodeRunRecord,
+      );
 
       await Promise.all(
-        [...calls].map(async (call) => {
-          const entry = await storedWait(session, call);
-
-          if (entry !== null && "targets" in entry.target && entry.target.untilInput === true)
-            await settle(slotFor(entry), { kind: "input", message });
-        }),
+        (found?.record.parked ?? []).map(async (call) =>
+          end(session, (await readCall(kernel.store, session, call))?.record ?? null, STOPPED),
+        ),
       );
     },
-    runStopped: (session, run) => stop((entry) => entry.session === session && entry.run === run),
     async callStopped(session, call) {
       const nested = await kernel.store.refs.list(`${callRef(session, call)}:`);
 
@@ -371,68 +320,35 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         ...nested.map((ref) => load(kernel.store, ref, decodeCallRecord)),
       ]);
 
-      await Promise.all(
-        records.flatMap((found) => {
-          const entry = readParkedWait(session, found?.record ?? null);
-
-          return entry === null ? [] : [settle(slotFor(entry), { kind: "stopped" })];
-        }),
-      );
+      await Promise.all(records.map((found) => end(session, found?.record ?? null, STOPPED)));
     },
     async tick(now) {
-      dev("waits", "tick", { parked: slots.size });
-      await Promise.all([...slots.values()].map((slot) => expire(slot, now)));
+      const due: Promise<boolean>[] = [];
+
+      for (const ref of await kernel.store.refs.list(TIME)) {
+        const until = Number(ref.name.slice(TIME.length, TIME.length + TIME_DIGITS));
+
+        if (until > now) break;
+        const entry = readIndexed(ref.name);
+
+        if (entry !== null)
+          due.push(offer(entry, entry.target === null ? { kind: "deadline" } : { kind: "timer" }));
+      }
+
+      dev("waits", "tick", { due: due.length });
+      await Promise.all(due);
     },
-    async settleFromStore() {
-      await Promise.all(
-        [...slots.values()].map(async (slot) => {
-          const { entry } = slot;
-          const key = formatWaitKey(entry.session, entry.call);
-          const record = (await readCall(kernel.store, entry.session, entry.call))?.record ?? null;
-          const stored = readParkedWait(entry.session, record);
-
-          if (stored !== null) {
-            await park(stored);
-
-            return;
-          }
-
-          if (slots.get(key) !== slot) return;
-          slots.delete(key);
-
-          if (record === null || record.result !== null) return;
-
-          if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
-          else resumers.get(key)?.resume();
-        }),
-      );
+    async refresh() {
+      await loadWaits(kernel);
 
       await Promise.all(
-        [...resumers].map(async ([key, resumer]) => {
-          if (slots.has(key)) return;
+        [...resumers.values()].map(async (resumer) => {
           const found = await readCall(kernel.store, resumer.session, resumer.call);
 
           if (found !== null && (found.record.result !== null || lapsed(kernel, found.record)))
             resumer.resume();
         }),
       );
-    },
-    nextDeadline(session, head) {
-      const due = [...slots.values()].flatMap((slot) => {
-        if (slot.entry.session !== session || slot.entry.head !== head) return [];
-        const deadline = findEarliestDeadline(slot.entry.target);
-
-        return [
-          ...(deadline === null ? [] : [deadline]),
-          ...slot.targets.flatMap((target, index) =>
-            target.kind === "timer" && (slot.outcomes.at(index) ?? null) === null
-              ? [target.until]
-              : [],
-          ),
-        ];
-      });
-
-      return due.length === 0 ? null : Math.min(...due);
     },
     rerun(session, call) {
       const resumer = resumers.get(formatWaitKey(session, call));
@@ -457,20 +373,129 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   return registry;
 }
 
+/** Reads every unsettled call in `sessions` (default all): a parked one gets its index refs and is checked against what it waits on, a woken one whose head no process here is driving is stepped, and an action whose re-run claim lapsed runs again. The store poll calls it when another process committed, so a wait another process completed wakes its head here. */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
   const refs = await kernel.store.sessions.pending({ kind: "call", sessions });
 
   for (const ref of refs) {
-    const [root, session, kind] = ref.name.split("/");
+    const [root, id, kind] = ref.name.split("/");
 
-    if (root !== "sessions" || session === undefined || kind !== "calls") continue;
+    if (root !== "sessions" || id === undefined || kind !== "calls") continue;
+    const session = asId<"session">(id);
     const found = await load(kernel.store, ref, decodeCallRecord);
-    const entry = readParkedWait(asId<"session">(session), found?.record ?? null);
 
-    if (entry !== null) await kernel.waits.park(entry);
-    else if (found !== null && lapsed(kernel, found.record))
-      kernel.waits.rerun(asId<"session">(session), found.record.id);
+    if (found === null) continue;
+    const { record } = found;
+    const entry = readParkedWait(session, record);
+
+    if (entry !== null) {
+      await indexWait(kernel, ref, session, record);
+      await kernel.waits.park(entry);
+    } else if (record.head === null && lapsed(kernel, record))
+      kernel.waits.rerun(session, record.id);
+    else if (record.head !== null && record.waits.length > 0 && record.result === null)
+      kernel.wakes.notify(session, record.head);
   }
+}
+
+/** Writes the index refs a parked call is missing, pointing at its record. */
+async function indexWait(
+  kernel: Kernel,
+  ref: Ref,
+  session: SessionId,
+  record: CallRecord,
+): Promise<void> {
+  if (ref.target === null) return;
+  const { target } = ref;
+  const names = waitIndex(session, record);
+  const found = await Promise.all(names.map((name) => kernel.store.refs.get(name)));
+  const missing = names.filter((_name, index) => found[index] === null);
+
+  if (missing.length > 0)
+    await commit(
+      kernel,
+      missing.map((name) => ({ name, target })),
+    );
+}
+
+/** The index refs a parked call's current wait needs: one per target it still waits on, its earliest deadline, and its input stop. */
+export function waitIndex(session: SessionId, record: CallRecord): readonly string[] {
+  const target = record.waiting;
+
+  if (target === null) return [];
+
+  const tail = (slot: number | "deadline" | "input") =>
+    `${session}/${record.id}/${record.waits.length}/${slot}`;
+
+  const targets = "targets" in target ? target.targets : [target];
+  const deadline = findEarliestDeadline(target);
+
+  return [
+    ...targets.flatMap((waited, slot) => {
+      if ((record.partial.at(slot) ?? null) !== null) return [];
+
+      switch (waited.kind) {
+        case "run":
+          return [`${WAITS}run/${waited.session}/${waited.run}/${tail(slot)}`];
+        case "part":
+          return [`${WAITS}part/${session}/${waited.part}/${tail(slot)}`];
+        case "job":
+          return [`${WAITS}job/${waited.job}/${tail(slot)}`];
+        case "timer":
+          return [`${TIME}${formatTime(waited.until)}/${tail(slot)}`];
+      }
+    }),
+    ...(deadline === null ? [] : [`${TIME}${formatTime(deadline)}/${tail("deadline")}`]),
+    ...("targets" in target && target.untilInput === true && record.head !== null
+      ? [`${WAITS}input/${session}/${record.head}/${tail("input")}`]
+      : []),
+  ];
+}
+
+/** The earliest time any of `calls` waits for: a deadline, or a timer it has not had yet. */
+export async function earliestWake(
+  store: StoreConnection,
+  session: SessionId,
+  calls: readonly CallId[],
+): Promise<number | null> {
+  const records = await Promise.all(calls.map((call) => readCall(store, session, call)));
+
+  const due = records.flatMap((found) => {
+    const target = found?.record.waiting;
+
+    if (target === undefined || target === null) return [];
+    const partial = found?.record.partial ?? [];
+    const deadline = findEarliestDeadline(target);
+
+    return [
+      ...(deadline === null ? [] : [deadline]),
+      ...("targets" in target ? target.targets : [target]).flatMap((waited, slot) =>
+        waited.kind === "timer" && (partial.at(slot) ?? null) === null ? [waited.until] : [],
+      ),
+    ];
+  });
+
+  return due.length === 0 ? null : Math.min(...due);
+}
+
+function readIndexed(name: string): Indexed | null {
+  const parts = name.split("/");
+  const [slot, occurrence, call, session] = parts.toReversed();
+
+  if (slot === undefined || occurrence === undefined || call === undefined || session === undefined)
+    return null;
+
+  return {
+    name,
+    session: asId<"session">(session),
+    call: asId<"call">(call),
+    occurrence: Number(occurrence),
+    target: slot === "deadline" || slot === "input" ? null : Number(slot),
+  };
+}
+
+function formatTime(at: number): string {
+  return String(Math.max(0, Math.floor(at))).padStart(TIME_DIGITS, "0");
 }
 
 export function onReceipt(

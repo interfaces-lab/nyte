@@ -65,7 +65,7 @@ import type {
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
-import type { CallRecord, RunRecord } from "./records.ts";
+import type { CallRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { Durable, ToolDefinition } from "./tools.ts";
@@ -400,45 +400,43 @@ export interface ParkedWait {
   readonly index: number;
 }
 
+/** Wakes parked calls: each target event offers its outcome to the waits the store-side index lists under it, and `tick` to the timers and deadlines that are due. */
 export interface WaitRegistry {
+  /** Checks a just-parked wait against what it waits on, completing it at once when that already happened. */
   park(entry: ParkedWait): Promise<void>;
 
-  runEnded(
-    session: SessionId,
-    run: RunId,
-    end: RunEnd,
-    waitedBy: RunRecord["waitedBy"],
-  ): Promise<boolean>;
+  /** Offers a run's end to its waiters; whether any took it. */
+  runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
 
+  /** Offers a job's end to its waiters; whether any took it. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
 
   partAnswered(
     session: SessionId,
     part: PartId,
     answer: { readonly action: string; readonly input: Json },
-    call: CallId | null,
   ): Promise<void>;
 
-  partClosed(session: SessionId, part: PartId, call: CallId | null): Promise<void>;
+  partClosed(session: SessionId, part: PartId): Promise<void>;
 
-  inputAdmitted(
-    session: SessionId,
-    head: HeadName,
-    message: MessageId,
-    parked: readonly CallId[],
-  ): Promise<void>;
+  /** Ends the waits on a head that stop at its next input. */
+  inputAdmitted(session: SessionId, head: HeadName, message: MessageId): Promise<void>;
+
+  /** Ends the waits a run's parked calls hold, stopped. */
   runStopped(session: SessionId, run: RunId): Promise<void>;
 
+  /** Ends a call's wait, and those of the calls nested in it, stopped. */
   callStopped(session: SessionId, call: CallId): Promise<void>;
 
+  /** Offers the timers and deadlines due at `now`. */
   tick(now: number): Promise<void>;
-
-  nextDeadline(session: SessionId, head: HeadName): number | null;
-
-  settleFromStore(): Promise<void>;
 
   rerun(session: SessionId, call: CallId): void;
 
+  /** Re-reads every unsettled call, after another process committed: see `loadWaits`. */
+  refresh(): Promise<void>;
+
+  /** Registers this process's live loop for an action call, resumed when its wait completes. */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 }
 

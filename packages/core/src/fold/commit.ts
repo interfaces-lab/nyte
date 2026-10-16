@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type {
   CallId,
   DurableEvent,
@@ -11,7 +12,6 @@ import type { CallRecord, ReceiptRecord } from "../contract/records.ts";
 import { callRef, liveRef, receiptRef } from "../store/refs.ts";
 import { put, readCall, readRefExpectation } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { publishSet } from "./watch.ts";
 
 /** The run a write lands under: the write carries the run's live ref as its fence, so once the run's stop fence is set it lands nothing. */
@@ -23,6 +23,8 @@ export interface CallChange {
   readonly updates?: readonly RefUpdate[];
   /** The run the change lands under; see {@link RunScope}. */
   readonly under?: RunScope;
+  /** Index refs the same write points at the new call record (`add`) or deletes (`drop`). */
+  readonly index?: { readonly add: readonly string[]; readonly drop: readonly string[] };
 }
 
 const CALL_TRIES = 8;
@@ -107,17 +109,20 @@ export function changeCall(
       const next = await change(found?.record ?? null);
 
       if (next === null) return { record: found?.record ?? null, wrote: false, fenced: false };
+      const target = await put(kernel.store, "call", next.record);
 
       const outcome = await commit(
         kernel,
         [
           {
             name,
-            target: await put(kernel.store, "call", next.record),
+            target,
             expect: readRefExpectation(found?.ref ?? null),
             events: next.events,
           },
           ...(next.updates ?? []),
+          ...(next.index?.add ?? []).map((index) => ({ name: index, target })),
+          ...(next.index?.drop ?? []).map((index) => ({ name: index, target: null })),
         ],
         next.under ?? null,
       );

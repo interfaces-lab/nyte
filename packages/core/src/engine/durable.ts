@@ -1,4 +1,4 @@
-import { isJson, isJsonObject } from "@nyte-ai/schema";
+import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -12,17 +12,16 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/schema";
 import type { Kernel, StepEnd, StepOutcome } from "../contract/kernel.ts";
-import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodePartRecord } from "../contract/records.ts";
 import type { CallRecord } from "../contract/records.ts";
 import type { Durable } from "../contract/tools.ts";
 import { changeCall } from "../fold/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
-import { partRef, runRef } from "../store/refs.ts";
+import { partRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { holdLease } from "./lease.ts";
-import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
+import { lapsed, readParkedWait, runWait, waitIndex, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export type ActionIntent = {
@@ -492,9 +491,10 @@ async function park(
       current.waits.length !== index
     )
       return null;
+    const record = { ...current, waiting: target, partial };
 
     return {
-      record: { ...current, waiting: target, partial },
+      record,
       events:
         on === null || place.part === null
           ? []
@@ -511,51 +511,19 @@ async function park(
       updates: [
         ...(place.run === null
           ? []
-          : await runWait(kernel.store, place.session, place.run, async (record) => ({
-              parked: record.parked.includes(place.call)
-                ? record.parked
-                : [...record.parked, place.call],
-              waiting: on ?? record.waiting,
+          : await runWait(kernel.store, place.session, place.run, async (run) => ({
+              parked: run.parked.includes(place.call) ? run.parked : [...run.parked, place.call],
+              waiting: on ?? run.waiting,
             }))),
         ...(await modalsWaiting(kernel.store, place.session, place.call, target)),
-        ...(await runsWaited(kernel.store, place, target)),
       ],
+      index: { add: waitIndex(place.session, record), drop: [] },
     };
   });
 
   const entry = readParkedWait(place.session, parked.record);
 
   if (entry !== null) await kernel.waits.park(entry);
-}
-
-async function runsWaited(
-  store: StoreConnection,
-  place: Place,
-  target: NonNullable<CallRecord["waiting"]>,
-): Promise<readonly RefUpdate[]> {
-  const updates: RefUpdate[] = [];
-  const waiter = { session: place.session, call: place.call };
-
-  for (const waited of "targets" in target ? target.targets : [target]) {
-    if (waited.kind !== "run" || (waited.session === place.session && waited.run === place.run))
-      continue;
-    const name = runRef(waited.session, waited.run);
-    const found = await load(store, await store.refs.get(name), decodeRunRecord);
-
-    if (found === null || updates.some((update) => update.name === name)) continue;
-    const listed = found.record.waitedBy;
-
-    if (listed.some((entry) => entry.session === waiter.session && entry.call === waiter.call))
-      continue;
-
-    updates.push({
-      name,
-      target: await put(store, "run", { ...found.record, waitedBy: [...listed, waiter] }),
-      expect: found.ref.revision,
-    });
-  }
-
-  return updates;
 }
 
 async function modalsWaiting(

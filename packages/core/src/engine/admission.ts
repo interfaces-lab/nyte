@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CommitId,
   Configuration,
@@ -44,7 +44,6 @@ import {
 import type { Inbox, MoveFailure, Tip } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
 import { collectContributions, refusalError } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
@@ -312,8 +311,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
     if (covered) kernel.wakes.notify(session, head);
 
-    if (message.source.kind === "user")
-      await kernel.waits.inputAdmitted(session, head, message.id, run?.record.parked ?? []);
+    if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
     dev("admission", "admitted", { session, head, message: message.id, covered });
 
     return sendReceipt(kernel, session, id);

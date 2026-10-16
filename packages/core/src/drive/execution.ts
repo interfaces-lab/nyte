@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   AdvanceReport,
   Cursor,
@@ -11,7 +11,6 @@ import type {
   RunId,
   RunView,
   SessionId,
-  WaitTarget,
 } from "@nyte-ai/schema";
 import { retryDelayMs } from "@nyte-ai/ai/utils/retry";
 import { executeCall, owedCalls } from "../agent/tool-runner.ts";
@@ -26,7 +25,7 @@ import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
-import { loadWaits } from "../engine/waits.ts";
+import { earliestWake, loadWaits } from "../engine/waits.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { leaseRef, runRef } from "../store/refs.ts";
@@ -43,7 +42,6 @@ import {
 import type { Found } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 
 const RENEW_MS = 10_000;
 
@@ -526,7 +524,7 @@ async function settleLive(
   const run = live.record.view.id;
 
   if (kernel.driving.has(run))
-    return (await holding(kernel, session, head, live.record)) ?? { kind: "idle" };
+    return (await holding(kernel, session, live.record)) ?? { kind: "idle" };
 
   if (live.record.stopping) {
     kernel.runs.start(session, run).abort();
@@ -550,7 +548,7 @@ async function settleLive(
   if (record === undefined) return null;
 
   return (
-    (await holding(kernel, session, head, record)) ??
+    (await holding(kernel, session, record)) ??
     (await drive(kernel, session, head, record.view)) ??
     next(kernel, session, head)
   );
@@ -559,11 +557,10 @@ async function settleLive(
 async function holding(
   kernel: Kernel,
   session: SessionId,
-  head: HeadName,
   record: RunRecord,
 ): Promise<AdvanceReport | null> {
   if (record.parked.length > 0 || record.waiting !== null)
-    return waitingOn(kernel, session, head, record.waiting);
+    return waitingOn(kernel, session, record);
 
   return record.retrying !== null && record.retrying.until > Date.now()
     ? { kind: "retry", until: record.retrying.until }
@@ -792,8 +789,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (record.stopping || calls.some((call) => !call.parked)) return { kind: "continue" };
 
-  if (record.waiting !== null || calls.length > 0)
-    return waitingOn(kernel, session, head, record.waiting);
+  if (record.waiting !== null || calls.length > 0) return waitingOn(kernel, session, record);
 
   if (record.retrying !== null && record.retrying.until > Date.now())
     return { kind: "retry", until: record.retrying.until };
@@ -801,16 +797,17 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return { kind: "continue" };
 }
 
-function waitingOn(
+async function waitingOn(
   kernel: Kernel,
   session: SessionId,
-  head: HeadName,
-  waiting: WaitTarget | null,
-): AdvanceReport {
+  record: RunRecord,
+): Promise<AdvanceReport> {
+  const { waiting } = record;
+
   return {
     kind: "waiting",
     until:
-      kernel.waits.nextDeadline(session, head) ??
+      (await earliestWake(kernel.store, session, record.parked)) ??
       (waiting === null
         ? null
         : waiting.kind === "timer"
