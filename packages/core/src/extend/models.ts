@@ -273,7 +273,8 @@ export function createLogin(
           input.label,
         )
         .then(
-          () => {
+          async () => {
+            await models.refresh({ providers: [input.provider] }).catch(() => undefined);
             kernel.modelState.invalidate(input.provider);
             bumpGeneration(kernel);
             void kernel.modelState.refresh(models, input.provider).catch(() => undefined);
