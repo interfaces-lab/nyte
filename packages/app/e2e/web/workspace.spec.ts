@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { README_LINE } from "../server/address.ts";
 import { collectErrors } from "../utils/errors.ts";
 import { pair } from "../utils/pairing.ts";
+
+/** Opens the folder the server seeded; the browser keeps its open folder only until a reload. */
+async function openServerWorkspace(page: Page): Promise<void> {
+  const pane = page.getByRole("region", { name: "Active chat pane" });
+  await pane.getByRole("button", { name: "Home", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: /^nyte-e2e-web-/u }).click();
+  await expect(pane.getByRole("button", { name: /^nyte-e2e-web-/u })).toBeVisible();
+}
 
 test("a paired browser reads, edits, blames, searches, and mentions workspace files", async ({
   page,
@@ -12,6 +21,9 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
   const files = page.getByRole("region", { name: "Files" });
   const readme = files.getByRole("treeitem", { name: /README\.md/u });
   await pair(page);
+
+  await test.step("a new chat starts in Home and opens the server's workspace from its menu", () =>
+    openServerWorkspace(page));
 
   await test.step("the web workbench offers Files and a terminal, without a native browser tab", async () => {
     const workbench = page.getByRole("navigation", { name: "Workbench navigation" });
@@ -42,6 +54,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     await expect(files.getByText("Saved", { exact: true })).toBeVisible();
 
     await page.reload();
+    await openServerWorkspace(page);
     await expect(files).toBeVisible();
     await files.getByRole("button", { name: "Files Sidebar", exact: true, pressed: false }).click();
     await readme.click();
