@@ -1,8 +1,3 @@
-/**
- * Workspace facts for the footer: directory name, git branch, dirty marker.
- * Git is invoked with execFile and fixed argument lists; nothing is interpolated
- * into a shell.
- */
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
 import { promisify } from "node:util";

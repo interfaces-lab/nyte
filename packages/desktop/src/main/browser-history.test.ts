@@ -22,7 +22,6 @@ async function historyPath(): Promise<string> {
   return join(root, "browser-history.json");
 }
 
-/** A store whose writes are counted and fail while `failing` is set. */
 async function openStore(delay?: number) {
   const path = await historyPath();
   const disk = { writes: 0, failing: false };

@@ -1,8 +1,5 @@
 /**
  * OpenRouter provider.
- *
- * Based on https://github.com/earendil-works/pi/blob/a7d17e39aaa0091c7573d0790714751956f10bd1/packages/ai/src/providers/openrouter.ts
- * Synced with pi a7d17e39a.
  */
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";

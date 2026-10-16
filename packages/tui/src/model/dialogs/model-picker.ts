@@ -1,9 +1,3 @@
-/**
- * Model picker state: base rows with the fast sibling riding on them,
- * per-row effort/fast drafts until Enter,
- * effort clamped to the model's levels (lib/catalog.ts), cost meter scaled to
- * the priciest model, responsive detail rows.
- */
 import type { ModelCatalogView, ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, modelId } from "../../lib/catalog.ts";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
@@ -17,14 +11,11 @@ export interface ModelDialog {
     | { readonly kind: "ready"; readonly list: ModelList }
     | { readonly kind: "failed"; readonly message: string };
   readonly query: string;
-  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
   readonly caret?: number;
-  /** Index into `visibleModels`. */
+  readonly anchor?: number;
   readonly highlighted: number;
   readonly field: "effort" | "fast";
-  /** Per-row drafts keyed by the base row's `provider/id`, until Enter. */
   readonly drafts: ReadonlyMap<string, { readonly effort: Thinking; readonly fast: boolean }>;
-  /** The selection when the picker opened: a fast ref selects its base row with fast on. */
   readonly current: ModelRef;
   readonly effort: Thinking;
 }
@@ -34,7 +25,6 @@ export interface ModelList {
   readonly costCeiling: number;
 }
 
-/** One base model; its fast sibling is `info.fast`. */
 export interface ModelRow {
   readonly ref: ModelRef;
   readonly info: ModelInfo;
@@ -43,7 +33,6 @@ export interface ModelRow {
 
 const PAGE = 9;
 
-/** The rows a catalog offers: every model of a signed-in provider, the cost meter scaled to the priciest. */
 export function modelList(catalog: ModelCatalogView): ModelList {
   const rows = availableModels(catalog).map((info) => ({ ref: info.ref, info, fast: null }));
 
@@ -56,7 +45,6 @@ export function modelList(catalog: ModelCatalogView): ModelList {
   };
 }
 
-/** The base row the current selection sits on: a fast sibling's base, else the ref itself. */
 export function currentRowId(rows: readonly ModelRow[], current: ModelRef): string {
   const base = rows.find(
     (row) => row.info.fast !== null && modelId(row.info.fast) === modelId(current),
@@ -65,7 +53,6 @@ export function currentRowId(rows: readonly ModelRow[], current: ModelRef): stri
   return modelId(base?.ref ?? current);
 }
 
-/** Opens on the current selection's row with its effort and fast mode as the row's draft; a refreshed list keeps the highlighted model. */
 export function withModels(dialog: ModelDialog, list: ModelList): ModelDialog {
   const current = currentRowId(list.rows, dialog.current);
   const shown = visibleModels(dialog)[dialog.highlighted];
@@ -97,7 +84,6 @@ export interface RowDraft {
   readonly fast: boolean;
 }
 
-/** The effort and fast mode the row would apply: its draft, else the opening effort clamped to the model. */
 export function rowDraft(dialog: ModelDialog, row: ModelRow): RowDraft {
   const draft = dialog.drafts.get(modelId(row.ref));
 
@@ -107,7 +93,6 @@ export function rowDraft(dialog: ModelDialog, row: ModelRow): RowDraft {
   };
 }
 
-/** The fields a row offers: effort when the model has more than one level, fast when it has a fast sibling. */
 export function modelFields(row: ModelRow): readonly ("effort" | "fast")[] {
   return [
     ...(row.info.thinking.length > 1 ? ["effort" as const] : []),
@@ -115,7 +100,6 @@ export function modelFields(row: ModelRow): readonly ("effort" | "fast")[] {
   ];
 }
 
-/** The field Left/Right change on a row: the chosen one when the row has it, else its first; null when it has none. */
 export function activeField(dialog: ModelDialog, row: ModelRow): "effort" | "fast" | null {
   const fields = modelFields(row);
 
@@ -173,7 +157,6 @@ function confirm(dialog: ModelDialog): DialogStep<ModelDialog> {
   };
 }
 
-/** Enter emits `configure({ model, effort, fast })`; "Already using" when nothing changed (one path, one message). */
 export function reduceModel(dialog: ModelDialog, command: DialogCommand): DialogStep<ModelDialog> {
   if (command.kind === "close") return { dialog: null, intents: [], push: null };
   const rows = visibleModels(dialog);

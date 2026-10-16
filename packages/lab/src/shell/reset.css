@@ -1,32 +1,12 @@
 /*
- * The viewer's reset, not product CSS. It only removes the user agent's
- * defaults so the lab page starts from nothing. Zero is not a spacing
- * decision, so nothing here needs a token.
+ * The viewer's page sizing. The browser baseline comes from the app's
+ * `global.css`; the lab page scrolls where the app window does not.
  */
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
 
 html,
 body,
 #root {
-  margin: 0;
-  padding: 0;
   block-size: auto;
   min-block-size: 100%;
   overflow: visible;
-}
-
-body {
-  font-family: "Inter Variable", Inter, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-button {
-  font: inherit;
-  color: inherit;
 }

@@ -1,6 +1,6 @@
 import { dev, isPart, text } from "@nyte-ai/core";
 import type { Message } from "@nyte-ai/schema";
-import type { Plugin, PluginApi } from "./core.ts";
+import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
 
 /**
  * The instruction a title request runs under: one short line in the user's
@@ -39,7 +39,6 @@ export default {
   },
 } satisfies Plugin;
 
-/** Asks the session's model for a title and names the session with it, unless it is named or a child. */
 async function title(api: PluginApi): Promise<void> {
   const info = await api.session.info();
 
@@ -71,7 +70,6 @@ async function title(api: PluginApi): Promise<void> {
   if (name !== "") await api.session.update({ name: name.slice(0, 100) });
 }
 
-/** Returns the user's words and the answers' text, as the title request reads them, at most 4000 characters. */
 function transcript(messages: readonly Message[]): string {
   return messages
     .flatMap((message) => {

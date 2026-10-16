@@ -1,9 +1,3 @@
-/**
- * Service-tier and fast-mode pricing multipliers.
- *
- * Based on https://github.com/earendil-works/pi/blob/a6ca861024ddc1492af14e5386a3d3e2bfe8ab64/packages/ai/src/api/openai-responses.ts
- * Synced with pi a6ca86102.
- */
 import type { Api, Model, Usage } from "./types.ts";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 

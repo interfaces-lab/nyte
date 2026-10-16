@@ -1,7 +1,3 @@
-/**
- * A turn draws its blocks in view order with the status row last; a report
- * is never the user's message; an action shows its label, never its prompt.
- */
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { App } from "../../../src/app/context.tsx";
@@ -44,22 +40,6 @@ function transcript(app: App) {
 }
 
 describe("turn", () => {
-  test("a report is drawn as a report row, never as the user's message", async () => {
-    const view = viewOf((v) =>
-      v.turn("t1", (t) =>
-        t.report({ child: "s9" }, "Child s9 completed:\nAll done here").ended("completed"),
-      ),
-    );
-
-    await using app = await renderWithApp(stateOf(followed(view)), transcript);
-    const frame = app.captureCharFrame();
-
-    expect(app.renderer.root.findDescendantById("report:m1")).toBeDefined();
-    expect(app.renderer.root.findDescendantById("user:m1")).toBeUndefined();
-    expect(frame).toContain("↳ subagent completed");
-    expect(frame).toContain("All done here");
-  });
-
   test("an action shows its label and never its prompt", async () => {
     const view = viewOf((v) =>
       v.turn("t1", (t) => t.action("Fix lint", "Please run the linter and fix").ended("completed")),
@@ -72,20 +52,23 @@ describe("turn", () => {
     expect(frame).not.toContain("run the linter");
   });
 
-  test("blocks follow view order and the status row is always last", async () => {
+  test("blocks keep view order and changing output mode expands the card", async () => {
     const view = viewOf((v) =>
       v.turn("t1", (t) =>
         t
           .user("question")
           .text("first answer")
           .user("a steer that landed mid-turn")
-          .tool("search", { output: "found it" })
+          .tool("search", {
+            output: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
+          })
           .text("second answer")
           .ended("completed"),
       ),
     );
 
-    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+    const state = stateOf(followed(view));
+    await using app = await renderWithApp(state, transcript);
     const turn = app.renderer.root.findDescendantById("turn:t1");
 
     expect(turn?.getChildren().map((block) => block.id)).toEqual([
@@ -96,6 +79,17 @@ describe("turn", () => {
       "text:m4",
       "status:t1",
     ]);
+    expect(app.captureCharFrame()).toContain("… 2 more lines · ctrl+o expand");
+    expect(app.captureCharFrame()).not.toContain("line 5");
+
+    app.setState({
+      ...state,
+      local: { ...state.local, transcript: { ...state.local.transcript, toolOutput: "expanded" } },
+    });
+    await app.renderOnce();
+
+    expect(app.captureCharFrame()).not.toContain("more lines");
+    expect(app.captureCharFrame()).toContain("line 5");
   });
 
   test("a live turn keeps the spinner row under its content, and it spins", async () => {

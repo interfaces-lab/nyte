@@ -12,5 +12,6 @@
 ## Deviations
 
 - The Effect rules (`anti-slop-effect`) are not installed; nothing here depends on `effect`.
+- `rules/no-of-lookup-names.ts` is local, not from upstream.
 - `oxlint.config.ts` enables the rules for `packages/app`, `packages/desktop`, `packages/ui` and `scripts`.
 - The rules run at `warn`, not `error`, while existing findings are fixed package by package.

@@ -17,10 +17,6 @@ import { Divider, Grid, Stack } from "./layout.tsx";
 import { useColorScheme } from "./scheme.ts";
 import { Code, Heading, Text } from "./text.tsx";
 
-/**
- * What `nyte/canvas` exports, in the order `KIT` lists them: the shell hands
- * this object to compiled modules through the runtime global.
- */
 export const kit = {
   Stack,
   Grid,

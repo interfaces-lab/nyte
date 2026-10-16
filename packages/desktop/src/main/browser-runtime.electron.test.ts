@@ -1,11 +1,3 @@
-/**
- * Proves the browser runtime drives a real page: refs resolve, clicks land on
- * the element a ref names, typing submits a form, and refs from before a
- * cross-document navigation fail instead of acting on whatever now sits there.
- * Run with NYTE_DESKTOP_BROWSER_E2E=1: the runtime is bundled with typebox
- * inlined, then an Electron main process runs the harness and prints one JSON
- * line; its stderr is ignored, since an unread pipe would block the child.
- */
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

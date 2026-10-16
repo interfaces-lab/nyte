@@ -28,8 +28,8 @@ This README covers how the app works, how to build it, and how it is published.
   [Known gaps](#known-gaps)). A new chat keeps its session id across retries, and
   a new chat on a `nyte serve` host keeps a durable start record (see
   [Folders](#folders)).
-- **Composer.** Return inserts a newline. Focus reveals a 44pt model button and a
-  thinking gauge that opens a native sheet with a snapping level control. The mic
+- **Composer.** Return inserts a newline. The model button and native thinking
+  menu stay visible above the input, with 44pt touch targets. The mic
   dictates on device. `@` offers the folder's files and `/` offers commands and
   skills. Accepting one writes the same text the desktop composer writes:
   `@file:///…` for a file, `/name ` for a command, and the skill's instruction at
@@ -508,11 +508,19 @@ message text, and compact activity summaries that open native sheets. Reference
 screenshots for that direction are kept outside the repository.
 
 - Header actions use one native glass button, with no second ring around an icon
-  or profile photo. Settings-row icons stay bare, with 44pt touch targets. Selected
+  or profile photo. Page and action icons use the shared 22pt size. Settings and
+  profile row icons stay bare in a 28pt column, with 44pt touch targets. Selected
   cards use a border, not a checkmark.
 - The composer is one elevated glass capsule over a transparent dock, built on
-  `expo-glass-effect` (Apple's `UIGlassEffect`). The input is a native text view
-  inside that material. Both follow the app's light or dark appearance.
+  `expo-glass-effect` (Apple's `UIGlassEffect`). The native input grows to six lines
+  before scrolling internally and follows Dynamic Type. Attachment and send or mic
+  controls stay at the capsule edges. The model and thinking level stay visible
+  above it, alongside delivery controls during a response. Both the input and
+  material follow the app's light or dark appearance.
+- Thinking levels use a native inline picker in a menu, restricted to the selected
+  model's supported levels. The searchable model sheet stays separate. This follows
+  the picker and model-sheet declarations in Cursor's shipped iOS app; exact
+  presentation remains a Nyte design choice.
 - The attachment menu ports [expo-morphing-menu](https://github.com/rit3zh/expo-morphing-menu)
   as one interaction: the plus hands off to a glass menu, rows appear in sequence,
   the menu expands into a photo grid, and an added photo flies into the measured
@@ -541,6 +549,7 @@ loading lists draw skeleton rows.
 
 | Source | Used for |
 | --- | --- |
+| [Cursor for iOS 1.13.0](https://apps.apple.com/us/app/cursor/id6767085653) | Compact bottom input layout observed in the official App Store screenshots, implemented with Nyte's native input and glass components. |
 | [rit3zh/expo-morphing-menu](https://github.com/rit3zh/expo-morphing-menu) at `0aca4280254850ad065987bb8641ba69ae8ac891`, MIT | Ported attachment menu, morph geometry, photo selection, Add-button text animation, thumbnail entry and removal, and photo flight. See [NOTICE.md](NOTICE.md). |
 | [Margelo's AI chat demo](https://github.com/margelo/ai-chat-demo) at `6280b1f0f6d53d557b160481185e7bdfa7385cb6` | Chat and keyboard behavior. It has no license file, so none of its source is copied; the app reimplements the patterns with published libraries. Its provider connections, embedded keys, and fake history are not used. |
 | Mehdi Davoodi's MIT ChatGPT model-selector demo (`@mehdi_made`) | Thinking gauge geometry and springs |

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { storedAccounts } from "./credential-fixture.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import type {
   ApiKeyAuth,
@@ -68,6 +69,7 @@ function testProvider(input: {
   auth?: ProviderAuth;
   getModels?: () => readonly Model<Api>[];
   refreshModels?: Provider["refreshModels"];
+  fetchAccountLimits?: Provider["fetchAccountLimits"];
   calls?: ProviderCall[];
 }): Provider {
   const models = input.models ?? [testModel(input.id, "model-a")];
@@ -86,6 +88,7 @@ function testProvider(input: {
     auth: input.auth ?? { apiKey: ambientAuth },
     getModels: input.getModels ?? (() => models),
     refreshModels: input.refreshModels,
+    fetchAccountLimits: input.fetchAccountLimits,
     stream: (model, _context, options) => respond(model, options),
     streamSimple: (model, _context, options) => respond(model, options),
   };
@@ -119,18 +122,109 @@ function testOAuth(overrides?: Partial<OAuthAuth>): OAuthAuth {
 describe("Models runtime", () => {
   it("enumerates credential metadata without exposing secrets", async () => {
     const credentials = new InMemoryCredentialStore();
-    await credentials.modify("api-provider", async () => ({ type: "api_key", key: "secret" }));
-    await credentials.modify("oauth-provider", async () => ({
-      type: "oauth",
-      access: "access",
-      refresh: "refresh",
-      expires: Date.now() + 60_000,
-    }));
+    await credentials.modify("api-provider", async () =>
+      storedAccounts({ type: "api_key", key: "secret" }),
+    );
+    await credentials.modify("oauth-provider", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "access",
+        refresh: "refresh",
+        expires: Date.now() + 60_000,
+      }),
+    );
 
     expect(await credentials.list()).toEqual([
-      { providerId: "api-provider", type: "api_key" },
-      { providerId: "oauth-provider", type: "oauth" },
+      {
+        providerId: "api-provider",
+        type: "api_key",
+        id: "default",
+        label: "Default",
+        active: true,
+      },
+      {
+        providerId: "oauth-provider",
+        type: "oauth",
+        id: "default",
+        label: "Default",
+        active: true,
+      },
     ]);
+  });
+
+  it("caches account usage before resolving auth and invalidates after account selection", async () => {
+    const credentials = new InMemoryCredentialStore();
+    await credentials.modify("p1", async () => ({
+      active: "personal",
+      accounts: [
+        { id: "personal", label: "Personal", credential: { type: "api_key", key: "personal-key" } },
+        { id: "work", label: "Work", credential: { type: "api_key", key: "work-key" } },
+      ],
+    }));
+    let resolutions = 0;
+    const requested: (string | undefined)[] = [];
+    const models = createModels({ credentials });
+    models.setProvider(
+      testProvider({
+        id: "p1",
+        auth: {
+          apiKey: {
+            name: "Stored key",
+            resolve: async ({ credential }) => {
+              resolutions += 1;
+
+              return credential ? { auth: { apiKey: credential.key } } : undefined;
+            },
+          },
+        },
+        fetchAccountLimits: async ({ auth }) => {
+          requested.push(auth.apiKey);
+
+          return {
+            providerId: "p1",
+            observedAt: Date.now(),
+            windows: [
+              {
+                id: "five_hour",
+                label: "5-hour",
+                usedPercent: auth.apiKey === "personal-key" ? 20 : 80,
+              },
+            ],
+          };
+        },
+      }),
+    );
+
+    const first = await models.fetchAccountLimits("p1");
+    expect(await models.fetchAccountLimits("p1")).toEqual(first);
+    expect(resolutions).toBe(1);
+    expect(requested).toEqual(["personal-key"]);
+    await models.selectAccount("p1", "work");
+    expect(models.getAccountLimits("p1")).toBeUndefined();
+    expect(await models.fetchAccountLimits("p1")).toMatchObject({
+      kind: "ready",
+      stale: false,
+      limits: { windows: [{ usedPercent: 80 }] },
+    });
+    expect(resolutions).toBe(2);
+    expect(requested).toEqual(["personal-key", "work-key"]);
+    expect(models.getAccountLimits("p1", "personal")).toBeUndefined();
+
+    const calls: ProviderCall[] = [];
+    models.setProvider(testProvider({ id: "p1", calls, auth: { apiKey: envKeyAuth(undefined) } }));
+    await models.completeSimple(testModel("p1", "model-a"), context);
+    await calls[0]?.options?.onAccountLimits?.(
+      {
+        providerId: "p1",
+        observedAt: Date.now(),
+        windows: [{ id: "five_hour", label: "5-hour", usedPercent: 85 }],
+      },
+      testModel("p1", "model-a"),
+    );
+    expect(await models.fetchAccountLimits("p1")).toMatchObject({
+      kind: "ready",
+      limits: { windows: [{ usedPercent: 85 }] },
+    });
   });
 
   it("applies request-wide pricing tiers above the configured input threshold", () => {
@@ -364,12 +458,14 @@ describe("Models runtime", () => {
   it("refreshes expired OAuth before refreshing models", async () => {
     const credentials = new InMemoryCredentialStore();
     let modelRefreshCredential: unknown;
-    await credentials.modify("oauth-dynamic", async () => ({
-      type: "oauth",
-      access: "expired",
-      refresh: "refresh",
-      expires: 0,
-    }));
+    await credentials.modify("oauth-dynamic", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "expired",
+        refresh: "refresh",
+        expires: 0,
+      }),
+    );
     const models = createModels({ credentials });
     models.setProvider(
       testProvider({
@@ -397,8 +493,7 @@ describe("Models runtime", () => {
       refresh: "rotated",
     });
     expect(await credentials.read("oauth-dynamic")).toMatchObject({
-      access: "fresh",
-      refresh: "rotated",
+      accounts: [{ credential: { access: "fresh", refresh: "rotated" } }],
     });
   });
 
@@ -619,14 +714,14 @@ describe("Models runtime", () => {
     let secondRan = false;
     const first = credentials.modify("p1", async () => {
       await firstBlocked;
-      return { type: "api_key", key: "first" };
+      return storedAccounts({ type: "api_key", key: "first" });
     });
     const controller = new AbortController();
     const second = credentials.modify(
       "p1",
       async () => {
         secondRan = true;
-        return { type: "api_key", key: "second" };
+        return storedAccounts({ type: "api_key", key: "second" });
       },
       { signal: controller.signal },
     );
@@ -638,7 +733,7 @@ describe("Models runtime", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(secondRan).toBe(false);
-    expect(await credentials.read("p1")).toEqual({ type: "api_key", key: "first" });
+    expect(await credentials.read("p1")).toEqual(storedAccounts({ type: "api_key", key: "first" }));
   });
 
   it("passes cancellation to OAuth refresh and keeps a token that rotated anyway", async () => {
@@ -649,7 +744,7 @@ describe("Models runtime", () => {
       refresh: "old-refresh",
       expires: 0,
     };
-    await credentials.modify("p1", async () => previous);
+    await credentials.modify("p1", async () => storedAccounts(previous));
     let startRefresh: (() => void) | undefined;
     let finishRefresh: ((credential: typeof previous) => void) | undefined;
     const refreshStarted = new Promise<void>((resolve) => {
@@ -687,7 +782,7 @@ describe("Models runtime", () => {
     const rotated = { ...previous, access: "new", expires: Date.now() + 60_000 };
     finishRefresh?.(rotated);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(await credentials.read("p1")).toEqual(rotated);
+    expect(await credentials.read("p1")).toEqual(storedAccounts(rotated));
   });
 
   it("resolves auth: stored credential owns the provider, ambient only when nothing stored", async () => {
@@ -706,18 +801,22 @@ describe("Models runtime", () => {
     );
 
     // stored oauth credential (persisted via the single write path): beats ambient env
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "oauth-token",
-      refresh: "r",
-      expires: Date.now() + 10 * 60_000,
-    }));
+    await credentials.modify("p1", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "oauth-token",
+        refresh: "r",
+        expires: Date.now() + 10 * 60_000,
+      }),
+    );
     const resolution = await models.getAuth(model.provider);
     expect(resolution?.auth.apiKey).toBe("oauth-token");
     expect(resolution?.source).toBe("OAuth");
 
     // stored api-key credential resolves through apiKey auth, beats env
-    await credentials.modify("p1", async () => ({ type: "api_key", key: "stored-key" }));
+    await credentials.modify("p1", async () =>
+      storedAccounts({ type: "api_key", key: "stored-key" }),
+    );
     const apiKeyResolution = await models.getAuth(model.provider);
     expect(apiKeyResolution?.auth.apiKey).toBe("stored-key");
     expect(apiKeyResolution?.source).toBe("stored");
@@ -742,12 +841,14 @@ describe("Models runtime", () => {
         },
       }),
     );
-    await credentials.modify("oauth", async () => ({
-      type: "oauth",
-      access: "expired",
-      refresh: "refresh",
-      expires: 0,
-    }));
+    await credentials.modify("oauth", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "expired",
+        refresh: "refresh",
+        expires: 0,
+      }),
+    );
 
     expect(await models.checkAuth("ambient")).toEqual({ source: "env", type: "api_key" });
     expect(await models.checkAuth("missing")).toBeUndefined();
@@ -769,15 +870,37 @@ describe("Models runtime", () => {
     const models = createModels({ credentials });
     models.setProvider(testProvider({ id: "p1", auth: { apiKey } }));
 
-    const credential = await models.login("p1", "api_key", {
-      prompt: async () => "unused",
-      notify: () => {},
-    });
+    const credential = await models.login(
+      "p1",
+      "api_key",
+      { prompt: async () => "unused", notify: () => {} },
+      " Work ",
+    );
     expect(credential).toEqual({ type: "api_key", key: "logged-in" });
-    expect(await credentials.read("p1")).toEqual(credential);
+    expect(await credentials.read("p1")).toMatchObject({
+      active: expect.any(String),
+      accounts: [{ id: expect.any(String), label: "Work", credential }],
+    });
 
     await models.logout("p1");
     expect(await credentials.read("p1")).toBeUndefined();
+  });
+
+  it.each(["", " \t\n"])("rejects a blank API key before saving an account", async (key) => {
+    const models = createModels();
+    models.setProvider(
+      testProvider({
+        id: "p1",
+        auth: {
+          apiKey: { ...envKeyAuth(undefined), login: async () => ({ type: "api_key", key }) },
+        },
+      }),
+    );
+
+    await expect(
+      models.login("p1", "api_key", { prompt: async () => "Personal", notify: () => {} }),
+    ).rejects.toThrow("Enter an API key.");
+    expect(await models.listAccounts("p1")).toEqual([]);
   });
 
   it("a stored credential without a matching handler blocks ambient fallback", async () => {
@@ -785,12 +908,14 @@ describe("Models runtime", () => {
     const models = createModels({ credentials });
     // provider has only apiKey auth, but an oauth credential is stored (stale config)
     models.setProvider(testProvider({ id: "p1", auth: { apiKey: envKeyAuth("env-key") } }));
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "a",
-      refresh: "r",
-      expires: 0,
-    }));
+    await credentials.modify("p1", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "a",
+        refresh: "r",
+        expires: 0,
+      }),
+    );
 
     expect(await models.getAuth("p1")).toBeUndefined();
   });
@@ -817,16 +942,20 @@ describe("Models runtime", () => {
       }));
       const models = createModels({ credentials });
       models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth({ refresh }) } }));
-      await credentials.modify("p1", async () => ({
-        type: "oauth",
-        access: "old-token",
-        refresh: "r",
-        expires: expires(),
-      }));
+      await credentials.modify("p1", async () =>
+        storedAccounts({
+          type: "oauth",
+          access: "old-token",
+          refresh: "r",
+          expires: expires(),
+        }),
+      );
 
       expect((await models.getAuth("p1", options))?.auth.apiKey).toBe("new-token");
       expect(refresh).toHaveBeenCalledOnce();
-      expect(await credentials.read("p1")).toMatchObject({ type: "oauth", access: "new-token" });
+      expect(await credentials.read("p1")).toMatchObject({
+        accounts: [{ credential: { type: "oauth", access: "new-token" } }],
+      });
     },
   );
 
@@ -839,29 +968,35 @@ describe("Models runtime", () => {
     });
     const models = createModels({ credentials });
     models.setProvider(testProvider({ id: "p1", auth: { oauth } }));
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old",
-      refresh: "r",
-      expires: 0,
-    }));
+    await credentials.modify("p1", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "old",
+        refresh: "r",
+        expires: 0,
+      }),
+    );
 
     await expect(models.getAuth("p1")).rejects.toMatchObject({
       code: "oauth",
       message: "OAuth refresh failed for p1: token refresh failed (400): invalid_grant",
     });
     // credential preserved for retry / re-login
-    expect(await credentials.read("p1")).toMatchObject({ type: "oauth", access: "old" });
+    expect(await credentials.read("p1")).toMatchObject({
+      accounts: [{ credential: { type: "oauth", access: "old" } }],
+    });
   });
 
   it("serializes concurrent OAuth refreshes through store.modify (no double refresh)", async () => {
     const credentials = new InMemoryCredentialStore();
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old",
-      refresh: "r1",
-      expires: 0,
-    }));
+    await credentials.modify("p1", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "old",
+        refresh: "r1",
+        expires: 0,
+      }),
+    );
 
     let refreshes = 0;
     const oauth = testOAuth({
@@ -889,6 +1024,102 @@ describe("Models runtime", () => {
     expect(b?.auth.apiKey).toBe("new-1");
   });
 
+  it.each(["request", "catalog"] as const)(
+    "pins %s refresh to the account selected before a concurrent switch",
+    async (kind) => {
+      const base = new InMemoryCredentialStore();
+      await base.modify("p1", async () => ({
+        active: "personal",
+        accounts: [
+          {
+            id: "personal",
+            label: "Personal",
+            credential: {
+              type: "oauth",
+              access: "personal-old",
+              refresh: "personal-refresh",
+              expires: 0,
+            },
+          },
+          {
+            id: "work",
+            label: "Work",
+            credential: {
+              type: "oauth",
+              access: "work-token",
+              refresh: "work-refresh",
+              expires: Date.now() + 60 * 60_000,
+            },
+          },
+        ],
+      }));
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      let waiting = true;
+      const credentials: CredentialStore = {
+        read: (provider, options) => base.read(provider, options),
+        list: (options) => base.list(options),
+        async modify(provider, fn, options) {
+          if (waiting) {
+            waiting = false;
+            entered.resolve();
+            await resume.promise;
+          }
+
+          return base.modify(provider, fn, options);
+        },
+        delete: (provider, options) => base.delete(provider, options),
+      };
+      const models = createModels({ credentials });
+      let catalogAccess: string | undefined;
+      models.setProvider(
+        testProvider({
+          id: "p1",
+          auth: {
+            oauth: testOAuth({
+              refresh: async (credential) => ({
+                ...credential,
+                access: `${credential.access}-fresh`,
+                expires: Date.now() + 60 * 60_000,
+              }),
+            }),
+          },
+          refreshModels: async (context) => {
+            if (context.allowNetwork && context.credential?.type === "oauth")
+              catalogAccess = context.credential.access;
+          },
+        }),
+      );
+
+      const auth = kind === "request" ? models.getAuth("p1") : undefined;
+      const refresh = kind === "catalog" ? models.refresh() : undefined;
+      await entered.promise;
+      await base.modify("p1", async (current) =>
+        current ? { ...current, active: "work" } : undefined,
+      );
+      resume.resolve();
+
+      if (auth)
+        expect(await auth).toMatchObject({
+          accountId: "personal",
+          auth: { apiKey: "personal-old-fresh" },
+        });
+      if (refresh) {
+        expect((await refresh).errors.size).toBe(0);
+        expect(catalogAccess).toBe("personal-old-fresh");
+      }
+
+      expect(await models.getAuth("p1")).toMatchObject({
+        accountId: "work",
+        auth: { apiKey: "work-token" },
+      });
+      expect(await models.listAccounts("p1")).toEqual([
+        { providerId: "p1", id: "personal", label: "Personal", type: "oauth", active: false },
+        { providerId: "p1", id: "work", label: "Work", type: "oauth", active: true },
+      ]);
+    },
+  );
+
   it("valid oauth tokens resolve without touching modify", async () => {
     let modifies = 0;
     const base = new InMemoryCredentialStore();
@@ -901,12 +1132,14 @@ describe("Models runtime", () => {
       },
       delete: (pid) => base.delete(pid),
     };
-    await base.modify("p1", async () => ({
-      type: "oauth",
-      access: "valid",
-      refresh: "r",
-      expires: Date.now() + 10 * 60_000,
-    }));
+    await base.modify("p1", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "valid",
+        refresh: "r",
+        expires: Date.now() + 10 * 60_000,
+      }),
+    );
     const models = createModels({ credentials });
     models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth() } }));
 
@@ -930,8 +1163,10 @@ describe("Models runtime", () => {
 
     // modify failure during refresh
     const modifyFailing: CredentialStore = {
-      read: async () => ({ type: "oauth", access: "old", refresh: "r", expires: 0 }),
-      list: async () => [{ providerId: "p1", type: "oauth" }],
+      read: async () => storedAccounts({ type: "oauth", access: "old", refresh: "r", expires: 0 }),
+      list: async () => [
+        { providerId: "p1", type: "oauth", id: "default", label: "Default", active: true },
+      ],
       modify: async () => {
         throw new Error("disk on fire");
       },

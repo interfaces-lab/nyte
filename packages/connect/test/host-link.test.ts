@@ -1,9 +1,3 @@
-/**
- * A host with no browser links through a transaction: the key, operation id
- * and code are on disk before the real broker hears of them, the owner
- * approves from a browser session, and the host completes with fresh proofs.
- * The broker is the real Worker over workerd and D1; only Clerk is fake.
- */
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,10 +13,6 @@ import type { ConnectFile, LinkAuthorizer } from "../src/host/index.ts";
 import { createProof, keyThumbprint, publicKeyOf } from "../src/signing.ts";
 import type { PrivateJwk } from "../src/signing.ts";
 
-/**
- * Writes into the store, as renames onto its path: one can be held before it
- * lands, as a slow disk would, and every landing is counted.
- */
 const disk = vi.hoisted(() => {
   const state: {
     hold:
@@ -56,7 +46,6 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-/** Hold the next write to `path` until `release`; `reached` resolves once it is waiting. */
 function holdNextWrite(path: string) {
   const reached = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -65,7 +54,6 @@ function holdNextWrite(path: string) {
   return { reached: reached.promise, release: release.resolve };
 }
 
-/** Whether `promise` is still unsettled after the event loop has had a turn. */
 async function stillPending(promise: Promise<unknown>): Promise<boolean> {
   let settled = false;
   void promise.then(
@@ -111,17 +99,12 @@ afterEach(async () => {
 
 type Awaiting = Extract<ConnectLinking, { kind: "awaiting_approval" }>;
 
-/** Answers the broker commits but this host never receives: the request goes through, the reply is dropped. */
 interface Faults {
-  /** `METHOD /path` prefixes whose next answer is lost. Each match consumes one entry. */
   readonly drop: string[];
-  /** `METHOD /path` prefixes whose next request never leaves this host. Each match consumes one entry. */
   readonly block: string[];
-  /** A prefix whose next answer is committed, then held until `release`, then lost. */
   held:
     | { readonly prefix: string; readonly reached: () => void; readonly release: Promise<void> }
     | undefined;
-  /** Every request this host sent, `METHOD /path`. */
   readonly sent: string[];
 }
 
@@ -198,7 +181,6 @@ async function fixture() {
   return { root, storePath, opened, views, faults, start, file, runtime: () => runtime };
 }
 
-/** The owner at app.nyte.sh: looks the code up and decides. */
 async function browser(input: {
   readonly userId: string;
   readonly userCode: string;
@@ -231,7 +213,6 @@ async function browser(input: {
   return { lookup, status: decided.status };
 }
 
-/** A host's proof-bound call on its own transaction, outside the runtime. */
 async function hostCall(
   key: PrivateJwk,
   transactionId: string,
@@ -278,7 +259,6 @@ test("the owner approves from a browser and the host is linked under the broker 
   if (awaiting === undefined) throw new Error("unreachable");
   assert.equal(awaiting.verifyUrl, "https://app.nyte.sh/link");
   assert.match(awaiting.userCode, /^[0-9BCDFGHJKMNPQRSTVWXZ]{4}-[0-9BCDFGHJKMNPQRSTVWXZ]{4}$/u);
-  // The key, operation id and code were on disk before the broker answered.
   const pending = (await file()).linkKey;
   assert.equal(pending?.kind, "transaction");
 
@@ -355,7 +335,6 @@ test("a completion answer the host lost is recovered by its next completion, not
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
-  // The broker already consumed this transaction for this key (an earlier completion whose answer was lost).
   const completion = await hostCall(kept.key, kept.transaction.id, "complete");
   assert.equal(row(completion, "state"), "consumed");
   const view = await linking;
@@ -375,12 +354,10 @@ test("a cancel the broker never heard is settled before a new transaction; a com
   const kept = (await file()).linkKey;
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
-  // The user cancels while the broker is unreachable: only the intent is on disk.
   faults.block.push(`DELETE /v1/link-transactions/${kept.transaction.id}`);
   await first.cancel();
   await linking;
   assert.equal(row((await transactions())[0], "state"), "pending");
-  // Meanwhile the owner approves and the broker consumes the transaction for this key.
   await browser({ userId: "user_alice", userCode: kept.userCode, decision: "approve" });
   assert.equal(row(await hostCall(kept.key, kept.transaction.id, "complete"), "state"), "consumed");
   await first.close();
@@ -388,7 +365,6 @@ test("a cancel the broker never heard is settled before a new transaction; a com
   const second = start();
   const again = second.link();
   await vi.waitFor(() => assert.equal(opened.length, 2));
-  // The environment the cancelled intent produced is unlinked, and the replacement has a new key.
   await vi.waitFor(async () =>
     assert.deepEqual(await workerd.query("SELECT state FROM environments"), [{ state: "revoked" }]),
   );
@@ -423,7 +399,6 @@ test("a lost completion answer keeps the intent: the retry recovers the same lin
 
   if (failed.kind !== "unlinked") return;
   assert.deepEqual(failed.linking, { kind: "failed", reason: "network" });
-  // The broker consumed it; this host still holds the same intent, not an abandonment.
   assert.equal(row((await transactions())[0], "state"), "consumed");
   assert.ok(!faults.sent.some((line) => line.startsWith("DELETE ")));
 
@@ -444,7 +419,6 @@ test("a lost open answer replays the same operation and code instead of opening 
 
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1));
-  // The code shown now names the transaction the lost open made.
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
   assert.equal((await linking).kind, "linked");
   assert.equal((await transactions()).length, 1);
@@ -464,7 +438,6 @@ test("closing joins the attempt: nothing is written after close resolves, and th
   const snapshot = JSON.stringify(await file());
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.equal(JSON.stringify(await file()), snapshot);
-  // A close is not a cancellation: the transaction stays open for the next attempt.
   assert.equal(row((await transactions())[0], "state"), "pending");
 });
 
@@ -473,7 +446,6 @@ test("a link or pending intent made with another broker is unavailable here, nev
   const runtime = start();
   const linking = runtime.link();
   await vi.waitFor(() => assert.equal(opened.length, 1));
-  // A pending intent under this broker: another build must leave it alone.
   await runtime.close();
   await linking;
   const intent = JSON.stringify((await file()).linkKey);
@@ -483,7 +455,6 @@ test("a link or pending intent made with another broker is unavailable here, nev
   assert.equal(JSON.stringify((await file()).linkKey), intent);
   await elsewhere.close();
 
-  // Finish the link here, queue a device revoke, then switch brokers: no proof of this link reaches the other one.
   const resumed = start();
   const again = resumed.link();
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
@@ -506,7 +477,6 @@ test("a link or pending intent made with another broker is unavailable here, nev
       }),
     },
   );
-  // The relay is not serving, so enrollment cannot complete; the queued revoke below is local only.
   assert.notEqual(device.status, 201);
   await resumed.close();
   const other = start(undefined, "https://other.connect.example");
@@ -517,7 +487,6 @@ test("a link or pending intent made with another broker is unavailable here, nev
   assert.equal((await file()).link?.origin, workerd.origin);
 });
 
-/** Hold the next answer to a request starting with `prefix`: committed at the broker, then lost on release. */
 function holdAnswer(faults: Faults, prefix: string) {
   const reached = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -537,7 +506,6 @@ test("every close waits for one teardown that joins a cancellation still writing
   await vi.waitFor(() => assert.equal(opened.length, 1));
   const write = holdNextWrite(storePath);
   const cancelling = runtime.cancel();
-  // The abandonment is on its way to disk.
   await write.reached;
   const first = runtime.close();
   const second = runtime.close();
@@ -564,7 +532,6 @@ test("close joins an unlink acknowledgement already being written", async () => 
   const queued = holdNextWrite(storePath);
   const unlinking = runtime.unlink();
   await queued.reached;
-  // The next write is the broker's acknowledgement leaving the queue.
   const acknowledged = holdNextWrite(storePath);
   queued.release();
   await acknowledged.reached;
@@ -610,7 +577,6 @@ test("a cancel while the completed link is being written still wins: the link is
   await vi.waitFor(() => assert.equal(opened.length, 1));
   const write = holdNextWrite(storePath);
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
-  // The broker consumed the transaction and the link is on its way to disk.
   await write.reached;
   faults.block.push("DELETE /v1/environments/");
   const cancelling = runtime.cancel();
@@ -663,11 +629,6 @@ test("a cancel while a recovered completion is being written queues that link fo
   );
 });
 
-/**
- * The open reaches the broker, its answer is held while the user cancels,
- * and the broker cannot be reached again during that cancel: the broker's
- * transaction stays pending and only this host knows it was given up.
- */
 async function cancelBeforeOpenAnswer(context: Awaited<ReturnType<typeof fixture>>) {
   const { start, file, faults } = context;
   const answer = holdAnswer(faults, "POST /v1/link-transactions");
@@ -682,7 +643,6 @@ async function cancelBeforeOpenAnswer(context: Awaited<ReturnType<typeof fixture
   await first.close();
   const [given] = await transactions();
   assert.equal(row(given, "state"), "pending");
-  // The key and code are read only to play the owner and an earlier completion below.
   const intent = (await file()).linkKey;
 
   if (intent?.kind !== "transaction") throw new Error("unreachable");
@@ -724,7 +684,6 @@ test("a cancel before the open's answer whose transaction was completed anyway u
   await vi.waitFor(async () =>
     assert.deepEqual(await workerd.query("SELECT state FROM environments"), [{ state: "revoked" }]),
   );
-  // The replacement is opened under another key than the one now unlinked.
   const [, replacement] = await workerd.query(
     "SELECT thumbprint FROM link_transactions ORDER BY created_at",
   );
@@ -740,7 +699,6 @@ test("an open answer lost until its transaction expired is recovered as expired,
   assert.equal((await first.link()).kind, "unlinked");
   const [lost] = await transactions();
   await first.close();
-  // Past the deadline and swept, as the cron leaves it.
   await workerd.query(
     "UPDATE link_transactions SET expires_at = ?1, state = 'expired' WHERE state = 'pending'",
     Date.now() - 1,
@@ -771,7 +729,6 @@ test("an open answer lost after the owner approved it is recovered and completed
   const runtime = start();
   assert.equal((await runtime.link()).kind, "unlinked");
   const [lost] = await transactions();
-  // The code is read only to play the owner, who could have typed it before the answer was lost.
   const intent = (await file()).linkKey;
 
   if (intent?.kind !== "transaction") throw new Error("unreachable");

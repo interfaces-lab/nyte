@@ -15,7 +15,7 @@ import {
   initializeResult,
   openLinkResult,
   renderNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
 import { controls, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import { mobileHostContext, shellEffect, shellScript } from "./canvas-host.ts";
 import type { ShellBound } from "./canvas-host.ts";
@@ -38,12 +38,6 @@ function inject(view: WebView | null, message: ShellBound): void {
   view?.injectJavaScript(shellScript(message));
 }
 
-/**
- * One canvas in the feed: the runtime shell in a WebView, sized by what it
- * reports, themed with the app, with links handed to the system browser.
- * A crashed web process gets one restart; a failure the shell reports shows
- * under the frame and reaches the part once.
- */
 export function CanvasFrame({
   item,
   onReport,

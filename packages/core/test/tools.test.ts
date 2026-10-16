@@ -17,7 +17,6 @@ import {
   partRef,
   pollStore,
   runRef,
-  startRun,
   text,
   tool,
 } from "../src/index.ts";
@@ -30,7 +29,7 @@ import type {
   ToolDefinition,
   ToolSource,
 } from "../src/index.ts";
-import { configuration, expireLease, main, recording, setup, until } from "./harness.ts";
+import { configuration, expireLease, main, recording, setup, startRun, until } from "./harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -54,7 +53,6 @@ const echo = {
   },
 } satisfies ToolDefinition<{ text: string }>;
 
-/** Returns a tool source over the given definitions, each owned by "test". */
 function source(definitions: readonly ToolDefinition[]): () => ToolSource {
   return () => ({
     get(name) {
@@ -67,7 +65,6 @@ function source(definitions: readonly ToolDefinition[]): () => ToolSource {
   });
 }
 
-/** Returns a tool that runs until its call is stopped, recording each call once it is listening. */
 function slowTool(started: string[]) {
   return {
     ...echo,
@@ -84,7 +81,6 @@ function slowTool(started: string[]) {
   } satisfies ToolDefinition<{ text: string }>;
 }
 
-/** Starts a run on main that no turn drives here, for calls the test runs itself. */
 async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
   const run = await startRun(
     kernel,
@@ -137,7 +133,6 @@ async function readRun(kernel: Kernel, session: SessionId, run: RunId) {
   return { ref, record };
 }
 
-/** Returns a scripted snapshots slot: `before` is s0, `after` s1, and only a diff from s0 changes `a.ts`; `taken` records each snapshot taken. */
 function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["snapshots"] {
   return async () => ({
     before: async () => {
@@ -161,7 +156,6 @@ function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["sn
   });
 }
 
-/** Returns the tool part a call wrote, as the session's view shows it. */
 async function toolPart(session: Session, id: string) {
   const message = (await session.view()).messages.find(
     (candidate) => candidate.kind === "part" && candidate.part === asId(id),
@@ -520,13 +514,13 @@ describe("tool calls", () => {
 
     const part = await toolPart(session, "w1");
 
-    expect(part.status).toMatchObject({ kind: "failed", run });
+    expect(part.status).toMatchObject({ kind: "settled" });
     expect(part.state).toMatchObject({ phase: "settled", outcome: { kind: "stopped" } });
     expect(
       (await kernel.store.refs.log(session.id, asSeq(0), 100)).filter(
         (event) => event.kind === "commit" && event.body.kind === "part",
       ),
-    ).toEqual([]);
+    ).toMatchObject([{ run, body: { part: "w1" } }]);
   });
 
   it("resumes a call parked on a modal question on one kernel once another kernel answers it, by the call the part names, the park shown in the view and the answer reaching a kernel with nothing parked (§42x, §42z, §42ac)", async () => {

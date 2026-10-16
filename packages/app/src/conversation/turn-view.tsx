@@ -31,6 +31,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
+import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import { ComposerFrame } from "./composer.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
@@ -175,7 +176,6 @@ interface UserEditState extends BranchModelChoice {
   /** The message as a draft: its head sentences back as chips, edited in the composer's editor. */
   readonly document: ComposerDocumentState;
   readonly attachments: readonly ComposerImageAttachment[];
-  /** The files the message already carries; an edit keeps them. */
   readonly kept: readonly MessageFile[];
   readonly attachmentReads: number;
   readonly attachmentError: string | undefined;
@@ -213,7 +213,6 @@ export function UserMessageView({
         return;
       const target = event.target;
 
-      // Portalled menus and dialogs, and the backdrop a modal menu lays over the page, still belong to the active editing interaction.
       if (
         target instanceof Element &&
         target.closest(
@@ -345,7 +344,7 @@ export function UserMessageView({
     <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
       <Message align="end" {...props(messageStyles.end)}>
         {edit === undefined ? (
-          <BubbleContent render={<Row xstyle={bubbleStyles.default} />}>
+          <BubbleContent render={<Row variant="bare" xstyle={bubbleStyles.default} />}>
             <UserMessageImages content={content} />
             {original !== "" && (
               <UserMessagePreview expandable={onEdit === undefined}>
@@ -551,6 +550,11 @@ function TurnPartView({
   branchModel?: BranchModelPicker;
 }): ReactElement | null {
   if (message.kind === "user") {
+    const { source } = message;
+
+    if (source.kind === "child" || source.kind === "job")
+      return <SubagentReportLine source={source} content={message.content} held={false} />;
+
     return (
       <UserMessageView
         content={message.source.kind === "action" ? message.source.label : message.content}
@@ -596,7 +600,6 @@ const ResponseView = memo(function ResponseView({
 interface TurnBodyProps {
   density: ToolCallDensity;
   cwd: string | undefined;
-  /** The session's changed files, latest state per path, for the changes card's counts. */
   changes: SessionView["changes"];
   onEditUser?: (
     message: UserMessage,
@@ -612,7 +615,6 @@ function drawsNothing(turn: ConversationTurn): boolean {
   return turn.messages.length === 0 && turn.info.state.kind !== "ended";
 }
 
-/** The paths this turn's settled calls changed, with the session's counts for each. */
 function turnChanges(
   turn: ConversationTurn,
   changes: SessionView["changes"],
@@ -628,7 +630,6 @@ function turnChanges(
   return changes.filter((change) => paths.has(change.path));
 }
 
-/** One turn's messages, failure, and changes, as siblings in the row's column. */
 const TurnBody = memo(function TurnBody({
   turn,
   density,
@@ -675,6 +676,16 @@ const TurnBody = memo(function TurnBody({
               removed={trailing ? turn.info.summary.removed : 0}
               running={active}
               density={density}
+            />
+          );
+        }
+
+        if (item.kind === "agents") {
+          return (
+            <SubagentGroupView
+              key={`agents:${item.messages[0]?.id ?? turn.info.id}`}
+              messages={item.messages}
+              cwd={cwd}
             />
           );
         }

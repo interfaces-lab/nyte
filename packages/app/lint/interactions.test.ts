@@ -23,7 +23,9 @@ const rules = [
 
 const FailedRun = Type.Object({ stdout: Type.String() });
 
-const Report = Type.Object({ diagnostics: Type.Array(Type.Object({ code: Type.String() })) });
+const Report = Type.Object({
+  diagnostics: Type.Array(Type.Object({ code: Type.String(), message: Type.String() })),
+});
 
 test("interaction guards reject regressions and accept semantic controls", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-interaction-lint-"));
@@ -75,6 +77,19 @@ const controls = <><button onClick={() => {}} /><div role="option" onClick={() =
       rules
         .map((name) => `nyte-interactions(${name})`)
         .sort((first, second) => first.localeCompare(second)),
+    );
+
+    const message = (name: string) =>
+      report.diagnostics.find((diagnostic) => diagnostic.code === `nyte-interactions(${name})`)
+        ?.message;
+
+    expect(message("no-clickable-non-control")).toContain("<div onClick> is not a control");
+    expect(message("restore-popup-focus")).toContain("finalFocus={false} on <Dialog>");
+    expect(message("specific-confirm-label")).toContain('"Confirm" does not say what happens');
+    expect(message("title-case-control-label")).toContain('Write "Save File"');
+    expect(message("no-disabled-caption")).toContain('only while "disabled" holds');
+    expect(message("named-stylex-imports")).toContain(
+      'import { create, props } from "@stylexjs/stylex"',
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

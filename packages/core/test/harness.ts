@@ -7,17 +7,20 @@ import type {
   RefUpdate,
   RunEnd,
   RunId,
+  RunView,
   SessionId,
   Usage,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import {
+  begin,
   createHost,
   createHostState,
   createKernel,
   envelope,
   leaseRef,
   memoryStore,
+  newRun,
   partRef,
   publishSet,
   workspaceRef,
@@ -57,7 +60,6 @@ export const usage: Usage = {
 
 export const completed: RunEnd = { kind: "completed", usage };
 
-/** An environment whose files and processes refuse: enough for tools that never touch them. */
 export const env: ExecutionEnv = {
   identity: asId("identity"),
   cwd: "/tmp/project",
@@ -81,21 +83,17 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
-/** One call the scripted turn received, and how to end it. */
 export interface Turn {
   readonly input: Parameters<TurnDriver["run"]>[0];
   finish(end?: Awaited<ReturnType<TurnDriver["run"]>>): void;
 }
 
-/** A turn driver that records each call and ends it when the test says, or when its run is stopped. */
 export interface Script {
   readonly driver: TurnDriver;
   readonly turns: readonly Turn[];
-  /** Resolves with the `count`-th turn once it has started. */
   started(count: number): Promise<Turn>;
 }
 
-/** Returns a scripted turn that ends when the test finishes it or its run's signal aborts. */
 export function script(): Script {
   const turns: Turn[] = [];
 
@@ -117,7 +115,6 @@ export function script(): Script {
   };
 }
 
-/** Resolves with the first defined value `read` returns, polling; rejects after `timeout` ms. */
 export async function until<T>(
   read: () => T | undefined | Promise<T | undefined>,
   timeout = 2000,
@@ -134,7 +131,6 @@ export async function until<T>(
   }
 }
 
-/** Returns a kernel over a memory store with a registered workspace, scripted slots, and the in-process host over it. */
 export async function setup(
   options?: Partial<
     Pick<
@@ -209,7 +205,23 @@ export async function setup(
   };
 }
 
-/** Writes an expired lease over a head, as a crashed host leaves it once its 30 s have passed (§42j), so a restarted kernel may take the head. */
+export async function startRun(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  origin: RunView["origin"],
+  runConfiguration: Configuration,
+): Promise<RunView> {
+  const started = await newRun(kernel, session, head, origin, runConfiguration);
+  const outcome = await kernel.store.refs.set([started.update]);
+
+  if (outcome.kind === "stale") throw new Error(`Run ${started.view.id} already exists.`);
+  await publishSet(kernel, [started.update], outcome);
+  begin(kernel, session, started.view);
+
+  return started.view;
+}
+
 export async function expireLease(
   store: StoreConnection,
   session: SessionId,
@@ -225,7 +237,6 @@ export async function expireLease(
   ]);
 }
 
-/** Writes a live transcript part for a run, as the turn would. */
 export async function livePart(
   kernel: Kernel,
   session: SessionId,
@@ -266,14 +277,12 @@ export async function livePart(
   await publishSet(kernel, updates, await kernel.store.refs.set(updates));
 }
 
-/** Names a durable event by kind and change, or reason for a head move: `run:stopping`, `head:moved`. */
 export function label(event: DurableEvent): string {
   if (event.kind === "head") return `head:${event.reason}`;
 
   return "change" in event ? `${event.kind}:${event.change}` : event.kind;
 }
 
-/** Returns a store connection that records the event labels of each `refs.set` batch, in order. */
 export function recording(store: StoreConnection) {
   const sets: (readonly string[])[] = [];
 

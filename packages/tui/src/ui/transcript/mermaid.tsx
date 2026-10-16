@@ -1,4 +1,3 @@
-/** Mermaid fences as ASCII (beautiful-mermaid, capped input/output), click toggles source; last good render on parse error. */
 import type { JSX } from "@opentui/solid";
 import { renderMermaidASCII } from "beautiful-mermaid";
 import { createMemo, Show } from "solid-js";
@@ -15,7 +14,6 @@ interface Diagram {
 
 const MAX_VIEWPORT_ROWS = 24;
 
-/** Based on https://github.com/anomalyco/opencode/blob/f3f1204802eaf9f3f26352330449d3ce4454f4af/packages/merman/src/markdown.ts */
 export function prepareDiagram(source: string): Diagram {
   if (source.length > 8_000 || source.split("\n").length > 120)
     throw new RangeError("Diagram is too large");
@@ -35,7 +33,6 @@ export function Mermaid(props: {
   const scope = useTranscript();
   const theme = (): ReturnType<typeof app.kit.theme> => app.kit.theme();
 
-  /** A parse error keeps the last diagram that rendered, so a stream never flickers to nothing. */
   const diagram = createMemo<Diagram | null>((last) => {
     try {
       return prepareDiagram(props.source);

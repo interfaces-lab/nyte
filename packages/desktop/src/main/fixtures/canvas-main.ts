@@ -1,17 +1,10 @@
-/**
- * Real Electron: the renderer scheme serves the built canvas shell to a
- * sandboxed frame under the shell and renderer policies, and a fixture
- * canvas compiled in this process renders in it and reports its
- * height. The page comes from a loopback server as in development, and
- * drives the host side of the protocol from `page.js`.
- */
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { app, BrowserWindow } from "electron";
-import { compileCanvas } from "@nyte-ai/plugin/canvas";
+import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
@@ -25,7 +18,6 @@ const source = process.argv[4];
 
 const port = Number(process.argv[5]);
 
-/** `scheme`: the shell on the renderer scheme, as the desktop; `web`: over http at `/canvas/`, as the deployed site. */
 const transport = process.argv[6];
 
 assert.ok(directory !== undefined && shellRoot !== undefined && source !== undefined);
@@ -94,7 +86,6 @@ const server = createServer((request, response) => {
   const url = request.url ?? "/";
 
   if (url.startsWith("/canvas/")) {
-    // The deployed site's headers for `/canvas/(.*)`, from public/vercel.json.
     const file = join(shellRoot, normalize(url.slice("/canvas/".length)));
     const type = SHELL_TYPES.get(extname(file));
 
@@ -122,7 +113,6 @@ const server = createServer((request, response) => {
   }
 });
 
-// The scheme registers before ready, so the test picked the port beforehand.
 server.listen(port, "127.0.0.1");
 
 process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${String(port)}`;

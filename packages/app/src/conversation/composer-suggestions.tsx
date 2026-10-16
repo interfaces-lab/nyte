@@ -6,6 +6,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  * one `ComposerEditor` and renders `menu` beside it.
  */
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -317,6 +318,7 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
         <div
           key={`${String(depth)}:${row.label}`}
           {...props(
+            text.sm,
             composerStyles.suggestionPreviewPathRow,
             composerStyles.suggestionPreviewPathIndent(depth),
             depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
@@ -345,11 +347,11 @@ function SuggestionPreview({
 
   return (
     <>
-      <div {...props(composerStyles.suggestionPreviewTitle)}>
+      <div {...props(text.base, composerStyles.suggestionPreviewTitle)}>
         {suggestionPreviewTitle(suggestion)}
       </div>
       {attribution !== undefined && (
-        <div {...props(composerStyles.suggestionPreviewAttribution)}>
+        <div {...props(text.sm, composerStyles.suggestionPreviewAttribution)}>
           <span aria-hidden="true" {...props(composerStyles.suggestionPreviewIcon)}>
             <Icon name={suggestion.icon} size={12} />
           </span>
@@ -360,7 +362,7 @@ function SuggestionPreview({
         <MentionPathPreview file={suggestion.file} />
       ) : (
         suggestion.kind !== "mention" && (
-          <div {...props(composerStyles.suggestionPreviewDescription)}>
+          <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
             {suggestion.description}
           </div>
         )
@@ -645,7 +647,6 @@ export function useComposerSuggestions({
             align="start"
             sideOffset={8}
             collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-            xstyle={composerStyles.suggestionPositioner}
           >
             <Popover.Popup
               id={popupId}
@@ -669,7 +670,7 @@ export function useComposerSuggestions({
             >
               <div ref={listRef} {...props(composerStyles.suggestionList)}>
                 {suggestions.length === 0 ? (
-                  <div role="status" {...props(composerStyles.suggestionEmpty)}>
+                  <div role="status" {...props(text.base, composerStyles.suggestionEmpty)}>
                     {menu === undefined
                       ? undefined
                       : suggestionEmptyText(
@@ -699,6 +700,7 @@ export function useComposerSuggestions({
                         tabIndex={-1}
                         aria-selected={selected}
                         {...props(
+                          text.base,
                           composerStyles.suggestionItem,
                           startsGroup && composerStyles.suggestionGroupStart,
                         )}
@@ -718,7 +720,7 @@ export function useComposerSuggestions({
                               query={deferredQuery}
                             />
                           </span>
-                          <span {...props(composerStyles.suggestionDescription)}>
+                          <span {...props(text.base, composerStyles.suggestionDescription)}>
                             <HighlightedSuggestionText text={description} query={deferredQuery} />
                           </span>
                         </span>

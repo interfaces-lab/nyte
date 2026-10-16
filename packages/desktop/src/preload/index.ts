@@ -1,11 +1,3 @@
-/**
- * `window.nyte`: the host beside the sdk. Every operation is one `invoke`
- * carrying its path and input object; sessions go over the sdk connection
- * the renderer opens to `host.endpoint()`.
- *
- * Main owns request decoding and reply construction. Preload preserves each
- * path's input/output relationship instead of widening transport payloads.
- */
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { exposeClerkBridge } from "@clerk/electron/preload";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
@@ -83,7 +75,6 @@ function object<P extends Exclude<CallPath, NoneCallPath>>(
   return (input) => call(path, input);
 }
 
-/** Main names the shell page per window; a window without one (a test fixture) shows no canvases. */
 const canvasShell = process.argv
   .find((argument) => argument.startsWith(`${CANVAS_SHELL_ARGUMENT}=`))
   ?.slice(CANVAS_SHELL_ARGUMENT.length + 1);
@@ -110,6 +101,7 @@ const bridge = {
     usage: object("host.usage"),
     openWorkspace: object("host.openWorkspace"),
     pickWorkspace: none("host.pickWorkspace"),
+    trustWorkspace: object("host.trustWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),
     updates: {
       state: none("host.updates.state"),

@@ -7,6 +7,7 @@ import "../theme/boot.ts";
 import "../theme/focus-modality.ts";
 import "../theme/global.css";
 import { create, props } from "@stylexjs/stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { createBrowserHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import { StrictMode } from "react";
@@ -41,7 +42,7 @@ const styles = create({
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: space.s3,
     height: "100%",
     overflowWrap: "anywhere",
   },
@@ -151,7 +152,6 @@ const accountDevice =
 
 const known = pairing ?? (accountDevice === undefined ? loadConnection() : undefined);
 
-// The link page approves a host for the account; it never connects this browser to one.
 if (location.pathname === "/link" && accountConfig !== undefined) {
   root.render(<LinkScreen config={accountConfig} />);
 } else if (known === undefined) showConnectScreen();

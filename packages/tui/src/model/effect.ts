@@ -1,9 +1,3 @@
-/**
- * What `reduce` asks the outside world to do, as data. The runner executes
- * each one against a port and answers with `Outcome`/`Fact` messages.
- * Effects name IO, not user intent: `withdraw` here is "stop receipt X if it
- * is still pending", never "the user pressed Ctrl+D".
- */
 import type {
   Delivery,
   Json,
@@ -14,13 +8,24 @@ import type {
   RunId,
   SessionId,
   UserContent,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { SettingsPatch } from "../lib/settings-schema.ts";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { DialogId, LoadRequest } from "./dialogs/dialog.ts";
 import type { DraftSnapshot } from "./draft.ts";
-import type { Selection, Submission } from "./state.ts";
+import type { QuestionTypedDraft, Selection, Submission } from "./state.ts";
+
+/** What `/mcp` can do to one server besides signing in. */
+export type McpAction = "reconnect" | "enable" | "disable" | "logout";
 
 export type Effect =
+  | {
+      readonly kind: "select-account";
+      readonly provider: string;
+      readonly account: string;
+      readonly label: string;
+    }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
   | { readonly kind: "send"; readonly submission: Submission; readonly delivery: Delivery }
   | {
@@ -40,8 +45,8 @@ export type Effect =
       readonly kind: "answer";
       readonly session: SessionId;
       readonly part: PartId;
-      readonly choice: string;
-      readonly typed: DraftSnapshot | null;
+      readonly answers: QuestionAnswers;
+      readonly typed: QuestionTypedDraft | null;
     }
   | {
       readonly kind: "move";
@@ -75,6 +80,11 @@ export type Effect =
       readonly cwd: string;
     }
   | { readonly kind: "read-clipboard"; readonly generation: number }
+  | {
+      readonly kind: "read-dialog-clipboard";
+      readonly dialog: DialogId;
+      readonly promptVersion: number | null;
+    }
   | { readonly kind: "copy"; readonly text: string }
   | { readonly kind: "open-editor"; readonly text: string; readonly command: string | null }
   | { readonly kind: "open-external"; readonly target: string }
@@ -87,15 +97,12 @@ export type Effect =
   | { readonly kind: "logout"; readonly provider: string }
   | { readonly kind: "notify"; readonly title: string; readonly body: string }
   | { readonly kind: "exit"; readonly code: number }
-  /** Re-read git branch/dirty for the footer (after a run ends or the directory changes). */
   | { readonly kind: "refresh-workspace"; readonly cwd: string }
-  /** `session.command(name, argument)` for a core-side plugin command; output comes back as `inform`. */
   | {
       readonly kind: "run-command";
       readonly session: SessionId;
       readonly name: string;
       readonly argument: string | null;
-      /** How the command line goes out as a message when the plugin answers `unknown`. */
       readonly delivery: Delivery;
     }
   | {
@@ -105,7 +112,6 @@ export type Effect =
         | { readonly kind: "agent"; readonly session: SessionId }
         | { readonly kind: "job"; readonly job: string };
     }
-  /** A plugin setting: `session.configure({ settings })` for session scope, `host.settings.apply` for host scope. */
   | {
       readonly kind: "apply-setting";
       readonly session: SessionId;
@@ -114,16 +120,33 @@ export type Effect =
       readonly scope: "host" | "session";
       readonly value: Json;
     }
-  /** Answers the login step the auth dialog shows; null cancels the login. */
+  | {
+      readonly kind: "mcp-action";
+      readonly workspace: WorkspaceId;
+      readonly server: string;
+      readonly action: McpAction;
+    }
+  | {
+      readonly kind: "mcp-login";
+      readonly dialog: DialogId;
+      readonly workspace: WorkspaceId;
+      readonly server: string;
+    }
+  | {
+      readonly kind: "check-trust";
+      readonly workspace: WorkspaceId;
+      readonly ask: "always" | "if-needed";
+    }
+  | {
+      readonly kind: "set-trust";
+      readonly workspace: WorkspaceId;
+      readonly value: boolean | null;
+    }
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }
-  /** Reads an attached file's body for its preview, answered by `preview-loaded`. */
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
-  /** `/cd` completion: list directories for the typed path, answered by `directory-listed`. */
   | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
-  /** `@` completion: what a query spelled as a path names on disk, answered by `mention-resolved`. */
   | { readonly kind: "resolve-mention"; readonly query: string; readonly cwd: string };
 
-/** The textarea is a native renderable; the Composer attaches a port, these are its verbs. */
 export type ComposerOp =
   | { readonly kind: "set"; readonly draft: DraftSnapshot }
   | { readonly kind: "insert"; readonly text: string; readonly at: "cursor" | "start" }
@@ -137,11 +160,9 @@ export type ComposerOp =
   | { readonly kind: "focus" }
   | { readonly kind: "cursor"; readonly to: "start" | "end" };
 
-/** The transcript scrollbox is native too; jumps resolve a row's position at call time, never from estimates. */
 export type ScrollOp =
   | { readonly kind: "page"; readonly direction: -1 | 1 }
   | { readonly kind: "latest" }
   | { readonly kind: "row"; readonly key: string }
   | { readonly kind: "keep-viewport" }
-  /** Ctrl+Up/Down: the previous/next turn from the one at the top of the viewport, resolved at call time. */
   | { readonly kind: "turn"; readonly direction: -1 | 1 };

@@ -137,6 +137,25 @@ export async function readStdin(signal?: AbortSignal): Promise<string> {
   return Buffer.concat(chunks).toString("utf8").replace(/\n$/u, "");
 }
 
+export function parseServeArgs(args: readonly string[]): {
+  readonly port: number;
+  readonly token?: string;
+} {
+  const { values } = parseArgs({
+    args: [...args],
+    strict: true,
+    options: { port: { type: "string" }, token: { type: "string" } },
+  });
+
+  const port = Number(values.port ?? "0");
+
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("--port must be a port number. Run `nyte serve --help`.");
+  }
+
+  return values.token === undefined ? { port } : { port, token: values.token };
+}
+
 export function parseUpdateArgs(
   args: readonly string[],
 ):

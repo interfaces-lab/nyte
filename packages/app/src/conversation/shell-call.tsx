@@ -1,4 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
 import { formatToolDuration, toolOutput, toolStatus } from "../view-helpers.ts";
 import type { ToolMessage } from "../view-helpers.ts";
@@ -6,7 +7,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -45,6 +46,7 @@ const MONO = {
   fontFamily: type.fontMono,
   fontSize: type.fontCode,
   lineHeight: type.leadingSm,
+  letterSpacing: "normal",
   color: role.contentSecondary,
   whiteSpace: "pre-wrap",
   overflowWrap: "break-word",
@@ -52,7 +54,7 @@ const MONO = {
 } as const;
 
 const styles = create({
-  panel: { paddingTop: 4 },
+  panel: { paddingTop: space.s1 },
   body: {
     position: "relative",
     overflow: "clip",
@@ -66,18 +68,25 @@ const styles = create({
   scroll: { overflowY: "auto", overscrollBehavior: "auto" },
   scrollLine: { maxHeight: 200 },
   scrollCard: { maxHeight: "min(480px, 60vh)" },
-  command: { ...MONO, display: "block", paddingBlock: 6, paddingInline: 10 },
-  commandWithMenu: { paddingRight: "calc(4px + 28px)" },
+  command: { ...MONO, display: "block", paddingBlock: space.s1_5, paddingInline: space.s2_5 },
+  commandWithMenu: { paddingRight: `calc(${space.s1} + 28px)` },
   prompt: { userSelect: "none" },
-  output: { ...MONO, display: "block", paddingTop: 0, paddingInline: 8, paddingBottom: 6 },
+  output: {
+    ...MONO,
+    display: "block",
+    paddingTop: 0,
+    paddingInline: space.s2,
+    paddingBottom: space.s1_5,
+  },
   facts: {
     display: "block",
-    paddingInline: 8,
-    paddingBottom: 6,
+    paddingInline: space.s2,
+    paddingBottom: space.s1_5,
     color: role.contentTertiary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
+    letterSpacing: "normal",
     fontVariantNumeric: "tabular-nums",
     userSelect: "text",
   },
@@ -86,7 +95,7 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    marginBlock: 2,
+    marginBlock: space.s0_5,
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
@@ -111,16 +120,14 @@ const styles = create({
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     flexGrow: 1,
     minWidth: 0,
-    paddingBlock: 6,
-    paddingInlineStart: 8,
-    paddingInlineEnd: 32,
+    paddingBlock: space.s1_5,
+    paddingInlineStart: space.s2,
+    paddingInlineEnd: space.s8,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
     userSelect: "none",
   },
@@ -152,7 +159,7 @@ const styles = create({
     flexDirection: "column-reverse",
     width: "100%",
     maxHeight: `calc(${String(PREVIEW_LINES)} * ${type.leadingSm} + 6px)`,
-    paddingTop: 6,
+    paddingTop: space.s1_5,
     overflow: "clip",
     cursor: appearance.cursorInteractive,
     maskImage: {
@@ -415,6 +422,7 @@ export const ShellCallView = memo(function ShellCallView({
           <Collapsible.Trigger
             variant="plain"
             xstyle={[
+              text.base,
               styles.header,
               status.tone === "stopped" && toolLineStyles.dimmedText,
               focus.ringInset,

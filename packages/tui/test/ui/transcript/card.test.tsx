@@ -1,7 +1,3 @@
-/**
- * A tool card's heading: a shell command draws plain until the kit's label
- * highlights land, then in the highlight's colours.
- */
 import { RGBA } from "@opentui/core";
 import type { TextChunk } from "@opentui/core";
 import { expect, test } from "bun:test";

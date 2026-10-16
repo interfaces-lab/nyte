@@ -2,18 +2,15 @@ import type { Hunk } from "@nyte-ai/schema";
 
 type Line = Hunk["lines"][number];
 
-/** The context lines around each change in a hunk. */
 const CONTEXT = 3;
 
-/** The most edits the line diff searches before answering the whole middle as replaced. */
 const MAX_EDITS = 4_000;
 
-/** Diffs two texts by line (Myers, after trimming the common head and tail) into unified hunks with three lines of context; a line missing its final newline carries `noNewline`. Under `ignoreWhitespace` lines compare with their whitespace removed. */
 export function lineDiff(
   before: string,
   after: string,
   options?: { readonly ignoreWhitespace?: boolean },
-): { readonly hunks: readonly Hunk[]; readonly added: number; readonly removed: number } {
+) {
   const old = splitLines(before);
   const next = splitLines(after);
 
@@ -103,7 +100,6 @@ export function lineDiff(
   return { hunks, added, removed };
 }
 
-/** Returns the edit script between two key lists: `context` for a kept line, `remove`, `add`. */
 function edits(old: readonly string[], next: readonly string[]): readonly Line["kind"][] {
   let head = 0;
 
@@ -132,7 +128,6 @@ function edits(old: readonly string[], next: readonly string[]): readonly Line["
   ];
 }
 
-/** Returns Myers' shortest edit script between two lists, or null past `MAX_EDITS` edits. */
 function myers(a: readonly string[], b: readonly string[]): Line["kind"][] | null {
   const n = a.length;
   const m = b.length;
@@ -207,7 +202,6 @@ function backtrack(trace: readonly Int32Array[], n: number, m: number): Line["ki
   return script.reverse();
 }
 
-/** Splits a text into lines without their newlines, marking the last; an empty text has none. */
 function splitLines(text: string): readonly { readonly text: string; readonly last: boolean }[] {
   if (text === "") return [];
   const parts = text.split("\n");

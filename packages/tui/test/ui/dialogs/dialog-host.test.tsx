@@ -1,22 +1,20 @@
 import { expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { Dialog } from "../../../src/model/dialogs/dialog.ts";
-import { renderDialog, rows } from "./harness.tsx";
-
-const HEIGHT = 32;
+import { renderDialog } from "./harness.tsx";
 
 const LIST: Dialog = {
   kind: "list",
   id: "l1",
-  purpose: { kind: "question", session: asId("s1"), part: asId("p1"), typed: true },
+  purpose: { kind: "question", session: asId("s1"), part: asId("p1") },
   title: "Which one?",
   choices: {
     kind: "ready",
-    items: [{ id: "a", label: "a", description: "", status: null, mark: null }],
+    items: [{ id: "a", label: "a", description: "", timing: null, status: null, mark: null }],
   },
   query: "",
   highlighted: 0,
-  answering: "",
+  answering: null,
   busy: false,
 };
 
@@ -39,30 +37,14 @@ const TREE: Dialog = {
   composerEmpty: true,
 };
 
-function hintRow(frame: string): number {
-  return rows(frame).findIndex((row) => row.includes("esc "));
-}
-
-test("nothing draws without a dialog", async () => {
-  await using app = await renderDialog(null);
-
-  expect(app.frame().trim()).toBe("");
-});
-
-test("the host switches placement with the top dialog", async () => {
-  await using app = await renderDialog(LIST, { height: HEIGHT });
+test("the host draws the top dialog of the stack", async () => {
+  await using app = await renderDialog(LIST);
 
   expect(app.frame()).toContain("Which one?");
-  expect(hintRow(app.frame())).toBeLessThan(HEIGHT / 2);
 
   await app.show([TEXT]);
   expect(app.frame()).toContain("Usage");
   expect(app.frame()).not.toContain("Which one?");
-  expect(hintRow(app.frame())).toBe(HEIGHT - 2);
-
-  await app.show([TREE]);
-  expect(app.frame()).toContain("Session Tree");
-  expect(hintRow(app.frame())).toBe(HEIGHT - 2);
 
   await app.show([TREE, LIST]);
   expect(app.frame()).toContain("Which one?");

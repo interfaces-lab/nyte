@@ -1,10 +1,3 @@
-/**
- * Sign in and out through the host. The login's steps reach the auth dialog
- * as `loaded` outcomes; what the user types or picks comes back through the
- * `login-answer` effect on the runner's channel for that dialog. Credential
- * changes recover the model selection: a model
- * that vanished is replaced by the first the provider still serves.
- */
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import type { Effect } from "../model/effect.ts";
 import type { Notice } from "../model/state.ts";
@@ -16,8 +9,19 @@ import { fallback, selectionOf } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
-export async function login(effect: Of<"login">, context: HandlerContext): Promise<void> {
-  const { dispatch, ports, scope } = context;
+/**
+ * A login driver that shows each step in the auth dialog and takes its
+ * answers from `login-answer`; `end` releases the dialog's channel.
+ */
+function dialogDriver(
+  dialog: Of<"login">["dialog"],
+  context: HandlerContext,
+): {
+  readonly driver: LoginDriver;
+  readonly controller: AbortController;
+  readonly end: () => void;
+} {
+  const { dispatch, scope } = context;
   const controller = new AbortController();
   let pending: PromiseWithResolvers<string> | null = null;
 
@@ -27,8 +31,8 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
     return pending.promise;
   };
 
-  scope.logins.set(effect.dialog, {
-    dialog: effect.dialog,
+  scope.logins.set(dialog, {
+    dialog,
     answer: (code) => pending?.resolve(code),
     cancel: () => controller.abort(),
   });
@@ -36,17 +40,16 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
   const driver: LoginDriver = {
     signal: controller.signal,
     open(url, code) {
-      ports.terminal.open(url);
       dispatch({
         kind: "loaded",
-        dialog: effect.dialog,
+        dialog,
         data: { kind: "auth", step: { kind: "link", url, code: code ?? null } },
       });
     },
     paste(message, secret) {
       dispatch({
         kind: "loaded",
-        dialog: effect.dialog,
+        dialog,
         data: { kind: "auth", step: { kind: "secret", prompt: message, masked: secret } },
       });
 
@@ -55,7 +58,7 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
     choose(message, options) {
       dispatch({
         kind: "loaded",
-        dialog: effect.dialog,
+        dialog,
         data: { kind: "auth", step: { kind: "choose", prompt: message, options } },
       });
 
@@ -64,11 +67,25 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
     progress(message) {
       dispatch({
         kind: "loaded",
-        dialog: effect.dialog,
+        dialog,
         data: { kind: "auth", step: { kind: "waiting", message } },
       });
     },
   };
+
+  return {
+    driver,
+    controller,
+    end: () => {
+      controller.abort();
+      scope.logins.delete(dialog);
+    },
+  };
+}
+
+export async function login(effect: Of<"login">, context: HandlerContext): Promise<void> {
+  const { dispatch, ports } = context;
+  const { driver, controller, end } = dialogDriver(effect.dialog, context);
 
   try {
     const result = await ports.host.login(effect.provider, driver);
@@ -92,12 +109,66 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
         : errorNotice(context, error),
     });
   } finally {
-    controller.abort();
-    scope.logins.delete(effect.dialog);
+    end();
   }
 }
 
-/** The auth dialog's answer to the step it showed; null cancels the login. */
+export async function mcpLogin(effect: Of<"mcp-login">, context: HandlerContext): Promise<void> {
+  const { dispatch, ports } = context;
+  const { driver, controller, end } = dialogDriver(effect.dialog, context);
+
+  try {
+    await ports.host.mcpLogin(effect.workspace, effect.server, driver);
+    dispatch({
+      kind: "op-finished",
+      op: "auth",
+      notice: noticeOf(context, "ok", `Signed in to ${effect.server}.`),
+    });
+  } catch (error) {
+    dispatch({
+      kind: "op-finished",
+      op: "auth",
+      notice: controller.signal.aborted
+        ? noticeOf(context, "info", "Sign-in cancelled.")
+        : errorNotice(context, error),
+    });
+  } finally {
+    end();
+  }
+}
+
+export async function mcpAction(effect: Of<"mcp-action">, context: HandlerContext): Promise<void> {
+  const { dispatch, ports } = context;
+  const outcome = await ports.host.mcpAction(effect.workspace, effect.server, effect.action);
+
+  switch (outcome.kind) {
+    case "updated":
+      dispatch({
+        kind: "open",
+        dialog: { kind: "list", purpose: { kind: "mcp", workspace: effect.workspace } },
+      });
+
+      return;
+    case "missing":
+      dispatch({
+        kind: "inform",
+        tone: "warning",
+        text: `No MCP server is named ${effect.server}`,
+      });
+
+      return;
+    case "invalid":
+      dispatch({ kind: "inform", tone: "warning", text: outcome.message });
+
+      return;
+    default: {
+      const _exhaustive: never = outcome;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export async function loginAnswer(
   effect: Of<"login-answer">,
   context: HandlerContext,
@@ -143,14 +214,27 @@ export async function logout(effect: Of<"logout">, context: HandlerContext): Pro
   }
 }
 
-/**
- * The notice a credential change ends with: what was done, then what became
- * of the selected model. A failed catalog refresh keeps the sign-in and says
- * how to retry.
- */
+export async function selectAccount(
+  effect: Of<"select-account">,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports } = context;
+
+  try {
+    await ports.host.selectAccount(effect.provider, effect.account);
+    dispatch({
+      kind: "op-finished",
+      op: "auth",
+      notice: await afterCredentials(context, "select", effect.provider, `Using ${effect.label}.`),
+    });
+  } catch (error) {
+    dispatch({ kind: "op-finished", op: "auth", notice: errorNotice(context, error) });
+  }
+}
+
 async function afterCredentials(
   context: HandlerContext,
-  action: "login" | "logout",
+  action: "login" | "logout" | "select",
   provider: string,
   done: string,
 ): Promise<Notice> {
@@ -170,10 +254,9 @@ async function afterCredentials(
   }
 }
 
-/** After a credential change: re-list the catalog, and if the selected model is gone, pick the first that remains. */
 async function recoverModel(
   context: HandlerContext,
-  action: "login" | "logout",
+  action: "login" | "logout" | "select",
   provider: string,
 ): Promise<{ readonly tone: "ok" | "warning"; readonly text: string } | null> {
   const { dispatch, ports, read, scope } = context;

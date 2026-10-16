@@ -216,6 +216,13 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "connection.blob": async ({ id }) => ({ reader: await connection.blob(id) }),
 
     "models.list": () => connection.models.list(),
+    "models.accounts": ({ provider }) => connection.models.accounts(provider),
+    "models.selectAccount": async ({ provider, account }) => {
+      await connection.models.selectAccount(provider, account);
+
+      return null;
+    },
+    "models.usage": () => connection.models.usage(),
     "models.refresh": async ({ provider }) => {
       await connection.models.refresh(provider);
 
@@ -223,8 +230,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
     "models.setDefault": ({ ref }) => connection.models.setDefault(ref),
     "models.verify": ({ provider }) => connection.models.verify(provider),
-    "models.login": async ({ provider, method }) => {
-      const login = connection.models.login({ provider, method });
+    "models.login": async (input) => {
+      const { provider } = input;
+      const login = connection.models.login(input);
       const key = keyOf(principal, provider);
       const previous = logins.get(key);
 
@@ -366,14 +374,15 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
       return { part: (await session(id).parts.create(registered.definition, input)).id };
     },
-    "part.update": ({ session: id, part, next }) => session(id).part(part).update(next),
+    "part.update": ({ session: id, part, next, options }) =>
+      session(id).part(part).update(next, options),
     "part.act": async ({ session: id, part, action, input }) => {
       const outcome = await session(id).part(part).act(action, input);
 
       return outcome.kind === "ok" ? { kind: "ok", output: jsonOf(outcome.output) } : outcome;
     },
-    "part.answer": async ({ session: id, part }) => {
-      const answer = await session(id).part(part).answer();
+    "part.answer": async ({ session: id, part }, { signal }) => {
+      const answer = await session(id).part(part).answer({ signal });
 
       return answer === null
         ? null
@@ -387,6 +396,30 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
     "workspace.info": ({ workspace: id }) => workspace(id).info(),
     "workspace.watch": async ({ workspace: id }) => workspace(id).watch(),
+    "mcp.watch": async ({ workspace: id }) => workspace(id).mcp.watch(),
+    "mcp.reconnect": ({ workspace: id, server }) => workspace(id).mcp.reconnect(server),
+    "mcp.setEnabled": ({ workspace: id, server, enabled }) =>
+      workspace(id).mcp.setEnabled(server, enabled),
+    "mcp.login": async ({ workspace: id, server }) => {
+      const login = JSON.stringify(["mcp", id, server]);
+      const previous = logins.get(keyOf(principal, login));
+
+      if (previous !== undefined) endLogin(login, previous);
+
+      const attempt: Attempt = {
+        login: workspace(id).mcp.login(server),
+        steps: null,
+        timer: setTimeout(() => endLogin(login, attempt), LOGIN_LIFETIME),
+      };
+
+      logins.set(keyOf(principal, login), attempt);
+
+      return { login };
+    },
+    "mcp.logout": ({ workspace: id, server }) => workspace(id).mcp.logout(server),
+    "mcp.add": ({ workspace: id, server, config, scope }) =>
+      workspace(id).mcp.add(server, config, scope),
+    "mcp.remove": ({ workspace: id, server, scope }) => workspace(id).mcp.remove(server, scope),
     "workspace.update": ({ workspace: id, patch }) => workspace(id).update(patch),
     "workspace.reload": ({ workspace: id }) => workspace(id).reload(),
     "workspace.changes": ({ workspace: id, run }) => workspace(id).changes(run),
@@ -541,7 +574,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-/** Forwards a session's events and, once the feed is live (the first seed or patch), writes the principal's seen mark for each tip change one frame after it lands or when the stream closes (§40a, §40x). Replayed history moves the tracked tip and writes nothing, so a watch closed mid-replay leaves the mark where it was. A failed write is a `dev` line. */
 function seeing(
   kernel: Kernel,
   principal: PrincipalId,
@@ -616,7 +648,6 @@ function seeing(
   };
 }
 
-/** Yields the watched head's pair first, then the session's events, each `commit` or `head` event followed at once by the pair its feed item carries, so the client applies tip and revision together (§40s, §54a). */
 function revisions(
   first: OperationOutput<"head.watch">,
   source: AsyncIterable<FeedItem>,

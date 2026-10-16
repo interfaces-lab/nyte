@@ -1,8 +1,5 @@
 /**
  * Adds OpenCode's per-conversation routing header before API dispatch.
- *
- * Based on https://github.com/earendil-works/pi/blob/561a2e066c0742e3d3e33c75d5d32a69b1d89194/packages/ai/src/providers/opencode-headers.ts
- * Synced with pi 561a2e066.
  */
 import type { ProviderStreams, StreamOptions } from "../types.ts";
 

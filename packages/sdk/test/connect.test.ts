@@ -7,7 +7,7 @@ import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import { operations } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
-import { memoryJournal } from "../src/journal.ts";
+import { createSendJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -30,7 +30,6 @@ function kept(connection: Connection): Connection {
   return connection;
 }
 
-/** Returns the link a host watch reports last before it ends. */
 async function lastLink(views: AsyncIterator<HostView>): Promise<HostView["link"] | null> {
   let link: HostView["link"] | null = null;
 
@@ -138,7 +137,7 @@ describe("connect", () => {
     expect(first.principal).not.toBe(TOKEN);
     await first.sessions.list();
 
-    expect(sent).toEqual(["Pairing", "Bearer"]);
+    expect(sent).toEqual(["Pairing", "Bearer", "Bearer"]);
 
     const again = kept(await connect(options));
 
@@ -223,13 +222,13 @@ describe("connect", () => {
 
     await connection.sessions.list();
 
-    expect(names).toEqual(["connection.watch", "sessions.list"]);
+    expect(names).toEqual([".nyte/streams", "connection.watch", "sessions.list"]);
   });
 
   it("closes the link host-gone when another host answers a later request, every journal row kept (ADV C N5, probe N4)", async () => {
     const one = await open();
     const two = await open();
-    const journal = memoryJournal();
+    const journal = createSendJournal();
 
     const connection = kept(
       await connect({

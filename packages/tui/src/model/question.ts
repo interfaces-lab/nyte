@@ -1,25 +1,92 @@
-/**
- * The one current question. `openQuestions(view)` from
- * `@nyte-ai/plugin/question` is the only rule for "still open". The head's own
- * questions come first, then a child's (from the task views). The panel, the
- * placeholder, Enter's meaning and the OSC 7501 status all read this value.
- */
-import type { PartId, SessionId, SessionView } from "@nyte-ai/sdk";
-import { openQuestions } from "@nyte-ai/plugin/question";
+import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
+import type { QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../lib/format.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { ListDialog } from "./dialogs/list.ts";
-import type { QuestionLocal } from "./state.ts";
+import type { QuestionDraft, QuestionFieldDraft, QuestionLocal, QuestionRequest } from "./state.ts";
 
-export interface QuestionModel {
-  readonly session: SessionId;
-  readonly part: PartId;
-  readonly prompt: string;
-  readonly options: readonly string[];
-  /** "head", or the child's short id for "Subagent <short>: …". */
+export interface QuestionModel extends QuestionRequest {
+  readonly questions: readonly QuestionInfo[];
+  readonly field: QuestionInfo;
+  readonly index: number;
   readonly owner: { readonly kind: "head" } | { readonly kind: "child"; readonly short: string };
-  /** The panel shows unless the user pressed Esc on this very part. */
   readonly panel: boolean;
+}
+
+export function sameQuestion(
+  left: QuestionRequest | null | undefined,
+  right: QuestionRequest | null | undefined,
+): boolean {
+  return left?.session === right?.session && left?.part === right?.part;
+}
+
+export function readQuestionDraft(
+  local: QuestionLocal,
+  request: QuestionRequest,
+): QuestionDraft | undefined {
+  return local.drafts.get(request.session)?.get(request.part);
+}
+
+export function storeQuestionDraft(
+  local: QuestionLocal,
+  request: QuestionRequest,
+  draft: QuestionDraft,
+): QuestionLocal {
+  const drafts = new Map(local.drafts);
+
+  const session = new Map(drafts.get(request.session));
+  session.set(request.part, draft);
+  drafts.set(request.session, session);
+
+  return { ...local, drafts };
+}
+
+function createFieldDraft(field: QuestionInfo): QuestionFieldDraft {
+  return field.multiple === true
+    ? { kind: "multiple", options: [], customText: "", customSelected: false }
+    : { kind: "single", selection: { kind: "empty" }, customText: "" };
+}
+
+export function createQuestionDraft(questions: readonly QuestionInfo[]): QuestionDraft {
+  return { active: 0, fields: questions.map(createFieldDraft), phase: "editing" };
+}
+
+export function selectQuestionAnswer(
+  field: QuestionFieldDraft,
+  value: string,
+  typed: boolean,
+): QuestionFieldDraft {
+  if (field.kind === "multiple")
+    return typed
+      ? { ...field, customText: value, customSelected: true }
+      : {
+          ...field,
+          options: field.options.includes(value)
+            ? field.options.filter((option) => option !== value)
+            : [...field.options, value],
+        };
+
+  return {
+    ...field,
+    selection: typed ? { kind: "custom" } : { kind: "option", value },
+    customText: typed ? value : field.customText,
+  };
+}
+
+export function collectQuestionAnswers(draft: QuestionDraft): QuestionAnswers {
+  return draft.fields.map((field) => {
+    const custom = field.customText.trim();
+
+    if (field.kind === "multiple")
+      return [
+        ...new Set([...field.options, ...(field.customSelected && custom !== "" ? [custom] : [])]),
+      ];
+
+    if (field.selection.kind === "option") return [field.selection.value];
+
+    return field.selection.kind === "custom" && custom !== "" ? [custom] : [];
+  });
 }
 
 export function currentQuestion(
@@ -27,69 +94,126 @@ export function currentQuestion(
   tasks: readonly Task[],
   local: QuestionLocal,
 ): QuestionModel | null {
-  const own = head?.view === null || head === null ? undefined : openQuestions(head.view)[0];
+  const owners = [
+    ...(head === null
+      ? []
+      : [{ session: head.id, view: head.view ?? undefined, owner: { kind: "head" as const } }]),
+    ...tasks.flatMap((task) =>
+      task.kind === "agent" && task.view !== undefined
+        ? [
+            {
+              session: task.id,
+              view: task.view,
+              owner: { kind: "child" as const, short: shortId(task.id) },
+            },
+          ]
+        : [],
+    ),
+  ];
 
-  if (head !== null && own !== undefined)
-    return {
-      session: head.id,
-      ...own,
-      owner: { kind: "head" },
-      panel: own.part !== local.dismissed,
-    };
+  for (const owner of owners) {
+    for (const request of openQuestions(owner.view)) {
+      const identity = { session: owner.session, part: request.part };
 
-  for (const task of tasks) {
-    if (task.kind !== "agent" || task.view === undefined) continue;
-    const asked = openQuestions(task.view)[0];
+      const draft = readQuestionDraft(local, identity);
 
-    if (asked !== undefined)
+      if (draft?.phase === "answered") continue;
+
+      const index = draft?.active ?? 0;
+
+      const field = request.questions[index];
+
+      if (field === undefined) continue;
+
       return {
-        session: task.id,
-        ...asked,
-        owner: { kind: "child", short: shortId(task.id) },
-        panel: asked.part !== local.dismissed,
+        ...request,
+        ...identity,
+        field,
+        index,
+        owner: owner.owner,
+        panel: !sameQuestion(identity, local.dismissed),
       };
+    }
   }
 
   return null;
 }
 
-/** The panel's title: the prompt, named for a subagent's question. */
 export function questionTitle(question: QuestionModel): string {
   return question.owner.kind === "head"
-    ? question.prompt
-    : `Subagent ${question.owner.short}: ${question.prompt}`;
+    ? question.field.question
+    : `Subagent ${question.owner.short}: ${question.field.question}`;
 }
 
-/**
- * The question panel as the list dialog it is drawn and reduced as. It is
- * derived, never pushed: a question that opens while another dialog is up
- * shows as soon as the stack empties.
- */
 export function questionPanel(
   question: QuestionModel | null,
   local: QuestionLocal,
 ): ListDialog | null {
   if (question === null || !question.panel) return null;
 
+  const draft = readQuestionDraft(local, question);
+
+  const field = draft?.fields[question.index] ?? createFieldDraft(question.field);
+
+  const customSelected =
+    field.kind === "multiple" ? field.customSelected : field.selection.kind === "custom";
+
+  const options = question.field.options.map((option, index) => ({
+    id: `option:${index}`,
+    label: option.label,
+    description: option.description,
+    timing: null,
+    status: null,
+    mark: {
+      glyph: (
+        field.kind === "multiple"
+          ? field.options.includes(option.label)
+          : field.selection.kind === "option" && field.selection.value === option.label
+      )
+        ? "✓"
+        : "○",
+      tone: "muted" as const,
+    },
+  }));
+
+  const actions = [
+    {
+      id: "custom",
+      label: "Type an answer",
+      description: field.customText,
+      timing: null,
+      status: null,
+      mark: { glyph: customSelected ? "✓" : "○", tone: "muted" as const },
+    },
+    {
+      id: "next",
+      label: question.index === question.questions.length - 1 ? "Submit" : "Next",
+      description: "",
+      timing: null,
+      status: null,
+      mark: null,
+    },
+    ...(question.index > 0
+      ? [{ id: "back", label: "Back", description: "", timing: null, status: null, mark: null }]
+      : []),
+  ];
+
+  const progress =
+    question.questions.length > 1 ? `${question.index + 1}/${question.questions.length} · ` : "";
+
   return {
     kind: "list",
     id: `question:${question.part}`,
-    purpose: { kind: "question", session: question.session, part: question.part, typed: true },
-    title: questionTitle(question),
-    choices: {
-      kind: "ready",
-      items: question.options.map((option) => ({
-        id: option,
-        label: option,
-        description: "",
-        status: null,
-        mark: null,
-      })),
-    },
-    query: local.query,
+    purpose: { kind: "question", session: question.session, part: question.part },
+    title: `${progress}${questionTitle(question)}`,
+    choices: { kind: "ready", items: [...options, ...actions] },
+    query: "",
     highlighted: local.highlighted,
-    answering: local.answering ?? "",
-    caret: local.caret,
-    busy: false,
+    detailScroll:
+      local.detailScroll?.part === question.part && local.detailScroll.index === question.index
+        ? local.detailScroll.request
+        : undefined,
+    answering: null,
+    busy: draft?.phase === "submitting",
   };
 }

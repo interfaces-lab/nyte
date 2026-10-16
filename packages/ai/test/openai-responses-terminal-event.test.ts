@@ -366,7 +366,6 @@ describe("OpenAI Responses terminal event handling", () => {
     );
   });
 
-  // https://github.com/earendil-works/pi/issues/9974
   it("rejects parallel tool calls without output_index instead of running mixed-up calls", async () => {
     const call = (n: string) => ({
       type: "function_call",

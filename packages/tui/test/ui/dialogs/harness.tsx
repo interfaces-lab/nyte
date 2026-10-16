@@ -1,9 +1,3 @@
-/**
- * Renders `<DialogHost>` (or any node) under an `AppProvider` whose screen is
- * derived from a real `State` with the given dialog stack. Dispatches are
- * recorded; `send` reduces the top dialog with the model's own reducer, so a
- * test exercises filtering, movement and typing exactly as the keymap would.
- */
 import type { TestRendererSetup } from "@opentui/core/testing";
 import type { JSX } from "@opentui/solid";
 import { createMemo, createSignal } from "solid-js";
@@ -11,7 +5,7 @@ import { AppProvider } from "../../../src/app/context.tsx";
 import type { App, Kit } from "../../../src/app/context.tsx";
 import { DARK_THEME } from "../../../src/lib/theme.ts";
 import { reduceDialog } from "../../../src/model/dialogs/dialog.ts";
-import type { Dialog, DialogCommand } from "../../../src/model/dialogs/dialog.ts";
+import type { Dialog, DialogCommand, DialogInput } from "../../../src/model/dialogs/dialog.ts";
 import type { Msg } from "../../../src/model/msg.ts";
 import { deriveScreen } from "../../../src/model/screen.ts";
 import type { State } from "../../../src/model/state.ts";
@@ -21,9 +15,7 @@ import { stateOf } from "../../fixture/state.ts";
 
 export interface DialogHarness extends TestRendererSetup {
   readonly dispatched: Msg[];
-  /** Reduces the top dialog as the keymap would, then redraws. */
-  send(command: DialogCommand): Promise<void>;
-  /** Replaces the stack, then redraws. */
+  send(command: DialogInput): Promise<void>;
   show(dialogs: readonly Dialog[]): Promise<void>;
   frame(): string;
 }
@@ -32,7 +24,6 @@ export interface DialogOptions {
   readonly width?: number;
   readonly height?: number;
   readonly state?: State;
-  /** What to render instead of the host: a view that takes more than the dialog. */
   readonly node?: () => JSX.Element;
 }
 
@@ -45,10 +36,10 @@ export function query(text: string): DialogCommand {
 }
 
 export async function renderDialog(
-  dialog: Dialog | null,
+  dialog: Dialog,
   options: DialogOptions = {},
 ): Promise<DialogHarness> {
-  const [stack, setStack] = createSignal<readonly Dialog[]>(dialog === null ? [] : [dialog]);
+  const [stack, setStack] = createSignal<readonly Dialog[]>([dialog]);
   const base = options.state ?? stateOf(null);
 
   const screen = createMemo(() =>
@@ -109,7 +100,6 @@ export async function renderDialog(
   };
 }
 
-/** The frame's rows without trailing blanks, for assertions on one line. */
 export function rows(frame: string): string[] {
   return frame.split("\n").map((row) => row.trimEnd());
 }

@@ -1,16 +1,3 @@
-/**
- * The project's tabs in the titlebar, where the desktop's window tabs live.
- * The desktop's strip is reused as is: its styles, its Tabs primitives, and
- * its drag-to-reorder. On top of it sit the switches this lab compares:
- *
- * - Pill is the shipped tab: a 28px pill that wears the main card when active.
- * - Connected is define.app's: the active tab reaches the card and curves into
- *   it, and the card squares the corner where the tab sits flush.
- * - Fit shrinks tabs to 72px before the list scrolls, as the desktop does;
- *   Fixed holds 152 to 180px and scrolls sooner, as define does.
- * - Past the edge, the list scrolls under a fade with the active tab pinned
- *   to the edge it meets, or the extra tabs fold into a menu.
- */
 import { create, props } from "@stylexjs/stylex";
 import {
   useEffect,
@@ -44,7 +31,6 @@ export interface TabItem {
   readonly title: string;
   readonly glyph: ReactNode;
   readonly closable: boolean;
-  /** A line under the title in the tooltip, so a crowded strip can be read without switching. */
   readonly preview?: string;
 }
 
@@ -61,19 +47,16 @@ export interface TabDesign {
   readonly separators: boolean;
 }
 
-/** Mirrors `--nyte-shape-card`; a path cannot read a custom property. */
 const CORNER = 12;
 
 const TAB_MIN = 152;
 
 const TAB_MAX = 180;
 
-/** How close to an edge the active tab may come before it pins there. */
 const EDGE = 20;
 
 const FADE = 28;
 
-/** The corner between the tab's wall and the card, filled and then traced along the arc. */
 const CURVE_LEFT = `M${CORNER} 0V${CORNER}H0A${CORNER} ${CORNER} 0 0 0 ${CORNER} 0Z`;
 
 const ARC_LEFT = `M0 ${CORNER}A${CORNER} ${CORNER} 0 0 0 ${CORNER} 0`;
@@ -97,7 +80,6 @@ export function useScrollEdges(
     if (node === null) return;
 
     const read = (): void => {
-      // Absolute, so a column-reverse scroller reports its edges too, mirrored.
       const offset = Math.abs(axis === "x" ? node.scrollLeft : node.scrollTop);
       const extent = axis === "x" ? node.scrollWidth : node.scrollHeight;
       const frame = axis === "x" ? node.clientWidth : node.clientHeight;
@@ -128,7 +110,6 @@ export function useScrollEdges(
   return edges;
 }
 
-/** Whether the active tab is touching the list's left or right edge. */
 function useStuck(
   ref: RefObject<HTMLElement | null>,
   activeId: string,
@@ -176,7 +157,6 @@ function useStuck(
   return stuck;
 }
 
-/** A new tab scrolls to the centre; a newly active one scrolls just far enough to clear the edge. */
 function useReveal(
   ref: RefObject<HTMLElement | null>,
   ids: readonly string[],
@@ -220,7 +200,6 @@ function useReveal(
   }, [ref, activeId]);
 }
 
-/** How many fixed-width tabs fit in the list, for the menu switch. */
 function useCapacity(ref: RefObject<HTMLElement | null>): number {
   const [capacity, setCapacity] = useState(Number.POSITIVE_INFINITY);
 
@@ -304,7 +283,6 @@ function TabView({
             onPointerEnter={() => onHover(tab.id)}
             onPointerLeave={() => onHover(undefined)}
             onMouseDown={(event) => {
-              // Middle-click closes; stop the browser's autoscroll from starting first.
               if (event.button === 1) event.preventDefault();
             }}
             onAuxClick={(event) => {
@@ -318,6 +296,7 @@ function TabView({
           <TooltipTrigger
             render={
               <Tabs.Tab
+                variant="bare"
                 value={tab.id}
                 aria-label={tab.title}
                 xstyle={[
@@ -405,7 +384,6 @@ export function TabStrip({
   readonly onCloseRight: (id: string) => void;
   readonly onReorder: (ids: readonly string[]) => void;
   readonly onAdd: (() => void) | undefined;
-  /** The card squares its top-left corner while the active tab sits flush against it. */
   readonly onCornerChange: (square: boolean) => void;
 }): ReactElement {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -420,7 +398,6 @@ export function TabStrip({
     const head = tabs.slice(0, capacity);
     const active = tabs[activeIndex];
 
-    // The active tab always stays in view: it takes the last visible slot.
     return activeIndex >= capacity && active !== undefined ? [...head.slice(0, -1), active] : head;
   })();
 
@@ -437,7 +414,6 @@ export function TabStrip({
     onCornerChange(square);
   }, [square, onCornerChange]);
 
-  // The fade on an edge gives way when the active tab is pinned there.
   const fadeLeft = edges.fromStart && !stuck.left ? FADE : 0;
   const fadeRight = edges.fromEnd && !stuck.right ? FADE : 0;
 
@@ -554,7 +530,6 @@ const styles = create({
   fade: (left: number, right: number) => ({
     maskImage: `linear-gradient(to right, transparent 0, black ${String(left)}px, black calc(100% - ${String(right)}px), transparent 100%)`,
   }),
-  /** Connected tabs stand on the titlebar's floor, where the card begins; the end keeps room for the last curve. */
   listConnected: { alignItems: "flex-end", gap: 0, paddingInlineEnd: CORNER },
   slotFixed: { flex: `0 1 ${String(TAB_MAX)}px`, minWidth: TAB_MIN },
   slotConnected: {
@@ -574,7 +549,6 @@ const styles = create({
     borderStartEndRadius: radius.card,
     backgroundColor: { default: "transparent", ":hover": "transparent" },
   },
-  /** The active tab's hairline runs up its sides and over the top; the card's own closes the loop. */
   connectedActive: {
     backgroundColor: { default: role.bgBase, ":hover": role.bgBase },
     boxShadow: `inset 1px 0 0 ${role.borderSecondaryTranslucent}, inset -1px 0 0 ${role.borderSecondaryTranslucent}, inset 0 1px 0 ${role.borderSecondaryTranslucent}`,
@@ -608,7 +582,7 @@ const styles = create({
     transitionDuration: motion.durationNormal,
   },
   separatorHidden: { opacity: 0 },
-  more: { flexShrink: 0, WebkitAppRegion: "no-drag" },
+  more: { flexShrink: 0 },
   tip: { display: "flex", flexDirection: "column", gap: 2, maxWidth: 260, whiteSpace: "normal" },
   tipPreview: { color: role.contentSecondary, fontSize: type.fontXs },
 });

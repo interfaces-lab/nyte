@@ -1,6 +1,5 @@
 const SEARCH_URL = "https://duckduckgo.com/?q=";
 
-/** URL with a web scheme, normalized; anything else, such as a new tab's about:blank, is undefined. */
 export function parseWebUrl(value: string): string | undefined {
   try {
     const url = new URL(value);

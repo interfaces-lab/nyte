@@ -15,15 +15,9 @@ import { localSnapshots } from "./snapshots.ts";
 
 const PLUGIN_FILE = /\.(?:ts|mts|js|mjs)$/;
 
-const ROOT_SOURCES = [
-  ".nyte/SYSTEM.md",
-  ".nyte/APPEND_SYSTEM.md",
-  "AGENTS.override.md",
-  "AGENTS.md",
-  "CLAUDE.md",
-];
+const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
-/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md`, `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md`. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`); no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
+/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`); no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
 export function localProvider(options?: {
   readonly home?: string;
   readonly git?: string;
@@ -91,7 +85,6 @@ export function localProvider(options?: {
   };
 }
 
-/** Returns a local target's path, or null for a target without one. */
 function pathOf(target: WorkspaceTarget): string | null {
   return "path" in target && typeof target.path === "string" ? target.path : null;
 }
@@ -109,7 +102,6 @@ async function readableDirectory(path: string): Promise<boolean> {
   );
 }
 
-/** Returns the project sources present under a folder, relative to it, as `localProvider` lists them. */
 async function projectSources(root: string): Promise<readonly string[]> {
   const names = async (directory: string): Promise<readonly string[]> =>
     (await readdir(join(root, directory)).catch(() => [])).sort((left, right) =>

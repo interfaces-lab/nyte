@@ -6,6 +6,7 @@ import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
+import { storedAccounts } from "../../ai/test/credential-fixture.ts";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
@@ -25,7 +26,6 @@ async function folder(): Promise<string> {
 
 const TOKEN = "a-token-of-16-chars";
 
-/** Returns the host's current view, the first `watch()` yields. */
 async function viewOf(host: Host): Promise<HostView> {
   for await (const view of host.watch()) return view;
 
@@ -99,8 +99,10 @@ describe("openHost", () => {
       join(home, ".nyte", "settings.json"),
       JSON.stringify({ "skills.paths": ["/seeded"], nope: 1 }),
     );
+
     const paths = async (host: Host) =>
       (await viewOf(host)).settings.find((setting) => setting.id === "skills.paths")?.value;
+
     const first = await open(home, store);
 
     expect(await paths(first)).toEqual(["/seeded"]);
@@ -154,7 +156,7 @@ describe("openHost", () => {
     });
   });
 
-  it("defaults to ai's Nyte providers over this host's credential store", async () => {
+  it("defaults to ai's Nyte providers and Claude Code over this host's credential store", async () => {
     const home = await folder();
 
     await using host = await openHost({
@@ -164,9 +166,10 @@ describe("openHost", () => {
       home,
     });
 
-    expect((await host.models.list()).providers.map((provider) => provider.id)).toEqual(
-      nyteProviders().map((provider) => provider.id),
-    );
+    expect((await host.models.list()).providers.map((provider) => provider.id)).toEqual([
+      ...nyteProviders().map((provider) => provider.id),
+      "claude-code",
+    ]);
   });
 
   it("restores a credentialed provider's saved catalog at open, with no network call", async () => {
@@ -199,10 +202,13 @@ describe("openHost", () => {
         },
       }),
     );
-    await credentialStore(store, defaultSecrets(home)).modify("opencode", async () => ({
-      type: "api_key",
-      key: "saved-key",
-    }));
+    await credentialStore(store, defaultSecrets(home)).modify("opencode", async () =>
+      storedAccounts({
+        type: "api_key",
+        key: "saved-key",
+      }),
+    );
+
     const options = {
       store,
       plugins: [chatOnly],
@@ -213,6 +219,7 @@ describe("openHost", () => {
     try {
       await (await openHost(options)).close();
       await using host = await openHost(options);
+
       const opencode = (await host.models.list()).providers.find(
         (provider) => provider.id === "opencode",
       );
@@ -238,7 +245,7 @@ describe("openHost", () => {
     expect(workspace?.target).toEqual({ kind: "local", path: process.cwd() });
   });
 
-  it("loads a local workspace's plugin files as project plugins", async () => {
+  it("loads a local workspace's plugin files only once the folder is trusted", async () => {
     const home = await folder();
     const workspace = await folder();
     await mkdir(join(workspace, ".nyte", "plugins"), { recursive: true });
@@ -255,19 +262,30 @@ describe("openHost", () => {
       home,
     });
 
-    expect((await viewOf(host)).plugins.find((row) => row.id === "mine")).toMatchObject({
-      source: "project",
-      path: join(workspace, ".nyte", "plugins", "mine.mjs"),
+    const [info] = await host.workspaces.list();
+    await host.sessions.create({ workspace: info.id });
+
+    expect(info.projectResources).toBeNull();
+    expect(info.projectSources).toContain(".nyte/plugins/mine.mjs");
+    expect((await viewOf(host)).plugins.map((row) => row.id)).not.toContain("mine");
+
+    expect(await host.workspace(info.id).update({ projectResources: true })).toEqual({
+      kind: "updated",
     });
+    await host.sessions.create({ workspace: info.id });
+
+    expect((await viewOf(host)).plugins.map((row) => row.id)).toContain("mine");
   });
 
   it("listens with an identity from <home>/.nyte/identity.key and X-Nyte-Host on every answer", async () => {
     const home = await folder();
     await using host = await open(home);
+
     await using listener = await host.listen({
       transport: { kind: "fetch" },
       auth: { kind: "token", token: TOKEN },
     });
+
     const identity = await listener.fetch(new Request("http://host.test/.nyte/identity?nonce=n1"));
     const answer: unknown = await identity.json();
 
@@ -302,6 +320,7 @@ describe("openHost", () => {
     ).toBe(true);
 
     const described = await listener.fetch(new Request("http://host.test/.nyte/describe"));
+
     const refused = await listener.fetch(
       new Request("http://host.test/sessions.list", { method: "POST", body: "{}" }),
     );
@@ -329,6 +348,7 @@ describe("openHost", () => {
         },
       },
     });
+
     await using listener = await host.listen({
       transport: { kind: "fetch" },
       auth: { kind: "token", token: TOKEN },
@@ -355,19 +375,23 @@ describe("openHost", () => {
     };
 
     for (const provider of ["opencode", "test"])
-      await credentialStore(store, secrets).modify(provider, async () => ({
-        type: "api_key",
-        key: "saved-key",
-      }));
+      await credentialStore(store, secrets).modify(provider, async () =>
+        storedAccounts({
+          type: "api_key",
+          key: "saved-key",
+        }),
+      );
     reads = 0;
     const workspace = { kind: "chat-only", locator: null } as const;
     const options = { store, plugins: [chatOnly], workspace, home, secrets };
 
     const restored = await openHost(options);
+
     const listener = await restored.listen({
       transport: { kind: "fetch" },
       auth: { kind: "token", token: TOKEN },
     });
+
     const listed = await restored.models.list();
 
     expect(listed.providers.find((row) => row.id === "opencode")?.credential).toBe("configured");
@@ -380,6 +404,7 @@ describe("openHost", () => {
     const fake = fakeModels({
       into: createModels({ credentials: credentialStore(store, secrets) }),
     });
+
     await using host = await openHost({ ...options, models: fake.models });
 
     expect((await host.models.list()).providers[0]?.credential).toBe("configured");
@@ -400,6 +425,7 @@ describe("openHost", () => {
 
     expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
     await writeFile(join(dir, "hot.mjs"), 'export default { id: "hot" };\n');
+
     const landed = await viewWhere(
       host,
       (view) => view.catalog !== before.catalog && view.plugins.some((row) => row.id === "hot"),
@@ -415,6 +441,7 @@ describe("openHost", () => {
     await writeFile(broken, "export default {;\n");
     await viewWhere(host, (view) => view.plugins.some((row) => row.id === broken));
     await writeFile(broken, 'export default { id: "mended" };\n');
+
     const mended = await viewWhere(
       host,
       (view) =>
@@ -426,7 +453,6 @@ describe("openHost", () => {
   });
 });
 
-/** Returns the first host view `matches` accepts, failing after 5 s. */
 async function viewWhere(host: Host, matches: (view: HostView) => boolean): Promise<HostView> {
   const views = host.watch()[Symbol.asyncIterator]();
   const deadline = setTimeout(() => void views.return?.(), 5000);

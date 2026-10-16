@@ -1,7 +1,3 @@
-// node scripts/build-e2e.mjs
-// Builds main over the offline catalog into out-e2e/main, next to links to the
-// preload and renderer of the regular build, so one entry runs the shipped UI
-// against scripted replies. Needs `pnpm build` first.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, rm, symlink } from "node:fs/promises";

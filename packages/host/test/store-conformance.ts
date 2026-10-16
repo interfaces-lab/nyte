@@ -1,6 +1,6 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
-import { objectId } from "@nyte-ai/core";
+import { envelope, objectId } from "@nyte-ai/core";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 
@@ -14,7 +14,6 @@ const moved: DurableEvent = { head: null, kind: "head", from: null, to: null, re
 
 const removed: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "removed" };
 
-/** Registers the store conformance suite under `name`, each case against a fresh store from `open` (closed after): core's memory-store cases (ids shared with `objectId` whatever the key order, null for an unknown object or blob, a revision per entry, `absent` and revision mismatches answering `stale` with nothing written, deletion by a null target, prefix listing in name order, the log's per-session seq in entry order with `after` and `limit`, blobs round-tripped under their content hash), comparing objects by value rather than identity; repeated names in one batch (every `expect` checked against the refs before the batch, the last entry winning, a revision per entry, every event logged); and two concurrent sets under one `expect`, exactly one of them `set`. */
 export function storeConformance(name: string, open: () => Promise<Store>): void {
   describe(name, () => {
     const stores: Store[] = [];
@@ -28,6 +27,129 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
     afterEach(async () => {
       for (const store of stores.splice(0)) await store.close();
+    });
+
+    it("indexes current session roots with keyset pages and versions for every session write", async () => {
+      const { objects, refs, sessions } = await connect();
+      const body = {
+        name: null,
+        parent: null,
+        origin: null,
+        workspace: "w",
+        pinned: false,
+        archived: false,
+        createdAt: 1,
+        lastActivityAt: 10,
+        heads: [],
+        prompt: null,
+      };
+      const first = await objects.put(envelope("session", { ...body, id: "a" }, 1));
+      const second = await objects.put(envelope("session", { ...body, id: "b" }, 1));
+      const child = await objects.put(
+        envelope("session", { ...body, id: "c", parent: "a", lastActivityAt: 20 }, 1),
+      );
+      await refs.set([
+        { name: "sessions/a", target: first },
+        { name: "sessions/b", target: second },
+        { name: "sessions/c", target: child },
+        { name: "sessions/a/parts/history", target: first },
+      ]);
+      const roots = await sessions.list({ parents: { kind: "roots" }, limit: 1 });
+      expect(roots.map((row) => row.ref.name)).toEqual(["sessions/a"]);
+      expect(
+        (await sessions.list({ parents: { kind: "all" }, limit: 10 })).map((row) => row.ref.name),
+      ).toEqual(["sessions/c", "sessions/a", "sessions/b"]);
+      expect(
+        (await sessions.list({ parents: { kind: "children", session: asId("a") }, limit: 10 })).map(
+          (row) => row.ref.name,
+        ),
+      ).toEqual(["sessions/c"]);
+      expect(
+        (
+          await sessions.list({
+            parents: { kind: "roots" },
+            after: { at: 10, id: asId("a") },
+            limit: 10,
+          })
+        ).map((row) => row.ref.name),
+      ).toEqual(["sessions/b"]);
+      await refs.set([{ name: "sessions/a/seen/device/main", target: first }]);
+      const changed = await sessions.list({ parents: { kind: "roots" }, limit: 1 });
+      expect(changed[0]?.ref).toEqual(roots[0]?.ref);
+      expect(changed[0]?.version).not.toBe(roots[0]?.version);
+      expect(
+        await refs.set([{ name: "sessions/a", target: second, expect: "absent" }]),
+      ).toMatchObject({ kind: "stale" });
+      expect(await sessions.list({ parents: { kind: "roots" }, limit: 1 })).toEqual(changed);
+      await refs.set([{ name: "sessions/a", target: null }]);
+      expect(
+        (await sessions.list({ parents: { kind: "roots" }, limit: 10 })).map((row) => row.ref.name),
+      ).toEqual(["sessions/b"]);
+    });
+
+    it("finds only outstanding work, including archived sessions, and removes settled receipts atomically", async () => {
+      const { objects, refs, sessions } = await connect();
+      for (const id of ["a", "b", "idle"]) {
+        const target = await objects.put(
+          envelope(
+            "session",
+            {
+              id,
+              name: null,
+              parent: null,
+              origin: null,
+              workspace: "w",
+              pinned: false,
+              archived: id === "a",
+              createdAt: 1,
+              lastActivityAt: 1,
+              heads: [],
+              prompt: null,
+            },
+            1,
+          ),
+        );
+        await refs.set([{ name: `sessions/${id}`, target }]);
+      }
+      const pending = await objects.put(
+        envelope("receipt", { id: "r", digest: "d", kind: "move", outcome: null }, 1),
+      );
+      const settled = await objects.put(
+        envelope(
+          "receipt",
+          {
+            id: "r",
+            digest: "d",
+            kind: "move",
+            outcome: { kind: "summary-failed", reason: "done" },
+          },
+          1,
+        ),
+      );
+      await refs.set([
+        { name: "sessions/a/receipts/r", target: pending },
+        { name: "sessions/b/receipts/r", target: pending },
+        { name: "sessions/idle/receipts/r", target: settled },
+      ]);
+      expect((await sessions.work({ limit: 1 })).map((ref) => ref.name)).toEqual(["sessions/a"]);
+      expect((await sessions.work({ after: asId("a"), limit: 10 })).map((ref) => ref.name)).toEqual(
+        ["sessions/b"],
+      );
+      expect(
+        (await sessions.pending({ kind: "receipt", sessions: [asId("a")] })).map((ref) => ref.name),
+      ).toEqual(["sessions/a/receipts/r"]);
+      expect(
+        await refs.set([{ name: "sessions/a/receipts/r", target: settled, expect: "absent" }]),
+      ).toMatchObject({ kind: "stale" });
+      expect((await sessions.work({ limit: 10 })).map((ref) => ref.name)).toEqual([
+        "sessions/a",
+        "sessions/b",
+      ]);
+      await refs.set([{ name: "sessions/a/receipts/r", target: settled }]);
+      expect((await sessions.work({ limit: 10 })).map((ref) => ref.name)).toEqual(["sessions/b"]);
+      expect(await sessions.pending({ kind: "receipt", sessions: [asId("a")] })).toEqual([]);
+      await refs.set([{ name: "sessions/b", target: null }]);
+      expect(await sessions.work({ limit: 10 })).toEqual([]);
     });
 
     it("puts an object once per content, whatever its key order", async () => {
@@ -168,6 +290,21 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
         "kv/b",
       ]);
       expect(await refs.list("kv/c")).toEqual([]);
+    });
+
+    it("lists a prefix that ends in U+FFFF", async () => {
+      const { objects, refs } = await connect();
+      const target = await objects.put(2);
+      await refs.set([
+        { name: "kv/\uFFFF", target },
+        { name: "kv/\uFFFF/a", target },
+        { name: "kv/\u{10000}", target },
+      ]);
+
+      expect((await refs.list("kv/\uFFFF")).map((ref) => ref.name)).toEqual([
+        "kv/\uFFFF",
+        "kv/\uFFFF/a",
+      ]);
     });
 
     it("logs events in entry order with a seq per session", async () => {

@@ -54,7 +54,6 @@ function nodeText(node: ReactNode): string {
   return "";
 }
 
-/** The scheme of a link the model writes to name an agent it created. */
 const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
@@ -335,7 +334,6 @@ const markdownComponents = {
 
 const remarkPlugins = [remarkGfm];
 
-/** Keeps `agent:` links, which name a child session; every other URL gets the default scrub. */
 const urlTransform: UrlTransform = (url) =>
   url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url);
 

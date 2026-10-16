@@ -1,11 +1,3 @@
-/**
- * The runtime shell: one page every client loads in a sandboxed frame. It
- * installs the globals compiled canvases read, speaks the canvas protocol
- * with its client, applies the client's theme as the app does, imports the
- * module it is handed through a blob URL, mounts its default export inside an
- * error boundary, and reports its height, its errors and the links it wants
- * opened.
- */
 import "./shell.css";
 import "@nyte-ai/ui/styles/tokens.stylex";
 import React, { Component, StrictMode } from "react";
@@ -26,8 +18,8 @@ import {
   openLinkRequest,
   readHostMessage,
   sizeChangedNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
-import type { CanvasHostContext, CanvasModule } from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, CanvasModule } from "@nyte-ai/plugin/canvas/protocol";
 import { kit } from "../kit/index.ts";
 import { SchemeContext } from "../kit/scheme.ts";
 
@@ -204,7 +196,6 @@ async function load(module: CanvasModule): Promise<void> {
   moduleUrl = URL.createObjectURL(new Blob([module.code], { type: "text/javascript" }));
 
   try {
-    // The one dynamic import in the feature: the compiled module exists only as this blob.
     const imported: unknown = await import(/* @vite-ignore */ moduleUrl);
     const Canvas =
       typeof imported === "object" && imported !== null && "default" in imported

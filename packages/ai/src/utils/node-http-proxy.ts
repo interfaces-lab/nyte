@@ -1,8 +1,5 @@
 /**
  * Resolves the HTTP(S) proxy URL for a target from the usual proxy environment variables, honoring NO_PROXY.
- *
- * Based on https://github.com/earendil-works/pi/blob/a63fb12c135b27aef26a2aa71d8c72f747e96e99/packages/ai/src/utils/node-http-proxy.ts
- * Synced with pi a63fb12c1.
  */
 import type { ProviderEnv } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";

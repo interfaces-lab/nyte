@@ -1,5 +1,5 @@
 /**
- * Fetch-only Copilot OAuth from Pi 71dca871bc80b6bc97be37f0ca3189399d651fff.
+ * Fetch-only Copilot OAuth.
  * Hosts own interaction and storage; login and refresh publish only complete credentials.
  */
 import { Type, type Static } from "typebox";
@@ -15,7 +15,6 @@ import { raceWithAbortSignal } from "../../utils/abort.ts";
 import type { AuthEvent, OAuthAuth } from "../types.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 
-/** Pi's public Copilot client, not a Nyte-owned OAuth application. */
 const DEFAULT_CLIENT_ID = "Iv1.b507a08c87ecfe98";
 
 const DEVICE_CODE_LIFETIME_SECONDS = 15 * 60;

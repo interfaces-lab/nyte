@@ -5,11 +5,8 @@ import { workbenchController, workbenchViewKey } from "./controller.ts";
 
 interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
-  /** Newest first. A finished download stays until dismissed. */
   readonly downloads: readonly BrowserDownload[];
-  /** The find bar is open; set by the find shortcut from the page or the panel. */
   readonly finding: boolean;
-  /** An HTTP authentication challenge waiting for the user. */
   readonly login: { readonly host: string; readonly realm: string } | undefined;
 }
 
@@ -26,7 +23,6 @@ let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 
 const listeners = new Set<() => void>();
 
-/** The panel showing each surface; it takes the keys that surface's page forwards. */
 const keyListeners = new Map<string, (key: BrowserKey) => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
@@ -100,7 +96,6 @@ export function applyBrowserEvent(
   const { state } = event;
 
   if (!owned && state.agentHolders === 0) return;
-  // A new load ends any challenge the previous one left open.
   const login = state.loading ? undefined : held.login;
   set(event.surface, { ...held, state, login });
 
@@ -145,16 +140,10 @@ export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" 
   keyListeners.get(event.surface)?.(event.key);
 }
 
-/** The panel is opening this surface, so its events land before the open answers. */
 export function claimBrowserSurface(surface: string): void {
   if (!views.has(surface)) set(surface, EMPTY);
 }
 
-/**
- * An agent opened a page. The workspace's Browser tab follows it: an open one
- * navigates in place, otherwise one is added without being shown. Nothing
- * reveals the workbench; the user opens the tab when they want to watch.
- */
 export function applyBrowserAgentOpened(
   controller: Pick<WorkbenchController, "actions" | "getView">,
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,

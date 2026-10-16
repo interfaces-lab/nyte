@@ -31,11 +31,6 @@ export class ExpectedHostError extends Error {
   }
 }
 
-/**
- * Returns the failure the renderer sees: a main-owned error as written, an
- * `SdkError` as its code and message, and anything else as `internal` with
- * a diagnostic id whose cause stays in this process.
- */
 export function ipcFailure(cause: unknown): IpcFailure {
   if (cause instanceof ExpectedHostError) return cause.error;
 

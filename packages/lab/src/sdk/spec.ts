@@ -1,7 +1,3 @@
-/**
- * Reads `sdk-spec.ts` into the blocks the page renders. Every rendered line
- * keeps its number in the file, so a grabbed line names the exact place to edit.
- */
 
 export interface SpecLine {
   readonly number: number;
@@ -9,6 +5,7 @@ export interface SpecLine {
 }
 
 export type SpecBlock =
+  | { readonly kind: "code"; readonly id: string; readonly code: readonly SpecLine[] }
   | { readonly kind: "part"; readonly id: string; readonly line: SpecLine }
   | {
       readonly kind: "section";
@@ -30,16 +27,17 @@ export type SpecBlock =
       readonly code: readonly SpecLine[];
     };
 
-const TOP_LEVEL = /^(?:\/|async function |function |type |interface |declare |const |class )/;
+const TOP_LEVEL =
+  /^(?:\/|import |export default |(?:export )?(?:async function |function |type |interface |declare |const |class ))/;
 
 const DECLARATION =
-  /^(?:async function|function|type|interface|declare const|const|class) ([A-Za-z_$][\w$]*)/;
+  /^(?:export )?(?:async function|function|type|interface|declare const|const|class) ([A-Za-z_$][\w$]*)/;
 
 const PART = /^\/\/ Part [IVX]+\. /;
 
 const NUMBERED_SECTION = /^\/\/ \d+\. /;
 
-function chunksOf(source: string): SpecLine[][] {
+function splitChunks(source: string): SpecLine[][] {
   const lines = source.split("\n");
   const chunks: SpecLine[][] = [];
   let chunk: SpecLine[] = [];
@@ -68,7 +66,6 @@ function chunksOf(source: string): SpecLine[][] {
   return chunks;
 }
 
-/** Splits leading comments from code. Doc text drops only the comment markers. */
 function splitDoc(chunk: readonly SpecLine[]) {
   const doc: SpecLine[] = [];
   let index = 0;
@@ -118,7 +115,7 @@ function splitDoc(chunk: readonly SpecLine[]) {
   return { doc, code: chunk.slice(index) };
 }
 
-function titleOf(lines: readonly SpecLine[]): SpecLine | undefined {
+function findTitle(lines: readonly SpecLine[]): SpecLine | undefined {
   const [first, second] = lines;
 
   if (first === undefined || first.text.length > 60 || /[.,:;]$/.test(first.text)) return undefined;
@@ -149,7 +146,7 @@ export function parseSpec(source: string): readonly SpecBlock[] {
 
   let part = 0;
 
-  return chunksOf(source).flatMap((chunk): SpecBlock[] => {
+  return splitChunks(source).flatMap((chunk): SpecBlock[] => {
     const first = chunk[0];
 
     if (first === undefined) return [];
@@ -184,17 +181,29 @@ export function parseSpec(source: string): readonly SpecBlock[] {
     const [name, ...otherNames] = names;
 
     if (name === undefined) {
-      const title = titleOf(doc);
+      const title = findTitle(doc);
       const id = title === undefined ? `note-L${String(first.number)}` : slug(title.text);
 
-      return [
-        {
-          kind: "note",
-          id: unique(id, first.number),
-          title,
-          lines: title === undefined ? doc.concat(code) : doc.slice(1).concat(code),
-        },
-      ];
+      const notes: SpecBlock[] =
+        doc.length === 0
+          ? []
+          : [
+              {
+                kind: "note",
+                id: unique(id, first.number),
+                title,
+                lines: title === undefined ? doc : doc.slice(1),
+              },
+            ];
+
+      if (code.length > 0)
+        notes.push({
+          kind: "code",
+          id: unique(`code-L${String(code[0]?.number ?? first.number)}`, first.number),
+          code,
+        });
+
+      return notes;
     }
 
     return [

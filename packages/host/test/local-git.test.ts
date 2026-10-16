@@ -44,7 +44,6 @@ function envOf(cwd: string): ExecutionEnv {
   };
 }
 
-/** Returns a repository on `main` with one commit of `a.txt` and `b.txt`, its git and the root. */
 async function repository(): Promise<{ readonly root: string; readonly git: GitApi }> {
   const root = await folder();
   sh(root, "init", "-q", "-b", "main");

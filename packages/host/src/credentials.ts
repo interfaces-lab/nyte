@@ -1,23 +1,34 @@
-import type { Credential, CredentialStore } from "@nyte-ai/ai/auth/types";
+import { readCredentialAccounts } from "@nyte-ai/ai/auth/types";
+import type { CredentialAccounts, CredentialStore } from "@nyte-ai/ai/auth/types";
 import type { Json, Ref } from "@nyte-ai/schema";
 import { SdkError, decodeKvValue, envelope, kvRef } from "@nyte-ai/core";
 import type { Store, StoreConnection } from "@nyte-ai/core";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Value } from "typebox/value";
 import type { SecretsSource } from "./secrets.ts";
 
-/**
- * Returns one stored model credential, the body of the `kv` envelope at
- * `kvRef("secret", "models", <provider>)` (§42e).
- *
- * `type` is in clear so `list` answers without decrypting; `ciphertext` is the
- * credential's JSON under AES-256-GCM with a fresh random 12-byte `iv`, both
- * base64, the scheme `PluginStorage.secrets` uses. It is never in a view, an
- * event or a log.
- */
-export type SealedCredential = {
-  readonly type: Credential["type"];
-  readonly iv: string;
-  readonly ciphertext: string;
-};
+const SealedCredentialSchema = Type.Union([
+  Type.Object({
+    type: Type.Union([Type.Literal("api_key"), Type.Literal("oauth")]),
+    iv: Type.String(),
+    ciphertext: Type.String(),
+  }),
+  Type.Object({
+    active: Type.Union([Type.String(), Type.Null()]),
+    accounts: Type.Array(
+      Type.Object({
+        id: Type.String({ minLength: 1 }),
+        label: Type.String({ minLength: 1 }),
+        type: Type.Union([Type.Literal("api_key"), Type.Literal("oauth")]),
+      }),
+    ),
+    iv: Type.String(),
+    ciphertext: Type.String(),
+  }),
+]);
+
+export type SealedCredential = Static<typeof SealedCredentialSchema>;
 
 const PREFIX = kvRef("secret", "models", "");
 
@@ -31,7 +42,7 @@ const RETRIES = 5;
  *
  * Each call opens a store connection and closes it when done; the `Store` is
  * the caller's. `read` is `unsealCredential` over the record, `list` answers
- * `{ providerId, type }` per ref under `kv/secret/models/`, `modify` is
+ * non-secret account metadata per ref under `kv/secret/models/`, `modify` is
  * `modifyCredential`, and `delete` sets the ref to null, serialised as
  * `modify` is. Building it touches nothing, `list` never calls `key()` and
  * `read` calls it only when that provider's record exists (§50b, §55); the
@@ -45,7 +56,7 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
   let key: Promise<CryptoKey> | null = null;
   const chains = new Map<string, Promise<unknown>>();
 
-  const keyOf = (): Promise<CryptoKey> => {
+  const readKey = (): Promise<CryptoKey> => {
     const known = key ?? importedKey(secrets);
 
     key = known;
@@ -84,7 +95,7 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
       const { sealed } = await connected(store, (connection) => recordAt(connection, provider));
 
       if (sealed === null) return undefined;
-      const unlocked = await keyOf().catch(() => null);
+      const unlocked = await readKey().catch(() => null);
 
       return unlocked === null ? undefined : unsealCredential(unlocked, sealed);
     },
@@ -99,11 +110,21 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
             const sealed =
               ref.target === null
                 ? null
-                : sealedOf(decodeKvValue(await connection.objects.get(ref.target)));
+                : readSealedCredential(decodeKvValue(await connection.objects.get(ref.target)));
 
-            return sealed === null
-              ? []
-              : [{ providerId: ref.name.slice(PREFIX.length), type: sealed.type }];
+            if (sealed === null) return [];
+            const providerId = ref.name.slice(PREFIX.length);
+
+            if ("type" in sealed)
+              return [
+                { providerId, id: "default", label: "Default", type: sealed.type, active: true },
+              ];
+
+            return sealed.accounts.map((account) => ({
+              providerId,
+              ...account,
+              active: sealed.active === account.id,
+            }));
           }),
         );
 
@@ -112,7 +133,7 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
     },
     modify(provider, fn, options) {
       return serialised(provider, options?.signal, async () =>
-        modifyCredential(store, await keyOf(), provider, fn, options?.signal),
+        modifyCredential(store, await readKey(), provider, fn, options?.signal),
       );
     },
     delete(provider, options) {
@@ -151,7 +172,6 @@ export async function openSecret(secrets: SecretsSource, sealed: string): Promis
   return new TextDecoder().decode(plain);
 }
 
-/** Returns the secrets key imported for AES-256-GCM; rejects `invalid` when it is not 32 bytes. */
 async function importedKey(secrets: SecretsSource): Promise<CryptoKey> {
   const bytes = await secrets.key();
 
@@ -164,19 +184,10 @@ async function importedKey(secrets: SecretsSource): Promise<CryptoKey> {
   ]);
 }
 
-/**
- * Returns the credential a record holds, decrypted and checked: an `api_key`
- * with an optional string `key`, or an `oauth` with string `access` and
- * `refresh` and a number `expires`, extra fields kept.
- *
- * A record that does not decrypt (the key changed) or does not parse answers
- * undefined, as an absent one does, so the provider reads as logged out and a
- * new login overwrites it.
- */
 async function unsealCredential(
   key: CryptoKey,
   record: SealedCredential,
-): Promise<Credential | undefined> {
+): Promise<CredentialAccounts | undefined> {
   let parsed: unknown;
 
   try {
@@ -185,73 +196,40 @@ async function unsealCredential(
       key,
       Uint8Array.fromBase64(record.ciphertext),
     );
+
     parsed = JSON.parse(new TextDecoder().decode(plain));
   } catch {
     return undefined;
   }
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
-  const fields: Record<string, unknown> = Object.fromEntries(Object.entries(parsed));
-
-  if (fields.type === "api_key") {
-    const env = stringRecord(fields.env);
-
-    if (fields.key !== undefined && typeof fields.key !== "string") return undefined;
-
-    return {
-      type: "api_key",
-      ...(typeof fields.key === "string" ? { key: fields.key } : {}),
-      ...(env === undefined ? {} : { env }),
-    };
-  }
-
-  const { access, refresh, expires } = fields;
-
-  if (
-    fields.type !== "oauth" ||
-    typeof access !== "string" ||
-    typeof refresh !== "string" ||
-    typeof expires !== "number"
-  )
-    return undefined;
-
-  return { ...fields, type: "oauth", access, refresh, expires };
+  return readCredentialAccounts(parsed);
 }
 
-/**
- * Runs `CredentialStore.modify` for one provider: serialised per provider in
- * this process behind a promise chain, then a read of the record with its ref
- * revision, `fn` on the decrypted current, and, when `fn` returns a
- * credential, a sealed write with `expect` that revision (`absent` when there
- * was none).
- *
- * A `stale` answer means another instance wrote in between: it reads the
- * winner and runs `fn` again on it, up to 5 times, then rejects
- * `SdkError("unavailable")`. A credential `fn` returned is written even when
- * `signal` aborts after it returned (ai's rule: a rotated token has no second
- * copy); an abort before `fn` runs rejects. It resolves the credential
- * written, or the current one when `fn` returned undefined.
- */
 async function modifyCredential(
   store: Store,
   key: CryptoKey,
   provider: string,
-  fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+  fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
   signal: AbortSignal | undefined,
-): Promise<Credential | undefined> {
+): Promise<CredentialAccounts | undefined> {
   const name = kvRef("secret", "models", provider);
+  let started = false;
 
   return connected(store, async (connection) => {
     for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
       const { ref, sealed } = await recordAt(connection, provider);
       const current = sealed === null ? undefined : await unsealCredential(key, sealed);
-      signal?.throwIfAborted();
+
+      if (!started) signal?.throwIfAborted();
+      started = true;
       const next = await fn(current);
 
       if (next === undefined) return current;
-      const target = await connection.objects.put(
-        envelope("kv", await seal(key, next), Date.now()),
-      );
+
+      const target =
+        next.accounts.length === 0
+          ? null
+          : await connection.objects.put(envelope("kv", await seal(key, next), Date.now()));
 
       const outcome = await connection.refs.set([
         { name, target, expect: ref === null ? "absent" : ref.revision },
@@ -267,8 +245,7 @@ async function modifyCredential(
   });
 }
 
-/** Returns a credential encrypted under the key with a fresh 12-byte IV, as the record `SealedCredential` describes. */
-async function seal(key: CryptoKey, credential: Credential): Promise<Json> {
+async function seal(key: CryptoKey, credential: CredentialAccounts): Promise<Json> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
 
   const ciphertext = new Uint8Array(
@@ -279,10 +256,18 @@ async function seal(key: CryptoKey, credential: Credential): Promise<Json> {
     ),
   );
 
-  return { type: credential.type, iv: iv.toBase64(), ciphertext: ciphertext.toBase64() };
+  return {
+    active: credential.active,
+    accounts: credential.accounts.map((account) => ({
+      id: account.id,
+      label: account.label,
+      type: account.credential.type,
+    })),
+    iv: iv.toBase64(),
+    ciphertext: ciphertext.toBase64(),
+  };
 }
 
-/** Returns a provider's ref and the sealed record it points at, read once, so a write can expect that ref's revision; `sealed` is null when there is no record or it is not one. */
 async function recordAt(
   connection: StoreConnection,
   provider: string,
@@ -294,37 +279,22 @@ async function recordAt(
     sealed:
       ref === null || ref.target === null
         ? null
-        : sealedOf(decodeKvValue(await connection.objects.get(ref.target))),
+        : readSealedCredential(decodeKvValue(await connection.objects.get(ref.target))),
   };
 }
 
-/** Returns a `kv` body as a sealed credential, or null when it has another shape. */
-function sealedOf(body: Json | undefined): SealedCredential | null {
-  if (!isJsonRecord(body)) return null;
-  const { type, iv, ciphertext } = body;
+function readSealedCredential(body: Json | undefined): SealedCredential | null {
+  if (!Value.Check(SealedCredentialSchema, body)) return null;
 
-  return (type === "api_key" || type === "oauth") &&
-    typeof iv === "string" &&
-    typeof ciphertext === "string"
-    ? { type, iv, ciphertext }
+  if ("type" in body) return body;
+
+  const ids = new Set(body.accounts.map((account) => account.id));
+
+  return ids.size === body.accounts.length && (body.active === null || ids.has(body.active))
+    ? body
     : null;
 }
 
-function isJsonRecord(value: Json | undefined): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Returns a value as a record of strings, or undefined when it is not one. */
-function stringRecord(value: unknown): Record<string, string> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const entries = Object.entries(value);
-
-  return entries.every((entry): entry is [string, string] => typeof entry[1] === "string")
-    ? Object.fromEntries(entries)
-    : undefined;
-}
-
-/** Runs `task` over a store connection. */
 async function connected<T>(
   store: Store,
   task: (connection: StoreConnection) => Promise<T>,

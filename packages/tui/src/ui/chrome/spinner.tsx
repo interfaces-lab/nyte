@@ -1,8 +1,3 @@
-/**
- * A `<text>` whose content is `SPINNER_FRAMES[tick % n]` from the shared
- * 130 ms ticker. No native buffer calls, no frame callback; nothing to throw
- * inside `flushVisual`.
- */
 import type { JSX } from "@opentui/solid";
 import { useApp } from "../../app/context.tsx";
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../lib/constants.ts";

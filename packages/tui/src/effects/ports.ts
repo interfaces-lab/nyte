@@ -1,22 +1,20 @@
-/**
- * Everything the runner may touch, as narrow interfaces. Production wires
- * them to the SDK, the renderer and the services; tests wire fakes. Nothing
- * outside `effects/` and `app/main.tsx` can reach a port, so a component
- * cannot call the SDK.
- */
 import type {
   BlobId,
   CommandOutcome,
   ConfigureOutcome,
   HostView,
   Json,
+  McpChange,
+  McpView,
   MessageId,
+  ModelAccount,
   ModelCatalogView,
   ModelRef,
   MoveOptions,
   MoveOutcome,
   PartId,
   Position,
+  ProviderUsage,
   RunId,
   SendOptions,
   SessionId,
@@ -29,12 +27,14 @@ import type {
   UserContent,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { MentionFile } from "../model/completion.ts";
 import type { DraftInsert } from "../model/draft.ts";
 import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
+import type { McpAction } from "../model/effect.ts";
 import type { LoginDriver } from "../services/auth.ts";
 
 export type { ComposerPort, ScrollPort };
@@ -52,23 +52,19 @@ export interface Ports {
   readonly log: CrashLog;
 }
 
-/** The SDK as the TUI uses it. Receipts, branded ids and wire outcomes stay inside the adapter. */
 export interface HostPort {
   session(id: SessionId): SessionPort;
   create(input: {
     readonly workspace: WorkspaceId | null;
     readonly selection: Selection | null;
   }): Promise<SessionId>;
-  /** Every root session, newest activity first, across the directory's pages. */
-  rootSessions(): Promise<readonly SessionInfo[]>;
-  /** One entry per catalog generation the host reports; `list` reads the catalog for it. */
-  catalog(): AsyncIterable<{
-    readonly generation: number;
-    readonly list: () => Promise<ModelCatalogView>;
-  }>;
-  /** Every session's info, again whenever one changes (a rename included). */
+  rootSessions(): AsyncIterable<SessionInfo>;
+  catalog(): AsyncIterable<Pick<HostView, "catalog">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
+  accounts(provider: string | null): Promise<readonly ModelAccount[]>;
+  selectAccount(provider: string, account: string): Promise<void>;
+  usage(): Promise<readonly ProviderUsage[]>;
   refreshModels(provider: string): Promise<void>;
   setDefaultModel(ref: ModelRef): Promise<void>;
   login(
@@ -79,8 +75,19 @@ export interface HostPort {
     provider: string | null,
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
-  /** The host's loaded plugins as its view reports them. */
   hostPlugins(): Promise<HostView["plugins"]>;
+  mcp(workspace: WorkspaceId): Promise<McpView>;
+  mcpAction(workspace: WorkspaceId, server: string, action: McpAction): Promise<McpChange>;
+  mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;
+  /** The folder, its saved trust decision, whether its project files load now (`null`: ask), and the files trust would load. */
+  trustInfo(workspace: WorkspaceId): Promise<{
+    readonly path: string;
+    readonly home: boolean;
+    readonly decision: boolean | null;
+    readonly trusted: boolean | null;
+    readonly sources: readonly string[];
+  }>;
+  trust(workspace: WorkspaceId, value: boolean | null): Promise<void>;
   applySetting(id: string, value: Json): Promise<SettingOutcome>;
   tasks(session: SessionId): AsyncIterable<readonly Task[]>;
   blob(id: string): AsyncIterable<Uint8Array>;
@@ -90,15 +97,8 @@ export interface SessionPort {
   readonly id: SessionId;
   watch(): AsyncIterable<SessionView>;
   info(): Promise<SessionInfo>;
-  /** The folder the session's workspace serves, or null when it is not a local path. */
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
   send(content: UserContent, options: SendOptions): Promise<{ readonly message: MessageId }>;
-  /**
-   * `session.receipt(asId<"receipt">(message)).stop()`: works for any client's
-   * pending message, not only receipts this process holds. The runner calls
-   * it only after `read()` shows the message still pending; "landed-first"
-   * means the stop settled as a run end rather than `withdrawn`.
-   */
   withdraw(message: MessageId): Promise<"withdrawn" | "landed-first" | "gone">;
   revise(
     message: MessageId,
@@ -106,7 +106,7 @@ export interface SessionPort {
     options: SendOptions,
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
-  answer(part: PartId, choice: string): Promise<boolean>;
+  answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;
   compact(instructions: string | null): Promise<"started" | "busy" | "nothing">;
@@ -127,15 +127,11 @@ export interface SessionPort {
     | { readonly kind: "changed"; readonly cwd: string }
     | { readonly kind: "refused"; readonly reason: string }
   >;
-  /** Re-reads the workspace's project resources. */
   reload(): Promise<"updated" | "missing">;
-  /** Uploads pasted image bytes through the workspace's files, for a message to carry. */
   upload(bytes: Uint8Array): Promise<BlobId>;
-  /** Workspace-relative paths an `@` mention can name; folders end in `/`. */
   mentions(signal: AbortSignal): Promise<readonly string[]>;
 }
 
-/** A native renderable's handle, attached by the component that owns it while mounted. */
 export interface Handle<T> {
   attach(value: T): () => void;
   current(): T | null;
@@ -151,10 +147,8 @@ export interface TerminalPort {
     | { readonly kind: "image"; readonly bytes: Uint8Array }
     | { readonly kind: "empty" }
   >;
-  /** Suspends the renderer around an external program (the editor). */
   suspended<T>(work: () => Promise<T>): Promise<T>;
   open(target: string): void;
-  /** Resolves once the current frame is drawn: boot paints before host work starts. */
   painted(): Promise<void>;
 }
 
@@ -164,7 +158,6 @@ export interface SettingsPort {
 }
 
 export interface PluginsPort {
-  /** The client plugins mounted, for `/plugins`. */
   readonly ids: readonly string[];
   beforeSubmit(
     draft: SubmitDraft,
@@ -194,9 +187,7 @@ export interface ShellPort {
 export interface FilesPort {
   resolvePaste(text: string, bytes: Uint8Array | null, cwd: string): Promise<DraftInsert>;
   listDirectory(path: string, cwd: string): Promise<readonly string[]>;
-  /** What an `@` query spelled as a path names under `cwd`: a file or folder, else null. */
   resolveMention(query: string, cwd: string): Promise<MentionFile | null>;
-  /** Reads a file's body for inlining, or null when it is binary, oversized or unreadable. */
   readText(path: string): Promise<string | null>;
   editor(text: string, command: string | null): Promise<string | null>;
 }

@@ -1,12 +1,14 @@
-/**
- * The one choice list: filter by whitespace
- * terms over label, description, status and id; wrap-around movement; an
- * optional typed-answer row after the choices; per-purpose extra actions.
- * The list only moves and filters; accepting a row emits `choose`, and
- * `model/dialogs/accept.ts` decides what that means for each purpose.
- */
-import type { CommitId, MessageId, PartId, Revision, SessionId } from "@nyte-ai/sdk";
+import type {
+  CommitId,
+  MessageId,
+  ModelAccount,
+  PartId,
+  Revision,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import type { ChatCommand } from "../../lib/constants.ts";
+import type { Timing } from "../../lib/format.ts";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 
 export interface ListDialog {
@@ -19,19 +21,19 @@ export interface ListDialog {
     | { readonly kind: "ready"; readonly items: readonly Choice[] }
     | { readonly kind: "failed"; readonly message: string };
   readonly query: string;
-  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
   readonly caret?: number;
-  /** Index into `visibleChoices`; `visibleChoices(…).length` is the typed row. */
+  readonly anchor?: number;
   readonly highlighted: number;
-  /** The typed answer for purposes that take free text ("" until typed); null for every other purpose. */
   readonly answering: string | null;
   readonly busy: boolean;
+  readonly detailScroll?: { readonly seq: number; readonly by: -1 | 1 };
 }
 
 export interface Choice {
   readonly id: string;
   readonly label: string;
   readonly description: string;
+  readonly timing: Timing | null;
   readonly status: {
     readonly text: string;
     readonly tone: "muted" | "ok" | "warning" | "error";
@@ -47,12 +49,15 @@ export type ListPurpose =
       readonly kind: "question";
       readonly session: SessionId;
       readonly part: PartId;
-      readonly typed: true;
     }
-  /** `sessions`: the ids the loaded rows name, so a pick switches to a typed id. */
   | { readonly kind: "resume"; readonly sessions: readonly SessionId[] }
   | { readonly kind: "palette" }
   | { readonly kind: "skills" }
+  | {
+      readonly kind: "accounts";
+      readonly provider: string | null;
+      readonly accounts: readonly ModelAccount[];
+    }
   | { readonly kind: "queue"; readonly message: MessageId }
   | { readonly kind: "settings"; readonly highlight: string | null }
   | { readonly kind: "setting"; readonly key: string }
@@ -63,7 +68,16 @@ export type ListPurpose =
       readonly typed: true;
     }
   | { readonly kind: "tasks"; readonly section: "active" | "finished" }
-  | { readonly kind: "provider"; readonly mode: "login" | "logout" };
+  | { readonly kind: "provider"; readonly mode: "login" | "logout" }
+  | { readonly kind: "mcp"; readonly workspace: WorkspaceId }
+  | { readonly kind: "mcp-server"; readonly workspace: WorkspaceId; readonly server: string }
+  | {
+      readonly kind: "trust";
+      readonly workspace: WorkspaceId;
+      readonly path: string;
+      readonly decision: boolean | null;
+      readonly sources: readonly string[];
+    };
 
 export interface ListAction {
   readonly command: ChatCommand;
@@ -72,7 +86,6 @@ export interface ListAction {
 
 const PAGE = 9;
 
-/** The extra per-row keys a purpose offers beside Enter. */
 export function listActions(purpose: ListPurpose): readonly ListAction[] {
   if (purpose.kind === "queue")
     return [
@@ -88,10 +101,7 @@ export function listActions(purpose: ListPurpose): readonly ListAction[] {
   return [];
 }
 
-/** The row label that accepts free text, for purposes that take it. */
 export function typedLabel(purpose: ListPurpose): string | null {
-  if (purpose.kind === "question") return "Type an answer";
-
   if (purpose.kind === "summary") return "Summarize with custom prompt";
 
   return null;
@@ -126,6 +136,8 @@ export function emptyLabel(purpose: ListPurpose): string {
       return "No saved chats";
     case "skills":
       return "No skills found. Add SKILL.md to .nyte/skills.";
+    case "accounts":
+      return "No saved accounts. Use /login to add one.";
     case "provider":
       return purpose.mode === "login" ? "No providers support login" : "No stored credentials";
     case "queue":
@@ -135,7 +147,6 @@ export function emptyLabel(purpose: ListPurpose): string {
   }
 }
 
-/** Every term must appear case-insensitively in `label description status id`. Shared by model and tree search. */
 export function matchesTerms(query: string, haystack: string): boolean {
   const terms = query.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
   const text = haystack.toLocaleLowerCase();
@@ -143,7 +154,6 @@ export function matchesTerms(query: string, haystack: string): boolean {
   return terms.every((term) => text.includes(term));
 }
 
-/** The rows the list shows now: typed purposes never filter, the others by `query`. */
 export function visibleChoices(dialog: ListDialog): readonly Choice[] {
   if (dialog.choices.kind !== "ready") return [];
 
@@ -157,7 +167,6 @@ export function visibleChoices(dialog: ListDialog): readonly Choice[] {
   );
 }
 
-/** True while the typed-answer row is the highlighted one. */
 export function answeringActive(dialog: ListDialog): boolean {
   return dialog.answering !== null && dialog.highlighted >= visibleChoices(dialog).length;
 }
@@ -200,7 +209,6 @@ function accept(dialog: ListDialog, action: ChatCommand | null): DialogStep<List
   };
 }
 
-/** Moves, filters, types and accepts; the purpose's meaning lives with whoever handles `choose`. */
 export function reduceList(dialog: ListDialog, command: DialogCommand): DialogStep<ListDialog> {
   if (command.kind === "close") return { dialog: null, intents: [], push: null };
 
@@ -228,6 +236,17 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
   const count = positions(dialog);
 
   switch (command.name) {
+    case "picker.detail.up":
+    case "picker.detail.down":
+      return dialog.purpose.kind === "question"
+        ? unchanged({
+            ...dialog,
+            detailScroll: {
+              seq: (dialog.detailScroll?.seq ?? 0) + 1,
+              by: command.name === "picker.detail.up" ? -1 : 1,
+            },
+          })
+        : unchanged(dialog);
     case "picker.close":
       if (dialog.answering === null && dialog.query !== "")
         return unchanged({ ...dialog, query: "", highlighted: 0 });

@@ -21,20 +21,17 @@ import type { CallRecord } from "./records.ts";
 import { partRef, runRef } from "./refs.ts";
 import { changeCall, load, put, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
-import { parkedOf, runWait, waitingOn } from "./waits.ts";
+import { readParkedWait, runWait, waitingOn } from "./waits.ts";
 
-/** Returns how one execution of a durable step ended, as its `settle` records it: the body's value, or interrupted because a `never` step may not run again. */
 export type StepEnd<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "interrupted" };
 
-/** Returns how a durable step ended: its value as recorded, parked on a wait not yet recorded, or interrupted with the value its settlement recorded. */
 export type StepOutcome<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "parked" }
   | { readonly kind: "interrupted"; readonly value: T };
 
-/** Returns what a part action's step records as its intent: the part, the action, its input and the principal it acts as. */
 export type ActionIntent = {
   readonly part: PartId;
   readonly action: string;
@@ -53,35 +50,24 @@ interface Place {
 
 const STOPPED: WaitOutcome = { kind: "stopped" };
 
-/** The step executions that parked, by their `Durable`. */
 const parkedExecutions = new WeakSet<Durable>();
 
-/** What a durable step's `wait()` throws on its first wait not yet recorded, so the step unwinds and parks. */
 class Parked extends Error {
   constructor() {
     super("The durable step parked on a wait.");
   }
 }
 
-/** Returns whether an error is the sentinel a durable step's `wait()` throws to park it. */
 export function isParked(error: unknown): boolean {
   return error instanceof Parked;
 }
 
-/** Marks the step execution `durable` belongs to as parked and throws the parked sentinel. */
 export function parkStep(durable: Durable): never {
   parkedExecutions.add(durable);
 
   throw new Parked();
 }
 
-/**
- * Runs one durable step (a tool call, a part action or a decide hook) from its `CallRecord`, which
- * it creates or loads: a recorded result replays as `done`; a `never` step with no result is
- * settled `interrupted`; otherwise `body` runs with a `Durable` replaying the record by call order.
- * A settled step returns the result its record holds, decoded; an execution that parked is
- * `parked` however its body ended.
- */
 export async function runStep<T>(
   kernel: Kernel,
   input: {
@@ -94,17 +80,17 @@ export async function runStep<T>(
     readonly intent: Json;
     readonly part: PartId | null;
     readonly signal: AbortSignal;
-    /** Returns the updates landing with the record's creation, read again on each try: a tool's part, so no part exists without its step. A result settles the step at its creation, so its body never runs. */
+
     readonly opening?: () => Promise<{
       readonly updates: readonly RefUpdate[];
       readonly result: Json | null;
     }>;
     body(durable: Durable): Promise<T>;
-    /** Returns what the step's `result` records and the ref updates landing in the same set. */
+
     settle(
       ended: StepEnd<T>,
     ): Promise<{ readonly result: Json; readonly updates: readonly RefUpdate[] }>;
-    /** Returns the value a recorded `result` holds, or null when it holds another shape. */
+
     decode(result: Json): T | null;
   },
 ): Promise<StepOutcome<T>> {
@@ -161,7 +147,7 @@ export async function runStep<T>(
   }
 
   const writes: Promise<unknown>[] = [];
-  const durable = durableOf(kernel, input, record, writes);
+  const durable = createDurable(kernel, input, record, writes);
 
   const ran = await input.body(durable).then(
     (value) => ({ value }),
@@ -185,7 +171,6 @@ export async function runStep<T>(
   return { kind: "done", value };
 }
 
-/** Runs a part action as a durable step of kind `action` and, while it is parked, runs it again on each wake it reserves until it settles or its signal aborts; a wake another runner reserved is left to it. Its result records the output, absent when undefined; output that is not JSON rejects `invalid` and records nothing. */
 export async function runAction(
   kernel: Kernel,
   input: {
@@ -207,35 +192,72 @@ export async function runAction(
   try {
     for (let reserved = true; ; reserved = await reserveRerun(kernel, input.session, input.call)) {
       if (reserved) {
-        const outcome = await runStep<{ readonly output: unknown }>(kernel, {
-          session: input.session,
-          head: null,
-          run: null,
-          call: input.call,
-          kind: "action",
-          replay: "safe",
-          intent: { part: input.part, action: input.action },
-          part: input.part,
-          signal: input.signal,
-          body: async (durable) => ({ output: await input.body(durable) }),
-          async settle(ended) {
-            const output = ended.kind === "done" ? ended.value.output : undefined;
-            const absent: Json = { kind: ended.kind };
+        const thrown: { readonly error: unknown }[] = [];
 
-            if (output === undefined) return { result: absent, updates: [] };
+        const renewal = setInterval(() => {
+          renewRerun(kernel, input.session, input.call).catch(() => undefined);
+        }, LEASE_MS / 3);
 
-            if (!isJson(output))
-              throw new SdkError(
-                "invalid",
-                `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
-              );
+        const outcome = await runStep<{ readonly output: unknown; readonly failed: string | null }>(
+          kernel,
+          {
+            session: input.session,
+            head: null,
+            run: null,
+            call: input.call,
+            kind: "action",
+            replay: "safe",
+            intent: { part: input.part, action: input.action },
+            part: input.part,
+            signal: input.signal,
+            body: async (durable) => {
+              try {
+                return { output: await input.body(durable), failed: null };
+              } catch (error) {
+                if (isParked(error)) throw error;
+                thrown.push({ error });
 
-            return { result: { kind: ended.kind, output }, updates: [] };
+                return {
+                  output: undefined,
+                  failed: error instanceof Error ? error.message : String(error),
+                };
+              }
+            },
+            async settle(ended) {
+              if (ended.kind === "done" && ended.value.failed !== null)
+                return { result: { kind: "failed", failed: ended.value.failed }, updates: [] };
+              const output = ended.kind === "done" ? ended.value.output : undefined;
+              const absent: Json = { kind: ended.kind };
+
+              if (output === undefined) return { result: absent, updates: [] };
+
+              if (!isJson(output))
+                throw new SdkError(
+                  "invalid",
+                  `The ${input.action} action on part ${input.part} returned output that is not JSON.`,
+                );
+
+              return { result: { kind: ended.kind, output }, updates: [] };
+            },
+            decode: (result) =>
+              isJsonObject(result)
+                ? {
+                    output: result.output,
+                    failed: typeof result.failed === "string" ? result.failed : null,
+                  }
+                : null,
           },
-          decode: (result) => (isJsonObject(result) ? { output: result.output } : null),
-        });
+        ).finally(() => clearInterval(renewal));
 
-        if (outcome.kind === "done") return { kind: "done", value: outcome.value.output };
+        if (outcome.kind === "done") {
+          const [threw] = thrown;
+
+          if (threw !== undefined) throw threw.error;
+
+          if (outcome.value.failed !== null) throw new SdkError("internal", outcome.value.failed);
+
+          return { kind: "done", value: outcome.value.output };
+        }
 
         if (outcome.kind !== "parked" || input.signal.aborted) return outcome;
       }
@@ -250,7 +272,16 @@ export async function runAction(
   }
 }
 
-/** Reserves re-running a woken action step for this runner by compare-and-set on its record, so one runner executes each wake: a claim naming this instance that lapses with the lease. Resolves true when this runner won or the step has a result to replay, false while another runner holds a live claim or the step waits. */
+async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
+  await changeCall(kernel, session, call, async (current) =>
+    current === null || current.result !== null || current.reran?.holder !== kernel.instance
+      ? null
+      : {
+          record: { ...current, reran: { ...current.reran, expiresAt: Date.now() + LEASE_MS } },
+        },
+  );
+}
+
 export async function reserveRerun(
   kernel: Kernel,
   session: SessionId,
@@ -277,7 +308,6 @@ export async function reserveRerun(
   return reserved.wrote || (reserved.record?.result ?? null) !== null;
 }
 
-/** Returns whether a woken step's re-run is claimed by another instance whose claim lapsed with no result: its holder is gone, so another runner takes it over. */
 export function lapsed(kernel: Kernel, record: CallRecord): boolean {
   return (
     record.result === null &&
@@ -289,7 +319,6 @@ export function lapsed(kernel: Kernel, record: CallRecord): boolean {
   );
 }
 
-/** Opens a part action's call record with what a re-run after a restart needs: the part, the action, its input and the principal it acts as. */
 export async function openAction(
   kernel: Kernel,
   input: {
@@ -316,7 +345,6 @@ export async function openAction(
   );
 }
 
-/** Records what a durable step acquired under a key unless one is recorded, and returns the recorded winner. */
 export async function recordAcquisition(
   kernel: Kernel,
   step: { readonly session: SessionId; readonly call: CallId },
@@ -329,22 +357,21 @@ export async function recordAcquisition(
       : { record: { ...current, acquisitions: { ...current.acquisitions, [key]: value } } },
   );
 
-  return entryOf(written.record?.acquisitions, key) ?? value;
+  return readOwnEntry(written.record?.acquisitions, key) ?? value;
 }
 
-/** Returns what a durable step recorded acquiring under a key, or null. */
 export async function recordedAcquisition(
   kernel: Kernel,
   step: { readonly session: SessionId; readonly call: CallId },
   key: string,
 ): Promise<Json | null> {
   return (
-    entryOf((await readCall(kernel, step.session, step.call))?.record.acquisitions, key) ?? null
+    readOwnEntry((await readCall(kernel, step.session, step.call))?.record.acquisitions, key) ??
+    null
   );
 }
 
-/** Returns the `Durable` one execution of a step runs with, replaying the opened record's waits, memos and clock by call order. */
-function durableOf(
+function createDurable(
   kernel: Kernel,
   place: Place,
   record: CallRecord,
@@ -355,7 +382,6 @@ function durableOf(
   let waits = 0;
   let readings = 0;
 
-  /** The one unchecked widening in core: a replayed memo is stored `Json`, returned as `V`. */
   function memo<V extends Json>(name: string, compute: () => Awaitable<V>): Promise<V>;
   async function memo(name: string, compute: () => Awaitable<Json>): Promise<Json> {
     const known = memos.get(name);
@@ -370,7 +396,7 @@ function durableOf(
         : { record: { ...current, memos: { ...current.memos, [name]: value } } },
     );
 
-    const recorded = entryOf(written.record?.memos, name) ?? value;
+    const recorded = readOwnEntry(written.record?.memos, name) ?? value;
     memos.set(name, recorded);
 
     return recorded;
@@ -427,7 +453,6 @@ function durableOf(
   return durable;
 }
 
-/** Settles a wait on one modal part at once when the part already holds its answer; the answer stays on the part, its one home. */
 async function takeAnswer(
   kernel: Kernel,
   place: Place,
@@ -456,11 +481,6 @@ async function takeAnswer(
   return taken.record?.waits.at(index) ?? null;
 }
 
-/**
- * Writes a step's wait at `index` in one set: `waiting` with an empty slot per target of a
- * combination, `call waiting`, the run's `run waiting`, the step in the `waitedBy` of each run it
- * waits on, and `waiting: <call>` on each live modal part it waits on; then parks it.
- */
 async function park(
   kernel: Kernel,
   place: Place,
@@ -507,12 +527,11 @@ async function park(
     };
   });
 
-  const entry = parkedOf(place.session, parked.record);
+  const entry = readParkedWait(place.session, parked.record);
 
   if (entry !== null) await kernel.waits.park(entry);
 }
 
-/** Returns the updates adding the step to the `waitedBy` of each live run a wait targets, other than its own. */
 async function runsWaited(
   kernel: Kernel,
   place: Place,
@@ -543,7 +562,6 @@ async function runsWaited(
   return updates;
 }
 
-/** Returns the updates marking each live modal part a wait targets as waited on by `call`. */
 async function modalsWaiting(
   kernel: Kernel,
   session: SessionId,
@@ -580,7 +598,6 @@ async function modalsWaiting(
   return updates;
 }
 
-/** Returns a new call record with nothing recorded. */
 function callRecord(input: {
   readonly call: CallId;
   readonly kind: CallRecord["kind"];
@@ -610,7 +627,7 @@ function callRecord(input: {
   };
 }
 
-function entryOf(
+function readOwnEntry(
   entries: Readonly<Record<string, Json>> | undefined,
   key: string,
 ): Json | undefined {

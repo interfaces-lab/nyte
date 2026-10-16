@@ -1,10 +1,3 @@
-/**
- * One-shot operations on the followed session: queue edits, stopping, answers,
- * moves, configuration, plugin commands and settings, tasks, directory
- * changes, reload and compaction. Each queue operation re-checks the latest
- * state right before the SDK call, so one aimed at a row that just landed
- * never becomes an edit that stops the run.
- */
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
@@ -63,8 +56,25 @@ export async function stopRun(effect: Of<"stop-run">, context: HandlerContext): 
 }
 
 export async function answer(effect: Of<"answer">, context: HandlerContext): Promise<void> {
-  const ok = await context.ports.host.session(effect.session).answer(effect.part, effect.choice);
-  context.dispatch({ kind: "answered", part: effect.part, ok, typed: effect.typed });
+  const request = { session: effect.session, part: effect.part };
+
+  try {
+    const ok = await context.ports.host.session(effect.session).answer(effect.part, effect.answers);
+    context.dispatch({
+      kind: "answered",
+      request,
+      result: { kind: ok ? "accepted" : "gone" },
+      typed: effect.typed,
+    });
+  } catch (cause: unknown) {
+    context.ports.log.write("effect", cause);
+    context.dispatch({
+      kind: "answered",
+      request,
+      result: { kind: "failed", message: messageOf(cause) },
+      typed: effect.typed,
+    });
+  }
 }
 
 export async function move(effect: Of<"move">, context: HandlerContext): Promise<void> {
@@ -75,7 +85,6 @@ export async function move(effect: Of<"move">, context: HandlerContext): Promise
   context.dispatch({ kind: "moved", outcome, handback: effect.handback });
 }
 
-/** Through the configurator: a known selection changes at once and reaches the head in order before later sends. */
 export async function configure(effect: Of<"configure">, context: HandlerContext): Promise<void> {
   const { read, scope } = context;
   const followed = scope.followed;
@@ -91,7 +100,30 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   if (result.kind === "failed") throw new Error(result.message);
 }
 
-/** A plugin setting: the head's settings for session scope, the host's for host scope. */
+export async function checkTrust(
+  effect: Of<"check-trust">,
+  context: HandlerContext,
+): Promise<void> {
+  const found = await context.ports.host.trustInfo(effect.workspace).catch((error: unknown) => {
+    if (effect.ask === "always") throw error;
+    context.ports.log.write("trust", error);
+
+    return null;
+  });
+
+  if (found === null) return;
+  context.dispatch({
+    kind: "trust-loaded",
+    workspace: effect.workspace,
+    ask: effect.ask,
+    ...found,
+  });
+}
+
+export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
+  await context.ports.host.trust(effect.workspace, effect.value);
+}
+
 export async function applySetting(
   effect: Of<"apply-setting">,
   context: HandlerContext,
@@ -107,7 +139,6 @@ export async function applySetting(
     throw new Error(`Could not set ${effect.label}`);
 }
 
-/** A core-side plugin command; what it prints comes back as a notice. */
 export async function runCommand(
   effect: Of<"run-command">,
   context: HandlerContext,
@@ -153,10 +184,6 @@ export async function stopTask(effect: Of<"stop-task">, context: HandlerContext)
     context.dispatch({ kind: "inform", tone: "warning", text: "That task already ended." });
 }
 
-/**
- * Moves the session to another folder: registers it as a workspace, as the
- * owner adding it is the consent, then relocates the idle session there.
- */
 export async function changeDirectory(
   effect: Of<"change-directory">,
   context: HandlerContext,
@@ -193,7 +220,6 @@ export async function changeDirectory(
   }
 }
 
-/** Git facts for the footer after a run ends or the directory changes. */
 export async function refreshWorkspaceFacts(
   effect: Of<"refresh-workspace">,
   context: HandlerContext,
@@ -201,7 +227,6 @@ export async function refreshWorkspaceFacts(
   await refreshWorkspace(context, effect.cwd);
 }
 
-/** Re-reads the workspace's project resources and this terminal's own settings. */
 export async function reload(effect: Of<"reload">, context: HandlerContext): Promise<void> {
   const { dispatch, ports, read } = context;
   const session = read().facts.session;
@@ -246,7 +271,6 @@ export async function compact(effect: Of<"compact">, context: HandlerContext): P
     context.dispatch({ kind: "inform", tone: "info", text: "Nothing to compact" });
 }
 
-/** `~`, `~/x`, or a path relative to the session's folder. */
 export function resolveDirectory(argument: string, cwd: string): string {
   if (argument === "~") return homedir();
 
@@ -259,12 +283,10 @@ export function noticeOf(context: HandlerContext, tone: Notice["tone"], text: st
   return { tone, text, at: context.ports.clock.now() };
 }
 
-/** A failure as the notice line says it: `error: <message>`. */
 export function errorNotice(context: HandlerContext, error: unknown): Notice {
   return noticeOf(context, "error", `error: ${messageOf(error)}`);
 }
 
-/** What the latest view says about a user message: still pending, landed, this client's unsent, or not there. */
 export function rowStatus(
   state: State,
   session: SessionId,

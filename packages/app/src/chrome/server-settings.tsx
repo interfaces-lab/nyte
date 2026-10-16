@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The two connections Environments shows, pointing opposite ways. The Cloud
  * row is outbound: a remote Nyte host this desktop reaches, whose chats run
@@ -42,37 +42,36 @@ import {
   type ConnectionStanding,
 } from "./connection-list.tsx";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { NyteConnection } from "./nyte-connection.tsx";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 const shareStyles = create({
-  panel: { display: "flex", flexDirection: "column", gap: 8 },
-  step: { display: "flex", flexDirection: "column", gap: 8 },
+  panel: { display: "flex", flexDirection: "column", gap: space.s2 },
+  step: { display: "flex", flexDirection: "column", gap: space.s2 },
   switcher: { alignSelf: "flex-start" },
-  scan: { display: "flex", alignItems: "center", gap: 12 },
-  scanText: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
+  scan: { display: "flex", alignItems: "center", gap: space.s3 },
+  scanText: { display: "flex", flexDirection: "column", gap: space.s1, minWidth: 0 },
   // One grid for both fields so the value boxes share a left edge and width.
   fields: {
     display: "grid",
     gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "center",
-    columnGap: 8,
-    rowGap: 6,
+    columnGap: space.s2,
+    rowGap: space.s1_5,
   },
   label: {
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
-  fieldActions: { display: "inline-flex", gap: 8 },
+  fieldActions: { display: "inline-flex", gap: space.s2 },
   // Selected whole so a click cannot grab half of a token or address.
   value: {
     boxSizing: "border-box",
     minWidth: 0,
-    paddingInline: 8,
-    paddingBlock: 4,
+    paddingInline: space.s2,
+    paddingBlock: space.s1,
     borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
@@ -80,8 +79,6 @@ const shareStyles = create({
     backgroundColor: role.bgBase,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
     userSelect: "all",
     whiteSpace: "nowrap",
@@ -114,7 +111,7 @@ function ConnectForm({
     >
       <div {...props(styles.keyRow)}>
         <Input
-          variant="quiet"
+          variant="code"
           type="url"
           aria-label="Server URL"
           autoComplete="off"
@@ -128,7 +125,7 @@ function ConnectForm({
       </div>
       <div {...props(styles.keyRow)}>
         <Input
-          variant="quiet"
+          variant="code"
           type="password"
           aria-label="Server token"
           autoComplete="off"
@@ -148,7 +145,7 @@ function ConnectForm({
           </Button>
         )}
       </div>
-      <span {...props(styles.keyHint)}>Stored on this Mac in ~/.nyte/server.json.</span>
+      <span {...props(text.sm, styles.keyHint)}>Stored on this Mac in ~/.nyte/server.json.</span>
     </form>
   );
 }
@@ -314,8 +311,8 @@ function ServingPanel({ state }: { state: TokenServing }) {
       {...props(shareStyles.panel)}
     >
       <div {...props(shareStyles.fields)}>
-        <span {...props(shareStyles.label)}>Link</span>
-        <code aria-label="Pairing link" {...props(shareStyles.value)}>
+        <span {...props(text.sm, shareStyles.label)}>Link</span>
+        <code aria-label="Pairing link" {...props(text.sm, shareStyles.value)}>
           {revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, hidden)}
         </code>
         <span {...props(shareStyles.fieldActions)}>
@@ -346,10 +343,10 @@ function ServingPanel({ state }: { state: TokenServing }) {
         <div {...props(shareStyles.scan)}>
           <PairingCode value={payload} size={132} />
           <span {...props(shareStyles.scanText)}>
-            <span {...props(shareStyles.label)}>
+            <span {...props(text.sm, shareStyles.label)}>
               In the iOS app, tap Scan QR code on the connect screen.
             </span>
-            <span {...props(styles.deviceCodeNote)}>
+            <span {...props(text.sm, styles.deviceCodeNote)}>
               The code carries the token, so treat it like the token itself. It stops working when
               you stop.
             </span>
@@ -358,15 +355,15 @@ function ServingPanel({ state }: { state: TokenServing }) {
       </Tabs.Panel>
       <Tabs.Panel value="details" xstyle={shareStyles.step}>
         <div {...props(shareStyles.fields)}>
-          <span {...props(shareStyles.label)}>Address</span>
-          <code aria-label="Address" {...props(shareStyles.value)}>
+          <span {...props(text.sm, shareStyles.label)}>Address</span>
+          <code aria-label="Address" {...props(text.sm, shareStyles.value)}>
             {state.address}
           </code>
           <span {...props(shareStyles.fieldActions)}>
             <CopyButton label="Address" value={state.address} />
           </span>
-          <span {...props(shareStyles.label)}>Token</span>
-          <code aria-label="Token" {...props(shareStyles.value)}>
+          <span {...props(text.sm, shareStyles.label)}>Token</span>
+          <code aria-label="Token" {...props(text.sm, shareStyles.value)}>
             {revealed ? state.token : hidden}
           </code>
           <span {...props(shareStyles.fieldActions)}>
@@ -380,7 +377,7 @@ function ServingPanel({ state }: { state: TokenServing }) {
             />
           </span>
         </div>
-        <span {...props(styles.deviceCodeNote)}>
+        <span {...props(text.sm, styles.deviceCodeNote)}>
           {state.reach === "tailnet"
             ? "Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new each time and never written to disk."
             : "Only this Mac can reach this address, so a physical phone can't. The token is new each time and never written to disk."}
@@ -400,14 +397,12 @@ function tailnetDetail(tailnet: TailnetAvailability): string {
 
 const tunnelStyles = create({
   port: { flexGrow: 0, flexShrink: 0, width: 96 },
-  devices: { display: "flex", flexDirection: "column", gap: 4 },
-  device: { display: "flex", alignItems: "center", gap: 8 },
+  devices: { display: "flex", flexDirection: "column", gap: space.s1 },
+  device: { display: "flex", alignItems: "center", gap: space.s2 },
   deviceName: {
     flexGrow: 1,
     minWidth: 0,
     color: role.contentPrimary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     overflowWrap: "anywhere",
   },
 });
@@ -519,7 +514,7 @@ function TunnelForm({
     >
       <div {...props(styles.keyRow)}>
         <Input
-          variant="quiet"
+          variant="code"
           aria-label="Public hostname"
           autoComplete="off"
           spellCheck={false}
@@ -530,7 +525,7 @@ function TunnelForm({
           onValueChange={setHostname}
         />
         <Input
-          variant="quiet"
+          variant="code"
           aria-label="Local port"
           inputMode="numeric"
           autoComplete="off"
@@ -543,7 +538,7 @@ function TunnelForm({
       </div>
       <div {...props(styles.keyRow)}>
         <Input
-          variant="quiet"
+          variant="code"
           type="password"
           aria-label="Tunnel token"
           autoComplete="off"
@@ -561,7 +556,7 @@ function TunnelForm({
           Cancel
         </Button>
       </div>
-      <span {...props(styles.keyHint)}>
+      <span {...props(text.sm, styles.keyHint)}>
         {`In Cloudflare, give the tunnel one public hostname with the service http://127.0.0.1:${Number.isInteger(portNumber) ? String(portNumber) : "<port>"}, and no private network routes. The token is stored on this Mac in ~/.nyte.`}
       </span>
     </form>
@@ -578,15 +573,15 @@ function DeviceList({
   revoking: string | undefined;
 }): ReactElement {
   if (devices.length === 0) {
-    return <span {...props(styles.deviceCodeNote)}>No devices yet.</span>;
+    return <span {...props(text.sm, styles.deviceCodeNote)}>No devices yet.</span>;
   }
 
   return (
     <ul aria-label="Paired devices" {...props(tunnelStyles.devices)}>
       {devices.map((device) => (
         <li key={device.id} {...props(tunnelStyles.device)}>
-          <span {...props(tunnelStyles.deviceName)}>{device.name}</span>
-          <span {...props(styles.deviceCodeNote)}>
+          <span {...props(text.sm, tunnelStyles.deviceName)}>{device.name}</span>
+          <span {...props(text.sm, styles.deviceCodeNote)}>
             {device.state.kind === "pending" ? "Waiting to connect" : "Paired"}
           </span>
           <Button
@@ -650,17 +645,17 @@ function PairingPanel({
           size={132}
         />
         <span {...props(shareStyles.scanText)}>
-          <span {...props(shareStyles.label)}>
+          <span {...props(text.sm, shareStyles.label)}>
             In the iOS app, tap Scan QR code on the connect screen.
           </span>
-          <span {...props(styles.deviceCodeNote)}>
+          <span {...props(text.sm, styles.deviceCodeNote)}>
             {`Anyone with this code can connect as ${name} until you remove it. It expires at ${new Date(pairing.expiresAt).toLocaleTimeString()} if unused.`}
           </span>
         </span>
       </div>
       <div {...props(shareStyles.fields)}>
-        <span {...props(shareStyles.label)}>Link</span>
-        <code aria-label="Pairing link" {...props(shareStyles.value)}>
+        <span {...props(text.sm, shareStyles.label)}>Link</span>
+        <code aria-label="Pairing link" {...props(text.sm, shareStyles.value)}>
           {pairing.address}/pair
         </code>
         <span {...props(shareStyles.fieldActions)}>
@@ -717,7 +712,7 @@ function AddDevice({
       }}
     >
       <Input
-        variant="quiet"
+        variant="code"
         aria-label="Device name"
         autoComplete="off"
         spellCheck={false}
@@ -766,7 +761,7 @@ function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): ReactElem
 
   return (
     <div {...props(shareStyles.panel)}>
-      {failure !== undefined && <span {...props(styles.alert)}>{failure}</span>}
+      {failure !== undefined && <span {...props(text.sm, styles.alert)}>{failure}</span>}
       {shown !== undefined ? (
         <PairingPanel
           key={shown.pairing.deviceId}
@@ -781,7 +776,7 @@ function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): ReactElem
       ) : tunnel.connection.kind === "connected" ? (
         <AddDevice onPaired={(pairing, name) => setShown({ pairing, name, listed: false })} />
       ) : tunnel.connection.kind === "failed" ? null : (
-        <span {...props(styles.deviceCodeNote)}>
+        <span {...props(text.sm, styles.deviceCodeNote)}>
           Devices can be added once the tunnel connects.
         </span>
       )}

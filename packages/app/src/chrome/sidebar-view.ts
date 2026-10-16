@@ -55,8 +55,6 @@ export interface SessionViewGroup {
 }
 
 export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
-  // One flat list across every workspace, with what needs you on top and the
-  // rest folded; folders and other groupings are opt-in from the filter menu.
   grouping: "inbox",
   sortByStatus: true,
   show: ["updated", "environment", "pr"] as const,
@@ -66,7 +64,6 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-/** Untitled chats with nothing committed on any head are drafts; a name or a message is a finished row. */
 export function sessionIsDraft(session: SessionInfo): boolean {
   return session.name === null && session.heads.every((head) => head.tip.kind === "start");
 }
@@ -97,13 +94,11 @@ export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>):
   }
 }
 
-/** The open chat and the shelf it was opened from, so reading or replying never moves its row. */
 export interface ShelfHold {
   readonly sessionId: SessionId;
   readonly shelf: SessionShelf;
 }
 
-/** Archiving beats the hold, and so does restoring: the row leaves or returns at once. */
 export function shelfOf(
   session: SessionInfo,
   working: ReadonlySet<SessionId>,

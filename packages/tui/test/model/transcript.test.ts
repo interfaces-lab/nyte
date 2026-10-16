@@ -1,9 +1,3 @@
-/**
- * The transcript as identities: rows in drawing order (notes before their
- * turn, shells by start time), turn blocks in view order with the status
- * last, "Worked for" from the turn's own clock, identity kept across frames,
- * and a mount window measured in row weight, anchored by row key.
- */
 import { describe, expect, test } from "bun:test";
 import { deriveTranscript, turnStatus } from "../../src/model/transcript.ts";
 import type { Row } from "../../src/model/transcript.ts";
@@ -44,7 +38,8 @@ describe("rows", () => {
             .text("d")
             .ended("completed"),
         )
-        .pending("later", { schedule: { kind: "next-turn", reason: "idle" } }),
+        .pending("later", { schedule: { kind: "next-turn", reason: "run-ended" } })
+        .live("run-t2"),
     );
 
     const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL, null);
@@ -58,7 +53,8 @@ describe("rows", () => {
       v
         .turn("t1", (t) => t.ended("stopped"))
         .turn("t2", (t) => t.user("x").ended("completed"))
-        .pending("queued", { schedule: { kind: "next-turn", reason: "idle" } }),
+        .pending("queued", { schedule: { kind: "next-turn", reason: "run-ended" } })
+        .live("run-t3"),
     );
 
     expect(deriveTranscript(view, [], LOCAL, null).rows.map((row) => row.key)).toEqual(["turn:t2"]);
@@ -68,7 +64,7 @@ describe("rows", () => {
     const view = viewOf((v) =>
       v.turn("t1", (t) =>
         t
-          .report({ child: "s9" }, "Child s9 completed:\nok")
+          .report({ child: "s9" }, "ok")
           .action("Fix lint", "prompt")
           .ended("completed"),
       ),
@@ -150,7 +146,10 @@ describe("turn status", () => {
     const view = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("a").waiting("q1"))
-        .question("Pick", ["A"], { id: "q1" })
+        .question(
+          [{ question: "Pick", header: "Question", options: [{ label: "A", description: "" }] }],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 

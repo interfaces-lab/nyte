@@ -41,7 +41,6 @@ const STEP_LIMIT = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
-/** One row of the list: a message, and for reasoning the text of the thoughts it stands for. */
 interface StepEntry {
   readonly key: string;
   readonly message: StepMessage;

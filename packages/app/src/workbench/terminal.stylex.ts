@@ -1,5 +1,6 @@
 import { create } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const terminalStyles = create({
   root: {
@@ -21,25 +22,22 @@ export const terminalStyles = create({
     outlineStyle: "none",
     backgroundColor: role.bgBase,
   },
-  hidden: { display: "none" },
   canvas: {
     flex: 1,
     minHeight: 0,
     minWidth: 0,
-    paddingBlock: 8,
-    paddingInline: 6,
+    paddingBlock: space.s2,
+    paddingInline: space.s1_5,
     overflow: "clip",
   },
   state: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    paddingBlock: 8,
-    paddingInline: 12,
+    gap: space.s2,
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   failure: { color: role.contentSecondary },
   empty: {
@@ -48,11 +46,9 @@ export const terminalStyles = create({
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    padding: 24,
+    gap: space.s3,
+    padding: space.s6,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textAlign: "center",
   },
 });

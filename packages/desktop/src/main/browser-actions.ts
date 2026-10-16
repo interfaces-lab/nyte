@@ -13,7 +13,6 @@ export async function showBrowserMenu({
 }: {
   readonly window: BrowserWindow | undefined;
   readonly hasPage: boolean;
-  /** The cookie jar a clear would empty, named in its confirmation. */
   readonly owner: BrowserOwner;
   readonly input: Parameters<BrowserBridge["menu"]>[0];
 }): Promise<BrowserMenuAction | undefined> {

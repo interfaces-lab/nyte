@@ -7,14 +7,12 @@ import { SeqType, idSchema } from "./ids.ts";
 import { withJson } from "./json.ts";
 import { nullable } from "./nullable.ts";
 
-/** The TypeBox schema of a `Ref`. */
 export const RefType = Type.Object({
   name: Type.String(),
   target: nullable(idSchema<"object">()),
   revision: idSchema<"revision">(),
 });
 
-/** The TypeBox schema of a `RefUpdate`. */
 export const RefUpdateType = Type.Object({
   name: Type.String(),
   target: nullable(idSchema<"object">()),
@@ -22,7 +20,6 @@ export const RefUpdateType = Type.Object({
   event: Type.Optional(DurableEventType),
 });
 
-/** The TypeBox schema of a `SetOutcome`. */
 export const SetOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("set"),
@@ -36,11 +33,8 @@ export const SetOutcomeType = Type.Union([
   }),
 ]);
 
-/** Validates a `Ref`. */
 export const RefSchema: Schema<Ref> = standard(RefType);
 
-/** Validates a `RefUpdate`. */
 export const RefUpdateSchema: Schema<RefUpdate> = standard(withJson(RefUpdateType));
 
-/** Validates a `SetOutcome`. */
 export const SetOutcomeSchema: Schema<SetOutcome> = standard(SetOutcomeType);

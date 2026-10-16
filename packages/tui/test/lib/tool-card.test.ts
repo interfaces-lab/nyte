@@ -1,8 +1,3 @@
-/**
- * The settled-card decision tree as data: edit patches and changes, unified
- * diffs in output, collapsed reads, inline and head/tail previews, local
- * shells and delegation, each a pure function of the part and the tasks.
- */
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { Json, ToolClass, ToolPartState } from "@nyte-ai/sdk";
@@ -184,11 +179,11 @@ describe("toolCard", () => {
     );
   });
 
-  test("a delegation card follows its child task and shows its latest step", () => {
+  test("a delegation card finds its child by the call that created it", () => {
     const child = asId<"session">("child-1");
 
     const create = toolOf("task", {
-      class: { kind: "delegate", role: "create", child, title: "explore" },
+      class: { kind: "delegate", role: "create", child: null, title: "explore" },
       running: true,
     });
 
@@ -203,6 +198,7 @@ describe("toolCard", () => {
         id: child,
         name: "explorer",
         parent: asId("s1"),
+        call: create.state.call,
         workspace: asId("w"),
         pinned: false,
         archived: false,
@@ -216,8 +212,11 @@ describe("toolCard", () => {
 
     const card = toolCard(create, [task], false);
 
-    expect(text(card)).toBe("● explore  model · medium");
+    expect(text(card)).toBe("● explorer  model · medium");
     expect(card.body).toEqual({ kind: "activity", text: "grep" });
+    expect(text(toolCard(create, [{ ...task, info: { ...task.info, call: null } }], false))).toBe(
+      "● explore",
+    );
   });
 
   test("a call on a child is one line naming it", () => {

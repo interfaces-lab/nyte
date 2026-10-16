@@ -64,8 +64,6 @@ if (!compiled) {
   );
 }
 
-// The package ships the web app for Remote access and the canvas shell both
-// clients load. Under Turbo, ^build made them.
 if (shouldPackage && !compiled) {
   stages.push(
     { title: "Canvas shell", tail: true, run: () => pnpm("--dir", "../canvas", "build") },

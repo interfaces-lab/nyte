@@ -1,18 +1,3 @@
-/**
- * File-backed `CredentialStore` (auth.json, one credential per provider id).
- * Every Nyte client shares this one file, so each mutation holds a lock that
- * spans the whole read-modify-write — including the OAuth refresh `Models`
- * runs inside `modify`, which rotates the refresh token and must happen once
- * across all processes — and publishes by atomic rename. Reads take no lock:
- * rename means a reader sees the previous file or the next one, never a
- * partial write.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/credential-store.ts
- * Synced with pi 7ebf9087e. Nyte divergence: pi's store is in-memory and its
- * CLI locks auth.json with proper-lockfile; Nyte owns the persistent store and
- * locks with an exclusively created file, keeping the dependency out of the
- * packaged desktop and binary builds.
- */
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -32,7 +17,13 @@ import process from "node:process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { defaultNyteHome } from "../utils/nyte-home.ts";
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "./types.ts";
+import { readCredentialAccounts } from "./types.ts";
+import type {
+  AuthOperationOptions,
+  CredentialAccounts,
+  CredentialInfo,
+  CredentialStore,
+} from "./types.ts";
 
 export function defaultAuthPath(): string {
   return join(defaultNyteHome(), "auth.json");
@@ -55,32 +46,9 @@ const LOCK_ABANDONED_MS = 2 * LOCK_TIMEOUT_MS;
 /** Age at which a recovery that never finished counts as crash residue instead of a live one. */
 const RECOVERY_STALE_MS = 1_000;
 
-const CredentialSchema = Type.Union([
-  Type.Object({
-    type: Type.Literal("api_key"),
-    key: Type.Optional(Type.String()),
-    env: Type.Optional(Type.Record(Type.String(), Type.String())),
-  }),
-  Type.Object({
-    type: Type.Literal("oauth"),
-    refresh: Type.String(),
-    access: Type.String(),
-    expires: Type.Number(),
-  }),
-]);
-
 const CredentialFileSchema = Type.Record(Type.String(), Type.Unknown());
 
 const SystemErrorSchema = Type.Object({ code: Type.String() });
-
-/**
- * auth.json is an external boundary. Provider-specific extras (Codex account
- * ids, Copilot model ids) ride along on the value, and an entry this version
- * cannot read is reported as no credential rather than rewritten.
- */
-function toCredential(value: unknown): Credential | undefined {
-  return Value.Check(CredentialSchema, value) ? value : undefined;
-}
 
 function errorCode(cause: unknown): string | undefined {
   return Value.Check(SystemErrorSchema, cause) ? cause.code : undefined;
@@ -309,10 +277,13 @@ export class FileCredentialStore implements CredentialStore {
     }
   }
 
-  async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+  async read(
+    providerId: string,
+    options?: AuthOperationOptions,
+  ): Promise<CredentialAccounts | undefined> {
     options?.signal?.throwIfAborted();
 
-    return toCredential(this.load()[providerId]);
+    return readCredentialAccounts(this.load()[providerId]);
   }
 
   async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
@@ -320,9 +291,18 @@ export class FileCredentialStore implements CredentialStore {
     const stored: CredentialInfo[] = [];
 
     for (const [providerId, value] of Object.entries(this.load())) {
-      const credential = toCredential(value);
+      const accounts = readCredentialAccounts(value);
 
-      if (credential) stored.push({ providerId, type: credential.type });
+      if (accounts)
+        stored.push(
+          ...accounts.accounts.map((account) => ({
+            providerId,
+            id: account.id,
+            label: account.label,
+            type: account.credential.type,
+            active: account.id === accounts.active,
+          })),
+        );
     }
 
     return stored;
@@ -330,19 +310,20 @@ export class FileCredentialStore implements CredentialStore {
 
   modify(
     providerId: string,
-    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+    fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
     options?: AuthOperationOptions,
-  ): Promise<Credential | undefined> {
+  ): Promise<CredentialAccounts | undefined> {
     return this.withLock(async (lock) => {
       const entries = this.load();
-      const current = toCredential(entries[providerId]);
+      const current = readCredentialAccounts(entries[providerId]);
       const next = await fn(current);
 
       // A credential `fn` already produced is persisted even when the caller
       // stopped waiting: a refresh rotates the token the stored one replaces,
       // so dropping it here would leave a spent credential on disk.
       if (next !== undefined) {
-        entries[providerId] = next;
+        if (next.accounts.length === 0) delete entries[providerId];
+        else entries[providerId] = next;
         this.save(lock, entries);
       }
 

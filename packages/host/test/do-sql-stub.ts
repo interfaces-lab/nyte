@@ -1,7 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { DurableObjectSql, SqlValue } from "../src/durable-object.ts";
 
-/** Returns Durable Object SQL over an in-memory `node:sqlite` database, with `transactionSync` as one `BEGIN`/`COMMIT` that rolls back on a throw: the stand-in for a Durable Object's storage that `durableObjectStore`, `pass` and `NyteHost` run over in these tests (§43i: the workerd run is deferred). */
 export function doSqlStub(): DurableObjectSql & { readonly database: DatabaseSync } {
   const database = new DatabaseSync(":memory:");
 

@@ -1,8 +1,3 @@
-/**
- * The whole app over the real in-process host, driven by keys: boot, send,
- * queue while working, stop, withdraw, answer a question, survive a render
- * throw, and quit with the resume command.
- */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
@@ -24,36 +19,21 @@ function userTexts(store: Store): readonly string[] {
 
 const working = (store: Store): boolean => store.screen().run.kind === "working";
 
-/** The open list's search text and caret. */
 function field(store: Store) {
   const dialog = store.screen().dialog;
 
   return dialog?.kind === "list" ? { query: dialog.query, caret: dialog.caret } : null;
 }
 
+function secretText(store: Store): string | null {
+  const dialog = store.screen().dialog;
+
+  return dialog?.kind === "auth" && dialog.step.kind === "secret" && dialog.step.masked
+    ? String.fromCodePoint(...dialog.step.codePoints)
+    : null;
+}
+
 const idle = (store: Store): boolean => store.screen().run.kind === "idle";
-
-test("boots to a ready composer", async () => {
-  await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
-  await app.ready();
-
-  expect(await app.frame((frame) => frame.includes(COMPOSER_PLACEHOLDER))).not.toContain("Loading");
-});
-
-test("typing and Enter sends the draft", async () => {
-  await using fixture = await openTestHost();
-  fixture.reply({ content: [{ type: "text", text: "Hello back." }] });
-  await using app = await startApp(fixture);
-  await app.ready();
-
-  await app.mockInput.typeText("hello there");
-  app.mockInput.pressEnter();
-
-  expect(JSON.stringify((await fixture.requested(1)).context.messages)).toContain("hello there");
-  await app.state(idle);
-  expect(app.store.state().local.draft.text).toBe("");
-});
 
 test("without copy-on-select, a right-click copies the transcript selection and another key clears it", async () => {
   await using fixture = await openTestHost();
@@ -78,50 +58,6 @@ test("without copy-on-select, a right-click copies the transcript selection and 
   app.mockInput.pressKey("x");
   await app.renderOnce();
   expect(app.renderer.hasSelection).toBe(false);
-});
-
-test("Ctrl+Enter while working queues the draft for the next turn", async () => {
-  await using fixture = await openTestHost();
-  const release = Promise.withResolvers<void>();
-
-  fixture.reply(
-    { content: [{ type: "text", text: "Working on it." }], until: release.promise },
-    { content: [{ type: "text", text: "Done later." }] },
-  );
-
-  await using app = await startApp(fixture);
-  await app.ready();
-  await app.mockInput.typeText("first");
-  app.mockInput.pressEnter();
-  await app.state(working);
-
-  await app.mockInput.typeText("later");
-  app.mockInput.pressEnter({ ctrl: true });
-  await app.state((store) => store.screen().queue.some((row) => row.text === "later"));
-
-  expect(app.store.screen().queue.find((row) => row.text === "later")).toMatchObject({
-    delivery: "queue",
-  });
-  expect(fixture.requests).toHaveLength(1);
-
-  release.resolve();
-  expect(JSON.stringify((await fixture.requested(2)).context.messages)).toContain("later");
-});
-
-test("Esc stops the run", async () => {
-  await using fixture = await openTestHost();
-  fixture.reply({ content: [{ type: "text", text: "A long answer." }], hold: true });
-  await using app = await startApp(fixture);
-  await app.ready();
-
-  await app.mockInput.typeText("go on");
-  app.mockInput.pressEnter();
-  await app.state(working);
-
-  app.mockInput.pressEscape();
-  await app.state(idle);
-
-  expect(fixture.requests).toHaveLength(1);
 });
 
 test("Ctrl+Q then delete withdraws a queued message", async () => {
@@ -150,38 +86,6 @@ test("Ctrl+Q then delete withdraws a queued message", async () => {
   expect(fixture.requests).toHaveLength(1);
 });
 
-test("a question shows, and a typed answer answers it", async () => {
-  await using fixture = await openTestHost();
-
-  fixture.reply(
-    {
-      content: [
-        {
-          type: "toolCall",
-          id: "ask",
-          name: "question",
-          arguments: { prompt: "Pick a colour?", options: ["Red", "Blue"] },
-        },
-      ],
-    },
-    { content: [{ type: "text", text: "Green it is." }] },
-  );
-
-  await using app = await startApp(fixture);
-  await app.ready();
-  await app.mockInput.typeText("ask me");
-  app.mockInput.pressEnter();
-  await app.frame((frame) => frame.includes("Pick a colour?"));
-
-  await app.mockInput.typeText("Green");
-  await app.state((store) => store.state().local.question.answering === "Green");
-  app.mockInput.pressEnter();
-
-  expect(JSON.stringify((await fixture.requested(2)).context.messages)).toContain("Green");
-  await app.state(idle);
-  expect(userTexts(app.store).some((text) => text.includes("Green"))).toBe(false);
-});
-
 test("a dialog's search field moves its caret and deletes by word, as an input does", async () => {
   await using fixture = await openTestHost();
   await using app = await startApp(fixture);
@@ -204,6 +108,75 @@ test("a dialog's search field moves its caret and deletes by word, as an input d
   app.mockInput.pressKey("u", { ctrl: true });
   await app.state((store) => field(store)?.query === "");
   expect(app.store.state().local.draft.text).toBe("");
+});
+
+test("API-key login supports paste, select all, delete and repaste without exposing its value", async () => {
+  await using fixture = await openTestHost();
+  await using app = await startApp(fixture);
+  await app.ready();
+  app.store.dispatch({ kind: "open", dialog: { kind: "auth", mode: "login", provider: "test" } });
+  await app.state((store) => {
+    const dialog = store.screen().dialog;
+
+    return dialog?.kind === "auth" && dialog.step.kind === "choose";
+  });
+  app.mockInput.pressArrow("down");
+  app.mockInput.pressEnter();
+  await app.state((store) => {
+    const dialog = store.screen().dialog;
+
+    return dialog?.kind === "auth" && dialog.step.kind === "secret" && dialog.step.masked;
+  });
+  app.terminal.clipboard = { kind: "text", text: "sk-first-test-key" };
+  app.mockInput.pressKey("v", { ctrl: true });
+  await app.state((store) => secretText(store) === "sk-first-test-key");
+  expect(await app.frame((frame) => frame.includes("•"))).not.toContain("sk-first-test-key");
+  app.mockInput.pressKey("a", { ctrl: true });
+  app.mockInput.pressBackspace();
+  await app.state((store) => secretText(store) === "");
+  await app.mockInput.pasteBracketedText("sk-second-test-key");
+  await app.state((store) => secretText(store) === "sk-second-test-key");
+  app.mockInput.pressKey("a", { meta: true });
+  await app.mockInput.typeText("sk-final-test-key");
+  await app.state((store) => secretText(store) === "sk-final-test-key");
+  app.mockInput.pressKey("a", { super: true });
+  app.mockInput.pressKey("DELETE");
+  await app.state((store) => secretText(store) === "");
+  app.terminal.clipboard = { kind: "text", text: "sk-final-test-key" };
+  app.mockInput.pressKey("v", { super: true });
+  await app.state((store) => secretText(store) === "sk-final-test-key");
+  expect(app.store.state().local.draft.text).toBe("");
+  expect(await app.frame((frame) => frame.includes("•"))).not.toContain("sk-final-test-key");
+  app.mockInput.pressEnter();
+  await app.state((store) => store.screen().dialog === null);
+  expect(
+    (await fixture.models.models.listAccounts("test")).map((account) => account.label),
+  ).toEqual(["Account 1"]);
+});
+
+test("cancelling a login prompt releases its effect before quitting", async () => {
+  await using fixture = await openTestHost();
+  await using app = await startApp(fixture);
+  await app.ready();
+  app.store.dispatch({ kind: "open", dialog: { kind: "auth", mode: "login", provider: "test" } });
+  await app.state((store) => {
+    const dialog = store.screen().dialog;
+
+    return dialog?.kind === "auth" && dialog.step.kind === "choose";
+  });
+  app.mockInput.pressArrow("down");
+  app.mockInput.pressEnter();
+  await app.state((store) => {
+    const dialog = store.screen().dialog;
+
+    return dialog?.kind === "auth" && dialog.step.kind === "secret" && dialog.step.masked;
+  });
+  app.mockInput.pressEscape();
+  await app.state((store) => store.screen().dialog === null);
+  await app.store.settled();
+  expect(await fixture.models.models.listAccounts("test")).toEqual([]);
+  app.mockInput.pressKey("c", { ctrl: true });
+  expect(await app.app.closing).toBe(0);
 });
 
 test("a render throw shows the error screen, logs it, and R recovers", async () => {

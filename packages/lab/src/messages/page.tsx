@@ -1,9 +1,3 @@
-/**
- * Every row the chat transcript draws, in every tool call density. Each
- * specimen is SDK data (a slice of `SessionView`), staged the way
- * `screens/thread.tsx` stages a session and drawn by the app's own row
- * surfaces, the way `Timeline` draws them.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -54,14 +48,12 @@ const BRANCH_MODEL: BranchModelPicker = {
   fast: false,
 };
 
-// The child that never started reads as absent, which is what `useSession` answers for it.
 queryClient.setQueryData(keys.session(UNSTARTED), null);
 
 const editUser = async (): Promise<void> => {};
 
 const openChanges = (): void => {};
 
-/** `Timeline`'s row switch, fed a staged scene instead of the session's live store. */
 function RowView({
   row,
   staged,
@@ -471,7 +463,6 @@ const styles = create({
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
   },
-  // A scroll container, so a prompt's sticky row stays inside its own cell.
   cell: {
     minWidth: 0,
     overflow: "hidden",

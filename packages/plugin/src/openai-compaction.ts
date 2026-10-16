@@ -5,7 +5,7 @@ import {
 } from "@nyte-ai/ai";
 import type { Models, Usage as ProviderUsage } from "@nyte-ai/ai";
 import type { Usage } from "@nyte-ai/schema";
-import type { Plugin } from "./core.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 /**
  * Returns the plugin that compacts through OpenAI's own endpoint. On
@@ -62,7 +62,7 @@ export function openaiCompaction(models: Pick<Models, "getModel" | "getAuth">): 
             kind: "material",
             ...providerIdentity(model),
             data: compacted.data,
-            usage: compacted.usage === undefined ? null : usageOf(compacted.usage),
+            usage: compacted.usage === undefined ? null : sessionUsage(compacted.usage),
           },
         };
       },
@@ -70,8 +70,7 @@ export function openaiCompaction(models: Pick<Models, "getModel" | "getAuth">): 
   };
 }
 
-/** Returns a provider usage report as the session's `Usage`. */
-function usageOf(usage: ProviderUsage): Usage {
+function sessionUsage(usage: ProviderUsage): Usage {
   return {
     input: usage.input,
     output: usage.output,

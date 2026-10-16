@@ -1,10 +1,3 @@
-/**
- * Slash, `@` mention and `/cd` completion as a pure state machine over the
- * draft mirror. Suggestions come from lib/slash.ts (`slashCompletion`,
- * `acceptSlashCommand`), the workspace's mention index (a fact the runner
- * keeps), directory listings (a `list-directory` effect) and a typed path
- * resolved against the filesystem (a `resolve-mention` effect).
- */
 import fuzzysort from "fuzzysort";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
@@ -18,19 +11,13 @@ export type CompletionState =
       readonly kind: "open";
       readonly token: CompletionToken;
       readonly highlighted: number;
-      /** `/cd` only: the listing for `token.query`, null while the runner lists it. */
       readonly directories: { readonly path: string; readonly entries: readonly string[] } | null;
-      /** `@` only: what a query spelled as a path names on disk, null until resolved or when nothing. */
       readonly explicit: MentionFile | null;
     };
 
-/** One file or folder an `@` mention can name. */
 export interface MentionFile {
-  /** Absolute path; folders end in `/`. */
   readonly path: string;
-  /** Relative to the workspace, `/` suffix for folders. */
   readonly display: string;
-  /** Basename, `/` suffix for folders. */
   readonly label: string;
 }
 
@@ -43,14 +30,10 @@ export interface CompletionToken {
 
 export interface CompletionModel {
   readonly token: CompletionToken;
-  /** Empty while `loading`, or when nothing matches: the menu says so and only Esc acts on it. */
   readonly items: readonly CompletionItem[];
-  /** `/cd` only: the listing for the typed path has not arrived. */
   readonly loading: boolean;
   readonly highlighted: number;
-  /** Enter belongs to the menu (false for `/cd`, where Enter runs the typed path, and for an empty menu). */
   readonly ownsEnter: boolean;
-  /** Ctrl+Enter on a highlighted skill fills the token, then submits with the alternate delivery. */
   readonly queueable: boolean;
 }
 
@@ -62,19 +45,15 @@ export interface CompletionItem {
 }
 
 export interface CompletionSources {
-  /** The slash namespace in claim order (`availableSlashCommands`). */
   readonly commands: readonly SlashCommand[];
-  /** The workspace's files and folders for `@`; null until indexed. */
   readonly files: readonly MentionFile[] | null;
 }
 
-/** What accepting an item does to the draft. */
 export type CompletionEdit =
   | { readonly kind: "replace"; readonly from: number; readonly to: number; readonly text: string }
   | {
       readonly kind: "execute";
       readonly name: string;
-      /** The draft is the command line: clear it. Otherwise remove the token and one adjacent space. */
       readonly leading: boolean;
       readonly from: number;
       readonly to: number;
@@ -89,14 +68,12 @@ export type CompletionEdit =
 
 const MAX_MENTIONS = 10;
 
-/** A query spelled as a path (`./x`, `../x`, `~/x`, `/x`, `C:\x`) the runner resolves on disk. */
 const EXPLICIT_PATH = /^(?:\.{1,2}[/\\]|~[/\\]|[/\\]|[A-Za-z]:[/\\])/u;
 
 export function explicitMentionQuery(query: string): boolean {
   return EXPLICIT_PATH.test(query);
 }
 
-/** An index entry (workspace-relative, `/` suffix for folders) as a mention under `cwd`. */
 export function indexedMention(cwd: string, entry: string): MentionFile {
   return { path: `${cwd.replace(/\/+$/u, "")}/${entry}`, display: entry, label: baseName(entry) };
 }
@@ -107,7 +84,6 @@ function tokenKey(token: CompletionToken): string {
   return `${token.trigger}:${String(token.from)}`;
 }
 
-/** The token under the cursor: a `/cd` path first, then a `/` or `@` word. */
 export function completionToken(draft: Pick<Draft, "text" | "cursor">): CompletionToken | null {
   const directory = directoryCompletionQuery(draft.text, draft.cursor);
 
@@ -120,7 +96,6 @@ export function completionToken(draft: Pick<Draft, "text" | "cursor">): Completi
   return { trigger: trigger.kind, query: trigger.query, from: trigger.start, to: trigger.end };
 }
 
-/** Re-derives the token from the mirror; Esc's `dismissed` sticks until that token disappears. Closed while the draft starts with `!`. */
 export function nextCompletion(
   state: CompletionState,
   draft: Pick<Draft, "text" | "cursor">,
@@ -141,7 +116,6 @@ export function nextCompletion(
   return { kind: "open", token, highlighted: 0, directories: null, explicit: null };
 }
 
-/** Esc: closed until the token under the cursor goes away. */
 export function dismissCompletion(state: CompletionState): CompletionState {
   return state.kind === "open" ? { kind: "closed", dismissed: tokenKey(state.token) } : state;
 }
@@ -159,7 +133,6 @@ function baseName(path: string): string {
   return path.endsWith("/") ? `${name}/` : name;
 }
 
-/** Prefix matches on the name or path first, then fuzzysort over both; the first ten when the query is empty. */
 export function mentionSuggestions(
   query: string,
   files: readonly MentionFile[],
@@ -188,7 +161,6 @@ export function mentionSuggestions(
   return [...prefixed, ...fuzzy].slice(0, MAX_MENTIONS);
 }
 
-/** The typed path first when it names something the list lacks, then the ranked index (none until indexed). */
 function mentionItems(
   query: string,
   explicit: MentionFile | null,
@@ -201,7 +173,6 @@ function mentionItems(
   return [explicit, ...ranked];
 }
 
-/** The menu's rows, "loading" while a `/cd` listing is out, or null for no menu (a mid-prompt slash nothing matches is a path). */
 function itemsFor(
   state: Extract<CompletionState, { kind: "open" }>,
   draft: Pick<Draft, "text" | "cursor">,
@@ -267,7 +238,6 @@ export function completionModel(
   };
 }
 
-/** Moves the highlight with wrap-around (or by a page, clamped). */
 export function moveCompletion(
   state: CompletionState,
   model: CompletionModel,
@@ -288,12 +258,6 @@ export function moveCompletion(
   return { ...state, highlighted };
 }
 
-/**
- * What accepting `item` does: a file
- * becomes its marker, a directory completes the `/cd` path, `/cd` completes
- * itself, and a command runs or completes per `acceptSlashCommand` (a
- * token followed by text only completes).
- */
 export function completionEdit(
   model: CompletionModel,
   item: CompletionItem,
@@ -321,7 +285,6 @@ export function completionEdit(
   return { kind: "execute", name: command.name, leading, from, to };
 }
 
-/** Replaces `[from, to)` with `insert`, dropping a trailing space the tail already supplies. */
 export function splice(text: string, from: number, to: number, insert: string) {
   const tail = text.slice(to);
   const inserted = insert.endsWith(" ") && /^\s/u.test(tail) ? insert.slice(0, -1) : insert;
@@ -333,7 +296,6 @@ export function splice(text: string, from: number, to: number, insert: string) {
   };
 }
 
-/** The range an inline action removes: its token plus one adjacent space or tab. */
 export function inlineTokenRange(text: string, from: number, to: number) {
   if (/^[ \t]$/u.test(text[to] ?? "")) return { from, to: to + 1 };
 

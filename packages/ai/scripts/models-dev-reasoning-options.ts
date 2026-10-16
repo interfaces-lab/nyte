@@ -12,8 +12,8 @@ export type ModelsDevReasoningOption =
   | { type: "budget_tokens"; min?: number; max?: number };
 
 /**
- * Converts models.dev verified effort values into Pi's selectable thinking levels.
- * Values without a Pi equivalent (`default` and JSON `null`) are intentionally
+ * Converts models.dev verified effort values into selectable thinking levels.
+ * Values without an equivalent (`default` and JSON `null`) are intentionally
  * omitted.
  */
 export function getEffortThinkingLevelMap(

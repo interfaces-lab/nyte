@@ -1,12 +1,3 @@
-/**
- * The seeded home every desktop chapter starts from: a `.nyte` built once
- * through `sdk.open` over the offline `e2e` catalog, with the default model
- * set and the fixture chats below already answered, cached under
- * `e2e/.cache/desktop/<fingerprint>` and copied per launch. The fingerprint
- * covers this file, the catalog, the store, core and the lockfile, so a
- * change to any of them rebuilds. Only durable data is cached; the Electron
- * profile is never.
- */
 import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -26,7 +17,6 @@ const CACHE_ROOT = resolve(APP_ROOT, "e2e/.cache/desktop");
 
 export const LONG_TURNS = 36;
 
-/** Chat names by fixture, as the sidebar shows them. */
 export const FIXTURES = {
   alpha: "Alpha release",
   beta: "Beta rollout",
@@ -39,7 +29,6 @@ export const FIXTURES = {
 
 export type Fixture = keyof typeof FIXTURES;
 
-/** What each fixture chat was sent, in order; the catalog answers each from its text. */
 const TRANSCRIPTS: Record<Fixture, readonly string[]> = {
   alpha: ["Hello from alpha"],
   beta: ["Hello from beta", "Second beta turn"],
@@ -69,7 +58,6 @@ async function sourceFiles(directory: string): Promise<string[]> {
     .sort();
 }
 
-/** Hashes what shapes the seeded store: this builder, the catalog, the host store, core, schema and the lockfile. */
 async function fingerprint(): Promise<string> {
   const files = [
     join(APP_ROOT, "e2e/desktop/baseline.ts"),
@@ -91,7 +79,6 @@ async function fingerprint(): Promise<string> {
   return hash.digest("hex").slice(0, 16);
 }
 
-/** Opens an offline host over `home`, with `home` as its workspace, the way the desktop does. */
 function openOffline(home: string) {
   dev.off();
 
@@ -102,7 +89,6 @@ function openOffline(home: string) {
   });
 }
 
-/** Seeds every fixture chat into a fresh home and returns the manifest. */
 async function seed(home: string): Promise<Manifest> {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const host = await openOffline(home);
@@ -130,7 +116,6 @@ async function seed(home: string): Promise<Manifest> {
   }
 }
 
-/** Returns the cached baseline directory, building and publishing it atomically when absent. */
 export async function ensureBaseline(): Promise<string> {
   const published = join(CACHE_ROOT, await fingerprint());
   const manifest = join(published, "manifest.json");
@@ -149,7 +134,6 @@ export async function ensureBaseline(): Promise<string> {
     const seeded = await seed(join(building, "home"));
     await writeFile(join(building, "manifest.json"), JSON.stringify(seeded, null, 2));
     await rename(building, published).catch(async (cause: NodeJS.ErrnoException) => {
-      // Another worker published first; its copy is the same.
       if (cause.code !== "EEXIST" && cause.code !== "ENOTEMPTY") throw cause;
       await rm(building, { recursive: true, force: true });
     });
@@ -166,23 +150,21 @@ export interface PreparedHome {
   readonly sessions: Readonly<Record<Fixture, SessionId>>;
 }
 
-/**
- * Copies the baseline into `<parent>/home` and rebinds its chats to that
- * folder: a local workspace is identified by its inode, so the copy is a new
- * workspace and the cached one must not stay reachable from a run.
- */
 export async function prepareHome(parent: string): Promise<PreparedHome> {
   const baseline = await ensureBaseline();
   const home = join(parent, "home");
   await cp(join(baseline, "home"), home, { recursive: true });
+
   const manifest = Value.Parse(
     ManifestSchema,
     JSON.parse(await readFile(join(baseline, "manifest.json"), "utf8")),
   );
+
   const host = await openOffline(home);
 
   try {
     const workspaces = await host.workspaces.list();
+
     const current = workspaces.find(
       (workspace) => "path" in workspace.target && workspace.target.path === home,
     );

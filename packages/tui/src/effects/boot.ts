@@ -1,9 +1,3 @@
-/**
- * Startup as facts: paint first, then settings, host, models, target
- * session. Each step is a `phase` fact, so the loading line, the "Still
- * starting. Your draft is saved here." refusal and Ctrl+C all come from the
- * table, not from a temporary key listener.
- */
 import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
 import { availableModels } from "../lib/catalog.ts";
 import type { Selection } from "../model/state.ts";
@@ -20,7 +14,6 @@ export interface BootOptions {
     | { readonly kind: "new" }
     | { readonly kind: "latest" }
     | { readonly kind: "session"; readonly id: SessionId };
-  /** `--model`: `provider/id`, or a bare id looked up across signed-in providers. */
   readonly model: string | null;
   readonly effort: Thinking | null;
 }
@@ -79,7 +72,10 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
     );
   }
 
-  if (availableModels(catalog).length === 0)
+  if (
+    availableModels(catalog).length === 0 &&
+    catalog.providers.every((provider) => provider.credential !== "unknown")
+  )
     dispatch({
       kind: "inform",
       tone: "warning",
@@ -107,13 +103,11 @@ async function resolveTarget(
     case "new":
       return { id: await create(), resumed: false };
     case "latest": {
-      const used = (await host.rootSessions()).find((info) =>
-        info.heads.some((head) => head.tip.kind !== "start"),
-      );
+      for await (const info of host.rootSessions())
+        if (info.heads.some((head) => head.tip.kind !== "start"))
+          return { id: info.id, resumed: true };
 
-      return used === undefined
-        ? { id: await create(), resumed: false }
-        : { id: used.id, resumed: true };
+      return { id: await create(), resumed: false };
     }
 
     case "session":
@@ -126,7 +120,6 @@ async function resolveTarget(
   }
 }
 
-/** The selection `--model` and `--effort` ask for, or null when neither is given; an unknown bare id throws. */
 export function flagSelection(
   options: Pick<BootOptions, "model" | "effort">,
   catalog: ModelCatalogView,

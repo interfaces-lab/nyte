@@ -27,16 +27,13 @@ import type {
 import { createHandler, createTransport, operations } from "../src/index.ts";
 import type { HandlerOptions, Transport } from "../src/index.ts";
 
-/** A scripted provider inside a real `Models`: text replies answered in order, and an api-key login. */
 export type FakeModels = {
   readonly models: MutableModels;
   reply(...texts: readonly string[]): void;
 };
 
-/** One file on the fake disk. */
 export type DiskFile = { readonly contents: Uint8Array; readonly version: FileVersion };
 
-/** Returns a `Models` holding one scripted provider `test` with one model `model`. */
 export function fakeModels(): FakeModels {
   const queue: string[] = [];
   let configured = true;
@@ -85,7 +82,6 @@ export function fakeModels(): FakeModels {
   return { models, reply: (...texts) => queue.push(...texts) };
 }
 
-/** An environment provider of kind `chat-only` whose files and processes refuse: the workspace a chat needs. */
 export const chatOnly: Plugin<"core"> = {
   id: "chat-only",
   environment: {
@@ -105,7 +101,6 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
-/** Returns a provider of kind `local` over one in-memory disk: files read, write and scan there, `exec` runs `echo` as a process that prints its arguments and exits 0, and its browser records the pages it opens and closes. */
 export function localProvider(
   disk: Map<string, DiskFile>,
   pages: { readonly opened: PageId[]; readonly closed: PageId[] },
@@ -197,7 +192,6 @@ export function localProvider(
   };
 }
 
-/** Returns a composed host over a memory store with the fake models, the chat-only and local providers, and a handler whose connections are `ada` (participant and owner, `Bearer owner`), `bob` (participant, `Bearer guest`) and a pairing exchange (`Pairing 123-456`) that returns `X-Nyte-Credential`. */
 export async function served(
   options?: Partial<Pick<HandlerOptions, "maxBodyBytes">> & {
     readonly store?: Store;
@@ -282,7 +276,6 @@ export async function served(
   };
 }
 
-/** Posts a JSON input to the handler as `Bearer owner` (or the given authorization) and returns its response. */
 export function post(
   handler: (request: Request) => Promise<Response>,
   name: string,
@@ -479,7 +472,6 @@ function refuseStream(): AsyncIterable<never> {
   return { [Symbol.asyncIterator]: () => ({ next: refuse }) };
 }
 
-/** Returns a reader that yields byte 7 and then waits until it is closed, counting its closes. */
 export function endless(): ByteReader & { closes(): number } {
   let closes = 0;
   const closed = Promise.withResolvers<void>();

@@ -1,16 +1,3 @@
-/**
- * Account remote access on disk: `~/.nyte/connect.json`, mode 0600 beside the
- * other credential stores. The machine key is stored in it as plain JSON,
- * protected by file permissions; device tokens exist here only as SHA-256
- * digests; session JWTs and leases never do.
- *
- * Every change lands on disk before it is visible, through an fsynced
- * temporary file renamed into place. A file that cannot be read, is readable
- * by other users on POSIX, does not parse, is from another version, or cannot
- * be written makes the store `failed` for the life of the process, and a
- * failed store authorizes nothing. Windows relies on the ACL it inherits from
- * the user's profile.
- */
 import { randomBytes } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -44,7 +31,6 @@ const strict = <P extends TProperties>(properties: P) =>
 
 const Time = Type.Integer({ minimum: 0 });
 
-/** The broker a record was made with. Proofs and cleanup for it go there and nowhere else. */
 const Origin = Type.String({ pattern: "^https://[^/?#]+$", maxLength: 256 });
 
 const StoredDevice = strict({
@@ -52,9 +38,7 @@ const StoredDevice = strict({
   clientId: ClientId,
   name: Name,
   digest: Base64Url32,
-  /** When this desktop recorded it, by this desktop's clock. */
   createdAt: Time,
-  /** What the enrolling browser asked for; the host's own policy decides whether `owner` counts. */
   role: DeviceRole,
 });
 
@@ -67,16 +51,9 @@ const StoredLink = strict({
     id: Type.String({ minLength: 1, maxLength: 128 }),
     label: Type.String({ maxLength: 320 }),
   }),
-  /** The machine key. */
   key: PrivateJwk,
   brokerKeys: BrokerKeys,
   devices: Type.Array(StoredDevice, { maxItems: DEVICE_LIMIT }),
-  /**
-   * Removed here; the broker call is retried until it answers. A `release`
-   * came from the device itself and leaves its Clerk session alone; a
-   * `revoke` came from this Mac's user and also ends that session. A revoke
-   * replaces a release for the same device, never the other way round.
-   */
   revocations: Type.Array(
     strict({
       deviceId: Uuid,
@@ -85,7 +62,6 @@ const StoredLink = strict({
     }),
     { maxItems: REVOCATION_LIMIT },
   ),
-  /** Enrollment `jti`s, kept until they expire so a replay is refused. */
   consumed: Type.Array(strict({ jti: RandomId, exp: Time }), { maxItems: CONSUMED_LIMIT }),
 });
 
@@ -93,13 +69,6 @@ export type StoredLink = Static<typeof StoredLink>;
 
 const PendingUnlink = strict({ origin: Origin, environmentId: Uuid, key: PrivateJwk, at: Time });
 
-/**
- * The key of a link the broker may have begun. A `session` link is the
- * desktop's: `owner` is the session JWT's `sub` as read here, bookkeeping so
- * another account's retry starts a fresh key. A `transaction` link is a
- * headless host's: the operation id and code are minted and kept here before
- * the broker hears of them, and `transaction` is what it answered.
- */
 const LinkKey = Type.Union([
   strict({
     kind: Type.Literal("session"),
@@ -113,13 +82,7 @@ const LinkKey = Type.Union([
     key: PrivateJwk,
     operationId: RandomId,
     userCode: UserCode,
-    /** The name the open carries; a replayed open must say the same. */
     name: Name,
-    /**
-     * This host gave the intent up. Set before or after the broker answered
-     * the open: the next attempt first learns the transaction by replaying the
-     * exact open, cancels it, and unlinks a completion that won.
-     */
     abandoned: Type.Boolean(),
     transaction: Type.Union([
       strict({
@@ -138,10 +101,8 @@ export type PendingUnlink = Static<typeof PendingUnlink>;
 
 const ConnectFileType = strict({
   version: Type.Literal(4),
-  /** Serve whenever Nyte runs. Off by default. */
   enabled: Type.Boolean(),
   link: Type.Union([StoredLink, Type.Null()]),
-  /** A link the broker may have begun; a retry resumes it rather than leaving it orphaned. */
   linkKey: Type.Union([LinkKey, Type.Null()]),
   unlinks: Type.Array(PendingUnlink, { maxItems: UNLINK_LIMIT }),
 });

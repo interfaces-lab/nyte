@@ -1,22 +1,17 @@
-/**
- * A dialog's one-line text field: its text and caret, edited by the keys
- * OpenTUI's input binds (`FIELD_KEYBINDS`). The caret is a UTF-16 offset that
- * moves by grapheme; a word is a run of letters, digits and `_`, or of other
- * non-space characters.
- */
 import type { FieldCommand } from "../../lib/constants.ts";
 
 export interface Field {
   readonly text: string;
   readonly caret: number;
+  readonly anchor?: number;
 }
 
 export type FieldMove = "left" | "right" | "word-left" | "word-right" | "home" | "end";
 
 export type FieldEdit =
   | { readonly kind: "insert"; readonly text: string }
-  | { readonly kind: "move"; readonly to: FieldMove }
-  /** Removes the text between the caret and where `to` would move it. */
+  | { readonly kind: "move"; readonly to: FieldMove; readonly select?: boolean }
+  | { readonly kind: "select-all" }
   | { readonly kind: "delete"; readonly to: FieldMove };
 
 export const FIELD_EDITS: Readonly<Record<FieldCommand, FieldEdit>> = {
@@ -24,6 +19,13 @@ export const FIELD_EDITS: Readonly<Record<FieldCommand, FieldEdit>> = {
   "field.right": { kind: "move", to: "right" },
   "field.home": { kind: "move", to: "home" },
   "field.end": { kind: "move", to: "end" },
+  "field.select.all": { kind: "select-all" },
+  "field.select.left": { kind: "move", to: "left", select: true },
+  "field.select.right": { kind: "move", to: "right", select: true },
+  "field.select.home": { kind: "move", to: "home", select: true },
+  "field.select.end": { kind: "move", to: "end", select: true },
+  "field.select.word.left": { kind: "move", to: "word-left", select: true },
+  "field.select.word.right": { kind: "move", to: "word-right", select: true },
   "field.word.left": { kind: "move", to: "word-left" },
   "field.word.right": { kind: "move", to: "word-right" },
   "field.delete.left": { kind: "delete", to: "left" },
@@ -36,13 +38,12 @@ export const FIELD_EDITS: Readonly<Record<FieldCommand, FieldEdit>> = {
 
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-function classOf(grapheme: string): "space" | "word" | "other" {
+function classifyGrapheme(grapheme: string): "space" | "word" | "other" {
   if (/^\s/u.test(grapheme)) return "space";
 
   return /^[\p{L}\p{N}_]/u.test(grapheme) ? "word" : "other";
 }
 
-/** Where `to` moves the caret: one grapheme, past the next word, or to an end. */
 function target(field: Field, to: FieldMove): number {
   const { text, caret } = field;
 
@@ -55,14 +56,14 @@ function target(field: Field, to: FieldMove): number {
     const before = segments.filter((segment) => segment.index < caret).toReversed();
 
     if (to === "left") return before[0]?.index ?? 0;
-    const start = before.findIndex((segment) => classOf(segment.segment) !== "space");
+    const start = before.findIndex((segment) => classifyGrapheme(segment.segment) !== "space");
     const word = before[start];
 
     if (word === undefined) return 0;
-    const kind = classOf(word.segment);
+    const kind = classifyGrapheme(word.segment);
 
     const end = before.findIndex(
-      (segment, index) => index > start && classOf(segment.segment) !== kind,
+      (segment, index) => index > start && classifyGrapheme(segment.segment) !== kind,
     );
 
     return end === -1 ? 0 : (before[end - 1]?.index ?? 0);
@@ -71,12 +72,15 @@ function target(field: Field, to: FieldMove): number {
   const after = segments.filter((segment) => segment.index >= caret);
 
   if (to === "right") return after[1]?.index ?? text.length;
-  const start = after.findIndex((segment) => classOf(segment.segment) !== "space");
+  const start = after.findIndex((segment) => classifyGrapheme(segment.segment) !== "space");
   const word = after[start];
 
   if (word === undefined) return text.length;
-  const kind = classOf(word.segment);
-  const end = after.find((segment, index) => index > start && classOf(segment.segment) !== kind);
+  const kind = classifyGrapheme(word.segment);
+
+  const end = after.find(
+    (segment, index) => index > start && classifyGrapheme(segment.segment) !== kind,
+  );
 
   return end?.index ?? text.length;
 }
@@ -84,20 +88,36 @@ function target(field: Field, to: FieldMove): number {
 export function editField(field: Field, edit: FieldEdit): Field {
   const caret = Math.max(0, Math.min(field.caret, field.text.length));
   const { text } = field;
+  const anchor = Math.max(0, Math.min(field.anchor ?? caret, text.length));
+  const from = Math.min(caret, anchor);
+  const end = Math.max(caret, anchor);
 
   switch (edit.kind) {
     case "insert":
       return {
-        text: `${text.slice(0, caret)}${edit.text}${text.slice(caret)}`,
-        caret: caret + edit.text.length,
+        text: `${text.slice(0, from)}${edit.text}${text.slice(end)}`,
+        caret: from + edit.text.length,
       };
-    case "move":
-      return { text, caret: target({ text, caret }, edit.to) };
-    case "delete": {
-      const to = target({ text, caret }, edit.to);
-      const from = Math.min(caret, to);
+    case "select-all":
+      return text === "" ? { text, caret: 0 } : { text, caret: text.length, anchor: 0 };
+    case "move": {
+      const next =
+        !edit.select && from !== end && (edit.to === "left" || edit.to === "right")
+          ? edit.to === "left"
+            ? from
+            : end
+          : target({ text, caret }, edit.to);
 
-      return { text: `${text.slice(0, from)}${text.slice(Math.max(caret, to))}`, caret: from };
+      return edit.select && next !== anchor ? { text, caret: next, anchor } : { text, caret: next };
+    }
+
+    case "delete": {
+      if (from !== end) return { text: `${text.slice(0, from)}${text.slice(end)}`, caret: from };
+
+      const to = target({ text, caret }, edit.to);
+      const start = Math.min(caret, to);
+
+      return { text: `${text.slice(0, start)}${text.slice(Math.max(caret, to))}`, caret: start };
     }
 
     default: {

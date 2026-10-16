@@ -1,7 +1,5 @@
-/** Model rows, effort/fast fields, the responsive detail pane, "↑ more above / ↓ more below". */
 import { TextAttributes } from "@opentui/core";
 import type { Thinking } from "@nyte-ai/sdk";
-import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -17,12 +15,9 @@ import {
   rowDraft,
   visibleModels,
 } from "../../model/dialogs/model-picker.ts";
-import { cut, hint, joinHints, Note, Panel, QueryLine, useBodyWidth } from "./panel.tsx";
+import { cut, hint, joinHints, Note, Panel, QueryLine, useBodyWidth, useRowCap } from "./panel.tsx";
 
-/** Rows the picker may spend below its title and search line, bounded by the terminal. */
 const MAX_BODY_ROWS = 18;
-
-const CHROME_ROWS = 10;
 
 function effortLabel(level: Thinking): string {
   return level === "xhigh" ? "XHigh" : level[0].toUpperCase() + level.slice(1);
@@ -179,16 +174,16 @@ function Details(props: {
 
 export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.Element {
   const app = useApp();
-  const dimensions = useTerminalDimensions();
+  const cap = useRowCap();
   const width = useBodyWidth();
   const rows = createMemo(() => visibleModels(props.dialog));
 
   const total = () =>
     props.dialog.models.kind === "ready" ? props.dialog.models.list.rows.length : 0;
 
-  const budget = () => Math.max(1, Math.min(MAX_BODY_ROWS, dimensions().height - CHROME_ROWS));
+  const budget = () => Math.min(MAX_BODY_ROWS, cap());
   const detailRows = () => (budget() >= 9 ? 6 : budget() >= 4 ? 1 : 0);
-  const markers = () => (budget() >= 4 ? 2 : 0);
+  const markers = () => (budget() >= 4 && rows().length > budget() - detailRows() ? 2 : 0);
 
   const visibleCount = () =>
     Math.max(1, Math.min(budget() - detailRows() - markers(), Math.max(1, rows().length)));
@@ -264,6 +259,7 @@ export function ModelPickerView(props: { readonly dialog: ModelDialog }): JSX.El
       <QueryLine
         text={props.dialog.query}
         caret={props.dialog.caret}
+        anchor={props.dialog.anchor}
         placeholder="Type to search"
         trailing={width() >= 35 ? ` ${String(rows().length)}/${String(total())}` : ""}
       />

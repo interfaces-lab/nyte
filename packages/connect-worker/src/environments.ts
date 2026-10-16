@@ -122,7 +122,6 @@ export async function linkEnvironment(context: Context, request: Request): Promi
   return json(201, response);
 }
 
-/** The error a claim that did not link answers with. */
 export function claimRefusal(outcome: Exclude<ClaimOutcome, { kind: "linked" }>): ErrorCode {
   switch (outcome.kind) {
     case "conflict":

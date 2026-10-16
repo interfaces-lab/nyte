@@ -4,6 +4,8 @@
   "compilerOptions": {
     "lib": ["ES2025"],
     "resolveJsonModule": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts"]

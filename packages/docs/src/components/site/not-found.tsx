@@ -6,7 +6,7 @@ export function NotFound() {
       <h1 className="text-2xl font-medium">Page not found</h1>
       <p className="text-muted-foreground">
         This page moved or never existed.{" "}
-        <Link to="/docs" className="text-foreground underline underline-offset-4">
+        <Link to="/docs/$" className="text-foreground underline underline-offset-4">
           Read the docs
         </Link>
       </p>

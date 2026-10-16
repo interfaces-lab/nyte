@@ -1,10 +1,3 @@
-/**
- * The usage charts: a stacked bar per bucket, a sparkline for a table row, and
- * a trace for a limit window. Each paints in a fixed order, grid then fills
- * then lines then nodes then labels, so an edge is never under a bar and a
- * label is never under an edge. Labels carry a halo in the panel colour so
- * they stay legible where they cross a line.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
@@ -39,14 +32,12 @@ export const readKind = (tally: Tally, metric: Metric, kind: TokenKind): number 
 export const readTotal = (tally: Tally, metric: Metric): number =>
   sumOf(metric === "cost" ? tally.cost : tally.tokens);
 
-/** Share of prompt tokens served from cache. */
 export const hitRate = (tally: Tally): number => {
   const prompt = tally.tokens.input + tally.tokens.cacheRead + tally.tokens.cacheWrite;
 
   return prompt === 0 ? 0 : tally.tokens.cacheRead / prompt;
 };
 
-/** Steps of 1, 2 or 5 at the value's magnitude, so ticks read as round numbers. */
 function niceTicks(max: number, count: number): number[] {
   const raw = Math.max(max, Number.EPSILON) / count;
   const power = 10 ** Math.floor(Math.log10(raw));
@@ -105,10 +96,6 @@ const TOP = 10;
 
 const AXIS = 22;
 
-/**
- * Spend or tokens per bucket, stacked by kind, with the previous period as a
- * dashed step behind it. The token view adds the cache hit rate on its own axis.
- */
 export function StackedChart({
   current,
   previous,
@@ -188,7 +175,6 @@ function StackedPlot({
   const y = (value: number): number => TOP + plotHeight * (1 - value / top);
   const yShare = (share: number): number => TOP + plotHeight * (1 - share);
   const labels = starts.map((start) => bucketLabel(start, unit));
-  // Every nth bucket is labelled, n picked so the widest label clears its neighbour.
   const every = Math.max(1, Math.ceil((widest(labels, font) + 12) / slot));
   const focus = active === null ? undefined : current[active];
   const prior = active === null ? undefined : previous[active];
@@ -338,7 +324,6 @@ function StackedPlot({
   );
 }
 
-/** A small table beside the pointer, measured before it is placed so it flips instead of clipping. */
 function Readout({
   anchor,
   width,
@@ -405,7 +390,6 @@ const SPARK_WIDTH = 72;
 
 const SPARK_HEIGHT = 16;
 
-/** A row's trend across the period, scaled to its own peak. */
 export function Sparkline({
   values,
   tint,
@@ -443,7 +427,6 @@ export function Sparkline({
 
 export const TRACE_WIDTH = 120;
 
-/** A limit window end to end: used so far, then the current pace carried to the reset. */
 export function LimitTrace({
   account,
   tint,
@@ -506,11 +489,9 @@ const styles = create({
   },
   label: {
     fontFamily: type.fontMono,
-    // DATA_SIZE: StyleX needs the literal, and Pretext measures at this size.
     fontSize: 11,
     fontVariantNumeric: "tabular-nums",
     fill: role.contentTertiary,
-    // The halo: a stroke in the panel colour, painted under the fill.
     stroke: role.bgBase,
     strokeWidth: 3,
     strokeLinejoin: "round",
@@ -543,7 +524,6 @@ const styles = create({
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
     fontFamily: type.fontMono,
-    // DATA_SIZE, measured by Pretext.
     fontSize: 11,
     lineHeight: "16px",
     fontVariantNumeric: "tabular-nums",

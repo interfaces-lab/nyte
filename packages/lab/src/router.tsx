@@ -91,7 +91,7 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/sdk",
     component: SdkSpecPage,
-    head: () => ({ meta: [{ title: "Lab · SDK spec" }] }),
+    head: () => ({ meta: [{ title: "Lab · SDK reference" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

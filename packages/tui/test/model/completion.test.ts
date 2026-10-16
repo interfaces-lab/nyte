@@ -1,8 +1,3 @@
-/**
- * The completion state machine over the draft mirror: which token is under
- * the cursor, when Esc's dismissal ends, what accepting does to the draft,
- * and how `@` mentions rank.
- */
 import { describe, expect, test } from "bun:test";
 import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
 import {

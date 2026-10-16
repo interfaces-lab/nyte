@@ -1,13 +1,9 @@
 /**
  * Async event queue with a promise for the terminal result. AssistantMessageEventStream is the stream every adapter returns: events are pushed as they arrive, and `result()` resolves with the final AssistantMessage once `done` or `error` is pushed.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/event-stream.ts
- * Synced with pi 7fbbd5f4a.
  */
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
 import { FifoQueue } from "./fifo-queue.ts";
 
-// Generic event stream class for async iteration
 export class EventStream<T, R = T> implements AsyncIterable<T> {
   private queue = new FifoQueue<IteratorYieldResult<T>>();
   private waiting = new FifoQueue<(value: IteratorResult<T>) => void>();
@@ -29,7 +25,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
       this.finalResult.resolve(this.extractResult(event));
     }
 
-    // Deliver to waiting consumer or queue it
     const next: IteratorYieldResult<T> = { value: event, done: false };
     const waiter = this.waiting.dequeue();
 
@@ -47,7 +42,6 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
       this.finalResult.resolve(result);
     }
 
-    // Notify all waiting consumers that we're done
     for (let waiter = this.waiting.dequeue(); waiter; waiter = this.waiting.dequeue()) {
       waiter({ value: undefined, done: true });
     }

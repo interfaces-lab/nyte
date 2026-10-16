@@ -2,7 +2,6 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { SdkError } from "@nyte-ai/core";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 
-/** Answers the repair cron's `GET /.nyte/repair` and nothing else (any other request answers `undefined`, so the listener goes on): with `Authorization: Bearer <secret>`, compared in constant time over SHA-256 digests, it runs `repair` and answers 204; a missing or wrong bearer answers `unauthenticated` (401) and an unset or empty `secret` (no `CRON_SECRET`) `unknown` (404), running nothing. What the Vercel listener's `before` calls with `process.env.CRON_SECRET`. */
 export async function answerRepair(
   request: Request,
   secret: string | undefined,

@@ -1,9 +1,3 @@
-/**
- * OpenAI Codex Responses adapter.
- *
- * Based on https://github.com/earendil-works/pi/blob/e86102f18f58868b2b722e742d129c54d0b01d56/packages/ai/src/api/openai-codex-responses.ts
- * Synced with pi e86102f18.
- */
 import { OpenAICodexCompactionError } from "./openai-codex-compaction-error.ts";
 import type * as NodeZlib from "node:zlib";
 import type {
@@ -23,7 +17,8 @@ import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
   AccountLimitWindow,
   AccountLimits,
-  Api,
+  AccountLimitsFetchOptions,
+  AccountLimitsTarget,
   AssistantMessage,
   Context,
   TranscriptContext,
@@ -37,7 +32,6 @@ import type {
   Usage,
 } from "../types.ts";
 import { sleep } from "../utils/abort.ts";
-import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
@@ -72,10 +66,6 @@ import {
   withPriorityTier,
 } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
-
-// ============================================================================
-// Wire Decoding
-// ============================================================================
 
 /**
  * The fields this adapter acts on in a raw Codex SSE/WebSocket frame. Frames
@@ -142,10 +132,6 @@ function isTerminalResponseType(type: string): boolean {
   );
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 
 const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
@@ -171,10 +157,6 @@ const WEBSOCKET_MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
 const WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE = "websocket_connection_limit_reached";
 
 const PREVIOUS_RESPONSE_NOT_FOUND_CODE = "previous_response_not_found";
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -215,10 +197,6 @@ function assertSuccessfulOutput(
     throw new Error(output.errorMessage || "An unknown error occurred");
   }
 }
-
-// ============================================================================
-// Retry Helpers
-// ============================================================================
 
 function isTerminalRateLimitError(errorText: string): boolean {
   return /GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing/i.test(
@@ -296,10 +274,6 @@ function normalizeTimeoutMs(value: number | undefined): number | undefined {
   return Math.floor(value);
 }
 
-// ============================================================================
-// Request Compression
-// ============================================================================
-
 interface NodeProcessLike {
   versions?: { node?: string; bun?: string };
   getBuiltinModule?: (id: string) => typeof NodeZlib;
@@ -320,9 +294,6 @@ function loadNodeZlib(): typeof NodeZlib | null {
   return proc.getBuiltinModule?.("node:zlib") ?? null;
 }
 
-// Returns the zstd-compressed body bytes, or null when compression is
-// unavailable (browser/Vite builds). Callers fall back to sending the
-// uncompressed JSON when this returns null.
 function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
   const zlib = loadNodeZlib();
 
@@ -331,7 +302,6 @@ function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
   }
 
   try {
-    // A runtime without zstd support throws below and lands in the catch.
     const compressed = zlib.zstdCompressSync(bodyJson, {
       params: { [zlib.constants.ZSTD_c_compressionLevel]: REQUEST_COMPRESSION_ZSTD_LEVEL },
     });
@@ -341,10 +311,6 @@ function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
     return null;
   }
 }
-
-// ============================================================================
-// Main Stream Function
-// ============================================================================
 
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
   model: Model<"openai-codex-responses">,
@@ -405,7 +371,6 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
       const nextBody = await options?.onPayload?.(body, model);
 
       if (nextBody !== undefined) {
-        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         body = nextBody as RequestBody;
       }
 
@@ -435,10 +400,6 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
       const websocketDisabledForSession =
         transport !== "sse" && isWebSocketSseFallbackActive(cacheSessionId);
-
-      if (websocketDisabledForSession) {
-        recordWebSocketSseFallback(cacheSessionId);
-      }
 
       if (transport !== "sse" && !websocketDisabledForSession) {
         let websocketStarted = false;
@@ -519,13 +480,12 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
                 requestBytes: new TextEncoder().encode(bodyJson).byteLength,
               }),
             );
-            recordWebSocketFailure(cacheSessionId, error);
+            if (cacheSessionId) websocketSseFallbackSessions.add(cacheSessionId);
 
             if (websocketStarted) {
               throw error;
             }
 
-            recordWebSocketSseFallback(cacheSessionId);
             break;
           }
         }
@@ -540,9 +500,8 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
         sseHeaders.set("content-encoding", "zstd");
       }
 
-      const sseBody: Uint8Array | string = compressedBody ?? bodyJson;
+      const sseBody = compressedBody ? new Uint8Array(compressedBody) : bodyJson;
 
-      // Fetch with retry logic for rate limits and transient errors
       let response: Response | undefined;
       let lastError: Error | undefined;
       const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -553,29 +512,31 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
         }
 
         try {
-          const headerTimeoutSignal =
+          const headerTimeout = new AbortController();
+          const headerTimer =
             httpTimeoutMs !== undefined && httpTimeoutMs > 0
-              ? AbortSignal.timeout(httpTimeoutMs)
+              ? setTimeout(() => headerTimeout.abort(), httpTimeoutMs)
               : undefined;
 
-          const combinedSignal = combineAbortSignals([options?.signal, headerTimeoutSignal]);
+          const signal = options?.signal
+            ? AbortSignal.any([options.signal, headerTimeout.signal])
+            : headerTimeout.signal;
 
           try {
             response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
               method: "POST",
               headers: sseHeaders,
-              // SAFETY: a zstd-compressed Uint8Array is valid BodyInit at runtime; TS 5.7+ types Buffer as Uint8Array<ArrayBufferLike>, which DOM's BodyInit rejects (Nyte divergence).
-              body: sseBody as NonNullable<Parameters<typeof fetch>[1]>["body"],
-              signal: combinedSignal.signal,
+              body: sseBody,
+              signal,
             });
           } catch (error) {
-            if (headerTimeoutSignal?.aborted && !options?.signal?.aborted) {
+            if (headerTimeout.signal.aborted && !options?.signal?.aborted) {
               throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`);
             }
 
             throw error;
           } finally {
-            combinedSignal.cleanup();
+            clearTimeout(headerTimer);
           }
 
           const responseHeaders = headersToRecord(response.headers);
@@ -605,7 +566,6 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
             continue;
           }
 
-          // Parse error for friendly message on final attempt or non-retryable error
           const fakeResponse = new Response(errorText, {
             status: response.status,
             statusText: response.statusText,
@@ -622,7 +582,6 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
           lastError = error instanceof Error ? error : new Error(String(error));
 
-          // Network errors are retryable
           if (
             attempt < maxRetries &&
             !(lastError instanceof RetryDelayExceededError) &&
@@ -698,10 +657,6 @@ export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStream
     reasoningEffort,
   } satisfies OpenAICodexResponsesOptions);
 };
-
-// ============================================================================
-// Request Building
-// ============================================================================
 
 function buildRequestBody(
   model: Model<"openai-codex-responses">,
@@ -974,7 +929,9 @@ export async function compactOpenAICodexContext(
       response = undefined;
       failure = "Request failed";
       const headerTimeout = new AbortController();
-      const combinedSignal = combineAbortSignals([options?.signal, headerTimeout.signal]);
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, headerTimeout.signal])
+        : headerTimeout.signal;
       const timer = timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
       let retryable = true;
       let output: CodexCompactionOutput = { kind: "missing" };
@@ -984,7 +941,7 @@ export async function compactOpenAICodexContext(
           method: "POST",
           headers,
           body: compressedBody ? new Uint8Array(compressedBody) : encodedBody,
-          signal: combinedSignal.signal,
+          signal,
         });
         clearTimeout(timer);
         retryable = false;
@@ -1014,7 +971,7 @@ export async function compactOpenAICodexContext(
 
         retryable = true;
 
-        for await (const event of parseSSE(response, combinedSignal.signal, timeoutMs)) {
+        for await (const event of parseSSE(response, signal, timeoutMs)) {
           if (event.type === "response.output_item.done") {
             const item = event.item;
 
@@ -1162,7 +1119,6 @@ export async function compactOpenAICodexContext(
         if (!retryable || output.kind === "invalid" || attempt >= maxRetries) throw error;
       } finally {
         clearTimeout(timer);
-        combinedSignal.cleanup();
         await response?.body?.cancel().catch(() => {});
       }
 
@@ -1383,15 +1339,19 @@ function accountWindow(
 ): AccountLimitWindow {
   const windowSeconds = window.limit_window_seconds;
 
-  const id =
-    windowSeconds === 5 * 60 * 60
-      ? "five_hour"
-      : windowSeconds === 7 * 24 * 60 * 60
-        ? "seven_day"
-        : fallbackId;
-
   const result: AccountLimitWindow = {
-    id,
+    id:
+      windowSeconds === 5 * 60 * 60
+        ? "five_hour"
+        : windowSeconds === 7 * 24 * 60 * 60
+          ? "seven_day"
+          : fallbackId,
+    label:
+      windowSeconds === undefined || windowSeconds === null
+        ? fallbackId === "primary"
+          ? "Primary"
+          : "Secondary"
+        : durationLabel(windowSeconds),
     usedPercent: Math.max(0, Math.min(100, window.used_percent)),
   };
 
@@ -1406,10 +1366,20 @@ function accountWindow(
   return result;
 }
 
+function durationLabel(seconds: number): string {
+  if (seconds === 7 * 24 * 60 * 60) return "Weekly";
+
+  if (seconds % (24 * 60 * 60) === 0) return `${String(seconds / (24 * 60 * 60))}-day`;
+
+  if (seconds % (60 * 60) === 0) return `${String(seconds / (60 * 60))}-hour`;
+
+  return `${String(Math.round(seconds / 60))}-minute`;
+}
+
 /** Fetch current ChatGPT subscription windows from `wham/usage`. */
 export async function fetchOpenAICodexAccountLimits(
-  model: Model<"openai-codex-responses">,
-  options?: OpenAICodexResponsesOptions,
+  model: AccountLimitsTarget,
+  options?: AccountLimitsFetchOptions,
 ): Promise<AccountLimits> {
   const apiKey = options?.apiKey;
 
@@ -1425,52 +1395,44 @@ export async function fetchOpenAICodexAccountLimits(
       ? AbortSignal.timeout(normalizeTimeoutMs(options.timeoutMs) ?? 0)
       : undefined;
 
-  const combinedSignal = combineAbortSignals([options?.signal, timeoutSignal]);
+  const signal = AbortSignal.any(
+    [options?.signal, timeoutSignal].filter((signal) => signal !== undefined),
+  );
 
-  try {
-    const response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/wham/usage`, {
-      method: "GET",
-      headers,
-      signal: combinedSignal.signal,
-    });
+  const response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/wham/usage`, {
+    method: "GET",
+    headers,
+    signal,
+  });
 
-    await options?.onResponse?.(
-      { status: response.status, headers: headersToRecord(response.headers) },
-      model,
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Codex usage request failed (${String(response.status)}): ${text || response.statusText}`,
     );
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `Codex usage request failed (${String(response.status)}): ${text || response.statusText}`,
-      );
-    }
-
-    const decoded = await response.json();
-
-    if (!Value.Check(CodexUsageResponseSchema, decoded)) {
-      throw new Error("Codex usage response was not an object");
-    }
-
-    const primary = decoded.rate_limit?.primary_window;
-    const secondary = decoded.rate_limit?.secondary_window;
-    const windows: AccountLimitWindow[] = [];
-
-    if (Value.Check(CodexUsageWindowSchema, primary))
-      windows.push(accountWindow("primary", primary));
-
-    if (Value.Check(CodexUsageWindowSchema, secondary)) {
-      windows.push(accountWindow("secondary", secondary));
-    }
-
-    const limits: AccountLimits = { providerId: model.provider, windows, observedAt: Date.now() };
-
-    if (Value.Check(CodexPlanSchema, decoded)) limits.plan = decoded.plan_type;
-
-    return limits;
-  } finally {
-    combinedSignal.cleanup();
   }
+
+  const decoded = await response.json();
+
+  if (!Value.Check(CodexUsageResponseSchema, decoded)) {
+    throw new Error("Codex usage response was not an object");
+  }
+
+  const primary = decoded.rate_limit?.primary_window;
+  const secondary = decoded.rate_limit?.secondary_window;
+  const windows: AccountLimitWindow[] = [];
+
+  if (Value.Check(CodexUsageWindowSchema, primary)) windows.push(accountWindow("primary", primary));
+
+  if (Value.Check(CodexUsageWindowSchema, secondary)) {
+    windows.push(accountWindow("secondary", secondary));
+  }
+
+  const limits: AccountLimits = { providerId: model.provider, windows, observedAt: Date.now() };
+
+  if (Value.Check(CodexPlanSchema, decoded)) limits.plan = decoded.plan_type;
+
+  return limits;
 }
 
 function resolveCodexServiceTier(
@@ -1507,10 +1469,6 @@ function resolveCodexWebSocketUrl(baseUrl?: string): string {
 
   return url.toString();
 }
-
-// ============================================================================
-// Response Processing
-// ============================================================================
 
 async function processStream(
   response: Response,
@@ -1657,10 +1615,6 @@ async function* mapCodexEvents(
   }
 }
 
-// ============================================================================
-// SSE Parsing
-// ============================================================================
-
 async function* parseSSE(
   response: Response,
   signal?: AbortSignal,
@@ -1754,10 +1708,6 @@ async function* parseSSE(
   }
 }
 
-// ============================================================================
-// WebSocket Parsing
-// ============================================================================
-
 const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
 
 const SESSION_WEBSOCKET_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1815,70 +1765,9 @@ interface CachedWebSocketConnection {
   continuation?: CachedWebSocketContinuationState;
 }
 
-export interface OpenAICodexWebSocketDebugStats {
-  requests: number;
-  connectionsCreated: number;
-  connectionsReused: number;
-  cachedContextRequests: number;
-  storeTrueRequests: number;
-  fullContextRequests: number;
-  deltaRequests: number;
-  lastInputItems: number;
-  lastDeltaInputItems?: number;
-  lastPreviousResponseId?: string;
-  websocketFailures: number;
-  sseFallbacks: number;
-  websocketFallbackActive?: boolean;
-  lastWebSocketError?: string;
-}
-
 const websocketSessionCache = new Map<string, Map<string, CachedWebSocketConnection>>();
 
-const websocketDebugStats = new Map<string, OpenAICodexWebSocketDebugStats>();
-
 const websocketSseFallbackSessions = new Set<string>();
-
-function getOrCreateWebSocketDebugStats(sessionId: string): OpenAICodexWebSocketDebugStats {
-  let stats = websocketDebugStats.get(sessionId);
-
-  if (!stats) {
-    stats = {
-      requests: 0,
-      connectionsCreated: 0,
-      connectionsReused: 0,
-      cachedContextRequests: 0,
-      storeTrueRequests: 0,
-      fullContextRequests: 0,
-      deltaRequests: 0,
-      lastInputItems: 0,
-      websocketFailures: 0,
-      sseFallbacks: 0,
-    };
-    websocketDebugStats.set(sessionId, stats);
-  }
-
-  return stats;
-}
-
-export function getOpenAICodexWebSocketDebugStats(
-  sessionId: string,
-): OpenAICodexWebSocketDebugStats | undefined {
-  const stats = websocketDebugStats.get(sessionId);
-
-  return stats ? { ...stats } : undefined;
-}
-
-export function resetOpenAICodexWebSocketDebugStats(sessionId?: string): void {
-  if (sessionId) {
-    websocketDebugStats.delete(sessionId);
-    websocketSseFallbackSessions.delete(sessionId);
-
-    return;
-  }
-
-  websocketDebugStats.clear();
-  websocketSseFallbackSessions.clear();
-}
 
 export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
   const closeEntry = (entry: CachedWebSocketConnection) => {
@@ -1889,6 +1778,7 @@ export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
   if (sessionId) {
     for (const entry of websocketSessionCache.get(sessionId)?.values() ?? []) closeEntry(entry);
     websocketSessionCache.delete(sessionId);
+    websocketSseFallbackSessions.delete(sessionId);
 
     return;
   }
@@ -1898,29 +1788,13 @@ export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
   }
 
   websocketSessionCache.clear();
+  websocketSseFallbackSessions.clear();
 }
 
 registerSessionResourceCleanup(closeOpenAICodexWebSocketSessions);
 
 function isWebSocketSseFallbackActive(sessionId: string | undefined): boolean {
   return sessionId ? websocketSseFallbackSessions.has(sessionId) : false;
-}
-
-function recordWebSocketSseFallback(sessionId: string | undefined): void {
-  if (!sessionId) return;
-  const stats = getOrCreateWebSocketDebugStats(sessionId);
-  stats.sseFallbacks++;
-  stats.websocketFallbackActive = isWebSocketSseFallbackActive(sessionId);
-}
-
-function recordWebSocketFailure(sessionId: string | undefined, cause: unknown): void {
-  if (!sessionId) return;
-  websocketSseFallbackSessions.add(sessionId);
-
-  const stats = getOrCreateWebSocketDebugStats(sessionId);
-  stats.websocketFailures++;
-  stats.lastWebSocketError = formatThrownValue(cause);
-  stats.websocketFallbackActive = true;
 }
 
 interface WebSocketConnectOptions {
@@ -1935,8 +1809,6 @@ let _cachedWebsocket: WebSocketConstructor | null = null;
 async function getWebSocketConstructor(env?: ProviderEnv): Promise<WebSocketConstructor | null> {
   if (!env && _cachedWebsocket) return _cachedWebsocket;
 
-  // bun doesn't respect http proxy envs, ref: https://github.com/oven-sh/bun/issues/15489
-  // TODO: remove this when bun supports proxy envs in websocket.
   if (nodeProcessLike()?.versions?.bun) {
     const WebSocketWithProxy = class extends WebSocket {
       constructor(url: string | URL, options?: WebSocketConnectOptions) {
@@ -2118,7 +1990,6 @@ async function acquireWebSocket(
 ): Promise<{
   socket: WebSocketLike;
   entry?: CachedWebSocketConnection;
-  reused: boolean;
   release: (options?: { keep?: boolean }) => void;
 }> {
   if (!sessionId) {
@@ -2126,7 +1997,6 @@ async function acquireWebSocket(
 
     return {
       socket,
-      reused: false,
       release: () => closeWebSocketSilently(socket),
     };
   }
@@ -2151,7 +2021,6 @@ async function acquireWebSocket(
       return {
         socket: cached.socket,
         entry: cached,
-        reused: true,
         release: ({ keep } = {}) => {
           if (!keep || !isWebSocketReusable(cached.socket)) {
             closeWebSocketSilently(cached.socket);
@@ -2175,7 +2044,6 @@ async function acquireWebSocket(
 
       return {
         socket,
-        reused: false,
         release: () => {
           closeWebSocketSilently(socket);
         },
@@ -2204,7 +2072,6 @@ async function acquireWebSocket(
   return {
     socket,
     entry,
-    reused: false,
     release: ({ keep } = {}) => {
       if (!keep || !isWebSocketReusable(entry.socket)) {
         closeWebSocketSilently(entry.socket);
@@ -2492,7 +2359,7 @@ async function processWebSocketStream(
   grammarToolInputProperties: ReadonlyMap<string, string>,
   options?: OpenAICodexResponsesOptions,
 ): Promise<void> {
-  const { socket, entry, reused, release } = await acquireWebSocket(
+  const { socket, entry, release } = await acquireWebSocket(
     url,
     headers,
     cacheSessionId,
@@ -2513,30 +2380,6 @@ async function processWebSocketStream(
 
   const requestBody =
     useCachedContext && entry ? buildCachedWebSocketRequestBody(entry, fullBody) : fullBody;
-
-  const stats = cacheSessionId ? getOrCreateWebSocketDebugStats(cacheSessionId) : undefined;
-
-  if (stats) {
-    stats.requests++;
-
-    if (reused) stats.connectionsReused++;
-    else stats.connectionsCreated++;
-
-    if (useCachedContext) stats.cachedContextRequests++;
-
-    if (requestBody.store === true) stats.storeTrueRequests++;
-    stats.lastInputItems = requestBody.input?.length ?? 0;
-
-    if (requestBody.previous_response_id) {
-      stats.deltaRequests++;
-      stats.lastDeltaInputItems = requestBody.input?.length ?? 0;
-      stats.lastPreviousResponseId = requestBody.previous_response_id;
-    } else {
-      stats.fullContextRequests++;
-      stats.lastDeltaInputItems = undefined;
-      stats.lastPreviousResponseId = undefined;
-    }
-  }
 
   try {
     socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
@@ -2596,10 +2439,6 @@ async function processWebSocketStream(
   }
 }
 
-// ============================================================================
-// Error Handling
-// ============================================================================
-
 async function parseErrorResponse(
   response: Response,
 ): Promise<{ message: string; friendlyMessage?: string }> {
@@ -2636,10 +2475,6 @@ async function parseErrorResponse(
 
   return { message, friendlyMessage };
 }
-
-// ============================================================================
-// Auth & Headers
-// ============================================================================
 
 function extractAccountId(token: string): string {
   try {

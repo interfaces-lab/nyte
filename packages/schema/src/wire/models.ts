@@ -2,9 +2,11 @@ import { Type } from "typebox";
 import type {
   ContextView,
   LoginMethod,
+  ModelAccount,
   ModelCatalogView,
   ModelInfo,
   ModelRef,
+  ProviderUsage,
   Thinking,
   Usage,
 } from "../models.ts";
@@ -13,13 +15,10 @@ import type { Schema } from "../schema.ts";
 import { idSchema } from "./ids.ts";
 import { nullable } from "./nullable.ts";
 
-/** The TypeBox schema of a `ModelRef`. */
 export const ModelRefType = Type.Object({ provider: Type.String(), id: Type.String() });
 
-/** The TypeBox schema of a `Thinking` level. */
 export const ThinkingType = Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
-/** The TypeBox schema of a `Usage`. */
 export const UsageType = Type.Object({
   input: Type.Number(),
   output: Type.Number(),
@@ -36,20 +35,54 @@ export const UsageType = Type.Object({
   }),
 });
 
-/** The TypeBox schema of a `ContextView`. */
 export const ContextViewType = Type.Object({
   tokens: Type.Number(),
   window: Type.Number(),
   lastRequest: nullable(UsageType),
 });
 
-/** The TypeBox schema of a `LoginMethod`. */
 export const LoginMethodType = Type.Union([
   Type.Object({ kind: Type.Literal("oauth") }),
   Type.Object({ kind: Type.Literal("key") }),
 ]);
 
-/** The TypeBox schema of a `ModelInfo`. */
+const PROVIDER_LIMITS = Type.Array(
+  Type.Object({
+    label: Type.String(),
+    used: Type.Number(),
+    limit: Type.Number(),
+    resetsAt: nullable(Type.Number()),
+  }),
+);
+
+export const ModelAccountType = Type.Object({
+  provider: Type.String(),
+  id: Type.String(),
+  label: Type.String(),
+  method: LoginMethodType,
+  active: Type.Boolean(),
+});
+
+export const ProviderUsageType = Type.Object({
+  provider: Type.String(),
+  name: Type.String(),
+  account: nullable(ModelAccountType),
+  state: Type.Union([
+    Type.Object({
+      kind: Type.Literal("ready"),
+      limits: PROVIDER_LIMITS,
+      observedAt: Type.Number(),
+      stale: Type.Boolean(),
+      error: nullable(Type.String()),
+    }),
+    Type.Object({
+      kind: Type.Literal("unavailable"),
+      reason: Type.Enum(["unsupported", "unconfigured", "failed"]),
+      message: Type.String(),
+    }),
+  ]),
+});
+
 export const ModelInfoType = Type.Object({
   ref: ModelRefType,
   name: Type.String(),
@@ -68,7 +101,6 @@ export const ModelInfoType = Type.Object({
   }),
 });
 
-/** The TypeBox schema of a `ModelCatalogView`. */
 export const ModelCatalogViewType = Type.Object({
   generation: idSchema<"catalog-generation">(),
   default: nullable(ModelRefType),
@@ -76,38 +108,28 @@ export const ModelCatalogViewType = Type.Object({
     Type.Object({
       id: Type.String(),
       name: Type.String(),
-      credential: Type.Enum(["missing", "configured", "verified", "failed"]),
+      credential: Type.Enum(["unknown", "missing", "configured", "verified", "failed"]),
       methods: Type.Array(LoginMethodType),
-      limits: Type.Array(
-        Type.Object({
-          label: Type.String(),
-          used: Type.Number(),
-          limit: Type.Number(),
-          resetsAt: nullable(Type.Number()),
-        }),
-      ),
+      limits: PROVIDER_LIMITS,
       models: Type.Array(ModelInfoType),
     }),
   ),
 });
 
-/** Validates a `ModelRef`. */
 export const ModelRefSchema: Schema<ModelRef> = standard(ModelRefType);
 
-/** Validates a `Thinking` level. */
 export const ThinkingSchema: Schema<Thinking> = standard(ThinkingType);
 
-/** Validates a `Usage`. */
 export const UsageSchema: Schema<Usage> = standard(UsageType);
 
-/** Validates a `ContextView`. */
 export const ContextViewSchema: Schema<ContextView> = standard(ContextViewType);
 
-/** Validates a `LoginMethod`. */
 export const LoginMethodSchema: Schema<LoginMethod> = standard(LoginMethodType);
 
-/** Validates a `ModelInfo`. */
+export const ModelAccountSchema: Schema<ModelAccount> = standard(ModelAccountType);
+
+export const ProviderUsageSchema: Schema<ProviderUsage> = standard(ProviderUsageType);
+
 export const ModelInfoSchema: Schema<ModelInfo> = standard(ModelInfoType);
 
-/** Validates a `ModelCatalogView`. */
 export const ModelCatalogViewSchema: Schema<ModelCatalogView> = standard(ModelCatalogViewType);

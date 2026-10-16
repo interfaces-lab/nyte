@@ -105,10 +105,8 @@ export const preferences = {
   fileLineNumbers: definePreference({ key: FILES, field: "lineNumbers" }, Type.Boolean(), true),
   fileWordWrap: definePreference({ key: FILES, field: "wordWrap" }, Type.Boolean(), true),
   fileGitBlame: definePreference({ key: FILES, field: "gitBlame" }, Type.Boolean(), false),
-  // Opening a file must not opt a workspace into writes or formatter execution.
   fileAutoSave: definePreference({ key: FILES, field: "autoSave" }, Type.Boolean(), false),
   fileFormatOnSave: definePreference({ key: FILES, field: "formatOnSave" }, Type.Boolean(), false),
-  /** Defaults for repositories that haven't picked their own from the Changes menu. */
   changesLayout: definePreference(
     { key: CHANGES, field: "layout" },
     Type.Enum(["unified", "split"]),

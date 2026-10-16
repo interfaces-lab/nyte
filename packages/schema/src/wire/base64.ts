@@ -1,6 +1,5 @@
 import { Type } from "typebox";
 
-/** The TypeBox schema of bytes travelling as a base64 string: decodes to a `Uint8Array` and encodes back. */
 export const base64Bytes = Type.Codec(
   Type.String({ pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$" }),
 )

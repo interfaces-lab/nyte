@@ -19,7 +19,6 @@ const SPECIFIER = /^(?:import|export)\s(?!type\s)[^;]*?from\s+"([^"]+)"|^import\
 
 const exported: Readonly<Record<string, string>> = manifest.exports;
 
-/** Returns the host file a specifier names: a relative path, or one of this package's own subpaths; null for anything else. */
 function fileOf(from: string, specifier: string): string | null {
   if (specifier.startsWith(".")) return resolve(dirname(from), specifier);
   const subpath =
@@ -30,7 +29,6 @@ function fileOf(from: string, specifier: string): string | null {
     : null;
 }
 
-/** Returns every runtime specifier (type-only imports are erased) the files reachable from `entry` import, walking this package's own files. */
 function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
   const seen = new Map<string, readonly string[]>();
   const queue = [join(root, entry)];

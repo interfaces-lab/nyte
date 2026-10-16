@@ -1,11 +1,3 @@
-/**
- * Draws `screen().dialog` by kind in its placement: the slot under the
- * composer, an overlay over the transcript, or the whole screen. Keys never
- * come from here: the keymap's dialog and field layers turn them into
- * `{ kind: "dialog", command }`, typed text included (`edit`). Clicks on
- * rows dispatch `pick`. The dialog's frame takes focus while it shows, so a
- * terminal paste lands in its typed field.
- */
 import { decodePasteBytes } from "@opentui/core";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
@@ -13,7 +5,6 @@ import { Match, onMount, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import type { Dialog } from "../../model/dialogs/dialog.ts";
-import { placement } from "../../model/dialogs/dialog.ts";
 import { AuthView } from "./auth.tsx";
 import { InspectorView } from "./inspector.tsx";
 import { ListView } from "./list.tsx";
@@ -76,36 +67,5 @@ export function DialogHost(): JSX.Element {
   const app = useApp();
   const dialog = () => app.screen().dialog;
 
-  return (
-    <Show when={dialog()}>
-      {(current: Accessor<Dialog>) => (
-        <Switch>
-          <Match when={placement(current()) === "overlay"}>
-            <box
-              position="absolute"
-              top={0}
-              left={0}
-              right={0}
-              height="100%"
-              zIndex={1}
-              flexDirection="column"
-              backgroundColor={app.kit.theme().background}
-            >
-              <Body dialog={current()} />
-            </box>
-          </Match>
-          <Match when={placement(current()) === "screen"}>
-            <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
-              <Body dialog={current()} />
-            </box>
-          </Match>
-          <Match when>
-            <box flexDirection="column" flexShrink={0}>
-              <Body dialog={current()} />
-            </box>
-          </Match>
-        </Switch>
-      )}
-    </Show>
-  );
+  return <Show when={dialog()}>{(current: Accessor<Dialog>) => <Body dialog={current()} />}</Show>;
 }

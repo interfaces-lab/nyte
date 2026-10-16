@@ -40,10 +40,8 @@ const PENDING_LIMIT = 5;
 
 const PAIRING_WINDOW_MS = 10 * 60 * 1_000;
 
-/** What a paired device may do: what the listener token grants. */
 const DEVICE_AUTHORITY: ReadonlySet<Authority> = new Set(["participant", "owner"]);
 
-/** Returns what the listener's `custom` auth answers for a request. */
 type AuthDecision = Awaited<
   ReturnType<Extract<ListenOptions["auth"], { readonly kind: "custom" }>["authorize"]>
 >;
@@ -90,7 +88,6 @@ function digest(token: string): Buffer {
   return createHash("sha256").update(token).digest();
 }
 
-/** `Authorization: Bearer <token>`, read the way the listener reads its own token. */
 function bearer(request: Request): string | undefined {
   const header = request.headers.get("authorization");
 

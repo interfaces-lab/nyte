@@ -19,7 +19,7 @@
  * so `localDay` here is the same calendar as the one that wrote the report.
  */
 import type { SessionId } from "@nyte-ai/sdk";
-import type { ModelCatalogView } from "@nyte-ai/sdk";
+import type { ProviderUsage } from "@nyte-ai/sdk";
 import type { UsageSnapshot } from "../bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 
@@ -51,31 +51,31 @@ const WEEKLY_ABOVE_DAYS = 120;
 
 type UsageGrain = "day" | "week";
 
-/** One bar of the trend: when it is, and the window's measure in it. */
 export interface UsagePoint {
   readonly key: string;
   readonly label: string;
   readonly value: number;
 }
 
-/**
- * One ranked row, formatted. `value.absent` says why there is no amount rather
- * than printing `$0.00`, because a history nobody could read is not free usage.
- */
+const LOW_CACHE_HIT = 0.5;
+
+export interface UsageCache {
+  readonly hit: string;
+  readonly saved: string | undefined;
+  readonly tone: "plain" | "low" | "absent";
+}
+
 export interface UsageRow {
   readonly key: string;
   readonly label: string;
   readonly meta: string;
-  readonly turns: string;
-  readonly perTurn: string;
-  /** The row's measure per bucket of the window, or undefined when its history has no days. */
+  readonly cache: UsageCache;
   readonly trend: readonly number[] | undefined;
   readonly value: { readonly text: string; readonly absent: boolean };
   /** Of the window's cost, or of its tokens when nothing in it was priced. */
   readonly share: number;
 }
 
-/** Cost while anything in the window is priced; a free local model still has tokens. */
 export type UsageMeasure = "cost" | "tokens";
 
 export interface UsageDerived {
@@ -102,7 +102,7 @@ const EMPTY_TOTALS: UsageTotals = {
   reasoning: 0,
   tokens: 0,
   cost: 0,
-  turns: 0,
+  cacheSavings: 0,
 };
 
 function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
@@ -114,7 +114,7 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
     reasoning: left.reasoning + right.reasoning,
     tokens: left.tokens + right.tokens,
     cost: left.cost + right.cost,
-    turns: left.turns + right.turns,
+    cacheSavings: left.cacheSavings + right.cacheSavings,
   };
 }
 
@@ -147,10 +147,6 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }
 
-function formatCount(value: number): string {
-  return group(String(Math.round(value)));
-}
-
 export function formatPercent(fraction: number): string {
   if (fraction <= 0) return "0%";
 
@@ -160,7 +156,7 @@ export function formatPercent(fraction: number): string {
 }
 
 function plural(count: number, noun: string): string {
-  return `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
+  return `${group(String(Math.round(count)))} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /** `YYYY-MM-DD` for a local day, matching the calendar the host folded with. */
@@ -195,7 +191,6 @@ export function dayLabel(day: string): string {
   });
 }
 
-/** The window's days as a heading: one day, or the first and last. */
 export function spanLabel(from: string, to: string): string {
   return from === to ? dayLabel(to) : `${dayLabel(from)} – ${dayLabel(to)}`;
 }
@@ -229,16 +224,41 @@ export function costChange(
   };
 }
 
-/** The line under the total: what the window holds besides its cost. */
-export function describeTotals(totals: UsageTotals): string {
-  return `${plural(totals.turns, "turn")} · ${formatTokens(totals.tokens)} tokens`;
+interface CacheCounts {
+  readonly prompt: number;
+  readonly cacheRead: number;
+  readonly savings: number;
+  readonly cost: number;
 }
 
-/** Cache reads as a share of all prompt tokens, including newly written entries. */
-function cachedShare(spend: Spend): string {
-  return spend.prompt === 0
-    ? "not cached"
-    : `${formatPercent(spend.cacheRead / spend.prompt)} cached`;
+const NO_CACHE: UsageCache = { hit: "—", saved: undefined, tone: "absent" };
+
+function promptTokens(tokens: Pick<UsageTotals, "input" | "cacheRead" | "cacheWrite">): number {
+  return tokens.input + tokens.cacheRead + tokens.cacheWrite;
+}
+
+function describeCache(counts: CacheCounts): UsageCache {
+  if (counts.prompt === 0) return NO_CACHE;
+  const hit = counts.cacheRead / counts.prompt;
+
+  return {
+    hit: formatPercent(hit),
+    saved: counts.savings > 0 ? `saved ${formatUsd(counts.savings)}` : undefined,
+    tone: counts.cost > 0 && hit < LOW_CACHE_HIT ? "low" : "plain",
+  };
+}
+
+export function describeTotals(totals: UsageTotals): string {
+  const cache = describeCache({
+    prompt: promptTokens(totals),
+    cacheRead: totals.cacheRead,
+    savings: totals.cacheSavings,
+    cost: totals.cost,
+  });
+
+  if (cache.tone === "absent") return `${formatTokens(totals.tokens)} tokens`;
+
+  return [`${cache.hit} cache hit`, cache.saved].filter((part) => part !== undefined).join(" · ");
 }
 
 // ---------------------------------------------------------------------------
@@ -313,13 +333,12 @@ function chatLabel(name: string | undefined): string {
   return trimmed === undefined || trimmed === "" ? "Untitled chat" : trimmed;
 }
 
-/** What one row spent in the window, in total and per bucket. */
 interface Spend {
   cost: number;
   tokens: number;
-  turns: number;
   cacheRead: number;
   prompt: number;
+  savings: number;
   readonly costs: number[];
   readonly tokensBy: number[];
 }
@@ -328,9 +347,9 @@ function emptySpend(buckets: number): Spend {
   return {
     cost: 0,
     tokens: 0,
-    turns: 0,
     cacheRead: 0,
     prompt: 0,
+    savings: 0,
     costs: Array.from({ length: buckets }, () => 0),
     tokensBy: Array.from({ length: buckets }, () => 0),
   };
@@ -339,15 +358,11 @@ function emptySpend(buckets: number): Spend {
 function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
   spend.cost += totals.cost;
   spend.tokens += totals.tokens;
-  spend.turns += totals.turns;
   spend.cacheRead += totals.cacheRead;
-  spend.prompt += totals.input + totals.cacheRead + totals.cacheWrite;
+  spend.prompt += promptTokens(totals);
+  spend.savings += totals.cacheSavings;
   spend.costs[bucket] = (spend.costs[bucket] ?? 0) + totals.cost;
   spend.tokensBy[bucket] = (spend.tokensBy[bucket] ?? 0) + totals.tokens;
-}
-
-function perTurn(cost: number, turns: number): string {
-  return cost > 0 && turns > 0 ? formatUsd(cost / turns) : "—";
 }
 
 /**
@@ -430,9 +445,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     key,
     label,
     meta,
-    turns: formatCount(spend.turns),
-    perTurn: perTurn(spend.cost, spend.turns),
-    // An unpriced row still has a shape: its tokens. It is never a chart layer.
+    cache: describeCache(spend),
     trend: measure === "cost" && spend.cost > 0 ? spend.costs : spend.tokensBy,
     value:
       measure === "tokens"
@@ -470,7 +483,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     row(
       key,
       model.model,
-      `${model.provider} · ${formatTokens(model.spend.tokens)} tokens · ${cachedShare(model.spend)}`,
+      `${model.provider} · ${formatTokens(model.spend.tokens)} tokens`,
       model.spend,
     ),
   );
@@ -503,7 +516,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         return row(
           key,
           parent === undefined ? leaf : `${leaf} in ${parent}`,
-          `${formatTokens(folder.spend.tokens)} tokens · ${cachedShare(folder.spend)}`,
+          `${formatTokens(folder.spend.tokens)} tokens`,
           folder.spend,
         );
       }),
@@ -602,29 +615,25 @@ function coverageGaps(usage: Extract<LocalHistory, { kind: "ready" }>): readonly
   ].filter((gap) => gap !== false);
 }
 
-/** What one tool spent all time, or the sentence explaining why it is unknown. */
 type ToolSpend =
-  | {
-      readonly cost: number;
-      readonly tokens: number;
-      readonly turns: number;
-      readonly partial: boolean;
-    }
+  | (CacheCounts & { readonly tokens: number; readonly partial: boolean })
   | { readonly absent: string; readonly meta: string };
 
 function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
   if (tool === "nyte") {
     if (report.nyteError !== null) return { absent: "Couldn't read", meta: report.nyteError };
 
+    const totals = report.entries.reduce(
+      (sum, entry) => addTotals(sum, entry.totals),
+      EMPTY_TOTALS,
+    );
+
     return {
-      ...report.entries.reduce(
-        (sum, entry) => ({
-          cost: sum.cost + entry.totals.cost,
-          tokens: sum.tokens + entry.totals.tokens,
-          turns: sum.turns + entry.totals.turns,
-        }),
-        { cost: 0, tokens: 0, turns: 0 },
-      ),
+      cost: totals.cost,
+      tokens: totals.tokens,
+      prompt: promptTokens(totals),
+      cacheRead: totals.cacheRead,
+      savings: totals.cacheSavings,
       partial: report.sources.some((source) => source.status === "failed"),
     };
   }
@@ -636,10 +645,14 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
 
   if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
 
+  const { total, cacheSavings } = history.summary;
+
   return {
-    cost: history.summary.total.cost.total,
-    tokens: history.summary.total.total,
-    turns: history.summary.models.reduce((sum, model) => sum + model.turns, 0),
+    cost: total.cost.total,
+    tokens: total.total,
+    prompt: promptTokens(total),
+    cacheRead: total.cacheRead,
+    savings: cacheSavings,
     partial: coverageGaps(history).length > 0,
   };
 }
@@ -658,8 +671,7 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
       return {
         ...base,
         meta: spend.meta,
-        turns: "—",
-        perTurn: "—",
+        cache: NO_CACHE,
         value: { text: spend.absent, absent: true },
         share: 0,
       };
@@ -668,8 +680,7 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
     return {
       ...base,
       meta: `${formatTokens(spend.tokens)} tokens${spend.partial ? " · partial history" : ""}`,
-      turns: formatCount(spend.turns),
-      perTurn: perTurn(spend.cost, spend.turns),
+      cache: describeCache(spend),
       value: byCost
         ? spend.cost === 0
           ? { text: "No price", absent: true }
@@ -684,13 +695,6 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
 // subscription windows
 // ---------------------------------------------------------------------------
 
-/** The windows one provider reported on its last response, as the catalog carries them. */
-export interface AccountLimits {
-  readonly provider: string;
-  readonly name: string;
-  readonly limits: ModelCatalogView["providers"][number]["limits"];
-}
-
 /** One window's meter: how much is gone, and when it comes back. */
 export interface LimitMeter {
   readonly key: string;
@@ -703,14 +707,20 @@ export interface LimitMeter {
 interface AccountView {
   readonly title: string;
   readonly meters: readonly LimitMeter[];
-  /** Set instead of meters, saying why the provider gave none. */
   readonly message: string | undefined;
   readonly failed: boolean;
 }
 
-/** A provider's own windows, as it labels them, most used first. */
-export function deriveAccount(account: AccountLimits): AccountView {
-  const meters = account.limits
+export function deriveAccount(account: ProviderUsage): AccountView | null {
+  const title =
+    account.account === null ? account.name : `${account.name} · ${account.account.label}`;
+
+  if (account.state.kind === "unavailable")
+    return account.state.reason === "failed"
+      ? { title, meters: [], message: `${title} · ${account.state.message}`, failed: true }
+      : null;
+
+  const meters = account.state.limits
     .map((window) => ({
       key: window.label,
       label: window.label,
@@ -726,7 +736,14 @@ export function deriveAccount(account: AccountLimits): AccountView {
     }))
     .toSorted((left, right) => right.used - left.used);
 
-  return meters.length === 0
-    ? { title: account.name, meters, message: `${account.name} reported no limit.`, failed: false }
-    : { title: account.name, meters, message: undefined, failed: false };
+  return {
+    title,
+    meters,
+    message: account.state.stale
+      ? `${title} · Cached limits${account.state.error === null ? "" : ` · ${account.state.error}`}`
+      : meters.length === 0
+        ? `${account.name} reported no limit.`
+        : undefined,
+    failed: false,
+  };
 }

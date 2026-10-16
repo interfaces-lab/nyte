@@ -10,18 +10,12 @@ const SHELL_LOCAL = new Set(["PWD", "OLDPWD", "SHLVL", "_"]);
 
 let shared: (() => Promise<void>) | undefined;
 
-/**
- * Shared across the process: a GUI launch inherits a minimal environment, and
- * every spawned tool needs the login shell's one. Startup kicks this off; the
- * host opens and terminals start only after it settles.
- */
 export function ensureShellEnvironment(): Promise<void> {
   shared ??= createShellEnvironmentRepair();
 
   return shared();
 }
 
-/** One attempt per startup, including concurrent callers and failed attempts. */
 export function createShellEnvironmentRepair({
   env = process.env,
   platform = process.platform,
@@ -57,7 +51,6 @@ async function repairShellEnvironment({
 
   if (loaded === undefined) return;
 
-  // The shell starts from this environment, so its output is the inherited one plus the user's profile.
   for (const [name, value] of loaded) {
     if (name !== "PATH" && !SHELL_LOCAL.has(name)) env[name] = value;
   }
@@ -65,7 +58,6 @@ async function repairShellEnvironment({
   const path = loaded.get("PATH");
 
   if (path === undefined || path === "") return;
-  // Keep launcher-provided tools available after the login shell's preferred tools.
   env.PATH = inheritedPath ? `${path}:${inheritedPath}` : path;
 }
 
@@ -134,7 +126,6 @@ function readLoginShellEnvironment({
   });
 }
 
-/** Reads `env -0` output: `NAME=value` entries, each ended by a NUL. */
 function parseEnvironment(output: string): Map<string, string> {
   const loaded = new Map<string, string>();
 

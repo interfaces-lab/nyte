@@ -1,10 +1,3 @@
-/**
- * Every row the transcript draws, as the SDK hands it over. A scene is a slice
- * of a session's view: `turns` are `conversationTurns` of its messages,
- * `execution` is the head's run phase, and `landing` is the user messages
- * `conversationMessages` draws under the transcript. Nothing here is shaped
- * for the renderer.
- */
 import { lineDiff } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type {
@@ -48,7 +41,6 @@ export interface Scene {
 export interface Specimen {
   readonly id: string;
   readonly title: string;
-  /** The discriminants that pick this drawing. */
   readonly source: string;
   readonly scene: Scene;
 }
@@ -136,7 +128,6 @@ interface ToolSpec {
   readonly args: Json;
   readonly class: ToolClass;
   readonly changes?: { readonly added: number; readonly removed: number };
-  /** The patch an edit or write settles with as its output. */
   readonly patch?: PatchEntry;
   readonly durationMs?: number;
 }
@@ -451,10 +442,8 @@ const LOG_OUTPUT = lines(
   "1cf97733 perf(app): keep TypeBox template parser out of the font schema",
 );
 
-/** A 4:3 swatch, uploaded as a blob the transcript reads by id. */
 const SWATCH = asId<"blob">("lab-swatch");
 
-/* ---------------------------------------------------------------- subagents */
 
 function child(id: string, name: string, execution: Execution): SessionInfo {
   return {
@@ -503,7 +492,6 @@ const broken = child("lab-agent-failed", "Audit floating surface shadows", {
   },
 });
 
-/** Listed nowhere and read as absent: a create whose child never started. */
 export const UNSTARTED = asId<"session">("lab-agent-unstarted");
 
 export const SUBAGENTS: ReadonlyMap<SessionId, SubagentSession> = new Map(
@@ -538,9 +526,7 @@ function delegate(
   );
 }
 
-/* ------------------------------------------------------------------ helpers */
 
-/** One tool on its own: a settled lone call draws its own line, without a group. */
 function lone(id: string, title: string, source: string, message: Message): Specimen {
   return { id, title, source, scene: { turns: [turn([message])] } };
 }
@@ -570,7 +556,6 @@ const MARKDOWN = lines(
   "> A quote, for the blockquote style.",
 );
 
-/* ----------------------------------------------------------------- sections */
 
 export const SECTIONS: readonly Section[] = [
   {

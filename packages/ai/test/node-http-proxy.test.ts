@@ -1,7 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/a63fb12c135b27aef26a2aa71d8c72f747e96e99/packages/ai/test/node-http-proxy.test.ts
- * Synced with pi a63fb12c1.
- */
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
 import {

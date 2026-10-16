@@ -209,9 +209,8 @@ export function WorkspaceControls({
               <MenuGroupLabel xstyle={styles.groupLabel}>Filters</MenuGroupLabel>
               {filtersActive && (
                 <MenuItem
-                  layout="plain"
+                  layout="action"
                   closeOnClick={false}
-                  xstyle={styles.groupAction}
                   onClick={() => onChange(clearSessionFilters(value))}
                 >
                   Reset

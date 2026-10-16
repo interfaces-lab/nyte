@@ -9,7 +9,9 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -28,8 +30,8 @@ import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list
 import { LinkTray } from "./link-tray.tsx";
 
 const styles = create({
-  expansion: { display: "flex", flexDirection: "column", gap: 6 },
-  note: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
+  expansion: { display: "flex", flexDirection: "column", gap: space.s1_5 },
+  note: { color: role.contentSecondary },
 });
 
 const TITLE = "Nyte account";
@@ -83,12 +85,12 @@ function LinkedConnection({
           standing.note === undefined && devices.length > 0 ? undefined : (
             <div {...props(styles.expansion)}>
               {standing.note !== undefined && (
-                <span role="alert" {...props(intent.danger, styles.note)}>
+                <span role="alert" {...props(text.sm, intent.danger, styles.note)}>
                   {standing.note}
                 </span>
               )}
               {devices.length === 0 && (
-                <span {...props(styles.note)}>
+                <span {...props(text.sm, styles.note)}>
                   {`No devices yet. Sign in to the Nyte iOS app as ${owner.label} to add one.`}
                 </span>
               )}

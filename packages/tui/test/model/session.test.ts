@@ -1,11 +1,3 @@
-/**
- * Transitions as pure reductions over consecutive views:
- * - a view for a session we no longer follow is dropped;
- * - working → idle(stopped) with an empty composer retracts the lone prompt (one `move` effect, with a handback);
- * - a handback lands only when the draft is empty and its message is no longer landed; reducing twice lands once;
- * - editing a queued message that lands cancels the edit and keeps the text;
- * - a question that opens while a dialog is up shows when the dialog closes.
- */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
@@ -268,7 +260,19 @@ describe("questions", () => {
     const asking = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi").waiting("q1"))
-        .question("Pick", ["A", "B"], { id: "q1" })
+        .question(
+          [
+            {
+              question: "Pick",
+              header: "Question",
+              options: [
+                { label: "A", description: "" },
+                { label: "B", description: "" },
+              ],
+            },
+          ],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 
@@ -291,7 +295,19 @@ describe("questions", () => {
     const asking = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
-        .question("Pick", ["A", "B"], { id: "q1" })
+        .question(
+          [
+            {
+              question: "Pick",
+              header: "Question",
+              options: [
+                { label: "A", description: "" },
+                { label: "B", description: "" },
+              ],
+            },
+          ],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 

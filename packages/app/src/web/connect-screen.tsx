@@ -4,6 +4,8 @@ import type { ReactElement } from "react";
 import type { HostId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
@@ -15,28 +17,17 @@ import { connectPinned } from "./pins.ts";
 import { WebPage } from "./web-page.tsx";
 
 const styles = create({
-  form: { display: "flex", flexDirection: "column", gap: 16 },
+  form: { display: "flex", flexDirection: "column", gap: space.s4 },
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    gap: space.s1_5,
   },
-  label: { fontWeight: 500 },
-  error: {
-    margin: 0,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
-  changed: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 },
+  label: { fontWeight: type.weightMedium },
+  error: { margin: 0 },
+  changed: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.s2 },
 });
 
-/**
- * Why the last connect failed: a problem to fix and retry, or an address that
- * answered with another host than the one this browser pinned there, which
- * only an explicit re-pair accepts.
- */
 export type ConnectFailure =
   | { readonly kind: "problem"; readonly message: string }
   | { readonly kind: "identity_changed" };
@@ -47,7 +38,6 @@ export function connectFailure(cause: unknown): ConnectFailure {
     : { kind: "problem", message: connectionProblem(cause).message };
 }
 
-/** Connect to `connection` as the host this browser pinned at its address; `repair` pins whichever host proves itself there now. */
 export function connectAddress(connection: Connection, repair: boolean): Promise<HostId> {
   return connectPinned({
     bridge: webBridge,
@@ -128,7 +118,7 @@ export function ConnectScreen({
           void connect(false);
         }}
       >
-        <label {...props(styles.field)}>
+        <label {...props(text.base, styles.field)}>
           <span {...props(styles.label)}>Address</span>
           <Input
             type="url"
@@ -142,12 +132,11 @@ export function ConnectScreen({
             onValueChange={(value) => {
               setAddress(value);
 
-              // A re-pair offered for one address must not apply to another.
               if (failure?.kind === "identity_changed") setFailure(undefined);
             }}
           />
         </label>
-        <label {...props(styles.field)}>
+        <label {...props(text.base, styles.field)}>
           <span {...props(styles.label)}>Token</span>
           <Input
             type="password"
@@ -161,13 +150,13 @@ export function ConnectScreen({
           />
         </label>
         {failure?.kind === "problem" && (
-          <p id={errorId} role="alert" {...props(intent.danger, styles.error)}>
+          <p id={errorId} role="alert" {...props(text.sm, intent.danger, styles.error)}>
             {failure.message}
           </p>
         )}
         {failure?.kind === "identity_changed" && (
           <div {...props(styles.changed)}>
-            <p id={errorId} role="alert" {...props(intent.danger, styles.error)}>
+            <p id={errorId} role="alert" {...props(text.sm, intent.danger, styles.error)}>
               This address answers with a different host identity than the one you paired with. Pair
               again only if you replaced or reinstalled that host.
             </p>

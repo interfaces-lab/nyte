@@ -1,7 +1,3 @@
-/**
- * The transcript's movement rules (conversation/transcript.md) and row
- * identity, checked on painted frames of the real thread screen.
- */
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,10 +5,17 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { Delivery, Message, RunView, SessionView, ToolClass, TurnInfo } from "@nyte-ai/sdk";
+import type {
+  Delivery,
+  Message,
+  ModelCatalogView,
+  RunView,
+  SessionView,
+  ToolClass,
+  TurnInfo,
+} from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
-import type { DesktopCatalog } from "../catalog.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
@@ -128,7 +131,6 @@ const continuation = asId<"turn">("continuation-10");
 
 const ended: TurnInfo["state"] = { kind: "ended", end: { kind: "completed", usage: USAGE } };
 
-/** The view: 32 turns, a continuation after the tenth, the last one streaming `liveText`. */
 function view(
   liveText: string,
   extra: readonly Message[] = [],
@@ -222,10 +224,10 @@ installConnection(
 );
 
 const catalog = {
+  generation: asId<"catalog-generation">("initial"),
   providers: [],
-  models: [],
-  defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off" },
-} satisfies DesktopCatalog;
+  default: { provider: "test", id: "test" },
+} satisfies ModelCatalogView;
 
 const host = { workspace: undefined, platform: "linux" } satisfies HostState;
 
@@ -233,7 +235,7 @@ let renderFailure: unknown;
 
 function mount(container: HTMLElement): Root {
   queryClient.setQueryData(keys.host, host);
-  queryClient.setQueryData(keys.catalog("initial"), catalog);
+  queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
   queryClient.setQueryData(keys.mentionFiles, []);
   renderFailure = undefined;
   const router = createAppRouter({
@@ -275,7 +277,6 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-/** Resolves after the next frame has painted, so layout and ResizeObserver work have landed. */
 function painted(): Promise<void> {
   return new Promise((resolve) =>
     window.requestAnimationFrame(() => window.setTimeout(() => resolve(), 0)),
@@ -300,10 +301,8 @@ interface Stage {
 
 let stage: Stage;
 
-/** Reply prose, which moves with its row; a stuck prompt would hold still on its own. */
 const PROSE = "p:not([data-sticky-user-message] *)";
 
-/** An element's distance below the scrollport's top edge; the page may scroll under the test. */
 function topOf(element: Element): number {
   return Math.round(
     element.getBoundingClientRect().top - stage.viewport.getBoundingClientRect().top,
@@ -316,7 +315,6 @@ function rowsOf(): HTMLElement[] {
   );
 }
 
-/** Blocks inside the transcript that are fully on screen, top first. */
 function visible(selector: string): HTMLElement[] {
   const bottom = topOf(stage.dock);
 
@@ -339,7 +337,6 @@ function buttonShown(): boolean {
   return button !== null && getComputedStyle(button).visibility === "visible";
 }
 
-/** The invariants that hold on every painted frame. */
 function checkFrame(label: string): void {
   const rows = rowsOf();
 
@@ -404,7 +401,6 @@ async function streamFrames(count: number, verify: (label: string) => void): Pro
   }
 }
 
-/** A wheel turn by the reader: the event, then the scroll the browser applies for it. */
 async function wheel(delta: number): Promise<void> {
   stage.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: delta, bubbles: true }));
   stage.viewport.scrollTop += delta;
@@ -415,7 +411,6 @@ async function wheelUntil(found: () => boolean, delta = -300, limit = 60): Promi
   for (let count = 0; count < limit && !found(); count += 1) await wheel(delta);
 }
 
-/** Streams `frames` deltas and expects `element` to keep its screen position and its DOM node. */
 async function holds(rule: string, element: Element, frames: number): Promise<void> {
   const top = topOf(element);
   await streamFrames(frames, (frame) => {
@@ -436,7 +431,6 @@ async function openEditor(row: HTMLElement): Promise<void> {
   await painted();
 }
 
-/** Mounts and resolves on the first painted frame that shows transcript rows. */
 async function firstPaintedRows(container: HTMLElement): Promise<Stage> {
   await until(
     () => container.querySelector("[aria-label='Conversation input']") !== null,

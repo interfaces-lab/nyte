@@ -1,15 +1,3 @@
-/**
- * OpenAI Responses adapter.
- *
- * Based on https://github.com/earendil-works/pi/blob/0c7bb7c5c72118e4c71e4c04dfa2ad4a0a6a62f1/packages/ai/src/api/openai-responses.ts
- * Synced with pi 0c7bb7c5c.
- */
-/**
- * OpenAI Responses adapter.
- *
- * Based on https://github.com/earendil-works/pi/blob/17de82d7bea18a6589677a9761baabc2060c9efb/packages/ai/src/api/openai-responses.ts
- * Synced with pi 17de82d7b.
- */
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
@@ -56,7 +44,7 @@ import { buildBaseOptions } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 
-// OpenAI Responses rejects max_output_tokens below 16: https://github.com/earendil-works/pi/issues/6265
+// OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 function detectSessionAffinityFormat(
@@ -103,7 +91,6 @@ function getPromptCacheOptions(
   return undefined;
 }
 
-// OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   reasoningSummary?: "auto" | "detailed" | "concise" | null;
@@ -158,7 +145,6 @@ export async function compactOpenAIResponsesContext(
     maxRetries: 0,
   };
 
-  // The compact endpoint offers the priority tier and nothing else of ours.
   const serviceTier = options?.serviceTier === "priority" ? "priority" : undefined;
 
   if (options?.signal !== undefined) requestOptions.signal = options.signal;
@@ -204,7 +190,6 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
     getCompat(model).supportsMidConvoSystemMessages,
   );
 
-  // Start async processing
   (async () => {
     const output: AssistantMessage = {
       role: "assistant",
@@ -225,7 +210,6 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
     };
 
     try {
-      // Create OpenAI client
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
       const compat = getCompat(model);
@@ -256,7 +240,6 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       const nextParams = await options?.onPayload?.(params, model);
 
       if (nextParams !== undefined) {
-        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         params = nextParams as ResponseCreateParamsStreaming;
       }
 
@@ -378,7 +361,6 @@ function createClient(input: {
     baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
     fetch: input.options?.fetch,
-    // Options headers come last so they can override defaults
     defaultHeaders: mergeProviderHeaders(
       { "User-Agent": getNyteUserAgent() },
       input.model.headers,

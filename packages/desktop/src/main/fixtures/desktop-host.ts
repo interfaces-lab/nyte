@@ -9,7 +9,6 @@ import { unusedBrowserAgent } from "../browser-stub.ts";
 import { DesktopHost } from "../host.ts";
 import type { DesktopHostDependencies } from "../host.ts";
 
-/** A desktop host under test: its temp home, the scripted provider behind it, and the host events it pushed. */
 export interface TestDesktop {
   readonly host: DesktopHost;
   readonly home: string;
@@ -18,12 +17,6 @@ export interface TestDesktop {
   close(): Promise<void>;
 }
 
-/**
- * Opens a `DesktopHost` over a fresh temp home with the scripted `test`
- * provider as its default model and a browser whose panels do nothing;
- * `agent` replaces the browser agent and `overrides` any other dependency.
- * `close()` closes the host and removes the home unless `overrides.home` named it.
- */
 export async function testDesktop(
   overrides: Partial<DesktopHostDependencies> & { readonly agent?: BrowserAgent } = {},
 ): Promise<TestDesktop> {

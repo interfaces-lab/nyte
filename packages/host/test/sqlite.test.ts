@@ -1,7 +1,8 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
@@ -13,6 +14,198 @@ const created: DurableEvent = { head: null, kind: "head", from: null, to: null, 
 const session: SessionId = asId("s1");
 
 const folders: string[] = [];
+
+storeConformance("memoryStore", async () => memoryStore());
+
+it("backfills existing session roots and pending work within the store migration", async () => {
+  const path = join(await folder(), "nyte.db");
+  const prior = new DatabaseSync(path);
+  prior.exec(
+    "CREATE TABLE objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL); CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL); CREATE TABLE log (session TEXT NOT NULL, seq INTEGER, at INTEGER, event TEXT, PRIMARY KEY(session, seq)); CREATE TABLE store_meta (id INTEGER PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO store_meta VALUES (1, 2)",
+  );
+
+  const root = envelope(
+    "session",
+    {
+      id: "old",
+      name: "Existing chat",
+      parent: null,
+      origin: null,
+      workspace: "w",
+      pinned: false,
+      archived: true,
+      createdAt: 1,
+      lastActivityAt: 12,
+      heads: [],
+      prompt: null,
+    },
+    1,
+  );
+
+  const receipt = envelope("receipt", { id: "r", kind: "move", digest: "d", outcome: null }, 1);
+  const put = prior.prepare("INSERT INTO objects(id, body) VALUES (?, ?)");
+  put.run("root", JSON.stringify(root));
+  put.run("receipt", JSON.stringify(receipt));
+  prior.exec(
+    "INSERT INTO refs VALUES ('sessions/old', 'root', 'r1'), ('sessions/old/receipts/r', 'receipt', 'r2')",
+  );
+  prior.close();
+  const store = sqliteStore({ path });
+
+  try {
+    const connection = await store.open();
+    expect(
+      (await connection.sessions.list({ parents: { kind: "all" }, limit: 10 })).map(
+        (row) => row.ref.name,
+      ),
+    ).toEqual(["sessions/old"]);
+    expect((await connection.sessions.work({ limit: 10 })).map((ref) => ref.name)).toEqual([
+      "sessions/old",
+    ]);
+    expect((await connection.sessions.pending({ kind: "receipt" })).map((ref) => ref.name)).toEqual(
+      ["sessions/old/receipts/r"],
+    );
+    expect(await connection.objects.get(asId("root"))).toEqual(root);
+  } finally {
+    await store.close();
+  }
+});
+
+it.each(["activity", "sort_at"] as const)(
+  "upgrades the version-3 %s index without changing canonical data, once, with a backup",
+  async (column) => {
+    const directory = await folder();
+    const path = join(directory, "nyte.db");
+    const prior = new DatabaseSync(path);
+    prior.exec(
+      `CREATE TABLE objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL);
+       CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL);
+       CREATE TABLE log (session TEXT NOT NULL, seq INTEGER, at INTEGER, event TEXT, PRIMARY KEY(session, seq));
+       CREATE TABLE store_meta (id INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+       INSERT INTO store_meta VALUES (1, 3);
+       CREATE TABLE session_index (name TEXT PRIMARY KEY, session TEXT NOT NULL UNIQUE, parent TEXT NULL, ${column} REAL NOT NULL, version TEXT NOT NULL);
+       CREATE INDEX session_index_activity ON session_index(${column}, session);
+       CREATE INDEX session_index_parent_activity ON session_index(parent, ${column}, session);
+       CREATE TABLE pending_work (name TEXT PRIMARY KEY, session TEXT NOT NULL, kind TEXT NOT NULL);
+       CREATE INDEX pending_work_session ON pending_work(session, kind, name);
+       CREATE INDEX pending_work_kind ON pending_work(kind, session, name);
+       INSERT INTO session_index VALUES ('sessions/ghost', 'ghost', NULL, 0, 'ghost-version');
+       INSERT INTO pending_work VALUES ('sessions/ghost/receipts/gone', 'ghost', 'receipt')`,
+    );
+    const put = prior.prepare("INSERT INTO objects (id, body) VALUES (?, ?)");
+    const putRef = prior.prepare("INSERT INTO refs (name, target, revision) VALUES (?, ?, ?)");
+
+    for (const [id, at, parent] of [
+      ["a", 1, null],
+      ["b", 12, null],
+      ["c", 12, "b"],
+    ] as const) {
+      put.run(
+        id,
+        JSON.stringify(
+          envelope(
+            "session",
+            {
+              id,
+              name: id,
+              parent,
+              origin: null,
+              workspace: "w",
+              pinned: false,
+              archived: false,
+              createdAt: 1,
+              lastActivityAt: at,
+              heads: [],
+              prompt: null,
+            },
+            1,
+          ),
+        ),
+      );
+      putRef.run(`sessions/${id}`, id, `revision-${id}`);
+    }
+
+    put.run(
+      "receipt",
+      JSON.stringify(envelope("receipt", { id: "r", kind: "move", digest: "d", outcome: null }, 1)),
+    );
+    putRef.run("sessions/b/receipts/r", "receipt", "receipt-version");
+    prior.prepare("INSERT INTO log VALUES (?, ?, ?, ?)").run("a", 1, 2, JSON.stringify(created));
+
+    const canonical = {
+      objects: prior.prepare("SELECT * FROM objects ORDER BY id").all(),
+      refs: prior.prepare("SELECT * FROM refs ORDER BY name").all(),
+      log: prior.prepare("SELECT * FROM log ORDER BY session, seq").all(),
+    };
+
+    prior.close();
+    const store = sqliteStore({ path });
+
+    try {
+      const connection = await store.open();
+      expect(
+        (await connection.sessions.list({ parents: { kind: "all" }, limit: 10 })).map(
+          ({ ref }) => ref.name,
+        ),
+      ).toEqual(["sessions/b", "sessions/c", "sessions/a"]);
+      expect(
+        (
+          await connection.sessions.list({
+            parents: { kind: "all" },
+            after: { at: 12, id: asId("b") },
+            limit: 10,
+          })
+        ).map(({ ref }) => ref.name),
+      ).toEqual(["sessions/c", "sessions/a"]);
+      expect(
+        (
+          await connection.sessions.list({
+            parents: { kind: "children", session: asId("b") },
+            limit: 10,
+          })
+        ).map(({ ref }) => ref.name),
+      ).toEqual(["sessions/c"]);
+      expect((await connection.sessions.work({ limit: 10 })).map((ref) => ref.name)).toEqual([
+        "sessions/b",
+      ]);
+      expect(
+        (await connection.sessions.pending({ kind: "receipt" })).map((ref) => ref.name),
+      ).toEqual(["sessions/b/receipts/r"]);
+    } finally {
+      await store.close();
+    }
+
+    const probe = new DatabaseSync(path, { readOnly: true });
+    expect(probe.prepare("SELECT version FROM store_meta").get()).toEqual({
+      version: STORE_VERSION,
+    });
+    expect({
+      objects: probe.prepare("SELECT * FROM objects ORDER BY id").all(),
+      refs: probe.prepare("SELECT * FROM refs ORDER BY name").all(),
+      log: probe.prepare("SELECT * FROM log ORDER BY session, seq").all(),
+    }).toEqual(canonical);
+    probe.close();
+
+    const backups = (await readdir(join(directory, "backups"))).filter((file) =>
+      file.endsWith(".db"),
+    );
+
+    expect(backups).toHaveLength(1);
+
+    const backup = new DatabaseSync(join(directory, "backups", backups[0] ?? ""), {
+      readOnly: true,
+    });
+
+    expect(backup.prepare("SELECT version FROM store_meta").get()).toEqual({ version: 3 });
+    expect(backup.prepare("SELECT * FROM refs ORDER BY name").all()).toEqual(canonical.refs);
+    backup.close();
+    await store.open();
+    await store.close();
+    expect(
+      (await readdir(join(directory, "backups"))).filter((file) => file.endsWith(".db")),
+    ).toEqual(backups);
+  },
+);
 
 afterEach(async () => {
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
@@ -32,6 +225,56 @@ storeConformance("sqliteStore on a file", async () =>
 );
 
 describe("sqliteStore", () => {
+  it("limits the WAL retained after a large blob and keeps the blob readable", async () => {
+    const path = join(await folder(), "nyte.db");
+    const store = sqliteStore({ path });
+
+    try {
+      const { objects } = await store.open();
+
+      const id = await objects.putBlob(
+        (async function* () {
+          yield new Uint8Array(40 * 1024 * 1024).fill(23);
+        })(),
+      );
+
+      await objects.put({ next: true });
+
+      expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(32 * 1024 * 1024);
+      const blob = await objects.blob(id);
+      assert(blob !== null);
+
+      expect(blob.size).toBe(41943040);
+
+      for await (const bytes of blob.chunks()) {
+        expect(bytes[0]).toBe(23);
+        expect(bytes.at(-1)).toBe(23);
+      }
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("waits for opening and worker shutdown before reopening", async () => {
+    const path = join(await folder(), "nyte.db");
+    const store = sqliteStore({ path });
+    const first = store.open();
+    const closing = store.close();
+    const second = store.open();
+    await Promise.all([first, closing]);
+
+    try {
+      const { objects, refs } = await second;
+      const target = await objects.put({ reopened: true });
+      await refs.set([{ name: "kv/reopened", target }]);
+
+      expect(await objects.get(target)).toEqual({ reopened: true });
+      expect((await refs.list("kv/"))[0]?.target).toBe(target);
+    } finally {
+      await store.close();
+    }
+  });
+
   it("opens a file in WAL mode", async () => {
     const path = join(await folder(), "nyte.db");
     const store = sqliteStore({ path });
@@ -40,6 +283,24 @@ describe("sqliteStore", () => {
 
     expect(probe.prepare("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
     probe.close();
+    await store.close();
+  });
+
+  it("opens again after a migration fails", async () => {
+    const path = join(await folder(), "nyte.db");
+    const setup = new DatabaseSync(path);
+    setup.exec("CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL)");
+    setup.exec("INSERT INTO refs (name, target) VALUES ('kv/x', 'o1')");
+    setup.close();
+    const store = sqliteStore({ path });
+
+    await expect(store.open()).rejects.toThrow();
+    const repair = new DatabaseSync(path);
+    repair.exec("DROP TABLE refs");
+    repair.close();
+    const { objects } = await store.open();
+
+    expect(await objects.get(await objects.put({ n: 1 }))).toEqual({ n: 1 });
     await store.close();
   });
 
@@ -132,8 +393,8 @@ describe("sqliteStore", () => {
 
     const probe = new DatabaseSync(path);
 
-    expect(probe.prepare("SELECT name, rewritten FROM migrations").all()).toEqual([
-      { name: "2026-10-12-record-fields", rewritten: 2 },
+    expect(probe.prepare("SELECT version FROM store_meta").all()).toEqual([
+      { version: STORE_VERSION },
     ]);
     probe.close();
 
@@ -156,5 +417,149 @@ describe("sqliteStore", () => {
     expect(
       (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db")),
     ).toHaveLength(1);
+  });
+
+  it("opens a store an older Nyte migrated, keeping its rows, its log and its migrations table", async () => {
+    const path = join(await folder(), "nyte.db");
+    const seeded = new DatabaseSync(path);
+
+    seeded.exec(
+      "CREATE TABLE objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL); CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL); CREATE TABLE log (session TEXT NOT NULL, seq INTEGER NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL, PRIMARY KEY (session, seq)); CREATE TABLE migrations (name TEXT PRIMARY KEY, at INTEGER NOT NULL, rewritten INTEGER NOT NULL)",
+    );
+    seeded.exec("INSERT INTO migrations VALUES ('2026-10-12-record-fields', 1, 0)");
+    seeded.exec(
+      `INSERT INTO objects (id, body) VALUES ('o1', '{"kept":true}'), ('o2', 'not json')`,
+    );
+    seeded.exec("INSERT INTO refs VALUES ('kv/a', 'o1', 'r1'), ('kv/b', 'o2', 'r2')");
+    seeded
+      .prepare("INSERT INTO log VALUES ('s1', 1, 5, ?)")
+      .run(JSON.stringify({ head: null, kind: "head", from: null, to: null, reason: "created" }));
+    seeded.close();
+
+    const store = sqliteStore({ path });
+    const { objects, refs } = await store.open();
+
+    expect(await refs.get("kv/a")).toEqual({ name: "kv/a", target: "o1", revision: "r1" });
+    expect(await refs.get("kv/b")).toEqual({ name: "kv/b", target: "o2", revision: "r2" });
+    expect(await objects.get(asId("o1"))).toEqual({ kept: true });
+    expect(await refs.log(session, asSeq(0), 10)).toMatchObject([{ seq: 1, reason: "created" }]);
+    await store.close();
+
+    const probe = new DatabaseSync(path, { readOnly: true });
+
+    expect(probe.prepare("SELECT version FROM store_meta").get()).toEqual({
+      version: STORE_VERSION,
+    });
+    expect(probe.prepare("SELECT name FROM migrations").all()).toEqual([
+      { name: "2026-10-12-record-fields" },
+    ]);
+    probe.close();
+  });
+
+  it("forgets the old default trust of stored workspaces, keeping a declined one, once", async () => {
+    const path = join(await folder(), "nyte.db");
+    const fresh = sqliteStore({ path });
+    await fresh.open();
+    await fresh.close();
+
+    const workspace = (id: string, projectResources: boolean) =>
+      JSON.stringify({
+        kind: "workspace",
+        at: 1,
+        body: {
+          id,
+          target: { kind: "local", path: `/work/${id}` },
+          identity: `identity-${id}`,
+          projectResources,
+          projectSources: [],
+          addedBy: "local",
+          createdAt: 1,
+        },
+      });
+
+    const seeded = new DatabaseSync(path);
+    seeded
+      .prepare("INSERT INTO objects (id, body) VALUES ('trusted', ?), ('declined', ?)")
+      .run(workspace("a", true), workspace("b", false));
+    seeded.exec(
+      "INSERT INTO refs VALUES ('workspaces/a', 'trusted', 'r1'), ('workspaces/b', 'declined', 'r2')",
+    );
+    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 1)}`);
+    seeded.close();
+
+    const read = async () => {
+      const store = sqliteStore({ path });
+      const { objects, refs } = await store.open();
+
+      const decision = async (name: string) => {
+        const target = (await refs.get(name))?.target;
+        const object = target === null || target === undefined ? null : await objects.get(target);
+
+        return object !== null && typeof object === "object" && "body" in object
+          ? object.body
+          : null;
+      };
+
+      const found = {
+        a: await decision("workspaces/a"),
+        b: await decision("workspaces/b"),
+        revision: (await refs.get("workspaces/a"))?.revision,
+      };
+      await store.close();
+
+      return found;
+    };
+
+    const first = await read();
+
+    expect(first).toMatchObject({
+      a: { id: "a", projectResources: null },
+      b: { id: "b", projectResources: false },
+    });
+    expect(await read()).toEqual(first);
+  });
+
+  it("opens one older file from two stores at once, migrating it once", async () => {
+    const dir = await folder();
+    const path = join(dir, "nyte.db");
+    const seeded = new DatabaseSync(path);
+
+    seeded.exec(
+      "CREATE TABLE objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BLOB NULL); CREATE TABLE refs (name TEXT PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL)",
+    );
+
+    seeded
+      .prepare("INSERT INTO objects (id, body) VALUES ('old-call', ?)")
+      .run(JSON.stringify({ kind: "call", parent: null, at: 1, body: { id: "c1" } }));
+    seeded.exec("INSERT INTO refs VALUES ('sessions/s1/calls/c1', 'old-call', 'r0')");
+    seeded.close();
+
+    const left = sqliteStore({ path });
+    const right = sqliteStore({ path });
+    const [one, two] = await Promise.all([left.open(), right.open()]);
+    const ref = await one.refs.get("sessions/s1/calls/c1");
+
+    expect(await two.refs.get("sessions/s1/calls/c1")).toEqual(ref);
+    expect(ref?.target ? await one.objects.get(ref.target) : null).toMatchObject({
+      body: { id: "c1", reran: null },
+    });
+    await left.close();
+    await right.close();
+  });
+
+  it("refuses a store a newer Nyte migrated, before opening and before writing", async () => {
+    const path = join(await folder(), "nyte.db");
+    const store = sqliteStore({ path });
+    const { objects, refs } = await store.open();
+    const target = await objects.put("kept");
+    const newer = new DatabaseSync(path);
+    newer.prepare("UPDATE store_meta SET version = ?").run(STORE_VERSION + 1);
+    newer.close();
+
+    await expect(refs.set([{ name: "kv/x", target }])).rejects.toThrow(/Update Nyte/);
+    expect(await refs.get("kv/x")).toBeNull();
+    await store.close();
+
+    await expect(sqliteStore({ path }).open()).rejects.toThrow(/Update Nyte/);
   });
 });

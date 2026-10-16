@@ -24,7 +24,6 @@ const Names = Type.Object({
   win: Type.Object({ executableName: Type.String() }),
 });
 
-/** The product name, once every installer names its executable after it and none inherits the `@scope/` package name. */
 function installerName(stdout: string): string {
   const names = Value.Parse(Names, JSON.parse(stdout));
   expect(names.productName).toMatch(/^[A-Za-z][A-Za-z0-9 ]*$/u);
@@ -54,7 +53,6 @@ describe("update packaging", () => {
   test("local packages persist a separate identity and update from localhost", () => {
     const result = packaging({ local: "1" });
     expect(result.status, result.stderr).toBe(0);
-    // A shared product name would install the test build over the real app.
     expect(installerName(result.stdout)).not.toBe(installerName(packaging().stdout));
     expect(JSON.parse(result.stdout)).toMatchObject({
       appId: "ai.nyte.desktop.update-test",

@@ -3,7 +3,7 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Infer, PageOutcome, PageSnapshot } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import type { Plugin } from "./core.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 const page = Type.Optional(
   Type.String({ description: "The page id; omit for the page opened last." }),
@@ -11,13 +11,11 @@ const page = Type.Optional(
 
 const ref = Type.String({ description: "A node's ref from the latest snapshot." });
 
-/** Returns a tool's parameters: an optional page id and the given properties. */
 function on<P extends Record<string, TSchema>>(properties: P) {
   return standard(Type.Object({ page, ...properties }));
 }
 
-/** Returns the workspace's browser, or throws why there is none. */
-async function browserOf(invocation: ToolInvocation): Promise<BrowserApi> {
+async function requireBrowser(invocation: ToolInvocation): Promise<BrowserApi> {
   const capability = await invocation.workspace.browser();
 
   if (capability.kind !== "available")
@@ -26,22 +24,20 @@ async function browserOf(invocation: ToolInvocation): Promise<BrowserApi> {
   return capability.api;
 }
 
-/** Runs `use` on a transient hold of the page named, or of the page opened last, and releases the hold. */
 async function withPage<T>(
   invocation: ToolInvocation,
   id: string | undefined,
-  use: (page: Page) => Promise<T>,
+  operate: (page: Page) => Promise<T>,
 ): Promise<T> {
-  const browser = await browserOf(invocation);
+  const browser = await requireBrowser(invocation);
   const target = id ?? (await browser.list()).at(-1)?.id;
 
   if (target === undefined) throw new Error("No page is open. Call browser_open first.");
   await using held = await browser.adopt(asId(target));
 
-  return use(held);
+  return operate(held);
 }
 
-/** Returns a snapshot as one line per node: indent, ref, role and name. */
 function render(snapshot: PageSnapshot): string {
   return [
     `Revision ${snapshot.revision}`,
@@ -52,7 +48,6 @@ function render(snapshot: PageSnapshot): string {
   ].join("\n");
 }
 
-/** Returns a page action's outcome as tool text. */
 function outcomeText(outcome: PageOutcome): string {
   if (outcome.kind === "applied") return render(outcome.snapshot);
 
@@ -64,7 +59,6 @@ function outcomeText(outcome: PageOutcome): string {
     : `The page is closed: ${outcome.reason}.`;
 }
 
-/** Returns a tool over the browser: the given name, description and parameters, its result as text. */
 function browserTool<S extends ReturnType<typeof on>>(input: {
   readonly name: string;
   readonly description: string;
@@ -93,7 +87,7 @@ const open: ToolDefinition<{ url: string }> = {
   class: (args) => ({ kind: "custom", label: `Opening ${args.url}` }),
   replay: "safe",
   async execute(args, invocation) {
-    const opened = await (await browserOf(invocation)).open({ url: args.url });
+    const opened = await (await requireBrowser(invocation)).open({ url: args.url });
     const view = await opened.view();
 
     return {

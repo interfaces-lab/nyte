@@ -1,10 +1,3 @@
-/**
- * The root boundary. A throw anywhere on the Solid owner chain (render,
- * memo, effect) lands here: it is reported once, and the fallback screen
- * (hard-coded palette, since the theme may be what failed) shows the message
- * and the log path, with R to reset the boundary and Q to quit. The keymap's
- * error layer owns those keys while `onFallen` holds a reset.
- */
 import type { JSX } from "@opentui/solid";
 import { ErrorBoundary, onCleanup } from "solid-js";
 import { ErrorScreen } from "../ui/chrome/error-screen.tsx";
@@ -19,7 +12,6 @@ export interface RootProps {
   readonly report: (origin: "render", error: unknown) => void;
   readonly logPath: string;
   readonly quit: () => void;
-  /** The boundary's reset while the error screen shows; null once it is gone. */
   readonly onFallen: (reset: (() => void) | null) => void;
 }
 

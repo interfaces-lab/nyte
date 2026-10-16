@@ -9,7 +9,7 @@ import { reasoningHeading } from "./reasoning-heading.ts";
 
 /** Reasoning between tool calls: open while it streams, folded to its title once it settles. */
 export function ThinkingLine({
-  text,
+  text: reasoning,
   streaming,
 }: {
   text: string;
@@ -17,9 +17,11 @@ export function ThinkingLine({
 }): ReactElement | null {
   const [open, setOpen] = useState<boolean | undefined>();
 
-  if (text.trim() === "" && !streaming) return null;
+  if (reasoning.trim() === "" && !streaming) return null;
 
-  const { title, body } = streaming ? { title: undefined, body: text } : reasoningHeading(text);
+  const { title, body } = streaming
+    ? { title: undefined, body: reasoning }
+    : reasoningHeading(reasoning);
 
   const label = (
     <span {...props(stepGroupStyles.verb, streaming && activityStyles.shimmer)}>

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { router } from "expo-router";
 import { css, html } from "react-strict-dom";
 import type { ActOutcome, PartId, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import { spacing } from "../theme.ts";
 import { openQuestion } from "../view-helpers.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
@@ -16,7 +17,7 @@ type TimelineProps = {
   state: SessionView;
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
-  onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onReply: (part: PartId, answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
   onReport: (part: PartId, message: string) => void;
   layout: ConversationLayout;
   headerHeight: number;
@@ -78,7 +79,7 @@ export function Timeline({
             {question === undefined ? null : (
               <WaitingSelection
                 question={question}
-                onReply={(choice) => onReply(question.id, choice)}
+                onReply={(answers) => onReply(question.part, answers)}
               />
             )}
           </html.div>

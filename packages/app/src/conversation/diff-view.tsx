@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
@@ -7,6 +7,7 @@ import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
  * the shadow tree go through `unsafeCSS`.
  */
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
@@ -287,12 +288,9 @@ export const EXPANSION_LINE_COUNT = 20;
 const rawStyles = create({
   raw: {
     margin: 0,
-    padding: "8px 12px",
+    padding: `${space.s2} ${space.s3}`,
     overflowX: "auto",
     whiteSpace: "pre",
-    fontFamily: type.fontMono,
-    fontSize: type.fontCode,
-    lineHeight: type.leadingCode,
   },
 });
 
@@ -414,7 +412,7 @@ export const DiffView = memo(function DiffView({
         )}
       >
         {renderable.kind === "raw" ? (
-          <pre {...props(rawStyles.raw)}>{renderable.text}</pre>
+          <pre {...props(text.code, rawStyles.raw)}>{renderable.text}</pre>
         ) : (
           <PierreWorkerProvider>
             {/* A path can repeat within one patch, so it cannot key these on its own. */}

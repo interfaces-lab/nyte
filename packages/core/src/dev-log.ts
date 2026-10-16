@@ -1,7 +1,5 @@
-/** Returns where a DEV line goes. */
 type Sink = (line: string) => void;
 
-/** One row the dev console shows: when, which process, which area, and the message with its JSON. */
 export interface DevRow {
   readonly ts: number;
   readonly source: string;
@@ -14,14 +12,12 @@ const NOOP: Sink = () => undefined;
 
 const CONSOLE: Sink = (line) => console.error(line);
 
-/** Set by `dev.forward`; sees every line the sink sees, already serialised. */
 let tap: ((area: string, message: string, json: string) => void) | undefined;
 
 const FLUSH_MS = 100;
 
 const FLUSH_ROWS = 50;
 
-/** Writes one DEV log line, `DEV:<area> <message> <json>`, to `dev.sink` (temporary, stripped after the refactor): ids and sizes only, never secrets, tokens or message bodies. Nothing reads it and nothing branches on it; a value it cannot serialise drops the line. `dev.off()` silences it, `dev.on(sink?)` restores it (default `console.error`, stderr, so `-p` and `--json` output on stdout stays clean). `dev.forward(url, source)` also posts every line, `console.warn`/`console.error` call and uncaught exception to a dev console. */
 export function dev(area: string, message: string, data?: Record<string, unknown>): void {
   try {
     const json = data === undefined ? "{}" : JSON.stringify(data, replacer);
@@ -32,7 +28,7 @@ export function dev(area: string, message: string, data?: Record<string, unknown
   }
 }
 
-dev.sink = CONSOLE;
+dev.sink = typeof process !== "undefined" && process.env.NYTE_DEV !== undefined ? CONSOLE : NOOP;
 
 dev.off = (): void => {
   dev.sink = NOOP;
@@ -42,16 +38,8 @@ dev.on = (sink: Sink = CONSOLE): void => {
   dev.sink = sink;
 };
 
-/** Returns a value's size as UTF-8 JSON, what a line reports as `bytes`. */
 dev.bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
-/**
- * Posts DEV lines, `console.warn` and `console.error` calls, and uncaught
- * exceptions in batches to `url` as JSON arrays of `DevRow`, tagged with
- * `source` so one console can tell the processes apart. A console that is
- * down drops the batch; nothing waits on it. Returns the function that
- * restores the console methods and stops forwarding.
- */
 dev.forward = (url: string, source: string): (() => void) => {
   const queue: DevRow[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -98,8 +86,10 @@ dev.forward = (url: string, source: string): (() => void) => {
     }
   };
 
+  const sink = dev.sink;
   tap = push;
-  dev.on((line) => error(line));
+
+  if (sink === CONSOLE) dev.on((line) => error(line));
   console.error = (...args: unknown[]) => {
     error(...args);
     push("console", "error", describe(args));
@@ -123,16 +113,17 @@ dev.forward = (url: string, source: string): (() => void) => {
     console.error = error;
     console.warn = warn;
     tap = undefined;
-    dev.on();
+    dev.on(sink);
 
     if (timer !== undefined) clearTimeout(timer);
     flush();
   };
 };
 
-/** Returns a value as the line shows it: a bigint as its digits, bytes as their count, an error as `name: message`, a map as its entries and a set as its values. */
 function replacer(_key: string, value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
+
+  if (typeof value === "number" && !Number.isInteger(value)) return Math.round(value * 100) / 100;
 
   if (value instanceof Uint8Array) return `<${value.byteLength} bytes>`;
 

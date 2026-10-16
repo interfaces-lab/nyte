@@ -1,5 +1,5 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { Json } from "@nyte-ai/schema";
+import type { ExecutionCoverage, Json } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   decodeCommitRecord,
@@ -13,7 +13,7 @@ import {
   sessionRef,
 } from "../src/index.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { completed, expireLease, main, setup } from "./harness.ts";
+import { completed, expireLease, main, setup, until } from "./harness.ts";
 
 describe("execution", () => {
   it("answers busy for a lease another host holds mid-turn and fenced once this host's lease is taken", async () => {
@@ -124,7 +124,10 @@ describe("execution", () => {
       runnable: [{ session: session.id, head: main }],
       next: null,
     });
-    expect((await host.execution.repair({ limit: 1 })).next).not.toBeNull();
+    expect(await host.execution.repair({ limit: 1 })).toEqual({
+      runnable: [{ session: session.id, head: main }],
+      next: null,
+    });
 
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
@@ -153,6 +156,92 @@ describe("execution", () => {
     await driver.close();
 
     expect(await kernel.store.refs.get(leaseRef(session.id, main))).toBeNull();
+  });
+
+  it("recovers only the sessions and children a sessions coverage names when its driver starts", async () => {
+    const store = await memoryStore().open();
+    const admitting = await setup({ store, execution: { kind: "admit-only" } });
+    const session = await admitting.host.sessions.create();
+    const child = await admitting.host.sessions.create({ parent: session.id });
+    const other = await admitting.host.sessions.create();
+    const first = await session.send("Go.");
+    const report = await child.send("Child.");
+    await other.send("Not here.");
+    const listed: string[] = [];
+
+    const counted: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        list(prefix) {
+          listed.push(prefix);
+
+          return store.refs.list(prefix);
+        },
+      },
+    };
+
+    const coverage: ExecutionCoverage = { kind: "sessions", sessions: [session.id] };
+
+    const { kernel, script } = await setup({
+      store: counted,
+      execution: { kind: "run", coverage },
+    });
+
+    const driver = driveInProcess(kernel, coverage);
+    (await script.started(1)).finish();
+    (await script.started(2)).finish();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(script.turns.map((turn) => turn.input.run.origin)).toEqual(
+      expect.arrayContaining([
+        { kind: "input", message: first.message },
+        { kind: "input", message: report.message },
+      ]),
+    );
+    expect(script.turns.some((turn) => turn.input.session === other.id)).toBe(false);
+    expect(listed.filter((prefix) => prefix.startsWith(sessionRef(other.id)))).toEqual([]);
+
+    await driver.close();
+  });
+
+  it("drives a session covered after open, its children and a child spawned under it", async () => {
+    const store = await memoryStore().open();
+    const admitting = await setup({ store, execution: { kind: "admit-only" } });
+    const session = await admitting.host.sessions.create();
+    const child = await admitting.host.sessions.create({ parent: session.id });
+    const first = await session.send("Go.");
+    const report = await child.send("Child.");
+    const coverage: ExecutionCoverage = { kind: "sessions", sessions: [] };
+    const { kernel, host, script } = await setup({ store, execution: { kind: "run", coverage } });
+    const driver = driveInProcess(kernel, coverage);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(script.turns).toHaveLength(0);
+
+    const finishing = setInterval(() => {
+      for (const turn of script.turns) turn.finish();
+    }, 2);
+
+    const owned = await host.execution.cover({ kind: "sessions", sessions: [session.id] });
+
+    const started = (): readonly string[] =>
+      script.turns.flatMap((turn) =>
+        turn.input.run.origin.kind === "input" ? [turn.input.run.origin.message] : [],
+      );
+
+    await until(
+      () => [first.message, report.message].every((id) => started().includes(id)) || undefined,
+    );
+
+    const spawned = await host.sessions.create({ parent: session.id });
+
+    expect(await (await spawned.send("Spawned.")).settled()).toEqual(completed);
+    expect(await (await host.session(session.id).send("Again.")).settled()).toEqual(completed);
+
+    clearInterval(finishing);
+    await owned.close();
+    await driver.close();
   });
 
   it("inspects a session's refs, objects and log, and verifies them", async () => {

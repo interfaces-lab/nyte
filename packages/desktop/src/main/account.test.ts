@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules, createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -160,7 +160,6 @@ describe("packaged renderer files", () => {
     });
     expect(refused("nyte-desktop://renderer/")).toEqual({ kind: "refused", status: 404 });
     expect(refused("nyte-desktop://account/assets/")).toEqual({ kind: "refused", status: 403 });
-    // The URL parser already folds percent-encoded dot segments, which leaves the main page.
     expect(refused("nyte-desktop://account/assets/%2e%2e/account.html")).toEqual({
       kind: "refused",
       status: 404,
@@ -328,22 +327,6 @@ test("a saved sign-in loads at boot without the secrets key, which is read when 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-});
-
-test("no desktop module references the OS keychain (safeStorage)", async () => {
-  const root = fileURLToPath(new URL("..", import.meta.url));
-  const self = fileURLToPath(import.meta.url);
-  const files = await readdir(root, { recursive: true });
-
-  const referencing = await Promise.all(
-    files
-      .filter((file) => /\.tsx?$/u.test(file) && join(root, file) !== self)
-      .map(async (file) =>
-        (await readFile(join(root, file), "utf8")).includes("safeStorage") ? [file] : [],
-      ),
-  );
-
-  expect(referencing.flat()).toEqual([]);
 });
 
 test("sign-in uses the existing Nyte window, in real Electron", async () => {

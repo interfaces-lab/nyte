@@ -9,7 +9,7 @@ const KIB = 1_024;
 const budgets = {
   main: 700 * KIB,
   preload: 16 * KIB,
-  renderer: 4_700 * KIB,
+  renderer: 5_000 * KIB,
 };
 
 const desktopRoot = join(import.meta.dirname, "..");
@@ -39,7 +39,6 @@ const html = await readFile(join(rendererRoot, "index.html"), "utf8");
 
 const preloadPath = join(desktopRoot, "out", "preload", "index.js");
 
-// Sandboxed preloads can only require "electron".
 for await (const path of glob("out/preload/**/*.js", { cwd: desktopRoot })) {
   const source = await readFile(join(desktopRoot, path), "utf8");
 

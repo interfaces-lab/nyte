@@ -1,3 +1,4 @@
+import "../runtime.ts";
 import { useState } from "react";
 import { ActivityIndicator, AppState, StatusBar, StyleSheet, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -28,7 +29,6 @@ focusManager.setEventListener((handleFocus) => {
 
 export default function RootLayout() {
   useAppliedAppearance();
-  // A new host means a new cache: another host's sessions are not this one's.
   const [queryClient] = useState(() => new QueryClient());
 
   return (
@@ -43,7 +43,7 @@ export default function RootLayout() {
 function Gate() {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
-  const { host, connect, edit, cancelEdit, disconnect } = useHostConnection();
+  const { host, disconnect } = useHostConnection();
   const base = dark ? DarkTheme : DefaultTheme;
 
   const navigationTheme = {
@@ -73,25 +73,11 @@ function Gate() {
               </html.div>
             ) : host.kind === "setup" ? (
               <html.div style={styles.root}>
-                <ConnectScreen
-                  onConnect={connect}
-                  edit={
-                    host.editing === undefined
-                      ? undefined
-                      : { saved: host.editing.saved, onCancel: cancelEdit }
-                  }
-                  notice={host.notice}
-                  recovery={undefined}
-                />
+                <ConnectScreen notice={host.notice} recovery={undefined} />
               </html.div>
             ) : host.kind === "recovery" ? (
               <html.div style={styles.root}>
-                <ConnectScreen
-                  onConnect={connect}
-                  edit={undefined}
-                  notice={undefined}
-                  recovery={host.recovery}
-                />
+                <ConnectScreen notice={undefined} recovery={host.recovery} />
               </html.div>
             ) : (
               <Connected
@@ -101,7 +87,6 @@ function Gate() {
                   connection: host.connection,
                   saved: host.saved,
                   scope: host.scope,
-                  edit,
                   disconnect,
                 }}
               />
@@ -114,11 +99,6 @@ function Gate() {
   );
 }
 
-/**
- * The connected half of the gate. Its own QueryClient means a different host can
- * never see the previous one's cached sessions, models, or workspaces — the
- * `key` on the call site remounts this when the connection target changes.
- */
 function Connected({ session }: { session: HostSession }) {
   const theme = useTheme();
   const [queryClient] = useState(() => new QueryClient());
@@ -154,10 +134,7 @@ function Connected({ session }: { session: HostSession }) {
             name="chat/[id]"
             options={{
               title: "",
-              // The transcript scrolls under a glass bar; the title rides on it.
-              headerTransparent: true,
-              headerBlurEffect: "systemChromeMaterial",
-              headerStyle: { backgroundColor: "transparent" },
+              contentStyle: { backgroundColor: theme.canvas },
             }}
           />
           <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />

@@ -11,10 +11,6 @@ import type { ReleaseReport } from "./revocation.ts";
 export interface AccountCopy {
   readonly title: string;
   readonly body: string;
-  /**
-   * `retry` repeats the same request; `signIn` needs a new Nyte sign-in first;
-   * `repair` enrolls again and replaces the environment's pinned host identity.
-   */
   readonly action: "retry" | "signIn" | "repair" | undefined;
 }
 
@@ -112,7 +108,6 @@ export function brokerCopy(failure: BrokerFailure): AccountCopy {
   }
 }
 
-/** What to tell the user after a pick that did not connect. Cancelling says nothing. */
 export function connectEndingCopy(
   ending: Exclude<ConnectEnding, { kind: "connected" | "cancelled" }>,
 ): AccountCopy {
@@ -157,10 +152,6 @@ export function connectEndingCopy(
   }
 }
 
-/**
- * What the host and the broker confirmed after this phone let go of it.
- * Silence is not removal: the copy claims only what one of them answered.
- */
 export function releaseCopy(name: string, report: ReleaseReport): string {
   if (report.host === "removed") return `${name} removed this iPhone.`;
 

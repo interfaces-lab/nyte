@@ -1,15 +1,145 @@
 import { asId } from "@nyte-ai/schema";
-import type { CommitId, HeadName, PartId, Placement, RefUpdate, SessionId } from "@nyte-ai/schema";
+import type {
+  CommitId,
+  HeadName,
+  PartId,
+  Placement,
+  ReceiptId,
+  RefUpdate,
+  Revision,
+  RunId,
+  SessionId,
+} from "@nyte-ai/schema";
+import { guard } from "./admission.ts";
 import type { Kernel } from "./kernel.ts";
-import type { CommitRecord, PartRecord } from "./records.ts";
+import type { CommitRecord, PartRecord, ReceiptRecord } from "./records.ts";
 import { headRef, partRef } from "./refs.ts";
-import { expectOf, objectOf, put, putCommit } from "./session-state.ts";
-import type { Tip } from "./session-state.ts";
+import { fence } from "./runs.ts";
+import {
+  EMPTY_REVISION,
+  STALE,
+  attempt,
+  commit,
+  readRefExpectation,
+  toCommitObjectId,
+  walkCommitPath,
+  put,
+  readReceipt,
+  staleHead,
+  withFold,
+} from "./session-state.ts";
+import type { Found, Inbox, MoveFailure, Tip } from "./session-state.ts";
 
 const NOTE: Placement = { kind: "transcript", role: "note" };
 
-/** Summarises abandoned commits with the kernel's summariser; a thrown error is a failure with its message. */
-export async function summarize(
+export type Summarized =
+  | { readonly kind: "failed"; readonly outcome: MoveFailure }
+  | { readonly kind: "settled" }
+  | {
+      readonly kind: "moved";
+      readonly revision: Revision;
+      readonly commit: CommitId;
+      readonly part: PartId;
+      readonly stopped: RunId | null;
+    };
+
+export function holdSummary(kernel: Kernel, session: SessionId, id: ReceiptId): () => void {
+  const key = JSON.stringify([session, id]);
+  kernel.executionState.summaries.add(key);
+
+  return () => {
+    kernel.executionState.summaries.delete(key);
+  };
+}
+
+export function summaryHeld(kernel: Kernel, session: SessionId, id: ReceiptId): boolean {
+  return kernel.executionState.summaries.has(JSON.stringify([session, id]));
+}
+
+export async function summarizedMove(
+  kernel: Kernel,
+  input: {
+    readonly session: SessionId;
+    readonly head: HeadName;
+    readonly receipt: ReceiptId;
+    readonly tip: Tip;
+    readonly landing: CommitId | null;
+    readonly instructions: string | null;
+    readonly running: "refuse" | "stop";
+    readonly updates: (read: {
+      readonly inbox: Inbox;
+      readonly receipt: Found<ReceiptRecord>;
+      readonly stopped: RunId | null;
+      readonly commit: CommitId;
+    }) => Promise<readonly RefUpdate[]>;
+  },
+): Promise<Summarized> {
+  const { session, head, tip } = input;
+
+  const abandoned = await withFold(kernel, session, (state) => {
+    const kept = new Set(walkCommitPath(state.commits, input.landing));
+
+    return walkCommitPath(state.commits, tip.id).filter((id) => !kept.has(id));
+  });
+
+  const summary = await summarize(kernel, {
+    session,
+    head,
+    commits: abandoned,
+    instructions: input.instructions,
+    signal: kernel.executionState.closing.signal,
+  });
+
+  if (summary.kind === "failed")
+    return { kind: "failed", outcome: { kind: "summary-failed", reason: summary.reason } };
+
+  const written = await summaryUpdates(kernel, {
+    session,
+    head,
+    tip,
+    landing: input.landing,
+    abandoned,
+    markdown: summary.markdown,
+  });
+
+  return attempt<Summarized>(`Moving ${head}`, async () => {
+    const checked = await guard(kernel, session, head, undefined, input.running);
+
+    if ("kind" in checked) return { kind: "failed", outcome: checked };
+    const receipt = await readReceipt(kernel, session, input.receipt);
+
+    if (receipt === null || receipt.record.outcome !== null) return { kind: "settled" };
+    const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
+    const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;
+
+    const moving = [...(fenced?.kind === "live" ? fenced.updates : []), ...written.updates];
+
+    const outcome = await commit(kernel, [
+      ...moving,
+      ...(await input.updates({
+        inbox: checked.inbox,
+        receipt,
+        stopped,
+        commit: written.commit,
+      })),
+    ]);
+
+    if (outcome.kind === "stale")
+      return outcome.name === headRef(session, head)
+        ? { kind: "failed", outcome: await staleHead(kernel, session, head) }
+        : STALE;
+
+    return {
+      kind: "moved",
+      revision: outcome.revisions[moving.length - 1] ?? EMPTY_REVISION,
+      commit: written.commit,
+      part: written.part,
+      stopped,
+    };
+  });
+}
+
+async function summarize(
   kernel: Kernel,
   input: Parameters<Kernel["summarize"]>[0],
 ): ReturnType<Kernel["summarize"]> {
@@ -20,8 +150,7 @@ export async function summarize(
   }
 }
 
-/** Stores a branch summary part and its commit on `landing`, and returns the updates that publish them and move the head there from `tip`: `[part created, part settled, commit, head moved]`, the head's compare-and-set on the commit entry. */
-export async function summaryUpdates(
+async function summaryUpdates(
   kernel: Kernel,
   input: {
     readonly session: SessionId;
@@ -48,7 +177,7 @@ export async function summaryUpdates(
     body: { kind: "branchSummary", part, replaces: input.abandoned },
   };
 
-  const commit = await putCommit(kernel, record);
+  const commit = asId<"commit">(await put(kernel, "commit", record, record.at));
 
   const stored: PartRecord = {
     id: part,
@@ -91,8 +220,8 @@ export async function summaryUpdates(
       },
       {
         name: headRef(session, head),
-        target: objectOf(commit),
-        expect: expectOf(tip.ref),
+        target: toCommitObjectId(commit),
+        expect: readRefExpectation(tip.ref),
         event: {
           head,
           kind: "commit",
@@ -104,7 +233,7 @@ export async function summaryUpdates(
       },
       {
         name: headRef(session, head),
-        target: objectOf(commit),
+        target: toCommitObjectId(commit),
         event: { head, kind: "head", from: tip.id, to: commit, reason: "moved" },
       },
     ],

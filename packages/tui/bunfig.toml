@@ -1,2 +1,3 @@
 [test]
 preload = ["@opentui/solid/preload"]
+pathIgnorePatterns = ["test/tmp/**"]

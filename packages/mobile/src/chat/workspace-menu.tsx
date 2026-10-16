@@ -14,11 +14,6 @@ import { controls, spacing, textStyles, useTheme } from "../theme.ts";
 import { workspaceName, type WorkspaceMenu } from "./workspace-menu.ts";
 import { useRegistryFolders, type RegistryFolders } from "./workspace-start.tsx";
 
-/**
- * Where a new chat goes: the folders the host's owner registered, and the
- * choice stays on this phone. Follow-ups have no picker: the session already
- * sits on a folder. There is no Open folder control here.
- */
 export function WorkspacePicker({
   busy = false,
   onWorkspaceChange,

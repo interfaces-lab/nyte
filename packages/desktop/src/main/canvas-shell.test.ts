@@ -22,7 +22,6 @@ const built = await access(join(shellRoot, "index.html")).then(
   () => false,
 );
 
-/** A port the fixture's page server can take; the scheme needs the origin before Electron is ready. */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = createServer();

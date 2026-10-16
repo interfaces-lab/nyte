@@ -45,6 +45,7 @@ export function FontFamilySelect<T extends string>({
   return (
     <Autocomplete
       items={groups}
+      limit={30}
       value={selected ?? null}
       inputValue={search}
       disabled={disabled}

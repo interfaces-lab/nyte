@@ -9,6 +9,7 @@
  * to beat the gap between two rows.
  */
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
@@ -145,7 +146,7 @@ export function SettingsNavigation({
           </div>
         ))}
         {results?.length === 0 && (
-          <span {...props(styles.emptyNavigation)}>No matching settings</span>
+          <span {...props(text.sm, styles.emptyNavigation)}>No matching settings</span>
         )}
       </div>
     </div>

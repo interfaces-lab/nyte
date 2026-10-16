@@ -1,9 +1,4 @@
-/**
- * What the canvas shell is told about the appearance: the scheme and the
- * custom properties `theme/boot.ts` writes on <html>, read from the same
- * preferences so a canvas matches the chat around it.
- */
-import type { CanvasHostContext } from "@nyte-ai/plugin/canvas-protocol";
+import type { CanvasHostContext } from "@nyte-ai/plugin/canvas/protocol";
 import { preferences } from "../preferences/index.ts";
 import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
 import { codeFontFamily, localFontFamily, uiFontFamily } from "../theme/fonts.ts";
@@ -23,7 +18,6 @@ export interface CanvasAppearance {
   readonly reduceTransparency: boolean;
 }
 
-/** The host context's theme half for one appearance; the names are the contract's allowlist. */
 export function canvasTheme(appearance: CanvasAppearance): CanvasTheme {
   return {
     theme: appearance.dark ? "dark" : "light",
@@ -80,7 +74,6 @@ function currentAppearance(): CanvasAppearance {
 
 let cached: { readonly key: string; readonly theme: CanvasTheme } | undefined;
 
-/** The current theme, the same object while nothing changed, for `useSyncExternalStore`. */
 export function readCanvasTheme(): CanvasTheme {
   const appearance = currentAppearance();
   const key = JSON.stringify(appearance);

@@ -1,13 +1,3 @@
-/**
- * The long-lived watches, as fact producers. A watch that throws or ends
- * becomes a `watch-ended` fact (a visible `failed` watch, retried by the
- * `retry-watch` intent, which runs `follow` again); it never leaves a dead
- * loop or an unresolved "first view" promise behind.
- *
- * The followed session's `SessionConfigurator` lives here too: it orders
- * configuration before the sends pressed under it, and its optimistic
- * selection reaches the screen as `selection` facts.
- */
 import type {
   Configuration,
   ModelCatalogView,
@@ -135,18 +125,16 @@ export async function follow(
   unavailable(info.activation, dispatch);
 }
 
-/**
- * Host-wide: catalog generations, each listed once and guarded by generation
- * in the reducer; and the session directory, so a rename of the followed chat
- * (automatic naming included) reaches the terminal title.
- */
 export async function watchHost(context: HandlerContext): Promise<void> {
   const { ports, dispatch, read, scope } = context;
+  let seen = read().facts.catalog.catalog?.generation ?? null;
 
   const catalogs = each(ports.host.catalog(), context.signal, (entry) => {
+    if (entry.catalog === seen) return;
+    seen = entry.catalog;
     const generation = (scope.catalogGeneration += 1);
-    void entry
-      .list()
+    void ports.host
+      .listModels()
       .then((catalog) => dispatch({ kind: "catalog", generation, catalog }))
       .catch((error: unknown) => {
         ports.log.write("watch", error);
@@ -164,11 +152,6 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   await Promise.all([catalogs, renames]);
 }
 
-/**
- * Git facts for a folder, keeping the `@` index when the folder is the one
- * already indexed; with `mentions`, the index is rebuilt from the workspace
- * scan once the git facts are out.
- */
 export async function refreshWorkspace(
   context: HandlerContext,
   cwd: string,
@@ -199,7 +182,6 @@ export async function refreshWorkspace(
   dispatch({ kind: "workspace", workspace: { ...latest, mentions } });
 }
 
-/** Iterates until the source ends or the signal aborts; an abort stops waiting on `next()` and returns the iterator. */
 export async function each<T>(
   source: AsyncIterable<T>,
   signal: AbortSignal,
@@ -234,7 +216,6 @@ export function selectionOf(state: State, session: SessionId): Selection | null 
   return selected === null ? null : toSelection(selected, catalogOf(state));
 }
 
-/** The selection a session shows before its first view: the last one seen, else the catalog's default. */
 export function fallback(state: State): Selection {
   const followed = state.facts.session;
   const configuration = followed?.view?.configuration;
@@ -248,7 +229,6 @@ export function fallback(state: State): Selection {
   );
 }
 
-/** The catalog's default model, else the first available, else the first known; null when the catalog has none. */
 export function fallbackSelection(
   catalog: ModelCatalogView | null,
   effort: Thinking,
@@ -267,7 +247,6 @@ export function toRunChoice(selection: Selection): RunChoice {
   return { model: selection.model, thinkingLevel: selection.effort };
 }
 
-/** `fast` is a fact about the model ref: whether some base model names it as its fast sibling. */
 export function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
   const fast =
     catalog !== null &&
@@ -278,7 +257,6 @@ export function toSelection(choice: RunChoice, catalog: ModelCatalogView | null)
   return { model: choice.model, effort: choice.thinkingLevel, fast };
 }
 
-/** Resolves a partial selection against the catalog: `fast` picks the base model's fast sibling, or the base again. */
 export function patchOf(
   selection: Partial<Selection>,
   current: Selection,
@@ -364,11 +342,6 @@ async function created(context: HandlerContext): Promise<SessionId> {
   return createSession({ workspace, selection: null, effort: null }, context);
 }
 
-/**
- * Creates a session and configures it at the remembered thinking level,
- * clamped to its model, before anything follows it; an `effort` the command
- * line chose wins and is created with instead.
- */
 export async function createSession(
   input: {
     readonly workspace: WorkspaceId | null;

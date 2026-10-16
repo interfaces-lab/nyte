@@ -8,8 +8,8 @@ import {
   initializedNotification,
   openLinkRequest,
   sizeChangedNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
-import type { CanvasHostContext, ShellMessage } from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, ShellMessage } from "@nyte-ai/plugin/canvas/protocol";
 import { describe, expect, test } from "vitest";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 

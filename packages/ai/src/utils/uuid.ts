@@ -1,8 +1,5 @@
 /**
  * Time-ordered UUIDv7 generator with a monotonic sequence, used for message and session ids.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/uuid.ts
- * Synced with pi 7ebf9087e.
  */
 const MAX_UUID_V7_TIMESTAMP = 0xffffffffffff;
 

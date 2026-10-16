@@ -1,9 +1,3 @@
-/**
- * OpenCode Zen provider.
- *
- * Based on https://github.com/earendil-works/pi/blob/561a2e066c0742e3d3e33c75d5d32a69b1d89194/packages/ai/src/providers/opencode.ts
- * Synced with pi 561a2e066.
- */
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { googleGenerativeAIApi } from "../api/google-generative-ai.lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
@@ -22,7 +16,7 @@ export function opencodeProvider(): Provider<OpenCodeApi> {
   return createProvider({
     id: "opencode",
     name: "OpenCode Zen",
-    // Nyte-only field, no pi counterpart. Models route to several upstream APIs
+    // Models route to several upstream APIs
     // whose long-retention windows differ (1h on Anthropic, 24h on OpenAI) and
     // some catalog entries do not support long retention at all, so publish
     // only the floor every route guarantees.

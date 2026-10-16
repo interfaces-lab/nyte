@@ -1,10 +1,3 @@
-/**
- * Reports, then queue rows, in inbox order, each labelled by `placeLabel`
- * (schedule, not delivery). Click a row → open the queue menu for it. Drag
- * (one primitive, anywhere on the row, same rule for every row) →
- * `reorder(id, to)` across the whole inbox. Reports draw above and take no
- * input except opening their task.
- */
 import type { MessageId } from "@nyte-ai/sdk";
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -16,29 +9,19 @@ import { displayWidth } from "../../lib/width.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import type { Intent } from "../../model/msg.ts";
 import { placeLabel } from "../../model/queue.ts";
-import type { Place, QueueRow, ReportRow } from "../../model/queue.ts";
+import type { Place, QueueRow } from "../../model/queue.ts";
 
-/** The rows never take more than this share of the terminal. */
 const MAX_ROW_SHARE = 0.3;
 
-/** Below this the message is a stub, so the row sheds its hint, then its label, to keep the text. */
 const MIN_TEXT_COLUMNS = 12;
 
-/** The rows' side margins, the lead (space, glyph, space) and the trailing space. */
 const FIXED_COLUMNS = 2 + 3 + 1;
 
-/** The two spaces before the label. */
 const GAP_COLUMNS = 2;
 
 type ReorderTo = Extract<Intent, { readonly kind: "reorder" }>["to"];
 
-/**
- * Where a dragged row lands when dropped on another: it takes the target's
- * place, above it when moving up and below it when moving down. Only rows
- * still pending in the inbox take part. Null when nothing moves, or when the
- * move needs "last", which `reorder` cannot say yet beyond one step.
- */
-export function dropTarget(
+function dropTarget(
   rows: readonly QueueRow[],
   dragged: MessageId,
   onto: MessageId,
@@ -76,27 +59,6 @@ function placeMark(place: Place, theme: CliTheme): RowMark {
   }
 }
 
-function reportTone(tone: ReportRow["tone"], theme: CliTheme): string {
-  switch (tone) {
-    case "muted":
-      return theme.muted;
-    case "running":
-      return theme.running;
-    case "warning":
-      return theme.warning;
-    case "ok":
-      return theme.ok;
-    case "error":
-      return theme.error;
-    default: {
-      const _exhaustive: never = tone;
-
-      return _exhaustive;
-    }
-  }
-}
-
-/** ` <glyph> <text…>  <label> · <hint> `: the text takes what the fixed parts leave, at least 12 columns. */
 function Line(props: {
   readonly id: string;
   readonly glyph: string;
@@ -217,47 +179,14 @@ export function QueueLine(props: {
   );
 }
 
-export function ReportLine(props: { readonly row: ReportRow }): JSX.Element {
-  const app = useApp();
-
-  return (
-    <Line
-      id={`report-row-${props.row.id}`}
-      glyph={props.row.glyph}
-      tone={reportTone(props.row.tone, app.kit.theme())}
-      text={props.row.title}
-      textTone={app.kit.theme().dim}
-      label="waiting"
-      hint={null}
-      onMouseUp={() => {
-        const task = props.row.task;
-
-        if (task === null) return;
-        // Through the task list, so Esc in the inspector goes back to it.
-        app.dispatch({
-          kind: "open",
-          dialog: { kind: "list", purpose: { kind: "tasks", section: "active" } },
-        });
-        app.dispatch({ kind: "open", dialog: { kind: "inspector", task } });
-      }}
-    />
-  );
-}
-
 export function QueueRows(): JSX.Element {
   const app = useApp();
   const dimensions = useTerminalDimensions();
   let drag: { readonly id: MessageId; moved: boolean } | null = null;
 
   const limit = () => Math.max(1, Math.floor(dimensions().height * MAX_ROW_SHARE));
-  const reports = createMemo(() => app.screen().reports.slice(0, limit()));
-
-  const queue = createMemo(() =>
-    app.screen().queue.slice(0, Math.max(0, limit() - reports().length)),
-  );
-
-  const hidden = () =>
-    app.screen().reports.length + app.screen().queue.length - reports().length - queue().length;
+  const queue = createMemo(() => app.screen().queue.slice(0, limit()));
+  const hidden = () => app.screen().queue.length - queue().length;
 
   const hintFor = (index: number): string | null =>
     index === queue().length - 1 ? pendingHint(hidden()) : null;
@@ -269,9 +198,8 @@ export function QueueRows(): JSX.Element {
       flexShrink={0}
       marginLeft={1}
       marginRight={1}
-      visible={reports().length + queue().length > 0}
+      visible={queue().length > 0}
     >
-      <For each={reports()}>{(row) => <ReportLine row={row} />}</For>
       <For each={queue()}>
         {(row, index) => (
           <QueueLine
@@ -284,7 +212,6 @@ export function QueueRows(): JSX.Element {
               if (drag !== null) drag.moved = true;
             }}
             onRelease={() => {
-              // After a drag OpenTUI also releases on the row under the pointer; only a plain click on the pressed row opens.
               if (drag === null || drag.id !== row.id || drag.moved) return;
               drag = null;
               app.dispatch({

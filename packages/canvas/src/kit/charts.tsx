@@ -1,10 +1,3 @@
-/**
- * Full charts with axes, over nivo, in the usage charts' language: grid then
- * fills then lines then nodes then labels, mono tick labels with a halo in
- * the panel colour, fixed tints per series through `surfaceTheme`, a readout
- * styled like the ui `BarChart`'s, and no animation. The compact `StackedBars`
- * and `Sparkline` come from `@nyte-ai/ui/chart` as they are.
- */
 import { ResponsiveBar } from "@nivo/bar";
 import type { BarDatum, BarTooltipProps } from "@nivo/bar";
 import { ResponsiveLine } from "@nivo/line";
@@ -21,7 +14,6 @@ import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useColorScheme } from "./scheme.ts";
 
-/** Series without a tint of their own paint in this order. */
 const HUES: readonly Tint[] = [
   "blue",
   "purple",
@@ -35,7 +27,6 @@ const HUES: readonly Tint[] = [
 
 const MAX_BOTTOM_TICKS = 8;
 
-/** The label size the usage charts fix; a StyleX literal, matched in the nivo theme. */
 const LABEL_SIZE = 11;
 
 const styles = create({
@@ -96,7 +87,6 @@ type Format<Value> = (value: Value) => string;
 
 type Keyed = { readonly id: string; readonly tint: Tint };
 
-/** What a chart's readout needs beyond what nivo hands its tooltip: the series' tints and labels, and the value format. */
 type ReadoutContextValue = {
   readonly format: Format<number>;
   readonly layers: readonly { readonly key: string; readonly label: string; readonly tint: Tint }[];
@@ -110,7 +100,6 @@ const ReadoutContext = createContext<ReadoutContextValue>({
 const tintOf = (layers: ReadoutContextValue["layers"], key: string): Tint =>
   layers.find((layer) => layer.key === key)?.tint ?? "blue";
 
-/** The nivo theme over the tokens: SVG attributes take `var()` strings as they are; the outline is the label halo. */
 const theme = {
   text: {
     fontFamily: type.fontMono,
@@ -123,13 +112,11 @@ const theme = {
   axis: { ticks: { line: { strokeWidth: 0 } }, domain: { line: { strokeWidth: 0 } } },
   grid: { line: { stroke: role.borderSecondary, strokeWidth: 1 } },
   crosshair: { line: { stroke: role.borderStrong, strokeWidth: 1, strokeOpacity: 1 } },
-  // Arc labels sit on a fill, where a halo in the panel colour would read as a box; contrast comes from the slice's own hue instead.
   labels: { text: { fontWeight: 500, outlineWidth: 0 } },
 };
 
 const MARGIN = { top: 10, right: 12, bottom: 28, left: 48 };
 
-/** Resolves each series' tint to the hue's strong fill in the current scheme: nivo paints with the string it is given. */
 function usePaint(): (tint: Tint) => string {
   const scheme = useColorScheme();
 
@@ -153,7 +140,6 @@ function Legend({ entries }: { readonly entries: readonly Keyed[] }): ReactEleme
   );
 }
 
-/** The readout a pointer opens: a title, a row per series, and the total when there is more than one. */
 function Readout({
   title,
   rows,
@@ -185,7 +171,6 @@ function Readout({
   );
 }
 
-/** Every nth value, so a dense axis keeps at most `MAX_BOTTOM_TICKS` labels. */
 function thinned<Value>(values: readonly Value[]): readonly Value[] {
   const step = Math.ceil(values.length / MAX_BOTTOM_TICKS);
 

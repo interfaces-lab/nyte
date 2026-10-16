@@ -130,7 +130,9 @@ export function HarnessRing() {
             className="inline-block animate-caption-in motion-reduce:animate-none"
           >
             <span className="font-medium">{harness.name}</span>
-            <span className="font-mono text-[12px] text-white/60"> · {harnessMeta(harness)}</span>
+            {harnessMeta(harness) && (
+              <span className="font-mono text-[12px] text-white/60"> · {harnessMeta(harness)}</span>
+            )}
           </span>
         </p>
         <button

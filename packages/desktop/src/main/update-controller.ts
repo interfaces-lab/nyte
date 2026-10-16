@@ -12,7 +12,6 @@ interface UpdateDependencies {
   currentVersion: string;
   activity: () => Promise<DesktopUpdateActivity>;
   beforeInstall: () => Promise<void>;
-  /** How long installing waits for `beforeInstall` before it relaunches anyway. */
   cleanupTimeoutMs?: number;
   publish: (state: UpdateState) => void;
   message: (options: MessageBoxOptions) => Promise<{ readonly response: number }>;
@@ -24,11 +23,6 @@ type Outcome =
   | { readonly kind: "ready"; readonly version: string }
   | { readonly kind: "failed"; readonly title: string; readonly detail: string };
 
-/**
- * Checks and downloads run silently and publish their state for the sidebar. A click
- * from the menu or the sidebar answers in a native dialog: up to date, failed, or
- * ready to restart.
- */
 export function createUpdateController({
   updater,
   currentVersion,
@@ -63,7 +57,6 @@ export function createUpdateController({
 
       version = result.updateInfo.version;
     } catch (cause) {
-      // Offline, or no release published yet: the next check tries again.
       return { kind: "failed", title: "Couldn't check for updates", detail: errorMessage(cause) };
     }
 
@@ -177,7 +170,6 @@ function runningWork(activity: Extract<DesktopUpdateActivity, { readonly kind: "
   ].join(" and ");
 }
 
-/** electron-updater appends the request and headers to the message; the dialog shows the reason. */
 function errorMessage(cause: unknown): string {
   return (cause instanceof Error ? cause.message : String(cause)).split("\n", 1)[0] ?? "";
 }

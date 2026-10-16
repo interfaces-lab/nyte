@@ -6,11 +6,6 @@ interface SearchableFile {
   readonly description: string;
 }
 
-/**
- * Ranks name prefixes, then name substrings, then path substrings over the
- * scanned entries `@` names. One catalog owns one lazy index, not a growing
- * cache of queries or catalogs.
- */
 export function createFileRanking(files: readonly MentionFile[], limit: number) {
   let searchable: readonly SearchableFile[] | undefined;
 

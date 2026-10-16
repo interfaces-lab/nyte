@@ -1,9 +1,6 @@
 /**
  * @nyte-ai/ai: the provider layer. Side-effect free: provider factories and API
  * implementations are exported explicitly below; nothing registers globally.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/index.ts
- * Synced with pi 7ebf9087e.
  */
 export type { Static, TSchema } from "typebox";
 
@@ -27,7 +24,6 @@ export { OpenAICodexCompactionError } from "./api/openai-codex-compaction-error.
 export type {
   OpenAICodexCompactResult,
   OpenAICodexResponsesOptions,
-  OpenAICodexWebSocketDebugStats,
 } from "./api/openai-codex-responses.ts";
 
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";

@@ -1,21 +1,15 @@
-/**
- * The rows of list dialogs whose content is derived from facts (palette,
- * skills, queue, settings, a setting's choices, tasks, providers). They are
- * recomputed whenever the screen is, so a task that finishes or a message
- * that lands updates the open list instead of leaving a stale row behind.
- */
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { CHAT_KEYBINDS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
-import { formatDuration, shortId } from "../lib/format.ts";
+import { shortId } from "../lib/format.ts";
 import {
   statusMark,
   taskActivity,
   taskAgent,
   taskConfiguration,
-  taskElapsedMs,
   taskLabel,
   taskStatus,
+  taskTiming,
   unfinishedTask,
 } from "../lib/tasks.ts";
 import { commandRegistry, skillsOf } from "./commands.ts";
@@ -32,9 +26,16 @@ function choice(
   id: string,
   label: string,
   description = "",
-  extra: Partial<Pick<Choice, "status" | "mark">> = {},
+  extra: Partial<Pick<Choice, "timing" | "status" | "mark">> = {},
 ): Choice {
-  return { id, label, description, status: extra.status ?? null, mark: extra.mark ?? null };
+  return {
+    id,
+    label,
+    description,
+    timing: extra.timing ?? null,
+    status: extra.status ?? null,
+    mark: extra.mark ?? null,
+  };
 }
 
 const KEY_NAMES = new Map([
@@ -43,7 +44,6 @@ const KEY_NAMES = new Map([
   ["kpenter", "enter"],
 ]);
 
-/** Every key a command is bound to, the way help prints them: `enter`, `esc`, `ctrl+enter/ctrl+enter`, de-duplicated. */
 export function bindingKeycaps(command: ChatCommand): string {
   const caps = CHAT_KEYBINDS[command]
     .split(",")
@@ -52,7 +52,6 @@ export function bindingKeycaps(command: ChatCommand): string {
   return [...new Set(caps)].join("/");
 }
 
-/** The chat commands that do something now, as help lists them (hidden ones included). */
 function activeCommands(
   state: State,
 ): readonly { readonly command: ChatCommand; readonly label: string }[] {
@@ -67,12 +66,11 @@ function activeCommands(
   });
 }
 
-/** The "Keyboard shortcuts" report: every active binding, including those hidden at this width. */
 export function shortcutLines(state: State): readonly string[] {
   return activeCommands(state).map(({ command, label }) => `${bindingKeycaps(command)} ${label}`);
 }
 
-function taskChoices(state: State, section: "active" | "finished", now: number): readonly Choice[] {
+function taskChoices(state: State, section: "active" | "finished"): readonly Choice[] {
   const { tasks } = state.facts;
   const finished = section === "finished";
 
@@ -80,19 +78,15 @@ function taskChoices(state: State, section: "active" | "finished", now: number):
     ...tasks
       .filter((task) => unfinishedTask(task) !== finished)
       .map((task) => {
-        const mark = statusMark(taskStatus(task));
-        const elapsed = taskElapsedMs(task, now);
-
         return choice(
           task.id,
           `${taskAgent(task)} · ${taskLabel(task)}`,
-          [
-            elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
-            task.kind === "agent" ? taskConfiguration(task) : undefined,
-          ]
-            .filter((value) => value !== undefined && value !== "")
-            .join(" · "),
-          { mark, status: { text: taskActivity(task), tone: "muted" } },
+          task.kind === "agent" ? taskConfiguration(task) : "",
+          {
+            timing: taskTiming(task),
+            mark: statusMark(taskStatus(task)),
+            status: { text: taskActivity(task), tone: "muted" },
+          },
         );
       }),
     finished
@@ -104,8 +98,7 @@ function taskChoices(state: State, section: "active" | "finished", now: number):
   ];
 }
 
-/** Rows for a purpose derived from facts; null for purposes whose rows were loaded or fixed at open. */
-export function liveChoices(state: State, purpose: ListPurpose, now = 0): readonly Choice[] | null {
+export function liveChoices(state: State, purpose: ListPurpose): readonly Choice[] | null {
   switch (purpose.kind) {
     case "palette":
       return [
@@ -140,13 +133,13 @@ export function liveChoices(state: State, purpose: ListPurpose, now = 0): readon
         (option) => choice(option.id, option.label, option.description),
       );
     case "tasks":
-      return taskChoices(state, purpose.section, now);
+      return taskChoices(state, purpose.section);
     case "provider":
       return (state.facts.catalog.catalog?.providers ?? [])
         .filter((provider) =>
           purpose.mode === "login"
             ? provider.methods.length > 0
-            : provider.credential === "configured" || provider.credential === "verified",
+            : provider.credential !== "missing" && provider.credential !== "unknown",
         )
         .map((provider) =>
           choice(
@@ -158,7 +151,28 @@ export function liveChoices(state: State, purpose: ListPurpose, now = 0): readon
               : "",
           ),
         );
+    case "mcp":
+    case "mcp-server":
+      return null;
+    case "trust": {
+      const shown = purpose.sources.slice(0, 3).join(", ");
+      const more =
+        purpose.sources.length > 3 ? ` and ${String(purpose.sources.length - 3)} more` : "";
+
+      return [
+        choice(
+          "trust",
+          "Trust this folder",
+          shown === "" ? "Load its project files" : `Load ${shown}${more}`,
+        ),
+        choice("decline", "Don't trust", "Skip its skills, prompts, plugins and MCP servers"),
+        ...(purpose.decision === null
+          ? []
+          : [choice("forget", "Forget my answer", "Follow the Project trust setting")]),
+      ];
+    }
     case "question":
+    case "accounts":
     case "resume":
     case "summary":
       return null;
@@ -180,6 +194,8 @@ export function listTitle(state: State, purpose: ListPurpose): string {
       return "Commands";
     case "skills":
       return "Skills";
+    case "accounts":
+      return "Accounts";
     case "queue":
       return "Queued messages";
     case "settings":
@@ -192,6 +208,12 @@ export function listTitle(state: State, purpose: ListPurpose): string {
       return purpose.section === "finished" ? "Tasks · Finished" : "Tasks";
     case "provider":
       return purpose.mode === "login" ? "Sign in to a provider" : "Remove a stored credential";
+    case "trust":
+      return `Trust ${purpose.path}?`;
+    case "mcp":
+      return "MCP servers";
+    case "mcp-server":
+      return purpose.server;
     default: {
       const _exhaustive: never = purpose;
 
@@ -200,7 +222,6 @@ export function listTitle(state: State, purpose: ListPurpose): string {
   }
 }
 
-/** The row a list opens on: the queued message, the settings row, the current choice, else the first. */
 export function initialHighlight(
   state: State,
   purpose: ListPurpose,
@@ -225,12 +246,13 @@ export function initialHighlight(
       return index(state.facts.session?.id);
     case "provider":
       return index(state.facts.session?.selection.model.provider);
+    case "trust":
+      return index(purpose.decision === false ? "decline" : "trust");
     default:
       return 0;
   }
 }
 
-/** Root sessions whose head moved, newest first, the current one marked. */
 export function resumeChoices(state: State, sessions: readonly SessionInfo[]): readonly Choice[] {
   const current = state.facts.session?.id ?? null;
 
@@ -246,9 +268,8 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
     );
 }
 
-/** A list dialog with its derived rows refreshed and its highlight kept in range. */
-export function liveList(state: State, dialog: ListDialog, now = 0): ListDialog {
-  const items = liveChoices(state, dialog.purpose, now);
+export function liveList(state: State, dialog: ListDialog): ListDialog {
+  const items = liveChoices(state, dialog.purpose);
 
   if (items === null) return dialog;
 

@@ -56,9 +56,11 @@ export function Hero5() {
             and{" "}
             <FactWord
               href="/docs/models"
-              above="Multi-model"
-              below="Open-source & commercial LLMs"
+              above="Claude Opus"
+              below="Qwen3"
               tint="[--tint:#ffd6e8]"
+              aboveTint="[--tint:#d97757]"
+              belowTint="[--tint:#615ced] text-white"
             >
               multi-model support
             </FactWord>

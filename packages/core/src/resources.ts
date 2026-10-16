@@ -1,12 +1,13 @@
 import { standard } from "@nyte-ai/schema";
 import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { filesOf, readWorkspace } from "./environment.ts";
+import { classifyFileSupport, readWorkspace, workspaceRecords } from "./environment.ts";
 import type { Resources } from "./environment.ts";
 import { SdkError } from "./error.ts";
 import type { FilesApi } from "./files.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
+import type { WorkspaceRecord } from "./records.ts";
 import { readKv } from "./plugin-runtime.ts";
 import { kvRef } from "./refs.ts";
 import { requireSession } from "./session-state.ts";
@@ -23,9 +24,12 @@ const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
+export const SKILL_PATHS = "skills.paths";
+
+export const WORKSPACE_TRUST = "workspaceTrust";
+
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Resolves what core scanned for a session through `FilesApi` only, cached until `invalidateResources` drops its workspace or the session moves. A failure to attach the session's environment or the home's rejects, never answering "no resources" (D 13). */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const workspace = (await requireSession(kernel, session)).record.workspace;
   const table = kernel.workspaceState.scans;
@@ -42,34 +46,49 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   return entry.resources;
 }
 
-/** Drops the cached resources of every session on a workspace. */
 export function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {
   const table = kernel.workspaceState.scans;
 
   for (const [session, cached] of table) if (cached.workspace === workspace) table.delete(session);
 }
 
-/** Returns a scan's warnings: one per skill dropped as a duplicate name. */
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
   return scanIssues.get(resources) ?? [];
 }
 
-/** Contributes what core scanned for a session (decision 13): the `project-context` and `skills` prompt sections, the skills themselves, the scan's duplicate-skill warnings, and the host setting `skills.paths`. A session with no scan here (inactive) contributes only the setting. */
 export const resourcesPlugin: Plugin<"core"> = {
   id: "resources",
   contribute: {
     settings: [
       {
-        id: "skills.paths",
+        id: SKILL_PATHS,
         label: "Skill paths",
         schema: standard(Type.Array(Type.String())),
         default: [],
         scope: "host",
       },
+      {
+        id: WORKSPACE_TRUST,
+        label: "Project trust",
+        schema: standard(
+          Type.Union([Type.Literal("ask"), Type.Literal("always"), Type.Literal("never")]),
+        ),
+        default: "ask",
+        scope: "host",
+        choices: [
+          { value: "ask", label: "ask", badge: "Ask before loading a new folder's project files" },
+          { value: "always", label: "always", badge: "Load every folder's project files" },
+          {
+            value: "never",
+            label: "never",
+            badge: "Load project files only from folders you trusted",
+          },
+        ],
+      },
     ],
   },
   activate(api) {
-    const inputs = inputsOf(api);
+    const inputs = tryReadResources(api);
 
     if (inputs === null) return;
 
@@ -93,7 +112,7 @@ export const resourcesPlugin: Plugin<"core"> = {
           "Skills: read a skill's file when its description matches the task.",
           ...inputs.skills.map(
             (skill) =>
-              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.scope === "user" ? `~/${skill.location}` : skill.location})`,
+              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
           ),
         ].join("\n"),
       });
@@ -110,8 +129,7 @@ export const resourcesPlugin: Plugin<"core"> = {
   },
 };
 
-/** Returns the plugin's scanned resources, or null when the session is not attached here. */
-function inputsOf(api: PluginApi<"core">): Resources | null {
+function tryReadResources(api: PluginApi<"core">): Resources | null {
   try {
     return api.inputs;
   } catch {
@@ -119,7 +137,6 @@ function inputsOf(api: PluginApi<"core">): Resources | null {
   }
 }
 
-/** Reads a skill's file through the files of its scope. */
 async function loadSkill(inputs: Resources, skill: Resources["skills"][number]): Promise<string> {
   const files = skill.scope === "project" ? inputs.project : inputs.user;
 
@@ -141,13 +158,18 @@ async function scan(
   const record = await readWorkspace(kernel, workspace);
   const user = await userFiles(kernel);
 
-  const env =
-    record?.projectResources === true &&
-    filesOf(kernel.environments.provider(record.target.kind)) === "available"
-      ? await kernel.env(session)
+  const trusted = record !== null && (await projectTrust(kernel, record)) === true;
+
+  const attached =
+    record !== null &&
+    classifyFileSupport(kernel.environments.provider(record.target.kind)) === "available"
+      ? kernel.env(session)
       : null;
 
-  const project = env?.files ?? null;
+  const env =
+    attached === null ? null : trusted ? await attached : await attached.catch(() => null);
+  const folder = env?.files ?? null;
+  const project = trusted ? folder : null;
   const root = env !== null && env.cwd.startsWith("/") ? env.cwd : null;
   const home = kernel.home;
 
@@ -157,7 +179,14 @@ async function scan(
     user === null ? [] : skillsAt(user, await skillPaths(kernel)),
   ]);
 
-  const { kept: skills, dropped } = byName([...projectSkills, ...userSkills, ...pathSkills]);
+  const { kept: skills, dropped } = byName([
+    ...projectSkills,
+    ...[...userSkills, ...pathSkills].map((skill) =>
+      home === null || /^(?:\/|[A-Za-z]:[\\/])/.test(skill.location)
+        ? skill
+        : { ...skill, location: join(home, skill.location) },
+    ),
+  ]);
 
   const issues = dropped.map(({ item, over }): ValidationIssue => ({
     severity: "warning",
@@ -175,10 +204,10 @@ async function scan(
       contextFiles.push({ path: join(home, ".nyte/AGENTS.md"), scope: "user", content });
   }
 
-  if (project !== null && root !== null) contextFiles.push(...(await ancestorFiles(project, root)));
+  if (folder !== null && root !== null) contextFiles.push(...(await ancestorFiles(folder, root)));
 
-  if (project !== null) {
-    const found = await firstContext(project, (name) => name);
+  if (folder !== null) {
+    const found = await firstContext(folder, (name) => name);
 
     if (found !== null)
       contextFiles.push({
@@ -226,7 +255,6 @@ async function scan(
   return resources;
 }
 
-/** Resolves the host home's files through the `"local"` provider, attached once per kernel; null without a home or a `"local"` provider. */
 function userFiles(kernel: Kernel): Promise<FilesApi | null> {
   const state = kernel.workspaceState;
 
@@ -245,16 +273,91 @@ function userFiles(kernel: Kernel): Promise<FilesApi | null> {
   return attached;
 }
 
-/** Returns the host setting `skills.paths`, or none when it is unset or not a list of strings. */
+/**
+ * Decides whether a workspace's project files may load, the way pi does:
+ * the folder's own decision, else the nearest registered parent folder's
+ * decision, else the host's `workspaceTrust` mode, where `ask` gives `null`.
+ * The host's home folder holds the user's own files, so it is never a
+ * project and never passes trust down.
+ */
+export type TrustResolver = (
+  record: Pick<WorkspaceRecord, "target" | "projectResources">,
+) => boolean | null;
+
+/**
+ * Reads the workspace records and the `workspaceTrust` mode once and returns
+ * a {@link TrustResolver} over them; reuse it when resolving many workspaces.
+ *
+ * @category workspaces
+ * @since 0.1.0
+ */
+export async function readTrustResolver(kernel: Kernel): Promise<TrustResolver> {
+  const [records, mode] = await Promise.all([
+    workspaceRecords(kernel),
+    readKv(kernel, kvRef("host", "settings", WORKSPACE_TRUST)),
+  ]);
+
+  const home = kernel.home?.replace(/\/+$/u, "") ?? null;
+
+  const folder = (target: WorkspaceRecord["target"]): string | null =>
+    "path" in target ? target.path.replace(/\/+$/u, "") : null;
+
+  const fallback = mode === "always" ? true : mode === "never" ? false : null;
+
+  return (record) => {
+    const path = folder(record.target);
+
+    if (path !== null && path === home) return false;
+
+    if (record.projectResources !== null) return record.projectResources;
+
+    if (path === null) return fallback;
+
+    const parent = records
+      .flatMap((other) => {
+        const above = folder(other.target);
+
+        return other.target.kind === record.target.kind &&
+          other.projectResources !== null &&
+          above !== null &&
+          above !== home &&
+          path.startsWith(`${above}/`)
+          ? [{ depth: above.length, trusted: other.projectResources }]
+          : [];
+      })
+      .toSorted((a, b) => b.depth - a.depth)[0];
+
+    return parent?.trusted ?? fallback;
+  };
+}
+
+/**
+ * Whether one workspace's project files may load; see {@link TrustResolver}.
+ *
+ * @category workspaces
+ * @since 0.1.0
+ */
+export async function projectTrust(
+  kernel: Kernel,
+  record: Pick<WorkspaceRecord, "target" | "projectResources">,
+): Promise<boolean | null> {
+  const home = kernel.home?.replace(/\/+$/u, "") ?? null;
+  const path = "path" in record.target ? record.target.path.replace(/\/+$/u, "") : null;
+
+  if (record.projectResources !== null && (path === null || path !== home))
+    return record.projectResources;
+
+  return (await readTrustResolver(kernel))(record);
+}
+
 async function skillPaths(kernel: Kernel): Promise<readonly string[]> {
-  const value = await readKv(kernel, kvRef("host", "settings", "skills.paths"));
+  const value = await readKv(kernel, kvRef("host", "settings", SKILL_PATHS));
 
   return Array.isArray(value)
     ? value.flatMap((entry) => (typeof entry === "string" ? [entry] : []))
     : [];
 }
 
-/** Returns the skills under each directory: every `<dir>/<name>/SKILL.md`. */
 async function skillsIn(
   files: FilesApi,
   directories: readonly string[],
@@ -263,18 +366,17 @@ async function skillsIn(
   const found: Skill[] = [];
 
   for (const directory of directories) {
-    for (const name of await childrenOf(files, directory, "directory")) {
+    for (const name of await listDirectChildren(files, directory, "directory")) {
       const location = `${directory}/${name}/SKILL.md`;
       const content = await readText(files, location);
 
-      if (content !== null) found.push(skillOf(content, name, location, scope));
+      if (content !== null) found.push(parseSkillMetadata(content, name, location, scope));
     }
   }
 
   return found;
 }
 
-/** Returns the skills the extra paths name: a `.md` file is one skill, anything else a directory scanned like `.nyte/skills`. */
 async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<readonly Skill[]> {
   const found: Skill[] = [];
 
@@ -290,15 +392,14 @@ async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<read
     const content = await readText(files, path);
     const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
 
-    if (content !== null) found.push(skillOf(content, name, path, "path"));
+    if (content !== null) found.push(parseSkillMetadata(content, name, path, "path"));
   }
 
   return found;
 }
 
-/** Returns the prompt templates directly under `.nyte/prompts`. */
 async function promptsIn(files: FilesApi, scope: Prompt["scope"]): Promise<readonly Prompt[]> {
-  const names = await childrenOf(files, ".nyte/prompts", "file");
+  const names = await listDirectChildren(files, ".nyte/prompts", "file");
 
   return names.flatMap((name) =>
     name.endsWith(".md")
@@ -307,8 +408,7 @@ async function promptsIn(files: FilesApi, scope: Prompt["scope"]): Promise<reado
   );
 }
 
-/** Returns a skill from its file: frontmatter `name` (else `fallback`) and `description`. */
-function skillOf(
+function parseSkillMetadata(
   content: string,
   fallback: string,
   location: string,
@@ -324,21 +424,14 @@ function skillOf(
   };
 }
 
-/** Returns the ancestor context files of a workspace root, root first, read through the workspace's own files; none when those files reject a path. */
 async function ancestorFiles(files: FilesApi, root: string): Promise<readonly ContextFile[]> {
   const found: ContextFile[] = [];
 
   try {
-    for (const directory of ancestorsOf(root)) {
-      for (const name of CONTEXT_NAMES) {
-        const path = join(directory, name);
-        const document = await files.read(path);
+    for (const directory of listAncestorPaths(root)) {
+      const context = await firstContext(files, (name) => join(directory, name));
 
-        if (document.kind !== "text") continue;
-        found.push({ path, scope: "ancestor", content: document.contents });
-
-        break;
-      }
+      if (context !== null) found.push({ ...context, scope: "ancestor" });
     }
   } catch {
     return [];
@@ -347,7 +440,6 @@ async function ancestorFiles(files: FilesApi, root: string): Promise<readonly Co
   return found;
 }
 
-/** Returns the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` at the paths `at` gives. */
 async function firstContext(
   files: FilesApi,
   at: (name: string) => string,
@@ -362,8 +454,7 @@ async function firstContext(
   return null;
 }
 
-/** Returns the names of a directory's direct children of one kind. */
-async function childrenOf(
+async function listDirectChildren(
   files: FilesApi,
   directory: string,
   kind: "file" | "directory",
@@ -385,14 +476,16 @@ async function childrenOf(
   return [...names].sort();
 }
 
-/** Returns a file's text, or null when it is missing or not text; a failed read rejects (D 13). */
 async function readText(files: FilesApi, path: string): Promise<string | null> {
-  const document = await files.read(path);
+  const document = await files.read(path).catch((error: unknown) => {
+    if (error instanceof SdkError && error.code === "invalid") return null;
 
-  return document.kind === "text" ? document.contents : null;
+    throw error;
+  });
+
+  return document?.kind === "text" ? document.contents : null;
 }
 
-/** Returns the `key: value` lines of a leading `---` block, values unquoted. */
 function frontmatter(content: string): ReadonlyMap<string, string> {
   const fields = new Map<string, string>();
   const block = FRONTMATTER.exec(content)?.[1];
@@ -409,13 +502,7 @@ function frontmatter(content: string): ReadonlyMap<string, string> {
   return fields;
 }
 
-/** Returns the first item per name, sorted by name, and each later one with the item it lost to. */
-function byName<T extends { readonly name: string }>(
-  items: readonly T[],
-): {
-  readonly kept: readonly T[];
-  readonly dropped: readonly { readonly item: T; readonly over: T }[];
-} {
+function byName<T extends { readonly name: string }>(items: readonly T[]) {
   const kept = new Map<string, T>();
   const dropped: { readonly item: T; readonly over: T }[] = [];
 
@@ -432,8 +519,7 @@ function byName<T extends { readonly name: string }>(
   };
 }
 
-/** Returns the directories above an absolute path, root first: `/`, `/a`, … up to its parent. */
-function ancestorsOf(root: string): readonly string[] {
+function listAncestorPaths(root: string): readonly string[] {
   const parts = root.split("/").filter((part) => part !== "");
 
   return parts.map((_part, index) => `/${parts.slice(0, index).join("/")}`);

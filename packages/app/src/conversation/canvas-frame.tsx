@@ -1,24 +1,21 @@
-/**
- * A canvas part inline in the transcript: the runtime shell in a sandboxed
- * frame, the compiled module posted into it, sized to what the shell
- * reports. Loading and failure hold the same box so nothing below it moves.
- */
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import { canvas } from "@nyte-ai/plugin/canvas";
-import type { CanvasState } from "@nyte-ai/plugin/canvas";
+import { canvas } from "@nyte-ai/plugin/canvas/schema";
+import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import {
   CANVAS_RUNTIME,
   hostContextChangedNotification,
   openLinkResult,
   readShellMessage,
   renderNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
-import type { CanvasHostContext, CanvasHostInfo } from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, CanvasHostInfo } from "@nyte-ai/plugin/canvas/protocol";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
@@ -31,9 +28,9 @@ const styles = create({
   figure: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: space.s1_5,
     width: "100%",
-    marginBlock: 10,
+    marginBlock: space.s2_5,
     marginInline: 0,
   },
   box: {
@@ -54,17 +51,13 @@ const styles = create({
     height: "100%",
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontLg,
-    lineHeight: type.leadingLg,
   },
   status: {
     display: "flex",
     alignItems: "baseline",
-    gap: 8,
+    gap: space.s2,
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     overflowWrap: "anywhere",
   },
   dot: {
@@ -101,7 +94,6 @@ function post(frame: HTMLIFrameElement | null, message: CanvasPost): void {
   frame?.contentWindow?.postMessage(message, "*");
 }
 
-/** A shell error, remembered against the module it came from: a replace starts clean. */
 interface CanvasError {
   readonly code: string;
   readonly message: string;
@@ -112,7 +104,6 @@ export function CanvasFrame({
   report,
 }: {
   readonly state: CanvasState;
-  /** The part's `report` action: a load or render error the shell saw. */
   readonly report: (message: string) => void;
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -120,12 +111,9 @@ export function CanvasFrame({
   const [reportedHeight, setReportedHeight] = useState<number>();
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<CanvasError>();
-  /** What the shell has been told, read in handlers only. */
   const shell = useRef({ initialized: false, reported: new Set<string>() });
   const { runtime, code, title, error: known } = state;
 
-  // The shell posts `ui/initialize` as soon as its script runs, so listen from
-  // the commit that inserts the frame; a passive effect could run after it.
   useLayoutEffect(() => {
     const receive = (event: MessageEvent<unknown>): void => {
       const frame = frameRef.current;
@@ -176,7 +164,6 @@ export function CanvasFrame({
     return () => window.removeEventListener("message", receive);
   }, [theme, runtime, code, title, known, report]);
 
-  // A replace: the shell swaps the module in place.
   useLayoutEffect(() => {
     if (shell.current.initialized)
       post(frameRef.current, renderNotification({ runtime, code, title }));
@@ -207,14 +194,12 @@ export function CanvasFrame({
             referrerPolicy="no-referrer"
             loading="lazy"
             {...props(styles.frame)}
-            // A frame whose colour scheme differs from its document's paints
-            // opaque; the shell takes the theme's scheme once it has the context.
             style={{ colorScheme: initialized ? theme.theme : "light" }}
           />
         )}
       </div>
       {failure !== undefined && (
-        <figcaption role="status" {...props(styles.status)}>
+        <figcaption role="status" {...props(text.sm, styles.status)}>
           <span aria-hidden="true" {...props(surfaceTheme.red, styles.dot)} />
           {failure}
         </figcaption>
@@ -223,7 +208,6 @@ export function CanvasFrame({
   );
 }
 
-/** The app's renderer for `canvas` parts; a state the schema rejects draws nothing. */
 export const canvasRenderers: Plugin = {
   id: "canvas-renderers",
   contribute: {

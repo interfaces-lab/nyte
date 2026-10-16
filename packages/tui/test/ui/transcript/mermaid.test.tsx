@@ -1,4 +1,3 @@
-/** A mermaid fence draws as a diagram; its toggle line flips to the source through a disclosure. */
 import { describe, expect, test } from "bun:test";
 import type { App } from "../../../src/app/context.tsx";
 import { splitMermaid } from "../../../src/ui/transcript/markdown.tsx";

@@ -1,33 +1,29 @@
-/**
- * A task's transcript (a second `<Transcript>` over the child's derived
- * model, local scroll handle) or a job's output tail. The host resolves the
- * task from the screen; until it can, the inspector shows the task id.
- */
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, Match, on, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, Match, on, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { keycap } from "../../lib/constants.ts";
-import { formatDuration } from "../../lib/format.ts";
+import { formatTiming } from "../../lib/format.ts";
 import type { Task } from "../../lib/tasks.ts";
 import {
   canStopTask,
   statusMark,
   taskAgent,
   taskConfiguration,
-  taskElapsedMs,
   taskLabel,
   taskStatus,
+  taskTiming,
   unfinishedTask,
 } from "../../lib/tasks.ts";
 import type { InspectorDialog, InspectorScroll } from "../../model/dialogs/tasks.ts";
+import { placement } from "../../model/dialogs/dialog.ts";
 import type { ScrollPort } from "../../model/native.ts";
 import type { TranscriptLocal } from "../../model/state.ts";
 import { deriveTranscript } from "../../model/transcript.ts";
 import type { TranscriptModel } from "../../model/transcript.ts";
 import { Transcript } from "../transcript/transcript.tsx";
-import { hint, joinHints, Note, Panel } from "./panel.tsx";
+import { hint, joinHints, Note, Panel, useRowCap } from "./panel.tsx";
 
 const NO_DISCLOSURES: ReadonlySet<string> = new Set();
 
@@ -115,6 +111,8 @@ function JobOutput(props: {
   readonly dialog: InspectorDialog;
 }): JSX.Element {
   const { kit } = useApp();
+  const cap = useRowCap();
+  const [contentRows, setContentRows] = createSignal(1);
   let scroll: ScrollBoxRenderable | undefined;
 
   const apply = (by: InspectorScroll): void => {
@@ -163,8 +161,8 @@ function JobOutput(props: {
       ref={(box) => {
         scroll = box;
       }}
-      flexGrow={1}
-      flexShrink={1}
+      height={Math.max(1, Math.min(contentRows(), cap()))}
+      flexShrink={0}
       minHeight={1}
       scrollX={false}
       scrollY
@@ -173,9 +171,16 @@ function JobOutput(props: {
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={kit.theme().foreground} wrapMode="word">
-        {props.task.job.tail || "No output yet."}
-      </text>
+      <box
+        flexShrink={0}
+        onSizeChange={function () {
+          setContentRows(this.height);
+        }}
+      >
+        <text fg={kit.theme().foreground} wrapMode="word">
+          {props.task.job.tail || "No output yet."}
+        </text>
+      </box>
     </scrollbox>
   );
 }
@@ -183,12 +188,12 @@ function JobOutput(props: {
 const CLOCK_INTERVAL_MS = 1_000;
 
 function metadata(task: Task, now: number): string {
-  const elapsed = taskElapsedMs(task, now);
+  const timing = taskTiming(task);
 
   return [
     taskStatus(task),
     task.kind === "agent" ? taskConfiguration(task) : undefined,
-    elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
+    timing === null ? undefined : formatTiming(timing, now),
   ]
     .filter((value) => value !== undefined && value !== "")
     .join(" · ");
@@ -207,7 +212,6 @@ function TickingMetadata(props: { readonly task: Task }): JSX.Element {
   return <Note text={text()} />;
 }
 
-/** The status line; its clock ticks only while the task is unfinished. */
 function Metadata(props: { readonly task: Task }): JSX.Element {
   const { kit } = useApp();
 
@@ -223,7 +227,6 @@ function Metadata(props: { readonly task: Task }): JSX.Element {
 
 export function InspectorView(props: {
   readonly dialog: InspectorDialog;
-  /** The task the dialog names, once the screen exposes it; null draws a placeholder. */
   readonly task: Task | null;
 }): JSX.Element {
   const { kit } = useApp();
@@ -235,12 +238,12 @@ export function InspectorView(props: {
       `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} scroll`,
       `${keycap("picker.page.up")}/${keycap("picker.page.down")} page`,
       hint("chat.tools.toggle", "follow"),
-      `${keycap("chat.message.previous", "symbol")}${keycap("picker.next", "symbol")} task`,
+      `${keycap("chat.message.previous", "symbol")}/${keycap("chat.message.next", "symbol")} task`,
       ...(props.task !== null && canStopTask(props.task) ? [hint("chat.task.stop", "cancel")] : []),
     ]);
 
   return (
-    <Panel title="Tasks" hints={hints()} fill>
+    <Panel title="Tasks" hints={hints()} fill={placement(props.dialog, props.task) === "screen"}>
       <Show when={props.task} fallback={<Note text={`${props.dialog.task} · Loading…`} />}>
         {(task: Accessor<Task>) => {
           const mark = () => statusMark(taskStatus(task()));

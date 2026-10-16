@@ -1,10 +1,3 @@
-/**
- * `testRender` at the QA terminal's size (100×32) with the kitty keyboard
- * protocol on, one frame already drawn. Dispose with `await using`:
- *
- *   await using app = await render(() => <Hints />);
- *   expect(app.captureCharFrame()).toContain("enter send");
- */
 import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testing";
 import { testRender } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -19,4 +12,20 @@ export async function render(
   await setup.renderOnce();
 
   return setup;
+}
+
+export async function frameShowing(
+  setup: Pick<TestRendererSetup, "renderOnce" | "captureCharFrame">,
+  text: string,
+  timeout = 3_000,
+): Promise<string> {
+  const deadline = Date.now() + timeout;
+
+  for (;;) {
+    await setup.renderOnce();
+    const frame = setup.captureCharFrame();
+
+    if (frame.includes(text) || Date.now() > deadline) return frame;
+    await Bun.sleep(5);
+  }
 }

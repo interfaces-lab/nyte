@@ -76,7 +76,6 @@ export function surfaceSecurity(url: string): BrowserSurfaceState["secure"] {
   return "none";
 }
 
-/** `report.pdf`, then `report (1).pdf`, as Chrome names a file that already exists. */
 export function uniqueDownloadName(filename: string, taken: (name: string) => boolean): string {
   const safe = filename.replaceAll(/[/\\:\0]/g, "_").trim() || "download";
 
@@ -97,7 +96,6 @@ const ZOOM_FACTORS = [
   0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
 ];
 
-/** Chrome's page zoom steps; a factor between two steps moves to the nearer one in that direction. */
 export function nextZoomFactor(current: number, direction: "in" | "out"): number {
   if (direction === "in") return ZOOM_FACTORS.find((factor) => factor > current + 0.01) ?? current;
 
@@ -106,11 +104,6 @@ export function nextZoomFactor(current: number, direction: "in" | "out"): number
 
 const CRASH_RETRY_LIMIT = 3;
 
-/**
- * How long to wait before reloading a page whose renderer just died, given the
- * times of its earlier crashes. Undefined once a page has crashed too often
- * recently: it stays on the error screen with a Try Again.
- */
 export function crashRetryDelay(crashes: readonly number[], now: number): number | undefined {
   const recent = crashes.filter((at) => now - at < CRASH_WINDOW_MS).length;
 
@@ -119,18 +112,12 @@ export function crashRetryDelay(crashes: readonly number[], now: number): number
 
 const PRESSED_LIMIT = 8;
 
-/** The user's keydown, kept until its page forwards it or a newer one replaces it. */
 export function rememberPressedKey(pressed: BrowserKey[], key: BrowserKey): void {
   if (["Control", "Shift", "Alt", "Meta"].includes(key.key)) return;
   pressed.push(key);
   pressed.splice(0, pressed.length - PRESSED_LIMIT);
 }
 
-/**
- * Whether a key the page forwards came from the user: it consumes the matching keydown
- * and the older ones the page kept. Agent input reaches the page through CDP, which
- * never passes `before-input-event`, so it has no keydown to consume.
- */
 export function takePressedKey(pressed: BrowserKey[], key: BrowserKey): boolean {
   const index = pressed.findIndex(
     (candidate) =>

@@ -11,7 +11,6 @@ import type {
 import { sha256 } from "../hash.ts";
 import type { Ran } from "./command.ts";
 
-/** Returns one file's section of `git diff` output: its old and new paths (null for `/dev/null`), whether git called it binary, its hunks with their added and removed line counts, and its raw text. */
 export type ParsedDiff = {
   readonly oldPath: string | null;
   readonly newPath: string | null;
@@ -22,10 +21,8 @@ export type ParsedDiff = {
   readonly text: string;
 };
 
-/** The size past which a path's patch or one side of a file is not read: 1 MiB. */
 export const PATCH_LIMIT = 1024 * 1024;
 
-/** Returns one changed path of a comparison as `git diff --name-status` reports it: its status and, for a rename, the path it came from. */
 export type Changed = {
   readonly path: string;
   readonly status: FileStatus;
@@ -36,7 +33,6 @@ type Line = Hunk["lines"][number];
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/;
 
-/** Parses `git diff` output, written with the default `a/` and `b/` prefixes and no colour, into its file sections in order. */
 export function parseDiff(output: string): readonly ParsedDiff[] {
   const lines = output.split("\n");
 
@@ -101,7 +97,6 @@ export function parseDiff(output: string): readonly ParsedDiff[] {
   return sections;
 }
 
-/** Returns one path's `PatchEntry` from its parsed section: `binary`, `too-large` past `PATCH_LIMIT`, `empty` without hunks, else `text`; `digest` the SHA-256 of the section. */
 export function entryOf(path: string, status: FileStatus, parsed: ParsedDiff): PatchEntry {
   const digest = sha256(parsed.text);
 
@@ -123,7 +118,6 @@ export function entryOf(path: string, status: FileStatus, parsed: ParsedDiff): P
   };
 }
 
-/** Returns one path's `PatchEntry` between two texts (null for an absent side) with the line diff: hunks with three lines of context, `empty` when the texts are equal, and `digest` the SHA-256 of both sides. */
 export function textEntry(
   path: string,
   status: FileStatus,
@@ -139,7 +133,6 @@ export function textEntry(
   return { path, status, digest, kind: "text", ...diffed };
 }
 
-/** Reads the patches of `files` with one `git diff` through `read` (its stdout capped at `PATCH_LIMIT` a path), one entry per file in order; when that read throws, exits with an error or passes its cap, each path is read again alone, so a path past `PATCH_LIMIT` is `too-large`, one whose read throws or fails is `failed { reason }`, and the others are fine. A path the diff shows no section for is `empty`, its digest `emptyDigest(file)`. What `localGit.patches` and `localSnapshots.patches` read with. */
 export async function readPatches(
   files: readonly Changed[],
   read: (files: readonly Changed[], limit: number) => Promise<Ran>,
@@ -195,19 +188,16 @@ export async function readPatches(
   return entries;
 }
 
-/** Returns the line stat between two texts, as `textEntry` counts it. */
 export function lineStat(before: string, after: string): LineStat {
   const { added, removed } = lineDiff(before, after);
 
   return { kind: "text", added, removed };
 }
 
-/** Returns a git revision or a snapshot id as the revision a `ChangeSet` or `PatchSet` carries. */
 export function revisionOf(value: string): GitRevision {
   return asId<"git-revision">(value);
 }
 
-/** Returns a snapshot id. */
 export function snapshotOf(value: string): SnapshotId {
   return asId<"snapshot">(value);
 }
@@ -269,7 +259,6 @@ function readHunk(
   };
 }
 
-/** Returns the old and new paths of a `diff --git a/<old> b/<new>` header, or null when they cannot be told apart (a rename's lines name them instead). */
 function headerPaths(rest: string): { readonly old: string; readonly new: string } | null {
   if (rest.startsWith('"')) {
     const end = quotedEnd(rest);
@@ -309,7 +298,6 @@ function sidePath(text: string, prefix: string): string | null {
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
-/** Undoes git's C-style quoting of a path (`"a\tb"`, octal escapes for bytes); an unquoted path comes back as is. */
 export function unquote(text: string): string {
   if (!text.startsWith('"') || !text.endsWith('"') || text.length < 2) return text;
   const bytes: number[] = [];
@@ -351,7 +339,6 @@ export function unquote(text: string): string {
   return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
-/** Parses `git diff --numstat -z` into line stats by path (a rename under its new path). */
 export function parseNumstat(output: string): ReadonlyMap<string, LineStat> {
   const tokens = output.split("\u0000");
   const stats = new Map<string, LineStat>();
@@ -379,7 +366,6 @@ export function parseNumstat(output: string): ReadonlyMap<string, LineStat> {
   return stats;
 }
 
-/** Parses `git diff --name-status -z` into changed paths. */
 export function parseNameStatus(output: string): readonly Changed[] {
   const tokens = output.split("\u0000");
   const changed: Changed[] = [];

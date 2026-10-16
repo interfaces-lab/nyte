@@ -3,8 +3,6 @@ import { constants } from "node:os";
 import { supervisorCommand } from "./supervisor-protocol.ts";
 import type { SupervisorReport } from "./supervisor-protocol.ts";
 
-// This process is the PTY's group leader. Only it signals the group, so an
-// exited leader's remembered PID can never target a reused process group.
 process.on("SIGINT", () => {});
 
 process.on("SIGTERM", () => {});
@@ -31,7 +29,6 @@ function finish() {
 
 function fail(cause: unknown) {
   send({ kind: "error", message: cause instanceof Error ? cause.message : String(cause) });
-  // Do not leave descendants behind even if startup or control IPC fails.
   finish();
 }
 
@@ -61,8 +58,6 @@ async function cleanup(signal: "SIGINT" | "SIGTERM" = "SIGTERM") {
   prepared = true;
 
   if (!process.connected) finish();
-  // The driver's reply proves it received the actual exit status before the
-  // final group kill also terminates this owner and closes the private IPC.
   send({ kind: "prepared" });
 }
 
@@ -82,7 +77,6 @@ process.on("message", (message) => {
     }
 
     if (message.kind === "signal") {
-      // Signal the owned child handle, not a PID retained after its exit.
       if (child && child.exitCode === null && child.signalCode === null) child.kill(message.signal);
 
       return;
@@ -112,8 +106,10 @@ try {
   const binaryProcess = child;
   binaryExit = child.exited.then((code) => {
     const signal = binaryProcess.signalCode;
+
     const number =
       signal === null || typeof signal === "number" ? signal : constants.signals[signal];
+
     send({ kind: "exited", code: number === null ? code : 128 + number });
   });
 } catch (error) {

@@ -1,25 +1,22 @@
-/**
- * The SDK adapter: `Host` in, `HostPort` out. The only module that imports
- * SDK values, builds receipt ids from message ids, and reads wire outcomes.
- */
+import { homedir } from "node:os";
 import { asId } from "@nyte-ai/schema";
-import type { Cursor, Host, MessageId, Session, SessionInfo } from "@nyte-ai/sdk";
+import type { Connection, MessageId, Session, SessionId } from "@nyte-ai/sdk";
 import type { Task } from "../lib/tasks.ts";
-import { tuiPlugins } from "../run.ts";
-import { loginProvider, logoutProvider } from "../services/auth.ts";
+import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
+import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { mountClientPlugins } from "../services/plugins.ts";
 import type { ClientPlugins } from "../services/plugins.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import type { HostPort, PluginsPort, SessionPort } from "./ports.ts";
 
-type TuiHost = Omit<Host, "listen">;
-
-export function hostPort(host: TuiHost): HostPort {
+export function hostPort(host: Connection, folder: string | null): HostPort {
   return {
     session: (id) => sessionPort(host, host.session(id)),
     async create(input) {
+      const workspace =
+        input.workspace ?? (folder === null ? null : await addFolder(host, folder));
       const session = await host.sessions.create({
-        ...(input.workspace === null ? {} : { workspace: input.workspace }),
+        ...(workspace === null ? {} : { workspace }),
         ...(input.selection === null
           ? {}
           : { configuration: { model: input.selection.model, thinking: input.selection.effort } }),
@@ -27,37 +24,13 @@ export function hostPort(host: TuiHost): HostPort {
 
       return session.id;
     },
-    async rootSessions() {
-      const sessions: SessionInfo[] = [];
-      let cursor: Cursor | null = null;
-
-      do {
-        const page = await host.sessions.list(
-          cursor === null ? { parents: { kind: "roots" } } : { parents: { kind: "roots" }, cursor },
-        );
-
-        sessions.push(...page.items);
-        cursor = page.next;
-      } while (cursor !== null);
-
-      return sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt);
-    },
-    async *catalog() {
-      let seen: string | null = null;
-      let generation = 0;
-
-      for await (const view of host.watch()) {
-        if (view.catalog === seen) continue;
-        seen = view.catalog;
-        generation += 1;
-        yield { generation, list: () => host.models.list() };
-      }
-    },
-    async *sessionInfos() {
-      for await (const sessions of host.sessions.watch({ parents: { kind: "all" } }))
-        yield sessions;
-    },
+    rootSessions: () => rootSessions(host),
+    catalog: () => host.watch(),
+    sessionInfos: () => host.sessions.watch({ parents: { kind: "all" } }),
     listModels: () => host.models.list(),
+    accounts: (provider) => host.models.accounts(provider ?? undefined),
+    selectAccount: (provider, account) => host.models.selectAccount(provider, account),
+    usage: () => host.models.usage(),
     refreshModels: (provider) => host.models.refresh(provider),
     async setDefaultModel(ref) {
       await host.models.setDefault(ref);
@@ -85,22 +58,122 @@ export function hostPort(host: TuiHost): HostPort {
 
       return [];
     },
-    applySetting: (id, value) => host.settings.apply(id, value),
-    async *tasks(session) {
-      const info = await host.session(session).info();
-      const updates = latestOf<readonly Task[]>();
+    async trustInfo(workspace) {
+      const info = await host.workspace(workspace).info();
+      const inspected = await host.workspaces.inspect(info.target).catch(() => null);
 
-      const index = new TaskIndex(info, {
-        connection: host,
-        onChange: () => updates.push(index.tasks),
-        onError: (error) => updates.fail(error),
-      });
+      const path = "path" in info.target ? info.target.path : info.id;
 
-      try {
-        yield* updates;
-      } finally {
-        index.close();
+      return {
+        path,
+        home: path.replace(/\/+$/u, "") === homedir().replace(/\/+$/u, ""),
+        decision: info.projectResources,
+        trusted: info.trusted,
+        sources: inspected?.projectSources ?? info.projectSources,
+      };
+    },
+    async trust(workspace, value) {
+      const outcome = await host.workspace(workspace).update({ projectResources: value });
+
+      if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
+    },
+    async mcp(workspace) {
+      for await (const view of host.workspace(workspace).mcp.watch()) return view;
+
+      throw new Error("The MCP view ended.");
+    },
+    mcpAction(workspace, server, action) {
+      const mcp = host.workspace(workspace).mcp;
+
+      switch (action) {
+        case "reconnect":
+          return mcp.reconnect(server);
+        case "enable":
+        case "disable":
+          return mcp.setEnabled(server, action === "enable");
+        case "logout":
+          return mcp.logout(server);
+        default: {
+          const _exhaustive: never = action;
+
+          return _exhaustive;
+        }
       }
+    },
+    mcpLogin: (workspace, server, driver) =>
+      runLogin(host.workspace(workspace).mcp.login(server), driver, server),
+    applySetting: (id, value) => host.settings.apply(id, value),
+    tasks(session) {
+      return {
+        [Symbol.asyncIterator]() {
+          let latest: readonly Task[] | null = null;
+          let failure: { readonly error: unknown } | null = null;
+          let waiting: (() => void) | null = null;
+          let index: TaskIndex | null = null;
+          let closed = false;
+          let opening: Promise<void> | null = null;
+
+          const wake = (): void => {
+            const resume = waiting;
+            waiting = null;
+            resume?.();
+          };
+
+          return {
+            async next(): Promise<IteratorResult<readonly Task[]>> {
+              if (closed) return { done: true, value: undefined };
+              opening ??= host
+                .session(session)
+                .info()
+                .then((info) => {
+                  if (closed) return;
+
+                  const opened = new TaskIndex(info, {
+                    connection: host,
+                    onChange() {
+                      latest = opened.tasks;
+                      wake();
+                    },
+                    onError(error) {
+                      failure = { error };
+                      wake();
+                    },
+                  });
+
+                  index = opened;
+                });
+              await opening;
+
+              for (;;) {
+                if (closed) return { done: true, value: undefined };
+
+                if (failure !== null) throw failure.error;
+
+                if (latest !== null) {
+                  const value = latest;
+
+                  latest = null;
+
+                  return { done: false, value };
+                }
+
+                await new Promise<void>((resolve) => {
+                  waiting = resolve;
+                });
+              }
+            },
+            async return(): Promise<IteratorResult<readonly Task[]>> {
+              closed = true;
+              index?.close();
+              latest = null;
+              failure = null;
+              wake();
+
+              return { done: true, value: undefined };
+            },
+          };
+        },
+      };
     },
     async *blob(id) {
       const reader = await host.blob(asId(id));
@@ -109,7 +182,7 @@ export function hostPort(host: TuiHost): HostPort {
   };
 }
 
-function sessionPort(host: TuiHost, session: Session): SessionPort {
+function sessionPort(host: Connection, session: Session): SessionPort {
   const receiptOf = (message: MessageId) => session.receipt(asId(message));
 
   return {
@@ -146,7 +219,6 @@ function sessionPort(host: TuiHost, session: Session): SessionPort {
 
       if (stopped.kind === "settled")
         return isWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
-      // `requested` is a withdrawal or a stop of the run the message joined: the receipt tells which.
       const after = await receipt.status();
 
       return after.kind === "settled" && isWithdrawn(after.outcome) ? "withdrawn" : "landed-first";
@@ -166,8 +238,8 @@ function sessionPort(host: TuiHost, session: Session): SessionPort {
 
       return outcome.kind === "missing" ? "missing" : "stopped";
     },
-    async answer(part, choice) {
-      const outcome = await session.part(part).act("answer", { choice });
+    async answer(part, answers) {
+      const outcome = await session.part(part).act("answer", { answers });
 
       return outcome.kind === "ok";
     },
@@ -265,9 +337,8 @@ function sessionPort(host: TuiHost, session: Session): SessionPort {
   };
 }
 
-/** The client plugins mounted over the host; `beforeSubmit`, `switched` and `ids` are the port, `draw`/`dispose` the kit's. */
 export async function pluginsPort(
-  host: TuiHost,
+  host: Connection,
   options: {
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
@@ -321,44 +392,4 @@ function isWithdrawn(outcome: unknown): boolean {
     "kind" in outcome &&
     outcome.kind === "withdrawn"
   );
-}
-
-/** An async iterable of the newest value pushed since the last read; a pushed error ends it. */
-function latestOf<T>(): AsyncIterable<T> & { push(value: T): void; fail(error: unknown): void } {
-  let latest: { readonly value: T } | null = null;
-  let failure: { readonly error: unknown } | null = null;
-  let waiting: (() => void) | null = null;
-
-  const wake = (): void => {
-    const resume = waiting;
-    waiting = null;
-    resume?.();
-  };
-
-  return {
-    push(value) {
-      latest = { value };
-      wake();
-    },
-    fail(error) {
-      failure = { error };
-      wake();
-    },
-    async *[Symbol.asyncIterator]() {
-      for (;;) {
-        if (failure !== null) throw failure.error;
-
-        if (latest !== null) {
-          const { value } = latest;
-          latest = null;
-          yield value;
-          continue;
-        }
-
-        await new Promise<void>((resolve) => {
-          waiting = resolve;
-        });
-      }
-    },
-  };
 }

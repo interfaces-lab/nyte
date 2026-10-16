@@ -4,7 +4,6 @@ import { isToolMessage, worktreeFiles } from "../view-helpers.ts";
 import type { ConversationTurn, WorktreeFile } from "../view-helpers.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
-/** One page of history as the toolbar lists it. */
 interface CommitInfo {
   readonly id: string;
   readonly subject: string;
@@ -18,7 +17,6 @@ export interface ChangeScopeStats {
   readonly removed: number;
 }
 
-/** `files` knows the paths from Git status but has read no patch, so its line totals are unknown, not zero. */
 export type ChangeScopeRead =
   | { readonly kind: "pending" }
   | { readonly kind: "files"; readonly fileCount: number }
@@ -41,11 +39,9 @@ export interface TurnChangeOption {
   readonly run: RunId | null;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };
-  /** The paths the turn's settled calls changed; the run's recorded snapshots carry the patches. */
   readonly files: readonly string[];
 }
 
-/** Newest first; counts are the turn's summary, paths the ones its settled calls reported. */
 export function turnChangeOptions(turns: readonly ConversationTurn[]): readonly TurnChangeOption[] {
   return turns
     .map((turn, index): TurnChangeOption => {
@@ -102,10 +98,6 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
   }
 }
 
-/**
- * Which Git comparison answers a scope. A turn's changes are its run's
- * recorded snapshots, so no Git read serves it.
- */
 export function vcsRequestForScope(scope: WorkbenchChangesScope): GitScope | undefined {
   switch (scope.kind) {
     case "uncommitted":
@@ -126,7 +118,6 @@ export function vcsRequestForScope(scope: WorkbenchChangesScope): GitScope | und
   }
 }
 
-/** The repository a scope is read against; absent outside a Git working tree. */
 export interface ChangesRepository {
   readonly root: string;
   readonly revision: string;

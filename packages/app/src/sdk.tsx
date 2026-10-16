@@ -14,14 +14,12 @@ import type {
 } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
 
-/** How the shell reaches its host: the URL, the credential, and the host id pinned for it. */
 export interface HostEndpoint {
   readonly url: string;
   readonly credentials: Extract<CredentialSource, { readonly kind: "token" | "pairing" }>;
   readonly expect?: { readonly hostId: HostId };
 }
 
-/** Why a connect or a request failed, as the copy the shell shows. */
 export interface ConnectionProblem {
   readonly kind: "authentication" | "network" | "incompatible" | "server";
   readonly message: string;
@@ -29,12 +27,6 @@ export interface ConnectionProblem {
 
 let installed: Connection | undefined;
 
-/**
- * Connects to the shell's host with `sdk.connect` and installs the connection
- * every read and watch goes through. A pairing connect yields a device token;
- * `remember` hands it to the shell to persist, so the next start connects
- * with it.
- */
 export async function connectHost(
   endpoint: HostEndpoint,
   options: {
@@ -57,39 +49,45 @@ export async function connectHost(
   return connection;
 }
 
-/** Installs the one connection the interface reads; tests install a scripted one. */
 export function installConnection(connection: Connection): void {
   installed = connection;
 
   for (const stores of registries) stores.clear();
 }
 
-/** The installed connection, if any. */
 export function currentConnection(): Connection | undefined {
   return installed;
 }
 
-/** The installed connection. Throws before `connectHost` or `installConnection` ran. */
 export function connection(): Connection {
   if (installed === undefined) throw new Error("No Nyte connection is installed");
 
   return installed;
 }
 
-/**
- * One watch shared by every reader: it opens with the first subscriber,
- * publishes each yield, and closes a microtask after the last one leaves, so
- * a remount does not reopen it. A watch that throws keeps its last value.
- */
 export class WatchStore<T> {
   value: T | undefined = undefined;
   error: Error | undefined = undefined;
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | undefined;
   private readonly open: () => AsyncIterable<T>;
+  private readonly idle: () => void;
 
-  constructor(open: () => AsyncIterable<T>) {
+  constructor(open: () => AsyncIterable<T>, idle: () => void = () => undefined) {
     this.open = open;
+    this.idle = idle;
+  }
+
+  get active(): boolean {
+    return this.listeners.size > 0;
+  }
+
+  dispose(): void {
+    this.stop?.();
+    this.stop = undefined;
+    this.value = undefined;
+    this.error = undefined;
+    this.notify();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -102,13 +100,13 @@ export class WatchStore<T> {
         if (this.listeners.size !== 0) return;
         this.stop?.();
         this.stop = undefined;
+        this.idle();
       });
     };
   };
 
   getValue = (): T | undefined => this.value;
 
-  /** Resolves with the next value the watch yields, opening it meanwhile. */
   next(): Promise<T> {
     return new Promise((resolve, reject) => {
       const seen = this.value;
@@ -161,22 +159,38 @@ export class WatchStore<T> {
 
 const registries = new Set<{ clear(): void }>();
 
-/**
- * A family of shared watches of one type, keyed by what they watch (a
- * session id, a workspace id). Installing another connection empties it.
- */
+const RETAINED_WATCHES = 16;
+
 export function watchFamily<K extends string, T>(open: (key: K) => AsyncIterable<T>) {
   const stores = new Map<K, WatchStore<T>>();
-  registries.add(stores);
+
+  const prune = (): void => {
+    const inactive = [...stores].filter(([, store]) => !store.active);
+
+    for (const [key, store] of inactive.slice(0, Math.max(0, inactive.length - RETAINED_WATCHES))) {
+      stores.delete(key);
+      store.dispose();
+    }
+  };
+
+  registries.add({
+    clear() {
+      const previous = [...stores.values()];
+      stores.clear();
+
+      for (const store of previous) store.dispose();
+    },
+  });
 
   return (key: K): WatchStore<T> => {
     const existing = stores.get(key);
 
-    if (existing !== undefined) return existing;
-    const created = new WatchStore(() => open(key));
-    stores.set(key, created);
+    const store = existing ?? new WatchStore(() => open(key), prune);
+    stores.delete(key);
+    stores.set(key, store);
+    prune();
 
-    return created;
+    return store;
   };
 }
 
@@ -184,11 +198,6 @@ const nothing = (): (() => void) => () => undefined;
 
 const none = (): undefined => undefined;
 
-/**
- * The latest value a shared watch yielded, kept open while mounted: the one
- * wrapper over a connection's `AsyncIterable`s. `undefined` until the first
- * yield, or when there is no store.
- */
 export function useWatch<T>(store: WatchStore<T> | undefined): T | undefined {
   return useSyncExternalStore(
     store?.subscribe ?? nothing,
@@ -197,12 +206,10 @@ export function useWatch<T>(store: WatchStore<T> | undefined): T | undefined {
   );
 }
 
-/** Whether a connect failed because another host than the pinned one answered. */
 export function hostChanged(cause: unknown): boolean {
   return cause instanceof SdkError && cause.code === "stale";
 }
 
-/** Fixed copy for a failed connect or request; host text stays in diagnostics. */
 export function connectionProblem(cause: unknown): ConnectionProblem {
   if (!(cause instanceof SdkError)) {
     return {
@@ -248,33 +255,27 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
   }
 }
 
-/** The host view: link state, catalog generation, settings, authority. */
 export const hostWatch = watchFamily((_key: "host"): AsyncIterable<HostView> =>
   connection().watch(),
 );
 
-/** The whole session directory, roots and children: the sidebar and its working marks. */
 export const directoryWatch = watchFamily((_key: "all"): AsyncIterable<readonly SessionInfo[]> =>
   connection().sessions.watch({ parents: { kind: "all" } }),
 );
 
-/** One session's children, as the directory lists them. */
 export const childrenWatch = watchFamily(
   (session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
     connection().sessions.watch({ parents: { kind: "children", session } }),
 );
 
-/** One session's main head as a view: the transcript, execution, changes, catalog. */
 export const sessionWatch = watchFamily((session: SessionId): AsyncIterable<SessionView> =>
   connection().session(session).watch(),
 );
 
-/** One workspace's jobs as they change. */
 export const jobsWatch = watchFamily((workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
   connection().workspace(workspace).jobs.watch(),
 );
 
-/** One workspace's git status as it changes; a workspace without git yields nothing. */
 export const gitStatusWatch = watchFamily((workspace: WorkspaceId): AsyncIterable<GitStatus> =>
   (async function* () {
     const git = await connection().workspace(workspace).git();

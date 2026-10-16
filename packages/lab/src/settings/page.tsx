@@ -321,7 +321,13 @@ function SettingRow({
   const wide = setting.control.kind === "select" && setting.control.wide === true;
 
   return (
-    <div {...props(settingsPatterns.row, annotated && settingsPatterns.rowDetailed)}>
+    <div
+      {...props(
+        settingsPatterns.rowRule,
+        settingsPatterns.row,
+        annotated && settingsPatterns.rowDetailed,
+      )}
+    >
       <span {...props(settingsPatterns.rowCopy)}>
         <span {...props(settingsPatterns.rowTitle)}>{setting.title}</span>
         <span {...props(settingsPatterns.rowDescription)}>{setting.description}</span>

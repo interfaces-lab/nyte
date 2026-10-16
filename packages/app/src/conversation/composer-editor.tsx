@@ -1,51 +1,23 @@
-/**
- * The editable surface. Lexical owns the document, the selection, the IME,
- * the clipboard, and history; React owns the chips it portals into Lexical's
- * decorator hosts and the caret it draws over the native one.
- *
- * The editor is uncontrolled. Its parent hands it a document and receives one
- * back after every edit; a document that matches the editor's last observed
- * state is the parent echoing what it was told and changes nothing here. A
- * different document (a restored draft, another pane's draft, a clear)
- * replaces the content and the caret and starts history afresh. Lexical keeps
- * its range selection while the editor is blurred, so focusing later returns
- * the caret to where the draft left it.
- */
 import { props } from "@stylexjs/stylex";
-import {
-  useCallback,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import type { EditorEvents } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
+import { TextSelection } from "@tiptap/pm/state";
+import { EditorContent } from "@tiptap/react";
+import { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import type { ReactElement, Ref } from "react";
-import { createEmptyHistoryState, registerHistory } from "@lexical/history";
-import {
-  $addUpdateTag,
-  $getNodeByKey,
-  CLEAR_HISTORY_COMMAND,
-  COMMAND_PRIORITY_HIGH,
-  HISTORY_MERGE_TAG,
-  HISTORY_PUSH_TAG,
-  KEY_DOWN_COMMAND,
-  PASTE_COMMAND,
-  SKIP_DOM_SELECTION_TAG,
-  SKIP_SCROLL_INTO_VIEW_TAG,
-} from "lexical";
 import type { MentionFile } from "./message-references.ts";
 import {
-  $composerCompletion,
-  $composerReferences,
-  $composerSubmission,
-  $insertComposerReference,
-  $readComposerDocument,
-  $replaceComposerText,
-  $restoreComposerDocument,
-  $selectComposerDomPoint,
-  COMPOSER_EXTERNAL_TAG,
-  registerComposerReferences,
+  clearComposerHistory,
+  COMPOSER_RESTORE,
+  composerCompletion,
+  composerReferences,
+  composerSubmission,
+  insertComposerReference,
+  pasteComposerText,
+  readComposerDocument,
+  refreshComposerReferences,
+  replaceComposerText,
+  restoreComposerDocument,
   sameComposerDocument,
 } from "./composer-document.ts";
 import type {
@@ -53,7 +25,7 @@ import type {
   ComposerDocumentState,
   ComposerSubmission,
 } from "./composer-document.ts";
-import { ComposerDecorators, useComposerSurface } from "./composer-surface.tsx";
+import { editorContentStyle, focusComposer, useComposerSurface } from "./composer-surface.tsx";
 import { clipboardReferenceFromPaste } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
@@ -184,201 +156,195 @@ export function ComposerEditor({
   onFocusChange,
   onFilesSelected,
 }: ComposerEditorProps): ReactElement {
-  const { editor, rootRef, decorators } = useComposerSurface(!disabled);
+  const catalog = useMemo(() => new Map(files.map((file) => [file.url, file])), [files]);
+  const catalogRef = useRef(catalog);
+
+  const editor = useComposerSurface({
+    text: externalDocument.text,
+    files: () => catalogRef.current,
+    editable: true,
+  });
+
   const caretRef = useRef<HTMLSpanElement>(null);
-  const [empty, setEmpty] = useState(externalDocument.text === "");
   /** The last document this editor reported; the parent's copy of it is an echo, not an instruction. */
   const reported = useRef<ComposerDocumentState | undefined>(undefined);
   /** Includes composition updates whose parent report is deliberately deferred. */
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
-  const referencesDirty = useRef(true);
-
-  // Lexical's focus marks the selection dirty and commits it; the tag keeps
-  // that commit from scrolling the caret into view.
-  const focusEditor = useCallback(
-    (options?: FocusOptions): void => {
-      if (!editor.isEditable()) return;
-      editor.update(
-        () => {
-          if (options?.preventScroll === true) $addUpdateTag(SKIP_SCROLL_INTO_VIEW_TAG);
-          editor.focus();
-        },
-        { discrete: true },
-      );
-    },
-    [editor],
-  );
 
   const handle = useMemo<ComposerEditorHandle>(
     () => ({
       get element() {
-        return rootRef.current;
-      },
-      focus: focusEditor,
-      // Enter submits from inside a command handler, where a force-commit read
-      // would clear the pending state under the discrete focus update that
-      // follows. The pending state is the committed one outside an update.
-      read: () => editor.read("pending", $composerSubmission),
-      readDocument: () =>
-        editor.read("pending", () => {
-          const document = $readComposerDocument();
-          observed.current = document;
+        const root = editor.isDestroyed ? null : editor.view.dom;
 
-          return document;
-        }),
+        return root instanceof HTMLDivElement ? root : null;
+      },
+      focus: (options) => focusComposer(editor, options),
+      read: () => composerSubmission(editor.state.doc),
+      readDocument() {
+        const document = readComposerDocument(editor.state);
+        observed.current = document;
+
+        return document;
+      },
       replaceText(start, end, text) {
-        focusEditor();
-        editor.update(() => $replaceComposerText(start, end, text), {
-          discrete: true,
-          tag: HISTORY_PUSH_TAG,
-        });
+        focusComposer(editor, { preventScroll: true });
+        editor.view.dispatch(
+          closeHistory(replaceComposerText(editor.state.tr, start, end, text)).scrollIntoView(),
+        );
       },
       insertReference(reference, start, end) {
-        focusEditor();
-        editor.update(() => $insertComposerReference(reference, start, end), {
-          discrete: true,
-          tag: HISTORY_PUSH_TAG,
-        });
+        focusComposer(editor, { preventScroll: true });
+        editor.view.dispatch(
+          closeHistory(
+            insertComposerReference(editor.state.tr, reference, start, end),
+          ).scrollIntoView(),
+        );
       },
       dropReferences(references, clientX, clientY) {
-        const root = rootRef.current;
-        const page = root?.ownerDocument;
+        const view = editor.view;
+        const page = view.dom.ownerDocument;
 
         // Older engines lack the standard call; there the drop lands at the caret.
         const caret =
-          page !== undefined && "caretPositionFromPoint" in page
-            ? page.caretPositionFromPoint(clientX, clientY)
-            : null;
+          "caretPositionFromPoint" in page ? page.caretPositionFromPoint(clientX, clientY) : null;
 
-        focusEditor();
-        editor.update(
-          () => {
-            if (caret !== null && root?.contains(caret.offsetNode) === true)
-              $selectComposerDomPoint(caret.offsetNode, caret.offset);
+        focusComposer(editor, { preventScroll: true });
+        const tr = editor.state.tr;
 
-            for (const reference of references) $insertComposerReference(reference);
-          },
-          { discrete: true, tag: HISTORY_PUSH_TAG },
-        );
+        if (
+          caret !== null &&
+          caret.offsetNode instanceof Text &&
+          caret.offsetNode.parentElement?.isContentEditable === true &&
+          view.dom.contains(caret.offsetNode)
+        )
+          tr.setSelection(
+            TextSelection.create(tr.doc, view.posAtDOM(caret.offsetNode, caret.offset)),
+          );
+
+        for (const reference of references) insertComposerReference(tr, reference);
+        view.dispatch(closeHistory(tr).scrollIntoView());
       },
     }),
-    [editor, focusEditor, rootRef],
+    [editor],
   );
 
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
 
-  useLayoutEffect(() => registerHistory(editor, createEmptyHistoryState(), 300), [editor]);
-
-  useLayoutEffect(() => editor.setEditable(!disabled), [disabled, editor]);
-
   useLayoutEffect(
     () =>
-      editor.registerUpdateListener(({ editorState, tags, dirtyElements, dirtyLeaves }) => {
-        // Composition can mutate nodes before its final selection-only update.
-        referencesDirty.current ||= dirtyElements.size > 0 || dirtyLeaves.size > 0;
-        editorState.read(() => {
-          const next = $readComposerDocument();
-          observed.current = next;
+      editor.setOptions({
+        editable: !disabled,
+        editorProps: {
+          attributes: (state) =>
+            Object.fromEntries(
+              Object.entries({
+                class: className,
+                role: combobox === undefined ? "textbox" : "combobox",
+                "aria-label": label,
+                "aria-multiline": "true",
+                "aria-autocomplete": combobox === undefined ? undefined : "list",
+                "aria-expanded": combobox === undefined ? undefined : String(combobox.expanded),
+                "aria-controls": combobox?.popupId,
+                "aria-activedescendant": combobox?.activeOption,
+                "aria-disabled": String(disabled),
+                "data-placeholder": placeholder,
+                "data-empty": String(state.doc.firstChild?.childCount === 0),
+              }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+          handleKeyDown: (view, event) => {
+            if (event.isComposing || view.composing) return false;
+            onKeyDown(event);
 
-          if (editor.isComposing()) return;
+            return event.defaultPrevented;
+          },
+          handlePaste: (view, event) => {
+            const pasted = Array.from(event.clipboardData?.files ?? []);
 
-          if (referencesDirty.current) {
-            referencesDirty.current = false;
-            const references = $composerReferences();
+            if (pasted.length > 0 && onFilesSelected !== undefined) {
+              onFilesSelected(pasted);
 
-            if (!sameReferences(references, lastReferences.current)) {
-              lastReferences.current = references;
-              onReferencesChange?.(references);
+              return true;
             }
-          }
 
-          const previous = reported.current;
+            const text = event.clipboardData?.getData("text/plain") ?? "";
+            const clipboard = clipboardReferenceFromPaste(text);
 
-          if (previous !== undefined && sameComposerDocument(previous, next)) return;
-          reported.current = next;
-          setEmpty(next.text === "");
-          // A restore is the parent's own document coming back; it opens no menu.
-          onDocumentChange(
-            next,
-            tags.has(COMPOSER_EXTERNAL_TAG) ? undefined : $composerCompletion(next.selectionStart),
-          );
-        });
+            view.dispatch(
+              (clipboard === undefined
+                ? pasteComposerText(view.state.tr, text)
+                : closeHistory(insertComposerReference(view.state.tr, clipboard))
+              ).scrollIntoView(),
+            );
+
+            return true;
+          },
+        },
       }),
-    [editor, onDocumentChange, onReferencesChange],
+    [className, combobox, disabled, editor, label, onFilesSelected, onKeyDown, placeholder],
   );
 
-  useLayoutEffect(() => registerComposerReferences(editor, { files }), [editor, files]);
+  useLayoutEffect(() => {
+    const report = (external: boolean): void => {
+      const { state } = editor;
+      const next = readComposerDocument(state);
+      observed.current = next;
+
+      if (editor.view.composing) return;
+
+      const references = composerReferences(state.doc);
+
+      if (!sameReferences(references, lastReferences.current)) {
+        lastReferences.current = references;
+        onReferencesChange?.(references);
+      }
+
+      const previous = reported.current;
+
+      if (previous !== undefined && sameComposerDocument(previous, next)) return;
+      reported.current = next;
+      onDocumentChange(next, external ? undefined : composerCompletion(state, next.selectionStart));
+    };
+
+    const onTransaction = ({ transaction }: EditorEvents["transaction"]): void =>
+      report(transaction.getMeta(COMPOSER_RESTORE) === true);
+
+    // Composition can end without a transaction; ProseMirror has cleared its flag by now.
+    const onCompositionEnd = (): void => report(false);
+    const root = editor.view.dom;
+    editor.on("transaction", onTransaction);
+    root.addEventListener("compositionend", onCompositionEnd);
+
+    return () => {
+      editor.off("transaction", onTransaction);
+      root.removeEventListener("compositionend", onCompositionEnd);
+    };
+  }, [editor, onDocumentChange, onReferencesChange]);
+
+  useLayoutEffect(() => {
+    catalogRef.current = catalog;
+    const tr = refreshComposerReferences(editor.state.tr, catalog);
+
+    if (tr.docChanged) editor.view.dispatch(tr);
+  }, [catalog, editor]);
 
   useLayoutEffect(() => {
     const current = observed.current;
 
     if (current !== undefined && sameComposerDocument(current, externalDocument)) return;
-    const root = rootRef.current;
-    const focused = root !== null && root.ownerDocument.activeElement === root;
-    editor.update(() => $restoreComposerDocument(externalDocument), {
-      discrete: true,
-      tag: focused ? HISTORY_MERGE_TAG : [HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG],
-    });
-    editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
-  }, [editor, externalDocument, rootRef]);
-
-  useLayoutEffect(
-    () =>
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event) => {
-          if (event.isComposing || editor.isComposing()) return false;
-          onKeyDown(event);
-
-          return event.defaultPrevented;
-        },
-        COMMAND_PRIORITY_HIGH,
-      ),
-    [editor, onKeyDown],
-  );
-
-  useLayoutEffect(
-    () =>
-      editor.registerCommand(
-        PASTE_COMMAND,
-        (event) => {
-          if (!(event instanceof ClipboardEvent)) return false;
-          const files = Array.from(event.clipboardData?.files ?? []);
-
-          if (files.length > 0) {
-            if (onFilesSelected === undefined) return false;
-            event.preventDefault();
-            onFilesSelected(files);
-
-            return true;
-          }
-
-          const clipboard = clipboardReferenceFromPaste(
-            event.clipboardData?.getData("text/plain") ?? "",
-          );
-
-          if (clipboard === undefined) return false;
-          event.preventDefault();
-          editor.update(() => $insertComposerReference(clipboard), {
-            discrete: true,
-            tag: HISTORY_PUSH_TAG,
-          });
-
-          return true;
-        },
-        COMMAND_PRIORITY_HIGH,
-      ),
-    [editor, onFilesSelected],
-  );
+    const view = editor.view;
+    const tr = restoreComposerDocument(editor.state.tr, externalDocument);
+    view.dispatch(view.hasFocus() ? tr.scrollIntoView() : tr);
+    view.updateState(clearComposerHistory(view.state));
+  }, [editor, externalDocument]);
 
   // The drawn caret only mirrors the native selection. It never sets it.
   useLayoutEffect(() => {
-    const root = rootRef.current;
+    const root = editor.view.dom;
     const caret = caretRef.current;
 
-    if (root === null || caret === null) return;
+    if (caret === null) return;
     let frame = 0;
     let lastPosition = "";
     const glyph = root.ownerDocument.createRange();
@@ -391,7 +357,7 @@ export function ComposerEditor({
 
         const visible =
           root.ownerDocument.activeElement === root &&
-          !editor.isComposing() &&
+          !editor.view.composing &&
           selection !== null &&
           selection.isCollapsed &&
           selection.rangeCount > 0 &&
@@ -453,11 +419,11 @@ export function ComposerEditor({
       attributeFilter: ["class", "style", "data-display-mode"],
     });
     ownerDocument.fonts.addEventListener("loadingdone", draw);
-    const unregister = editor.registerUpdateListener(draw);
+    editor.on("transaction", draw);
 
     return () => {
       cancelAnimationFrame(frame);
-      unregister();
+      editor.off("transaction", draw);
       observer.disconnect();
       typographyObserver.disconnect();
       ownerDocument.fonts.removeEventListener("loadingdone", draw);
@@ -468,25 +434,13 @@ export function ComposerEditor({
       root.removeEventListener("compositionstart", draw);
       root.removeEventListener("compositionend", draw);
     };
-  }, [editor, rootRef]);
+  }, [editor]);
 
   return (
     <div {...props(composerStyles.editorHost)}>
-      <div
-        ref={rootRef}
-        className={className}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        role={combobox === undefined ? "textbox" : "combobox"}
-        aria-label={label}
-        aria-multiline="true"
-        aria-autocomplete={combobox === undefined ? undefined : "list"}
-        aria-expanded={combobox?.expanded}
-        aria-controls={combobox?.popupId}
-        aria-activedescendant={combobox?.activeOption}
-        aria-disabled={disabled}
-        data-placeholder={placeholder}
-        data-empty={empty}
+      <EditorContent
+        editor={editor}
+        style={editorContentStyle}
         onFocus={() => onFocusChange?.(true)}
         onBlur={() => onFocusChange?.(false)}
       />
@@ -499,17 +453,6 @@ export function ComposerEditor({
       >
         {String.fromCodePoint(0x200b)}
       </span>
-      <ComposerDecorators
-        editor={editor}
-        decorators={decorators}
-        onRemove={(key) => {
-          editor.update(() => $getNodeByKey(key)?.remove(), {
-            discrete: true,
-            tag: HISTORY_PUSH_TAG,
-          });
-          focusEditor();
-        }}
-      />
     </div>
   );
 }

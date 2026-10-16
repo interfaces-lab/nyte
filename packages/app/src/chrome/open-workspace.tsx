@@ -1,10 +1,4 @@
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
-/**
- * A session's activation, as its view carries it, says when its workspace is
- * out of reach or its plugins failed; trust is requested when the host refuses
- * a folder. Failures appear as a dismissible toast, leaving the current chat
- * usable.
- */
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/toast";
 import { create, props } from "@stylexjs/stylex";
@@ -20,14 +14,14 @@ import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../bridge.t
 
 const styles = create({
   popup: {
-    gap: 12,
+    gap: space.s3,
     width: "min(460px, calc(100vw - 48px))",
-    padding: 20,
+    padding: space.s5,
     borderStyle: "none",
   },
   title: { lineHeight: type.leadingBase },
   path: {
-    padding: "6px 10px",
+    padding: `${space.s1_5} ${space.s2_5}`,
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
@@ -38,15 +32,9 @@ const styles = create({
   },
 });
 
-/**
- * The folder asking for trust and what asked. A grant after opening a folder
- * lands on a new chat there; a grant something in the current view asked for,
- * a running chat or a gated action, keeps that view.
- */
 interface TrustPrompt {
   readonly path: string;
   readonly origin: "open" | "action";
-  /** What the host showed for this folder; the grant echoes it unchanged. */
   readonly consent?: TrustConsent;
 }
 
@@ -75,12 +63,10 @@ function setPrompt(next: TrustPrompt | undefined): void {
   for (const listener of listeners) listener();
 }
 
-/** Something in the current view needs trust: a session's activation or a gated host action. */
 export function requestTrust(path: string): void {
   if (declined.has(path)) return;
   toast.close("workspace-open");
 
-  // The open already asked for this folder; an echo must not retarget the grant.
   if (prompt?.path !== path) setPrompt({ path, origin: "action" });
 }
 
@@ -123,7 +109,6 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
 let failedShown = false;
 
-/** A session's activation says what it needs: a workspace this host cannot reach, or a plugin fix. */
 export function observeActivation(activation: Activation): void {
   if (activation.kind !== "unavailable") toast.close("workspace-unavailable");
 
@@ -171,11 +156,6 @@ function declineTrust(path: string): void {
   setPrompt(undefined);
 }
 
-/**
- * Open the folder again on the connected host, so the owner sees what a grant
- * would bind to now. A registry host's answer, with its snapshot, becomes the
- * prompt; the grant never takes a snapshot nobody was shown.
- */
 function reviewTrust(prompt: TrustPrompt): void {
   setPrompt(undefined);
   void nyte.host.openWorkspace({ path: prompt.path }).then((outcome) => {
@@ -193,12 +173,17 @@ function grantTrust(
   declined.delete(path);
   setPrompt(undefined);
 
-  return trust({ path, consent }).then((outcome) => {
-    handleOpenOutcome(outcome);
-    void queryClient.invalidateQueries({ queryKey: keys.workspaces });
+  return trust(consent === undefined ? { path } : { path, consent })
+    .catch((cause: unknown): OpenWorkspaceOutcome => ({
+      kind: "failed",
+      message: cause instanceof Error ? cause.message : String(cause),
+    }))
+    .then((outcome) => {
+      handleOpenOutcome(outcome);
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces });
 
-    return outcome.kind !== "failed";
-  });
+      return outcome.kind !== "failed";
+    });
 }
 
 /** The native folder picker, then open. Absent where the host has no picker to show. */
@@ -218,7 +203,6 @@ export function WorkspaceDialogHost(): ReactElement | null {
   if (current === undefined) return null;
   const { path, origin, consent } = current;
   const binding = host.data?.binding;
-  // A registry host grants only a snapshot it showed for itself; without one the folder is looked at again.
   const unseen = binding !== undefined && consent?.hostId !== binding.hostId;
 
   const grant = (grantWith: NonNullable<typeof trust>): void => {
@@ -243,10 +227,10 @@ export function WorkspaceDialogHost(): ReactElement | null {
         )}
         <Dialog.Description>
           {trust === undefined
-            ? "This folder has plugins or skills of its own. Trust it on the machine running the server to load them."
+            ? "This folder has its own skills, plugins or MCP servers. Trust it on the machine running the server to load them."
             : binding === undefined
-              ? "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files here."
-              : "This folder has plugins or skills of its own. Trusting it loads them and lets Nyte run code and change files there, on this host."}
+              ? "This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets Nyte run code and change files here."
+              : "This folder has its own skills, plugins or MCP servers. Trusting it loads them and lets Nyte run code and change files there, on this host."}
         </Dialog.Description>
         <Dialog.Footer>
           {trust === undefined ? (

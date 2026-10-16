@@ -1,12 +1,19 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, test } from "vitest";
 import { envelope } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { DurableEvent, Usage } from "@nyte-ai/schema";
 import { sqliteStore } from "../src/sqlite.ts";
-import { localDay, projectUsageReport, readNyteUsage, shiftDay } from "../src/store-usage.ts";
+import {
+  USAGE_EVENTS,
+  localDay,
+  projectUsageReport,
+  readNyteUsage,
+  shiftDay,
+} from "../src/store-usage.ts";
 
 const folders: string[] = [];
 
@@ -131,16 +138,11 @@ test("reads charged requests once, with workspace and session metadata, not run 
       { workspacePath: "/project", status: "ok", sessions: 1, message: null },
     ]);
     expect(
-      report.entries.map((entry) => [
-        entry.subject.kind,
-        entry.totals.turns,
-        entry.totals.tokens,
-        entry.totals.cost,
-      ]),
+      report.entries.map((entry) => [entry.subject.kind, entry.totals.tokens, entry.totals.cost]),
     ).toEqual([
-      ["model", 2, 40, 6],
-      ["compaction", 2, 40, 6],
-      ["tool", 1, 20, 3],
+      ["model", 40, 6],
+      ["compaction", 40, 6],
+      ["tool", 20, 3],
     ]);
     expect(report.entries[0]?.subject).toEqual({ kind: "model", provider: "test", model: "model" });
     expect(report.sessions).toEqual([
@@ -196,7 +198,7 @@ test("projects local calendar days, inclusive windows and prior totals without c
 
   expect(day).toBe("2026-09-02");
   expect(report.entries).toHaveLength(1);
-  expect(report.entries[0]?.totals).toMatchObject({ tokens: 20, reasoning: 2, turns: 1 });
+  expect(report.entries[0]?.totals).toMatchObject({ tokens: 20, reasoning: 2 });
   expect(report.previous).toEqual({ cost: 3, tokens: 20 });
   expect(report.earliestDay).toBe(shiftDay(day, -1));
 });
@@ -207,4 +209,26 @@ test("absent databases stay absent and corrupt databases produce a failed source
   expect(readNyteUsage(home, window).sources).toEqual([]);
   await writeFile(join(home, ".nyte", "nyte.db"), "not sqlite");
   expect(readNyteUsage(home, window).sources[0]?.status).toBe("failed");
+});
+
+test("a migrated store answers the usage read from the log kind index, not a log scan", async () => {
+  const path = join(await fixture(), ".nyte", "nyte.db");
+  const store = sqliteStore({ path });
+  await store.open();
+  await store.close();
+  const database = new DatabaseSync(path, { readOnly: true });
+
+  try {
+    const plan = database
+      .prepare(`EXPLAIN QUERY PLAN ${USAGE_EVENTS}`)
+      .all()
+      .map((row) => String(row.detail));
+
+    expect(plan.filter((detail) => detail.includes("log"))).toEqual([
+      "SEARCH log USING INDEX log_kind (<expr>=?)",
+      "SEARCH log USING INDEX log_kind (<expr>=?)",
+    ]);
+  } finally {
+    database.close();
+  }
 });

@@ -16,6 +16,7 @@ function chat(id: string): SessionInfo {
     id: asId<"session">(id),
     name: id,
     parent: null,
+    call: null,
     workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,

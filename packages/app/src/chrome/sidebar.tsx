@@ -13,7 +13,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  * footer.
  *
  * Row edit state lives at the rail root so a directory refetch cannot drop an
- * in-progress rename. A short hover intent warms local thread data.
+ * in-progress rename.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
@@ -25,10 +25,9 @@ import { Row } from "@nyte-ai/ui/row";
 import { Link, useMatch, useRouter } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
-// oxlint-disable-next-line no-restricted-imports -- neighbouring sessions preload as the active session changes
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import type { SessionMark } from "../view-helpers.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -37,7 +36,6 @@ import { Input } from "@nyte-ai/ui/input";
 import { StatusDot } from "../components/ui.tsx";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
@@ -57,6 +55,7 @@ import { activePane } from "../layout/pane-layout.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { macPlatform } from "../platform.ts";
 import {
+  sessionFolderPath,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
@@ -71,8 +70,8 @@ import { nyte } from "../nyte.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
-import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { AccountFooterMenu } from "./account-footer.tsx";
 import { useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
@@ -101,17 +100,13 @@ import type { GitHubRepository } from "../bridge.ts";
 
 /** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
 type SessionPlace =
-  | { readonly kind: "local"; readonly path: string | null }
+  | { readonly kind: "local"; readonly workspace: WorkspaceId | null; readonly path: string | null }
   | { readonly kind: "cloud" };
 
 const COLLAPSED_SESSION_LIMIT = 5;
 
 const SESSION_PAGE_SIZE = 8;
 
-/**
- * How many rows a folded list shows, and how many its next "Show More" adds.
- * A lone leftover row shows instead of a "Show 1 More".
- */
 function sessionPage(total: number, base: number, revealed: number) {
   const fit = (count: number): number => (total - count <= 1 ? total : count);
   const visible = fit(base + revealed);
@@ -287,7 +282,6 @@ type SidebarConfirmation =
   | {
       readonly kind: "archive-all";
       readonly workspaceName: string;
-      readonly workspacePath: string | null;
       readonly sessionIds: readonly SessionId[];
     };
 
@@ -331,16 +325,16 @@ export function Sidebar(): ReactElement {
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
 
-  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string | null>>(
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<WorkspaceId | null>>(
     () => new Set(),
   );
 
-  const setExpanded = (path: string | null, expanded: boolean): void => {
+  const setExpanded = (workspace: WorkspaceId | null, expanded: boolean): void => {
     setCollapsedWorkspaces((current) => {
       const next = new Set(current);
 
-      if (expanded) next.delete(path);
-      else next.add(path);
+      if (expanded) next.delete(workspace);
+      else next.add(workspace);
 
       return next;
     });
@@ -357,8 +351,6 @@ export function Sidebar(): ReactElement {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
-  // Without a grouping the rail is one list of chats, and Inbox shelves that
-  // list; folders are a grouping you pick.
   const flat = view.grouping === "none" || view.grouping === "inbox";
   const workingSessions = useWorkingSessionIds();
   const selection = activePane(layout).selection;
@@ -366,8 +358,6 @@ export function Sidebar(): ReactElement {
   const onWorkspace = stage.kind === "workspace";
   const activeSessionId = onWorkspace ? paneSessionId : undefined;
 
-  // The open chat keeps the shelf it had when it became active, whichever way
-  // it did. Captured here, in render, so it predates the thread marking it read.
   const [hold, setHold] = useState<ShelfHold | undefined>();
   const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
 
@@ -402,37 +392,6 @@ export function Sidebar(): ReactElement {
     (view.pullRequests.length === 0 || view.pullRequests.includes("none")) &&
     (view.environments.length === 0 || view.environments.includes("local"));
 
-  // The next switch is most often to a neighbouring row; its snapshot is warm
-  // before the pointer or the arrow key gets there.
-  const activeWorkspaceSessions =
-    sessionDirectory.data === undefined
-      ? undefined
-      : localSessions(sessionDirectory.data, workspacePath ?? null);
-
-  useEffect(() => {
-    if (activeSessionId === undefined || activeWorkspaceSessions === undefined) return;
-
-    const ordered = sessionsForView(
-      activeWorkspaceSessions,
-      view,
-      "local",
-      Date.now(),
-      workingSessions,
-    ).flatMap((group) => group.sessions);
-
-    const index = ordered.findIndex((session) => session.id === activeSessionId);
-
-    if (index === -1) return;
-
-    for (const neighbour of [ordered[index - 1], ordered[index + 1]]) {
-      if (neighbour !== undefined)
-        void router.preloadRoute({
-          to: "/session/$sessionId",
-          params: { sessionId: neighbour.id },
-        });
-    }
-  }, [activeSessionId, activeWorkspaceSessions, workingSessions, router, view]);
-
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
@@ -448,10 +407,14 @@ export function Sidebar(): ReactElement {
     beside = false,
     target: OpenTarget = "here",
   ): Promise<void> => {
-    // A local session selects its folder first. A server session opens in
-    // whichever folder's panes are showing; nothing local is selected.
+    const path = place.kind === "local" ? (sessionFolderPath(sessionId) ?? null) : workspacePath;
+
     // A background tab leaves the current folder alone until it is shown.
-    if (target !== "background" && place.kind === "local" && !(await activateWorkspace(place.path)))
+    if (
+      target !== "background" &&
+      place.kind === "local" &&
+      !(await activateWorkspace(path ?? null))
+    )
       return;
 
     if (windowTabs.enabled) {
@@ -464,9 +427,7 @@ export function Sidebar(): ReactElement {
       return;
     }
 
-    const controller = paneControllerForWorkspace(
-      place.kind === "local" ? (place.path ?? undefined) : workspacePath,
-    );
+    const controller = paneControllerForWorkspace(path ?? undefined);
 
     if (beside) controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
     else controller.selectSession(sessionId);
@@ -482,10 +443,12 @@ export function Sidebar(): ReactElement {
     await router.navigate({ to: "/" });
   };
 
-  const newWorkspaceChat = async (path: string | null): Promise<void> => {
-    if (!(await activateWorkspace(path))) return;
-    setExpanded(path, true);
-    panes.newChat(path);
+  const newWorkspaceChat = async (
+    place: Extract<SessionPlace, { kind: "local" }>,
+  ): Promise<void> => {
+    if (!(await activateWorkspace(place.path))) return;
+    setExpanded(place.workspace, true);
+    panes.newChat(place.path);
   };
 
   const closeConfirmation = (): void => {
@@ -501,7 +464,7 @@ export function Sidebar(): ReactElement {
             kind: "workspace",
             path: place.path,
             repository:
-              place.path === workspacePath &&
+              place.workspace === open?.id &&
               (githubState.data?.kind === "ready" || githubState.data?.kind === "signed_out")
                 ? githubState.data.repository
                 : undefined,
@@ -512,17 +475,21 @@ export function Sidebar(): ReactElement {
     session: SessionInfo,
     layoutEnabled: boolean,
   ): ReactElement => {
-    // Drag and pane bookkeeping belong to the row's own folder; a server row
-    // borrows whichever folder's panes are showing.
-    const path = place.kind === "local" ? place.path : (workspacePath ?? null);
+    const path =
+      place.kind === "local" ? (sessionFolderPath(session.id) ?? null) : (workspacePath ?? null);
 
     return (
       <SessionRow
         key={session.id}
         session={session}
         elsewhere={place.kind === "cloud" ? { icon: "cloud", name: "Cloud" } : undefined}
-        unreachable={place.kind === "cloud" && cloudFailure !== undefined}
-        draggable={path === (workspacePath ?? null)}
+        unreachable={
+          place.kind === "cloud"
+            ? cloudFailure !== undefined
+            : workspaces.data?.find((workspace) => workspace.id === session.workspace)
+                ?.available === false
+        }
+        draggable={place.kind === "cloud" || place.workspace === (open?.id ?? null)}
         previewContext={previewContextFor(place)}
         selected={session.id === activeSessionId}
         working={workingSessions.has(session.id)}
@@ -530,12 +497,6 @@ export function Sidebar(): ReactElement {
         showUpdated={view.show.includes("updated")}
         onOpen={(target) => void showSession(place, session.id, false, target)}
         onOpenBeside={() => void showSession(place, session.id, true)}
-        onHover={() =>
-          void router.preloadRoute({
-            to: "/session/$sessionId",
-            params: { sessionId: session.id },
-          })
-        }
         onRename={(name) => renameSession.mutate({ sessionId: session.id, name })}
         onDelete={() =>
           setConfirmation({
@@ -575,14 +536,6 @@ export function Sidebar(): ReactElement {
     });
   };
 
-  const places: readonly SessionPlace[] = [
-    ...entries.map((entry): SessionPlace => ({
-      kind: "local",
-      path: entry.kind === "home" ? null : entry.path,
-    })),
-    ...(cloudFolderVisible ? [{ kind: "cloud" } as const] : []),
-  ];
-
   const order = sessionOrder(view.sortByStatus, workingSessions);
 
   const directories = sessionDirectory.data;
@@ -590,18 +543,20 @@ export function Sidebar(): ReactElement {
   const rows =
     directories === undefined
       ? undefined
-      : places
-          .flatMap((place) =>
-            sessionsForView(
-              (place.kind === "local" ? localSessions(directories, place.path) : undefined) ?? [],
-              view,
-              place.kind,
-              undefined,
-              workingSessions,
-            )
+      : directories
+          .flatMap((directory) => {
+            if (directory.workspacePath === null && !homeVisible) return [];
+
+            const place = {
+              kind: "local",
+              workspace: directory.workspacePath === null ? null : directory.workspace,
+              path: directory.workspacePath,
+            } as const;
+
+            return sessionsForView(directory.sessions, view, place.kind, undefined, workingSessions)
               .flatMap((group) => group.sessions)
-              .map((session) => ({ place, session })),
-          )
+              .map((session) => ({ place, session }));
+          })
           .toSorted((left, right) => order(left.session, right.session));
 
   const chatsPanel = (): ReactElement | null => {
@@ -617,7 +572,9 @@ export function Sidebar(): ReactElement {
       <>
         {filtersActive ? (
           <>
-            <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
+            <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>
+              No chats match these filters
+            </div>
             <Row
               variant="nav"
               xstyle={styles.showMore}
@@ -627,7 +584,7 @@ export function Sidebar(): ReactElement {
             </Row>
           </>
         ) : (
-          <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
+          <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
         )}
       </>
     );
@@ -661,7 +618,6 @@ export function Sidebar(): ReactElement {
 
       const inbox = shelved("inbox");
 
-      // Working shows every row once open; Done and Archived fold after a few.
       const shelfPanel = (
         shelf: Exclude<SessionShelf, "inbox">,
         label: string,
@@ -711,7 +667,7 @@ export function Sidebar(): ReactElement {
           {draftRows}
           {inbox.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
           {inbox.length === 0 && drafts.length === 0 && listed.length > 0 && (
-            <div {...props(styles.quiet, styles.sessionQuiet)}>Nothing new</div>
+            <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>Nothing new</div>
           )}
           {shelfPanel("working", "Working", <StatusDot mark="working" />, false)}
           {shelfPanel("done", "Done", <Icon name="inbox-checked" size={14} />, true)}
@@ -743,12 +699,11 @@ export function Sidebar(): ReactElement {
   };
 
   const sessionPanel = (place: SessionPlace): ReactElement | null => {
-    // Drafts, drag, and pane bookkeeping belong to the folder whose panes are showing.
-    const path = place.kind === "local" ? place.path : (workspacePath ?? null);
-    const collapsed = place.kind === "local" ? collapsedWorkspaces.has(place.path) : cloudCollapsed;
+    const collapsed =
+      place.kind === "local" ? collapsedWorkspaces.has(place.workspace) : cloudCollapsed;
 
     const drafts =
-      showDrafts && place.kind === "local" && path === (workspacePath ?? null)
+      showDrafts && place.kind === "local" && place.workspace === (open?.id ?? null)
         ? activeWorkspaceDrafts
         : [];
 
@@ -756,7 +711,7 @@ export function Sidebar(): ReactElement {
       sessionDirectory.data === undefined
         ? undefined
         : place.kind === "local"
-          ? localSessions(sessionDirectory.data, place.path)
+          ? localSessions(sessionDirectory.data, place.workspace)
           : undefined;
 
     if (sessions === undefined && drafts.length === 0) return null;
@@ -771,7 +726,7 @@ export function Sidebar(): ReactElement {
       drafts.length,
     );
 
-    const listKey = place.kind === "cloud" ? "cloud" : `local:${place.path ?? ""}`;
+    const listKey = place.kind === "cloud" ? "cloud" : `local:${place.workspace ?? "home"}`;
 
     const page = sessionPage(
       displayedSessionCount,
@@ -797,12 +752,14 @@ export function Sidebar(): ReactElement {
       <div id={listId} {...props(styles.section)}>
         {visibleDrafts.length > 0 && (
           <div {...props(styles.section)}>
-            {view.grouping === "status" && <div {...props(styles.sessionGroupLabel)}>Draft</div>}
+            {view.grouping === "status" && (
+              <div {...props(text.xs, styles.sessionGroupLabel)}>Draft</div>
+            )}
             {visibleDrafts.map((draft) => (
               <DraftRow
                 key={draft.id}
                 draft={draft}
-                selected={path === (workspacePath ?? null) && draft.id === activeDraftId}
+                selected={draft.id === activeDraftId}
                 layoutEnabled={sidebarVisible && collectionExpanded && !collapsed}
                 onOpen={() => void showDraft(draft.id)}
                 onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
@@ -815,7 +772,9 @@ export function Sidebar(): ReactElement {
           displayedSessionCount === 0 &&
           (filtersActive ? (
             <>
-              <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
+              <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>
+                No chats match these filters
+              </div>
               <Row
                 variant="nav"
                 xstyle={styles.showMore}
@@ -825,12 +784,12 @@ export function Sidebar(): ReactElement {
               </Row>
             </>
           ) : (
-            <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
+            <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
         {visibleGroups.map((group) => (
           <div key={group.key} {...props(styles.section)}>
             {group.label !== undefined && (
-              <div {...props(styles.sessionGroupLabel)}>{group.label}</div>
+              <div {...props(text.xs, styles.sessionGroupLabel)}>{group.label}</div>
             )}
             {group.sessions.map((session) =>
               sessionRow(place, session, sidebarVisible && collectionExpanded && !collapsed),
@@ -1001,7 +960,7 @@ export function Sidebar(): ReactElement {
                         ? setCollectionExpanded(false)
                         : setCollapsedWorkspaces(
                             new Set(
-                              entries.map((entry) => (entry.kind === "home" ? null : entry.path)),
+                              entries.map((entry) => (entry.kind === "home" ? null : entry.id)),
                             ),
                           )
                     }
@@ -1013,7 +972,7 @@ export function Sidebar(): ReactElement {
                   {...props(styles.workspaceCollection)}
                 >
                   {host.isPending && (
-                    <div aria-busy="true" {...props(styles.quiet)}>
+                    <div aria-busy="true" {...props(text.base, styles.quiet)}>
                       Loading…
                     </div>
                   )}
@@ -1024,25 +983,35 @@ export function Sidebar(): ReactElement {
                       {host.data !== undefined &&
                         entries.map((entry) => {
                           const active =
-                            entry.kind === "home" ? open === undefined : open?.path === entry.path;
+                            entry.kind === "home" ? open === undefined : open?.id === entry.id;
 
                           const path = entry.kind === "home" ? null : entry.path;
+
+                          const place = {
+                            kind: "local",
+                            workspace: entry.kind === "home" ? null : entry.id,
+                            path,
+                          } as const;
 
                           const sessions =
                             sessionDirectory.data === undefined
                               ? undefined
-                              : localSessions(sessionDirectory.data, path);
+                              : localSessions(sessionDirectory.data, place.workspace);
 
                           return (
                             <WorkspaceRow
-                              key={entry.kind === "home" ? "home" : entry.path}
+                              key={entry.kind === "home" ? "home" : entry.id}
                               name={entry.kind === "home" ? "Home" : entry.name}
                               path={entry.kind === "home" ? "Home" : entry.path}
                               available={entry.kind === "home" || entry.available !== false}
                               active={active}
-                              expanded={!collapsedWorkspaces.has(path)}
-                              onExpandedChange={(next) => setExpanded(path, next)}
-                              onNewChat={() => void newWorkspaceChat(path)}
+                              expanded={!collapsedWorkspaces.has(place.workspace)}
+                              onExpandedChange={(next) => setExpanded(place.workspace, next)}
+                              onNewChat={
+                                entry.kind === "home" || entry.available
+                                  ? () => void newWorkspaceChat(place)
+                                  : undefined
+                              }
                               onArchiveAll={
                                 sessions === undefined
                                   ? undefined
@@ -1050,7 +1019,6 @@ export function Sidebar(): ReactElement {
                                       setConfirmation({
                                         kind: "archive-all",
                                         workspaceName: entry.kind === "home" ? "Home" : entry.name,
-                                        workspacePath: path,
                                         sessionIds: sessionsForNavigation(sessions).map(
                                           (session) => session.id,
                                         ),
@@ -1062,7 +1030,7 @@ export function Sidebar(): ReactElement {
                                   : () => forgetWorkspace.mutate(entry.id)
                               }
                             >
-                              {sessionPanel({ kind: "local", path })}
+                              {sessionPanel(place)}
                             </WorkspaceRow>
                           );
                         })}
@@ -1083,7 +1051,10 @@ export function Sidebar(): ReactElement {
                             onRemove={() => void nyte.host.server.disconnect()}
                           >
                             {cloudFailure !== undefined && (
-                              <div role="status" {...props(styles.quiet, styles.sessionQuiet)}>
+                              <div
+                                role="status"
+                                {...props(text.base, styles.quiet, styles.sessionQuiet)}
+                              >
                                 {cloudFailure}
                               </div>
                             )}
@@ -1155,7 +1126,7 @@ export function Sidebar(): ReactElement {
             closeConfirmation();
             recordArchive(confirmation.sessionIds.length);
             sessionActions.archive(confirmation.sessionIds, true, (id) =>
-              removeSession(confirmation.workspacePath, id),
+              removeSession(sessionFolderPath(id) ?? null, id),
             );
           }}
         />
@@ -1266,7 +1237,6 @@ function WorkspaceRow({
   );
 }
 
-/** A folded group of rows under one header that says how many it holds. */
 function Shelf({
   label,
   count,
@@ -1289,11 +1259,11 @@ function Shelf({
       <Collapsible.Trigger
         variant="plain"
         aria-controls={panelId}
-        xstyle={[styles.shelf, focus.ringInset]}
+        xstyle={[text.base, styles.shelf, focus.ringInset]}
       >
         <span {...props(styles.rowIcon, styles.shelfLeading)}>{leading}</span>
         <span {...props(styles.shelfLabel)}>{label}</span>
-        <span {...props(styles.shelfCount)}>{count}</span>
+        <span {...props(text.xs, styles.shelfCount)}>{count}</span>
         <Collapsible.Chevron xstyle={styles.shelfChevron} />
       </Collapsible.Trigger>
       <Collapsible.Panel id={panelId} hiddenUntilFound={false} xstyle={styles.shelfPanel}>
@@ -1411,7 +1381,6 @@ function SessionGlyph({
   );
 }
 
-/** What a row that needs you is waiting on: an answer, or why the last run failed. */
 function sessionAsk(session: SessionInfo): string | undefined {
   for (const head of session.heads) {
     const { execution } = head;
@@ -1452,7 +1421,6 @@ interface SessionRowProps {
   showUpdated: boolean;
   onOpen: (target: OpenTarget) => void;
   onOpenBeside: () => void;
-  onHover: () => void;
   onRename: (name: string) => void;
   onPin: () => void;
   onArchive: () => void;
@@ -1471,13 +1439,11 @@ function SessionRow({
   showUpdated,
   onOpen,
   onOpenBeside,
-  onHover,
   onRename,
   onPin,
   onArchive,
   onDelete,
 }: SessionRowProps): ReactElement {
-  const warmTimer = useRef<number | undefined>(undefined);
   const mark = sessionActivityMark(session, working);
   const title = sessionTitle(session);
   const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
@@ -1492,27 +1458,6 @@ function SessionRow({
 
     if (name !== "" && name !== title) onRename(name);
   };
-
-  const cancelWarm = (): void => {
-    if (warmTimer.current === undefined) return;
-    window.clearTimeout(warmTimer.current);
-    warmTimer.current = undefined;
-  };
-
-  const warmSoon = (): void => {
-    cancelWarm();
-    warmTimer.current = window.setTimeout(() => {
-      warmTimer.current = undefined;
-      onHover();
-    }, 50);
-  };
-
-  const warmNow = (): void => {
-    cancelWarm();
-    onHover();
-  };
-
-  useMountEffect(() => cancelWarm);
 
   if (draftName !== undefined) {
     return (
@@ -1589,14 +1534,6 @@ function SessionRow({
         isDragging && styles.rowDragging,
         ask !== undefined && styles.sessionRowAsk,
       ]}
-      onPointerEnter={() => {
-        warmSoon();
-      }}
-      onPointerLeave={() => {
-        cancelWarm();
-      }}
-      onPointerDownCapture={warmNow}
-      onFocusCapture={warmNow}
     >
       {selected && (
         <Row.Backdrop
@@ -1673,18 +1610,12 @@ function SessionRow({
         <ContextMenuTrigger render={<TooltipTrigger render={row} />} />
         <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
       </ContextMenu>
-      <TooltipContent
-        side="right"
-        align="start"
-        alignOffset={-4}
-        sideOffset={4}
-        xstyle={[floatingSurfaceStyles.popup, styles.preview]}
-      >
+      <TooltipContent side="right" align="start" alignOffset={-4} sideOffset={4} variant="card">
         <div {...props(styles.previewTitle)}>{title}</div>
         {previewContext.kind === "workspace" && (
           <div {...props(styles.previewDetails)}>
             {previewContext.repository !== undefined && (
-              <div {...props(styles.previewDetail)}>
+              <div {...props(text.sm, styles.previewDetail)}>
                 <span {...props(styles.previewDetailIcon)}>
                   <Icon name="git-branch" size={14} />
                 </span>
@@ -1693,7 +1624,7 @@ function SessionRow({
                 </span>
               </div>
             )}
-            <div {...props(styles.previewDetail)}>
+            <div {...props(text.sm, styles.previewDetail)}>
               <span {...props(styles.previewDetailIcon)}>
                 <Icon name="folder" size={14} />
               </span>

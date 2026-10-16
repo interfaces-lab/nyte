@@ -8,7 +8,6 @@ import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
-/** The row a model ref selects: the row itself, or the row whose fast sibling it names. */
 export function selectedModelOption(
   options: readonly DesktopModelOption[],
   model: ModelRef | undefined,
@@ -27,7 +26,6 @@ export function selectedModelOption(
   return undefined;
 }
 
-/** The ref that selects a row, or its fast sibling. */
 export function modelRefFor(option: DesktopModelOption, fast: boolean) {
   return {
     provider: option.provider,

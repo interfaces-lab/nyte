@@ -1,10 +1,11 @@
-/** The moon (lib/moon.ts frames, 250 ms ticker) beside the ways in, while the transcript is empty; the moon needs at least 80×30. */
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createMemo, For, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { MOON_FRAMES, MOON_RAMP } from "../../lib/moon.ts";
+import { displayWidth } from "../../lib/width.ts";
 import { Spans } from "./spans.tsx";
+import { Spinner } from "./spinner.tsx";
 import type { Chunk } from "./spans.tsx";
 
 const MOON_FRAME_MS = 250;
@@ -13,7 +14,15 @@ const MOON_MIN_WIDTH = 80;
 
 const MOON_MIN_HEIGHT = 30;
 
-/** A colour between two `#rrggbb` colours. */
+const HINTS = [
+  { text: "@", key: true },
+  { text: " for files · ", key: false },
+  { text: "!", key: true },
+  { text: " for shell", key: false },
+] as const;
+
+const HINTS_WIDTH = displayWidth(HINTS.map((hint) => hint.text).join(""));
+
 function mix(from: string, to: string, amount: number): string {
   const channels = [1, 3, 5].map((start) => {
     const low = Number.parseInt(from.slice(start, start + 2), 16);
@@ -66,7 +75,7 @@ function Moon(): JSX.Element {
   );
 }
 
-export function Welcome(): JSX.Element {
+export function Welcome(props: { readonly opening: boolean }): JSX.Element {
   const app = useApp();
   const dimensions = useTerminalDimensions();
   const theme = () => app.kit.theme();
@@ -87,14 +96,17 @@ export function Welcome(): JSX.Element {
       <Show when={dimensions().width >= MOON_MIN_WIDTH && dimensions().height >= MOON_MIN_HEIGHT}>
         <Moon />
       </Show>
-      <box flexDirection="column" flexShrink={0}>
+      <box flexDirection="column" flexShrink={0} minWidth={HINTS_WIDTH}>
         <text fg={theme().moon}>Welcome to Nyte</text>
-        <text wrapMode="none">
-          <span style={{ fg: theme().foreground }}>@</span>
-          <span style={{ fg: theme().dim }}> for files · </span>
-          <span style={{ fg: theme().foreground }}>!</span>
-          <span style={{ fg: theme().dim }}> for shell</span>
-        </text>
+        <Show when={!props.opening} fallback={<Spinner color={theme().dim} />}>
+          <text wrapMode="none">
+            <For each={HINTS}>
+              {(hint) => (
+                <span style={{ fg: hint.key ? theme().foreground : theme().dim }}>{hint.text}</span>
+              )}
+            </For>
+          </text>
+        </Show>
       </box>
     </box>
   );

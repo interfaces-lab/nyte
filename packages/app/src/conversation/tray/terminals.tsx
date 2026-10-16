@@ -1,5 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
@@ -10,12 +11,13 @@ import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
+import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { focusTerminal } from "../../workbench/terminal-runtime.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
-  row: { paddingInlineEnd: 4 },
+  actions: { marginInlineEnd: `calc(${space.s1} - ${tray.rowInset})` },
 });
 
 function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
@@ -155,7 +157,7 @@ function AvailableBackgroundWork({
           {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
         >
           {liveTerminals.map((job) => (
-            <Row key={job.id} xstyle={[trayParts.row, styles.row]} interactive>
+            <Row key={job.id} xstyle={trayParts.row} interactive>
               <Row.Primary
                 id={`${trayId}-${job.id}`}
                 aria-label={`Open terminal for ${job.command}`}
@@ -170,7 +172,7 @@ function AvailableBackgroundWork({
                 </Row.Leading>
                 <Row.Label>{job.command}</Row.Label>
               </Row.Primary>
-              <Row.Actions>
+              <Row.Actions xstyle={styles.actions}>
                 <Button
                   aria-description={`Stop ${job.command}`}
                   tone="danger"

@@ -1,8 +1,3 @@
-/**
- * The scheduled sweep: lapse unconfirmed reservations and unfinished link
- * transactions, retry Clerk session revocation, and drop expired replay and
- * rate rows. Each step runs even if another fails.
- */
 import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
 import { settleSessionRevocation } from "./clerk.ts";
 import type { Context } from "./context.ts";

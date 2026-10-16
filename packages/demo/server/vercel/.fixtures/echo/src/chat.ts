@@ -8,8 +8,8 @@ import {
 } from "@nyte-ai/ai";
 import { createNyte, type Nyte, type NyteOptions } from "@nyte-ai/core";
 import { systemPromptPlugin } from "@nyte-ai/core/plugins";
-import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
-import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
+import { openaiAstraContextPlugin } from "@nyte-ai/plugin/core/openai-astra-context";
+import { openaiCompactionPlugin } from "@nyte-ai/plugin/core/openai-compaction";
 import { createNyteServer } from "@nyte-ai/server";
 import { withDispatch, type WakeTarget } from "@nyte-ai/vercel";
 import type { DispatchOutbox } from "@nyte-ai/vercel/outbox";

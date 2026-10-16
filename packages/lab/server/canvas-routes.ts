@@ -1,9 +1,9 @@
-import { resolveModel } from "@nyte-ai/host";
 import { Value } from "typebox/value";
 import { CanvasInputSchema } from "../src/canvas/wire.ts";
 import { buildRuntime, compileCanvas } from "./canvas.ts";
 import { readCanvas, storeCanvas } from "./canvas-store.ts";
-import type { ReviewHost } from "./host.ts";
+import { findModel, type ReviewHost } from "./host.ts";
+import { CANVAS_AGENT } from "./reviewer.ts";
 
 export function canvasRoutes(core: () => Promise<{ readonly host: ReviewHost }>) {
   return async (request: Request): Promise<Response> => {
@@ -40,25 +40,18 @@ export function canvasRoutes(core: () => Promise<{ readonly host: ReviewHost }>)
       if (request.method === "POST" && path === "/session") {
         const { host } = await core();
 
-        const model = await resolveModel(
-          host.models,
+        const model = await findModel(
+          host.sdk,
           process.env["NYTE_LAB_CANVAS_MODEL"] || "openai-codex/gpt-6-luna",
         );
 
-        const session = await host.sdk.sessions.create({ name: `canvas ${Date.now()}` });
-
-        const outcome = await host.sdk.sessions.configure({
-          sessionId: session.sessionId,
-          model: { provider: model.provider, id: model.id },
+        const session = await host.sdk.sessions.create({
+          name: `canvas ${Date.now()}`,
+          configuration: { model, agent: CANVAS_AGENT },
         });
 
-        if (outcome.kind !== "queued")
-          throw new Error(
-            `Canvas model ${model.provider}/${model.id} is unavailable: ${outcome.kind}`,
-          );
-
         return Response.json({
-          sessionId: session.sessionId,
+          sessionId: session.id,
           model: `${model.provider}/${model.id}`,
         });
       }

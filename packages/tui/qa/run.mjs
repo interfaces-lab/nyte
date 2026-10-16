@@ -50,7 +50,6 @@ try {
   await mkdir(home);
   await mkdir(guards);
 
-  // Never let automated clipboard/editor/browser actions reach the user's desktop.
   for (const command of [
     "pbcopy",
     "pbpaste",
@@ -95,7 +94,6 @@ try {
 
   process.stderr.write(`Terminal QA evidence: ${root}\n`);
 
-  // No Bun module is loaded until HOME and the environment allowlist are installed.
   const child = spawn(
     bun,
     [

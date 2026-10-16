@@ -7,8 +7,6 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-// Packages the real app as "Nyte Update Test" 1.0.0 and 1.0.1, serves 1.0.1 on localhost,
-// and leaves 1.0.0 to open and update from Check for Updates….
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("The update test requires an Apple Silicon Mac.");

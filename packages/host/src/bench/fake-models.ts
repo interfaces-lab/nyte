@@ -8,7 +8,7 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
-import type { HostView, ModelRef } from "@nyte-ai/schema";
+import type { HostView } from "@nyte-ai/schema";
 import type {
   Api,
   AssistantMessage,
@@ -211,77 +211,8 @@ export function fakeModels(input?: {
   return fake;
 }
 
-/** One scripted model response the bench asks for: `text` streamed in `tokens` pieces, then the `tools` calls, then, on the request after their results, `after` (the bench's `ScriptedTurn`). */
-export interface ScriptedTurn {
-  readonly text: string;
-  readonly tokens: number;
-  readonly tools?: readonly { readonly name: string; readonly args: Record<string, unknown> }[];
-  readonly after?: string;
-}
-
-/** The bench's model (`FakeModel` in `packages/bench/src/driver.ts`): a ref to pick it, a script of the next responses, and a pause in the middle of one. */
-export interface FakeModel {
-  /** The model the bench host uses by default. */
-  readonly ref: ModelRef;
-  /** The next request answers with this turn. Unscripted requests answer with one short text. */
-  script(turn: ScriptedTurn): void;
-  /** Resolves when the model has emitted `count` tokens of the current response; the response then pauses until `release()`. */
-  pauseAfter(count: number): Promise<void>;
-  /** Lets a paused response go on. */
-  release(): void;
-}
-
-/** Returns the bench's `FakeModel` over `fake`, which the bench makes with a `fallback` of one short text (what an unscripted request answers): `ref` the provider's first model; `script(turn)` queues one reply streaming `turn.text` in `turn.tokens` deltas (no text block when the text is empty) followed by a `toolCall` block per `turn.tools` entry (ids `bench-<n>`, counted across the model's life), and, when `turn.tools` is non-empty and `turn.after` is set, a second reply streaming `after` as one text block for the request that carries their results. Every scripted reply taps its stream: `pauseAfter(count)` arms one gate, and the first response to stream a text delta at or past `count` (one streaming already, or a later one; with two streaming, whichever gets there first) holds after that delta, resolves the promise, and stays held until `release()`; `release()` with no response held does nothing. */
-export function scriptedModel(fake: FakeModels): FakeModel {
-  const [first] = fake.provider.getModels();
-
-  if (first === undefined) throw new Error("The bench provider has no model.");
-  let calls = 0;
-  let gate: { readonly count: number; readonly reached: PromiseWithResolvers<void> } | null = null;
-  let held: PromiseWithResolvers<void> | null = null;
-
-  const tap = async (streamed: number): Promise<void> => {
-    if (gate === null || streamed < gate.count) return;
-    const armed = gate;
-    gate = null;
-    const hold = Promise.withResolvers<void>();
-    held = hold;
-    armed.reached.resolve();
-    await hold.promise;
-  };
-
-  return {
-    ref: { provider: fake.provider.id, id: first.id },
-    script(turn) {
-      const tools = (turn.tools ?? []).map((tool): Block => {
-        calls += 1;
-
-        return { type: "toolCall", id: `bench-${calls}`, name: tool.name, arguments: tool.args };
-      });
-
-      const text: readonly Block[] = turn.text === "" ? [] : [{ type: "text", text: turn.text }];
-      fake.reply({ content: [...text, ...tools], tokens: turn.tokens, tap });
-
-      if (tools.length > 0 && turn.after !== undefined)
-        fake.reply({ content: [{ type: "text", text: turn.after }], tap });
-    },
-    pauseAfter(count) {
-      const reached = Promise.withResolvers<void>();
-      gate = { count, reached };
-
-      return reached.promise;
-    },
-    release() {
-      const hold = held;
-      held = null;
-      hold?.resolve();
-    },
-  };
-}
-
-/** An environment whose files and processes refuse: enough for a chat. */
 const env: ExecutionEnv = {
-  identity: asId("identity"),
+  identity: asId("chat-only"),
   cwd: "/tmp/project",
   files: {
     read: refuse,
@@ -309,7 +240,7 @@ export const chatOnly: Plugin<"core"> = {
   environment: {
     kind: "chat-only",
     inspect: async () => ({
-      identity: asId("chat-only"),
+      identity: env.identity,
       availability: { kind: "available" },
       projectSources: [],
     }),
@@ -317,7 +248,6 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
-/** Composes a host over a memory store (or `store`) with the fake models, the chat-only environment, `plugins` and the plugin file loader `loadPlugins`. */
 export async function open(
   fake: FakeModels,
   options?: {
@@ -341,7 +271,6 @@ export async function open(
   });
 }
 
-/** Returns a stream that plays a reply as provider events, honouring the request's abort signal. */
 function streamOf(
   model: Model<Api>,
   reply: Reply,
@@ -505,7 +434,6 @@ function streamOf(
   return stream;
 }
 
-/** Splits a text into `count` consecutive pieces as even as its length allows (at least one). */
 function piecesOf(text: string, count: number): readonly string[] {
   const pieces = Math.max(1, count);
 

@@ -8,12 +8,10 @@ import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
 import { SdkError, closable, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 
-/** What `@lydell/node-pty` exports that a pty job uses. */
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
 };
 
-/** Returns what drives one process for its `Job`: stdin, resize, the prompt state, the signal that ends it, and the shared output and end. */
 type Driver = {
   write(bytes: Uint8Array): Promise<void>;
   resize(size: { readonly columns: number; readonly rows: number }): boolean;
@@ -22,7 +20,6 @@ type Driver = {
   readonly pty: boolean;
 };
 
-/** The bytes of output a job keeps for readers that fall behind or open late: 1 MiB. */
 const OUTPUT_LIMIT = 1024 * 1024;
 
 const STOP_GRACE_MS = 2_000;
@@ -164,7 +161,6 @@ export function localExec(
   };
 }
 
-/** Starts a piped process, as `localExec` describes. */
 async function pipe(
   command: string | readonly string[],
   options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
@@ -228,7 +224,6 @@ async function pipe(
   };
 }
 
-/** Starts a process in a pty, as `localExec` describes. */
 async function terminal(
   command: string | readonly string[],
   options: {
@@ -324,7 +319,6 @@ async function terminal(
   };
 }
 
-/** Returns the last OSC 133 prompt marker (`A` prompt, `B` input, `C` output, `D` done) a chunk of terminal output carries, or null. */
 function lastMarker(text: string): string | null {
   let found: string | null = null;
 
@@ -337,7 +331,6 @@ function lastMarker(text: string): string | null {
   return found;
 }
 
-/** Returns terminal output without its escape sequences: CSI (`ESC [` … final byte), OSC (`ESC ]` … BEL or `ESC \\`) and two-byte escapes. */
 function withoutEscapes(text: string): string {
   let plain = "";
   let at = 0;
@@ -367,7 +360,6 @@ function withoutEscapes(text: string): string {
   return plain;
 }
 
-/** Returns `@lydell/node-pty`, required once on first use; null when it does not load here. */
 function loadPty(): PtyModule | null {
   if (loaded === undefined)
     loaded = ptyFrom(() => createRequire(import.meta.url)("@lydell/node-pty"));
@@ -375,7 +367,6 @@ function loadPty(): PtyModule | null {
   return loaded;
 }
 
-/** Returns what `load` answers when it is a pty module; null when it throws or answers anything else. */
 function ptyFrom(load: () => unknown): PtyModule | null {
   try {
     const required = load();
@@ -395,7 +386,6 @@ function isPtyModule(value: unknown): value is PtyModule {
   );
 }
 
-/** Resolves a job's end, or rejects `SdkError("unavailable")` when the wait's signal aborts first. */
 function waitEnd(ended: Promise<JobEnd>, request: RequestOptions | undefined): Promise<JobEnd> {
   const signal = request?.signal;
 
@@ -413,7 +403,6 @@ function waitEnd(ended: Promise<JobEnd>, request: RequestOptions | undefined): P
   });
 }
 
-/** Returns a process's output as its readers see it: the newest bytes up to a bound, then the exit. */
 type OutputLog = {
   push(bytes: Uint8Array): void;
   end(code: number | null): void;

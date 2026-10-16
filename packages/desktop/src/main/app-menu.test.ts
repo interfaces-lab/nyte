@@ -75,7 +75,6 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
   expect(received).toEqual([about, about, settings]);
 });
 
-// macOS adds SF Symbol icons, which need Electron's nativeImage; every other platform shares one template.
 test("off macOS the primary W closes a tab and closing the window takes Shift", () => {
   const dispatched: AppMenuCommand[] = [];
 
@@ -99,7 +98,6 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
   const click = primaryW[0]?.click;
 
   if (click === undefined) throw new Error("The primary W item has no click handler");
-  // oxlint-disable-next-line no-restricted-globals, anti-slop/no-reflect-apply -- Electron's click wants a MenuItem only Electron can construct; the handler ignores its arguments
   Reflect.apply(click, undefined, []);
   expect(dispatched).toEqual([{ kind: "action", action: "close-tab" }]);
   expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([

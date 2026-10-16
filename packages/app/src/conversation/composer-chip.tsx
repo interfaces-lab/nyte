@@ -1,5 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -109,7 +110,7 @@ export function ComposerChipView({
       <PreviewCard>
         <PreviewCardTrigger render={chip} />
         <PreviewCardContent side="top" xstyle={composerStyles.clipboardPreview}>
-          {reference.body}
+          <div {...props(text.xs, composerStyles.clipboardText)}>{reference.body}</div>
         </PreviewCardContent>
       </PreviewCard>
     );

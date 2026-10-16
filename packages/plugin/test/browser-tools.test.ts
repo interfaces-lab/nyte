@@ -6,7 +6,6 @@ import { expect, it } from "vitest";
 import browserTools from "../src/browser-tools.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
-/** Returns a browser with one page that records every call made to it. */
 function fakeBrowser() {
   const calls: string[] = [];
   const snapshot: PageSnapshot = {

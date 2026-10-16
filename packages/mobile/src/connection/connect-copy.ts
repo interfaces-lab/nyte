@@ -11,11 +11,6 @@
 import type { SdkError } from "@nyte-ai/sdk";
 import type { SavedConnection } from "./connection.ts";
 
-/**
- * How one attempt ended badly. `host.ts` is the only producer, because that is
- * where the client's errors exist. Naming each ending as a value is what keeps
- * a refused token apart from a host that never answered.
- */
 export type ConnectFailure =
   /** Reached a Nyte server; it refused the token. */
   | { readonly kind: "refused" }
@@ -23,16 +18,9 @@ export type ConnectFailure =
   | { readonly kind: "silent"; readonly address: string }
   /** Something answered and was not a Nyte server. */
   | { readonly kind: "wrongServer"; readonly address: string }
-  /** The host answered; the Keychain would not hold the token. */
   | { readonly kind: "notSaved" }
-  /**
-   * This route pinned a host identity and the answer did not prove it: another
-   * key, or none. Only an explicit re-pair of the same `url` replaces the pin.
-   */
   | { readonly kind: "identityChanged"; readonly address: string; readonly url: string }
-  /** It named an identity it could not sign for, or is a registry host naming none. */
   | { readonly kind: "unverified"; readonly address: string }
-  /** The Keychain would not read or keep this route's host pin. */
   | { readonly kind: "keychain" }
   /** Nothing here recognized the ending. Say so rather than blame the network. */
   | { readonly kind: "unexpected"; readonly detail: string }
@@ -55,7 +43,6 @@ export interface ConnectCopy {
   readonly retry: string | undefined;
 }
 
-/** Where a Mac shares itself, by address and token or through a Nyte account. Spelled as the desktop labels it. */
 export const SHARE_LOCATION = "Environments › Remote Access";
 
 export function connectCopy(stage: ConnectStage): ConnectCopy {
@@ -136,30 +123,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
   }
 }
 
-/**
- * The lead paragraph before an attempt. Editing an existing connection needs a
- * different instruction: the details are already filled in, and the user is
- * here to replace them. With a Nyte account, the account comes first, and an
- * account connection is replaced by picking its computer again.
- */
-export function introCopy(input: {
-  editing: "manual" | "managed" | undefined;
-  account: boolean;
-}): ConnectCopy {
-  if (input.editing === "managed" && input.account)
-    return {
-      title: "Update your computer",
-      body: "Pick it from your Nyte account again.",
-      retry: undefined,
-    };
-
-  if (input.editing !== undefined)
-    return {
-      title: "Update your computer",
-      body: `Enter the address and token it uses now, or scan a new code from ${SHARE_LOCATION}.`,
-      retry: undefined,
-    };
-
+export function introCopy(input: { account: boolean }): ConnectCopy {
   return input.account
     ? {
         title: "Connect a computer",
@@ -169,10 +133,6 @@ export function introCopy(input: {
     : connectCopy({ kind: "idle" });
 }
 
-/**
- * The saved host did not verify on the way back in. An account device the
- * host refuses is picked again from the account, not fixed with a new token.
- */
 export function recoveryCopy(
   failure: Exclude<ConnectFailure, { kind: "cancelled" }>,
   saved: SavedConnection,
@@ -187,15 +147,6 @@ export function recoveryCopy(
   return connectCopy(failure);
 }
 
-/**
- * Name what a failed verification means for the user. A server that answers and
- * refuses is a different problem from one that never answers, and the two need
- * different instructions; collapsing them into "couldn't connect" hides which.
- *
- * The parameter is the sdk's error, never `unknown`. An unnamed cause has to be
- * handled where it was caught instead of guessed at here, which is what once
- * turned every failure into "No answer".
- */
 export function classifyConnectFailure(cause: SdkError, address: string): ConnectFailure {
   switch (cause.code) {
     case "unauthenticated":

@@ -1,11 +1,3 @@
-/**
- * The wire between the Electron main host and the renderer for what lives
- * beside the sdk: windows, terminals, browser panels, remote access and the
- * local listener's endpoint. Sessions, models and settings go over the sdk
- * connection the renderer opens to that endpoint. One channel
- * per concern, one operation path per bridge method, its single input object
- * as the payload and its outcome as the response.
- */
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 
@@ -23,10 +15,8 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
-/** The window argument main hands the preload: `<name>=<url>` of the canvas shell page. */
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-/** Host operations beside the sdk, one path per bridge method. */
 export const HOST_OPERATION_PATHS = [
   "host.endpoint",
   "host.state",
@@ -34,6 +24,7 @@ export const HOST_OPERATION_PATHS = [
   "host.usage",
   "host.openWorkspace",
   "host.pickWorkspace",
+  "host.trustWorkspace",
   "host.closeWorkspace",
   "host.updates.state",
   "host.updates.check",
@@ -84,13 +75,6 @@ export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
 export type CallPath = HostOperationPath;
 
-/**
- * `window.nyte` on the desktop: the client surface and every host bridge
- * member main answers. Not here: `settings` (the desktop's settings are host
- * settings over the connection), `trustWorkspace` (a registered folder runs),
- * `github` (nothing on this host serves it yet), `remember`
- * (the loopback token is minted per run).
- */
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
   readonly canvasShell?: NyteBridge["canvasShell"];
@@ -116,6 +100,7 @@ export type DesktopBridge = {
         HostBridge,
         | "usage"
         | "pickWorkspace"
+        | "trustWorkspace"
         | "updates"
         | "revealPath"
         | "openPluginsFolder"
@@ -126,7 +111,6 @@ export type DesktopBridge = {
     >;
 };
 
-/** Walk `host.server.state` to the matching DesktopBridge method. */
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T
     ? BridgeMethod<T[Head], Rest>

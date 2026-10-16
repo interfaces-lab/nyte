@@ -67,6 +67,7 @@ function opened(...heads: HeadName[]): DurableEvent {
       id: session,
       name: "triage",
       parent: null,
+      call: null,
       workspace: asId("w1"),
       pinned: false,
       archived: false,

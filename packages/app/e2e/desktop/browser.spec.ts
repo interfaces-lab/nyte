@@ -47,7 +47,6 @@ async function clickGuestControl(
   );
 }
 
-/** Input events from main reach the page as trusted keys, so its preload sees them as a user's. */
 async function pressInGuest(
   application: ElectronApplication,
   url: string,
@@ -230,7 +229,6 @@ test("the integrated browser journey", async ({ desktop }) => {
     await expect(page.getByRole("menu")).toBeHidden();
   });
 
-  // The switch writes through `nyte.host.settings`, which the desktop preload no longer installs.
   await test.step.skip("pause and restore blocking for this host", async () => {
     const loaded = pageRequests;
     await shield.click();

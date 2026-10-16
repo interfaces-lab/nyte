@@ -1,8 +1,3 @@
-/**
- * The strip's contents. Three kinds, in the order Dia and Arc keep them: pinned
- * places, folders, then the chats you opened this session. Every status the
- * desktop can report is in the set, so each indication can be checked at once.
- */
 import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
@@ -12,13 +7,10 @@ export interface ShellTab {
   readonly id: string;
   readonly kind: TabKind;
   readonly title: string;
-  /** The place's own icon; status may replace or badge it. */
   readonly icon: IconName;
   readonly mark: SessionMark;
-  /** A chat in a background tab finished since it was last seen. */
   readonly unread: boolean;
   readonly split?: "right" | "down";
-  /** Folders: agents running inside. */
   readonly count?: number;
 }
 
@@ -111,7 +103,6 @@ export const TABS: readonly ShellTab[] = [
   { id: "new", kind: "chat", title: "New chat", icon: "new-chat", mark: "idle", unread: false },
 ];
 
-/** Opened by ⌘T; the strip cycles through these titles. */
 export const DRAFTS = [
   "Split the popover shadow by tier",
   "Rename the Changes tab",

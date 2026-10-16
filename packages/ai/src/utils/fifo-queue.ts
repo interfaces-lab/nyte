@@ -1,8 +1,5 @@
 /**
  * First-in, first-out storage with amortized constant-time dequeue: values enter one stack and leave the other, which is refilled in reverse only when empty.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/event-stream.ts
- * Synced with pi 7fbbd5f4a.
  */
 export class FifoQueue<T> {
   private incoming: T[] = [];

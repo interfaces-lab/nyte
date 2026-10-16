@@ -1,33 +1,30 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, expect, it } from "vitest";
-import { createEmptyHistoryState, registerHistory } from "@lexical/history";
-import { registerPlainText } from "@lexical/plain-text";
-import {
-  $getRoot,
-  $getSelection,
-  $isRangeSelection,
-  CLEAR_HISTORY_COMMAND,
-  createEditor,
-  DELETE_CHARACTER_COMMAND,
-  HISTORY_MERGE_TAG,
-  HISTORY_PUSH_TAG,
-  PASTE_TAG,
-  REDO_COMMAND,
-  UNDO_COMMAND,
-} from "lexical";
+import { describe, expect, it } from "vitest";
+import { getSchema, getTextBetween, getTextSerializersFromSchema } from "@tiptap/core";
+import { closeHistory, history, redo, undo } from "@tiptap/pm/history";
+import { EditorState } from "@tiptap/pm/state";
+import type { Transaction } from "@tiptap/pm/state";
 import type { MentionFile } from "./message-references.ts";
 import {
-  $composerCompletion,
-  $composerReferences,
-  $composerSelection,
-  $composerSubmission,
-  $insertComposerReference,
-  $readComposerDocument,
-  $replaceComposerText,
-  $restoreComposerDocument,
-  $selectComposerRange,
-  ComposerReferenceNode,
-  registerComposerReferences,
+  clearComposerHistory,
+  ComposerDocument,
+  ComposerHardBreak,
+  ComposerParagraph,
+  ComposerReference,
+  ComposerText,
+  composerCompletion,
+  composerReference,
+  composerReferences,
+  composerReferencesPlugin,
+  composerSubmission,
+  deleteComposerReference,
+  insertComposerReference,
+  pasteComposerText,
+  readComposerDocument,
+  refreshComposerReferences,
+  replaceComposerText,
+  restoreComposerDocument,
+  selectComposerRange,
 } from "./composer-document.ts";
 import { referenceLabel, referenceText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
@@ -54,374 +51,310 @@ const skillReference: MessageReference = {
   path: "/home/me/.agents/skills/review/SKILL.md",
 };
 
-const cleanups: (() => void)[] = [];
+const schema = getSchema([
+  ComposerDocument,
+  ComposerParagraph,
+  ComposerText,
+  ComposerHardBreak,
+  ComposerReference,
+]);
 
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
-});
+function selectedText(state: EditorState): string {
+  return getTextBetween(state.doc, state.selection, {
+    textSerializers: getTextSerializersFromSchema(schema),
+  });
+}
 
 function composer(files: readonly MentionFile[] = [file, folder]) {
-  const editor = createEditor({
-    namespace: "composer-test",
-    nodes: [ComposerReferenceNode],
-    onError: (error) => {
-      throw error;
-    },
+  let catalog: ReadonlyMap<string, MentionFile> = new Map(files.map((each) => [each.url, each]));
+
+  let state = EditorState.create({
+    schema,
+    plugins: [composerReferencesPlugin(() => catalog), history({ newGroupDelay: 300 })],
   });
 
-  cleanups.push(
-    registerPlainText(editor),
-    registerHistory(editor, createEmptyHistoryState(), 300),
-    registerComposerReferences(editor, { files }),
-  );
-  const text = () => editor.getEditorState().read(() => $getRoot().getTextContent());
+  const dispatch = (tr: Transaction): void => {
+    state = state.apply(tr);
+  };
 
-  const labels = () =>
-    editor.getEditorState().read(() => $composerReferences().map(referenceLabel));
+  const update = (edit: (tr: Transaction) => Transaction): void => dispatch(edit(state.tr));
+  const text = () => readComposerDocument(state).text;
+  const labels = () => composerReferences(state.doc).map(referenceLabel);
 
   const restore = (draft: string, caret = draft.length) =>
-    editor.update(
-      () => $restoreComposerDocument({ text: draft, selectionStart: caret, selectionEnd: caret }),
-      { discrete: true, tag: HISTORY_MERGE_TAG },
+    update((tr) =>
+      restoreComposerDocument(tr, { text: draft, selectionStart: caret, selectionEnd: caret }),
     );
 
-  return { editor, text, labels, restore };
+  const discover = (next: readonly MentionFile[]) => {
+    catalog = new Map(next.map((each) => [each.url, each]));
+    update((tr) => refreshComposerReferences(tr, catalog));
+  };
+
+  return {
+    get state() {
+      return state;
+    },
+    dispatch,
+    update,
+    text,
+    labels,
+    restore,
+    discover,
+    clearHistory: () => {
+      state = clearComposerHistory(state);
+    },
+  };
 }
 
 describe("composer document", () => {
   it("reports collapsed and backward ranges across a long draft with chips, line breaks and emoji", () => {
-    const { editor, restore } = composer();
+    const editor = composer();
     const prefix = `Paragraph 👋 ${"long text ".repeat(120)} @${file.url}\n\n`.repeat(24);
     const draft = `${prefix}finish /rev`;
-    restore(draft);
-    editor.getEditorState().read(() => {
-      const document = $readComposerDocument();
-      expect(document).toEqual({
-        text: draft,
-        selectionStart: draft.length,
-        selectionEnd: draft.length,
-      });
-      expect($composerCompletion(document.selectionStart)).toEqual({
-        kind: "/",
-        query: "rev",
-        start: prefix.length + "finish ".length,
-        end: draft.length,
-      });
-      expect($composerReferences()).toHaveLength(24);
+    editor.restore(draft);
+    const document = readComposerDocument(editor.state);
+    expect(document).toEqual({
+      text: draft,
+      selectionStart: draft.length,
+      selectionEnd: draft.length,
     });
+    expect(composerCompletion(editor.state, document.selectionStart)).toEqual({
+      kind: "/",
+      query: "rev",
+      start: prefix.length + "finish ".length,
+      end: draft.length,
+    });
+    expect(composerReferences(editor.state.doc)).toHaveLength(24);
     const start = "Paragraph 👋 ".length;
     const end = prefix.length + "finish".length;
-    editor.update(() => $selectComposerRange(end, start), { discrete: true });
-    editor.getEditorState().read(() => {
-      const selection = $getSelection();
-      assert.ok($isRangeSelection(selection));
-      expect(selection.isBackward()).toBe(true);
-      expect(selection.getTextContent()).toBe(draft.slice(start, end));
-      const document = $readComposerDocument();
-      expect(document).toEqual({ text: draft, selectionStart: start, selectionEnd: end });
-      expect($composerCompletion(document.selectionStart)).toBeUndefined();
+    editor.update((tr) => selectComposerRange(tr, end, start));
+    expect(editor.state.selection.head < editor.state.selection.anchor).toBe(true);
+    expect(selectedText(editor.state)).toBe(draft.slice(start, end));
+    const ranged = readComposerDocument(editor.state);
+    expect(ranged).toEqual({ text: draft, selectionStart: start, selectionEnd: end });
+    expect(composerCompletion(editor.state, ranged.selectionStart)).toBeUndefined();
+    editor.update((tr) => tr.insertText("replacement"));
+    expect(readComposerDocument(editor.state)).toEqual({
+      text: `${draft.slice(0, start)}replacement${draft.slice(end)}`,
+      selectionStart: start + "replacement".length,
+      selectionEnd: start + "replacement".length,
     });
-    editor.update(() => $getSelection()?.insertText("replacement"), { discrete: true });
-    editor.getEditorState().read(() => {
-      expect($readComposerDocument()).toEqual({
-        text: `${draft.slice(0, start)}replacement${draft.slice(end)}`,
-        selectionStart: start + "replacement".length,
-        selectionEnd: start + "replacement".length,
-      });
-      expect($composerReferences()).toEqual([]);
-    });
+    expect(composerReferences(editor.state.doc)).toEqual([]);
   });
 
   it("counts element carets on either side of chips and trailing line breaks", () => {
-    const { editor, restore } = composer();
+    const editor = composer();
     const draft = `👋 @${file.url}\n\n`;
-    restore(draft);
+    editor.restore(draft);
 
     for (const offset of [0, "👋 ".length, "👋 @".length + file.url.length, draft.length]) {
-      editor.update(() => $selectComposerRange(offset), { discrete: true });
-      editor.getEditorState().read(() => {
-        expect($readComposerDocument()).toEqual({
-          text: draft,
-          selectionStart: offset,
-          selectionEnd: offset,
-        });
+      editor.update((tr) => selectComposerRange(tr, offset));
+      expect(readComposerDocument(editor.state)).toEqual({
+        text: draft,
+        selectionStart: offset,
+        selectionEnd: offset,
       });
     }
 
-    restore("");
-    editor.getEditorState().read(() => {
-      expect($composerSelection()).toEqual({ start: 0, end: 0 });
-      expect($composerCompletion(0)).toBeUndefined();
+    editor.restore("");
+    expect(readComposerDocument(editor.state)).toEqual({
+      text: "",
+      selectionStart: 0,
+      selectionEnd: 0,
     });
+    expect(composerCompletion(editor.state, 0)).toBeUndefined();
   });
 
   it("places a file at the mention trigger and keeps the surrounding text and canonical URL", () => {
-    const { editor, text, labels, restore } = composer();
-    restore("Compare @a with the old version");
-    editor.update(() => $insertComposerReference(fileReference, 8, 10), {
-      discrete: true,
-      tag: HISTORY_PUSH_TAG,
-    });
-    expect(text()).toBe(`Compare @${file.url}  with the old version`);
-    expect(labels()).toEqual(["a file.ts"]);
-    editor.getEditorState().read(() => {
-      expect($composerSelection()).toEqual({
-        start: 8 + file.url.length + 2,
-        end: 8 + file.url.length + 2,
-      });
+    const editor = composer();
+    editor.restore("Compare @a with the old version");
+    editor.update((tr) => closeHistory(insertComposerReference(tr, fileReference, 8, 10)));
+    expect(editor.text()).toBe(`Compare @${file.url}  with the old version`);
+    expect(editor.labels()).toEqual(["a file.ts"]);
+    const caret = 8 + file.url.length + 2;
+    expect(readComposerDocument(editor.state)).toMatchObject({
+      selectionStart: caret,
+      selectionEnd: caret,
     });
   });
 
   it("restores every chip kind from a draft string with the caret where it was left", () => {
-    const { editor, text, labels, restore } = composer();
+    const editor = composer();
     const draft = `Compare @${file.url}\nwith [$review](${skillReference.path}) and @current-conversation now`;
-    restore(draft, 8);
-    expect(text()).toBe(draft);
-    expect(labels()).toEqual(["a file.ts", "/review", "Current conversation"]);
-    editor.getEditorState().read(() => {
-      expect($readComposerDocument()).toEqual({
-        text: draft,
-        selectionStart: 8,
-        selectionEnd: 8,
-      });
-      expect($composerReferences()[1]).toEqual(skillReference);
+    editor.restore(draft, 8);
+    expect(editor.text()).toBe(draft);
+    expect(editor.labels()).toEqual(["a file.ts", "/review", "Current conversation"]);
+    expect(readComposerDocument(editor.state)).toEqual({
+      text: draft,
+      selectionStart: 8,
+      selectionEnd: 8,
     });
+    expect(composerReferences(editor.state.doc)[1]).toEqual(skillReference);
   });
 
   it("does not complete a token the user is still typing, but does once a delimiter arrives", () => {
-    const { editor, text, labels, restore } = composer([]);
-    restore("");
-    editor.update(() => $getSelection()?.insertText("look at @file:///project/new.ts"), {
-      discrete: true,
-    });
-    expect(labels()).toEqual([]);
-    editor.update(() => $getSelection()?.insertText(" "), { discrete: true });
-    expect(labels()).toEqual(["new.ts"]);
-    expect(text()).toBe("look at @file:///project/new.ts ");
-    editor.getEditorState().read(() => {
-      const document = $readComposerDocument();
-      expect(document.selectionStart).toBe(document.text.length);
-    });
+    const editor = composer([]);
+    editor.restore("");
+    editor.update((tr) => tr.insertText("look at @file:///project/new.ts"));
+    expect(editor.labels()).toEqual([]);
+    editor.update((tr) => tr.insertText(" "));
+    expect(editor.labels()).toEqual(["new.ts"]);
+    expect(editor.text()).toBe("look at @file:///project/new.ts ");
+    const document = readComposerDocument(editor.state);
+    expect(document.selectionStart).toBe(document.text.length);
   });
 
   it("completes a pasted token at once and chips a known file even before its delimiter", () => {
-    const { editor, labels, restore } = composer();
-    restore("");
-    editor.update(() => $getSelection()?.insertText(`see @${folder.url}`), { discrete: true });
-    expect(labels()).toEqual(["src/"]);
-    editor.update(() => $getSelection()?.insertText(" @file:///project/x.ts"), {
-      discrete: true,
-      tag: PASTE_TAG,
-    });
-    expect(labels()).toEqual(["src/", "x.ts"]);
+    const editor = composer();
+    editor.restore("");
+    editor.update((tr) => tr.insertText(`see @${folder.url}`));
+    expect(editor.labels()).toEqual(["src/"]);
+    editor.update((tr) => pasteComposerText(tr, " @file:///project/x.ts"));
+    expect(editor.labels()).toEqual(["src/", "x.ts"]);
   });
 
   it("copies a selected mention as its URL and removes it atomically with Backspace", () => {
-    const { editor, text, restore } = composer();
-    restore(`use @${file.url} today`);
-    editor.update(() => $selectComposerRange(4, 5 + file.url.length), { discrete: true });
-    editor
-      .getEditorState()
-      .read(() => expect($getSelection()?.getTextContent()).toBe(`@${file.url}`));
-    editor.update(
-      () => {
-        $selectComposerRange(5 + file.url.length);
-        editor.dispatchCommand(DELETE_CHARACTER_COMMAND, true);
-      },
-      { discrete: true, tag: HISTORY_PUSH_TAG },
-    );
-    expect(text()).toBe("use  today");
-  });
+    const editor = composer();
+    editor.restore(`use @${file.url} today`);
+    editor.update((tr) => selectComposerRange(tr, 4, 5 + file.url.length));
+    expect(selectedText(editor.state)).toBe(`@${file.url}`);
+    editor.update((tr) => {
+      selectComposerRange(tr, 5 + file.url.length);
+      assert.ok(deleteComposerReference(tr, -1));
 
-  it("steps the caret over a chip as one unit in both directions", () => {
-    const { editor, restore } = composer();
-    const after = 5 + file.url.length;
-    restore(`use @${file.url} today`, 4);
-
-    for (const [isBackward, expected] of [
-      [false, after],
-      [true, 4],
-    ] as const) {
-      editor.update(
-        () => {
-          const selection = $getSelection();
-          assert.ok($isRangeSelection(selection));
-          selection.modify("move", isBackward, "character");
-        },
-        { discrete: true },
-      );
-      editor.getEditorState().read(() => {
-        expect($isRangeSelection($getSelection())).toBe(true);
-        expect($composerSelection()).toEqual({ start: expected, end: expected });
-      });
-    }
+      return closeHistory(tr);
+    });
+    expect(editor.text()).toBe("use  today");
   });
 
   it("undoes and redoes a chip insertion as one edit, and forgets history after a restore", () => {
-    const { editor, text, restore } = composer();
-    restore("Compare @a");
-    editor.update(() => $insertComposerReference(fileReference, 8, 10), {
-      discrete: true,
-      tag: HISTORY_PUSH_TAG,
-    });
-    editor.dispatchCommand(UNDO_COMMAND, undefined);
-    editor.read(() => undefined);
-    expect(text()).toBe("Compare @a");
-    editor.dispatchCommand(REDO_COMMAND, undefined);
-    editor.read(() => undefined);
-    expect(text()).toBe(`Compare @${file.url} `);
-    restore("another pane's draft");
-    editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
-    editor.dispatchCommand(UNDO_COMMAND, undefined);
-    editor.read(() => undefined);
-    expect(text()).toBe("another pane's draft");
+    const editor = composer();
+    editor.restore("Compare @a");
+    editor.update((tr) => closeHistory(insertComposerReference(tr, fileReference, 8, 10)));
+    undo(editor.state, editor.dispatch);
+    expect(editor.text()).toBe("Compare @a");
+    redo(editor.state, editor.dispatch);
+    expect(editor.text()).toBe(`Compare @${file.url} `);
+    editor.restore("another pane's draft");
+    editor.clearHistory();
+    undo(editor.state, editor.dispatch);
+    expect(editor.text()).toBe("another pane's draft");
   });
 
   it.each(["before", "after"])(
     "refreshes discovered file chips with the caret %s the chip",
     (side) => {
-      const { editor, text, labels, restore } = composer([]);
+      const editor = composer([]);
       const draft = `Review @${file.url} carefully`;
       const caret = side === "before" ? "Review ".length : draft.length;
-      restore(draft, caret);
-      expect(labels()).toEqual(["a file.ts"]);
-      cleanups.push(registerComposerReferences(editor, { files: [file] }));
-      editor.read(() => undefined);
-      expect(text()).toBe(draft);
-      editor.getEditorState().read(() => {
-        expect($composerReferences()).toEqual([fileReference]);
-        expect($composerSelection()).toEqual({ start: caret, end: caret });
+      editor.restore(draft, caret);
+      expect(editor.labels()).toEqual(["a file.ts"]);
+      editor.discover([file]);
+      expect(editor.text()).toBe(draft);
+      expect(composerReferences(editor.state.doc)).toEqual([fileReference]);
+      expect(readComposerDocument(editor.state)).toMatchObject({
+        selectionStart: caret,
+        selectionEnd: caret,
       });
     },
   );
 
   it("keeps a selected fallback chip deletable after discovery without changing its saved state", () => {
-    const { editor, text, restore } = composer([]);
+    const editor = composer([]);
     const draft = `Review @${file.url} carefully`;
-    restore(draft, "Review ".length);
-    editor.update(
-      () => {
-        const selection = $getSelection();
-        assert.ok($isRangeSelection(selection));
-        selection.modify("extend", false, "character");
-      },
-      { discrete: true },
-    );
-    const previousState = editor.getEditorState();
-
-    const previous = previousState.read(() => {
-      const selection = $getSelection();
-      assert.ok($isRangeSelection(selection));
-      const node = selection.getNodes().find((each) => each instanceof ComposerReferenceNode);
-      assert.ok(node instanceof ComposerReferenceNode);
-      expect(selection.getTextContent()).toBe(`@${file.url}`);
-
-      return { node, reference: node.decorate(), json: node.exportJSON() };
-    });
-
+    editor.restore(draft, "Review ".length);
+    editor.update((tr) => selectComposerRange(tr, "Review ".length, `Review @${file.url}`.length));
+    const previousState = editor.state;
+    const previousNode = previousState.doc.nodeAt(previousState.selection.from);
+    assert.ok(previousNode !== null);
+    const previousReference = composerReference(previousNode);
+    const previousJson = previousNode.toJSON();
+    expect(selectedText(previousState)).toBe(`@${file.url}`);
     const discovered = { ...file, label: "Project source", displayPath: "workspace/a file.ts" };
     const reference: MessageReference = { kind: "file", file: discovered };
-    expect(previous.reference).not.toEqual(reference);
-    cleanups.push(registerComposerReferences(editor, { files: [discovered] }));
-    expect(text()).toBe(draft);
-    editor.getEditorState().read(() => {
-      expect($composerReferences()).toEqual([reference]);
-      const selection = $getSelection();
-      assert.ok($isRangeSelection(selection));
-      expect(selection.getNodes()).toContain(previous.node.getLatest());
-      expect(selection.getTextContent()).toBe(`@${file.url}`);
-      expect(previous.node.decorate()).toEqual(reference);
-      expect(previous.node.exportJSON().reference).toEqual(reference);
-    });
-    previousState.read(() => {
-      expect($getRoot().getTextContent()).toBe(draft);
-      expect($composerReferences()).toEqual([previous.reference]);
-      expect(previous.node.decorate()).toEqual(previous.reference);
-      expect(previous.node.exportJSON()).toEqual(previous.json);
-    });
-    editor.update(
-      () => {
-        const selection = $getSelection();
-        assert.ok($isRangeSelection(selection));
-        selection.removeText();
-      },
-      { discrete: true },
-    );
-    expect(text()).toBe("Review  carefully");
-    editor.getEditorState().read(() => expect($composerReferences()).toEqual([]));
+    expect(previousReference).not.toEqual(reference);
+    editor.discover([discovered]);
+    expect(editor.text()).toBe(draft);
+    expect(composerReferences(editor.state.doc)).toEqual([reference]);
+    const node = editor.state.doc.nodeAt(editor.state.selection.from);
+    assert.ok(node !== null);
+    expect(composerReference(node)).toEqual(reference);
+    expect(selectedText(editor.state)).toBe(`@${file.url}`);
+    expect(readComposerDocument(previousState).text).toBe(draft);
+    expect(composerReferences(previousState.doc)).toEqual([previousReference]);
+    expect(composerReference(previousNode)).toEqual(previousReference);
+    expect(previousNode.toJSON()).toEqual(previousJson);
+    editor.update((tr) => tr.deleteSelection());
+    expect(editor.text()).toBe("Review  carefully");
+    expect(composerReferences(editor.state.doc)).toEqual([]);
   });
 
   it("snaps a restored offset inside a chip to its boundary instead of editing its token", () => {
-    const { editor, text, restore } = composer();
-    restore(`Review @${file.url}`, 12);
-    editor.getEditorState().read(() =>
-      expect($composerSelection()).toEqual({
-        start: 8 + file.url.length,
-        end: 8 + file.url.length,
-      }),
-    );
-    editor.update(() => $getSelection()?.insertText(" next"), { discrete: true });
-    expect(text()).toBe(`Review @${file.url} next`);
+    const editor = composer();
+    editor.restore(`Review @${file.url}`, 12);
+    expect(readComposerDocument(editor.state)).toMatchObject({
+      selectionStart: 8 + file.url.length,
+      selectionEnd: 8 + file.url.length,
+    });
+    editor.update((tr) => tr.insertText(" next"));
+    expect(editor.text()).toBe(`Review @${file.url} next`);
   });
 
   it("keeps the caret across a blank-line, wrapped, and emoji edit without moving it", () => {
-    const { editor, text, restore } = composer();
-    restore("one\n\ntwo 👋 three", 5);
-    editor.update(() => $getSelection()?.insertText("x"), { discrete: true });
-    expect(text()).toBe("one\n\nxtwo 👋 three");
-    editor.getEditorState().read(() => expect($composerSelection()).toEqual({ start: 6, end: 6 }));
-    const prefix = "one\n\nxtwo ";
-    editor.update(() => $replaceComposerText(prefix.length, prefix.length + "👋".length, ""), {
-      discrete: true,
+    const editor = composer();
+    editor.restore("one\n\ntwo 👋 three", 5);
+    editor.update((tr) => tr.insertText("x"));
+    expect(editor.text()).toBe("one\n\nxtwo 👋 three");
+    expect(readComposerDocument(editor.state)).toMatchObject({
+      selectionStart: 6,
+      selectionEnd: 6,
     });
-    expect(text()).toBe("one\n\nxtwo  three");
-    editor
-      .getEditorState()
-      .read(() =>
-        expect($composerSelection()).toEqual({ start: prefix.length, end: prefix.length }),
-      );
+    const prefix = "one\n\nxtwo ";
+    editor.update((tr) => replaceComposerText(tr, prefix.length, prefix.length + "👋".length, ""));
+    expect(editor.text()).toBe("one\n\nxtwo  three");
+    expect(readComposerDocument(editor.state)).toMatchObject({
+      selectionStart: prefix.length,
+      selectionEnd: prefix.length,
+    });
   });
 
   it("unwraps a restored clipboard chip to its body on submit", () => {
     const body = "one\ntwo\nthree\nfour";
     const clipboard = { kind: "clipboard", body } as const;
     const token = referenceText(clipboard);
-    const { editor, labels, restore } = composer();
-    restore(token);
-    expect(labels()).toEqual(["Clipboard (4 lines)"]);
-    editor.getEditorState().read(() => {
-      expect($getRoot().getTextContent()).toBe(token);
-      expect($composerSubmission()).toEqual({
-        text: body,
-        references: [clipboard],
-      });
+    const editor = composer();
+    editor.restore(token);
+    expect(editor.labels()).toEqual(["Clipboard (4 lines)"]);
+    expect(editor.text()).toBe(token);
+    expect(composerSubmission(editor.state.doc)).toEqual({
+      text: body,
+      references: [clipboard],
     });
   });
 
   it("opens a completion for a trigger at the caret and never for a file URL", () => {
-    const { editor, restore } = composer();
+    const editor = composer();
     const prefix = `see @${file.url} and `;
-    restore(`${prefix}/pl`);
-    editor.getEditorState().read(() =>
-      expect($composerCompletion()).toEqual({
-        kind: "/",
-        start: prefix.length,
-        end: prefix.length + "/pl".length,
-        query: "pl",
-      }),
-    );
-    restore("look @file:///project/typing");
-    editor.getEditorState().read(() => expect($composerCompletion()).toBeUndefined());
+    editor.restore(`${prefix}/pl`);
+    expect(composerCompletion(editor.state)).toEqual({
+      kind: "/",
+      start: prefix.length,
+      end: prefix.length + "/pl".length,
+      query: "pl",
+    });
+    editor.restore("look @file:///project/typing");
+    expect(composerCompletion(editor.state)).toBeUndefined();
   });
 
   it("removes a skill chip with the replaced range", () => {
-    const { editor, text, labels, restore } = composer();
-    restore("Please today");
-    editor.update(() => $insertComposerReference(skillReference, 7, 7), { discrete: true });
-    expect(text()).toBe(`Please [$review](${skillReference.path}) today`);
-    expect(labels()).toEqual(["/review"]);
-    editor.update(() => $replaceComposerText(0, text().length, "replacement"), { discrete: true });
-    expect(text()).toBe("replacement");
-    expect(labels()).toEqual([]);
+    const editor = composer();
+    editor.restore("Please today");
+    editor.update((tr) => insertComposerReference(tr, skillReference, 7, 7));
+    expect(editor.text()).toBe(`Please [$review](${skillReference.path}) today`);
+    expect(editor.labels()).toEqual(["/review"]);
+    editor.update((tr) => replaceComposerText(tr, 0, editor.text().length, "replacement"));
+    expect(editor.text()).toBe("replacement");
+    expect(editor.labels()).toEqual([]);
   });
 });

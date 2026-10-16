@@ -1,8 +1,3 @@
-/**
- * Find under typing as Chromium delivers it: composed text searches once the
- * composition ends, keys that finish a composition do not act, and closing the
- * bar hands the keyboard back to the page.
- */
 import "../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";

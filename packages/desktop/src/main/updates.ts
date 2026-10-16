@@ -59,7 +59,6 @@ export function registerUpdates({
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.allowDowngrade = false;
-  // Every failure, Squirrel's included, arrives once as an `error` event.
   autoUpdater.logger = { info: () => undefined, warn: logError, error: () => undefined };
   autoUpdater.on("error", (error: Error) => logError(error.message));
 

@@ -1,4 +1,3 @@
-/** One working tree, shared by every changes-tab variant. Totals match the reference screenshot: +737 −793. */
 export type FileStatus = "modified" | "added" | "deleted";
 
 export interface ChangedFile {
@@ -59,7 +58,6 @@ export function splitPath(path: string): { readonly dir: string; readonly base: 
     : { dir: path.slice(0, slash), base: path.slice(slash + 1) };
 }
 
-/** A tree of folders, one level deep: enough to mock grouping without a real trie. */
 export function byFolder(): readonly {
   readonly dir: string;
   readonly files: readonly ChangedFile[];

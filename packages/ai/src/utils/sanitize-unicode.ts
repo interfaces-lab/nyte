@@ -1,8 +1,5 @@
 /**
  * Removes unpaired Unicode surrogates, which break JSON serialization at several providers.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/sanitize-unicode.ts
- * Synced with pi 7ebf9087e.
  */
 /**
  * Removes unpaired Unicode surrogate characters from a string.

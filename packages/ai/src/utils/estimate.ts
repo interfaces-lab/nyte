@@ -1,8 +1,5 @@
 /**
  * Context size estimation. Uses the most recent applicable assistant usage block as the anchor and estimates only the messages after it, so the number tracks the provider's count instead of a chars-per-token guess over the whole history.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/estimate.ts
- * Synced with pi 7ebf9087e.
  */
 import type {
   Context,

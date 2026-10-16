@@ -1,10 +1,3 @@
-/**
- * A tool card as data: the heading's coloured words and the body under it.
- * This is the settled-card decision tree (edit patch, changes, unified diff
- * in output, collapsed read, inline or head/tail preview, delegation, local
- * shell) as a pure function, so the component only draws and the rules are
- * tested without a renderer.
- */
 import { pathToFiletype } from "@opentui/core";
 import type { ToolClass } from "@nyte-ai/sdk";
 import type { ShellJob } from "../model/state.ts";
@@ -33,13 +26,12 @@ import {
   taskStatus,
   toneStatus,
 } from "./tasks.ts";
-import type { Task } from "./tasks.ts";
+import type { Task, TaskStatus } from "./tasks.ts";
 import { delegateSubject, toolLabel, toolNoun, toolSubject } from "./tool-copy.ts";
 import { toolOutput, toolStatus } from "./view-helpers.ts";
 import type { ToolMessage, ToolStatus } from "./view-helpers.ts";
 import { displayWidth } from "./width.ts";
 
-/** The theme role a heading word takes. */
 export type Role =
   | "muted"
   | "running"
@@ -54,7 +46,6 @@ export type Role =
 export interface HeadingChunk {
   readonly text: string;
   readonly role: Role;
-  /** The chunk is a shell command, drawn with bash highlights once the grammar answers. */
   readonly code?: "bash";
 }
 
@@ -72,7 +63,6 @@ export type CardBody =
       readonly diff: OutputDiff;
       readonly after: string | undefined;
     }
-  /** A delegation card's one fixed row: the child's latest step. */
   | { readonly kind: "activity"; readonly text: string };
 
 export interface ToolCardModel {
@@ -90,7 +80,6 @@ function previewCut(toolClass: ToolClass | undefined): PreviewCut {
     : { kind: "head-tail", head: RESULT_PREVIEW_LINES, tail: RESULT_TAIL_LINES };
 }
 
-/** A single short line goes in the heading instead of a body. */
 function inlineToolPreview(text: string): string | undefined {
   const value = text.trim();
 
@@ -100,7 +89,6 @@ function inlineToolPreview(text: string): string | undefined {
   return value;
 }
 
-/** The collapsed body of a tool card, thought or report; the cut's label names the key that expands it. */
 export function toolOutputPreview(text: string, expanded: boolean, cut: PreviewCut): string {
   const trimmed = text.replace(/\n+$/u, "");
 
@@ -121,7 +109,6 @@ function tail(parts: readonly (string | undefined)[]): readonly HeadingChunk[] {
   return text === "" ? [] : [{ text: `  ${text}`, role: "dim" }];
 }
 
-/** The title, with the shell command it ends with split off so it can be highlighted as code. */
 function titleChunks(title: string, command: string | undefined): readonly HeadingChunk[] {
   if (command === undefined || command === "" || !title.endsWith(command))
     return [{ text: ` ${title}`, role: "foreground" }];
@@ -146,7 +133,6 @@ function shellCommand(toolClass: ToolClass): string | undefined {
   return toolClass.kind === "shell" ? toolSubject(toolClass) : undefined;
 }
 
-/** The call's verb and subject, or the subject and the tool's noun when no verb is true. */
 function partTitle(toolClass: ToolClass, status: ToolStatus): string {
   const subject = toolSubject(toolClass);
   const verb = toolLabel(toolClass, status.tense);
@@ -178,7 +164,6 @@ function diffBody(diff: OutputDiff, expanded: boolean, cut: PreviewCut): CardBod
   return { kind: "diff", before: panel(diff.before), diff, after: panel(diff.after) };
 }
 
-/** A settled shell call's clock: how long it took. */
 function partClock(message: ToolMessage): string | undefined {
   const { status } = message;
 
@@ -278,18 +263,35 @@ function settled(
   };
 }
 
-/**
- * The call that made the child is its card: its title, then the child's
- * latest step. Every other call on a child is one line naming it.
- */
+export function findChildTask(message: ToolMessage, tasks: readonly Task[]): Task | undefined {
+  const toolClass = message.state.class;
+
+  if (toolClass.kind !== "delegate") return undefined;
+
+  return tasks.find(
+    (candidate) =>
+      candidate.kind === "agent" &&
+      (toolClass.child === null
+        ? candidate.info.call === message.state.call
+        : candidate.id === toolClass.child),
+  );
+}
+
+export function agentStatus(message: ToolMessage, tasks: readonly Task[]): TaskStatus {
+  const task = findChildTask(message, tasks);
+
+  return task === undefined
+    ? toneStatus(toolStatus(message.state, message.status).tone)
+    : taskStatus(task);
+}
+
 function delegation(
+  message: ToolMessage,
   toolClass: DelegationClass,
   status: ToolStatus,
   tasks: readonly Task[],
 ): ToolCardModel {
-  const task = tasks.find(
-    (candidate) => candidate.kind === "agent" && candidate.id === toolClass.child,
-  );
+  const task = findChildTask(message, tasks);
   const word = status.word?.toLowerCase();
 
   if (toolClass.role !== "create" && toolClass.role !== "task") {
@@ -311,21 +313,24 @@ function delegation(
     };
   }
 
-  const mark = statusMark(task === undefined ? toneStatus(status.tone) : taskStatus(task));
+  const mark = statusMark(agentStatus(message, tasks));
   const config = task?.kind === "agent" ? taskConfiguration(task) : "";
   const rest = task === undefined ? word : config === "" ? undefined : config;
+  const activity = task === undefined ? "" : taskActivity(task);
 
   return {
     heading: [
       { text: `${mark.glyph} `, role: mark.tone },
-      { text: delegateSubject(toolClass), role: "foreground" },
+      {
+        text: task === undefined ? delegateSubject(toolClass) : taskLabel(task),
+        role: "foreground",
+      },
       ...(rest === undefined ? [] : [{ text: `  ${rest}`, role: "dim" } as const]),
     ],
-    body: { kind: "activity", text: task === undefined ? "" : taskActivity(task) },
+    body: activity === "" ? NONE : { kind: "activity", text: activity },
   };
 }
 
-/** The card for a tool call, from its part, the session's tasks and the global ctrl+o state. */
 export function toolCard(
   message: ToolMessage,
   tasks: readonly Task[],
@@ -334,7 +339,7 @@ export function toolCard(
   const status = toolStatus(message.state, message.status);
   const toolClass = message.state.class;
 
-  if (toolClass.kind === "delegate") return delegation(toolClass, status, tasks);
+  if (toolClass.kind === "delegate") return delegation(message, toolClass, status, tasks);
 
   switch (status.tone) {
     case "running":
@@ -399,7 +404,6 @@ function shellOutcome(job: ShellJob): string | undefined {
   }
 }
 
-/** The card for a local `!` command: `!`, or `!!` when its output is not sent to the model. */
 export function shellCard(job: ShellJob, now: number, expanded: boolean): ToolCardModel {
   const outcome = shellOutcome(job);
   const running = job.state.kind === "running";

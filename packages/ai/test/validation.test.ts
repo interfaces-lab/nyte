@@ -1,7 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/validation.test.ts
- * Synced with pi 7ebf9087e.
- */
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { Type } from "typebox";
@@ -172,7 +168,7 @@ describe("validateToolArguments", () => {
       null,
     );
     // The CSP test above selects TypeBox's process-wide interpreted fallback, so exercise the generated validator explicitly.
-    // oxlint-disable-next-line no-implied-eval -- exercises TypeBox's generated validator, as pi's test does
+    // oxlint-disable-next-line no-implied-eval -- exercises TypeBox's generated validator
     const generatedCheck = new Function(Compile(tool.parameters).Code())() as (
       value: unknown,
     ) => boolean;

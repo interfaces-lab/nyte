@@ -1,14 +1,3 @@
-/**
- * The textarea. Owns the characters; reports them. On every content or
- * cursor change it dispatches `draft-changed { text, cursor, row }` (row
- * from the editor view's wrapped lines), and attaches a ComposerPort for the
- * runner's `set/insert/replaceRange/clear/focus/cursor`. Markers are virtual
- * extmarks styled `attachment`, so each moves, selects, deletes and undoes as
- * one unit. Paste events dispatch `paste`; nothing here classifies, uploads
- * or sends. The placeholder comes from `screen()`; it never decides it.
- * When the terminal loses focus the textarea blurs, so the frame dims and
- * the caret hides; focus coming back restores it.
- */
 import { decodePasteBytes, RenderableEvents, SyntaxStyle } from "@opentui/core";
 import type { KeyEvent, PasteEvent, TextareaRenderable } from "@opentui/core";
 import { onBlur, onFocus, useRenderer, useTerminalDimensions } from "@opentui/solid";
@@ -40,11 +29,6 @@ function cursorRow(area: TextareaRenderable): Draft["row"] {
   return row >= last ? "last" : "middle";
 }
 
-/**
- * What the textarea holds now, as the fact the model mirrors. The keymap
- * calls this before every decision too, so a key never acts on text an IME
- * committed after the last content notification.
- */
 export function readDraft(area: TextareaRenderable): DraftChanged {
   return {
     kind: "draft-changed",
@@ -64,11 +48,6 @@ function offsetIn(area: TextareaRenderable, text: string, index: number): number
   );
 }
 
-/**
- * Makes the textarea's marker extmarks match `spans`: one virtual mark per
- * span whose text is still the marker, nothing else. Marks OpenTUI restored
- * on undo are read back rather than duplicated.
- */
 export function syncMarkers(
   area: TextareaRenderable,
   styleId: number,
@@ -95,11 +74,6 @@ export function syncMarkers(
   for (const mark of stale) area.extmarks.delete(mark.id);
 }
 
-/**
- * The terminal delivers a decomposed character as its base and then its
- * combining mark. OpenTUI's edit buffer keeps a mark inserted on its own but
- * does not display it, so the base is reinserted together with the mark.
- */
 function mergeCombiningMark(area: TextareaRenderable, key: KeyEvent): void {
   if (key.ctrl || key.meta || key.option || key.super || !/^\p{M}$/u.test(key.sequence)) return;
 
@@ -117,7 +91,6 @@ function mergeCombiningMark(area: TextareaRenderable, key: KeyEvent): void {
   area.insertText(base + key.sequence);
 }
 
-/** A terminal paste as the `paste` intent's source: bytes for binary and images, else the text. */
 export function pasteMessage(event: PasteEvent): {
   readonly kind: "terminal";
   readonly text: string;

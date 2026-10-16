@@ -1,11 +1,6 @@
-/**
- * A tool call. The decision tree (edit patch, changes, unified diff in
- * output, collapsed read, inline vs head/tail preview, delegation, shell) is
- * `toolCard(message, tasks, expanded)` in lib/tool-card.ts, a pure function
- * returning a card model; this component only draws that model.
- */
 import type { JSX } from "@opentui/solid";
 import { createMemo } from "solid-js";
+import type { Task } from "../../lib/tasks.ts";
 import { toolCard } from "../../lib/tool-card.ts";
 import type { ToolMessage } from "../../lib/view-helpers.ts";
 import { CardView } from "./card.tsx";
@@ -16,7 +11,11 @@ export function ToolCard(props: {
   readonly expanded: boolean;
 }): JSX.Element {
   const scope = useTranscript();
-  const card = createMemo(() => toolCard(props.message, scope.tasks(), props.expanded));
+
+  const tasks = (): readonly Task[] =>
+    props.message.state.class.kind === "delegate" ? scope.tasks() : [];
+
+  const card = createMemo(() => toolCard(props.message, tasks(), props.expanded));
 
   return <CardView id={`tool:${props.message.id}`} card={card()} />;
 }

@@ -1,4 +1,5 @@
 import type { Models } from "@nyte-ai/ai";
+import { asId } from "@nyte-ai/schema";
 import { estimateMessageTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
 import type {
   BlobId,
@@ -6,6 +7,7 @@ import type {
   Configuration,
   HeadName,
   Json,
+  MessageSource,
   ModelContext,
   ModelRef,
   ObjectId,
@@ -41,21 +43,18 @@ import type { CommitRecord, PartRecord } from "./records.ts";
 import { headRef, partRef } from "./refs.ts";
 import {
   START,
-  STALE,
-  attempt,
-  commit,
   load,
-  objectOf,
-  pathOf,
+  toCommitObjectId,
+  walkCommitPath,
   put,
-  putCommit,
   requireSession,
-  tipOf,
+  readPositionCommit,
+  readRefExpectation,
   withFold,
 } from "./session-state.ts";
+import type { Tip } from "./session-state.ts";
 import type { ToolSource } from "./tool-runner.ts";
 
-/** Returns one commit `buildContext` projects, with its part, its place in part creation order and its run's model. */
 interface Step {
   readonly commit: CommitId;
   readonly record: CommitRecord;
@@ -64,7 +63,6 @@ interface Step {
   readonly model: ModelRef | null;
 }
 
-/** Returns the assistant message being assembled from one response's text, thinking and tool parts. */
 interface Group {
   readonly commit: CommitId;
   readonly run: RunId | null;
@@ -94,16 +92,14 @@ const ABANDONED =
 
 const projections = new WeakMap<object, CommitId>();
 
-/** Returns the commit a built message projects from, or null for a message a transform made. */
+const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
+
+const imageCache = new WeakMap<Kernel, Map<BlobId, string>>();
+
 export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
 }
 
-/**
- * Builds the request body one pass sends on a head in the baseline's hook order:
- * `buildContext`, `transform_context`, the run's tools (narrowed to the configuration's agent's
- * `tools`), the transcript, then `transform_transcript`, all on the given runtime.
- */
 export async function requestBody(
   kernel: Kernel,
   models: Models,
@@ -152,7 +148,6 @@ export async function requestBody(
   };
 }
 
-/** Returns an estimate of a request body's tokens: its messages, the leading system message included, and each tool's name, description and JSON Schema. */
 export function tokenEstimate(transcript: Transcript): number {
   const messages = transcript.messages.reduce(
     (sum, message) => sum + estimateMessageTokens(message),
@@ -169,7 +164,6 @@ export function tokenEstimate(transcript: Transcript): number {
   );
 }
 
-/** Returns a part settled onto the head after `parent` in one commit: its settled record's target and the `part settled` and head `commit` updates, the head expecting `expect`. */
 export async function settling(
   kernel: Kernel,
   input: {
@@ -188,7 +182,7 @@ export async function settling(
   readonly updates: RefUpdate[];
 }> {
   const { session, head, run, parent, record, body, at } = input;
-  const landed = await putCommit(kernel, { parent, at, run, body });
+  const landed = asId<"commit">(await put(kernel, "commit", { parent, at, run, body }, at));
   const status = { kind: "settled", commit: landed, endedAt: at } as const;
   const target = await put(kernel, "part", { ...record, status }, at);
   const part = record.id;
@@ -204,7 +198,7 @@ export async function settling(
       },
       {
         name: headRef(session, head),
-        target: objectOf(landed),
+        target: toCommitObjectId(landed),
         expect: input.expect,
         event: { head, kind: "commit", id: landed, parent, run, body },
       },
@@ -212,24 +206,74 @@ export async function settling(
   };
 }
 
-/** Fails live parts with `part failed` in one set, read and written again when one moved meanwhile. */
-export async function failParts(
+export async function stoppedParts(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
+  tip: Tip,
   parts: readonly PartId[],
   failure: Failure,
-): Promise<void> {
-  await attempt(`Failing parts ${parts.join(", ")}`, async () => {
-    const updates = await failedParts(kernel, session, head, parts, failure);
+): Promise<readonly RefUpdate[]> {
+  const at = Date.now();
+  const committed: RefUpdate[] = [];
+  const failing: PartId[] = [];
+  let parent = tip.id;
 
-    return updates.length === 0 || (await commit(kernel, updates)).kind === "set"
-      ? undefined
-      : STALE;
-  });
+  for (const part of new Set(parts)) {
+    const name = partRef(session, part);
+    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+
+    if (found === null || found.record.status.kind !== "live") continue;
+
+    const checked =
+      found.record.partKind === tool.kind ? await check(tool.state, found.record.state) : null;
+
+    if (checked?.kind !== "valid" || checked.value.phase === "settled") {
+      failing.push(part);
+      continue;
+    }
+
+    const { call, args } = checked.value;
+
+    const state = {
+      call,
+      name: checked.value.name,
+      args,
+      class: checked.value.class,
+      phase: "settled",
+      outcome: { kind: "stopped" },
+      changes: null,
+    } satisfies ToolPartState;
+
+    const version = found.record.version + 1;
+    const record = { ...found.record, state, version };
+
+    const landed = await settling(kernel, {
+      session,
+      head,
+      run: found.record.run,
+      parent,
+      expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
+      record,
+      body: { kind: "part", part },
+      at,
+    });
+
+    committed.push(
+      {
+        name,
+        target: await put(kernel, "part", record, at),
+        expect: found.ref.revision,
+        event: { head, kind: "part", part, change: "updated", state, version },
+      },
+      ...landed.updates,
+    );
+    parent = landed.landed;
+  }
+
+  return [...committed, ...(await failedParts(kernel, session, head, failing, failure))];
 }
 
-/** Returns the updates that fail live parts with `part failed`, each expecting the revision it read; a part no longer live is left out. */
 export async function failedParts(
   kernel: Kernel,
   session: SessionId,
@@ -261,7 +305,6 @@ export async function failedParts(
   return updates.flat();
 }
 
-/** Assembles what one request on a head sends, before `transform_context`: the system prompt and the head's committed path as model messages, with `run`'s settled parts not yet on it. */
 async function buildContext(
   kernel: Kernel,
   models: Models,
@@ -280,7 +323,12 @@ async function buildContext(
   const model = models.getModel(configuration.model.provider, configuration.model.id);
 
   return {
-    system: systemOf(found.record.prompt, input.agent, resources, runtime.registries.prompt.list()),
+    system: buildSystemPrompt(
+      found.record.prompt,
+      input.agent,
+      resources,
+      runtime.registries.prompt.list(),
+    ),
     messages: await conversation(kernel, models, {
       session,
       head: input.head,
@@ -290,8 +338,7 @@ async function buildContext(
   };
 }
 
-/** Returns the system prompt: a session or agent `replace` whole, else a scanned SYSTEM.md, else the sections rendered in order; then APPEND_SYSTEM.md. */
-function systemOf(
+function buildSystemPrompt(
   own: PromptOverride | null,
   agent: PromptOverride | null,
   resources: Resources,
@@ -303,7 +350,7 @@ function systemOf(
 
   const body =
     resources.prompt.system ??
-    [...sections, ...layerOf("session", own), ...layerOf("agent", agent)]
+    [...sections, ...collectPromptLayer("session", own), ...collectPromptLayer("agent", agent)]
       .map((section) => ({ id: section.id, text: section.text, order: section.order ?? 100 }))
       .sort(
         (left, right) =>
@@ -321,11 +368,10 @@ function systemOf(
     .join("\n\n");
 }
 
-function layerOf(id: string, override: PromptOverride | null): readonly PromptSection[] {
+function collectPromptLayer(id: string, override: PromptOverride | null): readonly PromptSection[] {
   return override?.kind === "layer" ? [{ id, text: override.text, order: override.order }] : [];
 }
 
-/** Returns a head's committed path as model messages, compactions applied, each remembered with the commit it projects from. */
 async function conversation(
   kernel: Kernel,
   models: Models,
@@ -337,7 +383,10 @@ async function conversation(
   },
 ): Promise<Message[]> {
   const steps = await withFold(kernel, input.session, (state): readonly Step[] => {
-    const path = pathOf(state.commits, tipOf(state.heads.get(input.head)?.info.tip ?? START));
+    const path = walkCommitPath(
+      state.commits,
+      readPositionCommit(state.heads.get(input.head)?.info.tip ?? START),
+    );
     const on = new Set(path);
 
     const created = new Map([...state.parts.keys()].map((id, index) => [id, index]));
@@ -405,7 +454,7 @@ async function conversation(
     const content = [...current.content, ...ordered.flatMap((call) => call.content)];
 
     if (content.length > 0) {
-      const identity = identityOf(models, current.model);
+      const identity = resolveModelIdentity(models, current.model);
 
       push(
         {
@@ -438,7 +487,7 @@ async function conversation(
   for (const step of steps) {
     for (const compacted of anchors.get(step.commit) ?? []) {
       await flush();
-      const summary = await summaryOf(compacted);
+      const summary = await readCompactionSummary(compacted);
 
       if (summary !== null)
         push({ role: "user", content: summary, timestamp: compacted.record.at }, compacted.commit);
@@ -453,7 +502,12 @@ async function conversation(
       push(
         {
           role: "user",
-          content: await userContent(kernel, input.session, body.content, input.images),
+          content: await userContent(
+            kernel,
+            input.session,
+            reportContent(body.source, body.content),
+            input.images,
+          ),
           timestamp: step.record.at,
         },
         step.commit,
@@ -474,7 +528,7 @@ async function conversation(
     if (part.partKind === "text" || part.partKind === "thinking" || part.partKind === "tool") {
       const blocks = await assistantBlocks(part, step.record.run);
       const call = blocks.call;
-      const response = call === null ? null : responseOf(call.call, step.record.run);
+      const response = call === null ? null : parseResponseIndex(call.call, step.record.run);
 
       if (
         group !== null &&
@@ -514,7 +568,7 @@ async function conversation(
     }
 
     await flush();
-    const note = await noteOf(kernel, part);
+    const note = await renderPartFallback(kernel, part);
 
     if (note !== null)
       push({ role: "user", content: note, timestamp: step.record.at }, step.commit);
@@ -525,7 +579,6 @@ async function conversation(
   return messages;
 }
 
-/** Returns the assistant content a text, thinking or settled tool part contributes, and the settled call for a tool part. */
 async function assistantBlocks(
   part: PartRecord,
   run: RunId | null,
@@ -557,7 +610,10 @@ async function assistantBlocks(
 
     return checked.kind === "invalid"
       ? { content: [], call: null }
-      : { content: thoughtsOf(checked.value.markdown, checked.value.signature), call: null };
+      : {
+          content: reconstructThinkingContent(checked.value.markdown, checked.value.signature),
+          call: null,
+        };
   }
 
   const checked = await check(tool.state, part.state);
@@ -579,8 +635,7 @@ async function assistantBlocks(
   };
 }
 
-/** Returns a thinking part's markdown split back into its merged thoughts by the lengths its signature recorded. */
-function thoughtsOf(markdown: string, signature: Json | null): ThinkingContent[] {
+function reconstructThinkingContent(markdown: string, signature: Json | null): ThinkingContent[] {
   if (
     !Array.isArray(signature) ||
     !signature.every(
@@ -610,8 +665,7 @@ function thoughtsOf(markdown: string, signature: Json | null): ThinkingContent[]
   });
 }
 
-/** Returns the user message a compaction commit leaves, or null for a material-only compaction. */
-async function summaryOf(step: Step): Promise<string | null> {
+async function readCompactionSummary(step: Step): Promise<string | null> {
   if (step.part === null) return null;
   const checked = await check(compaction.state, step.part.state);
 
@@ -620,8 +674,7 @@ async function summaryOf(step: Step): Promise<string | null> {
   return `${SUMMARISED}\n\n${checked.value.summary}`;
 }
 
-/** Returns the user message any other part leaves; null for a kind this host does not know. */
-async function noteOf(kernel: Kernel, part: PartRecord): Promise<string | null> {
+async function renderPartFallback(kernel: Kernel, part: PartRecord): Promise<string | null> {
   if (part.partKind === branchSummary.kind) {
     const checked = await check(branchSummary.state, part.state);
 
@@ -633,7 +686,6 @@ async function noteOf(kernel: Kernel, part: PartRecord): Promise<string | null> 
   return definition === undefined ? null : definition.fallback(part.state, { id: part.id });
 }
 
-/** Returns a settled call's outcome as the tool result the model reads. */
 async function toolResult(
   kernel: Kernel,
   id: string,
@@ -691,6 +743,15 @@ async function toolResult(
   }
 }
 
+function reportContent(source: MessageSource, content: UserContent): UserContent {
+  if (source.kind !== "child") return content;
+  const title = `Child ${source.session} ${source.end}:`;
+
+  if (typeof content !== "string") return [{ kind: "text", text: title }, ...content];
+
+  return content === "" ? title : `${title}\n\n${content}`;
+}
+
 async function userContent(
   kernel: Kernel,
   session: SessionId,
@@ -713,20 +774,31 @@ async function userContent(
   );
 }
 
-/** Returns a file as image content when the model takes images and it is one, else as a text reference naming it, its size and mime. */
 async function fileContent(
   kernel: Kernel,
   file: { readonly blob: BlobId; readonly mime: string; readonly name?: string },
   images: boolean,
 ): Promise<TextContent | ImageContent> {
   const name = file.name ?? file.blob;
+  const image = images && file.mime.startsWith("image/");
+  const cache = imageCache.get(kernel) ?? new Map<BlobId, string>();
+  imageCache.set(kernel, cache);
+  const cached = image ? cache.get(file.blob) : undefined;
+
+  if (cached !== undefined) {
+    cache.delete(file.blob);
+    cache.set(file.blob, cached);
+
+    return { type: "image", data: cached, mimeType: file.mime };
+  }
+
   const reader = await kernel.store.objects.blob(file.blob);
 
   if (reader === null)
     return { type: "text", text: `[File ${name}, ${file.mime}: no longer stored]` };
 
   try {
-    if (images && file.mime.startsWith("image/")) {
+    if (image) {
       const chunks: Uint8Array[] = [];
 
       for await (const chunk of reader.chunks()) chunks.push(chunk);
@@ -738,7 +810,17 @@ async function fileContent(
         offset += chunk.byteLength;
       }
 
-      return { type: "image", data: bytes.toBase64(), mimeType: file.mime };
+      const data = bytes.toBase64();
+      cache.set(file.blob, data);
+      let size = [...cache.values()].reduce((total, kept) => total + kept.length, 0);
+
+      for (const [blob, kept] of cache) {
+        if (size <= IMAGE_CACHE_CHARS) break;
+        cache.delete(blob);
+        size -= kept.length;
+      }
+
+      return { type: "image", data, mimeType: file.mime };
     }
 
     return {
@@ -750,7 +832,6 @@ async function fileContent(
   }
 }
 
-/** Returns a referenced path read through the session's environment now, or a text reference when it is not text or cannot be read. */
 async function referenceContent(
   kernel: Kernel,
   session: SessionId,
@@ -766,14 +847,12 @@ async function referenceContent(
     : { type: "text", text: `[Reference: ${path}]` };
 }
 
-/** Returns the `${requests}` of a call id's `${run}:${requests}:` namespace, or null. */
-function responseOf(call: string, run: RunId | null): string | null {
+function parseResponseIndex(call: string, run: RunId | null): string | null {
   if (run === null || !call.startsWith(`${run}:`)) return null;
 
   return /^(\d+):/.exec(call.slice(run.length + 1))?.[1] ?? null;
 }
 
-/** Returns the id the provider gave a call: its call id without the turn's namespace. */
 function providerCallId(call: string, run: RunId | null): string {
   if (run === null || !call.startsWith(`${run}:`)) return call;
   const rest = call.slice(run.length + 1);
@@ -782,11 +861,7 @@ function providerCallId(call: string, run: RunId | null): string {
   return counted === null ? rest : rest.slice(counted[0].length);
 }
 
-/** Returns the provider identity history records a run's model under: a fast sibling as its base. */
-function identityOf(
-  models: Models,
-  ref: ModelRef | null,
-): { readonly api: string; readonly provider: string; readonly model: string } {
+function resolveModelIdentity(models: Models, ref: ModelRef | null) {
   const model = ref === null ? undefined : models.getModel(ref.provider, ref.id);
 
   if (model !== undefined)

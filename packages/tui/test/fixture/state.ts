@@ -1,8 +1,3 @@
-/**
- * A complete `State` for effect tests: `initialState` with the ready phase,
- * one followed session (or none), a catalog, and a workspace folder. Effects
- * read it through `read()`; the reducer never runs here.
- */
 import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../../src/lib/settings-schema.ts";

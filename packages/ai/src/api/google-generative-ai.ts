@@ -1,10 +1,5 @@
 /**
  * Google Generative AI adapter.
- *
- * Based on:
- * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-generative-ai.ts
- * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-shared.ts
- * Synced with pi 16235fd93.
  */
 import {
   type Content,
@@ -67,7 +62,6 @@ export interface GoogleOptions extends StreamOptions {
   };
 }
 
-// Counter for generating unique tool call IDs
 let toolCallCounter = 0;
 
 export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
@@ -113,7 +107,6 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       const nextParams = await options?.onPayload?.(params, model);
 
       if (nextParams !== undefined) {
-        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         params = nextParams as GenerateContentParameters;
       }
 
@@ -224,7 +217,6 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
                 currentBlock = null;
               }
 
-              // Generate unique ID if not provided or if it's a duplicate
               const providedId = part.functionCall.id;
 
               const needsNewId =

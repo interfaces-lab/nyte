@@ -2,9 +2,6 @@
  * Lazy loaders for the built-in OAuth flows. Provider definitions advertise
  * OAuth through `lazyOAuth` + one of these, so the Node-only flow modules
  * (callback servers, PKCE) are imported only when a login or refresh runs.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/load.ts
- * Synced with pi 7ebf9087e.
  */
 import type { OAuthAuth } from "../types.ts";
 

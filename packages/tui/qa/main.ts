@@ -32,10 +32,8 @@ const inputBudget = { p95Ms: 1000 / 60, maxMs: 50 };
 
 const active = new Set<Terminal>();
 
-/** Scenario teardowns, newest last; a stopped run still removes its fixtures. */
 const deferred = new Set<() => Promise<void>>();
 
-/** Visible playback only: how long a finished step stays on screen before the next one. */
 const SHOW_STEP_PAUSE_MS = 900;
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -145,7 +143,6 @@ async function main() {
     let caption = "";
     let failure: string | undefined;
     const startedAt = performance.now();
-    // Visible playback owns the terminal; its caption reports progress instead.
 
     const progress = (line: string) => {
       if (!show) process.stderr.write(`${line}\n`);
@@ -217,7 +214,6 @@ async function main() {
         },
       });
     } catch (error) {
-      // Bun can render a wrapped error's stack without its message; keep both.
       failure =
         error instanceof Error
           ? error.stack?.includes(error.message)

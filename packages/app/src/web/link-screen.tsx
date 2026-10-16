@@ -1,10 +1,3 @@
-/**
- * `/link`: approve a host that has no browser of its own. The host printed a
- * page, a code and a key fingerprint; the owner signs in here, enters the
- * code, and approves only when the fingerprint shown matches the terminal.
- * Nothing happens on page load or from the address bar: every step is a
- * POST under the signed-in session.
- */
 import { ClerkFailed, ClerkLoading, ClerkProvider, SignIn, useAuth, useClerk } from "@clerk/react";
 import { BrokerError, createBrokerClient, normalizeUserCode } from "@nyte-ai/connect";
 import type { LinkTransactionLookup } from "@nyte-ai/connect";
@@ -12,7 +5,8 @@ import type { AccountConfig } from "@nyte-ai/connect/account-config";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -24,29 +18,27 @@ import { accountProblem } from "./account-copy.ts";
 import { WebPage } from "./web-page.tsx";
 
 const styles = create({
-  form: { display: "flex", flexDirection: "column", gap: 16 },
+  form: { display: "flex", flexDirection: "column", gap: space.s4 },
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    gap: space.s1_5,
   },
-  label: { fontWeight: 500 },
-  error: { margin: 0, fontSize: type.fontSm, lineHeight: type.leadingSm },
+  label: { fontWeight: type.weightMedium },
+  error: { margin: 0 },
   card: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-    padding: 16,
+    gap: space.s3,
+    padding: space.s4,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  row: { display: "flex", flexDirection: "column", gap: 2 },
-  key: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
+  row: { display: "flex", flexDirection: "column", gap: space.s0_5 },
+  key: { color: role.contentSecondary },
   value: { overflowWrap: "anywhere" },
   mono: { fontFamily: type.fontMono, fontSize: type.fontCode, userSelect: "text" },
-  actions: { display: "flex", gap: 8, justifyContent: "flex-end" },
+  actions: { display: "flex", gap: space.s2, justifyContent: "flex-end" },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
 });
 
@@ -154,7 +146,7 @@ function LinkFlow({ config }: { readonly config: AccountConfig }): ReactElement 
               void lookUp();
             }}
           >
-            <label {...props(styles.field)}>
+            <label {...props(text.base, styles.field)}>
               <span {...props(styles.label)}>Code</span>
               <Input
                 autoComplete="off"
@@ -169,7 +161,7 @@ function LinkFlow({ config }: { readonly config: AccountConfig }): ReactElement 
               />
             </label>
             {error !== undefined && (
-              <p id={errorId} role="alert" {...props(intent.danger, styles.error)}>
+              <p id={errorId} role="alert" {...props(text.sm, intent.danger, styles.error)}>
                 {error}
               </p>
             )}
@@ -190,20 +182,20 @@ function LinkFlow({ config }: { readonly config: AccountConfig }): ReactElement 
         >
           <div {...props(styles.card)}>
             <div {...props(styles.row)}>
-              <span {...props(styles.key)}>Account</span>
+              <span {...props(text.sm, styles.key)}>Account</span>
               <span {...props(styles.value)}>{email}</span>
             </div>
             <div {...props(styles.row)}>
-              <span {...props(styles.key)}>Host calls itself</span>
+              <span {...props(text.sm, styles.key)}>Host calls itself</span>
               <span {...props(styles.value)}>{lookup.hostName}</span>
             </div>
             <div {...props(styles.row)}>
-              <span {...props(styles.key)}>Fingerprint</span>
+              <span {...props(text.sm, styles.key)}>Fingerprint</span>
               <span {...props(styles.value, styles.mono)}>{lookup.fingerprint}</span>
             </div>
           </div>
           {error !== undefined && (
-            <p role="alert" {...props(intent.danger, styles.error)}>
+            <p role="alert" {...props(text.sm, intent.danger, styles.error)}>
               {error}
             </p>
           )}

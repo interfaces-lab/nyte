@@ -30,7 +30,6 @@ const echo: ToolDefinition<{ readonly text: string }> = {
 
 const echoing: Plugin<"core"> = { id: "echoing", contribute: { tools: [echo] } };
 
-/** A modal question with no `onAction`: its first act answers it. */
 const ask = definePart({
   kind: "test/ask",
   state: standard(Type.Object({ prompt: Type.String() })),
@@ -197,15 +196,7 @@ describe("composeHost", () => {
         .pluginsFor(session.id)
         .plugins()
         .map((plugin) => plugin.id),
-    ).toEqual([
-      "system-prompt",
-      "environment",
-      "resources",
-      "delegation",
-      "parts",
-      "chat-only",
-      "extra",
-    ]);
+    ).toEqual(["system-prompt", "environment", "resources", "delegation", "chat-only", "extra"]);
     expect(host.kernel.activation(session.id)).toEqual({ kind: "active" });
   });
 
@@ -248,7 +239,7 @@ describe("composeHost", () => {
     await views.return?.();
 
     const seeded = [
-      ...["system-prompt", "environment", "resources", "delegation", "parts"].map((id) => ({
+      ...["system-prompt", "environment", "resources", "delegation"].map((id) => ({
         id,
         source: "builtin",
         path: null,
@@ -345,7 +336,7 @@ describe("composeHost", () => {
     const answer = view.messages.at(-1);
 
     assert(answer !== undefined && isPart(answer, text));
-    expect(answer).toMatchObject({ id: `${run}:2:0`, state: { markdown: "Done after all." } });
+    expect(answer).toMatchObject({ id: `${run}:a2:0`, state: { markdown: "Done after all." } });
     expect(view.execution).toMatchObject({ kind: "idle", lastRun: { id: run } });
   });
 
@@ -560,7 +551,7 @@ describe("composeHost", () => {
     expect(workspace).not.toBeNull();
     expect(second.kernel.defaultWorkspace).toBe(workspace);
     expect(await second.workspaces.list()).toMatchObject([
-      { id: workspace, addedBy: "local", projectResources: true },
+      { id: workspace, addedBy: "local", projectResources: null },
     ]);
   });
 });

@@ -1,8 +1,3 @@
-/**
- * From an editor read to the message the head admits. Text stays text, file
- * chips stay as their `@` spelling, and images are uploaded as blobs to the
- * selected workspace at send time.
- */
 import type { CommandInfo, Delivery, SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import { workspaceFiles } from "../queries.ts";
@@ -12,14 +7,12 @@ import type { MessageFile } from "./message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
 
-/** A message before its images are uploaded: its text, images read in the composer, and files the host already holds. */
 export interface ComposerContent {
   readonly text: string;
   readonly images: readonly ImageContent[];
   readonly files: readonly MessageFile[];
 }
 
-/** A draft's text, its images read in the composer, and the files the message already carries. */
 export function composerMessageContent(
   text: string,
   attachments: readonly { readonly content: ImageContent }[],
@@ -28,12 +21,10 @@ export function composerMessageContent(
   return { text, images: attachments.map((attachment) => attachment.content), files };
 }
 
-/** Whether a draft carries nothing to send. */
 export function composerContentEmpty(content: ComposerContent): boolean {
   return content.text.trim() === "" && content.images.length === 0 && content.files.length === 0;
 }
 
-/** Uploads a draft's images to the selected workspace and returns the content the head admits. */
 export async function uploadComposerContent(content: ComposerContent): Promise<UserContent> {
   if (content.images.length === 0 && content.files.length === 0) return content.text;
   const text = content.text === "" ? [] : [{ kind: "text" as const, text: content.text }];
@@ -91,7 +82,6 @@ export function composerSendPlan(input: {
   };
 }
 
-/** Sends a planned message: images uploaded, then admitted with the delivery Enter chose. */
 export async function sendComposerMessage(
   sessionId: SessionId,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,

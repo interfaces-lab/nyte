@@ -1,4 +1,4 @@
-import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -8,7 +8,7 @@ export const paletteLegendStyles = create({
     alignItems: "center",
     minHeight: 48,
     flexShrink: 0,
-    paddingInline: 12,
+    paddingInline: space.s3,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: role.borderSecondaryTranslucent,
@@ -16,22 +16,19 @@ export const paletteLegendStyles = create({
   legend: {
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: space.s4,
   },
   item: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    letterSpacing: type.letterBase,
     whiteSpace: "nowrap",
   },
   keys: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 2,
+    gap: space.s0_5,
   },
   keycap: {
     boxSizing: "border-box",
@@ -40,15 +37,13 @@ export const paletteLegendStyles = create({
     justifyContent: "center",
     minWidth: glyph.lg,
     height: glyph.lg,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-    fontWeight: 400,
-    lineHeight: type.leadingXs,
+    fontWeight: type.weightRegular,
   },
   keycapIcon: {
     width: glyph.lg,

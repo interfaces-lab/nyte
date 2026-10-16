@@ -1,15 +1,9 @@
-/**
- * What a landed user message shows: its text with the blocks the prompt
- * carried folded back into tags (skills, attached files, mentions, `!`
- * shell runs, images). Pure; the transcript's user block draws the result.
- */
 import { fileURLToPath } from "node:url";
 import type { UserContent } from "@nyte-ai/sdk";
 import { extractSkillInvocations } from "./slash.ts";
 
 export interface PresentedFile {
   readonly path: string;
-  /** The attached body, when the file travelled inside the message. */
   readonly text?: string;
 }
 
@@ -24,7 +18,6 @@ export interface PresentedShell {
   readonly exitCode: number;
 }
 
-/** An attached file as a message carries it. */
 export type AttachedFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
 
 export interface UserPresentation {

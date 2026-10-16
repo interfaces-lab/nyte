@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
 import type { FileDocument } from "@nyte-ai/sdk";
-import { button } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
@@ -34,6 +34,7 @@ import {
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { createFileDocument } from "./file-document.ts";
@@ -53,7 +54,6 @@ interface FileEditorProps {
   readonly viewKey: WorkbenchViewKey;
   readonly file: FileTab;
   readonly active: boolean;
-  /** The Auto save preference, already narrowed to whether this tab may write. */
   readonly autoSave: boolean;
 }
 
@@ -107,19 +107,17 @@ const styles = create({
     minHeight: 0,
   },
   message: {
-    padding: 20,
+    padding: space.s5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   status: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     flexShrink: 0,
     minHeight: button.heightMd,
-    paddingInline: 10,
+    paddingInline: space.s2_5,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: role.borderSecondaryTranslucent,
@@ -192,7 +190,7 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
       inert={!input.active}
       {...props(styles.root, !input.active && styles.hidden)}
     >
-      <div role={document.isError ? "alert" : "status"} {...props(styles.message)}>
+      <div role={document.isError ? "alert" : "status"} {...props(text.sm, styles.message)}>
         {document.isError
           ? `The file could not be opened. ${document.error.message}`
           : document.data?.kind === "binary"

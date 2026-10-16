@@ -13,18 +13,8 @@ import { SdkError } from "@nyte-ai/core";
 import type { Receipt, Run, SendReceipt } from "@nyte-ai/core";
 import type { Rows } from "./rows.ts";
 
-/** Returns how a send settled: how its run ended, withdrawn, or an edit's move failure. */
 export type SendOutcome = Awaited<ReturnType<SendReceipt["settled"]>>;
 
-/**
- * Returns a receipt over the `receipt.*` rows: `status` and `stop` answer
- * once, `settled` waits on the host and is retried across link loss, and its
- * signal aborts the request only, never the work.
- *
- * `outcome` reads the JSON outcome the wire carries as the receipt's own.
- * `session` is null for the host's session-less batch receipts (§40d).
- * Binds synchronously.
- */
 export function receiptHandle<O>(
   rows: Rows,
   session: SessionId | null,
@@ -55,7 +45,6 @@ export function receiptHandle<O>(
   };
 }
 
-/** Returns a send's receipt: a receipt settling with a {@link SendOutcome}, its message id (the receipt id), and `landed` over `receipt.landed`, retried across link loss. Binds synchronously. */
 export function sendReceipt(
   rows: Rows,
   session: SessionId,
@@ -69,7 +58,6 @@ export function sendReceipt(
   };
 }
 
-/** Returns a run over the `run.*` rows; `settled` is retried across link loss. Binds synchronously. */
 export function runHandle(rows: Rows, session: SessionId, id: RunId): Run {
   return {
     id,
@@ -78,7 +66,6 @@ export function runHandle(rows: Rows, session: SessionId, id: RunId): Run {
   };
 }
 
-/** Reads a send's outcome: `withdrawn`, a `RunEnd`, or a move failure. */
 export function sendOutcome(value: Json): SendOutcome {
   if (typeof value === "object" && value !== null && "kind" in value && value.kind === "withdrawn")
     return { kind: "withdrawn" };
@@ -90,17 +77,14 @@ export function sendOutcome(value: Json): SendOutcome {
   return moved !== null && moved.kind !== "moved" ? moved : unreadable("send");
 }
 
-/** Reads a move's outcome. */
 export function moveOutcome(value: Json): MoveOutcome {
   return parsed(MoveOutcomeSchema, value) ?? unreadable("move");
 }
 
-/** Reads a file batch's outcome. */
 export function batchOutcome(value: Json): BatchOutcome {
   return parsed(BatchOutcomeSchema, value) ?? unreadable("batch");
 }
 
-/** Returns a value as a schema reads it synchronously, or null when it fails. */
 export function parsed<T>(schema: Schema<T>, value: unknown): T | null {
   const result = schema["~standard"].validate(value);
 

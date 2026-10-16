@@ -1,18 +1,14 @@
-/**
- * Executes effects. One handler per `Effect["kind"]` in an exhaustive record,
- * so a new effect without a handler fails the build. Every handler's failure
- * is caught here, written to the crash log and answered with an
- * `effect-failed` outcome: no effect can fail silently or kill a loop.
- */
 import type { Effect } from "../model/effect.ts";
 import type { Msg } from "../model/msg.ts";
 import type { State } from "../model/state.ts";
-import { login, loginAnswer, logout } from "./auth.ts";
+import { login, loginAnswer, logout, mcpAction, mcpLogin, selectAccount } from "./auth.ts";
 import { boot } from "./boot.ts";
 import type { BootOptions } from "./boot.ts";
 import {
   answer,
   applySetting,
+  checkTrust,
+  setTrust,
   changeDirectory,
   compact,
   configure,
@@ -35,6 +31,7 @@ import {
   openEditor,
   openExternal,
   readClipboard,
+  readDialogClipboard,
   readPreview,
   resolveMention,
   resolvePaste,
@@ -52,11 +49,8 @@ import { submit } from "./submit.ts";
 
 export interface Runner {
   run(effect: Effect): void;
-  /** Starts the boot sequence as a tracked task; its failures reach the log like any effect's. */
   boot(options: BootOptions): void;
-  /** Resolves when the `exit` effect ran, with the code it carried. */
   readonly exited: Promise<{ readonly code: number }>;
-  /** Resolves when every started effect settled; tests await it instead of sleeping. */
   settled(): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -64,12 +58,10 @@ export interface Runner {
 export interface RunnerContext {
   readonly ports: Ports;
   readonly dispatch: (msg: Msg) => void;
-  /** The latest state, for re-checks right before an SDK call. Read-only. */
   readonly read: () => State;
   readonly signal: AbortSignal;
 }
 
-/** What a handler receives: the runner's context plus the state it keeps between effects. */
 export interface HandlerContext extends RunnerContext {
   readonly scope: Scope;
 }
@@ -118,7 +110,6 @@ export function createRunner(context: RunnerContext): Runner {
   };
 }
 
-/** Correlates `effect.kind` with its handler without a cast (one generic hop). */
 export function invoke<K extends Effect["kind"]>(
   handlers: Handlers,
   effect: Extract<Effect, { readonly kind: K }>,
@@ -153,6 +144,7 @@ export const HANDLERS: Handlers = {
   load,
   "resolve-paste": resolvePaste,
   "read-clipboard": readClipboard,
+  "read-dialog-clipboard": readDialogClipboard,
   copy,
   "open-editor": openEditor,
   "open-external": openExternal,
@@ -163,13 +155,18 @@ export const HANDLERS: Handlers = {
   "self-update": selfUpdate,
   login,
   logout,
+  "select-account": selectAccount,
   notify,
   exit,
   "refresh-workspace": refreshWorkspaceFacts,
   "run-command": runCommand,
   "stop-task": stopTask,
   "apply-setting": applySetting,
+  "check-trust": checkTrust,
+  "set-trust": setTrust,
   "login-answer": loginAnswer,
+  "mcp-action": mcpAction,
+  "mcp-login": mcpLogin,
   "list-directory": listDirectory,
   "resolve-mention": resolveMention,
   "read-preview": readPreview,

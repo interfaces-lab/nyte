@@ -4,6 +4,7 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type {
   ActOutcome,
   Configuration,
@@ -38,7 +39,7 @@ type ChatScreenProps = {
   onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
   getSubmissionKey: () => string | undefined;
   onStop: () => void;
-  onReply: (part: PartId, choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onReply: (part: PartId, answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
   onReport: (part: PartId, message: string) => void;
   onChooseHead: (head: HeadName) => void;
   delegateNames: ReadonlyMap<SessionId, string>;

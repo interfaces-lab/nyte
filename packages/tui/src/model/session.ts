@@ -1,14 +1,10 @@
-/**
- * Facts in, transitions out. Retracting a stopped prompt, landing a
- * handback, re-asking a question and cancelling an edit whose message landed
- * are pure comparisons between the previous facts and the new ones.
- */
 import type { MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
 import { shortId } from "../lib/format.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "./completion.ts";
 import { addPart } from "./draft.ts";
 import type { Fact } from "./msg.ts";
-import { currentQuestion } from "./question.ts";
+import { currentQuestion, sameQuestion } from "./question.ts";
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { Step } from "./reduce.ts";
 import { followedShells } from "./state.ts";
 import type { Handback, ShellJob, State } from "./state.ts";
@@ -21,7 +17,10 @@ export function facts(state: State, msg: Fact, now: number): Step {
     case "phase":
       return stay(withFacts(state, { phase: msg.phase }));
     case "session-opened":
-      return stay(opened(state, msg));
+      return {
+        state: opened(state, msg),
+        effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
+      };
     case "view":
       return viewArrived(state, msg.session, msg.view, now);
     case "watch-ended": {
@@ -75,6 +74,8 @@ export function facts(state: State, msg: Fact, now: number): Step {
       return shellReported(state, msg.job);
     case "terminal":
       return stay(withFacts(state, { terminal: msg.terminal }));
+    case "remote":
+      return stay(withFacts(state, { remote: msg.remote }));
     case "draft-changed":
       return draftChanged(state, msg, now);
     case "scrolled":
@@ -104,7 +105,7 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
   });
 
   return withLocal(next, {
-    question: { dismissed: null, highlighted: 0, query: "", answering: null },
+    question: { ...next.local.question, dismissed: null, highlighted: 0 },
     transcript: {
       ...state.local.transcript,
       following: true,
@@ -136,7 +137,6 @@ function viewArrived(state: State, id: SessionId, view: SessionView, now: number
   return andThen(step, (current) => landHandback(current, now));
 }
 
-/** A different question took the panel: its highlight, filter and typed answer start fresh. */
 function followedHead(
   state: State,
 ): { readonly id: SessionId; readonly view: SessionView | null } | null {
@@ -147,13 +147,58 @@ function followedHead(
 
 function questionMoved(before: State, after: State): State {
   const previous = currentQuestion(followedHead(before), before.facts.tasks, before.local.question);
+
   const current = currentQuestion(followedHead(after), after.facts.tasks, after.local.question);
 
-  if (previous?.part === current?.part) return after;
+  const local = after.local.question;
 
-  return withLocal(after, {
-    question: { ...after.local.question, highlighted: 0, query: "", answering: null },
-  });
+  let drafts = local.drafts;
+
+  const session = after.facts.session;
+
+  const observed = [
+    ...(session?.view === null || session === null
+      ? []
+      : [{ session: session.id, view: session.view }]),
+    ...after.facts.tasks.flatMap((task) =>
+      task.kind === "agent" && task.view !== undefined
+        ? [{ session: task.id, view: task.view }]
+        : [],
+    ),
+  ];
+
+  for (const owner of observed) {
+    const held = drafts.get(owner.session);
+
+    if (held === undefined) continue;
+
+    const open = new Set(openQuestions(owner.view).map((question) => question.part));
+
+    const kept = new Map(
+      [...held].filter(([part, draft]) => open.has(part) || draft.phase === "submitting"),
+    );
+
+    if (kept.size === held.size) continue;
+
+    const pruned = new Map(drafts);
+
+    if (kept.size === 0) pruned.delete(owner.session);
+    else pruned.set(owner.session, kept);
+    drafts = pruned;
+  }
+
+  const changed = !sameQuestion(previous, current);
+
+  return !changed && drafts === local.drafts
+    ? after
+    : withLocal(after, {
+        question: {
+          ...local,
+          drafts,
+          dismissed: changed ? null : local.dismissed,
+          highlighted: changed ? 0 : local.highlighted,
+        },
+      });
 }
 
 function firstView(state: State, now: number): Step {
@@ -194,7 +239,6 @@ function firstView(state: State, now: number): Step {
   return andThen(setDraft(restored, saved), deliverShells);
 }
 
-/** The last turn's lone landed prompt, which a stop before any answer hands back. */
 export function unansweredRequest(
   view: SessionView,
 ): { readonly message: MessageId; readonly commit: string } | null {
@@ -209,14 +253,6 @@ export function unansweredRequest(
     : null;
 }
 
-/**
- * On a busy → idle transition of the followed head:
- * - failed → notice "Error: <message>"
- * - stopped, composer empty, not editing → retract: the last turn's lone landed user message
- *   (unansweredRequest) moves back: effect move(position at it) whose outcome hands its
- *   content back with "Stopped. Message is back in the composer."
- * - any end → effect refresh-workspace (git status)
- */
 export function runEnded(
   before: SessionView | null,
   after: SessionView,
@@ -265,7 +301,6 @@ export function runEnded(
   };
 }
 
-/** Editing a queued message that has since landed: the edit ends, the text stays. */
 function editLanded(state: State, now: number): Step {
   const { editing } = state.local;
   const view = state.facts.session?.view;
@@ -289,7 +324,6 @@ function editLanded(state: State, now: number): Step {
   );
 }
 
-/** Queues a handback for its session; the followed session lands it as soon as it can. */
 export function stageHandback(
   state: State,
   session: SessionId,
@@ -313,13 +347,6 @@ function shownLanded(view: SessionView, message: MessageId): boolean {
   );
 }
 
-/**
- * Lands the head handback of the followed session when: the draft is empty,
- * no dialog is open, nothing is being edited, and `unlessLanded` is not drawn
- * as landed in the view. Emits `composer set` and drops it from the list.
- * Idempotent: the mirror then holds the handback's text, so running it again
- * on the result lands nothing.
- */
 export function landHandback(next: State, now: number): Step {
   const session = next.facts.session;
   const view = session?.view;
@@ -362,12 +389,6 @@ function shellReported(state: State, job: ShellJob): Step {
   return deliverShells(withFacts(state, { shells }));
 }
 
-/**
- * Finished `!commands` of the followed chat that send their output with the
- * next prompt: each marker goes at the front of its chat's draft once
- * (`delivered`). With a dialog open it waits for the next finish or for the
- * chat to be followed again.
- */
 export function deliverShells(state: State): Step {
   if (state.local.dialogs.length > 0) return stay(state);
 
@@ -421,10 +442,6 @@ function draftChanged(
   return andThen(lookup, (current) => landHandback(current, now));
 }
 
-/**
- * A completion whose query it has not asked about yet asks the runner: a
- * `/cd` listing, or what an `@` query spelled as a path names on disk.
- */
 export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
@@ -448,7 +465,6 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
   return stay(next);
 }
 
-/** The scrollbox's stickiness mirrored: at the bottom the window follows the tail, away from it the first row is held. */
 function scrolled(state: State, atBottom: boolean): State {
   const { transcript } = state.local;
 

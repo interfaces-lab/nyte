@@ -1,9 +1,3 @@
-/**
- * The bridge a browser installs: where the paired host listens, and a host
- * namespace for what a browser can do itself. Native capabilities such as
- * terminals, browser surfaces, usage history and GitHub are absent. The
- * selected folder is this browser's own, a workspace registered on the host.
- */
 import type { Connection as SdkConnection, HostId } from "@nyte-ai/sdk";
 import type { HostEvent, NyteBridge, OpenWorkspaceOutcome, SelectedWorkspace } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
@@ -12,23 +6,19 @@ import { connectHost } from "../sdk.tsx";
 import type { HostEndpoint } from "../sdk.tsx";
 import { requestFolderPath } from "./add-folder.tsx";
 
-/** An address and the token the host issued for it. */
 export interface Connection {
   readonly url: string;
   readonly token: string;
 }
 
 export interface ConnectOptions {
-  /** Ends the connect: a cancelled dialog, a timeout. Requests after it are not tied to it. */
   readonly signal?: AbortSignal;
   readonly relay?: true;
-  /** The host this browser pinned at this address; another host answering is refused `stale`. */
   readonly expect?: HostId;
 }
 
 export interface WebBridge {
   readonly bridge: NyteBridge;
-  /** Connect with `sdk.connect` and route every read to this host; resolves with the host's id. */
   connect(connection: Connection, options?: ConnectOptions): Promise<HostId>;
 }
 
@@ -51,7 +41,6 @@ function browserPlatform(): NodeJS.Platform {
   return "linux";
 }
 
-/** The page a link names when it is a web page; nothing else opens from the web app. */
 export function webPageUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
@@ -92,8 +81,13 @@ export function createWebBridge(): WebBridge {
         return { kind: "failed", message: "This folder is not available on the server." };
       selected = { id: added.workspace, path, name: workspaceName(seen) };
       emit({ kind: "workspace_opened", workspace: selected });
+      const { trusted } = await host.workspace(added.workspace).info();
 
-      return { kind: "opened", workspace: selected, needsTrust: false };
+      return {
+        kind: "opened",
+        workspace: selected,
+        needsTrust: trusted === null && seen.projectSources.length > 0,
+      };
     } catch (cause) {
       return { kind: "failed", message: errorMessage(cause) };
     }

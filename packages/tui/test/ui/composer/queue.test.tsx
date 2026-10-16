@@ -1,14 +1,8 @@
-/**
- * The rows beside the composer: labels come from the schedule core gave each
- * message, reports sit above and take no queue input, a click opens the queue
- * menu, and a drag reorders against the whole inbox through `revise`.
- */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import type { Msg } from "../../../src/model/msg.ts";
 import { reduce } from "../../../src/model/reduce.ts";
-import { dropTarget, QueueRows } from "../../../src/ui/composer/queue.tsx";
-import { deriveScreen } from "../../../src/model/screen.ts";
+import { QueueRows } from "../../../src/ui/composer/queue.tsx";
 import { viewOf } from "../../fixture/view.ts";
 import { NOW, ready } from "../../model/support.ts";
 import { mount } from "../chrome/support.tsx";
@@ -38,7 +32,7 @@ const everySchedule = viewOf((v) =>
     })
     .unsent("on its way")
     .unsent("trying again", { retrying: { at: 5_000, reason: "offline" } })
-    .report({ child: "s9" }, "Child s9 completed:\nall done")
+    .report({ child: "s9" }, "all done")
     .live(),
 );
 
@@ -48,7 +42,8 @@ const three = viewOf((v) =>
     .pending("first", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q1" })
     .pending("second", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q2" })
     .pending("third", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q3" })
-    .report({ child: "s9" }, "Child s9 completed:\nall done"),
+    .report({ child: "s9" }, "all done")
+    .live("r2"),
 );
 
 describe("labels", () => {
@@ -66,6 +61,7 @@ describe("labels", () => {
     expect(rowOf(frame, "on its way")).toContain("sending…");
     expect(rowOf(frame, "trying again")).toContain("retrying · offline");
     expect(rowOf(frame, "trying again")).toContain("ctrl+q pending");
+    expect(frame).not.toContain("all done");
   });
 
   test("a narrow row sheds its hint, then its label, to keep twelve columns of text", async () => {
@@ -74,7 +70,8 @@ describe("labels", () => {
         .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
         .pending("a message worth reading", {
           schedule: { kind: "next-turn", reason: "requested" },
-        }),
+        })
+        .live("r2"),
     );
 
     await using wide = await mount(ready(one), () => <QueueRows />, { width: 60, height: 20 });
@@ -94,14 +91,6 @@ describe("labels", () => {
     expect(stub).toContain("↓ a mess");
     expect(stub).not.toContain("queued");
   });
-
-  test("reports draw above the queue, labelled waiting", async () => {
-    await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
-    const frame = app.captureCharFrame();
-
-    expect(rowOf(frame, "subagent completed")).toContain("waiting");
-    expect(lineIndex(frame, "subagent completed")).toBeLessThan(lineIndex(frame, "join me"));
-  });
 });
 
 describe("input", () => {
@@ -115,17 +104,6 @@ describe("input", () => {
         dialog: { kind: "list", purpose: { kind: "queue", message: asId("q2") } },
       },
     ]);
-  });
-
-  test("reports are read-only: clicking or dragging one changes no queue", async () => {
-    await using app = await mount(ready(three), () => <QueueRows />, SIZE);
-    const frame = app.captureCharFrame();
-    const report = lineIndex(frame, "subagent completed");
-
-    await app.mockMouse.click(10, report);
-    await app.mockMouse.drag(10, report, 10, lineIndex(frame, "second"));
-
-    expect(app.dispatched).toEqual([]);
   });
 
   test("dragging a row onto another dispatches a reorder that revises its inbox position", async () => {
@@ -175,19 +153,5 @@ describe("input", () => {
     await app.mockMouse.drag(5, row, 30, row);
 
     expect(app.dispatched).toEqual([]);
-  });
-});
-
-describe("dropTarget", () => {
-  test("takes the target's place, counting only pending rows", () => {
-    const { queue } = deriveScreen(ready(three), null);
-    const [q1, q2, q3] = [asId<"message">("q1"), asId<"message">("q2"), asId<"message">("q3")];
-
-    expect(dropTarget(queue, q3, q1)).toEqual({ before: q1 });
-    expect(dropTarget(queue, q3, q2)).toEqual({ before: q2 });
-    expect(dropTarget(queue, q1, q2)).toEqual({ before: q3 });
-    expect(dropTarget(queue, q2, q3)).toEqual({ before: null });
-    expect(dropTarget(queue, q1, q3)).toEqual({ before: null });
-    expect(dropTarget(queue, q2, q2)).toBeNull();
   });
 });

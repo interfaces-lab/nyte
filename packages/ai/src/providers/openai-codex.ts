@@ -1,4 +1,5 @@
 import { openAICodexResponsesApi } from "../api/openai-codex-responses.lazy.ts";
+import { fetchOpenAICodexAccountLimits } from "../api/deferred.ts";
 import { lazyOAuth } from "../auth/helpers.ts";
 import { loadOpenAICodexOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider } from "../models.ts";
@@ -18,6 +19,14 @@ export function openaiCodexProvider(): Provider<"openai-codex-responses"> {
         load: loadOpenAICodexOAuth,
       }),
     },
+    fetchAccountLimits: ({ auth, signal }) =>
+      fetchOpenAICodexAccountLimits(
+        {
+          provider: "openai-codex",
+          baseUrl: auth.baseUrl ?? "https://chatgpt.com/backend-api",
+        },
+        { apiKey: auth.apiKey, headers: auth.headers, signal },
+      ),
     api: { "openai-codex-responses": openAICodexResponsesApi() },
   });
 }

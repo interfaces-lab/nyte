@@ -1,8 +1,3 @@
-/**
- * The notice line, and the failure line ("Something failed in <origin>: <message> · <log path>").
- * A failed session watch (`screen().watch`) shows "Session updates stopped · <failure>" with a
- * retry control; clicking it dispatches `retry-watch`.
- */
 import type { JSX } from "@opentui/solid";
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";

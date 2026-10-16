@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { decodeSessionRecord, decodeWorkspaceRecord } from "@nyte-ai/core";
+import {
+  decodeObject,
+  decodeSessionRecord,
+  decodeWorkspaceRecord,
+  parseSessionRef,
+} from "@nyte-ai/core";
 import type { ModelRef, SessionId, Usage } from "@nyte-ai/schema";
 import type {
   UsageEntry,
@@ -12,8 +17,8 @@ import type {
   UsageTotals,
   UsageWindow,
 } from "./usage-types.ts";
-import { usageTokens } from "./usage-summary.ts";
-import { decodeEvent, decodeObject, numberOf, sessionOf, textOf } from "./store-rows.ts";
+import { cacheSavings, usageTokens } from "./usage-summary.ts";
+import { decodeEvent, numberOf, textOf } from "./store-rows.ts";
 
 export interface UsageRecord {
   readonly at: number;
@@ -42,7 +47,7 @@ const EMPTY_TOTALS: UsageTotals = {
   reasoning: 0,
   tokens: 0,
   cost: 0,
-  turns: 0,
+  cacheSavings: 0,
 };
 
 function add(totals: UsageTotals, usage: Usage): UsageTotals {
@@ -54,7 +59,7 @@ function add(totals: UsageTotals, usage: Usage): UsageTotals {
     reasoning: totals.reasoning + (usage.reasoning ?? 0),
     tokens: totals.tokens + usageTokens(usage),
     cost: totals.cost + usage.cost.total,
-    turns: totals.turns + 1,
+    cacheSavings: totals.cacheSavings + cacheSavings(usage),
   };
 }
 
@@ -68,6 +73,9 @@ function reported(usage: Usage): boolean {
     usage.cost.total > 0
   );
 }
+
+export const USAGE_EVENTS =
+  "SELECT session, seq, at, event FROM log WHERE json_extract(event, '$.kind') = 'request' OR (json_extract(event, '$.kind') = 'run' AND json_extract(event, '$.change') = 'started') ORDER BY session, seq";
 
 export function localDay(at: number): string {
   const date = new Date(at);
@@ -241,7 +249,7 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
       const body = textOf(row.body);
 
       if (name === null || body === null || name.split("/").length !== 2) continue;
-      const id = sessionOf(name);
+      const id = parseSessionRef(name);
 
       if (id === null) continue;
       const session = decodeSessionRecord(decodeObject(body));
@@ -257,10 +265,8 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
 
     const models = new Map<SessionId, Map<string | null, ModelRef>>();
 
-    for (const row of database
-      .prepare("SELECT session, seq, at, event FROM log ORDER BY session, seq")
-      .iterate()) {
-      const session = sessionOf(`sessions/${textOf(row.session) ?? ""}`);
+    for (const row of database.prepare(USAGE_EVENTS).iterate()) {
+      const session = parseSessionRef(`sessions/${textOf(row.session) ?? ""}`);
 
       if (session === null) throw new Error("Cannot read usage session.");
       const event = decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? "");

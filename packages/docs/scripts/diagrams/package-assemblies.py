@@ -1,9 +1,3 @@
-"""Generate transparent technical assemblies for the seven package sections.
-
-Paired forms, three-layer stacks, and branching connections came from patterns
-in a one-time random alphanumeric prompt. The prompt is not part of the artwork.
-Run from any directory to regenerate the SVGs in `public/diagrams`.
-"""
 from pathlib import Path
 from _canvas import ACCENT
 

@@ -161,6 +161,7 @@ describe("codec", () => {
       identity: asId<"environment-identity">("ei"),
       availability: { kind: "available" },
       projectResources: true,
+      trusted: true,
       projectSources: [],
       addedBy: asId<"principal">("local"),
       sessions: 0,

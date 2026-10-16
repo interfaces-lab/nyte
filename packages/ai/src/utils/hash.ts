@@ -1,8 +1,5 @@
 /**
  * Fast deterministic string hash used to shorten long identifiers.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/hash.ts
- * Synced with pi 7ebf9087e.
  */
 /** Fast deterministic hash to shorten long strings */
 export function shortHash(str: string): string {

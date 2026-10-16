@@ -30,7 +30,6 @@ const gate = (seen: string[]): Plugin<"core"> => ({
   },
 });
 
-/** A plugin whose second activation waits on `release`. */
 function slow(release: Promise<void>): Plugin<"core"> & { readonly activations: () => number } {
   let activations = 0;
 
@@ -45,7 +44,6 @@ function slow(release: Promise<void>): Plugin<"core"> & { readonly activations: 
   };
 }
 
-/** A plugin recording, per activation, the `after_request` and `run_ended` it observes. */
 function observer(seen: string[]): Plugin<"core"> {
   let activations = 0;
 

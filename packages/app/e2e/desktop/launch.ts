@@ -1,10 +1,3 @@
-/**
- * Launches the e2e desktop build (`packages/desktop/out-e2e`, whose main
- * answers chats from the offline `e2e` catalog) over a prepared home: a
- * fresh Electron profile under a temp root, a sanitized environment, and
- * `HOME` set to the given directory. Nothing reaches a provider or this
- * machine's `~/.nyte`.
- */
 import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -45,9 +38,7 @@ const KEPT_VARIABLES = new Set([
 ]);
 
 export interface LaunchOptions {
-  /** The home whose `.nyte` the desktop opens; the launcher owns nothing inside it. */
   readonly home: string;
-  /** Where the Electron profile and app path are made; the unpackaged desktop serves `<parent>/app/dist`. */
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
 }
@@ -56,12 +47,10 @@ export interface LaunchedDesktop {
   readonly application: ElectronApplication;
   readonly page: Page;
   readonly home: string;
-  /** Everything the main process wrote to stdout and stderr since launch, interleaved in arrival order. */
   readonly output: readonly string[];
   close(): Promise<void>;
 }
 
-/** Throws with the command to run when a build the desktop project needs is missing. */
 export async function assertBuilt(): Promise<void> {
   const required = [
     [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
@@ -76,7 +65,6 @@ export async function assertBuilt(): Promise<void> {
   }
 }
 
-/** The electron the desktop package pins, not the app package's: `path.txt` names the binary inside `dist`, as electron's own `index.js` resolves it. */
 async function electronExecutable(): Promise<string> {
   const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
   const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
@@ -84,7 +72,6 @@ async function electronExecutable(): Promise<string> {
   return join(electronRoot, "dist", executable.trim());
 }
 
-/** The launched process sees only what a GUI launch needs, plus `HOME` at the test's home. */
 function launchEnvironment(home: string): Record<string, string> {
   const kept = Object.entries(process.env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
@@ -93,7 +80,6 @@ function launchEnvironment(home: string): Record<string, string> {
   return { ...Object.fromEntries(kept), HOME: home, USERPROFILE: home };
 }
 
-/** Starts the desktop over `home` and waits until its shell shows. */
 export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDesktop> {
   await assertBuilt();
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));

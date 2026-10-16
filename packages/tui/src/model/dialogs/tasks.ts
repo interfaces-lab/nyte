@@ -1,8 +1,3 @@
-/**
- * The task inspector: a child's transcript (reusing `deriveTranscript` over
- * the child's view from `facts.tasks`) or a job's output tail. Its scroll
- * and follow state are its own, never the main transcript's.
- */
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 
 export interface InspectorDialog {
@@ -10,10 +5,6 @@ export interface InspectorDialog {
   readonly id: DialogId;
   readonly task: string;
   readonly following: boolean;
-  /**
-   * The last scroll the user asked for; `seq` grows with every request so the
-   * inspector's own scrollbox applies each one once. Null until the first.
-   */
   readonly scroll: { readonly seq: number; readonly by: InspectorScroll } | null;
 }
 
@@ -31,7 +22,6 @@ function scrolled(
   };
 }
 
-/** Esc back · ↑/↓ PgUp/PgDn scroll · Ctrl+O follow · Ctrl+End latest · Ctrl+↑/↓ previous/next task · Ctrl+X stop-task. */
 export function reduceInspector(
   dialog: InspectorDialog,
   command: DialogCommand,

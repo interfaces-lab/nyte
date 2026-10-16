@@ -1,22 +1,9 @@
-/**
- * Tree-sitter grammars beyond the four OpenTUI bundles (typescript,
- * javascript, markdown, zig), so a read, a diff, or a shell command in any
- * common language draws in color.
- *
- * Registration is cheap: the worker fetches a grammar and its queries the
- * first time that filetype is drawn and caches them under the OpenTUI data
- * path. A run with no network keeps working and stays plain.
- *
- * Based on opencode v2's parser table:
- * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/parsers-config.ts
- */
 import { addDefaultParsers } from "@opentui/core";
 import type { FiletypeParserOptions } from "@opentui/core";
 
 const NVIM_QUERIES =
   "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries";
 
-/** nvim-treesitter names its query directory after the grammar, not the filetype. */
 function nvim(grammar: string): string[] {
   return [`${NVIM_QUERIES}/${grammar}/highlights.scm`];
 }
@@ -31,7 +18,6 @@ const PARSERS: readonly FiletypeParserOptions[] = [
   {
     filetype: "python",
     wasm: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
-    // nvim-treesitter's query uses `except` nodes this parser rejects.
     queries: {
       highlights: [
         "https://github.com/tree-sitter/tree-sitter-python/raw/refs/heads/master/queries/highlights.scm",
@@ -80,7 +66,6 @@ const PARSERS: readonly FiletypeParserOptions[] = [
   {
     filetype: "swift",
     wasm: "https://github.com/alex-pinkus/tree-sitter-swift/releases/download/0.7.1/tree-sitter-swift.wasm",
-    // nvim-treesitter's query needs `#lua-match?`, which web-tree-sitter lacks.
     queries: {
       highlights: [
         "https://raw.githubusercontent.com/alex-pinkus/tree-sitter-swift/main/queries/highlights.scm",
@@ -230,7 +215,6 @@ const PARSERS: readonly FiletypeParserOptions[] = [
 
 let registered = false;
 
-/** Teach OpenTUI the extra grammars. Safe to call more than once. */
 export function registerSyntaxParsers(): void {
   if (registered) return;
   registered = true;

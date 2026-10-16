@@ -18,6 +18,22 @@ const LOADING: ModelDialog = {
 
 const READY = withModels(LOADING, modelList(CATALOG));
 
+test("cached model selection stays visible before credential availability is known", async () => {
+  const catalog = {
+    ...CATALOG,
+    providers: CATALOG.providers.map((provider) => ({
+      ...provider,
+      credential: "unknown" as const,
+    })),
+  };
+  await using app = await renderDialog(withModels(LOADING, modelList(catalog)));
+  const frame = app.frame();
+
+  expect(frame).toContain("❯ Model");
+  expect(frame).toContain("100k context");
+  expect(frame).not.toContain("No models available");
+});
+
 test("rows show the name, the effort and the fast field at widths 40 and 100", async () => {
   await using wide = await renderDialog(READY, { width: 100 });
   const frame = wide.frame();

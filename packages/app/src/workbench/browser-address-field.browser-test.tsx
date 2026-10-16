@@ -1,8 +1,3 @@
-/**
- * The address field under typing as Chromium delivers it: composed text is not
- * filled in until the composition ends, and an accepted completion opens the
- * visited page rather than its text read afresh.
- */
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useState } from "react";
@@ -49,7 +44,6 @@ function Harness(): ReactElement {
 
 const value = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
 
-/** Sets the text with the caret at its end and fires the input event Chromium would. */
 function input(field: HTMLInputElement, text: string, isComposing: boolean): void {
   value?.set?.call(field, text);
   field.setSelectionRange(text.length, text.length);

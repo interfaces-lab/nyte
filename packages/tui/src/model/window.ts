@@ -1,28 +1,12 @@
-/**
- * Bounded mounting without heights. The transcript mounts a tail-first
- * window measured in row weight (a turn costs 1 plus 1 per expanded block),
- * never in estimated terminal rows. Yoga lays out what is mounted; rows
- * outside the window are not in the tree at all, and `viewportCulling` skips
- * drawing mounted rows that are off-screen.
- *
- * The window is anchored by row key, so a note inserted earlier, or a turn
- * removed, never resets the reader's place.
- */
 import type { Row, RowKey } from "./transcript.ts";
 
 export const WINDOW = { tail: 40, step: 60 } as const;
 
-/**
- * `tail` follows the end; `from` keeps the first mounted row stable while
- * reading history. `index` is where `key` was when the anchor was taken, the
- * fallback when that row has since vanished.
- */
 export type WindowStart =
   | { readonly kind: "tail" }
   | { readonly kind: "from"; readonly key: RowKey; readonly index: number };
 
 export interface MountWindow {
-  /** Index of the first mounted row. Rows before it are summarised as "↑ N earlier". */
   readonly start: number;
   readonly hidden: number;
 }
@@ -55,7 +39,6 @@ export function mountWindow(
   return { start: first, hidden: first };
 }
 
-/** "Reveal earlier": move the start back by WINDOW.step weight. The Transcript keeps the viewport still. */
 export function revealEarlier(
   rows: readonly Row[],
   weight: (row: Row) => number,
@@ -67,7 +50,6 @@ export function revealEarlier(
   return row === undefined ? { kind: "tail" } : { kind: "from", key: row.key, index: start };
 }
 
-/** The anchor that keeps the current first row mounted while the reader is away from the end. */
 export function anchorAt(rows: readonly Row[], current: MountWindow): WindowStart {
   const row = rows[current.start];
 

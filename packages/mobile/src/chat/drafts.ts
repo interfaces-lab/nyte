@@ -6,7 +6,6 @@ import { useHost } from "../connection/host-context.tsx";
 
 const drafts = createMMKV({ id: "nyte.drafts" });
 
-/** The proven host and principal a draft, receipt or start belongs to. */
 export function useChatScope(): string {
   return useHost().scope;
 }

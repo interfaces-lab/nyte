@@ -26,7 +26,6 @@ app.setAsDefaultProtocolClient = () => false;
 
 app.on("window-all-closed", () => undefined);
 
-/** The secrets key the test runner sealed `account.json` with; every read is counted. */
 let keyReads = 0;
 
 const secrets = {
@@ -39,7 +38,6 @@ const secrets = {
 
 const saved = join(directory, "profile", "account.json");
 
-/** Counts how often the saved token is opened. */
 class CountingStore extends AccountStore {
   opens = 0;
 

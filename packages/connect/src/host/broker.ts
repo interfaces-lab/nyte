@@ -1,11 +1,3 @@
-/**
- * The desktop's broker client. Every call carries a request proof signed by
- * the machine key; only `link` also carries a Clerk session JWT, sent once and
- * never kept. Answers are read up to the contract's size limit and timeout,
- * redirects are refused, and every body is checked against its schema before
- * it is returned. The relay socket's URL and first-frame proof come from here
- * too, so the broker origin is decided in one place.
- */
 import { Value } from "typebox/value";
 import type { Static, TSchema } from "typebox";
 import {
@@ -52,7 +44,6 @@ function id(value: string): string {
   return value;
 }
 
-/** The `jti` of a proof this process just signed. */
 function proofId(proof: string): string {
   const [, payload] = proof.split(".");
   const claims: unknown = JSON.parse(Buffer.from(payload ?? "", "base64url").toString("utf8"));
@@ -62,7 +53,6 @@ function proofId(proof: string): string {
   return claims.jti;
 }
 
-/** The body as text, refused once it passes the limit. */
 async function limitedText(response: Response): Promise<string> {
   const declared = Number(response.headers.get("content-length") ?? "0");
 

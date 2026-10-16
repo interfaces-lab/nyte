@@ -22,7 +22,6 @@ import { createLink, createRows } from "./rows.ts";
 import type { Rows } from "./rows.ts";
 import { workspaceHandle } from "./workspace.ts";
 
-/** Describes what a client is bound to once `connect` has authenticated: the host that answered, the principal it acts as, the credential to reconnect with, the journal its sends go through, and the entries that journal held at connect, resent in order. */
 export type ClientContext = {
   readonly hostId: HostId;
   readonly principal: PrincipalId;
@@ -39,12 +38,6 @@ type Bound = {
 
 const MAIN = asId<"head">("main");
 
-/**
- * Returns a connection over a transport: the handle tree, each handle bound synchronously with no I/O,
- * sends through the journal's retry loop (the journaled entries resent first, in order), watches
- * resumed across link loss and folded on the client. `close()` closes the link as `client`: every
- * request and stream ends, and a send still retrying rejects `unavailable` and keeps its journal row.
- */
 export function createClient(transport: Transport, context: ClientContext): Connection {
   const link = createLink();
   const rows = createRows(transport, link);
@@ -83,12 +76,26 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     blob: (id) => rows.bytes("connection.blob", { id }),
     models: {
       list: () => rows.call("models.list", {}),
+      accounts: (provider) => rows.call("models.accounts", { provider }),
+      async selectAccount(provider, account) {
+        await rows.call("models.selectAccount", { provider, account });
+      },
+      usage: () => rows.call("models.usage", {}),
       async refresh(provider) {
         await rows.call("models.refresh", { provider });
       },
       setDefault: (ref) => rows.call("models.setDefault", { ref }),
       verify: (provider) => rows.call("models.verify", { provider }),
-      login: (input) => loginHandle(rows, input),
+      login: (input) =>
+        loginHandle(
+          rows,
+          async () => {
+            await rows.call("models.login", input);
+
+            return input.provider;
+          },
+          input.provider,
+        ),
       async logout(provider) {
         await rows.call("models.logout", { provider });
       },
@@ -115,7 +122,6 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   };
 }
 
-/** Returns a handle on a session: its main head, plus heads, runs, receipts, parts and the `session.*` rows. Binds synchronously. */
 function sessionHandle(bound: Bound, session: SessionId): Session {
   const { rows } = bound;
 
@@ -150,11 +156,6 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
   };
 }
 
-/**
- * Returns a handle on a head over the `head.*` rows, bound synchronously. `send` mints the receipt id
- * (or takes `options.id`) and journals the send, a `replace` included, as its own row; `view` and
- * `watch` merge this client's unsent sends, and `move` mints its wire-only id (§40o).
- */
 function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
   const { rows, journal } = bound;
 
@@ -206,8 +207,14 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
   };
 }
 
-/** Returns a login attempt: nothing happens until `steps()` is iterated, which starts the attempt with `models.login` and streams `login.steps`; dropping the iterator ends the attempt on the host. */
-function loginHandle(rows: Rows, input: Parameters<Connection["models"]["login"]>[0]): Login {
+/**
+ * A login streamed over `login.steps`: `begin` starts it on the host and
+ * answers the key its steps and answers go by; `known` is that key when the
+ * caller knows it before starting.
+ */
+export function loginHandle(rows: Rows, begin: () => Promise<string>, known: string | null): Login {
+  let started: Promise<string> | null = null;
+
   return {
     steps: () =>
       closable<OperationOutput<"login.steps">>(() => {
@@ -217,12 +224,10 @@ function loginHandle(rows: Rows, input: Parameters<Connection["models"]["login"]
         return {
           async pull() {
             if (steps === null) {
-              await rows.call("models.login", input);
+              const provider = await (started ??= begin());
 
               if (closed) return { done: true, value: undefined };
-              steps = rows
-                .frames("login.steps", { provider: input.provider })
-                [Symbol.asyncIterator]();
+              steps = rows.frames("login.steps", { provider })[Symbol.asyncIterator]();
             }
 
             return steps.next();
@@ -234,19 +239,21 @@ function loginHandle(rows: Rows, input: Parameters<Connection["models"]["login"]
         };
       }),
     async answer(code) {
-      await rows.call("login.answer", { provider: input.provider, code });
+      const provider = started === null ? known : await started;
+
+      if (provider === null)
+        throw new SdkError("invalid", "Read the login's steps before answering.");
+      await rows.call("login.answer", { provider, code });
     },
   };
 }
 
-/** Returns a part's state as the JSON the wire carries; a state that is not JSON is invalid. */
 function jsonState(state: unknown): Json {
   if (isJson(state)) return state;
 
   throw new SdkError("invalid", "A part's state must be JSON.");
 }
 
-/** Returns plugin files as the wire carries them: each one's path alone. */
 function files(plugins: readonly PluginFile[]): readonly PluginFile[] {
   return plugins.map((plugin) => ({ path: plugin.path }));
 }

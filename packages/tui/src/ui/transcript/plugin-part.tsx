@@ -1,8 +1,3 @@
-/**
- * A plugin-drawn part inside its own ErrorBoundary: a throw is reported once
- * (origin "plugin") and the part falls back to a dim `[partKind]`. Redraws
- * when `message.version` changes.
- */
 import type { Renderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, ErrorBoundary, on, onCleanup, Show } from "solid-js";

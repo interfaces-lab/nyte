@@ -7,7 +7,6 @@ import type { Schema } from "../schema.ts";
 import { idSchema } from "./ids.ts";
 import { nullable } from "./nullable.ts";
 
-/** Returns the wire form of an `SdkError`: what protocol serialises and the sdk rethrows. */
 export type SdkErrorWire = {
   readonly code:
     | "unauthenticated"
@@ -23,7 +22,6 @@ export type SdkErrorWire = {
   readonly correlation: string | null;
 };
 
-/** The TypeBox schema of a `ValidationIssue`. */
 export const ValidationIssueType = Type.Object({
   severity: Type.Enum(["error", "warning"]),
   path: Type.Array(Type.Union([Type.String(), Type.Number()])),
@@ -37,7 +35,6 @@ export const ValidationIssueType = Type.Object({
   ),
 });
 
-/** The TypeBox schema of a `Failure`. */
 export const FailureType = Type.Object({
   class: Type.Enum([
     "rate_limit",
@@ -54,7 +51,6 @@ export const FailureType = Type.Object({
   retryAfterMs: Type.Optional(Type.Number()),
 });
 
-/** The TypeBox schema of an `SdkErrorWire`. */
 export const SdkErrorWireType = Type.Object({
   code: Type.Enum([
     "unauthenticated",
@@ -71,11 +67,8 @@ export const SdkErrorWireType = Type.Object({
   correlation: nullable(Type.String()),
 });
 
-/** Validates a `ValidationIssue`. */
 export const ValidationIssueSchema: Schema<ValidationIssue> = standard(ValidationIssueType);
 
-/** Validates a `Failure`. */
 export const FailureSchema: Schema<Failure> = standard(FailureType);
 
-/** Validates an `SdkErrorWire`. */
 export const SdkErrorWireSchema: Schema<SdkErrorWire> = standard(SdkErrorWireType);

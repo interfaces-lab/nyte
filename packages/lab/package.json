@@ -8,13 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.node.json && tsgo --noEmit -p video/tsconfig.json",
-    "video": "pnpm video:commits && remotion studio video/src/index.ts --public-dir video/public",
-    "video:render": "pnpm video:commits && remotion render video/src/index.ts nyte video/out/nyte.mp4 --public-dir video/public",
-    "video:commits": "git log --format=%s > video/public/commits.txt",
-    "video:voice": "node video/scripts/voice.ts",
-    "video:music": "node video/scripts/music.ts",
-    "video:moon": "B=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}; $B -b -P video/blender/moon.py -- rise video/public/blender && $B -b -P video/blender/moon.py -- phases video/public/blender",
-    "video:research": "sh video/scripts/research.sh"
+    "video": "remotion studio video/src/index.ts --public-dir video/public",
+    "video:render": "remotion render video/src/index.ts nyte video/out/nyte-introduction.mp4 --public-dir video/public",
+    "video:poster": "remotion still video/src/index.ts nyte video/out/nyte-introduction-poster.jpg --public-dir video/public --frame=165 --image-format=jpeg"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.9",

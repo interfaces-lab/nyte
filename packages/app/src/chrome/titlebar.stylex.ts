@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { button, layer } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 /**
  * One row of three slots, each sized by the token its stage column already
@@ -22,13 +22,13 @@ export const titlebarStyles = create({
   sidebarSlot: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     width: sidebar.width,
     minWidth: "max-content",
     height: "100%",
     flexShrink: 0,
     paddingInlineStart: `max(${shell.trafficLightInset}, 10px)`,
-    paddingInlineEnd: 8,
+    paddingInlineEnd: space.s2,
   },
   sidebarSlotHidden: { width: "auto" },
   contentArea: {
@@ -50,19 +50,19 @@ export const titlebarStyles = create({
     overflow: "clip",
   },
   /** Without the workbench slot, the chat actions keep the slot's trailing inset so the glyph sits where the panel toggle would. */
-  centerTrailing: { paddingInlineEnd: 10 },
+  centerTrailing: { paddingInlineEnd: space.s2_5 },
   workbenchSlot: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     minWidth: 0,
     height: "100%",
     flexShrink: 1,
-    paddingInlineEnd: 10,
+    paddingInlineEnd: space.s2_5,
   },
   workbenchSlotOpen: {
     width: workbench.activeWidth,
-    paddingInlineStart: 6,
+    paddingInlineStart: space.s1_5,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: role.borderSecondaryTranslucent,
@@ -100,12 +100,12 @@ export const titlebarStyles = create({
     alignItems: "center",
     flex: 1,
     minWidth: 0,
-    paddingInlineStart: 12,
+    paddingInlineStart: space.s3,
   },
   sessionTitleGroup: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minWidth: 0,
   },
   sessionBack: {
@@ -117,25 +117,19 @@ export const titlebarStyles = create({
   sessionCrumb: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     flexShrink: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     whiteSpace: "nowrap",
   },
   sessionCrumbDivider: {
     flexShrink: 0,
     color: role.contentDisabled,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   sessionTitle: {
     maxWidth: "min(420px, 50vw)",
     overflow: "hidden",
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },

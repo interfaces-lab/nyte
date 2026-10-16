@@ -264,7 +264,6 @@ function insertTab(state: WindowState, tab: Tab, at: number, activate: boolean):
   };
 }
 
-/** Open a place in a new tab beside the active one. */
 function openInTab(
   state: WindowState,
   place: Place,
@@ -308,7 +307,6 @@ function closeTabs(
 
   if (!tabIds.has(state.activeTabId) && tabs.length > 0) return { ...state, tabs, closed };
 
-  // The right-hand neighbour takes over, then the left; with none left, a new chat opens.
   const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
   const takesOver = (tab: Tab): boolean => !tabIds.has(tab.id);
 
@@ -352,7 +350,6 @@ export function canTravel(state: WindowState, step: 1 | -1): boolean {
   return travelTab(activeTab(state), step) !== undefined;
 }
 
-/** The place a layout change brings on screen, for a page to hand to fresh panes. */
 function proposedPlace(action: PaneLayoutAction): PaneSelection | undefined {
   switch (action.kind) {
     case "select":

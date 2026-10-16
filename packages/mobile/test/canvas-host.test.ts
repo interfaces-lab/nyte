@@ -8,7 +8,7 @@ import {
   readHostMessage,
   renderNotification,
   sizeChangedNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
 import { describe, expect, it } from "vitest";
 import { mobileHostContext, shellEffect, shellScript } from "../src/chat/canvas-host.ts";
 

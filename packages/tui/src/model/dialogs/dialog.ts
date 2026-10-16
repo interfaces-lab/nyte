@@ -1,15 +1,5 @@
-/**
- * Every panel, picker and prompt is a value on `local.dialogs` (a stack),
- * reduced by its own pure function and drawn by one host component. A
- * dialog's result is an Intent; a sub-screen is a push; "back" is a pop.
- * There are no promise-wrapped pickers and no raw key listeners: keys reach
- * the top dialog only, as `DialogCommand`s from one keymap layer.
- *
- * Async data (tree, sessions, models, usage, directory listings) arrives as a
- * `loaded` outcome addressed by `DialogId`; a dialog that has closed simply
- * never receives it.
- */
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { ModelAccount, SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
+import type { Task } from "../../lib/tasks.ts";
 import type { Intent } from "../msg.ts";
 import { editField } from "./field.ts";
 import type { Field, FieldEdit } from "./field.ts";
@@ -34,17 +24,14 @@ export type Dialog =
   | TextDialog
   | AuthDialog;
 
-/** A run of a text panel's line, in a theme colour (foreground when absent). */
 export interface TextSpan {
   readonly text: string;
   readonly tone?: "foreground" | "muted" | "dim" | "accent" | "warning" | "error";
   readonly bold?: boolean;
 }
 
-/** A text panel's line: plain text, or coloured spans. */
 export type TextLine = string | readonly TextSpan[];
 
-/** A read-only scrollable panel: usage, keyboard shortcuts, plugins report. */
 export interface TextDialog {
   readonly kind: "text";
   readonly id: DialogId;
@@ -56,55 +43,52 @@ export interface TextDialog {
   readonly scroll: number;
 }
 
-/** What `open` asks for. `reduce` turns it into a Dialog plus the load effect it needs. */
 export type DialogRequest =
   | { readonly kind: "list"; readonly purpose: ListPurpose }
   | { readonly kind: "model" }
   | { readonly kind: "tree"; readonly filter: "default" | "users" }
   | { readonly kind: "inspector"; readonly task: string }
   | { readonly kind: "text"; readonly content: "usage" | "shortcuts" | "plugins" }
+  | { readonly kind: "mcp" }
+  | { readonly kind: "mcp-details"; readonly workspace: WorkspaceId; readonly server: string }
   | { readonly kind: "auth"; readonly mode: "login" | "logout"; readonly provider: string | null };
 
 export type LoadRequest =
   | { readonly kind: "sessions" }
+  | { readonly kind: "accounts"; readonly provider: string | null }
   | { readonly kind: "tree"; readonly session: SessionId }
   | { readonly kind: "models" }
   | { readonly kind: "usage"; readonly session: SessionId }
   | { readonly kind: "directory"; readonly path: string }
-  /** The `/plugins` report: client plugin ids, host plugins with source, path and issues, and plugin commands. */
-  | { readonly kind: "plugins" };
+  | { readonly kind: "plugins" }
+  | { readonly kind: "mcp-servers"; readonly workspace: WorkspaceId }
+  | { readonly kind: "mcp-server"; readonly workspace: WorkspaceId; readonly server: string }
+  | { readonly kind: "mcp-details"; readonly workspace: WorkspaceId; readonly server: string };
 
 export type DialogData =
   | { readonly kind: "list"; readonly choices: ListDialog["choices"] }
+  | { readonly kind: "accounts"; readonly accounts: readonly ModelAccount[] }
   | { readonly kind: "models"; readonly models: ModelList }
   | { readonly kind: "tree"; readonly tree: TreeLoad }
   | { readonly kind: "text"; readonly lines: readonly TextLine[] }
-  /** Root sessions for `/resume`; the model filters, sorts and labels them. */
   | { readonly kind: "sessions"; readonly sessions: readonly SessionInfo[] }
-  /** The next step of a login the auth dialog drives. */
   | { readonly kind: "auth"; readonly step: AuthPrompt };
 
-/** Keys the dialog layer forwards, named by CHAT_KEYBINDS (picker.*, model.*, tree.*, auth.*), plus the typed field's new text. */
 export type DialogCommand =
   | { readonly kind: "key"; readonly name: string }
   | { readonly kind: "query"; readonly text: string }
-  /** A click: choose the row, as Enter would. */
   | { readonly kind: "pick"; readonly index: number }
-  /** A click that only moves the highlight: a model row, the typed-answer row. */
   | { readonly kind: "highlight"; readonly index: number }
   | { readonly kind: "close" };
 
-/** What reaches the top dialog: a command, an edit of its typed field at the caret, or a terminal paste into it. */
 export type DialogInput =
   | DialogCommand
   | { readonly kind: "edit"; readonly edit: FieldEdit }
   | { readonly kind: "paste"; readonly text: string };
 
-/** One dialog's reaction: its next value (null closes it) and the intents it emits. */
 export interface DialogStep<D extends Dialog> {
   readonly dialog: D | null;
   readonly intents: readonly Intent[];
-  /** Pushed on top, for sub-screens such as a setting's choices or the tree's summary question. */
   readonly push: Dialog | null;
 }
 
@@ -143,27 +127,28 @@ function reduceText(dialog: TextDialog, command: DialogCommand): DialogStep<Text
   }
 }
 
-/** The typed field's text and caret, or null when the dialog takes no text now. */
 export function dialogField(dialog: Dialog): Field | null {
   const text = dialogText(dialog);
 
   if (text === null) return null;
-  const caret = caretOf(dialog) ?? text.length;
+  const position = readFieldPosition(dialog);
+  const caret = Math.max(0, Math.min(position.caret ?? text.length, text.length));
+  const anchor = Math.max(0, Math.min(position.anchor ?? caret, text.length));
 
-  return { text, caret: Math.max(0, Math.min(caret, text.length)) };
+  return anchor === caret ? { text, caret } : { text, caret, anchor };
 }
 
-function caretOf(dialog: Dialog): number | undefined {
+function readFieldPosition(dialog: Dialog): Partial<Pick<Field, "caret" | "anchor">> {
   switch (dialog.kind) {
     case "list":
     case "model":
     case "tree":
-      return dialog.caret;
+      return { caret: dialog.caret, anchor: dialog.anchor };
     case "auth":
-      return dialog.step.kind === "secret" ? dialog.step.caret : undefined;
+      return dialog.step.kind === "secret" ? dialog.step : {};
     case "inspector":
     case "text":
-      return undefined;
+      return {};
     default: {
       const _exhaustive: never = dialog;
 
@@ -172,15 +157,18 @@ function caretOf(dialog: Dialog): number | undefined {
   }
 }
 
-function withCaret(dialog: Dialog, caret: number | undefined): Dialog {
+function withFieldPosition(
+  dialog: Dialog,
+  position: Partial<Pick<Field, "caret" | "anchor">>,
+): Dialog {
   switch (dialog.kind) {
     case "list":
     case "model":
     case "tree":
-      return { ...dialog, caret };
+      return { ...dialog, caret: position.caret, anchor: position.anchor };
     case "auth":
       return dialog.step.kind === "secret"
-        ? { ...dialog, step: { ...dialog.step, caret } }
+        ? { ...dialog, step: { ...dialog.step, caret: position.caret, anchor: position.anchor } }
         : dialog;
     case "inspector":
     case "text":
@@ -193,18 +181,14 @@ function withCaret(dialog: Dialog, caret: number | undefined): Dialog {
   }
 }
 
-/**
- * An edit changes the field through the dialog's own `query` handling (so a
- * list still filters and a secret still keeps code points), then places the
- * caret; a bare `query` puts the caret at the end. A paste is an insert, as
- * one line.
- */
 export function reduceDialog(dialog: Dialog, input: DialogInput): DialogStep<Dialog> {
   if (input.kind === "paste") {
     const text = input.text
       .replaceAll(/[\r\n]+/gu, " ")
       .replaceAll(/\p{Cc}/gu, "")
       .trim();
+
+    if (text === "") return { dialog, intents: [], push: null };
 
     return reduceDialog(dialog, { kind: "edit", edit: { kind: "insert", text } });
   }
@@ -215,7 +199,7 @@ export function reduceDialog(dialog: Dialog, input: DialogInput): DialogStep<Dia
     if (field === null) return { dialog, intents: [], push: null };
     const next = editField(field, input.edit);
 
-    if (next.text === field.text && next.caret === field.caret)
+    if (next.text === field.text && next.caret === field.caret && next.anchor === field.anchor)
       return { dialog, intents: [], push: null };
 
     const step =
@@ -227,14 +211,17 @@ export function reduceDialog(dialog: Dialog, input: DialogInput): DialogStep<Dia
 
     return {
       ...step,
-      dialog: withCaret(step.dialog, next.caret === next.text.length ? undefined : next.caret),
+      dialog: withFieldPosition(step.dialog, {
+        caret: next.caret === next.text.length ? undefined : next.caret,
+        anchor: next.anchor,
+      }),
     };
   }
 
   const step = reduceKind(dialog, input);
 
   return input.kind === "query" && step.dialog !== null
-    ? { ...step, dialog: withCaret(step.dialog, undefined) }
+    ? { ...step, dialog: withFieldPosition(step.dialog, {}) }
     : step;
 }
 
@@ -260,18 +247,16 @@ function reduceKind(dialog: Dialog, command: DialogCommand): DialogStep<Dialog> 
   }
 }
 
-/** Where the host draws it: the slot under the composer, an overlay over the transcript, or the whole screen. */
-export function placement(dialog: Dialog): "slot" | "overlay" | "screen" {
+export function placement(dialog: Dialog, task: Task | null): "slot" | "screen" {
   switch (dialog.kind) {
     case "list":
     case "model":
-    case "auth":
-      return "slot";
-    case "text":
-      return "overlay";
     case "tree":
+    case "auth":
+    case "text":
+      return "slot";
     case "inspector":
-      return "screen";
+      return task?.kind === "agent" && task.view !== undefined ? "screen" : "slot";
     default: {
       const _exhaustive: never = dialog;
 
@@ -280,7 +265,6 @@ export function placement(dialog: Dialog): "slot" | "overlay" | "screen" {
   }
 }
 
-/** The text a dialog's typed field holds, or null when the dialog takes no text now. */
 export function dialogText(dialog: Dialog): string | null {
   switch (dialog.kind) {
     case "list":

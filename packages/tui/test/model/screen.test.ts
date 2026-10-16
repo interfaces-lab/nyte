@@ -1,8 +1,3 @@
-/**
- * `deriveScreen` as the one derivation: the ordered blocking rule, the
- * placeholder, hints from the table, the footer, OSC 7501 program status,
- * the tasks line, the loading line, and identity kept across frames.
- */
 import { asId } from "@nyte-ai/schema";
 import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
@@ -57,8 +52,8 @@ describe("blocked", () => {
     ).toEqual({ kind: "authenticating", link: null });
   });
 
-  test("the loading line names the startup step, then the session load", () => {
-    expect(deriveScreen(blank(), null).loading).toBe("Opening workspace…");
+  test("startup opens quietly until the first view arrives", () => {
+    expect(deriveScreen(blank(), null)).toMatchObject({ loading: null, opening: true });
 
     const session = followed(idle);
 
@@ -68,8 +63,14 @@ describe("blocked", () => {
       { kind: "session-opened", session: S1, info: session.info, selection: session.selection },
     ).state;
 
-    expect(deriveScreen(opened, null).loading).toBe("Loading session…");
-    expect(deriveScreen(ready(idle), null).loading).toBeNull();
+    expect(deriveScreen(opened, null)).toMatchObject({ loading: null, opening: true });
+    expect(deriveScreen(ready(idle), null)).toMatchObject({ loading: null, opening: false });
+    expect(
+      deriveScreen(
+        play(ready(idle), { kind: "switch-session", session: "new", announce: false }).state,
+        null,
+      ),
+    ).toMatchObject({ loading: "Loading session…", opening: false });
   });
 });
 
@@ -89,7 +90,19 @@ describe("placeholder", () => {
     const asking = viewOf((v) =>
       v
         .turn("c", (t) => t.user("go"))
-        .question("Which file?", ["a", "b"], { id: "q9" })
+        .question(
+          [
+            {
+              question: "Which file?",
+              header: "Question",
+              options: [
+                { label: "a", description: "" },
+                { label: "b", description: "" },
+              ],
+            },
+          ],
+          { id: "q9" },
+        )
         .waiting("q9"),
     );
 
@@ -111,13 +124,21 @@ describe("placeholder", () => {
 
   test("the head's question comes before a child's", () => {
     const asking = viewOf((v) =>
-      v.turn("c", (t) => t.user("go")).question("Child?", ["a"], { id: "q9" }),
+      v
+        .turn("c", (t) => t.user("go"))
+        .question(
+          [{ question: "Child?", header: "Question", options: [{ label: "a", description: "" }] }],
+          { id: "q9" },
+        ),
     );
 
     const own = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
-        .question("Mine?", ["x"], { id: "q1" })
+        .question(
+          [{ question: "Mine?", header: "Question", options: [{ label: "x", description: "" }] }],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 
@@ -216,7 +237,10 @@ describe("footer and status", () => {
     const asking = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
-        .question("Pick", ["A"], { id: "q1" })
+        .question(
+          [{ question: "Pick", header: "Question", options: [{ label: "A", description: "" }] }],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 

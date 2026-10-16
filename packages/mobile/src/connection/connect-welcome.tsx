@@ -7,23 +7,21 @@ import { ConnectPanel } from "../account/connect-panel.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { controls, spacing, textStyles, tokens } from "../theme.ts";
 import { introCopy, recoveryCopy } from "./connect-copy.ts";
-import type { SavedConnection } from "./connection.ts";
+import type { ConnectionMethod } from "./connection-form.tsx";
 import type { HostRecovery } from "./host-context.tsx";
 import { NyteMark } from "./nyte-mark.tsx";
 
 export function ConnectWelcome({
   account,
-  edit,
   notice,
   recovery,
   onManual,
   onPreview,
 }: {
   account: Account | undefined;
-  edit: { saved: SavedConnection; onCancel: () => void } | undefined;
   notice: string | undefined;
   recovery: HostRecovery | undefined;
-  onManual: (method: "tailscale" | "direct") => void;
+  onManual: (method: ConnectionMethod) => void;
   onPreview: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -32,20 +30,15 @@ export function ConnectWelcome({
 
   const intro =
     recovery === undefined
-      ? introCopy({ editing: edit?.saved.kind, account: account !== undefined })
+      ? introCopy({ account: account !== undefined })
       : recoveryCopy(recovery.failure, recovery.saved);
 
-  const replacing = edit?.saved ?? recovery?.saved;
+  const replacing = recovery?.saved;
   const [leaving, setLeaving] = useState(false);
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="never" contentContainerStyle={scrollContent}>
       <html.div style={[styles.page, styles.safeArea(insets.top, insets.bottom)]}>
-        {edit === undefined ? null : (
-          <html.div style={styles.navigation}>
-            <GlassButton label="Cancel" systemImage="chevron.left" onPress={edit.onCancel} />
-          </html.div>
-        )}
         <html.div style={styles.intro}>
           <html.div aria-hidden style={styles.mark(markSize)}>
             <NyteMark size={markSize} />
@@ -116,11 +109,11 @@ export function ConnectWelcome({
             >
               <html.span style={[textStyles.secondary, styles.danger]}>Disconnect</html.span>
             </html.button>
-          ) : edit === undefined ? (
+          ) : (
             <html.button onClick={onPreview} style={[styles.textButton, styles.preview]}>
               <html.span style={textStyles.caption}>Try a demo</html.span>
             </html.button>
-          ) : null}
+          )}
         </html.div>
       </html.div>
     </ScrollView>
@@ -140,7 +133,6 @@ const styles = css.create({
     paddingTop: top + spacing.lg,
     paddingBottom: bottom + spacing.sm,
   }),
-  navigation: { display: "flex", alignItems: "flex-start", paddingInline: spacing.gutter },
   intro: {
     display: "flex",
     flexDirection: "column",

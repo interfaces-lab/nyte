@@ -1,10 +1,3 @@
-/**
- * The landing page moon, lit from the upper left and turning once over the
- * frames. Baked with renderMoon from
- * packages/docs/src/components/landing/moon/moon-surface.ts at RAMP below and
- * 42 by 20 cells, which reads as round in a terminal: frame i of 24 is
- * { sunLon: -40, latTilt: 6, lonTilt: i * 15 }.
- */
 export const MOON_RAMP = " .'`:-=+*o%#@";
 
 export const MOON_FRAMES: readonly string[] = [

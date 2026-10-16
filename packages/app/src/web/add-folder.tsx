@@ -1,11 +1,8 @@
-/**
- * Adding a folder to a registry host from the browser: the folder is on the
- * host, so the owner types its full path there. One prompt at a time; the
- * bridge asks and the shell renders it.
- */
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
@@ -13,24 +10,21 @@ import type { ReactElement } from "react";
 
 const styles = create({
   popup: {
-    gap: 12,
+    gap: space.s3,
     width: "min(460px, calc(100vw - 48px))",
-    padding: 20,
+    padding: space.s5,
     borderStyle: "none",
   },
   title: { lineHeight: type.leadingBase },
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    gap: space.s1_5,
   },
-  host: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
+  host: { color: role.contentSecondary },
 });
 
 interface FolderPrompt {
-  /** The host's identity, so the owner knows which machine the path is on. */
   readonly hostId: string;
   readonly resolve: (path: string | undefined) => void;
 }
@@ -53,7 +47,6 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** Ask for a folder path on the host. Resolves with nothing when dismissed, or when another prompt replaces this one. */
 export function requestFolderPath(hostId: string): Promise<string | undefined> {
   prompt?.resolve(undefined);
 
@@ -75,7 +68,7 @@ function FolderPromptDialog({ current }: { readonly current: FolderPrompt }): Re
       <Dialog.Popup xstyle={styles.popup}>
         <Dialog.Title xstyle={styles.title}>Add Folder on Host</Dialog.Title>
         <form
-          {...props(styles.field)}
+          {...props(text.base, styles.field)}
           onSubmit={(event) => {
             event.preventDefault();
             const trimmed = path.trim();
@@ -83,7 +76,7 @@ function FolderPromptDialog({ current }: { readonly current: FolderPrompt }): Re
             if (trimmed !== "") finish(trimmed);
           }}
         >
-          <label {...props(styles.field)}>
+          <label {...props(text.base, styles.field)}>
             <span>Full path on the host</span>
             <Input
               autoFocus
@@ -94,7 +87,7 @@ function FolderPromptDialog({ current }: { readonly current: FolderPrompt }): Re
               onValueChange={setPath}
             />
           </label>
-          <span {...props(styles.host)}>Host {current.hostId}</span>
+          <span {...props(text.sm, styles.host)}>Host {current.hostId}</span>
           <Dialog.Footer>
             <Button type="button" onClick={() => finish(undefined)}>
               Cancel
@@ -109,7 +102,6 @@ function FolderPromptDialog({ current }: { readonly current: FolderPrompt }): Re
   );
 }
 
-/** Mounted once in the shell; renders the live prompt. */
 export function AddFolderDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, () => prompt);
 

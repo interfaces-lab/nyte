@@ -4,7 +4,6 @@ import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { SdkError } from "@nyte-ai/core";
 
-/** Returns how a finished program exited and what it printed: stdout as bytes up to the run's limit (`truncated` when the program was killed for passing it), stderr as text. */
 export type Ran = {
   readonly code: number | null;
   readonly stdout: Buffer;
@@ -12,7 +11,6 @@ export type Ran = {
   readonly truncated: boolean;
 };
 
-/** Runs a program without a shell in `cwd`, `env` laid over `process.env`, `input` written to its stdin, and resolves once it exits; stdout past `limit` bytes kills it and sets `truncated`. Rejects with `SdkError("unavailable")` only when the program cannot start. */
 export function run(
   file: string,
   args: readonly string[],
@@ -68,7 +66,6 @@ export function run(
   });
 }
 
-/** Resolves an executable by name: a path as given when it is one, else the first executable `name` in `directories` and then on the `PATH` (with `PATHEXT` on Windows); null when there is none. */
 export async function findExecutable(
   name: string,
   directories: readonly string[] = [],

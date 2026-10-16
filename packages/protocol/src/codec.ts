@@ -363,7 +363,6 @@ function toJson(value: unknown): Json | undefined {
   );
 }
 
-/** Returns the schema a node declares for one of its own properties, so an inherited name such as `__proto__` is never a declared field. */
 function propertyOf(node: Node, key: string): Node | null {
   const properties = node.properties;
   const property = isNode(properties) && Object.hasOwn(properties, key) ? properties[key] : null;

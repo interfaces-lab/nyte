@@ -28,15 +28,12 @@ share/
 /packages/app/e2e/test-results/
 /packages/app/e2e/playwright-report/
 
-# Worker secrets
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
 
-# packages/demo/website
 .output/
 
-# packages/lab
 packages/lab/audits/
 packages/lab/references/
 packages/lab/research_notes/
@@ -69,7 +66,7 @@ output/
 # Repository tooling with no role in a Metro bundle or a native build.
 .github/
 .pnpm-store/
-docs/
+/docs/
 licenses/
 
 # The presence of this file switches EAS off the `git archive` path and onto a

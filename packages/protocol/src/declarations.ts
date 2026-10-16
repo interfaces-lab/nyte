@@ -99,6 +99,8 @@ import {
   LoginStepsOutputSchema,
   MergeOutcomeSchema,
   ModelCatalogViewSchema,
+  ModelsAccountsInputSchema,
+  ModelsAccountsOutputSchema,
   ModelsListInputSchema,
   ModelsLoginInputSchema,
   ModelsLoginOutputSchema,
@@ -106,8 +108,12 @@ import {
   ModelsLogoutOutputSchema,
   ModelsRefreshInputSchema,
   ModelsRefreshOutputSchema,
+  ModelsSelectAccountInputSchema,
+  ModelsSelectAccountOutputSchema,
   ModelsSetDefaultInputSchema,
   ModelsSetDefaultOutputSchema,
+  ModelsUsageInputSchema,
+  ModelsUsageOutputSchema,
   ModelsVerifyInputSchema,
   ModelsVerifyOutputSchema,
   OPERATION_AUTHORITY,
@@ -204,6 +210,16 @@ import {
   WorkspaceUpdateInputSchema,
   WorkspaceUpdateOutputSchema,
   WorkspaceWatchInputSchema,
+  McpWatchInputSchema,
+  McpViewSchema,
+  McpReconnectInputSchema,
+  McpSetEnabledInputSchema,
+  McpLoginInputSchema,
+  McpLoginOutputSchema,
+  McpLogoutInputSchema,
+  McpAddInputSchema,
+  McpRemoveInputSchema,
+  McpChangeSchema,
   WorkspacesAddInputSchema,
   WorkspacesForgetInputSchema,
   WorkspacesInspectInputSchema,
@@ -289,6 +305,10 @@ import type {
   ViewOptions,
   WorkspaceId,
   WorkspaceInfo,
+  McpChange,
+  McpScope,
+  McpServerConfig,
+  McpView,
   WorkspaceInspection,
   ServedOperation,
   WorkspaceTarget,
@@ -322,6 +342,18 @@ export type Signatures = {
   "connection.watch": { readonly input: object; readonly output: HostViewWire };
   "connection.blob": { readonly input: { readonly id: BlobId }; readonly output: Uint8Array };
   "models.list": { readonly input: object; readonly output: ModelCatalogView };
+  "models.accounts": {
+    readonly input: { readonly provider?: string };
+    readonly output: Awaited<ReturnType<ModelsApi["accounts"]>>;
+  };
+  "models.selectAccount": {
+    readonly input: { readonly provider: string; readonly account: string };
+    readonly output: null;
+  };
+  "models.usage": {
+    readonly input: object;
+    readonly output: Awaited<ReturnType<ModelsApi["usage"]>>;
+  };
   "models.refresh": { readonly input: { readonly provider?: string }; readonly output: null };
   "models.setDefault": {
     readonly input: { readonly ref: ModelRef };
@@ -520,7 +552,12 @@ export type Signatures = {
     readonly output: { readonly part: PartId };
   };
   "part.update": {
-    readonly input: { readonly session: SessionId; readonly part: PartId; readonly next: Json };
+    readonly input: {
+      readonly session: SessionId;
+      readonly part: PartId;
+      readonly next: Json;
+      readonly options?: Parameters<Part<PartDefinition>["update"]>[1];
+    };
     readonly output: Awaited<ReturnType<Part<PartDefinition>["update"]>>;
   };
   "part.act": {
@@ -547,6 +584,45 @@ export type Signatures = {
   "workspace.watch": {
     readonly input: { readonly workspace: WorkspaceId };
     readonly output: WorkspaceInfo;
+  };
+  "mcp.watch": { readonly input: { readonly workspace: WorkspaceId }; readonly output: McpView };
+  "mcp.reconnect": {
+    readonly input: { readonly workspace: WorkspaceId; readonly server: string };
+    readonly output: McpChange;
+  };
+  "mcp.setEnabled": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly server: string;
+      readonly enabled: boolean;
+    };
+    readonly output: McpChange;
+  };
+  "mcp.login": {
+    readonly input: { readonly workspace: WorkspaceId; readonly server: string };
+    /** The key to stream with `login.steps` and answer with `login.answer`. */
+    readonly output: { readonly login: string };
+  };
+  "mcp.logout": {
+    readonly input: { readonly workspace: WorkspaceId; readonly server: string };
+    readonly output: McpChange;
+  };
+  "mcp.add": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly server: string;
+      readonly config: McpServerConfig;
+      readonly scope: McpScope;
+    };
+    readonly output: McpChange;
+  };
+  "mcp.remove": {
+    readonly input: {
+      readonly workspace: WorkspaceId;
+      readonly server: string;
+      readonly scope: McpScope;
+    };
+    readonly output: McpChange;
   };
   "workspace.update": {
     readonly input: {
@@ -663,7 +739,7 @@ export type Signatures = {
       readonly workspace: WorkspaceId;
       readonly id?: ReceiptId;
       readonly entries: readonly (
-        | ({ readonly kind: "put"; readonly contents: string | BlobId } & Omit<
+        | ({ readonly kind: "put"; readonly contents: string | { readonly blob: BlobId } } & Omit<
             Parameters<FileBatch["put"]>[0],
             "contents"
           >)
@@ -944,6 +1020,24 @@ export const declarations = {
     kind: "query",
     ...OPERATION_AUTHORITY["models.list"],
   },
+  "models.accounts": {
+    input: ModelsAccountsInputSchema,
+    output: ModelsAccountsOutputSchema,
+    kind: "query",
+    ...OPERATION_AUTHORITY["models.accounts"],
+  },
+  "models.selectAccount": {
+    input: ModelsSelectAccountInputSchema,
+    output: ModelsSelectAccountOutputSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["models.selectAccount"],
+  },
+  "models.usage": {
+    input: ModelsUsageInputSchema,
+    output: ModelsUsageOutputSchema,
+    kind: "query",
+    ...OPERATION_AUTHORITY["models.usage"],
+  },
   "models.refresh": {
     input: ModelsRefreshInputSchema,
     output: ModelsRefreshOutputSchema,
@@ -1151,6 +1245,7 @@ export const declarations = {
     input: RunSettledInputSchema,
     output: RunEndSchema,
     kind: "query",
+    wait: true,
     ...OPERATION_AUTHORITY["run.settled"],
   },
 
@@ -1164,6 +1259,7 @@ export const declarations = {
     input: ReceiptSettledInputSchema,
     output: JsonValueSchema,
     kind: "query",
+    wait: true,
     ...OPERATION_AUTHORITY["receipt.settled"],
   },
   "receipt.stop": {
@@ -1176,6 +1272,7 @@ export const declarations = {
     input: ReceiptLandedInputSchema,
     output: ReceiptLandedOutputSchema,
     kind: "query",
+    wait: true,
     ...OPERATION_AUTHORITY["receipt.landed"],
   },
 
@@ -1203,6 +1300,7 @@ export const declarations = {
     input: PartAnswerInputSchema,
     output: PartAnswerOutputSchema,
     kind: "query",
+    wait: true,
     ...OPERATION_AUTHORITY["part.answer"],
   },
   "part.close": {
@@ -1223,6 +1321,48 @@ export const declarations = {
     output: WorkspaceInfoSchema,
     kind: "watch",
     ...OPERATION_AUTHORITY["workspace.watch"],
+  },
+  "mcp.watch": {
+    input: McpWatchInputSchema,
+    output: McpViewSchema,
+    kind: "watch",
+    ...OPERATION_AUTHORITY["mcp.watch"],
+  },
+  "mcp.reconnect": {
+    input: McpReconnectInputSchema,
+    output: McpChangeSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.reconnect"],
+  },
+  "mcp.setEnabled": {
+    input: McpSetEnabledInputSchema,
+    output: McpChangeSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.setEnabled"],
+  },
+  "mcp.login": {
+    input: McpLoginInputSchema,
+    output: McpLoginOutputSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.login"],
+  },
+  "mcp.logout": {
+    input: McpLogoutInputSchema,
+    output: McpChangeSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.logout"],
+  },
+  "mcp.add": {
+    input: McpAddInputSchema,
+    output: McpChangeSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.add"],
+  },
+  "mcp.remove": {
+    input: McpRemoveInputSchema,
+    output: McpChangeSchema,
+    kind: "command",
+    ...OPERATION_AUTHORITY["mcp.remove"],
   },
   "workspace.update": {
     input: WorkspaceUpdateInputSchema,
@@ -1328,6 +1468,7 @@ export const declarations = {
     input: JobSettledInputSchema,
     output: JobEndSchema,
     kind: "query",
+    wait: true,
     ...OPERATION_AUTHORITY["job.settled"],
   },
 
@@ -1710,7 +1851,9 @@ export const declarations = {
     ...OPERATION_AUTHORITY["principals.revoke"],
   },
 } satisfies {
-  readonly [N in keyof Signatures]: Declaration<Signatures[N]["input"], Signatures[N]["output"]>;
+  readonly [N in keyof Signatures]: Declaration<Signatures[N]["input"], Signatures[N]["output"]> & {
+    readonly wait?: true;
+  };
 } & { readonly [N in ServedOperation]: unknown };
 
 /** Returns the declaration table's type: each row's literal kind, authority and scope, and its schemas. */

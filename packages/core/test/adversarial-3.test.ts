@@ -13,7 +13,6 @@ import {
   memoryStore,
   move,
   partRef,
-  startRun,
   stopRun,
 } from "../src/index.ts";
 import type {
@@ -28,7 +27,7 @@ import type {
 } from "../src/index.ts";
 import { readInbox } from "../src/session-state.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { configuration, main, setup, until, usage } from "./harness.ts";
+import { configuration, main, setup, startRun, until, usage } from "./harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -37,7 +36,6 @@ const caller: ConnectionContext = {
   origin: null,
 };
 
-/** Returns a `write_file` tool that records each text it is asked to write. */
 function writer(ran: string[]): ToolDefinition<{ readonly text: string }> {
   return {
     name: "write_file",
@@ -116,7 +114,6 @@ describe("ADV A-3", () => {
     const connection = await memoryStore().open();
 
     const shared: Store = {
-      kind: "memory",
       open: async () => connection,
       close: async () => undefined,
     };
@@ -304,7 +301,6 @@ describe("ADV A-3", () => {
     });
 });
 
-/** Returns a store over one memory connection whose `refs.set` throws once a head moved: the host died right after the move's set. */
 async function crashingAfterMove() {
   const memory = await memoryStore().open();
   let crashed = false;
@@ -329,7 +325,6 @@ async function crashingAfterMove() {
   return { memory, store };
 }
 
-/** Sends and lands a user message on main. */
 async function land(kernel: Kernel, session: Session, text: string): Promise<void> {
   const sent = await session.send(text);
   await landing(kernel, session.id, main, [sent.message], null);

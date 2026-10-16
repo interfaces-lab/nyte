@@ -1,8 +1,5 @@
 /**
  * OpenAI-compatible Chat Completions adapter.
- *
- * Based on https://github.com/earendil-works/pi/blob/1b6ddca87ca041e3b02b387d5a321eb77fc39eca/packages/ai/src/api/openai-completions.ts
- * Synced with pi 1b6ddca87.
  */
 import OpenAI from "openai";
 import type { Stream } from "openai/streaming";
@@ -26,7 +23,6 @@ import type {
   AssistantMessage,
   CacheRetention,
   ChatTemplateKwargValue,
-  Context,
   JsonValue,
   Message,
   Model,
@@ -442,7 +438,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       const nextParams = await options?.onPayload?.(params, model);
 
       if (nextParams !== undefined) {
-        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
       }
 
@@ -609,8 +604,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         }
 
         if (!block) {
-          // Note: the "input" fallback here should/must not be taken.  in case the LLM makes up
-          // a tool we don't knwo about, we at least have a place to stash our stuff.
           const customInputProperty =
             toolCall.custom && !toolCall.function
               ? (grammarToolInputProperties.get(name) ?? "input")
@@ -953,7 +946,6 @@ function createClient(input: {
     baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
     fetch: input.options?.fetch,
-    // Options headers come last so they can override defaults
     defaultHeaders: mergeProviderHeaders(
       { "User-Agent": getNyteUserAgent() },
       input.model.headers,
@@ -1158,7 +1150,6 @@ function buildParams(
       Object.assign(params, { thinking: model.thinkingLevelMap?.off ?? "none" });
     }
   } else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
-    // OpenAI-style reasoning_effort
     Object.assign(params, {
       reasoning_effort:
         model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort,
@@ -1179,12 +1170,10 @@ function buildParams(
     Object.assign(params, { [thinkingTokenBudgetField]: thinkingBudget });
   }
 
-  // OpenRouter provider routing preferences
   if (model.compat?.openRouterRouting) {
     Object.assign(params, { provider: model.compat.openRouterRouting });
   }
 
-  // Vercel AI Gateway provider routing preferences
   if (model.compat?.vercelGatewayRouting) {
     const routing = model.compat.vercelGatewayRouting;
 
@@ -1583,11 +1572,6 @@ export function convertMessages(
 
           assistantMsg.content = [{ type: "text", text: thinkingText }, ...assistantTextParts];
         } else {
-          // Always send assistant content as a plain string (OpenAI Chat Completions
-          // API standard format). Sending as an array of {type:"text", text:"..."}
-          // objects is non-standard and causes some models (e.g. DeepSeek V3.2 via
-          // NVIDIA NIM) to mirror the content-block structure literally in their
-          // output, producing recursive nesting like [{'type':'text','text':'[{...}]'}].
           if (assistantText.length > 0) {
             assistantMsg.content = assistantText;
           }
@@ -1609,11 +1593,6 @@ export function convertMessages(
           }
         }
       } else if (assistantText.length > 0) {
-        // Always send assistant content as a plain string (OpenAI Chat Completions
-        // API standard format). Sending as an array of {type:"text", text:"..."}
-        // objects is non-standard and causes some models (e.g. DeepSeek V3.2 via
-        // NVIDIA NIM) to mirror the content-block structure literally in their
-        // output, producing recursive nesting like [{'type':'text','text':'[{...}]'}].
         assistantMsg.content = assistantText;
       }
 
@@ -1679,7 +1658,6 @@ export function convertMessages(
 
         if (toolMsg.role !== "toolResult") break;
 
-        // Extract text and image content
         const textResult = toolMsg.content
           .filter((block) => block.type === "text")
           .map((block) => block.text)

@@ -1,8 +1,3 @@
-/**
- * What `screens/thread.tsx` derives from a session view before `Timeline`
- * draws it, minus the queries: the same app functions, called in the same
- * order.
- */
 import type { SessionView } from "@nyte-ai/sdk";
 import {
   displayTranscriptParts,
@@ -58,7 +53,6 @@ export function stage(scene: Scene): Stage {
   return { rows, changes, working, settledWork };
 }
 
-/** Each row the scene became, and how a turn row's messages were regrouped for drawing. */
 export function trail({ rows, working }: Stage): readonly string[] {
   return rows.flatMap((row): readonly string[] => {
     switch (row.kind) {

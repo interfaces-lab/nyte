@@ -73,7 +73,6 @@ export function transformMessages<TApi extends Api>(
   model: Model<TApi>,
   normalizeToolCallId?: (id: string, model: Model<TApi>, source: AssistantMessage) => string,
 ): Message[] {
-  // Build a map of original tool call IDs to normalized IDs
   const toolCallIdMap = new Map<string, string>();
 
   // Normalize null/undefined content from untyped callers (custom tools, hand-built
@@ -84,14 +83,11 @@ export function transformMessages<TApi extends Api>(
 
   const imageAwareMessages = downgradeUnsupportedImages(normalizedMessages, model);
 
-  // First pass: transform messages (unsupported image downgrade, thinking blocks, tool call ID normalization)
   const transformed = imageAwareMessages.map((msg) => {
-    // System and user messages pass through unchanged
     if (msg.role === "system" || msg.role === "user") {
       return msg;
     }
 
-    // Handle toolResult messages - normalize toolCallId if we have a mapping
     if (msg.role === "toolResult") {
       const normalizedId = toolCallIdMap.get(msg.toolCallId);
 
@@ -102,24 +98,18 @@ export function transformMessages<TApi extends Api>(
       return msg;
     }
 
-    // Assistant messages need transformation check
     if (msg.role === "assistant") {
       const isSameModel =
         msg.provider === model.provider && msg.api === model.api && msg.model === model.id;
 
       const transformedContent = msg.content.flatMap((block) => {
         if (block.type === "thinking") {
-          // Redacted thinking is opaque encrypted content, only valid for the same model.
-          // Drop it for cross-model to avoid API errors.
           if (block.redacted) {
             return isSameModel ? block : [];
           }
 
-          // For same model: keep thinking blocks with signatures (needed for replay)
-          // even if the thinking text is empty (OpenAI encrypted reasoning)
           if (isSameModel && block.thinkingSignature) return block;
 
-          // Skip empty thinking blocks, convert others to plain text
           if (!block.thinking || block.thinking.trim() === "") return [];
 
           if (isSameModel) return block;
@@ -171,15 +161,10 @@ export function transformMessages<TApi extends Api>(
     return msg;
   });
 
-  // Second pass: insert synthetic empty tool results for orphaned tool calls
-  // This preserves thinking signatures and satisfies API requirements
   const result: Message[] = [];
   let pendingToolCalls: ToolCall[] = [];
   let existingToolResultIds = new Set<string>();
 
-  // System messages are transparent to tool-call accounting: one that lands between a tool
-  // call and its results is held back and emitted after the results (synthetic ones
-  // included), so it never causes a duplicate result for a call that is answered later.
   const heldSystemMessages: Message[] = [];
 
   const closePendingToolCalls = () => {
@@ -209,19 +194,12 @@ export function transformMessages<TApi extends Api>(
     const msg = transformed[i];
 
     if (msg.role === "assistant") {
-      // If we have pending orphaned tool calls from a previous assistant, insert synthetic results now
       closePendingToolCalls();
 
-      // Skip errored/aborted assistant messages entirely.
-      // These are incomplete turns that shouldn't be replayed:
-      // - May have partial content (reasoning without message, incomplete tool calls)
-      // - Replaying them can cause API errors (e.g., OpenAI "reasoning without following item")
-      // - The model should retry from the last valid state
       if (msg.stopReason === "error" || msg.stopReason === "aborted") {
         continue;
       }
 
-      // Track tool calls from this assistant message
       const toolCalls = msg.content.filter((b) => b.type === "toolCall");
 
       if (toolCalls.length > 0) {
@@ -240,13 +218,11 @@ export function transformMessages<TApi extends Api>(
         result.push(msg);
       }
     } else {
-      // A new user turn interrupts tool flow - insert synthetic results for orphaned calls
       closePendingToolCalls();
       result.push(msg);
     }
   }
 
-  // If the conversation ends with unresolved tool calls, synthesize results now.
   closePendingToolCalls();
 
   return result;

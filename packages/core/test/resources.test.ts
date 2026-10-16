@@ -12,7 +12,6 @@ import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import { env } from "./harness.ts";
 
-/** Returns a disk with user, ancestor and project resources, some colliding. */
 function seeded() {
   const disk = createDisk();
 
@@ -59,13 +58,13 @@ describe("resources", () => {
     expect(resources.skills).toEqual([
       {
         name: "lint",
-        location: ".agents/skills/lint/SKILL.md",
+        location: "/home/ada/.agents/skills/lint/SKILL.md",
         scope: "user",
         description: "",
       },
       {
         name: "review",
-        location: ".nyte/skills/review/SKILL.md",
+        location: "/home/ada/.nyte/skills/review/SKILL.md",
         scope: "user",
         description: "Reviews diffs.",
       },
@@ -75,7 +74,12 @@ describe("resources", () => {
         scope: "project",
         description: "The project's.",
       },
-      { name: "solo", location: "extra/solo.md", scope: "path", description: "From a path." },
+      {
+        name: "solo",
+        location: "/home/ada/extra/solo.md",
+        scope: "path",
+        description: "From a path.",
+      },
     ]);
     expect(resourceIssues(resources)).toEqual([
       expect.objectContaining({ severity: "warning", path: ["skills", "shared"] }),
@@ -170,7 +174,7 @@ describe("resources", () => {
           availability: { kind: "available" },
           projectSources: [],
         }),
-        attach: async () => env,
+        attach: async () => ({ ...env, identity: asId("chat-only") }),
       },
     };
 
@@ -189,7 +193,7 @@ describe("resources", () => {
     });
   });
 
-  it("hides every project and ancestor source when projectResources is false", async () => {
+  it("hides project skills, prompts and system files but keeps context files when projectResources is false", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
     const session = await host.sessions.create({ workspace });
     const before = await kernel.resources(session.id);
@@ -209,7 +213,12 @@ describe("resources", () => {
       ["shared", "user"],
     ]);
     expect(resourceIssues(hidden)).toEqual([]);
-    expect(hidden.contextFiles.map((file) => file.scope)).toEqual(["user"]);
+    expect(hidden.contextFiles.map((file) => [file.scope, file.path])).toEqual([
+      ["user", "/home/ada/.nyte/AGENTS.md"],
+      ["ancestor", "/AGENTS.md"],
+      ["ancestor", "/work/AGENTS.md"],
+      ["project", "/work/project/AGENTS.override.md"],
+    ]);
     expect(hidden.prompt).toEqual({ system: "User system.\n", append: null, scope: "user" });
     expect(hidden.prompts).toEqual([
       { name: "fix", location: ".nyte/prompts/fix.md", scope: "user" },
@@ -234,7 +243,10 @@ describe("resources", () => {
     const sandbox = fakeProvider(disk, { kind: "sandbox", confined: true });
     const remote = kernelOver(await memoryStore().open(), sandbox, { home: "/home/ada" });
     const remoteHost = createHost(remote, { credential: { kind: "token", token: "x" } });
-    const added = await remoteHost.workspaces.add({ kind: "sandbox", locator: "box" });
+    const added = await remoteHost.workspaces.add(
+      { kind: "sandbox", locator: "box" },
+      { projectResources: true },
+    );
     assert(added.kind === "added");
     const boxed = await remoteHost.sessions.create({ workspace: added.workspace });
     const scanned = await remote.resources(boxed.id);
@@ -264,7 +276,9 @@ describe("resources", () => {
       context.text.indexOf("# /AGENTS.md"),
     );
     expect(context.text).toContain("# /work/project/AGENTS.override.md\n\nProject override.");
-    expect(skills.text).toContain("- review: Reviews diffs. (~/.nyte/skills/review/SKILL.md)");
+    expect(skills.text).toContain(
+      "- review: Reviews diffs. (/home/ada/.nyte/skills/review/SKILL.md)",
+    );
     expect(skills.text).toContain("- shared: The project's. (.nyte/skills/shared/SKILL.md)");
 
     const contributed = registries.skills.list();

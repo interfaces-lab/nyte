@@ -277,12 +277,10 @@ export function localFiles(
   };
 }
 
-/** Returns a file version from the bytes or text it hashes. */
 function versionOf(data: string | Uint8Array): FileVersion {
   return asId<"file-version">(sha256(data));
 }
 
-/** Returns null for a missing path's error (`ENOENT`, `ENOTDIR`), rethrowing any other. */
 function missing(error: unknown): null {
   const code = codeOf(error);
 
@@ -291,7 +289,6 @@ function missing(error: unknown): null {
   throw error;
 }
 
-/** Returns the SHA-256 version of a file's contents, read in chunks. */
 async function hashFile(path: string): Promise<FileVersion> {
   const hash = createHash("sha256");
   const handle = await open(path, "r");
@@ -316,7 +313,6 @@ async function directoryVersion(path: string): Promise<FileVersion> {
   return versionOf((await readdir(path)).sort().join("\n"));
 }
 
-/** Returns what `read` would version at a path, following symlinks: a file's contents, a directory's names, or null when nothing resolves there. */
 async function currentVersion(path: string): Promise<FileVersion | null> {
   const stats = await stat(path).catch(missing);
 
@@ -325,7 +321,6 @@ async function currentVersion(path: string): Promise<FileVersion | null> {
   return stats.isDirectory() ? directoryVersion(path) : hashFile(path).catch(missing);
 }
 
-/** Returns the path a write lands on: a symlink's resolved target, else the path itself. */
 async function resolveLink(path: string): Promise<string> {
   const link = await lstat(path).catch(missing);
 
@@ -342,7 +337,6 @@ function refusedBatch(): FileBatch {
   };
 }
 
-/** Collects every file and symlink a default scan of the root reports, for `find`. */
 async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
   const entries: FileEntryView[] = [];
 
@@ -355,7 +349,6 @@ async function collectFiles(root: string): Promise<readonly FileEntryView[]> {
   return entries;
 }
 
-/** Ranks paths against a query: exact name, name prefix, name substring, path substring, fuzzy subsequence; shorter first within a rank. */
 function rank(
   entries: readonly FileEntryView[],
   query: string,
@@ -408,7 +401,6 @@ function subsequence(text: string, needle: string): boolean {
   return false;
 }
 
-/** Formats contents with the root's formatter, as `localFiles` describes. */
 async function format(
   root: string,
   path: string,
@@ -458,7 +450,6 @@ async function detectFormatter(root: string): Promise<string | null> {
   return null;
 }
 
-/** Yields content matches for a literal query, as `localFiles` describes. */
 async function* search(
   root: string,
   query: string,
@@ -522,7 +513,6 @@ async function* search(
   }
 }
 
-/** Returns a `match` frame from one line of `rg --json`, or null for any other record. */
 function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "match" }> | null {
   let record: unknown;
 
@@ -556,7 +546,6 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Yields content matches by reading every text file a default scan reports, up to 1 MiB each. */
 async function* scanText(root: string, query: string, limit: number): AsyncGenerator<SearchFrame> {
   const sensitive = query !== query.toLowerCase();
   const needle = sensitive ? query : query.toLowerCase();
@@ -598,7 +587,6 @@ async function* scanText(root: string, query: string, limit: number): AsyncGener
   yield { kind: "complete" };
 }
 
-/** Yields batches of file events under a root, as `localFiles` describes. */
 function watchFiles(
   root: string,
   paths: readonly string[],

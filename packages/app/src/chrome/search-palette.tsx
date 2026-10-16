@@ -273,6 +273,7 @@ export function SearchPalette({
         <Tabs.Root
           variant="pill"
           value={tab}
+          xstyle={styles.tabsBar}
           onValueChange={(value) => {
             if (isOption(value, TABS)) setTab(value);
           }}

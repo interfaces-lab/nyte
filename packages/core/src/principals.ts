@@ -16,14 +16,13 @@ import type { Kernel } from "./kernel.ts";
 import { decodePrincipalRecord } from "./records.ts";
 import type { PrincipalRecord } from "./records.ts";
 import { hostPrincipalsRef } from "./refs.ts";
-import { commit, expectOf, load, put } from "./session-state.ts";
+import { commit, readRefExpectation, load, put } from "./session-state.ts";
 
-/** Returns who a connection acts as, what it may do, the credential it reconnects with, and the run it acts from; every handle closes over one. */
 export interface ConnectionContext {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
   readonly credential: CredentialSource;
-  /** The durable step a connection acts from, null for a client; `sequence` keys its acquisitions without an explicit id (`acq:<n>`) and restarts on every re-run of the step. */
+
   readonly origin: {
     readonly session: SessionId;
     readonly run: RunId | null;
@@ -33,21 +32,17 @@ export interface ConnectionContext {
   } | null;
 }
 
-/** Holds the open connections of each principal in this process, so revoking one drops its streams; a principal revoked here is never registered again. */
 export interface ConnectionRegistry {
-  /** Admits a principal's connection with how to close it, the disposer forgetting it; a principal revoked here is refused and nothing is recorded. */
   register(
     principal: PrincipalId,
     close: () => void,
   ): { readonly kind: "admitted"; readonly dispose: Disposer } | { readonly kind: "revoked" };
-  /** Closes and forgets every connection the principal registered; accepted work continues. */
+
   revoke(principal: PrincipalId): void;
 }
 
-/** The principal `open` connects as, with every authority; reserved, `pair` never mints it (decision 4). */
 export const LOCAL: PrincipalId = asId<"principal">("local");
 
-/** The principal a token connects as, with participant and owner; reserved, `pair` never mints it (decision 4). */
 export const TOKEN: PrincipalId = asId<"principal">("token");
 
 export const ALL_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>([
@@ -58,7 +53,6 @@ export const ALL_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>([
 
 export const TOKEN_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>(["participant", "owner"]);
 
-/** What core acts as on its own behalf: `LOCAL` with participant and owner authority, no credential and no origin. */
 export const CORE_CONTEXT: ConnectionContext = {
   principal: LOCAL,
   authority: TOKEN_AUTHORITY,
@@ -66,7 +60,6 @@ export const CORE_CONTEXT: ConnectionContext = {
   origin: null,
 };
 
-/** What a tool invocation's connection holds. */
 export const PARTICIPANT_AUTHORITY: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
 const PAIRING_TTL = 10 * 60 * 1000;
@@ -75,7 +68,6 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const EMPTY: PrincipalRecord = { principals: [], codes: [] };
 
-/** Throws `denied` unless the authority holds what the operation's `OPERATION_AUTHORITY` row needs. */
 export function gate(authority: ReadonlySet<Authority>, operation: ServedOperation): void {
   const needed = OPERATION_AUTHORITY[operation].authority;
 
@@ -83,7 +75,6 @@ export function gate(authority: ReadonlySet<Authority>, operation: ServedOperati
     throw new SdkError("denied", `${operation} needs ${needed} authority.`);
 }
 
-/** Returns a view of `api` in which `overrides` and a rejected `denied` for each `<kind>.<member>` row the authority lacks replace their members, every other member being the api's own, bound to it; the api itself when nothing differs. Participant rows are not checked: every context in process holds participant, and protocol's server gates each wire row before core sees it. */
 export function gated<T extends object>(
   kind: string,
   api: T,
@@ -121,7 +112,6 @@ export function gated<T extends object>(
   });
 }
 
-/** Returns `Host.principals` over `host/principals`, each write compare-and-set against the record it read. `pair` throws `invalid` for an authority without participant, which no connection could use. `revoke` drops the principal's open connections; an id no paired principal holds succeeds and writes or marks nothing. */
 export function createPrincipals(kernel: Kernel): Host["principals"] {
   return {
     async list() {
@@ -138,6 +128,7 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
       if (!input.authority.has("participant"))
         throw new SdkError("invalid", "A pairing code needs participant authority.");
       const code = mintCode();
+      const codeDigest = await sha256(code);
       const expiresAt = Date.now() + PAIRING_TTL;
 
       await writePrincipals(kernel, (record) => ({
@@ -145,7 +136,7 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
         codes: [
           ...record.codes.filter((entry) => entry.expiresAt > Date.now()),
           {
-            code,
+            code: codeDigest,
             authority: [...input.authority],
             label: input.label ?? "Paired device",
             expiresAt,
@@ -170,7 +161,6 @@ export function createPrincipals(kernel: Kernel): Host["principals"] {
   };
 }
 
-/** Redeems an unexpired pairing code once, adding a principal with a fresh id and device token in the same write; null for an unknown or expired code. The token is stored as its digest only. */
 export async function redeemPairing(
   kernel: Kernel,
   code: string,
@@ -180,12 +170,12 @@ export async function redeemPairing(
   readonly token: string;
 } | null> {
   const token = mintToken();
-  const tokenDigest = await sha256(token);
+  const [tokenDigest, codeDigest] = await Promise.all([sha256(token), sha256(code)]);
   const principal = asId<"principal">(crypto.randomUUID());
 
   const written = await writePrincipals(kernel, (record) => {
     const now = Date.now();
-    const found = record.codes.find((entry) => entry.code === code && entry.expiresAt > now);
+    const found = record.codes.find((entry) => entry.code === codeDigest && entry.expiresAt > now);
 
     if (found === undefined) return null;
 
@@ -209,7 +199,6 @@ export async function redeemPairing(
   return granted === undefined ? null : { principal, authority: new Set(granted.authority), token };
 }
 
-/** Resolves the paired principal a device token names from one read of `host/principals`, writing nothing; null when no principal holds it. */
 export async function authenticateToken(
   kernel: Kernel,
   token: string,
@@ -258,7 +247,6 @@ async function readPrincipals(kernel: Kernel) {
   return { ref, record: (await load(kernel, ref, decodePrincipalRecord))?.record ?? EMPTY };
 }
 
-/** Rewrites `host/principals` with what `change` returns, compare-and-set against the record read and read again after every lost race until it wins, since `stale` is reserved for another host answering; a null change writes nothing. Each loss is another writer's win, so the loop ends. */
 async function writePrincipals(
   kernel: Kernel,
   change: (record: PrincipalRecord) => PrincipalRecord | null,
@@ -273,7 +261,7 @@ async function writePrincipals(
       {
         name: hostPrincipalsRef(),
         target: await put(kernel, "principals", next),
-        expect: expectOf(ref),
+        expect: readRefExpectation(ref),
       },
     ]);
 

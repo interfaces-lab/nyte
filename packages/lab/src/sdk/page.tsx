@@ -1,13 +1,9 @@
-/**
- * The SDK spec as a document: doc comments read as prose, code stays beside
- * them with its line numbers in `packages/lab/sdk-spec.ts`.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { CodeBlock } from "@nyte-ai/app/conversation/code-block.tsx";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import source from "../../sdk-spec.ts?raw";
+import source from "../../sdk-shape.ts?raw";
 import { parseSpec, type SpecBlock, type SpecLine } from "./spec";
 
 const BLOCKS = parseSpec(source);
@@ -19,8 +15,7 @@ type Run = {
   readonly lines: SpecLine[];
 };
 
-/** Wrapped comment lines join into paragraphs; indented and aligned lines keep their shape. */
-function runsOf(lines: readonly SpecLine[]): Run[] {
+function groupLines(lines: readonly SpecLine[]): Run[] {
   const runs: Run[] = [];
   let open = false;
 
@@ -58,7 +53,7 @@ function runsOf(lines: readonly SpecLine[]): Run[] {
 function Prose({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement {
   return (
     <div {...props(styles.prose)}>
-      {runsOf(lines).map((run) => {
+      {groupLines(lines).map((run) => {
         const key = run.lines[0]?.number;
 
         if (run.kind === "pre") {
@@ -100,7 +95,7 @@ function Prose({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement
   );
 }
 
-function rangeOf(lines: readonly SpecLine[]): string {
+function lineRange(lines: readonly SpecLine[]): string {
   const first = lines[0]?.number;
   const last = lines.at(-1)?.number;
 
@@ -109,7 +104,6 @@ function rangeOf(lines: readonly SpecLine[]): string {
   return first === last ? `L${String(first)}` : `L${String(first)}–${String(last)}`;
 }
 
-/** "1. Usage. All consumers…" reads as the title "1. Usage" and its summary. */
 function splitTitle(text: string): { readonly title: string; readonly summary: string } {
   const match = /^((?:Part [IVX]+|\d+)\. [^.]+)\.\s*(.*)$/.exec(text);
 
@@ -120,6 +114,15 @@ function splitTitle(text: string): { readonly title: string; readonly summary: s
 
 function Block({ block }: { readonly block: SpecBlock }): ReactElement {
   switch (block.kind) {
+    case "code":
+      return (
+        <section id={block.id} {...props(styles.block)}>
+          <span id={`L${String(block.code[0]?.number)}`} {...props(styles.range)}>
+            {lineRange(block.code)}
+          </span>
+          <CodeBlock code={block.code.map((line) => line.text).join("\n")} lang="typescript" />
+        </section>
+      );
     case "part": {
       const { title } = splitTitle(block.line.text);
       const [eyebrow, name] = title.split(". ");
@@ -166,7 +169,7 @@ function Block({ block }: { readonly block: SpecBlock }): ReactElement {
         <section id={block.id} {...props(styles.block)}>
           <div {...props(styles.entryHeader)}>
             <h4 {...props(styles.entryTitle)}>{name}</h4>
-            <span {...props(styles.range)}>{rangeOf([...block.doc, ...block.code])}</span>
+            <span {...props(styles.range)}>{lineRange([...block.doc, ...block.code])}</span>
           </div>
           {others.length > 0 && <p {...props(styles.also)}>Also declares {others.join(", ")}</p>}
           {block.doc.length > 0 && <Prose lines={block.doc} />}
@@ -184,9 +187,9 @@ export function SdkSpecPage(): ReactElement {
     <main {...props(styles.page)}>
       <article {...props(styles.article)}>
         <header {...props(styles.header)}>
-          <h1 {...props(styles.title)}>Nyte SDK spec</h1>
+          <h1 {...props(styles.title)}>Nyte SDK reference</h1>
           <p {...props(styles.meta)}>
-            packages/lab/sdk-spec.ts · {LINE_COUNT.toLocaleString()} lines
+            packages/lab/sdk-shape.ts · {LINE_COUNT.toLocaleString()} lines
           </p>
         </header>
         {intro?.kind === "note" ? <Prose lines={intro.lines} /> : intro && <Block block={intro} />}

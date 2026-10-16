@@ -75,6 +75,7 @@ export const CALL_INPUT_SCHEMAS = {
   "host.usage": checkedUsageWindow,
   "host.openWorkspace": compile(strict({ path: nonEmpty })),
   "host.pickWorkspace": compile(noInput),
+  "host.trustWorkspace": compile(strict({ path: nonEmpty })),
   "host.closeWorkspace": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
@@ -262,7 +263,6 @@ const browserFocus = compile(strict({ surface: nonEmpty, focused: Type.Boolean()
 
 const keyName = Type.String({ maxLength: 32 });
 
-/** Sent by the guest preload, so the page may have forged it. */
 const browserKey = compile(
   strict({
     key: keyName,

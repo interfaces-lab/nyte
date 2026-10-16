@@ -1,9 +1,3 @@
-/**
- * The whole interactive state: what the outside world told us (`facts`) and
- * what the user did here (`local`). One immutable value, one writer: `reduce`.
- * Everything drawn is `deriveScreen(state)`; nothing below is a cache of
- * something derivable.
- */
 import type {
   Delivery,
   MessageId,
@@ -20,6 +14,7 @@ import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { CompletionState, MentionFile } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
+import type { ListDialog } from "./dialogs/list.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftParts, DraftSnapshot } from "./draft.ts";
 import type { WindowStart } from "./window.ts";
@@ -29,7 +24,6 @@ export interface State {
   readonly local: Local;
 }
 
-/** Written only by `reduce` from `Fact` messages the effects runner forwards. */
 export interface Facts {
   readonly phase: Phase;
   readonly session: FollowedSession | null;
@@ -39,26 +33,27 @@ export interface Facts {
   readonly shells: readonly ShellJob[];
   readonly workspace: WorkspaceFacts;
   readonly terminal: TerminalFacts;
+  readonly remote: RemoteFacts;
 }
+
+export type RemoteFacts =
+  | { readonly kind: "off" }
+  | { readonly kind: "connecting" }
+  | { readonly kind: "shared"; readonly devices: number }
+  | { readonly kind: "interrupted" };
 
 export type Phase =
   | { readonly kind: "starting"; readonly step: "workspace" | "settings" | "providers" }
   | { readonly kind: "ready" }
   | { readonly kind: "closing" };
 
-/** The followed head. `view` is null between `follow` and the first frame ("Loading session…"). */
 export interface FollowedSession {
   readonly id: SessionId;
   readonly info: SessionInfo;
   readonly view: SessionView | null;
-  /**
-   * `failed`: the watch threw (`failure`) or ended (`null`). Drawn as the
-   * failure line with a retry (`retry-watch` intent), never a dead loop.
-   */
   readonly watch:
     | { readonly kind: "live" }
     | { readonly kind: "failed"; readonly failure: string | null };
-  /** The configurator's optimistic selection; the footer and Shift+Tab read it, never `view.configuration` directly. */
   readonly selection: Selection;
 }
 
@@ -69,15 +64,12 @@ export interface Selection {
 }
 
 export interface CatalogFacts {
-  /** The generation the catalog below was listed for; an older listing that resolves late is dropped. */
   readonly generation: number;
   readonly catalog: ModelCatalogView | null;
 }
 
-/** A local `!` command. The runner owns the process; these rows are what it reported. */
 export interface ShellJob {
   readonly id: string;
-  /** The chat it ran in: its card and its result marker belong to that chat only. */
   readonly session: SessionId | null;
   readonly command: string;
   readonly include: boolean;
@@ -89,7 +81,6 @@ export interface ShellJob {
     | { readonly kind: "signalled"; readonly signal: string }
     | { readonly kind: "cancelled" }
     | { readonly kind: "failed"; readonly message: string };
-  /** Set once its marker went into the draft, so it is inserted exactly once. */
   readonly delivered: boolean;
 }
 
@@ -108,7 +99,6 @@ export interface TerminalFacts {
   readonly dragging: boolean;
 }
 
-/** Written only by `reduce` from `Intent` and `Outcome` messages. */
 export interface Local {
   readonly draft: Draft;
   readonly completion: CompletionState;
@@ -117,43 +107,28 @@ export interface Local {
   readonly question: QuestionLocal;
   readonly notice: Notice | null;
   readonly failures: readonly FailureReport[];
-  /** One list for "something is in flight that blocks the composer"; `blocked` is derived from it. */
   readonly pending: readonly PendingOp[];
   readonly handbacks: Readonly<Record<SessionId, readonly Handback[]>>;
   readonly drafts: Readonly<Record<SessionId, DraftSnapshot>>;
-  /** A queue edit left open in another chat; it comes back with that chat's draft. */
   readonly edits: Readonly<Record<SessionId, Editing>>;
   readonly history: HistoryCursor | null;
   readonly escapeArmedAt: number | null;
   readonly transcript: TranscriptLocal;
   readonly submissions: readonly Submission[];
-  /** Counter for ids `reduce` mints (dialogs, submissions, shell jobs), so reduce stays pure. */
   readonly sequence: number;
-  /** Bumped on a session switch or directory change; a paste resolved for an older generation is dropped. */
   readonly pasteGeneration: number;
-  /** Pastes the runner is still resolving. */
   readonly pasting: number;
-  /** A send pressed while pastes were resolving; it goes once the last lands, and a refused paste cancels it. */
   readonly sendAfterPaste: { readonly delivery: Delivery; readonly warning: string | null } | null;
-  /** The run this client watched while it was live; OSC 7501 reports `done`/`error` only for it, until a key marks it seen. */
   readonly watchedRun: RunId | null;
-  /** The move in flight, so its outcome lands the handback with the right notice. */
   readonly move: MoveContext | null;
-  /** The marker whose preview (file, image, shell output) is open under the composer. */
   readonly preview: string | null;
 }
 
 export interface MoveContext {
   readonly purpose: "retract" | "tree";
-  /** The landed user message the move hands back; its handback waits until the view no longer shows it landed. */
   readonly message: MessageId | null;
 }
 
-/**
- * The textarea owns the text. `text`, `cursor` and `row` are its mirror,
- * written only by the Composer's `draft-changed` fact (and refreshed
- * synchronously before every key decision). `parts` is owned here.
- */
 export interface Draft {
   readonly text: string;
   readonly cursor: number;
@@ -164,24 +139,53 @@ export interface Draft {
 export interface Editing {
   readonly message: MessageId;
   readonly delivery: "steer" | "queue";
-  /** The draft the user had before opening the edit; restored on cancel. */
   readonly saved: DraftSnapshot;
 }
 
+export interface QuestionRequest {
+  readonly session: SessionId;
+  readonly part: PartId;
+}
+
+export type QuestionFieldDraft =
+  | {
+      readonly kind: "single";
+      readonly selection:
+        | { readonly kind: "empty" }
+        | { readonly kind: "option"; readonly value: string }
+        | { readonly kind: "custom" };
+      readonly customText: string;
+    }
+  | {
+      readonly kind: "multiple";
+      readonly options: readonly string[];
+      readonly customText: string;
+      readonly customSelected: boolean;
+    };
+
+export interface QuestionDraft {
+  readonly active: number;
+  readonly fields: readonly QuestionFieldDraft[];
+  readonly phase: "editing" | "submitting" | "answered";
+}
+
+export interface QuestionTypedDraft {
+  readonly session: SessionId;
+  readonly draft: DraftSnapshot;
+}
+
 export interface QuestionLocal {
-  /** The question the user pressed Esc on ("later"); the panel stays closed for that part only. */
-  readonly dismissed: PartId | null;
+  readonly detailScroll?: {
+    readonly part: PartId;
+    readonly index: number;
+    readonly request: NonNullable<ListDialog["detailScroll"]>;
+  };
+  readonly dismissed: QuestionRequest | null;
   readonly highlighted: number;
-  /** The panel's filter text. */
-  readonly query: string;
-  /** The typed answer while the "Type an answer" row is active; null otherwise. */
-  readonly answering: string | null;
-  /** The caret in the typed answer; absent at the end. */
-  readonly caret?: number;
+  readonly drafts: ReadonlyMap<SessionId, ReadonlyMap<PartId, QuestionDraft>>;
 }
 
 export interface Notice {
-  /** `ok` confirms a change took (model, level, theme, directory, move, sign-in, reload, handback). */
   readonly tone: "info" | "ok" | "warning" | "error";
   readonly text: string;
   readonly at: number;
@@ -200,7 +204,6 @@ export type PendingOp =
   | { readonly kind: "reload" }
   | { readonly kind: "editor" };
 
-/** Text to put back in the composer once it is empty and `commit` is no longer drawn as landed. */
 export interface Handback {
   readonly draft: DraftSnapshot;
   readonly notice: string | null;
@@ -216,16 +219,13 @@ export interface TranscriptLocal {
   readonly following: boolean;
   readonly window: WindowStart;
   readonly toolOutput: "collapsed" | "expanded";
-  /** Keys are `${messageId}:${local}`, never shared between messages. */
   readonly disclosures: ReadonlySet<string>;
 }
 
-/** A send between "draft cleared" and "receipt or refusal". Never blocks typing. */
 export interface Submission {
   readonly id: string;
   readonly session: SessionId;
   readonly snapshot: DraftSnapshot;
-  /** Saving an edit of a queued message: send with `replace` (the runner re-checks it is still pending). */
   readonly replace: MessageId | null;
 }
 
@@ -248,13 +248,14 @@ export function initialState(bootstrap: Bootstrap): State {
       shells: [],
       workspace: { cwd: bootstrap.cwd, branch: null, dirty: false, mentions: null },
       terminal: bootstrap.terminal,
+      remote: { kind: "off" },
     },
     local: {
       draft: EMPTY_DRAFT,
       completion: { kind: "closed", dismissed: null },
       editing: null,
       dialogs: [],
-      question: { dismissed: null, highlighted: 0, query: "", answering: null },
+      question: { dismissed: null, highlighted: 0, drafts: new Map() },
       notice: null,
       failures: [],
       pending: [],
@@ -281,7 +282,6 @@ export function initialState(bootstrap: Bootstrap): State {
   };
 }
 
-/** The `!` commands run in the followed chat, the ones its transcript and draft show. */
 export function followedShells(state: State): readonly ShellJob[] {
   const followed = state.facts.session?.id ?? null;
 

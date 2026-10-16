@@ -41,7 +41,6 @@ export default {
       });
 
       runtime = opening;
-      // Cold-start repair supplements the cron; it waits so schema setup is not raced.
       waitUntil(opening.then(() => reconcileSessionDispatch()).catch(logReconcileFailure));
     }
 

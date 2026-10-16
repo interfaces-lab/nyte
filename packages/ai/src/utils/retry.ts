@@ -1,20 +1,13 @@
 /**
  * The bounded exponential-backoff retry loop for assistant calls. What counts as
  * transient is decided by the failure class in `failure.ts`.
- *
- * Based on https://github.com/earendil-works/pi/blob/c37b0e03b5d727c44a5d6b47d6ecf7e7b3d32e7a/packages/ai/src/utils/retry.ts
- * Synced with pi c37b0e03b.
  */
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { sleep } from "./abort.ts";
 import { classifyAssistantFailure, isRetryableFailureClass } from "./failure.ts";
 
 /**
- * Retry policy: bounded attempts with exponential backoff (`baseDelayMs * 2^(attempt-1)`).
- * `maxAgentDelayMs` caps each computed delay and defaults to 60 seconds.
- * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`, `maxAgentDelayMs`) in
- * coding-agent; kept here so the classifier and the policy-driven retry loop live together
- * and stay reusable by the SDK and other callers.
+ * Bounded retries with exponential backoff. `maxAgentDelayMs` defaults to 60 seconds.
  */
 export interface RetryPolicy {
   enabled: boolean;
@@ -104,21 +97,18 @@ export async function retryAssistantCall(
   for (;;) {
     const response = await produce();
 
-    // Abort: terminal but not successful. Never retry an aborted message.
     if (response.stopReason === "aborted") {
       if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt);
 
       return response;
     }
 
-    // Success: non-error, non-abort responses return as-is.
     if (response.stopReason !== "error") {
       if (lastRetry) await callbacks?.onRetryFinished?.(true, lastRetry.attempt);
 
       return response;
     }
 
-    // Non-retryable, or budget exhausted: return the final error message.
     if (attempt >= maxAttempts || !isRetryableAssistantError(response)) {
       if (lastRetry)
         await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);

@@ -38,13 +38,10 @@ import type { Changed } from "./patch.ts";
 import { decodeText } from "./text.ts";
 import { WALK_LIMIT, walkTree } from "./tree.ts";
 
-/** Returns a repository holding an environment: its root, git directory, and the environment's path under the root (`""` or `sub/dir/`). */
 type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
 
-/** Returns a walked tree's manifest: each path's content hash. */
 type Manifest = Readonly<Record<string, string>>;
 
-/** Returns a walked snapshot as stored: its manifest, and whether the walk stopped short (at its entry limit or at an unreadable directory), so a path it lacks may still be there. */
 type Tree = { readonly files: Manifest; readonly incomplete: boolean };
 
 const ENV: Readonly<Record<string, string>> = {
@@ -354,7 +351,6 @@ export function localSnapshots(
   };
 }
 
-/** Stores one walked file or symlink's bytes (a file's up to 1 MiB; a symlink's target) under its content hash, reusing the last hash while its size, mtime and inode stay, and returns the hash. */
 async function storeEntry(
   store: string,
   path: string,
@@ -411,7 +407,6 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Writes a content-addressed file once, through a temporary file renamed into place. */
 async function keep(path: string, contents: string | Uint8Array): Promise<void> {
   if (
     await lstat(path).then(
@@ -431,7 +426,6 @@ async function keep(path: string, contents: string | Uint8Array): Promise<void> 
   }
 }
 
-/** Returns a walked snapshot's tree; the empty id is the empty tree. */
 async function treeOf(store: string, id: SnapshotId): Promise<Tree> {
   if (id === "") return { files: {}, incomplete: false };
 
@@ -465,7 +459,6 @@ async function treeOf(store: string, id: SnapshotId): Promise<Tree> {
   };
 }
 
-/** Compares two trees: added, deleted and modified paths, an added path whose content a deleted one had becoming a rename from it; in path order. A path only one side holds while the other is incomplete is in `incomplete` and listed as `modified`, never added or deleted. */
 function compareTrees(before: Tree, after: Tree) {
   const from = before.files;
   const to = after.files;
@@ -518,7 +511,6 @@ function compareTrees(before: Tree, after: Tree) {
   };
 }
 
-/** Returns a stored object's text, null when it is absent (empty side), and undefined when it is not stored or not text. */
 async function sideText(
   store: string,
   hash: string | undefined,

@@ -8,12 +8,10 @@ export const MAX_ATTACHMENTS = 3;
 // Three images leave room in the server's 1 MiB JSON body for text and the envelope.
 const MAX_IMAGE_BASE64_LENGTH = 230 * 1024;
 
-/** One piece of what the composer sends, before its photos become blobs: text, or JPEG bytes as base64. */
 export type DraftPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "image"; readonly mime: string; readonly data: string };
 
-/** What the composer sends: a string, or text and photos in order. */
 export type DraftContent = string | readonly DraftPart[];
 
 export type StagedImage = {
@@ -22,13 +20,6 @@ export type StagedImage = {
   readonly image: Extract<DraftPart, { kind: "image" }>;
 };
 
-/**
- * Returns a draft as `UserContent`: each photo uploaded to the workspace's
- * files as a blob, text as it is. Blobs are content-addressed, so sending the
- * same draft again names the same blob.
- *
- * @throws {Error} when the workspace serves no files to upload a photo to.
- */
 export async function uploadDraft(
   workspace: Workspace,
   content: DraftContent,
@@ -55,7 +46,6 @@ export async function uploadDraft(
   );
 }
 
-/** Yields base64 as one chunk of bytes. */
 async function* bytesOf(data: string): AsyncIterable<Uint8Array> {
   yield Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
 }

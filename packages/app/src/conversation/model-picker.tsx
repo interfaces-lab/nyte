@@ -14,6 +14,7 @@ import {
   AutocompleteList,
 } from "@nyte-ai/ui/autocomplete";
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -34,8 +35,8 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { menu } from "@nyte-ai/ui/styles/schema.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 import { isSettingsSection } from "../settings/index.ts";
 import {
@@ -53,7 +54,6 @@ export type ModelPickerChange =
       readonly thinkingLevel: ModelThinkingLevel;
     }
   | { readonly kind: "thinking"; readonly thinkingLevel: ModelThinkingLevel }
-  /** Switch between the current model and its fast sibling. */
   | { readonly kind: "fast"; readonly enabled: boolean };
 
 const styles = create({
@@ -74,7 +74,6 @@ const styles = create({
     width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
-    borderRadius: menu.radius,
   },
   parameterPalette: {
     width: `min(${menu.parameterWidth}, var(--available-width))`,
@@ -85,16 +84,12 @@ const styles = create({
   empty: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
-    padding: "10px 8px",
+    gap: space.s0_5,
+    padding: `${space.s2_5} ${space.s2}`,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   emptyTitle: {
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -102,7 +97,6 @@ interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ModelThinkingLevel | undefined;
-  /** The selected model is the current row's fast sibling. */
   fast: boolean;
   disabled?: boolean;
   loading?: boolean;
@@ -130,11 +124,15 @@ function ModelPickerView({
   );
 
   const connected =
-    catalog?.providers.some((provider) => provider.credential !== "missing") ?? false;
+    catalog?.providers.some(
+      (provider) => provider.credential !== "missing" && provider.credential !== "unknown",
+    ) ?? false;
+
+  const unknown = catalog?.providers.some((provider) => provider.credential === "unknown") ?? false;
 
   const manage = isSettingsSection("providers")
     ? {
-        label: connected ? "Manage Providers…" : "Connect a Provider…",
+        label: connected || unknown ? "Manage Providers…" : "Connect a Provider…",
         href: "/settings/providers",
         open: () => void navigate({ to: "/settings/$section", params: { section: "providers" } }),
       }
@@ -262,17 +260,21 @@ function ModelPickerView({
               <MenuSeparator />
               <AutocompleteList variant="inline" data-nyte-scrollport>
                 {groups.length === 0 && (
-                  <div {...props(styles.empty)}>
+                  <div {...props(text.sm, styles.empty)}>
                     {search.trim() !== "" ? (
-                      <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
+                      <span {...props(text.base, styles.emptyTitle)}>
+                        No models match "{search.trim()}"
+                      </span>
+                    ) : unknown ? (
+                      <span {...props(text.base, styles.emptyTitle)}>No models available</span>
                     ) : connected ? (
                       <>
-                        <span {...props(styles.emptyTitle)}>Every model is hidden</span>
+                        <span {...props(text.base, styles.emptyTitle)}>Every model is hidden</span>
                         <span>Enable models in Settings › Providers.</span>
                       </>
                     ) : (
                       <>
-                        <span {...props(styles.emptyTitle)}>No providers connected</span>
+                        <span {...props(text.base, styles.emptyTitle)}>No providers connected</span>
                         <span>Connect a provider in Settings › Providers.</span>
                       </>
                     )}

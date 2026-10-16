@@ -1,9 +1,3 @@
-/**
- * The one remote host this desktop remembers: where it is, which host
- * answered there, and the token it presents. Stored in `~/.nyte` beside the
- * credential stores, mode 0600, since the token is a credential. A damaged
- * file reads as "no server".
- */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { asId } from "@nyte-ai/schema";
@@ -22,7 +16,6 @@ const serverFile = Compile(
   ),
 );
 
-/** A remote host this desktop remembers: its address, the host that answered there, and the token it took. */
 export interface SavedServer {
   readonly url: string;
   readonly hostId: HostId;

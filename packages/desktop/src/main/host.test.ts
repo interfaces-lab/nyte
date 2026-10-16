@@ -9,6 +9,7 @@ import { fakeModels } from "@nyte-ai/host/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection } from "@nyte-ai/sdk";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { testDesktop } from "./fixtures/desktop-host.ts";
 import type { TestDesktop } from "./fixtures/desktop-host.ts";
 
@@ -29,7 +30,6 @@ async function desktop(...input: Parameters<typeof testDesktop>): Promise<TestDe
   return made;
 }
 
-/** Connects the way the renderer does: `host.endpoint()`, then `sdk.connect` with what it names. */
 async function connectLocal(made: TestDesktop): Promise<Connection> {
   const connection = await sdk.connect(await made.host.call(1, "host.endpoint", undefined));
 
@@ -130,11 +130,16 @@ test("connecting a server proves the token, pins the host that answered and reme
 
 test("picking a folder registers it and selects it for that window only; cancelling changes nothing", async () => {
   const picked: (string | undefined)[] = [undefined];
-  const made = await desktop({ pickFolder: async () => picked.shift() });
+  const received: { readonly event: HostEvent; readonly window: number | undefined }[] = [];
+  const made = await desktop({
+    pickFolder: async () => picked.shift(),
+    emitHostEvent: (event, window) => received.push({ event, window }),
+  });
   const folder = join(made.home, "project");
   await mkdir(folder);
 
   assert.deepEqual(await made.host.call(1, "host.pickWorkspace", undefined), { kind: "cancelled" });
+  assert.deepEqual(received, []);
   picked.push(folder);
   const opened = await made.host.call(1, "host.pickWorkspace", undefined);
 
@@ -150,9 +155,27 @@ test("picking a folder registers it and selects it for that window only; cancell
     opened.workspace.id,
   );
   assert.equal((await made.host.call(2, "host.state", undefined)).workspace, undefined);
+  assert.deepEqual(received, [
+    { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },
+  ]);
+
+  assert.equal(
+    (await made.host.call(1, "host.openWorkspace", { path: join(folder, "missing") })).kind,
+    "failed",
+  );
+  assert.equal(
+    (await made.host.call(1, "host.state", undefined)).workspace?.id,
+    opened.workspace.id,
+  );
+  assert.equal(received.length, 1);
 
   await made.host.call(1, "host.closeWorkspace", undefined);
   assert.equal((await made.host.call(1, "host.state", undefined)).workspace, undefined);
+  await made.host.call(1, "host.closeWorkspace", undefined);
+  assert.deepEqual(received, [
+    { event: { kind: "workspace_opened", workspace: opened.workspace }, window: 1 },
+    { event: { kind: "workspace_closed" }, window: 1 },
+  ]);
 });
 
 test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
@@ -185,7 +208,7 @@ test("a key login over the loopback listener connects the provider, and the reop
   try {
     const first = await desktop({ home, models: models() });
     const connection = await sdk.connect(await first.host.call(1, "host.endpoint", undefined));
-    assert.equal(await credential(connection), "missing");
+    await vi.waitFor(async () => assert.equal(await credential(connection), "missing"));
 
     const login = connection.models.login({ provider: "test", method: { kind: "key" } });
     const steps: string[] = [];
@@ -193,11 +216,11 @@ test("a key login over the loopback listener connects the provider, and the reop
     for await (const step of login.steps()) {
       steps.push(step.kind);
 
-      if (step.kind === "paste") await login.answer("sk-test");
+      if (step.kind === "paste") await login.answer(step.secret ? "sk-test" : "Work");
     }
 
-    assert.deepEqual(steps, ["paste", "done"]);
-    assert.notEqual(await credential(connection), "missing");
+    assert.deepEqual(steps, ["paste", "paste", "done"]);
+    await vi.waitFor(async () => assert.equal(await credential(connection), "configured"));
     await connection.close();
     await first.close();
     const written = reads;

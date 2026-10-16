@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { loadQuickJSWasm } from "@nyte-ai/plugin/codemode-runtime";
-import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
+import { loadQuickJSWasm } from "@nyte-ai/plugin/core/codemode-runtime";
+import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/core/codemode-runtime";
 
 export function codemodeRuntimeOptions(): Pick<CodemodeSandboxOptions, "workerUrl" | "wasm"> {
   if (import.meta.url.endsWith(".ts")) return {};

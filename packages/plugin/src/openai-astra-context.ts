@@ -1,5 +1,5 @@
 import type { ModelContextPolicy } from "@nyte-ai/core";
-import type { Plugin } from "./core.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 /**
  * The context policy of `gpt-6-astra` on OpenAI and OpenAI Codex: a window

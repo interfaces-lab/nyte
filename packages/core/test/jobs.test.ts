@@ -27,7 +27,6 @@ const question = definePart({
   fallback: (_state, { id }) => `Ask ${id}`,
 });
 
-/** Returns the context of a durable step of the session, its acquisitions counted from 0 on each run. */
 function stepOf(session: SessionId, call: CallId): ConnectionContext {
   let sequence = 0;
 
@@ -51,19 +50,16 @@ function stepOf(session: SessionId, call: CallId): ConnectionContext {
   };
 }
 
-/** Returns a call's record as the store holds it. */
 async function readCall(kernel: Kernel, session: SessionId, call: CallId) {
   const ref = await kernel.store.refs.get(callRef(session, call));
 
   return decodeCallRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
 }
 
-/** Returns the process the provider started `count`-th, once it has. */
 function started(processes: readonly Process[], count: number): Promise<Process> {
   return until(() => processes[count - 1]);
 }
 
-/** Reads frames until `exit`, decoding bytes. */
 async function drain(frames: AsyncIterable<OutputFrame>): Promise<readonly string[]> {
   const seen: string[] = [];
 
@@ -76,7 +72,6 @@ async function drain(frames: AsyncIterable<OutputFrame>): Promise<readonly strin
   return seen;
 }
 
-/** Parks a durable step of the session on `target`, as a tool waiting on a job does. */
 async function parkOn(
   kernel: Kernel,
   session: SessionId,

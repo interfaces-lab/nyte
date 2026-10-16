@@ -10,7 +10,6 @@ import { ModelRefType, ThinkingType } from "./models.ts";
 import { nullable } from "./nullable.ts";
 import { ToolClassType } from "./tools.ts";
 
-/** The TypeBox schema of a `Submission`. */
 export const SubmissionType = Type.Object({
   content: UserContentType,
   source: MessageSourceType,
@@ -19,7 +18,6 @@ export const SubmissionType = Type.Object({
   replace: nullable(idSchema<"message">()),
 });
 
-/** The TypeBox schema of a `ModelRequest`. */
 export const ModelRequestType = Type.Object({
   model: ModelRefType,
   thinking: ThinkingType,
@@ -31,7 +29,6 @@ export const ModelRequestType = Type.Object({
   }),
 });
 
-/** The TypeBox schema of a hook `ToolCall`. */
 export const ToolCallType = Type.Object({
   call: idSchema<"call">(),
   name: Type.String(),
@@ -39,21 +36,16 @@ export const ToolCallType = Type.Object({
   class: ToolClassType,
 });
 
-/** The TypeBox schema of a `SubmitDraft`. */
 export const SubmitDraftType = Type.Object({
   content: UserContentType,
   delivery: DeliveryType,
   session: idSchema<"session">(),
 });
 
-/** Validates a `Submission`. */
 export const SubmissionSchema: Schema<Submission> = standard(withJson(SubmissionType));
 
-/** Validates a `ModelRequest`. */
 export const ModelRequestSchema: Schema<ModelRequest> = standard(withJson(ModelRequestType));
 
-/** Validates a hook `ToolCall`. */
 export const ToolCallSchema: Schema<ToolCall> = standard(withJson(ToolCallType));
 
-/** Validates a `SubmitDraft`. */
 export const SubmitDraftSchema: Schema<SubmitDraft> = standard(SubmitDraftType);

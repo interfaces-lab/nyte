@@ -631,7 +631,6 @@ async function info(
   return { status: response.status, code };
 }
 
-/** A live host watch for `token` through the relay; `ended` resolves once the desktop drops it. */
 async function watch(
   setup: Fixture,
   _host: DesktopHost,

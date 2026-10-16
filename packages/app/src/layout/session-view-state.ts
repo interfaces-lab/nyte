@@ -24,7 +24,6 @@ export interface ComposerViewState {
   readonly focused: boolean;
 }
 
-/** Where a thread reopens: at its end, or with a row at an offset below the scrollport's top. */
 export type ScrollViewState =
   | { readonly kind: "end" }
   | { readonly kind: "anchor"; readonly key: string; readonly offset: number };
@@ -36,7 +35,6 @@ interface SplitViewState {
 
 interface SessionViewState {
   readonly composer: ComposerViewState;
-  /** Each pane keeps its own place in the thread. */
   readonly scroll: Partial<Record<PaneId, ScrollViewState>>;
   readonly stepGroups: ReadonlyMap<string, boolean>;
   readonly focusedPaneId: PaneId;

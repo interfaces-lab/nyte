@@ -33,32 +33,42 @@ export interface Jobs {
     readonly pty?: { readonly columns: number; readonly rows: number };
     readonly id?: JobId;
   }): Promise<Job>;
+
   recover(
     key: JobKey,
   ): Promise<Job | { readonly kind: "ended"; readonly end: JobEnd } | { readonly kind: "missing" }>;
+
   list(): Promise<readonly JobView[]>;
+
   watch(): AsyncIterable<readonly JobView[]>;
 }
 
 export interface Job {
   readonly id: JobId;
   readonly key: JobKey | null;
+
   write(bytes: Uint8Array): Promise<void>;
+
   output(): AsyncIterable<OutputFrame>;
+
   resize(size: {
     readonly columns: number;
     readonly rows: number;
   }): Promise<
     { readonly kind: "resized" } | { readonly kind: "not-pty" } | { readonly kind: "missing" }
   >;
+
   idle(): Promise<boolean>;
+
   stop(): Promise<StopOutcome<JobEnd>>;
+
   settled(options?: RequestOptions): Promise<JobEnd>;
+
   close(): Promise<void>;
+
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-/** Returns one job this process started: its owner gets the exit report and the background item, and a retry under its id must match `digest`. */
 export interface JobEntry {
   readonly view: JobView;
   readonly workspace: WorkspaceId;
@@ -73,7 +83,6 @@ export interface JobEntry {
   readonly output: JobOutput;
 }
 
-/** Fans one process's output out to readers without ever stalling it, and keeps its last 4 KiB. A reader whose unread frames would pass 64 KiB reads one `gap` where it dropped bytes. */
 export interface JobOutput {
   open(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
   push(bytes: Uint8Array): void;
@@ -82,12 +91,11 @@ export interface JobOutput {
   tail(): string;
 }
 
-/** Holds the jobs this process started, in memory: a restart loses them, and an id the table does not hold reads `lost`. A change announces the workspace's views and publishes an owned job's `background` item unlogged when it changed. */
 export interface JobTable {
   get(id: JobId): JobEntry | undefined;
   byKey(key: JobKey): JobEntry | undefined;
   list(workspace: WorkspaceId): readonly JobEntry[];
-  /** Starts a job once per id: `spawn` adds it, and a start with the same digest while it spawns or runs awaits that one, another digest rejecting `invalid`. */
+
   start(id: JobId, digest: string, spawn: () => Promise<void>): Promise<void>;
   add(entry: JobEntry): void;
   update(id: JobId, change: (view: JobView) => JobView): void;
@@ -103,7 +111,8 @@ const READER_BYTES = 64 * 1024;
 
 const REPORT_BYTES = 4096;
 
-/** Returns an empty job table over a kernel. */
+const ENDED_KEPT = 32;
+
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
   const starts = new Map<JobId, { readonly digest: string; readonly started: Promise<void> }>();
@@ -112,12 +121,26 @@ export function createJobTable(kernel: Kernel): JobTable {
   const list = (workspace: WorkspaceId): readonly JobEntry[] =>
     [...entries.values()].filter((entry) => entry.workspace === workspace);
 
-  const announce = (entry: JobEntry, previous: JobEntry | null): void => {
-    const views = list(entry.workspace).map((known) => known.view);
+  const forgetEnded = (workspace: WorkspaceId): void => {
+    const ended = list(workspace)
+      .filter((entry) => entry.view.state.kind !== "running")
+      .sort((left, right) => (left.view.endedAt ?? 0) - (right.view.endedAt ?? 0));
 
-    for (const listener of listeners.get(entry.workspace) ?? []) listener(views);
-    const item = itemOf(entry);
-    const before = previous === null ? null : itemOf(previous);
+    for (const entry of ended.slice(0, Math.max(0, ended.length - ENDED_KEPT)))
+      entries.delete(entry.view.id);
+  };
+
+  const announce = (entry: JobEntry, previous: JobEntry | null): void => {
+    const watching = listeners.get(entry.workspace);
+
+    if (watching !== undefined) {
+      const views = list(entry.workspace).map((known) => known.view);
+
+      for (const listener of watching) listener(views);
+    }
+
+    const item = createJobBackgroundItem(entry);
+    const before = previous === null ? null : createJobBackgroundItem(previous);
 
     if (entry.owner === null || item === null) return;
 
@@ -159,6 +182,9 @@ export function createJobTable(kernel: Kernel): JobTable {
       if (previous === undefined) return;
       const next = { ...previous, view: change(previous.view) };
       entries.set(id, next);
+
+      if (previous.view.state.kind === "running" && next.view.state.kind !== "running")
+        forgetEnded(next.workspace);
       announce(next, previous);
     },
     subscribe(workspace, listener) {
@@ -174,7 +200,7 @@ export function createJobTable(kernel: Kernel): JobTable {
     },
     background: (session) =>
       [...entries.values()].flatMap((entry) => {
-        const item = itemOf(entry);
+        const item = createJobBackgroundItem(entry);
 
         return entry.owner?.session === session && item !== null
           ? [{ head: entry.owner.head, item }]
@@ -183,7 +209,6 @@ export function createJobTable(kernel: Kernel): JobTable {
   };
 }
 
-/** Returns a workspace's jobs; a start from a step is an acquisition (`acquire`), so a re-run answers the recorded job, `lost` once this process no longer holds it (B F1). */
 export function createJobs(
   kernel: Kernel,
   context: Pick<ConnectionContext, "origin">,
@@ -210,7 +235,6 @@ export function createJobs(
   };
 }
 
-/** Returns a handle on a job by id; binds synchronously. For an id the table does not hold `output` throws `unavailable` as it is called, `write` throws `unknown`, `resize` and `stop` answer `missing` and `settled` `lost`. */
 export function jobHandle(kernel: Kernel, id: JobId): Job {
   const readers = new Set<() => void>();
 
@@ -305,7 +329,6 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
   };
 }
 
-/** Ends a job this process started, once: records its end, hands `exit` to its readers and offers the end to the waits. Unless a wait consumed or still holds it, an owned job attaches a bounded report (at most 4 KiB) to the owning head; a report the session no longer takes is dropped. */
 export async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const entry = kernel.jobs.get(id);
 
@@ -367,7 +390,6 @@ async function startJob(
   return jobHandle(kernel, id);
 }
 
-/** Starts a job's process through the environment of its session, else the origin's on this workspace, else the workspace's own, and adds it to the table. */
 async function spawn(
   kernel: Kernel,
   origin: ConnectionContext["origin"],
@@ -427,7 +449,6 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
-/** Runs a durable step's acquisition keyed `key`, else `acq:<n>`: what the step recorded, else `create()` recorded once; a loser to a concurrent run releases what it created and answers the winner's id. Outside a step it creates. Jobs and pages acquire through it. */
 export async function acquire<T extends { readonly id: string }>(
   kernel: Kernel,
   step: {
@@ -457,7 +478,6 @@ export async function acquire<T extends { readonly id: string }>(
   return { kind: "recorded", id: winner };
 }
 
-/** Reads a process's output into its fan-out until it exits, then ends the job; never rejects. */
 async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput): Promise<void> {
   try {
     for await (const frame of process.output()) {
@@ -481,7 +501,6 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
   });
 }
 
-/** Returns an output fan-out with nothing read yet. */
 function createOutput(): JobOutput {
   type Reader = { frames: OutputFrame[]; size: number; missed: boolean; wake: (() => void) | null };
 
@@ -587,8 +606,7 @@ function createOutput(): JobOutput {
   };
 }
 
-/** Returns a job's background item, or null for a job without an owner. */
-function itemOf(entry: JobEntry): BackgroundItem | null {
+function createJobBackgroundItem(entry: JobEntry): BackgroundItem | null {
   if (entry.owner === null) return null;
   const state = entry.view.state;
 
@@ -606,7 +624,6 @@ function itemOf(entry: JobEntry): BackgroundItem | null {
   };
 }
 
-/** Returns a job's exit report: its title and command, how it ended, and as much of its tail as fits in 4 KiB. */
 function report(view: JobView, end: JobEnd, tail: string): string {
   const how =
     end.kind === "lost"

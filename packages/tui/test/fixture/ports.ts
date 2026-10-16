@@ -1,17 +1,7 @@
-/**
- * A fake `HostPort` for effect tests: sessions whose views the test pushes,
- * and recorders for every call the runner makes. No SDK, no network, no
- * store. App tests use the real in-process host in `host.ts` instead.
- *
- *   const host = fakeHost();
- *   const session = host.addSession("s1");
- *   session.push(viewOf(...));
- *   ...
- *   expect(session.calls.withdraw).toEqual(["m2"]);
- */
 import { asId } from "@nyte-ai/schema";
 import type {
   CommandOutcome,
+  HostView,
   ModelCatalogView,
   ModelRef,
   SessionId,
@@ -39,7 +29,6 @@ import { CONFIGURATION } from "./view.ts";
 
 export interface FakeSession extends SessionPort {
   push(view: SessionView): void;
-  /** Ends the view watch: `null` lets it end on its own, a string makes it throw. */
   end(failure: string | null): void;
   pushTasks(tasks: readonly Task[]): void;
   watchTasks(): AsyncIterable<readonly Task[]>;
@@ -48,17 +37,15 @@ export interface FakeSession extends SessionPort {
     readonly withdraw: string[];
     readonly revise: { readonly message: string; readonly content: UserContent }[];
     readonly stopRun: string[];
-    readonly answer: { readonly part: string; readonly choice: string }[];
+    readonly answer: { readonly part: string; readonly answers: string[][] }[];
     readonly move: unknown[];
     readonly configure: { readonly model?: ModelRef; readonly effort?: string }[];
     readonly commands: { readonly name: string; readonly argument: string | null }[];
     readonly settings: { readonly id: string; readonly value: unknown }[];
     readonly stoppedTasks: unknown[];
   };
-  /** Scripted answers, e.g. `withdrawResult = "landed-first"`. */
   withdrawResult: "withdrawn" | "landed-first" | "gone";
-  answerResult: boolean;
-  /** What a plugin command answers; null runs it and prints `ran <name>`. */
+  answerResult: boolean | Error;
   commandResult: CommandOutcome | null;
 }
 
@@ -66,13 +53,11 @@ export interface FakeHost extends HostPort {
   addSession(id: string): FakeSession;
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
-  /** Pushes a session directory snapshot to `sessionInfos` readers. */
   publishSessions(sessions: readonly SessionInfo[]): void;
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
 }
 
-/** Values pushed by the producer, read one at a time; `close` ends it, `fail` makes the reader throw. */
 function queue<T>(): AsyncIterable<T> & {
   push(value: T): void;
   close(): void;
@@ -127,6 +112,7 @@ function infoOf(id: string): SessionInfo {
     id: asId(id),
     name: null,
     parent: null,
+    call: null,
     workspace: asId("workspace"),
     pinned: false,
     archived: false,
@@ -189,8 +175,10 @@ function fakeSession(id: string): FakeSession {
 
       return "stopped";
     },
-    async answer(part, choice) {
-      calls.answer.push({ part, choice });
+    async answer(part, answers) {
+      calls.answer.push({ part, answers });
+
+      if (session.answerResult instanceof Error) throw session.answerResult;
 
       return session.answerResult;
     },
@@ -246,15 +234,12 @@ function fakeSession(id: string): FakeSession {
 
 export function fakeHost(): FakeHost {
   const sessions = new Map<string, FakeSession>();
-  const catalogs = queue<{
-    readonly generation: number;
-    readonly list: () => Promise<ModelCatalogView>;
-  }>();
+  const catalogs = queue<Pick<HostView, "catalog">>();
 
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
-  let generation = 0;
+  let catalog = CATALOG;
   let created = 0;
 
   const addSession = (id: string): FakeSession => {
@@ -275,17 +260,20 @@ export function fakeHost(): FakeHost {
 
       return addSession(`created-${String(created)}`).id;
     },
-    async rootSessions() {
-      return [...sessions.keys()].map(infoOf);
+    async *rootSessions() {
+      yield* [...sessions.keys()].map(infoOf);
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,
     publishSessions: (list) => directory.push(list),
-    publishCatalog(catalog) {
-      generation += 1;
-      catalogs.push({ generation, list: async () => catalog });
+    publishCatalog(next) {
+      catalog = next;
+      catalogs.push({ catalog: next.generation });
     },
-    listModels: async () => CATALOG,
+    listModels: async () => catalog,
+    accounts: async () => [],
+    selectAccount: async () => undefined,
+    usage: async () => [],
     refreshModels: async () => undefined,
     async setDefaultModel(ref) {
       defaults.push(ref);
@@ -297,6 +285,17 @@ export function fakeHost(): FakeHost {
       throw new Error("Logout is not scripted in the fake host.");
     },
     hostPlugins: async () => [],
+    mcp: async () => ({ servers: [], issues: [] }),
+    mcpAction: async () => ({ kind: "missing" }),
+    mcpLogin: async () => undefined,
+    trustInfo: async () => ({
+      path: "/work",
+      home: false,
+      decision: true,
+      trusted: true,
+      sources: [],
+    }),
+    trust: async () => undefined,
     async applySetting(id, value) {
       hostSettings.push({ id, value });
 
@@ -311,7 +310,6 @@ export function fakeHost(): FakeHost {
 
 export interface FakeTerminal extends TerminalPort {
   readonly titles: string[];
-  /** Every OSC 7501 sequence written; once `closed`, a write throws as a closed native session does. */
   readonly statuses: string[];
   closed: boolean;
   readonly copies: string[];
@@ -321,7 +319,6 @@ export interface FakeTerminal extends TerminalPort {
 }
 
 export interface FakeShell extends ShellPort {
-  /** Ends a running command the way the process would. */
   finish(id: string, end: ShellEnd, output?: string): void;
   readonly started: { readonly id: string; readonly command: string; readonly cwd: string }[];
   readonly stopped: string[];
@@ -357,7 +354,6 @@ export interface FakePorts extends Ports {
   };
 }
 
-/** Every other port faked: terminal records titles/copies, composer/scroll handles, manual clock, in-memory crash log. */
 export function fakePorts(host: FakeHost): FakePorts {
   let now = 10_000;
   let settings = SETTINGS;

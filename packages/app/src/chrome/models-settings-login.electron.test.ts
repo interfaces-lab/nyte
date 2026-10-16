@@ -163,7 +163,6 @@ beforeEach(async () => {
   await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
 });
 
-/** The host's catalog changed; its generation moves and the renderer reads it again. */
 async function catalogBecomes(catalog: Catalog): Promise<void> {
   await page.evaluate((next) => window.nyteLoginHarness.setCatalog(next), catalog);
 }
@@ -180,14 +179,17 @@ function setFailures(failures: Partial<HarnessFailures>): Promise<void> {
   return page.evaluate((next) => window.nyteLoginHarness.setFailures(next), failures);
 }
 
-/** Start a connection and check the host was asked for the provider's browser flow. */
 async function startSignIn(): Promise<void> {
   await page.getByRole("button", { name: "Connect Provider", exact: true }).click();
   await page.getByText("Waiting for the browser").waitFor();
   const calls = await recordedCalls();
   const login = calls.find((call) => call.path === "models.login");
   assert.ok(login !== undefined, "clicking the button calls models.login");
-  assert.deepEqual(login.input, { provider: "github-copilot", method: { kind: "oauth" } });
+  assert.deepEqual(login.input, {
+    provider: "github-copilot",
+    method: { kind: "oauth" },
+    browser: "host",
+  });
 }
 
 test(
@@ -281,6 +283,63 @@ test(
     await page.getByText(/Couldn't sign in to GitHub Copilot/).waitFor();
     await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
+    assert.deepEqual(pageErrors, []);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a browser sign-in takes the default method, opens the page once, and sends the code it ends on",
+  async () => {
+    await startSignIn();
+    await step({
+      kind: "choose",
+      message: "Select login method:",
+      options: [
+        { id: "browser", label: "Browser login" },
+        { id: "copy_code", label: "Copy code login" },
+      ],
+    });
+    await step({ kind: "open", url: "https://claude.ai/oauth/authorize" });
+    await step({ kind: "paste", message: "Paste the code:", secret: false });
+
+    await page.getByRole("textbox", { name: "Code or address" }).fill("code#state");
+    await page.getByRole("button", { name: "Finish Sign-In" }).click();
+    await page.getByText("Finishing sign-in…").waitFor();
+
+    const calls = await recordedCalls();
+    assert.deepEqual(
+      calls.flatMap((call) => (call.path === "login.answer" ? [call.input] : [])),
+      ["browser", "code#state"],
+    );
+    assert.deepEqual(
+      calls.flatMap((call) => (call.path === "host.openExternal" ? [call.input] : [])),
+      [{ url: "https://claude.ai/oauth/authorize" }],
+    );
+    assert.equal(await page.getByText("Select login method:").count(), 0);
+    assert.equal(await page.getByText("Paste the code:").count(), 0);
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
+    assert.deepEqual(pageErrors, []);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a sign-in through a remote host says the browser is elsewhere",
+  async () => {
+    await page.evaluate(() =>
+      window.nyteLoginHarness.setEndpoint(
+        "https://connect.example/r/5f0c7d2e-3c1a-4b8e-9f6a-2d4e8c1b7a90",
+      ),
+    );
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).click();
+    await page.getByText("Waiting for the browser").waitFor();
+    const login = (await recordedCalls()).find((call) => call.path === "models.login");
+    assert.ok(login !== undefined);
+    assert.equal(login.input.browser, "elsewhere");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,

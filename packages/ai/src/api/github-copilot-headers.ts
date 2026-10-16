@@ -1,4 +1,4 @@
-/** Copilot wire identity from Pi 71dca871; interaction metadata follows OpenCode v2 9dd7149e. */
+/** Copilot wire identity; interaction metadata follows OpenCode v2 9dd7149e. */
 import type { Message, ProviderHeaders } from "../types.ts";
 
 export const GITHUB_COPILOT_API_VERSION = "2026-06-01";

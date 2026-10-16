@@ -1,7 +1,7 @@
 import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
-import canvasPlugin, { CANVAS_DESCRIPTION, canvas } from "../src/canvas.ts";
-import { KIT_EXPORTS, KIT_SPECIFIER } from "../src/canvas-protocol.ts";
+import canvasPlugin, { CANVAS_DESCRIPTION, canvas } from "../src/canvas/canvas.ts";
+import { KIT_EXPORTS, KIT_SPECIFIER } from "../src/canvas/canvas-protocol.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
 const first = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>1</Text>;`;

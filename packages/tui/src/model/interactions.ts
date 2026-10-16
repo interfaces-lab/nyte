@@ -1,42 +1,3 @@
-/**
- * The interaction model as data. `interactionsFor(input)` returns, for every
- * chat command, the Intent it performs now and the label the hint row shows,
- * so keys, hints, help and the palette cannot disagree.
- *
- * Four keys depend on the situation (`CoreCommand`). They resolve through
- * `SITUATIONS`, an ordered list of rows; each row is active or not, and each
- * cell either decides or returns null to pass to the next active row (`PASS`
- * below). The other commands resolve through `otherInteraction`, one guard
- * per command.
- *
- *  row            Enter                        Ctrl+Enter              Esc                      Ctrl+C
- *  ─────────────  ───────────────────────────  ──────────────────────  ───────────────────────  ──────────────────────
- *  blocked        refuse(reason)               refuse(reason)          auth? cancel : PASS      PASS
- *  completion     accept                       queueable? accept+alt   close completion         PASS
- *                                              : owns Enter? noop
- *  shell-running  !cmd or prompt? refuse;     same as Enter           stop-shell               stop-shell
- *                 a /command runs: PASS
- *  editing        save-edit(own delivery)      save-edit(steer)        cancel-edit              draft? clear : cancel-edit
- *  shell-draft    run-shell(! include,         PASS                    PASS                     PASS
- *                 !! private)
- *  question       plain text? answer           message? send(steer)    stop-run                 PASS
- *                 : parts? send(steer)+warn
- *                 : empty? open-question
- *  busy           message? send(followUp)      message? send(other)    stop-run                 PASS
- *                 : head? promote(head)
- *  idle (base)    message? send(queue)         message? send (hidden)  message? refuse          draft? clear : quit
- *                 : head? promote(head)                                : tree (twice)
- *
- * `head` is the first queue row not already joined to the live run. A
- * `/command` draft is never an answer: the question row passes it on, and
- * `send` runs it. Idle Ctrl+Enter sends like Enter (core schedules both
- * `next-turn/idle`), without a hint.
- *
- * With a dialog open, only that dialog's own keys are on, each forwarded as
- * `{ kind: "dialog", command }`; every other command is off. Ctrl+C with a
- * text selection copies; the global selection layer handles that above every
- * dialog, not this table.
- */
 import type { Delivery } from "@nyte-ai/sdk";
 import { CHAT_KEYBINDS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
@@ -53,7 +14,6 @@ import type { Draft, ShellJob } from "./state.ts";
 export type CoreCommand = "chat.submit" | "chat.queue.submit" | "chat.interrupt" | "chat.quit";
 
 export interface Interaction {
-  /** Null: the key is not ours now, and the keymap lets it fall through (e.g. Up to the textarea). */
   readonly intent: Intent | null;
   readonly label: string;
   readonly hidden: boolean;
@@ -61,12 +21,10 @@ export interface Interaction {
 
 export type Interactions = Readonly<Record<ChatCommand, Interaction>>;
 
-/** Everything the table reads: a subset of `ScreenModel`, so tests build it without a view. */
 export interface TableInput {
   readonly run: RunModel;
   readonly question: QuestionModel | null;
   readonly draft: DraftModel;
-  /** The draft is a `/command` this client runs (not one that goes out as a prompt). */
   readonly runsCommand: boolean;
   readonly editing: EditingModel | null;
   readonly shell: ShellJob | null;
@@ -76,19 +34,15 @@ export interface TableInput {
   readonly queue: readonly QueueRow[];
   readonly followUp: "steer" | "queue";
   readonly tasks: number;
-  /** Stamps `escape-tree`; `reduce` measures the double press with its own clock. */
   readonly now: number;
-  /** Which wrapped row the cursor is on and whether it sits at either end, for Up/Down history. */
   readonly cursor: {
     readonly row: Draft["row"];
     readonly atStart: boolean;
     readonly atEnd: boolean;
   };
-  /** Up/Down is walking prompt history. */
   readonly browsing: boolean;
 }
 
-/** Returns the cell's decision, or null to let the next active row decide. */
 type Cell = (input: TableInput) => Interaction | null;
 
 const pass: Cell = () => null;
@@ -108,7 +62,6 @@ const CORE_COMMANDS: readonly CoreCommand[] = [
   "chat.quit",
 ];
 
-/** Short descriptions for the palette and the shortcuts report. */
 export const COMMAND_TITLES: Readonly<Partial<Record<ChatCommand, string>>> = {
   "chat.submit": "Send the draft",
   "chat.queue.submit": "Send with the other delivery",
@@ -143,14 +96,12 @@ function isMessage(
   return input.draft.kind === "message";
 }
 
-/** Enter with a message while busy follows the setting; Ctrl+Enter is the other delivery. */
 export function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery {
   if (!alternate) return followUp;
 
   return followUp === "steer" ? "queue" : "steer";
 }
 
-/** The first row a promote would move: not joined to the live run, not a report, not unsent. */
 export function promotable(queue: readonly QueueRow[]): QueueRow | null {
   return (
     queue.find(
@@ -159,7 +110,6 @@ export function promotable(queue: readonly QueueRow[]): QueueRow | null {
   );
 }
 
-/** Why the composer refuses input now, in words. */
 export function blockedReason(blocked: Blocked): string {
   switch (blocked.kind) {
     case "starting":
@@ -203,7 +153,6 @@ function acceptCompletion(input: TableInput): Interaction | null {
     : null;
 }
 
-/** A menu that owns Enter owns Ctrl+Enter too: only a skill fills and sends; a half-typed token never goes out. */
 function acceptCompletionThenAlternate(input: TableInput): Interaction | null {
   if (input.completion?.queueable !== true)
     return input.completion?.ownsEnter === true ? on({ kind: "noop" }, "send", true) : null;
@@ -216,7 +165,6 @@ function closeCompletion(): Interaction | null {
   return on({ kind: "completion", action: { kind: "close" } }, "close", true);
 }
 
-/** A local command holds `!` drafts and prompts, so its result never lands after the prompt that cites it; a `/command` still runs. */
 function refuseWhileShell(input: TableInput): Interaction | null {
   if (input.draft.kind === "shell")
     return on(
@@ -302,7 +250,7 @@ function answerOrOpenQuestion(input: TableInput): Interaction | null {
       kind: "answer",
       session: question.session,
       part: question.part,
-      choice: input.draft.text,
+      value: input.draft.text,
       typed: true,
     },
     "answer",
@@ -370,7 +318,6 @@ function clearOrQuit(input: TableInput): Interaction | null {
     : on({ kind: "clear-draft" }, "clear draft");
 }
 
-/** Ordered; the first active row whose cell does not pass decides. `idle` is always active and never passes. */
 export const SITUATIONS: readonly Row[] = [
   {
     name: "blocked",
@@ -478,11 +425,16 @@ const LIST_KEYS: readonly ChatCommand[] = [
   "picker.page.down",
 ];
 
-/** The keys a dialog owns while it is on top; each is forwarded to it by name. */
 export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
   switch (dialog.kind) {
     case "list":
-      return [...LIST_KEYS, ...listActions(dialog.purpose).map((action) => action.command)];
+      return [
+        ...LIST_KEYS,
+        ...(dialog.purpose.kind === "question"
+          ? (["picker.detail.up", "picker.detail.down"] as const)
+          : []),
+        ...listActions(dialog.purpose).map((action) => action.command),
+      ];
     case "model":
       return [
         "picker.accept",
@@ -545,7 +497,6 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
   }
 }
 
-/** Commands that only ever act inside a dialog; off in the chat. */
 const DIALOG_ONLY = (command: ChatCommand): boolean =>
   command.startsWith("picker.") ||
   command.startsWith("model.") ||
@@ -579,7 +530,6 @@ export function interactionsFor(input: TableInput): Interactions {
   );
 }
 
-/** Every CHAT_KEYBINDS command decided once; the literal keeps the record exhaustive without a cast. */
 function entries(decide: (command: ChatCommand) => Interaction): Interactions {
   return {
     "chat.submit": decide("chat.submit"),
@@ -617,12 +567,15 @@ function entries(decide: (command: ChatCommand) => Interaction): Interactions {
     "chat.history.next": decide("chat.history.next"),
     "composer.newline": decide("composer.newline"),
     "composer.delete.to.line.start": decide("composer.delete.to.line.start"),
+    "composer.yank": decide("composer.yank"),
     "picker.accept": decide("picker.accept"),
     "picker.close": decide("picker.close"),
     "picker.previous": decide("picker.previous"),
     "picker.next": decide("picker.next"),
     "picker.page.up": decide("picker.page.up"),
     "picker.page.down": decide("picker.page.down"),
+    "picker.detail.up": decide("picker.detail.up"),
+    "picker.detail.down": decide("picker.detail.down"),
     "model.previous": decide("model.previous"),
     "model.next": decide("model.next"),
     "model.decrease": decide("model.decrease"),
@@ -647,18 +600,6 @@ function entries(decide: (command: ChatCommand) => Interaction): Interactions {
   };
 }
 
-/**
- * One guard per remaining command, keyed by the CHAT_KEYBINDS name (the one list):
- * - chat.scroll.*, chat.message.*: scroll intents, off while blocked or a completion is open.
- * - chat.history.previous/next: on when no completion and the cursor is on the first/last wrapped row;
- *   chat.history.next on an empty draft with tasks > 0 (not browsing) opens the task browser instead.
- * - chat.queue.open: on unless blocked; refuses "Nothing is queued" on an empty queue.
- * - chat.commands.open, chat.skills.open, chat.thinking.cycle, chat.model.*, chat.tools.toggle,
- *   chat.editor.open, chat.attachment.open, chat.clipboard.paste: on unless blocked or completing.
- * - completion.*: on only while a completion is open.
- * - composer.*: the textarea's own keys, never ours.
- * - picker.*, model.*, tree.*, auth.*, and the queue/task row actions: only inside a dialog.
- */
 export function otherInteraction(
   command: Exclude<ChatCommand, CoreCommand>,
   input: TableInput,
@@ -775,7 +716,6 @@ function isChatCommand(name: string): name is ChatCommand {
 
 let commandList: readonly ChatCommand[] | null = null;
 
-/** Every command in CHAT_KEYBINDS, in its declared order. */
 export function chatCommands(): readonly ChatCommand[] {
   commandList ??= Object.keys(CHAT_KEYBINDS).filter(isChatCommand);
 

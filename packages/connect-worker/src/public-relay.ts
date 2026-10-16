@@ -1,13 +1,3 @@
-/**
- * Phone requests to `<origin>/r/<environmentId>/...`, and the desktop's relay
- * socket upgrade. A phone request is checked in this order before anything
- * reaches the desktop: route, method, browser `Origin`, declared size,
- * address throttle, bearer digest against D1 (none for discovery, which
- * `PUBLIC_RELAY_BEARER` lets through unauthenticated), environment
- * throttle. Every refusal answers in the Nyte server's error envelope; an
- * offline desktop, a full channel table, and a throttle answer `closed`,
- * never an auth error.
- */
 import { DeviceToken } from "@nyte-ai/connect";
 import {
   PUBLIC_RELAY_BEARER,

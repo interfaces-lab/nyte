@@ -1,14 +1,22 @@
-import type { AuthEvent, AuthInteraction, AuthPrompt, Models, Provider } from "@nyte-ai/ai";
+import type {
+  AccountLimitWindow,
+  AuthEvent,
+  AuthInteraction,
+  AuthPrompt,
+  Models,
+  Provider,
+} from "@nyte-ai/ai";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai/models";
 import type {
   Configuration,
   ConfigurationPatch,
   ConfigureOutcome,
-  Json,
   LoginMethod,
+  ModelAccount,
   ModelCatalogView,
   ModelInfo,
   ModelRef,
+  ProviderUsage,
   Thinking,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -16,46 +24,76 @@ import type { Api, Model } from "@nyte-ai/schema/model";
 import type { Login, ModelsApi } from "./connection.ts";
 import { objectId } from "./content.ts";
 import { SdkError } from "./error.ts";
-import { check } from "./json-schema.ts";
+import { check, convertJsonSchema } from "./json-schema.ts";
 import type { ConfigurationResolver, Kernel } from "./kernel.ts";
-import { pluginState, readKv } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { Agent, ModelContextPolicy, SettingDefinition } from "./plugin.ts";
-import { kvRef } from "./refs.ts";
-import { bumpGeneration, jsonSchemaOf } from "./registry.ts";
-import { isJsonObject } from "./records.ts";
+import { MODEL_PREFERENCE, readModelSelection } from "./model-state.ts";
+import { bumpGeneration } from "./registry.ts";
 import { commit, put } from "./session-state.ts";
+import { closable } from "./watch.ts";
 
 type LoginStep = Login["steps"] extends () => AsyncIterable<infer Step> ? Step : never;
 
 type ProviderRow = ModelCatalogView["providers"][number];
 
-type Verdict = "verified" | "failed";
-
-/** The prompt a login waits on, with the option ids a `choose` step accepts (null for `paste`). */
 interface Pending {
   readonly options: readonly string[] | null;
   resolve(value: string): void;
 }
 
-const DEFAULT_MODEL = kvRef("host", "models", "default");
-
-/** Returns the host's models api over `@nyte-ai/ai`'s `Models`. `verify` caches a proven verdict per kernel for the catalog's `credential` (an unverified `ok` caches nothing); `refresh`, `setDefault`, `verify`, `login` and `logout` bump the catalog generation when what the catalog shows moved. `refresh` throws `unavailable` naming each provider that failed. */
 export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
-  const remember = (provider: string, verdict: Verdict): void => {
-    const known = pluginState(kernel).verdicts;
-
-    if (known.get(provider) === verdict) return;
-    known.set(provider, verdict);
-    bumpGeneration(kernel);
-  };
-
   return {
     list: () => modelCatalog(kernel, models),
-    async refresh(provider) {
-      const result = await models.refresh({
-        providers: provider === undefined ? undefined : [provider],
+    accounts: async (provider) => (await models.listAccounts(provider)).map(projectAccount),
+    async selectAccount(provider, account) {
+      await models.selectAccount(provider, account);
+      kernel.modelState.invalidate(provider);
+      bumpGeneration(kernel);
+      void kernel.modelState.refresh(models, provider).catch(() => undefined);
+    },
+    async usage() {
+      const before = await models.listAccounts();
+      const usage = await Promise.all(
+        models.getProviders().map((provider) => {
+          const active = before.find(
+            (account) => account.providerId === provider.id && account.active,
+          );
+
+          return providerUsage(
+            kernel,
+            models,
+            provider,
+            active === undefined ? null : projectAccount(active),
+          );
+        }),
+      );
+
+      const after = await models.listAccounts();
+
+      return usage.map((entry) => {
+        const selected = after.find(
+          (account) => account.providerId === entry.provider && account.active,
+        );
+
+        if (entry.account?.id === selected?.id) return entry;
+
+        return {
+          ...entry,
+          account: selected === undefined ? null : projectAccount(selected),
+          state: {
+            kind: "unavailable",
+            reason: "failed",
+            message: "The active account changed. Reload usage.",
+          },
+        } satisfies ProviderUsage;
       });
+    },
+    async refresh(provider) {
+      const [result] = await Promise.all([
+        models.refresh({ providers: provider === undefined ? undefined : [provider] }),
+        kernel.modelState.refresh(models, provider),
+      ]);
 
       bumpGeneration(kernel);
 
@@ -73,7 +111,7 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
 
       await commit(kernel, [
         {
-          name: DEFAULT_MODEL,
+          name: MODEL_PREFERENCE,
           target: await put(kernel, "kv", { provider: ref.provider, id: ref.id }),
         },
       ]);
@@ -85,156 +123,195 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
       let verification: Awaited<ReturnType<Models["verifyAuth"]>>;
 
       try {
-        verification = await models.verifyAuth(provider);
+        verification = await kernel.modelState.verify(models, provider);
       } catch (error) {
-        remember(provider, "failed");
-
-        return { kind: "failed", reason: messageOf(error) };
+        return { kind: "failed", reason: formatErrorMessage(error) };
       }
 
       if (verification.ok) {
         if (!verification.verified) return { kind: "unverified" };
-        remember(provider, "verified");
-
         return { kind: "verified" };
       }
-
-      if (verification.reason !== "unconfigured") remember(provider, "failed");
 
       return { kind: "failed", reason: verification.message };
     },
     login: (input) => createLogin(kernel, models, input),
     async logout(provider) {
       await models.logout(provider);
-      pluginState(kernel).verdicts.delete(provider);
+      kernel.modelState.invalidate(provider);
       bumpGeneration(kernel);
+      void kernel.modelState.refresh(models, provider).catch(() => undefined);
     },
   };
 }
 
-/** Projects `Models` as the host's catalog: one row per provider, its credential refined by the cached verdict, its login methods, account limits and base models. Models are projected as `modelInfo` does under the static `ModelContextPolicy` contributions of the built-ins and host plugins. */
 export async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
-  const cached = pluginState(kernel).verdicts;
-
-  const [preferred, providers] = await Promise.all([
-    defaultModel(kernel, models),
-    Promise.all(
-      models.getProviders().map(async (provider): Promise<ProviderRow> => ({
-        id: provider.id,
-        name: provider.name,
-        credential: await credentialOf(models, provider.id, cached.get(provider.id)),
-        methods: methodsOf(provider),
-        limits: limitsOf(models, provider.id),
-        models: models
-          .getModels(provider.id)
-          .filter((model) => model.variant === undefined)
-          .map((model) => projectModel(models, model, policies.get(keyOf(model)))),
-      })),
-    ),
+  const [preferred, credentials] = await Promise.all([
+    readModelSelection(kernel.store),
+    kernel.modelState.read(models),
   ]);
+  const providers = models.getProviders().map((provider): ProviderRow => {
+    const catalog = models.getModels(provider.id);
+    const fast = new Map<string, ModelRef>();
 
-  return { generation, default: preferred, providers };
+    for (const model of catalog)
+      if (model.variant?.mode === "fast" && !fast.has(model.variant.base))
+        fast.set(model.variant.base, { provider: model.provider, id: model.id });
+
+    return {
+      id: provider.id,
+      name: provider.name,
+      credential: credentials.get(provider.id) ?? "unknown",
+      methods: listLoginMethods(provider),
+      limits: readProviderLimits(models, provider.id),
+      models: catalog
+        .filter((model) => model.variant === undefined)
+        .map((model) =>
+          projectModel(model, fast.get(model.id) ?? null, policies.get(formatModelKey(model))),
+        ),
+    };
+  });
+  const fallback =
+    providers.find(
+      (provider) =>
+        (provider.credential === "configured" || provider.credential === "verified") &&
+        provider.models.length > 0,
+    )?.models[0]?.ref ?? null;
+
+  return { generation, default: preferred ?? fallback, providers };
 }
 
-/** Returns one catalog model as `ModelInfo`, or null when the catalog has none: `thinking` from ai's `getSupportedThinkingLevels`, `fast` its fast sibling, and `compactAt` 80 % of the window. The last `ModelContextPolicy` for it in `runtime`'s registry overrides the window and threshold. */
 export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime): ModelInfo | null {
-  const model = models.getModel(ref.provider, ref.id);
+  const catalog = models.getModels(ref.provider);
+  const model = catalog.find((entry) => entry.id === ref.id);
 
   if (model === undefined) return null;
 
   const policy = runtime.registries.modelContext
     .list()
-    .findLast((entry) => keyOf(entry.model) === keyOf(ref));
+    .findLast((entry) => formatModelKey(entry.model) === formatModelKey(ref));
 
-  return projectModel(models, model, policy);
+  const fast = catalog.find(
+    (entry) => entry.variant?.mode === "fast" && entry.variant.base === model.id,
+  );
+
+  return projectModel(
+    model,
+    fast === undefined ? null : { provider: fast.provider, id: fast.id },
+    policy,
+  );
 }
 
-/** Returns one login attempt: iterating `steps()` starts `models.login` and yields its events and prompts as steps; the iterator's `return()` cancels it. `answer` resolves the pending prompt and throws `invalid` when none is pending or a `choose` gets an unknown id. A finished login drops the cached verdict and bumps the catalog generation. */
 export function createLogin(
   kernel: Kernel,
   models: Models,
-  input: { readonly provider: string; readonly method: LoginMethod },
+  input: Parameters<ModelsApi["login"]>[0],
 ): Login {
   let pending: Pending | null = null;
 
-  async function* steps(): AsyncGenerator<LoginStep> {
-    const controller = new AbortController();
-    const queue: LoginStep[] = [];
-    let wake: (() => void) | null = null;
+  function steps(): AsyncIterable<LoginStep> {
+    return closable(() => {
+      const controller = new AbortController();
+      const queue: LoginStep[] = [];
+      let wake: (() => void) | null = null;
 
-    const push = (step: LoginStep): void => {
-      queue.push(step);
-      wake?.();
-      wake = null;
-    };
+      const push = (step: LoginStep): void => {
+        if (controller.signal.aborted) return;
+        queue.push(step);
+        wake?.();
+        wake = null;
+      };
 
-    const interaction: AuthInteraction = {
-      signal: controller.signal,
-      notify: (event) => push(stepOf(event)),
-      prompt: (prompt) =>
-        new Promise<string>((resolve, reject) => {
-          const signal =
-            prompt.signal === undefined
-              ? controller.signal
-              : AbortSignal.any([controller.signal, prompt.signal]);
+      const interaction: AuthInteraction = {
+        signal: controller.signal,
+        browser: input.browser,
+        notify: (event) => push(projectLoginStep(event)),
+        prompt: (prompt) =>
+          new Promise<string>((resolve, reject) => {
+            const signal =
+              prompt.signal === undefined
+                ? controller.signal
+                : AbortSignal.any([controller.signal, prompt.signal]);
 
-          const entry: Pending = {
-            options: prompt.type === "select" ? prompt.options.map((option) => option.id) : null,
-            resolve(value) {
-              signal.removeEventListener("abort", cancel);
-              resolve(value);
-            },
-          };
+            const entry: Pending = {
+              options: prompt.type === "select" ? prompt.options.map((option) => option.id) : null,
+              resolve(value) {
+                signal.removeEventListener("abort", cancel);
+                resolve(value);
+              },
+            };
 
-          const cancel = (): void => {
-            if (pending === entry) pending = null;
-            reject(new SdkError("unavailable", "The login step was cancelled."));
-          };
+            const cancel = (): void => {
+              if (pending === entry) pending = null;
+              reject(new SdkError("unavailable", "The login step was cancelled."));
+            };
 
-          if (signal.aborted) {
-            cancel();
+            if (signal.aborted) {
+              cancel();
 
-            return;
+              return;
+            }
+
+            signal.addEventListener("abort", cancel, { once: true });
+            pending = entry;
+            push(promptStep(prompt));
+          }),
+      };
+
+      void models
+        .login(
+          input.provider,
+          input.method.kind === "key" ? "api_key" : "oauth",
+          interaction,
+          input.label,
+        )
+        .then(
+          () => {
+            kernel.modelState.invalidate(input.provider);
+            bumpGeneration(kernel);
+            void kernel.modelState.refresh(models, input.provider).catch(() => undefined);
+            push({ kind: "done" });
+          },
+          (error: unknown) => push({ kind: "failed", reason: formatErrorMessage(error) }),
+        );
+
+      async function* forward(): AsyncGenerator<LoginStep, void> {
+        try {
+          for (;;) {
+            if (controller.signal.aborted) return;
+            const next = queue.shift();
+
+            if (next === undefined) {
+              await new Promise<void>((resolve) => {
+                wake = resolve;
+              });
+              continue;
+            }
+
+            yield next;
+
+            if (next.kind === "done" || next.kind === "failed") return;
           }
-
-          signal.addEventListener("abort", cancel, { once: true });
-          pending = entry;
-          push(promptStep(prompt));
-        }),
-    };
-
-    void models
-      .login(input.provider, input.method.kind === "key" ? "api_key" : "oauth", interaction)
-      .then(
-        () => {
-          pluginState(kernel).verdicts.delete(input.provider);
-          bumpGeneration(kernel);
-          push({ kind: "done" });
-        },
-        (error: unknown) => push({ kind: "failed", reason: messageOf(error) }),
-      );
-
-    try {
-      for (;;) {
-        const next = queue.shift();
-
-        if (next === undefined) {
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-          });
-          continue;
+        } finally {
+          pending = null;
+          controller.abort();
         }
-
-        yield next;
-
-        if (next.kind === "done" || next.kind === "failed") return;
       }
-    } finally {
-      pending = null;
-      controller.abort();
-    }
+
+      const iterator = forward();
+
+      return {
+        pull: () => iterator.next(),
+        async close() {
+          controller.abort();
+          wake?.();
+          wake = null;
+          await iterator.return(undefined);
+        },
+      };
+    });
   }
 
   return {
@@ -253,36 +330,30 @@ export function createLogin(
   };
 }
 
-/** Sends one provider request and bumps the catalog generation when the provider's account limits changed, whether it resolved or threw. Every request core sends to a provider goes through it. */
 export async function withLimits<T>(
   kernel: Kernel,
   models: Models,
   provider: string,
   send: () => Promise<T>,
 ): Promise<T> {
-  const before = JSON.stringify(limitsOf(models, provider));
+  const before = JSON.stringify(readProviderLimits(models, provider));
 
   try {
     return await send();
   } finally {
-    if (JSON.stringify(limitsOf(models, provider)) !== before) bumpGeneration(kernel);
+    if (JSON.stringify(readProviderLimits(models, provider)) !== before) bumpGeneration(kernel);
   }
 }
 
-/** Returns the model used when nothing is chosen: the stored default while the catalog has it, else the first base model of the first configured provider; null when none is configured. */
 export async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | null> {
-  const stored = await readKv(kernel, DEFAULT_MODEL);
+  const stored = await readModelSelection(kernel.store);
 
-  if (
-    isJsonObject(stored) &&
-    typeof stored.provider === "string" &&
-    typeof stored.id === "string" &&
-    models.getModel(stored.provider, stored.id) !== undefined
-  )
-    return { provider: stored.provider, id: stored.id };
+  if (stored !== null) return stored;
 
   for (const provider of models.getProviders()) {
-    if ((await models.checkAuth(provider.id).catch(() => undefined)) === undefined) continue;
+    const credential = await kernel.modelState.check(models, provider).catch(() => "failed");
+
+    if (credential !== "configured" && credential !== "verified") continue;
     const base = models.getModels(provider.id).find((model) => model.variant === undefined);
 
     if (base !== undefined) return { provider: base.provider, id: base.id };
@@ -292,20 +363,16 @@ export async function defaultModel(kernel: Kernel, models: Models): Promise<Mode
 }
 
 function projectModel(
-  models: Models,
   model: Model<Api>,
+  fast: ModelRef | null,
   policy: ModelContextPolicy | undefined,
 ): ModelInfo {
-  const fast = models
-    .getModels(model.provider)
-    .find((other) => other.variant?.mode === "fast" && other.variant.base === model.id);
-
   return {
     ref: { provider: model.provider, id: model.id },
     name: model.name,
     reasoning: model.reasoning,
     thinking: ["off", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")],
-    fast: fast === undefined ? null : { provider: fast.provider, id: fast.id },
+    fast,
     contextWindow: policy?.contextWindow ?? model.contextWindow,
     compactAt: policy?.compactAt ?? Math.floor(model.contextWindow * 0.8),
     maxOutput: model.maxTokens,
@@ -319,31 +386,17 @@ function projectModel(
   };
 }
 
-/** Returns the static `ModelContextPolicy` contributions by `<provider>/<id>`, a later entry winning. */
 function staticPolicies(kernel: Kernel): ReadonlyMap<string, ModelContextPolicy> {
   const policies = new Map<string, ModelContextPolicy>();
 
   for (const plugin of [...kernel.builtins, ...kernel.hostPlugins])
     for (const policy of plugin.contribute?.modelContext ?? [])
-      policies.set(keyOf(policy.model), policy);
+      policies.set(formatModelKey(policy.model), policy);
 
   return policies;
 }
 
-/** Returns a provider's credential state: `missing`, `failed` when the check rejects, else the cached verdict or `configured`. */
-async function credentialOf(
-  models: Models,
-  provider: string,
-  cached: Verdict | undefined,
-): Promise<ProviderRow["credential"]> {
-  try {
-    return (await models.checkAuth(provider)) === undefined ? "missing" : (cached ?? "configured");
-  } catch {
-    return "failed";
-  }
-}
-
-function methodsOf(provider: Provider): readonly LoginMethod[] {
+function listLoginMethods(provider: Provider): readonly LoginMethod[] {
   const methods: LoginMethod[] = [];
 
   if (provider.auth.oauth !== undefined) methods.push({ kind: "oauth" });
@@ -353,17 +406,68 @@ function methodsOf(provider: Provider): readonly LoginMethod[] {
   return methods;
 }
 
-/** Returns a provider's account limits as its catalog row shows them. */
-function limitsOf(models: Models, provider: string): ProviderRow["limits"] {
-  return (models.getAccountLimits(provider)?.windows ?? []).map((window) => ({
-    label: window.id,
+function readProviderLimits(models: Models, provider: string): ProviderRow["limits"] {
+  return projectLimits(models.getAccountLimits(provider)?.windows ?? []);
+}
+
+function projectLimits(windows: readonly AccountLimitWindow[]): ProviderRow["limits"] {
+  return windows.map((window) => ({
+    label: window.label,
     used: window.usedPercent,
     limit: 100,
     resetsAt: window.resetsAt ?? null,
   }));
 }
 
-function stepOf(event: AuthEvent): LoginStep {
+function projectAccount(
+  account: Awaited<ReturnType<Models["listAccounts"]>>[number],
+): ModelAccount {
+  return {
+    provider: account.providerId,
+    id: account.id,
+    label: account.label,
+    method: account.type === "api_key" ? { kind: "key" } : { kind: "oauth" },
+    active: account.active,
+  };
+}
+
+async function providerUsage(
+  kernel: Kernel,
+  models: Models,
+  provider: Provider,
+  account: ModelAccount | null,
+): Promise<ProviderUsage> {
+  try {
+    const result = await withLimits(kernel, models, provider.id, () =>
+      models.fetchAccountLimits(provider.id),
+    );
+
+    return {
+      provider: provider.id,
+      name: provider.name,
+      account,
+      state:
+        result.kind === "ready"
+          ? {
+              kind: "ready",
+              limits: projectLimits(result.limits.windows),
+              observedAt: result.limits.observedAt,
+              stale: result.stale,
+              error: result.error,
+            }
+          : result,
+    };
+  } catch (error) {
+    return {
+      provider: provider.id,
+      name: provider.name,
+      account,
+      state: { kind: "unavailable", reason: "failed", message: formatErrorMessage(error) },
+    };
+  }
+}
+
+function projectLoginStep(event: AuthEvent): LoginStep {
   switch (event.type) {
     case "auth_url":
       return { kind: "open", url: event.url };
@@ -386,15 +490,14 @@ function promptStep(prompt: AuthPrompt): LoginStep {
   return { kind: "paste", message: prompt.message, secret: prompt.type === "secret" };
 }
 
-function keyOf(ref: Pick<ModelRef, "provider" | "id">): string {
+function formatModelKey(ref: Pick<ModelRef, "provider" | "id">): string {
   return `${ref.provider}/${ref.id}`;
 }
 
-function messageOf(error: unknown): string {
+function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** What a configuration resolves against: the agents and setting definitions a session's plugins contribute. */
 export type Contributions = {
   readonly agents: readonly Agent[];
   readonly settings: readonly SettingDefinition[];
@@ -402,7 +505,6 @@ export type Contributions = {
 
 type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
 
-/** Returns the configuration resolver (`kernel.resolveConfiguration`). An exact `Configuration` is checked, never re-resolved: its model, its agent and its `settingsVersion` must still hold. A patch resolves field by field over `selected`: agent, then model (patch, selected, the agent's pin, `defaultModel`), thinking (the model's default, or a kept level clamped by ai's `clampThinkingLevel`), and settings merged per key and checked against the session-scope definitions. */
 export function createConfigurationResolver(kernel: Kernel, models: Models): ConfigurationResolver {
   return async ({ selected, patch, contributions }) => {
     const version = await settingsVersion(contributions.settings);
@@ -432,12 +534,30 @@ export function createConfigurationResolver(kernel: Kernel, models: Models): Con
   };
 }
 
-/** Returns the version of a session's setting schemas: `objectId` of the session-scope definitions' `{ id, schema }` sorted by id. */
+export function refusalError(refusal: Refusal): SdkError {
+  switch (refusal.kind) {
+    case "unknown-model":
+      return new SdkError("invalid", `No model is ${refusal.model.provider}/${refusal.model.id}.`, {
+        issues: [],
+      });
+    case "unknown-agent":
+      return new SdkError("invalid", `No agent is registered as ${refusal.agent}.`, {
+        issues: [],
+      });
+    case "invalid":
+      return new SdkError(
+        "invalid",
+        `The configuration is invalid: ${refusal.issues.map((found) => found.message).join(" ")}`,
+        { issues: refusal.issues },
+      );
+  }
+}
+
 export function settingsVersion(settings: readonly SettingDefinition[]): Promise<string> {
   const schemas = sessionScoped(settings)
     .flatMap((definition) => {
       try {
-        return [{ id: definition.id, schema: jsonSchemaOf(definition.schema, "output") }];
+        return [{ id: definition.id, schema: convertJsonSchema(definition.schema, "output") }];
       } catch {
         return [];
       }
@@ -473,10 +593,10 @@ async function resolvePatch(
 
   if (model === undefined) return { kind: "unknown-model", model: ref };
   const issues: ValidationIssue[] = [];
-  const thinking = thinkingOf(model, patch.thinking, selected?.thinking);
+  const thinking = selectThinkingLevel(model, patch.thinking, selected?.thinking);
 
   if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
-  const settings: Record<string, Json> = { ...selected?.settings, ...patch.settings };
+  const settings = { ...selected?.settings, ...patch.settings };
   const definitions = sessionScoped(input.contributions.settings);
 
   for (const [id, value] of Object.entries(settings)) {
@@ -507,8 +627,7 @@ async function resolvePatch(
   };
 }
 
-/** Returns the thinking level a resolution lands on, or null when the model does not accept the level given. */
-function thinkingOf(
+function selectThinkingLevel(
   model: Model<Api>,
   given: Thinking | null | undefined,
   kept: Thinking | undefined,
@@ -530,12 +649,10 @@ function sessionScoped(settings: readonly SettingDefinition[]): readonly Setting
   return settings.filter((definition) => definition.scope === "session");
 }
 
-/** Returns a session runtime's contributions. */
-export function contributionsOf(runtime: PluginRuntime): Contributions {
+export function collectContributions(runtime: PluginRuntime): Contributions {
   return { agents: runtime.registries.agents.list(), settings: runtime.registries.settings.list() };
 }
 
-/** Returns the static contributions of `kernel.builtins` then `kernel.hostPlugins`, so a session's configuration resolves before it has a runtime. */
 export function staticContributions(kernel: Kernel): Contributions {
   const plugins = [...kernel.builtins, ...kernel.hostPlugins];
 

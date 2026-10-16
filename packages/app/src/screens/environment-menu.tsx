@@ -4,7 +4,6 @@ import { shellActions } from "../chrome/shell-state.ts";
 import { clientActions } from "../client-actions.ts";
 import { ContextSelector } from "./context-selector.tsx";
 
-/** Where a new chat runs: this Mac's host, the one the interface is connected to. */
 export function EnvironmentMenu({ active }: { readonly active: boolean }): ReactElement {
   return (
     <ContextSelector

@@ -6,9 +6,10 @@ import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -40,7 +41,7 @@ const styles = create({
   list: {
     display: "flex",
     flexDirection: "column",
-    padding: 4,
+    padding: space.s1,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
@@ -57,16 +58,14 @@ const styles = create({
   bar: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    paddingBlock: 4,
-    paddingInline: 12,
+    gap: space.s2,
+    paddingBlock: space.s1,
+    paddingInline: space.s3,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
     backgroundColor: role.bgBase,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   barName: {
     flex: 1,
@@ -86,7 +85,6 @@ export function DesktopList({
   readonly environments: readonly EnvironmentSummary[];
   readonly connecting: string | undefined;
   readonly disabled: boolean;
-  /** Connect as a controller, or ask for folder administration, which the host grants only when started with `--device-admin`. */
   readonly onPick: (environment: EnvironmentSummary, role: DeviceRole) => void;
 }): ReactElement {
   const labelId = useId();
@@ -165,16 +163,13 @@ function AccountFlow({
   const [manual, setManual] = useState(false);
   const [environments, setEnvironments] = useState<readonly EnvironmentSummary[]>();
   const [problem, setProblem] = useState<string>();
-  /** The environment answered with another host identity than the one pinned; only a re-pair proceeds. */
   const [changed, setChanged] = useState<{ environment: EnvironmentSummary; role: DeviceRole }>();
-  /** Clerk kept the session. This document already left its host, so it offers nothing but another try. */
   const [signOutFailed, setSignOutFailed] = useState(false);
   const [progress, setProgress] = useState<string>();
   const [connecting, setConnecting] = useState<string>();
   const [shell, setShell] = useState<ReactNode>();
   const [name, setName] = useState("Manual connection");
   const active = useRef<AccountDevice | undefined>(undefined);
-  /** This document adopted a host. Its caches and sends belong to that host, so leaving this flow reloads. */
   const adopted = useRef(false);
   const work = useRef<AbortController | undefined>(undefined);
   const busy = useRef(false);
@@ -295,7 +290,6 @@ function AccountFlow({
     };
   });
 
-  /** `repair`: the owner decided this environment is a new host, so whichever host proves itself replaces the pin. */
   const pick = async ({
     environment,
     role,
@@ -417,7 +411,7 @@ function AccountFlow({
   if (shell !== undefined) {
     return (
       <div {...props(styles.frame)}>
-        <div {...props(styles.bar)}>
+        <div {...props(text.sm, styles.bar)}>
           <Icon name="laptop" size={14} />
           <span {...props(styles.barName)}>{name}</span>
           <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>

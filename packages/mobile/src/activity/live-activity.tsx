@@ -20,7 +20,6 @@ const ACCENT = "blue";
 
 const WARNING = "orange";
 
-/** Opens the build that started the activity: each variant registers its own scheme. */
 export function appLink(path: string): string {
   return `${resolveScheme({})}://${path}`;
 }

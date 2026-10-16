@@ -126,6 +126,9 @@ export const RELAY_OPERATIONS = [
   "connection.watch",
   "connection.blob",
   "models.list",
+  "models.accounts",
+  "models.selectAccount",
+  "models.usage",
   "models.refresh",
   "models.setDefault",
   "models.verify",
@@ -170,6 +173,13 @@ export const RELAY_OPERATIONS = [
   "part.close",
   "workspace.info",
   "workspace.watch",
+  "mcp.watch",
+  "mcp.reconnect",
+  "mcp.setEnabled",
+  "mcp.login",
+  "mcp.logout",
+  "mcp.add",
+  "mcp.remove",
   "workspace.update",
   "workspace.reload",
   "workspace.changes",
@@ -248,6 +258,11 @@ export const RELAY_DISCOVERY = {
   describe: "/.nyte/describe",
 } as const;
 
+export const RELAY_STREAMS = {
+  channel: "/.nyte/streams",
+  cancel: "/.nyte/streams/cancel",
+} as const;
+
 const literal = (text: string) => text.replaceAll(".", "\\.");
 const OPERATION = RELAY_OPERATIONS.map(literal).join("|");
 const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
@@ -260,7 +275,7 @@ const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
  */
 export const RelayPath = Type.String({
   maxLength: 2048,
-  pattern: `^(?:/(?:${OPERATION})|${literal(RELAY_DISCOVERY.identity)}(?:${QUERY})?|${literal(RELAY_DISCOVERY.describe)}|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
+  pattern: `^(?:/(?:${OPERATION})|${literal(RELAY_DISCOVERY.identity)}(?:${QUERY})?|${literal(RELAY_DISCOVERY.describe)}|${literal(RELAY_STREAMS.channel)}|${literal(RELAY_STREAMS.cancel)}|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
 });
 
 const HEADER_VALUE = "^[\\x20-\\x7e]*$";
@@ -274,6 +289,8 @@ export const RelayRequestHeaders = strict({
   accept: Type.Optional(HeaderValue),
   "last-event-id": Type.Optional(HeaderValue),
   "x-nyte-input": Type.Optional(HeaderValue),
+  "x-nyte-channel": Type.Optional(HeaderValue),
+  "x-nyte-stream": Type.Optional(HeaderValue),
 });
 
 export type RelayRequestHeaders = Static<typeof RelayRequestHeaders>;
@@ -286,6 +303,7 @@ export const RelayResponseHeaders = strict({
   "x-nyte-credential": Type.Optional(HeaderValue),
   "x-nyte-version": Type.Optional(HeaderValue),
   "x-nyte-mime": Type.Optional(HeaderValue),
+  "x-nyte-channel": Type.Optional(HeaderValue),
 });
 
 export type RelayResponseHeaders = Static<typeof RelayResponseHeaders>;
@@ -392,6 +410,8 @@ export const RELAY_REQUEST_HEADER_NAMES = [
   "accept",
   "last-event-id",
   "x-nyte-input",
+  "x-nyte-channel",
+  "x-nyte-stream",
 ] as const;
 
 /** The names `relayResponseHeaders` passes back, lowercase. */
@@ -402,6 +422,7 @@ export const RELAY_RESPONSE_HEADER_NAMES = [
   "x-nyte-credential",
   "x-nyte-version",
   "x-nyte-mime",
+  "x-nyte-channel",
 ] as const;
 const HEADER_TEXT = new RegExp(HEADER_VALUE, "u");
 

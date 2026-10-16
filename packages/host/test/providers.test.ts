@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceId, WorkspaceTarget } from "@nyte-ai/schema";
 import { composeHost, memoryStore } from "@nyte-ai/core";
-import type { GitApi, Plugin } from "@nyte-ai/core";
+import type { EnvironmentProvider, GitApi, Plugin } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { chatOnlyProvider, sandboxProvider } from "../src/providers.ts";
 import type { SandboxHandle } from "../src/providers.ts";
@@ -13,7 +13,6 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-/** Returns a sandbox handle whose files are the chat-only provider's, with the given git seam and a count of its destroys. */
 async function handle(git?: GitApi): Promise<SandboxHandle & { readonly destroys: number[] }> {
   const { files } = await chatOnlyProvider().attach({ kind: "chat-only", locator: null });
   const destroys: number[] = [];
@@ -33,7 +32,6 @@ async function handle(git?: GitApi): Promise<SandboxHandle & { readonly destroys
   };
 }
 
-/** Composes a host over one provider plugin and the target it serves; returns it with its workspace id. */
 async function hostOver(
   plugin: Plugin<"core">,
   target: WorkspaceTarget,
@@ -206,13 +204,19 @@ describe("sandboxProvider", () => {
       push: refuse,
     };
 
+    const inspect: EnvironmentProvider["inspect"] = async () => ({
+      identity: asId("sandbox-1"),
+      availability: { kind: "available" },
+      projectSources: [],
+    });
+
     const withGit = await hostOver(
-      { id: "sandbox", environment: sandboxProvider({ boot: async () => handle(git) }) },
+      { id: "sandbox", environment: sandboxProvider({ boot: async () => handle(git), inspect }) },
       { kind: "sandbox", locator: { name: "with-git" } },
     );
 
     const withoutGit = await hostOver(
-      { id: "sandbox", environment: sandboxProvider({ boot: async () => handle() }) },
+      { id: "sandbox", environment: sandboxProvider({ boot: async () => handle(), inspect }) },
       { kind: "sandbox", locator: { name: "without-git" } },
     );
 

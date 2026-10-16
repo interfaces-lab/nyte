@@ -1,8 +1,3 @@
-/**
- * Twelve takes on the desktop Changes tab, side by side, each changing one or two
- * ideas against the shipped panel (`packages/app/src/workbench/changes-*.tsx`).
- * Every panel reads the same working tree from `fixtures.ts`; state is local.
- */
 import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
@@ -103,7 +98,6 @@ function StatusLetter({ status }: { readonly status: FileStatus }): ReactElement
   );
 }
 
-/** Five blocks, GitHub style: green and red in proportion, grey for the rest. */
 function Blocks({
   added,
   removed,
@@ -133,7 +127,6 @@ function Blocks({
   );
 }
 
-/** The shipped row: file glyph, name, stat, revert, checkbox. Variants override slots. */
 function FileRow({
   file,
   leading,
@@ -260,7 +253,6 @@ function PrimaryButton({
   );
 }
 
-/* 1 */
 function Composer(): ReactElement {
   const [message, setMessage] = useState(MESSAGE);
   const ready = message.trim() !== "";
@@ -323,7 +315,6 @@ function List({ dim = true }: { readonly dim?: boolean }): ReactElement {
   );
 }
 
-/* 2 */
 function Docked(): ReactElement {
   const [message, setMessage] = useState("");
 
@@ -339,7 +330,6 @@ function Docked(): ReactElement {
   );
 }
 
-/* 3 */
 function QuietHeader(): ReactElement {
   const [message, setMessage] = useState(MESSAGE);
 
@@ -369,7 +359,6 @@ function QuietHeader(): ReactElement {
   );
 }
 
-/* 4 */
 function StatusLetters(): ReactElement {
   const { checked, toggle } = useChecks();
 
@@ -413,7 +402,6 @@ function CommitBlock({ label = "Commit and Push" }: { readonly label?: string })
   );
 }
 
-/* 5 */
 function Sections(): ReactElement {
   const [staged, setStaged] = useState<ReadonlySet<string>>(
     () => new Set(FILES.filter((file) => file.staged).map((file) => file.path)),
@@ -469,7 +457,6 @@ function Sections(): ReactElement {
   );
 }
 
-/* 6 */
 const SCOPES = ["Uncommitted", "Staged", "Last turn"] as const;
 
 function BranchFirst(): ReactElement {
@@ -505,7 +492,6 @@ function BranchFirst(): ReactElement {
   );
 }
 
-/* 7 */
 function Diffstat(): ReactElement {
   const share = TOTAL.added / (TOTAL.added + TOTAL.removed);
 
@@ -543,7 +529,6 @@ function Diffstat(): ReactElement {
   );
 }
 
-/* 8 */
 function Tree(): ReactElement {
   return (
     <>
@@ -578,7 +563,6 @@ function Tree(): ReactElement {
   );
 }
 
-/* 9 */
 function Collapsed(): ReactElement {
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
@@ -623,7 +607,6 @@ function Collapsed(): ReactElement {
   );
 }
 
-/* 10 */
 function CountAware(): ReactElement {
   const { checked, toggle } = useChecks();
   const [message, setMessage] = useState("");
@@ -672,7 +655,6 @@ function CountAware(): ReactElement {
   );
 }
 
-/* 11 */
 function Compact(): ReactElement {
   const [message, setMessage] = useState(MESSAGE);
 
@@ -704,7 +686,6 @@ function Compact(): ReactElement {
   );
 }
 
-/* 12 */
 function Subject(): ReactElement {
   const [summary, setSummary] = useState(MESSAGE);
   const over = summary.length > 50;

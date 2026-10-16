@@ -1,32 +1,22 @@
 import { useMemo, useSyncExternalStore } from "react";
 
-/** What a watched stream has yielded: nothing yet, its newest value, or the error that ended it with the last value before it. */
 export type Watched<T> =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly value: T }
   | { readonly kind: "failed"; readonly error: unknown; readonly last: T | undefined };
 
-/** Anything with a `watch()` the sdk streams: a head, a connection, or a source a screen builds. */
 export interface Watchable<T> {
   watch(): AsyncIterable<T>;
 }
 
 const LOADING = { kind: "loading" } as const;
 
-/**
- * Returns the newest value of a stream the sdk yields (`head.watch()`,
- * `sessions.watch()`, `connection.watch()`), the one wrapper over an sdk
- * watch, and a restart that reopens it from loading. The stream opens with
- * the first subscriber and closes with the last; a new `source` opens a new
- * one. No `source` stays `loading`.
- */
 export function useWatch<T>(source: Watchable<T> | undefined): readonly [Watched<T>, () => void] {
   const store = useMemo(() => watchStore(source), [source]);
 
   return [useSyncExternalStore(store.subscribe, store.getSnapshot), store.restart];
 }
 
-/** Returns an external store over one stream: iterated while subscribed, returned when the last subscriber leaves. */
 function watchStore<T>(source: Watchable<T> | undefined) {
   let snapshot: Watched<T> = LOADING;
   let iterator: AsyncIterator<T> | undefined;

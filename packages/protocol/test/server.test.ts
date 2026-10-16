@@ -66,7 +66,6 @@ function kindOf(frame: SseFrame): string | null {
     : null;
 }
 
-/** Returns a memory store whose opened connection is changed by `change`. */
 function changed(change: (opened: StoreConnection) => StoreConnection): Store {
   const base = memoryStore();
 

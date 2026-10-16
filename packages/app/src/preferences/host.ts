@@ -15,10 +15,6 @@ import type { Setting } from "./store.ts";
 
 const HASH = hashKey(keys.hostSettings);
 
-/**
- * The settings route's loader: host rows render with their values, never empty
- * first. A file that can't be read leaves those rows disabled, not the whole page.
- */
 export async function loadHostSettings(): Promise<void> {
   const bridge = nyte.host.settings;
 
@@ -40,7 +36,6 @@ export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }
 
-/** Resolves once main has written the file, so a dependent action sees the new value. */
 export async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
   const bridge = nyte.host.settings;
 

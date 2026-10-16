@@ -1,9 +1,4 @@
-/**
- * Non-interactive mode: send one prompt, stream the answer to stdout from the
- * head's view, and exit with the run's outcome. The same SDK handles the shell
- * uses, over an output the caller supplies.
- */
-import { openQuestions } from "@nyte-ai/plugin/question";
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
 import { sessionRecovery } from "./flags.ts";
 import { isTextMessage, isToolMessage } from "./lib/view-helpers.ts";
@@ -15,7 +10,6 @@ export interface PrintOutput {
 
 interface PrintOptions {
   readonly session: Session;
-  /** Overrides the head's selection for this prompt only. */
   readonly configuration?: ConfigurationPatch;
   readonly content: string;
   readonly json: boolean;
@@ -32,7 +26,6 @@ export type PrintOutcome =
   | { readonly kind: "cancelled"; readonly signal?: "SIGINT" | "SIGTERM" }
   | { readonly kind: "input-required" };
 
-/** How the run ended, as print reports it. */
 function outcomeOf(end: RunEnd): PrintOutcome {
   switch (end.kind) {
     case "completed":
@@ -49,12 +42,6 @@ function outcomeOf(end: RunEnd): PrintOutcome {
   }
 }
 
-/**
- * Sends the prompt and follows the head's view until the turn it opened
- * ends. Each answer part writes what it grew by; a tool call writes its name
- * once. A question in front of the user stops the run: print has no stdin to
- * answer it with.
- */
 export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
   const { session, output } = options;
 

@@ -87,7 +87,6 @@ function fileSection(file: TextPatch, subtitle: string | undefined): FileSection
   };
 }
 
-/** Returns the text patches of the last set a patch stream yields, once it ends. */
 async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]> {
   let last: PatchSet | undefined;
 
@@ -166,7 +165,6 @@ export function ChangesScreen({
       const api = await git();
       const scope = { kind: "worktree" } as const;
 
-      // Without recorded edits the screen shows every changed file, named from the manifest.
       const paths =
         conversationPaths.length > 0
           ? conversationPaths

@@ -7,7 +7,6 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/** A folded group of rows under one header that says how many it holds. */
 export function Shelf({
   label,
   count,

@@ -1,10 +1,11 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type {
+  ConfigurationPatch,
   Infer,
   Message,
+  ModelRef,
   RunEnd,
   RunId,
-  SessionView,
   ToolResult,
   WaitOutcome,
 } from "@nyte-ai/schema";
@@ -13,12 +14,29 @@ import { isPart, text, tool } from "../parts.ts";
 import type { Plugin } from "../plugin.ts";
 import type { SendReceipt } from "../receipt.ts";
 import type { Session } from "../session.ts";
-import { textOf } from "../session-state.ts";
+import { extractUserText } from "../session-state.ts";
 import type { ToolDefinition, ToolInvocation } from "../tools.ts";
 
 const ANSWER_LIMIT = 16_000;
 
 const TRANSCRIPT_LIMIT = 16_000;
+
+const selectionParameters = {
+  agent: Type.Optional(
+    Type.String({ description: "A registered agent to run as; the default agent otherwise." }),
+  ),
+  model: Type.Optional(
+    Type.String({
+      description:
+        "A model from /model, as provider/id or its id alone; a fast variant is its own id. The default model otherwise.",
+    }),
+  ),
+  thinking: Type.Optional(
+    Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"], {
+      description: "A thinking level the model accepts; its default otherwise.",
+    }),
+  ),
+};
 
 const taskParameters = standard(
   Type.Object({
@@ -26,18 +44,14 @@ const taskParameters = standard(
       description: "The task for the subagent, with everything it needs to know.",
     }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
-    agent: Type.Optional(
-      Type.String({ description: "A registered agent to run as; the default agent otherwise." }),
-    ),
+    ...selectionParameters,
   }),
 );
 
 const createParameters = standard(
   Type.Object({
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
-    agent: Type.Optional(
-      Type.String({ description: "A registered agent to run as; the default agent otherwise." }),
-    ),
+    ...selectionParameters,
     role: Type.Optional(
       Type.String({
         description: "Instructions the subagent keeps for every message, added to its prompt.",
@@ -77,7 +91,6 @@ const stopParameters = standard(
   }),
 );
 
-/** Creates a child session, sends it the prompt and waits for the run it landed in, returning that run's last text; a re-run replays the child, the send and the wait. */
 const task: ToolDefinition<Infer<typeof taskParameters>> = {
   name: "task",
   description:
@@ -89,7 +102,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     const child = await invocation.sdk.sessions.create({
       parent: invocation.session.id,
       name: args.title,
-      configuration: args.agent === undefined ? undefined : { agent: args.agent },
+      configuration: await childConfiguration(invocation, args),
     });
 
     const run = await invocation.memo("run", async () => {
@@ -101,11 +114,10 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     if (run === null) return reply(`Subagent ${child.id} did not start the task.`);
     const outcome = await invocation.wait({ kind: "run", session: child.id, run });
 
-    return reply(await answerOf(child, run, outcome));
+    return reply(await readSubagentReply(child, run, outcome));
   },
 };
 
-/** Creates a child session without sending to it, with `role` as its own prompt layer (`prompt: { kind: "layer", text }`) and `agent` in its configuration, and returns its id. */
 const create: ToolDefinition<Infer<typeof createParameters>> = {
   name: "create",
   description:
@@ -117,7 +129,7 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
     const child = await invocation.sdk.sessions.create({
       parent: invocation.session.id,
       name: args.title,
-      configuration: args.agent === undefined ? undefined : { agent: args.agent },
+      configuration: await childConfiguration(invocation, args),
       prompt: args.role === undefined ? undefined : { kind: "layer", text: args.role },
     });
 
@@ -125,7 +137,6 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
   },
 };
 
-/** Sends a message to a child of this session (memoised, so a re-run sends once) and returns at once with what admission scheduled; a session that is not this session's child fails the call. */
 const send: ToolDefinition<Infer<typeof sendParameters>> = {
   name: "send",
   description:
@@ -139,7 +150,7 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
   }),
   replay: "safe",
   async execute(args, invocation) {
-    const child = await childOf(invocation, args.session);
+    const child = await requireChildSession(invocation, args.session);
     const receipt = await sendOnce(invocation, child, args.prompt);
     const view = await child.view();
     const message = view.messages.find((entry) => entry.id === receipt.message);
@@ -148,7 +159,6 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
   },
 };
 
-/** Waits for a child's live run to end, up to `timeout` seconds after the step's recorded clock, and returns its answer; an idle child returns its last answer at once. */
 const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   name: "await",
   description: "Wait for a subagent to finish its current work and return its answer.",
@@ -161,8 +171,12 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
   }),
   replay: "safe",
   async execute(args, invocation) {
-    const child = await childOf(invocation, args.session);
-    const run = await invocation.memo("run", async () => liveRunOf(await child.view()));
+    const child = await requireChildSession(invocation, args.session);
+    const run = await invocation.memo("run", async () => {
+      const { execution } = await child.view();
+
+      return execution.kind === "idle" ? null : execution.run.id;
+    });
 
     if (run === null) {
       const execution = (await child.view()).execution;
@@ -171,7 +185,7 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
       if (last === null) return reply(`Subagent ${child.id} has not worked on anything yet.`);
 
       return reply(
-        await answerOf(child, last.id, {
+        await readSubagentReply(child, last.id, {
           kind: "run",
           session: child.id,
           run: last.id,
@@ -191,11 +205,10 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
           },
     );
 
-    return reply(await answerOf(child, run, outcome));
+    return reply(await readSubagentReply(child, run, outcome));
   },
 };
 
-/** Returns a child's transcript as text, bounded from the end: its messages' text, tool calls as one line each, and whether it is working, waiting or idle. */
 const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read_agent",
   description: "Read a subagent's conversation so far, newest last.",
@@ -208,13 +221,16 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
   }),
   replay: "safe",
   async execute(args, invocation) {
-    const child = await childOf(invocation, args.session);
+    const child = await requireChildSession(invocation, args.session);
     const view = await child.view();
     const execution = view.execution.kind;
 
     const state = execution === "idle" ? "idle" : execution === "waiting" ? "waiting" : "working";
 
-    const transcript = fromEnd(view.messages.flatMap(lineOf).join("\n\n"), TRANSCRIPT_LIMIT);
+    const transcript = fromEnd(
+      view.messages.flatMap(renderTranscriptMessage).join("\n\n"),
+      TRANSCRIPT_LIMIT,
+    );
 
     return reply(
       transcript === ""
@@ -224,7 +240,6 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
   },
 };
 
-/** Stops a child's work (`session.stop()` on the child: every live run fenced, pending inputs withdrawn) and returns what was stopped. */
 const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   name: "stop",
   description: "Stop a subagent's current work.",
@@ -237,7 +252,7 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   }),
   replay: "safe",
   async execute(args, invocation) {
-    const child = await childOf(invocation, args.session);
+    const child = await requireChildSession(invocation, args.session);
     const { stopped, withdrawn } = await child.stop();
 
     return reply(
@@ -246,19 +261,67 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
-/** Contributes the subagent tools: `task`, `create`, `send`, `await`, `read_agent` and `stop`, each a `delegate` call over the calling session's children. */
 export const delegationPlugin: Plugin<"core"> = {
   id: "delegation",
-  contribute: { tools: [task, create, send, awaitChild, readAgent, stop] },
+  async activate(api) {
+    if ((await api.session.info()).parent !== null) return;
+
+    for (const tool of [task, create, send, awaitChild, readAgent, stop])
+      api.contribute.tools.add(tool);
+  },
 };
 
-/** Returns a tool result of one text. */
+async function childConfiguration(
+  invocation: ToolInvocation,
+  { agent, model, thinking }: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
+): Promise<ConfigurationPatch | undefined> {
+  if (agent === undefined && model === undefined && thinking === undefined) return undefined;
+
+  return {
+    agent,
+    model: model === undefined ? undefined : await findModel(invocation, model),
+    thinking,
+  };
+}
+
+async function findModel(invocation: ToolInvocation, name: string): Promise<ModelRef> {
+  const models = (await invocation.sdk.models.list()).providers.flatMap((provider) =>
+    provider.credential === "unknown" ||
+    provider.credential === "configured" ||
+    provider.credential === "verified"
+      ? provider.models
+      : [],
+  );
+
+  const refs = models.flatMap((info) => (info.fast === null ? [info.ref] : [info.ref, info.fast]));
+  const exact = refs.filter((ref) => `${ref.provider}/${ref.id}` === name);
+  const matches = exact.length > 0 ? exact : refs.filter((ref) => ref.id === name);
+  const [only, ...others] = matches;
+
+  if (only !== undefined && others.length === 0) return only;
+
+  if (only !== undefined)
+    throw new Error(
+      `${name} names more than one model; pass one of ${matches.map((ref) => `${ref.provider}/${ref.id}`).join(", ")}.`,
+    );
+
+  if (models.length === 0) throw new Error("No model is available; sign in to a provider first.");
+
+  throw new Error(
+    `/model has no ${name}. Choose one of:\n${models
+      .map(
+        (info) =>
+          `- ${info.ref.provider}/${info.ref.id} (thinking: ${info.thinking.join(", ")})${info.fast === null ? "" : `, fast: ${info.fast.provider}/${info.fast.id}`}`,
+      )
+      .join("\n")}`,
+  );
+}
+
 function reply(content: string): ToolResult<unknown> {
   return { content: [{ kind: "text", text: content }] };
 }
 
-/** Returns a child of the calling session by id; a session that is not its child fails the call. */
-async function childOf(invocation: ToolInvocation, id: string): Promise<Session> {
+async function requireChildSession(invocation: ToolInvocation, id: string): Promise<Session> {
   const child = invocation.sdk.session(asId<"session">(id));
 
   if ((await child.info()).parent !== invocation.session.id)
@@ -267,7 +330,6 @@ async function childOf(invocation: ToolInvocation, id: string): Promise<Session>
   return child;
 }
 
-/** Sends a prompt to a child's main head under a receipt id keyed by the call, so a re-run of the step replays the send instead of sending again. */
 function sendOnce(
   invocation: ToolInvocation,
   child: Session,
@@ -276,14 +338,12 @@ function sendOnce(
   return child.send(prompt, { id: asId<"receipt">(`${invocation.call}:${child.id}`) });
 }
 
-/** Returns the run a child's head is working in, or null when it is idle. */
-function liveRunOf(view: SessionView): RunId | null {
-  return view.execution.kind === "idle" ? null : view.execution.run.id;
-}
-
-/** Returns a child's answer from one run: how the wait ended, then the last text the run wrote, bounded. */
-async function answerOf(child: Session, run: RunId, outcome: WaitOutcome): Promise<string> {
-  const header = `Subagent ${child.id} ${endOf(outcome)}.`;
+async function readSubagentReply(
+  child: Session,
+  run: RunId,
+  outcome: WaitOutcome,
+): Promise<string> {
+  const header = `Subagent ${child.id} ${describeSubagentOutcome(outcome)}.`;
   const view = await child.view();
   const turn = view.turns.find((entry) => entry.run === run)?.id;
 
@@ -299,8 +359,7 @@ async function answerOf(child: Session, run: RunId, outcome: WaitOutcome): Promi
   return answer === "" ? header : `${header}\n\n${fromStart(answer, ANSWER_LIMIT)}`;
 }
 
-/** Returns how a wait on a child's run ended, as words. */
-function endOf(outcome: WaitOutcome): string {
+function describeSubagentOutcome(outcome: WaitOutcome): string {
   if (outcome.kind === "run") return endedAs(outcome.end);
 
   return outcome.kind === "stopped"
@@ -308,7 +367,6 @@ function endOf(outcome: WaitOutcome): string {
     : "is still working";
 }
 
-/** Returns how a run ended, as words. */
 function endedAs(end: RunEnd): string {
   switch (end.kind) {
     case "completed":
@@ -320,7 +378,6 @@ function endedAs(end: RunEnd): string {
   }
 }
 
-/** Returns what admission did with a message sent to a child, as words. */
 function scheduled(message: Message | undefined): string {
   if (message?.kind !== "user") return "it was admitted";
 
@@ -338,9 +395,8 @@ function scheduled(message: Message | undefined): string {
   }
 }
 
-/** Returns one transcript message as text: user text, the assistant's text, a tool call in one line; nothing for the rest. */
-function lineOf(message: Message): readonly string[] {
-  if (message.kind === "user") return [`User: ${textOf(message.content)}`];
+function renderTranscriptMessage(message: Message): readonly string[] {
+  if (message.kind === "user") return [`User: ${extractUserText(message.content)}`];
 
   if (isPart(message, text))
     return message.state.markdown === "" ? [] : [`Assistant: ${message.state.markdown}`];
@@ -355,14 +411,12 @@ function lineOf(message: Message): readonly string[] {
   return [];
 }
 
-/** Returns text cut to `limit` characters from its start, saying so. */
 function fromStart(content: string, limit: number): string {
   return content.length > limit
     ? `${content.slice(0, limit)}\n\n[… cut at ${limit} characters]`
     : content;
 }
 
-/** Returns text cut to its last `limit` characters, saying so. */
 function fromEnd(content: string, limit: number): string {
   return content.length > limit ? `[… earlier messages cut]\n\n${content.slice(-limit)}` : content;
 }

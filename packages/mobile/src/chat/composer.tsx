@@ -18,13 +18,11 @@ import Animated, {
   withSpring,
   withTiming,
   Easing,
-  interpolate,
-  Extrapolation,
 } from "react-native-reanimated";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { scheduleOnRN } from "react-native-worklets";
 import { Host } from "@expo/ui";
-import { Button, HStack, Image, Menu, Text } from "@expo/ui/swift-ui";
+import { Button, HStack, Image, Menu, Picker, Text } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   buttonStyle,
@@ -34,7 +32,10 @@ import {
   frame,
   disabled,
   lineLimit,
+  labelsHidden,
+  pickerStyle,
   shapes,
+  tag,
 } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
 import { randomUUID } from "expo-crypto";
@@ -95,13 +96,10 @@ import {
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
 import { AnimatedGlass } from "./composer-glass.tsx";
 import { COMPOSER, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
-import { GaugeIcon } from "./gauge-icon.tsx";
-import { ThinkingSelector } from "./thinking-selector.tsx";
 import { useChatDraft, useChatScope } from "./drafts.ts";
 import {
   supportedThinkingLevel,
   THINKING_LABELS,
-  thinkingIndex,
   thinkingLevelsFor,
   type ThinkingLevel,
 } from "./thinking.ts";
@@ -112,7 +110,7 @@ const MODEL_FONT = { textStyle: "subheadline", weight: "semibold" } as const;
 
 const INPUT_LINE_HEIGHT = 24;
 
-const INPUT_MAX_HEIGHT = INPUT_LINE_HEIGHT * 6;
+const INPUT_MAX_LINES = 6;
 
 type NewTarget = { kind: "new" };
 
@@ -170,13 +168,14 @@ export const Composer = memo(function Composer({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [selectingModel, setSelectingModel] = useState(false);
   const [thinking, setThinking] = useState<ThinkingLevel>();
-  const [selectorOpen, setSelectorOpen] = useState(false);
 
   const [delivery, setDelivery] = useState<Delivery>("steer");
 
   const { catalog } = useModelCatalog(client);
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const inputLineHeight = INPUT_LINE_HEIGHT * fontScale;
+  const inputMaxHeight = inputLineHeight * INPUT_MAX_LINES;
   const fieldRef = useRef<TextInput>(null);
   const selectionOnCommit = useRef<{ draft: string; caret: number } | undefined>(undefined);
 
@@ -188,11 +187,11 @@ export const Composer = memo(function Composer({
       fieldRef.current?.setSelection(selection.caret, selection.caret);
   }, [draft]);
   const keyboard = useReanimatedKeyboardAnimation();
-  const thinkingAt = useSharedValue(0);
   const attachProgress = useSharedValue(0);
   const attachExtend = useSharedValue(0);
   const attachmentsHeight = useSharedValue(0);
   const cardHeight = useSharedValue(0);
+  const topControlsHeight = useSharedValue(0);
 
   const submissionActive = useRef(false);
 
@@ -246,12 +245,14 @@ export const Composer = memo(function Composer({
   const chosenThinking = supportedThinkingLevel(chosenModel, thinking ?? sessionThinking);
   const canThink = thinkingStops.length > 1;
 
-  if (selectorOpen && !canThink) setSelectorOpen(false);
-
   const busy = sending || staging || selectingModel;
   const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
 
-  const expanded = focused || modelPickerOpen || selectorOpen || dictation.recording;
+  const expanded = focused || modelPickerOpen || dictation.recording;
+
+  const menuObstructionHeight = useDerivedValue(
+    () => cardHeight.get() + topControlsHeight.get() + spacing.xs,
+  );
 
   const cardDock = useDerivedValue(() => {
     const lifted = -keyboard.height.get();
@@ -288,11 +289,6 @@ export const Composer = memo(function Composer({
 
     if (sessionThinking !== undefined) setThinking(sessionThinking);
   }
-
-  useEffect(() => {
-    if (selectorOpen) return;
-    thinkingAt.set(thinkingIndex(thinkingLevelsFor(chosenModel), chosenThinking));
-  }, [chosenThinking, chosenModel, selectorOpen, thinkingAt]);
 
   const completionOpen = completion !== undefined;
   useEffect(() => {
@@ -369,7 +365,6 @@ export const Composer = memo(function Composer({
     }
   };
 
-  /** The head a session composer configures: the one on screen. */
   const headOf = (session: SessionTarget): Head => {
     const handle = client.session(session.sessionId);
     const name = session.heads.find((head) => head === session.head);
@@ -456,7 +451,6 @@ export const Composer = memo(function Composer({
 
       const typed = submitted.trim().split("\n")[0]?.slice(0, 48) ?? "";
 
-      // The whole request is on record before it is sent; every retry sends the record.
       const recorded = recordStart(workspaceStorage, scope, {
         requestId: randomUUID(),
         workspace: folder.id,
@@ -486,7 +480,6 @@ export const Composer = memo(function Composer({
     }
   };
 
-  /** A waiting start goes back into the composer, ahead of anything typed since. */
   const editStart = (pending: PendingStart) => {
     const restored = pending.input.content.flatMap((part): StagedImage[] =>
       part.kind === "image"
@@ -535,27 +528,14 @@ export const Composer = memo(function Composer({
     );
   };
 
-  const closeSelector = () => {
-    setSelectorOpen(false);
-  };
-
   const openAttach = () => {
     if (attachDisabled) return;
 
-    if (selectorOpen) closeSelector();
     flight.reset();
     attachExtend.set(0);
     attachProgress.set(0);
     setAttachVisible(true);
     setLocalError(undefined);
-  };
-
-  const openSelector = () => {
-    if (!canThink || busy) return;
-
-    if (attachVisible) closeAttach();
-    Keyboard.dismiss();
-    setSelectorOpen(true);
   };
 
   const preparePhotos = async (photos: readonly RecentPhoto[]): Promise<readonly StagedImage[]> => {
@@ -590,8 +570,6 @@ export const Composer = memo(function Composer({
     if (busy) return false;
 
     setModel(choice);
-
-    if (selectorOpen) closeSelector();
 
     if (target.kind !== "session") return true;
 
@@ -631,12 +609,6 @@ export const Composer = memo(function Composer({
   }));
 
   const attachmentStripStyle = useAnimatedStyle(() => ({ height: attachmentsHeight.get() }));
-
-  const composerCornerStyle = useAnimatedStyle(() => ({
-    borderRadius: expanded
-      ? 28
-      : interpolate(attachmentsHeight.get(), [0, 24], [999, 28], Extrapolation.CLAMP),
-  }));
 
   const triggerStyle = useAnimatedStyle(() => ({
     opacity: withTiming(attachVisible ? 0 : 1),
@@ -680,15 +652,179 @@ export const Composer = memo(function Composer({
           <SuggestionMenu
             completion={completion}
             onAccept={accept}
-            cardHeight={cardHeight}
+            cardHeight={menuObstructionHeight}
             cardDock={cardDock}
           />
         )}
+        <View
+          style={field.topControls}
+          onLayout={(event) => topControlsHeight.set(event.nativeEvent.layout.height)}
+        >
+          {expanded && target.kind === "session" && target.heads.length > 1 ? (
+            <html.div style={styles.context}>
+              <ContextRow head={target.head} heads={target.heads} onChooseHead={chooseHead} />
+            </html.div>
+          ) : null}
+          {running ? (
+            <html.div style={[styles.deliveryRow, delivery === "queue" && styles.queuedDelivery]}>
+              <Host
+                style={field.deliveryHost}
+                matchContents={{ vertical: true }}
+                ignoreSafeArea="all"
+              >
+                <Menu
+                  label={
+                    <HStack spacing={spacing.xs}>
+                      <Image
+                        systemName={delivery === "queue" ? "clock" : "arrow.turn.up.right"}
+                        size={14}
+                        modifiers={[foregroundStyle(theme.accent)]}
+                      />
+                      <Text
+                        modifiers={[font(MODEL_FONT), foregroundStyle(theme.accent), lineLimit(1)]}
+                      >
+                        {delivery === "queue" ? "After this response" : "Steer response"}
+                      </Text>
+                      <Image
+                        systemName="chevron.down"
+                        size={10}
+                        modifiers={[foregroundStyle(theme.accent)]}
+                      />
+                    </HStack>
+                  }
+                  modifiers={[
+                    buttonStyle("plain"),
+                    frame({ minHeight: controls.touchTarget }),
+                    disabled(busy),
+                  ]}
+                >
+                  <Button
+                    label="Steer current response"
+                    systemImage={delivery === "steer" ? "checkmark" : undefined}
+                    onPress={() => setDelivery("steer")}
+                  />
+                  <Button
+                    label="Queue after response"
+                    systemImage={delivery === "queue" ? "checkmark" : undefined}
+                    onPress={() => setDelivery("queue")}
+                  />
+                </Menu>
+              </Host>
+              <html.button
+                aria-label="Stop response"
+                aria-busy={stopping}
+                disabled={stopping}
+                onClick={() => {
+                  if (target.kind === "session") target.onStop();
+                }}
+                style={styles.stop}
+              >
+                {stopping ? (
+                  <ActivityIndicator color={theme.muted} size="small" />
+                ) : (
+                  <SymbolView name="stop.fill" size={16} tintColor={theme.foreground} />
+                )}
+              </html.button>
+            </html.div>
+          ) : null}
+          {!dictation.recording ? (
+            <View style={field.options}>
+              <Host style={field.modelHost} matchContents={{ vertical: true }} ignoreSafeArea="all">
+                <Button
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setLocalError(undefined);
+                    setModelPickerOpen(true);
+                  }}
+                  modifiers={[
+                    buttonStyle("plain"),
+                    disabled(busy),
+                    accessibilityLabel(`Choose model, ${chosenModel?.name ?? "Model"}`),
+                  ]}
+                >
+                  <HStack
+                    spacing={spacing.xs}
+                    modifiers={[
+                      frame({
+                        minHeight: controls.touchTarget,
+                        maxWidth: Infinity,
+                        alignment: "leading",
+                      }),
+                      contentShape(shapes.rectangle()),
+                    ]}
+                  >
+                    <Text
+                      modifiers={[
+                        font(MODEL_FONT),
+                        foregroundStyle(theme.foreground),
+                        lineLimit(1),
+                      ]}
+                    >
+                      {chosenModel?.name ?? "Choose model"}
+                    </Text>
+                    <Image
+                      systemName="chevron.down"
+                      size={12}
+                      modifiers={[foregroundStyle(theme.foreground)]}
+                    />
+                  </HStack>
+                </Button>
+              </Host>
+              {canThink ? (
+                <Host style={field.thinkingHost} matchContents ignoreSafeArea="all">
+                  <Menu
+                    label={
+                      <HStack
+                        spacing={spacing.xs}
+                        modifiers={[
+                          frame({
+                            minWidth: controls.touchTarget,
+                            minHeight: controls.touchTarget,
+                          }),
+                          contentShape(shapes.rectangle()),
+                        ]}
+                      >
+                        <Text
+                          modifiers={[
+                            font({ textStyle: "subheadline" }),
+                            foregroundStyle(theme.muted),
+                          ]}
+                        >
+                          {THINKING_LABELS[chosenThinking]}
+                        </Text>
+                        <Image
+                          systemName="chevron.down"
+                          size={12}
+                          modifiers={[foregroundStyle(theme.muted)]}
+                        />
+                      </HStack>
+                    }
+                    modifiers={[
+                      buttonStyle("plain"),
+                      disabled(busy),
+                      accessibilityLabel(`Thinking level, ${THINKING_LABELS[chosenThinking]}`),
+                    ]}
+                  >
+                    <Picker
+                      label="Thinking level"
+                      selection={chosenThinking}
+                      onSelectionChange={chooseThinking}
+                      modifiers={[pickerStyle("inline"), labelsHidden()]}
+                    >
+                      {thinkingStops.map((level) => (
+                        <Text key={level} modifiers={[tag(level)]}>
+                          {THINKING_LABELS[level]}
+                        </Text>
+                      ))}
+                    </Picker>
+                  </Menu>
+                </Host>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
         <View onLayout={(event) => cardHeight.set(event.nativeEvent.layout.height)}>
-          <AnimatedGlass
-            isInteractive
-            style={[field.card, composerCornerStyle, expanded && field.expandedCard]}
-          >
+          <AnimatedGlass isInteractive style={field.card}>
             <Animated.View style={[{ overflow: "hidden" }, attachmentStripStyle]}>
               <View
                 onLayout={(event) => {
@@ -733,89 +869,32 @@ export const Composer = memo(function Composer({
               </View>
             </Animated.View>
 
-            {expanded && target.kind === "session" && target.heads.length > 1 ? (
-              <html.div style={styles.context}>
-                <ContextRow head={target.head} heads={target.heads} onChooseHead={chooseHead} />
+            {dictation.recording ? (
+              <html.div style={styles.recording} role="status">
+                <html.span style={[textStyles.caption, styles.recorderTime]}>
+                  {formatElapsed(dictation.elapsed)}
+                </html.span>
+                <View style={field.waveform} pointerEvents="none">
+                  {dictation.levels.map((sample, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        field.waveBar,
+                        { height: waveHeight(sample), backgroundColor: theme.accent },
+                      ]}
+                    />
+                  ))}
+                </View>
               </html.div>
             ) : null}
-            {running ? (
-              <html.div style={[styles.deliveryRow, delivery === "queue" && styles.queuedDelivery]}>
-                <Host
-                  style={field.deliveryHost}
-                  matchContents={{ vertical: true }}
-                  ignoreSafeArea="all"
-                >
-                  <Menu
-                    label={
-                      <HStack spacing={spacing.xs}>
-                        <Image
-                          systemName={delivery === "queue" ? "clock" : "arrow.turn.up.right"}
-                          size={14}
-                          modifiers={[foregroundStyle(theme.accent)]}
-                        />
-                        <Text
-                          modifiers={[
-                            font(MODEL_FONT),
-                            foregroundStyle(theme.accent),
-                            lineLimit(1),
-                          ]}
-                        >
-                          {delivery === "queue" ? "After this response" : "Steer response"}
-                        </Text>
-                        <Image
-                          systemName="chevron.down"
-                          size={10}
-                          modifiers={[foregroundStyle(theme.accent)]}
-                        />
-                      </HStack>
-                    }
-                    modifiers={[
-                      buttonStyle("plain"),
-                      frame({ minHeight: controls.touchTarget }),
-                      disabled(busy),
-                    ]}
-                  >
-                    <Button
-                      label="Steer current response"
-                      systemImage={delivery === "steer" ? "checkmark" : undefined}
-                      onPress={() => setDelivery("steer")}
-                    />
-                    <Button
-                      label="Queue after response"
-                      systemImage={delivery === "queue" ? "checkmark" : undefined}
-                      onPress={() => setDelivery("queue")}
-                    />
-                  </Menu>
-                </Host>
-                <html.button
-                  aria-label="Stop response"
-                  aria-busy={stopping}
-                  disabled={stopping}
-                  onClick={() => {
-                    if (target.kind === "session") target.onStop();
-                  }}
-                  style={styles.stop}
-                >
-                  {stopping ? (
-                    <ActivityIndicator color={theme.muted} size="small" />
-                  ) : (
-                    <SymbolView name="stop.fill" size={16} tintColor={theme.foreground} />
-                  )}
-                </html.button>
-              </html.div>
-            ) : null}
-            <View
-              style={[
-                field.inputArea,
-                expanded ? field.expandedInputArea : field.collapsedInputArea,
-              ]}
-            >
+            <View style={field.inputArea}>
               <TextInput
                 ref={fieldRef}
                 style={[
                   field.input,
                   {
-                    maxHeight: expanded ? INPUT_MAX_HEIGHT : INPUT_LINE_HEIGHT * 2,
+                    minHeight: inputLineHeight,
+                    maxHeight: inputMaxHeight,
                     color: dictation.recording ? theme.accent : theme.foreground,
                   },
                 ]}
@@ -844,10 +923,7 @@ export const Composer = memo(function Composer({
                 accessibilityLabel={placeholder}
               />
             </View>
-            <View
-              pointerEvents="box-none"
-              style={[field.actions, !expanded && field.collapsedActions]}
-            >
+            <View pointerEvents="box-none" style={field.actions}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Add attachment"
@@ -857,75 +933,16 @@ export const Composer = memo(function Composer({
                 style={[field.plusHit, attachDisabled && field.disabled]}
               >
                 <Animated.View style={triggerStyle}>
-                  <SymbolView name="plus" size={22} tintColor={theme.foreground} weight="regular" />
+                  <SymbolView
+                    name="plus"
+                    size={controls.icon}
+                    tintColor={theme.foreground}
+                    weight="regular"
+                    style={{ transform: [{ translateY: 2 }] }}
+                  />
                 </Animated.View>
               </Pressable>
-              {expanded && !dictation.recording ? (
-                <Host
-                  style={field.modelHost}
-                  matchContents={{ vertical: true }}
-                  ignoreSafeArea="all"
-                >
-                  <Button
-                    onPress={() => {
-                      Keyboard.dismiss();
-                      setLocalError(undefined);
-                      setModelPickerOpen(true);
-                    }}
-                    modifiers={[
-                      buttonStyle("plain"),
-                      disabled(busy),
-                      accessibilityLabel(`Choose model, ${chosenModel?.name ?? "Model"}`),
-                    ]}
-                  >
-                    <HStack
-                      spacing={spacing.xs}
-                      modifiers={[
-                        frame({ minHeight: controls.touchTarget, maxWidth: Infinity }),
-                        contentShape(shapes.rectangle()),
-                      ]}
-                    >
-                      <Text
-                        modifiers={[
-                          font(MODEL_FONT),
-                          foregroundStyle(theme.foreground),
-                          lineLimit(1),
-                        ]}
-                      >
-                        {chosenModel?.name ?? "Choose model"}
-                      </Text>
-                      <Image
-                        systemName="chevron.down"
-                        size={12}
-                        modifiers={[foregroundStyle(theme.foreground)]}
-                      />
-                    </HStack>
-                  </Button>
-                </Host>
-              ) : (
-                <View style={field.spacer} pointerEvents="none" />
-              )}
-              {expanded && canThink && !dictation.recording ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Thinking level"
-                  accessibilityValue={{ text: THINKING_LABELS[chosenThinking] }}
-                  accessibilityState={{ expanded: selectorOpen, disabled: busy }}
-                  disabled={busy}
-                  onPress={openSelector}
-                  style={[field.plusHit, busy && field.disabled]}
-                >
-                  {selectorOpen ? null : (
-                    <GaugeIcon
-                      level={thinkingAt}
-                      stopCount={thinkingStops.length}
-                      accent={theme.accent}
-                      track={theme.muted}
-                      needle={theme.foreground}
-                    />
-                  )}
-                </Pressable>
-              ) : null}
+              <View style={field.spacer} pointerEvents="none" />
               {dictation.recording ? (
                 <html.button
                   aria-label="Stop dictation"
@@ -950,12 +967,12 @@ export const Composer = memo(function Composer({
                 >
                   <html.div style={styles.send}>
                     {sending ? (
-                      <ActivityIndicator color={theme.onAccentFill} size="small" />
+                      <ActivityIndicator color={theme.onPrimary} size="small" />
                     ) : (
                       <SymbolView
                         name="arrow.up"
                         size={19}
-                        tintColor={theme.onAccentFill}
+                        tintColor={theme.onPrimary}
                         weight="semibold"
                       />
                     )}
@@ -968,28 +985,12 @@ export const Composer = memo(function Composer({
                   onClick={() => void startDictation()}
                   style={styles.primary}
                 >
-                  <SymbolView name="mic.fill" size={22} tintColor={theme.muted} />
+                  <html.div style={styles.microphone}>
+                    <SymbolView name="mic.fill" size={16} tintColor={theme.muted} />
+                  </html.div>
                 </html.button>
               )}
             </View>
-            {dictation.recording ? (
-              <html.div style={styles.recording} role="status">
-                <html.span style={[textStyles.caption, styles.recorderTime]}>
-                  {formatElapsed(dictation.elapsed)}
-                </html.span>
-                <View style={field.waveform} pointerEvents="none">
-                  {dictation.levels.map((sample, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        field.waveBar,
-                        { height: waveHeight(sample), backgroundColor: theme.accent },
-                      ]}
-                    />
-                  ))}
-                </View>
-              </html.div>
-            ) : null}
           </AnimatedGlass>
         </View>
       </html.div>
@@ -1001,19 +1002,6 @@ export const Composer = memo(function Composer({
         selectingModel={selectingModel}
         modelError={localError}
         onSelect={chooseModel}
-      />
-      <ThinkingSelector
-        open={selectorOpen && canThink}
-        level={thinkingAt}
-        initialIndex={thinkingIndex(thinkingStops, chosenThinking)}
-        levels={thinkingStops}
-        modelName={chosenModel?.name ?? "Model"}
-        onClose={closeSelector}
-        onCommit={(index) => {
-          const next = thinkingStops[index];
-
-          if (next !== undefined) chooseThinking(next);
-        }}
       />
       {attachVisible ? (
         <AttachmentsMenu
@@ -1058,20 +1046,23 @@ function matchCatalogModel(
 }
 
 const field = StyleSheet.create({
-  card: { borderCurve: "continuous", borderRadius: 24, minWidth: 0, overflow: "hidden" },
-  expandedCard: { borderRadius: 28 },
+  card: {
+    borderCurve: "continuous",
+    borderRadius: COMPOSER.height / 2,
+    minWidth: 0,
+    overflow: "hidden",
+  },
   plusHit: {
     width: controls.touchTarget,
     height: controls.touchTarget,
     alignItems: "center",
     justifyContent: "center",
   },
-  inputArea: { minHeight: COMPOSER.height, justifyContent: "center", paddingVertical: spacing.md },
-  collapsedInputArea: { paddingHorizontal: controls.touchTarget + spacing.sm },
-  expandedInputArea: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
+  inputArea: {
+    minHeight: COMPOSER.height,
+    justifyContent: "center",
+    paddingVertical: spacing.md,
+    paddingHorizontal: controls.touchTarget + spacing.sm,
   },
   input: {
     minWidth: 0,
@@ -1082,7 +1073,17 @@ const field = StyleSheet.create({
     textAlignVertical: "top",
     alignSelf: "stretch",
   },
+  topControls: { gap: spacing.xs },
+  options: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  thinkingHost: {
+    minHeight: controls.touchTarget,
+    paddingHorizontal: spacing.sm,
+  },
   actions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
@@ -1090,7 +1091,6 @@ const field = StyleSheet.create({
     paddingBottom: 2,
     minHeight: controls.touchTarget + 2,
   },
-  collapsedActions: { position: "absolute", left: 0, right: 0, bottom: 0 },
   spacer: { flex: 1 },
   modelHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
   deliveryHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
@@ -1137,7 +1137,16 @@ const styles = css.create({
     width: 34,
     height: 34,
     borderRadius: radii.pill,
-    backgroundColor: tokens.accentFill,
+    backgroundColor: tokens.primary,
+  },
+  microphone: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: controls.metaTarget,
+    height: controls.metaTarget,
+    borderRadius: radii.pill,
+    backgroundColor: tokens.fill,
   },
   deliveryRow: {
     display: "flex",

@@ -1,7 +1,3 @@
-/**
- * A made-up account. Nothing on the profile page reads a real session, so
- * every name, address and identifier here is invented.
- */
 import type { Tint } from "@nyte-ai/ui/surface-theme";
 
 export type IsoDate = `${number}-${number}-${number}`;
@@ -32,11 +28,9 @@ export interface Stamp {
   readonly frame: "ring" | "plate" | "oval";
   readonly tint: Tint;
   readonly tilt: number;
-  /** Where the officer's hand landed, in px from the centre of its cell. */
   readonly offset: readonly [number, number];
 }
 
-/** Ordered by date. The first entry is the registration itself. */
 export const STAMPS = [
   {
     title: "Nyte",

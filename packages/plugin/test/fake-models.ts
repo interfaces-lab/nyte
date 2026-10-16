@@ -7,7 +7,6 @@ import type { BrowserApi, ComposeOptions, ExecutionEnv, Plugin, Store } from "@n
 import { asId } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
 
-/** One content block a scripted reply streams. */
 export type Block =
   | { readonly type: "text"; readonly text: string }
   | {
@@ -17,27 +16,23 @@ export type Block =
       readonly arguments: Record<string, unknown>;
     };
 
-/** One scripted provider answer. */
 export interface Reply {
   readonly content?: readonly Block[];
   readonly error?: string;
 }
 
-/** One request the fake provider received. */
 export interface Request {
   readonly model: Model<Api>;
   readonly context: TranscriptContext;
   readonly options: SimpleStreamOptions | undefined;
 }
 
-/** A scripted provider `test` inside a real `Models`: replies answered in order, every request recorded. */
 export interface FakeModels {
   readonly models: MutableModels;
   readonly requests: Request[];
   reply(...replies: readonly Reply[]): void;
 }
 
-/** Returns a catalog model of the fake provider. */
 export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Api> {
   return {
     id,
@@ -54,7 +49,6 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
   };
 }
 
-/** Returns a `Models` holding the scripted provider `provider` (default `test`) with `models` (default one model `model`). */
 export function fakeModels(models?: readonly Model<Api>[], provider = "test"): FakeModels {
   const queue: Reply[] = [];
   const requests: Request[] = [];
@@ -87,7 +81,6 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
   return { models: registry, requests, reply: (...replies) => queue.push(...replies) };
 }
 
-/** An environment whose files and processes refuse. */
 export const env: ExecutionEnv = {
   identity: asId("identity"),
   cwd: "/tmp/project",
@@ -111,7 +104,6 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
-/** Composes a host over a memory store (or `store`) with the fake models, a chat-only environment (with `browser` when given) and `plugins`; `execution` and `poll` as `composeHost` takes them. */
 export function open(
   fake: FakeModels,
   plugins: readonly Plugin<"core">[],
@@ -135,7 +127,7 @@ export function open(
         environment: {
           kind: "chat-only",
           inspect: async () => ({
-            identity: asId("chat-only"),
+            identity: env.identity,
             availability: { kind: "available" },
             projectSources: [],
           }),
@@ -152,7 +144,6 @@ export function open(
   });
 }
 
-/** Resolves with the first defined value `read` returns, polling; rejects after `timeout` ms. */
 export async function until<T>(
   read: () => Promise<T | undefined> | T | undefined,
   timeout = 3000,
@@ -169,7 +160,6 @@ export async function until<T>(
   }
 }
 
-/** Returns a stream that plays a reply as provider events. */
 function streamOf(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
 

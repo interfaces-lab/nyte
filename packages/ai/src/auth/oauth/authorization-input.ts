@@ -1,9 +1,6 @@
 /**
  * Parse a pasted authorization code: a redirect URL, `code#state`, a
  * `code=...&state=...` query string, or a bare code. Browser-safe.
- *
- * Based on parseAuthorizationInput in https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/anthropic.ts
- * Synced with pi 7fbbd5f4a.
  */
 export function parseAuthorizationInput(input: string) {
   const value = input.trim();
@@ -17,9 +14,7 @@ export function parseAuthorizationInput(input: string) {
       code: url.searchParams.get("code") ?? undefined,
       state: url.searchParams.get("state") ?? undefined,
     };
-  } catch {
-    // not a URL
-  }
+  } catch {}
 
   if (value.includes("#")) {
     const [code, state] = value.split("#", 2);

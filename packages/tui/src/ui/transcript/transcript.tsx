@@ -1,18 +1,3 @@
-/**
- * The scrollport. `<scrollbox stickyScroll stickyStart="bottom"
- * viewportCulling>` over the mounted window of rows. The scrollbox owns
- * position and stickiness; this component only reports `scrolled(atBottom)`
- * when it changes and implements the ScrollPort it attaches.
- *
- * Window: rows from `model().window.start` on are mounted; earlier rows are
- * one "↑ N earlier · scroll up" row. Scrolling up near the top asks for
- * `reveal-earlier`; the runner answers with `keepViewport()`: read
- * `scrollHeight`, let the window grow, and on the content's next resize
- * `scrollBy(after - before)`.
- *
- * Takes the model as a prop, so the task inspector renders a child's
- * transcript with its own instance and its own follow state.
- */
 import { MacOSScrollAccel } from "@opentui/core";
 import type {
   BoxRenderable,
@@ -35,26 +20,19 @@ import { TranscriptScopeProvider } from "./scope.tsx";
 
 export interface TranscriptProps {
   readonly model: Accessor<TranscriptModel>;
-  /** The session's tasks, for delegation cards and report titles; none when omitted. */
   readonly tasks?: Accessor<readonly Task[]>;
-  /** Main transcript: the app's scroll handle. Inspector: a local one. */
   readonly attach: (port: ScrollPort) => () => void;
   readonly onScrolled: (atBottom: boolean) => void;
   readonly onRevealEarlier: () => void;
-  /** The "latest ↓" control was clicked. */
   readonly onLatest?: () => void;
-  /** A paste while the transcript has focus. */
   readonly onPaste?: (event: PasteEvent) => void;
-  /** Wheel scrolling speeds up with the wheel's pace; one event moves three rows when off or omitted. */
   readonly accelerated?: Accessor<boolean>;
 }
 
-/** One wheel event moves three rows regardless of event timing. */
 const FIXED_SCROLL_STEP: ScrollAcceleration = { tick: () => 3, reset: () => undefined };
 
 const NO_TASKS: readonly Task[] = [];
 
-/** Rows short of the end that still count as being at it. */
 const SCROLL_EDGE_THRESHOLD = 1;
 
 export function Transcript(props: TranscriptProps): JSX.Element {
@@ -64,12 +42,10 @@ export function Transcript(props: TranscriptProps): JSX.Element {
   const [hovered, setHovered] = createSignal(false);
   let box: ScrollBoxRenderable | undefined;
   let reported: boolean | null = null;
-  /** `scrollHeight` captured by `keepViewport()`, applied on the content's next resize. */
   let held: number | null = null;
   let cache = new Map<string, Row>();
+  const tasks = createMemo(() => props.tasks?.() ?? NO_TASKS);
 
-  /** The same Row object for the same key across derives, so `<For>` mounts nothing on an unchanged key. */
-  // Acceleration keeps per-viewport timing history, so each scrollbox gets its own.
   const acceleration = createMemo((): ScrollAcceleration =>
     props.accelerated?.() === true ? new MacOSScrollAccel() : FIXED_SCROLL_STEP,
   );
@@ -191,7 +167,7 @@ export function Transcript(props: TranscriptProps): JSX.Element {
   onMount(() => onCleanup(props.attach(port)));
 
   return (
-    <TranscriptScopeProvider scope={{ model: props.model, tasks: props.tasks ?? (() => NO_TASKS) }}>
+    <TranscriptScopeProvider scope={{ model: props.model, tasks }}>
       <box flexGrow={1} minHeight={0} flexDirection="column" width="100%">
         <scrollbox
           id="transcript"

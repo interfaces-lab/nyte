@@ -3,8 +3,18 @@ import type { Part, PartDefinition, Renderer } from "@nyte-ai/core";
 import type { Json } from "@nyte-ai/schema";
 import { isValidElement } from "react";
 import { describe, expect, it } from "vitest";
-import reactPlugin, { reactRenderers } from "../src/renderers/react.tsx";
-import tuiPlugin, { tuiRenderers } from "../src/renderers/tui.ts";
+import reactPlugin, { transcriptRenderers as reactTranscript } from "../src/client/transcript.tsx";
+import tuiPlugin, { transcriptRenderers as tuiTranscript } from "../src/client/transcript-tui.ts";
+
+import reactQuestions, {
+  questionRenderers as reactQuestionViews,
+} from "../src/question/client/questions.tsx";
+import tuiQuestions, {
+  questionRenderers as tuiQuestionViews,
+} from "../src/question/client/questions-tui.ts";
+
+const reactRenderers = [...reactTranscript, ...reactQuestionViews];
+const tuiRenderers = [...tuiTranscript, ...tuiQuestionViews];
 
 const call = {
   call: "c1",
@@ -13,17 +23,27 @@ const call = {
   class: { kind: "shell", command: "ls" },
 };
 
-/** One valid state per kind the renderers draw. */
 const states: Readonly<Record<string, Json>> = {
   text: { markdown: "Hello.", signature: null },
   thinking: { markdown: "Hmm.", merged: 1, signature: null },
   tool: { ...call, phase: "running", progress: null },
   compaction: { summary: "Earlier work.", material: null, tokensBefore: 90_000, usage: null },
   branchSummary: { markdown: "Tried another parser." },
-  "ask/question": { prompt: "Deploy?", options: ["yes", "no"], answer: null },
+  "ask/question": {
+    questions: [
+      {
+        question: "Deploy?",
+        header: "Deployment",
+        options: [
+          { label: "Yes", description: "Deploy now." },
+          { label: "No", description: "Keep reviewing." },
+        ],
+      },
+    ],
+    answers: null,
+  },
 };
 
-/** Returns an `act` that records each call and answers closed. */
 function recorder() {
   const acted: { readonly action: string; readonly input: unknown }[] = [];
 
@@ -36,7 +56,6 @@ function recorder() {
   return { acted, act };
 }
 
-/** Calls every `onClick` and `onMouseDown` handler in a React element or OpenTUI node tree. */
 function press(node: unknown): void {
   if (Array.isArray(node)) {
     for (const child of node) press(child);
@@ -58,7 +77,6 @@ function press(node: unknown): void {
   if ("children" in node) press(node.children);
 }
 
-/** Renders a kind's sample state through the renderer for it. */
 function draw(
   renderers: readonly Renderer[],
   kind: string,
@@ -79,18 +97,18 @@ describe.each([
   {
     framework: "react",
     renderers: reactRenderers,
-    plugin: reactPlugin,
+    plugins: [reactPlugin, reactQuestions],
     isView: (value: unknown) => isValidElement(value),
   },
   {
     framework: "tui",
     renderers: tuiRenderers,
-    plugin: tuiPlugin,
+    plugins: [tuiPlugin, tuiQuestions],
     isView: (value: unknown) => isVNode(value),
   },
-])("$framework renderers", ({ framework, renderers, plugin, isView }) => {
+])("$framework renderers", ({ framework, renderers, plugins, isView }) => {
   it("render a view for every kind, and an unreadable note for a state the schema rejects", () => {
-    expect(plugin.contribute.renderers).toBe(renderers);
+    expect(plugins.flatMap((plugin) => plugin.contribute.renderers)).toEqual(renderers);
     expect(renderers.map((renderer) => [renderer.kind.kind, renderer.framework])).toEqual(
       Object.keys(states).map((kind) => [kind, framework]),
     );
@@ -103,20 +121,39 @@ describe.each([
     ).toContain("cannot be shown");
   });
 
-  it("wire act: a question's choices answer it, a running tool stops", () => {
-    const question = recorder();
-    press(draw(renderers, "ask/question", question.act));
-
-    expect(question.acted).toEqual([
-      { action: "answer", input: { choice: "yes" } },
-      { action: "answer", input: { choice: "no" } },
-    ]);
-
+  it("wire act: a running tool stops", () => {
     const running = recorder();
     press(draw(renderers, "tool", running.act));
 
     expect(running.acted).toEqual([{ action: "stop", input: {} }]);
   });
+});
+
+it("draws terminal question summaries with descriptions and committed answers", () => {
+  const waiting = recorder();
+  const pending = draw(tuiRenderers, "ask/question", waiting.act);
+  press(pending);
+  expect(JSON.stringify(pending)).toContain("Yes: Deploy now.");
+  expect(waiting.acted).toEqual([]);
+
+  const answered = draw(tuiRenderers, "ask/question", waiting.act, {
+    questions: [
+      {
+        question: "Deploy?",
+        header: "Deployment",
+        options: [{ label: "Yes", description: "Deploy now." }],
+      },
+      {
+        question: "When?",
+        header: "Timing",
+        options: [{ label: "Today", description: "Ship today." }],
+      },
+    ],
+    answers: [["After review"], []],
+  });
+
+  expect(JSON.stringify(answered)).toContain("Answer: After review");
+  expect(JSON.stringify(answered)).toContain("Answer: Unanswered");
 });
 
 it("draws the tool part's settled outcome without a stop", () => {
@@ -127,4 +164,31 @@ it("draws the tool part's settled outcome without a stop", () => {
   press(draw(tuiRenderers, "tool", settled.act, state));
 
   expect(settled.acted).toEqual([]);
+});
+
+it("draws committed React answers without stale draft controls", () => {
+  const answered = draw(reactRenderers, "ask/question", recorder().act, {
+    questions: [
+      {
+        header: "Deployment",
+        question: "Deploy?",
+        options: [
+          { label: "Yes", description: "Deploy now." },
+          { label: "No", description: "Keep reviewing." },
+        ],
+      },
+      { header: "Timing", question: "When?", options: [] },
+      { header: "Scope", question: "What should change?", options: [] },
+    ],
+    answers: [["No"], ["After review"], []],
+  });
+
+  const rendered = JSON.stringify(answered);
+
+  expect(rendered).toContain("No");
+  expect(rendered).toContain("After review");
+  expect(rendered).toContain("Unanswered");
+  expect(rendered).not.toContain('"type":"input"');
+  expect(rendered).not.toContain('"type":"textarea"');
+  expect(rendered).not.toContain('"type":"button"');
 });

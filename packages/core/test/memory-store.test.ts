@@ -21,7 +21,7 @@ describe("memoryStore", () => {
 
     expect(id).toMatch(/^[0-9a-f]{64}$/);
     expect(await objects.put({ a: null, b: [1, { c: "x", d: true }] })).toBe(id);
-    expect(await objects.get(id)).toBe(value);
+    expect(await objects.get(id)).toEqual(value);
     expect(await objects.put({ a: null, b: [{ c: "x", d: true }, 1] })).not.toBe(id);
   });
 
@@ -130,6 +130,17 @@ describe("memoryStore", () => {
     expect((await refs.list("sessions/s1/parts/")).map((ref) => ref.name)).toEqual([
       "sessions/s1/parts/b",
     ]);
+  });
+
+  it("lists names by code point, as the SQL stores do", async () => {
+    const { objects, refs } = await memoryStore().open();
+    const target = await objects.put(1);
+    await refs.set([
+      { name: "kv/\u{1F600}", target },
+      { name: "kv/\uFFFF", target },
+    ]);
+
+    expect((await refs.list("kv/")).map((ref) => ref.name)).toEqual(["kv/\uFFFF", "kv/\u{1F600}"]);
   });
 
   it("logs events in entry order with a seq per session", async () => {

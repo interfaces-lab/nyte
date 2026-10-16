@@ -24,7 +24,6 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
-/** A thinking part: streaming while `live`, else settled. */
 function thought(id: string, text: string, at: number, live = false): StepMessage {
   return {
     id: asId<"message">(id),
@@ -35,7 +34,7 @@ function thought(id: string, text: string, at: number, live = false): StepMessag
     partKind: "thinking",
     role: "step",
     version: 1,
-    state: { markdown: text, merged: 1 },
+    state: { markdown: text, merged: 1, signature: null },
     status: live
       ? { kind: "live", run: asId<"run">("run") }
       : { kind: "settled", commit: asId<"commit">(id), endedAt: at },

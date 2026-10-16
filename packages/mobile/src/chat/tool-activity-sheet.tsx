@@ -222,7 +222,6 @@ function Output({ text }: { text: string }) {
   );
 }
 
-/** Returns what a settled call said: its text content, its error, or why it did not run. */
 function outputOf(outcome: ToolOutcome): string | undefined {
   switch (outcome.kind) {
     case "ok":

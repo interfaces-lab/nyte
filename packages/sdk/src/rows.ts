@@ -11,6 +11,7 @@ import { decodeOutput, encodeInput } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
+  Declarations,
   FrameName,
   OperationInput,
   OperationName,
@@ -19,17 +20,12 @@ import type {
   Transport,
 } from "@nyte-ai/protocol";
 
-/** Returns the link state a connection reports on `HostView.link`. */
 export type LinkState = HostView["link"];
 
-/**
- * Holds one connection's link state and the signal its close aborts.
- *
- * A request or stream that loses the link calls `lost()` for each failed
- * attempt, and one that gets through calls `restored()`, which wakes every
- * waiting retry. `close` is terminal and aborts `signal`, which ends every
- * request and stream bound to the link.
- */
+type WaitName = {
+  [N in OperationName]: Declarations[N] extends { readonly wait: true } ? N : never;
+}[OperationName];
+
 export interface Link {
   current(): LinkState;
   lost(): void;
@@ -39,19 +35,6 @@ export interface Link {
   readonly signal: AbortSignal;
 }
 
-/**
- * Returns every row of the declaration table bound to a transport, one
- * method per wire shape, so a new row needs no client change.
- *
- * `call` answers once, `upload` sends bytes as the body, `bytes` returns a
- * reader, `frames` yields a stream row's frames once, `watch` yields a watch
- * row's frames across link loss (resuming after the last event id), and
- * `output` yields `job.output`. `wait` is `call` retried across link loss,
- * for the long waits (`settled`, `landed`, `answer`). Any 401 closes the
- * link `revoked`, and an answer from another host closes it `host-gone`.
- * Every frame is decoded leniently; a frame that still fails its schema is
- * skipped with a `dev` line (§47m).
- */
 export interface Rows {
   readonly link: Link;
   call<N extends CallName>(
@@ -59,7 +42,7 @@ export interface Rows {
     input: OperationInput<N>,
     options?: RequestOptions,
   ): Promise<OperationOutput<N>>;
-  wait<N extends CallName>(
+  wait<N extends WaitName>(
     name: N,
     input: OperationInput<N>,
     options?: RequestOptions,
@@ -87,7 +70,6 @@ const BASE_DELAY_MS = 250;
 
 const MAX_DELAY_MS = 10_000;
 
-/** Returns a link that starts connected. */
 export function createLink(): Link {
   let state: LinkState = { kind: "connected" };
   const listeners = new Set<(state: LinkState) => void>();
@@ -129,7 +111,6 @@ export function createLink(): Link {
   };
 }
 
-/** Returns the table's rows over `transport`, every request and stream ended by the link's close. */
 export function createRows(transport: Transport, link: Link): Rows {
   const request = async <T>(
     send: (signal: AbortSignal) => Promise<T>,
@@ -180,7 +161,7 @@ export function createRows(transport: Transport, link: Link): Rows {
           dev("sdk", "wait retrying", { name, attempts });
           await backoff(
             link,
-            delayOf(attempts),
+            retryDelay(attempts),
             options?.signal === undefined
               ? link.signal
               : AbortSignal.any([link.signal, options.signal]),
@@ -224,12 +205,6 @@ export function createRows(transport: Transport, link: Link): Rows {
   };
 }
 
-/**
- * Yields a watch row's frames across link loss: a clean end and a reset socket (`unavailable`, §41j,
- * §47c) reopen the request after `delayOf`'s backoff with `Last-Event-ID` set to the last id seen, and
- * any other error throws. `unauthenticated` closes the link as revoked and ends it, as the link's close
- * does; each failed attempt marks the link reconnecting and the first frame after one, connected.
- */
 function resumable(
   transport: Transport,
   link: Link,
@@ -276,14 +251,27 @@ function resumable(
           }
 
           if (next.done !== true) {
-            if (attempts > 0) {
-              dev("sdk", "watch resumed", { name, attempts, after: last ?? null });
-              link.restored();
+            const { id, data } = next.value;
+
+            const progressed =
+              name !== "head.watch" ||
+              (id !== null
+                ? Number(id) > Number(last ?? 0)
+                : data !== null &&
+                  typeof data === "object" &&
+                  "kind" in data &&
+                  data.kind !== "revision");
+
+            if (progressed) {
+              if (attempts > 0) {
+                dev("sdk", "watch resumed", { name, attempts, after: last ?? null });
+                link.restored();
+              }
+
+              attempts = 0;
             }
 
-            attempts = 0;
-
-            if (next.value.id !== null) last = next.value.id;
+            if (id !== null && progressed) last = id;
 
             return next;
           }
@@ -294,7 +282,7 @@ function resumable(
           attempts += 1;
           dev("sdk", "watch reconnecting", { name, attempts, after: last ?? null });
           link.lost();
-          await backoff(link, delayOf(attempts), signal);
+          await backoff(link, retryDelay(attempts), signal);
         }
       },
       close() {
@@ -306,7 +294,6 @@ function resumable(
   });
 }
 
-/** Returns a source with each value mapped, a null mapping skipped; `return()` reaches the source at once and the signal's abort returns it. */
 function through<T, U>(
   source: AsyncIterable<T>,
   map: (value: T) => { readonly value: U } | null,
@@ -350,7 +337,6 @@ function through<T, U>(
   };
 }
 
-/** Returns a frame decoded by its row's output schema, or null when it fails: a stream reader skips what it cannot read. */
 function decoded<N extends OperationName>(
   name: N,
   data: Json,
@@ -365,7 +351,6 @@ function decoded<N extends OperationName>(
   }
 }
 
-/** Returns whether an error is another host answering the transport: the `stale` it throws, naming that host, for an `X-Nyte-Host` other than the one it first read (§43j). */
 function isHostGone(transport: Transport, error: unknown): boolean {
   const pinned = transport.host();
 
@@ -378,19 +363,16 @@ function isHostGone(transport: Transport, error: unknown): boolean {
   );
 }
 
-/** Returns whether an error is the link failing rather than an answer: `unavailable`, which the transport also makes of a `TypeError` the `fetch` call itself throws (§47m). */
 export function isLinkLoss(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable";
 }
 
-/** Returns the retry delay after a number of failed attempts (§47d): 50 ms after the first, then 250 ms doubling, capped at 10 s. */
-export function delayOf(attempts: number): number {
+export function retryDelay(attempts: number): number {
   return attempts <= 1
     ? FIRST_DELAY_MS
     : Math.min(BASE_DELAY_MS * 2 ** (attempts - 2), MAX_DELAY_MS);
 }
 
-/** Resolves after `ms`, or at once when the signal aborts or the link is restored, so every waiter retries as soon as one request gets through. */
 export function backoff(link: Link, ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) {

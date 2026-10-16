@@ -1,18 +1,5 @@
-/**
- * Builds valid `SessionView`s without casts: a fluent builder over plain
- * objects typed by the SDK, with branded ids from `asId`. Message ids default
- * to `m1`, `m2`, … in call order; pass `{ id }` to name one.
- *
- *   const view = viewOf((v) => v
- *     .turn("t1", (t) => t.user("hi").text("hello").ended("completed"))
- *     .turn("t2", (t) => t.user("go").tool("bash", { running: true }))
- *     .pending("steer this", { schedule: { kind: "joined", run: "run-t2" } })
- *     .pending("later", { schedule: { kind: "next-turn", reason: "configuration" } })
- *     .report({ child: "s9" }, "done")
- *     .question("Pick one", ["A", "B"])
- *     .live())
- */
 import { asId, asSeq } from "@nyte-ai/schema";
+import type { QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import type {
   Configuration,
   Delivery,
@@ -37,18 +24,20 @@ import type {
 } from "@nyte-ai/sdk";
 import type { FollowedSession } from "../../src/model/state.ts";
 
-/** `Schedule` with plain strings for ids. */
 export type ScheduleSpec =
   | { readonly kind: "joined"; readonly run: string }
   | Exclude<Schedule, { readonly kind: "joined" }>;
 
-/** Who sent an input, with plain strings for ids. */
 export type SourceSpec =
   | { readonly kind: "user" }
   | { readonly kind: "shell" }
   | { readonly kind: "action"; readonly label: string }
-  | { readonly kind: "child"; readonly session: string }
+  | { readonly kind: "child"; readonly session: string; readonly end?: RunEnd["kind"] }
   | { readonly kind: "job"; readonly job: string };
+
+type ReportSpec =
+  | { readonly child: string; readonly end?: RunEnd["kind"] }
+  | { readonly job: string };
 
 export interface InputOptions {
   readonly id?: string;
@@ -74,24 +63,16 @@ export interface ViewBuilder {
       readonly retrying?: { readonly at: number; readonly reason: string };
     },
   ): ViewBuilder;
-  /** A child's or job's report not yet placed: it rides with the next turn. */
-  report(
-    source: { readonly child: string } | { readonly job: string },
-    text: string,
-    options?: { readonly id?: string },
-  ): ViewBuilder;
-  /** An open `ask/question` part (live, unanswered) unless `answer` is given or `live` is false. */
+  report(source: ReportSpec, text: string, options?: { readonly id?: string }): ViewBuilder;
   question(
-    prompt: string,
-    options: readonly string[],
+    questions: readonly QuestionInfo[],
     extra?: {
       readonly id?: string;
-      readonly answer?: string;
+      readonly answers?: QuestionAnswers;
       readonly live?: boolean;
       readonly run?: string;
     },
   ): ViewBuilder;
-  /** Execution live on `run`, default the last landed turn's run (`run-<turn id>`). */
   live(
     run?: string,
     options?: { readonly stopping?: boolean; readonly phase?: "responding" | "executing" },
@@ -107,14 +88,8 @@ export interface ViewBuilder {
 
 export interface TurnBuilder {
   user(text: string, options?: InputOptions): TurnBuilder;
-  /** An action button's input: the view shows `label`, never `prompt`. */
   action(label: string, prompt: string, options?: { readonly id?: string }): TurnBuilder;
-  /** A landed report inside this turn. */
-  report(
-    source: { readonly child: string } | { readonly job: string },
-    text: string,
-    options?: { readonly id?: string },
-  ): TurnBuilder;
+  report(source: ReportSpec, text: string, options?: { readonly id?: string }): TurnBuilder;
   text(markdown: string, options?: { readonly id?: string; readonly live?: boolean }): TurnBuilder;
   thinking(
     markdown: string,
@@ -131,7 +106,6 @@ export interface TurnBuilder {
       readonly class?: ToolClass;
     },
   ): TurnBuilder;
-  /** Any other part kind (a plugin's, a compaction note): state as given. */
   part(
     kind: string,
     state: Json,
@@ -274,12 +248,12 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
           delivery: "attach",
           source:
             "child" in source
-              ? { kind: "child", session: source.child }
+              ? { kind: "child", session: source.child, end: source.end }
               : { kind: "job", job: source.job },
         },
       );
     },
-    question(prompt, options, extra) {
+    question(questions, extra) {
       const live = extra?.live ?? true;
 
       const run: RunId | null =
@@ -295,7 +269,7 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
         id: asId(extra?.id ?? `q${parts.length + 1}`),
         partKind: "ask/question",
         placement: { kind: "modal" },
-        state: { prompt, options: [...options], answer: extra?.answer ?? null },
+        state: { questions: [...questions], answers: extra?.answers ?? null },
         version: 1,
         status,
         owner: "question",
@@ -363,12 +337,12 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
   };
 }
 
-/** Wraps a view as the followed session `queueRows`/`deriveScreen` read: session `s1`, watch live, the view's configuration selected. */
 export function followed(view: SessionView, id = "s1"): FollowedSession {
   const info: SessionInfo = {
     id: asId(id),
     name: null,
     parent: null,
+    call: null,
     workspace: asId("workspace"),
     pinned: false,
     archived: false,
@@ -502,7 +476,7 @@ function turnBuilder(
       user(
         text,
         "child" in source
-          ? { kind: "child", session: asId(source.child) }
+          ? { kind: "child", session: asId(source.child), end: source.end ?? "completed" }
           : { kind: "job", job: asId(source.job) },
         { id: options?.id, delivery: "attach" },
       );
@@ -619,7 +593,8 @@ function scheduleOf(spec: ScheduleSpec): Schedule {
 }
 
 function sourceOf(spec: SourceSpec): MessageSource {
-  if (spec.kind === "child") return { kind: "child", session: asId(spec.session) };
+  if (spec.kind === "child")
+    return { kind: "child", session: asId(spec.session), end: spec.end ?? "completed" };
 
   if (spec.kind === "job") return { kind: "job", job: asId(spec.job) };
 

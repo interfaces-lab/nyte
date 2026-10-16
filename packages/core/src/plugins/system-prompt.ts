@@ -1,6 +1,5 @@
 import type { Plugin } from "../plugin.ts";
 
-/** Contributes the base prompt sections (decision 13): `system-prompt` (0), `tools` (1, derived each reload from the tools registry: model-exposed tools with the first line of their description, deferred ones by name, omitted when there are none), `rules` (2) and `docs` (3). */
 export const systemPromptPlugin: Plugin<"core"> = {
   id: "system-prompt",
   contribute: {

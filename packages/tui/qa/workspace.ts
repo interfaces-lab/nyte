@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import type { Model } from "@nyte-ai/ai";
 import { sdk } from "@nyte-ai/sdk";
+import { stopService } from "@nyte-ai/service";
 
 export const FIXTURE_PROVIDER = "opencode";
 
@@ -11,12 +12,10 @@ export const FIXTURE_MODEL = "nyte-qa";
 
 export const FIXTURE_CHILD_MODEL = "nyte-qa-child";
 
-// The production rename plugin prefers this exact model before the session model.
-export const FIXTURE_TITLE_MODEL = "gpt-5.6-luna";
-
 export const FIXTURE_API_KEY = "nyte-qa-loopback-only";
 
-/** The project plugin appends one line here each time a session runs its setup. */
+export const FIXTURE_SECONDARY_KEY = "nyte-qa-second-account-only";
+
 export const PLUGIN_EVIDENCE = join("evidence", "plugin-setups");
 
 export interface Workspace {
@@ -27,10 +26,6 @@ export interface Workspace {
   close(): Promise<void>;
 }
 
-/**
- * Nyte resolves ripgrep from PATH and otherwise downloads it from GitHub. QA blocks that
- * download, so a compatible host ripgrep is a stated prerequisite, not a silent one.
- */
 function hostRipgrep(): string {
   for (const directory of (process.env.PATH ?? "").split(delimiter)) {
     if (!isAbsolute(directory)) continue;
@@ -48,20 +43,36 @@ function hostRipgrep(): string {
   );
 }
 
-/**
- * Seeds what the binary's host keeps in its store, `<home>/.nyte/nyte.db`:
- * the fixture provider's key, through the host's own key login, and the
- * default model, set once the host has restored the seeded catalog.
- */
-async function seedHost(home: string): Promise<void> {
+async function seedHost(home: string, multipleAccounts: boolean): Promise<void> {
   await using host = await sdk.open({ home, workspace: { kind: "local", path: home } });
-  const login = host.models.login({ provider: FIXTURE_PROVIDER, method: { kind: "key" } });
 
-  for await (const step of login.steps()) {
-    if (step.kind === "paste") await login.answer(FIXTURE_API_KEY);
+  const accounts = multipleAccounts
+    ? [
+        { label: "Primary", key: FIXTURE_API_KEY },
+        { label: "Secondary", key: FIXTURE_SECONDARY_KEY },
+      ]
+    : [{ label: "Primary", key: FIXTURE_API_KEY }];
 
-    if (step.kind === "failed") throw new Error(`The QA login failed: ${step.reason}`);
+  for (const account of accounts) {
+    const login = host.models.login({
+      provider: FIXTURE_PROVIDER,
+      method: { kind: "key" },
+      label: account.label,
+    });
+
+    for await (const step of login.steps()) {
+      if (step.kind === "paste") await login.answer(account.key);
+
+      if (step.kind === "failed") throw new Error(`The QA login failed: ${step.reason}`);
+    }
   }
+
+  const primary = (await host.models.accounts(FIXTURE_PROVIDER)).find(
+    (account) => account.label === "Primary",
+  );
+
+  if (primary === undefined) throw new Error("The QA primary account was not saved");
+  await host.models.selectAccount(FIXTURE_PROVIDER, primary.id);
 
   await host.models.refresh(FIXTURE_PROVIDER);
   const outcome = await host.models.setDefault({ provider: FIXTURE_PROVIDER, id: FIXTURE_MODEL });
@@ -69,10 +80,8 @@ async function seedHost(home: string): Promise<void> {
   if (outcome.kind !== "set") throw new Error(`The QA default model was refused: ${outcome.kind}`);
 }
 
-/** Seeds the model catalog and settings files, then the credential and default model through the host. */
 export async function createWorkspace(options: {
   readonly baseUrl: string;
-  /** Adds a project plugin with a probe command. */
   readonly plugin?: boolean;
 }): Promise<Workspace> {
   const endpoint = new URL(options.baseUrl);
@@ -93,16 +102,11 @@ export async function createWorkspace(options: {
       await mkdir(directory, { recursive: true, mode: 0o700 });
     }
 
-    const models = [FIXTURE_MODEL, FIXTURE_CHILD_MODEL, FIXTURE_TITLE_MODEL].map(
+    const models = [FIXTURE_MODEL, FIXTURE_CHILD_MODEL].map(
       (id) =>
         ({
           id,
-          name:
-            id === FIXTURE_MODEL
-              ? "Nyte QA"
-              : id === FIXTURE_CHILD_MODEL
-                ? "Nyte QA child"
-                : "Nyte QA title",
+          name: id === FIXTURE_MODEL ? "Nyte QA" : "Nyte QA child",
           provider: FIXTURE_PROVIDER,
           api: "openai-completions",
           baseUrl: endpoint.href.replace(/\/$/u, ""),
@@ -116,7 +120,6 @@ export async function createWorkspace(options: {
     );
 
     const files = {
-      // A fresh checkedAt is what stops a catalog fetch; only the rawCatalogs shape keeps it.
       "models-store.json": {
         rawCatalogs: { [FIXTURE_PROVIDER]: { models, checkedAt: Date.now() } },
       },
@@ -127,7 +130,7 @@ export async function createWorkspace(options: {
       await writeFile(join(nyteHome, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
     }
 
-    await seedHost(home);
+    await seedHost(home, options.plugin === true);
 
     if (options.plugin === true) {
       const plugin = join(cwd, ".nyte", "plugins", "qa-probe");
@@ -155,7 +158,6 @@ export default {
     await writeFile(join(cwd, "README.md"), "# Isolated terminal QA workspace\n");
     await symlink(ripgrep, join(tools, "rg"));
 
-    // Never let automated clipboard or browser actions reach the user's desktop.
     for (const command of [
       "pbcopy",
       "pbpaste",
@@ -191,7 +193,6 @@ export default {
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
       LANG: "en_US.UTF-8",
-      // Reject accidental remote fetches at the loopback server, not a real upstream proxy.
       HTTP_PROXY: endpoint.origin,
       HTTPS_PROXY: endpoint.origin,
       ALL_PROXY: endpoint.origin,
@@ -202,7 +203,15 @@ export default {
       no_proxy: "127.0.0.1,localhost,::1",
     };
 
-    return { cwd, home, env, close: () => rm(root, { recursive: true, force: true }) };
+    return {
+      cwd,
+      home,
+      env,
+      close: async () => {
+        await stopService(home);
+        await rm(root, { recursive: true, force: true });
+      },
+    };
   } catch (cause) {
     await rm(root, { recursive: true, force: true });
     throw cause;

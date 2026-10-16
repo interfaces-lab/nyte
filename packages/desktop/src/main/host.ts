@@ -1,27 +1,13 @@
-/**
- * The desktop host: one sdk host for every folder on this Mac, served to the
- * renderer over a loopback listener, and what lives beside the sdk —
- * terminals, browser panels, remote access, account remote access and the
- * remembered remote host. Sessions, models, settings and workspaces are the
- * connection's; this class never reads or folds them except the directory
- * rows that decide Keep awake.
- *
- * Electron specifics (windows, dialogs, shell) are injected, so this class
- * tests headless under Vitest.
- */
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import browserToolsPlugin from "@nyte-ai/plugin/browser-tools";
-import canvasPlugin from "@nyte-ai/plugin/canvas";
-import { codemodePlugin } from "@nyte-ai/plugin/codemode";
+import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { asId } from "@nyte-ai/schema";
 import { SdkError, sdk } from "@nyte-ai/sdk";
-import type { Authority, Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
+import type { Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
-import { machineName } from "@nyte-ai/connect/host";
+import { hostShare, machineName } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type {
   HostBridge,
@@ -65,24 +51,18 @@ export type DesktopUpdateActivity =
     };
 
 export interface DesktopHostDependencies {
-  /** The directory whose `.nyte` holds the store, settings, plugins and snapshots, and the Home workspace. */
   readonly home: string;
-  /** The provider catalog; absent, the host's own over its credential store. Tests inject an offline one. */
   readonly models?: OpenHostOptions["models"];
   readonly usageScan?: UsageScanReader;
-  /** The renderer's origin, the one the loopback listener lets through CORS. */
   readonly rendererOrigin: string;
   /**
    * The built-in remote-access plugins `index.ts` registers. Without them, as
    * in tests that never serve through one, their reaches are refused.
    */
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
-  /** Account remote access. Absent, as in tests that never link, it reads as unavailable. */
   readonly connect?: ConnectRuntime;
   readonly updates?: HostBridge["updates"];
-  /** Called on each change: true while Keep awake is on and a chat on this machine is working. */
   readonly keepAwake?: (awake: boolean) => void;
-  /** Called with the desktop's settings each time the host view carries them. */
   readonly settingsChanged?: (settings: DesktopSettings) => void;
   /** Push a host event to one window, or to every window when `window` is omitted. */
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
@@ -104,10 +84,8 @@ export interface DesktopHostDependencies {
   pickFolder(window: HostWindow): Promise<string | undefined>;
 }
 
-/** The renderer a request came from. */
 export type HostWindow = number;
 
-/** The opened host and the loopback listener the renderer connects to. */
 interface Opened {
   readonly host: Host;
   readonly listener: Listener;
@@ -115,7 +93,6 @@ interface Opened {
   readonly token: string;
 }
 
-/** What remote access is serving: a token listener on loopback or the tailnet, or a plugin's exposure. */
 type ActiveRemote =
   | {
       readonly kind: "token";
@@ -132,30 +109,22 @@ type ActiveRemote =
       readonly exposure: RemoteExposure;
     };
 
-const PARTICIPANT: ReadonlySet<Authority> = new Set(["participant"]);
-
-const OWNER: ReadonlySet<Authority> = new Set(["participant", "owner"]);
-
-/** Returns a fresh bearer token for a listener. */
 function newToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-/** Returns the listener's address; an http listener always has one. */
 function addressOf(listener: Listener): string {
   if (listener.address === null) throw new SdkError("internal", "The listener bound no address.");
 
   return listener.address;
 }
 
-/** Returns whether a directory row has a head at work: responding, executing or waiting on a provider retry. */
 function working(session: SessionInfo): boolean {
   return session.heads.some(
     (head) => head.execution.kind === "live" || head.execution.kind === "retrying",
   );
 }
 
-/** Returns why a remembered server did not answer, as the copy Settings shows. */
 function serverProblem(cause: unknown): ServerConnectionProblem {
   if (!(cause instanceof SdkError) || cause.code === "unavailable")
     return {
@@ -178,7 +147,6 @@ function serverProblem(cause: unknown): ServerConnectionProblem {
   return { kind: "server", message: "The server could not answer. Try again later." };
 }
 
-/** Connects to a server once, pinned to `hostId` when given, and returns the host that answered and its version. */
 async function probeServer(url: string, token: string, hostId?: SavedServer["hostId"]) {
   const connection = await sdk.connect({
     url,
@@ -195,7 +163,6 @@ async function probeServer(url: string, token: string, hostId?: SavedServer["hos
   }
 }
 
-/** Read fresh each time: the daemon can start or stop while Settings is open. */
 async function tailnetAvailability(): Promise<TailnetAvailability> {
   const lookup = await findTailnetAddress(process.platform);
 
@@ -204,10 +171,6 @@ async function tailnetAvailability(): Promise<TailnetAvailability> {
     : lookup;
 }
 
-/**
- * The address a tailnet reach binds, resolved at start: binding an address
- * whose interface went down fails with a message that explains nothing.
- */
 async function requireTailnetHost(): Promise<string> {
   const lookup = await findTailnetAddress(process.platform);
 
@@ -227,15 +190,11 @@ export class DesktopHost {
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #terminals = new Map<HostWindow, TerminalSessions>();
-  /** The folder each window selected; absent is Home. */
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #rows: readonly SessionInfo[] = [];
-  /** What `keepAwake` was last told. */
   #awake = false;
-  /** In flight from start until stopped, so two Start presses share one listener. */
   #remote: Promise<ActiveRemote> | undefined;
-  /** Runs remote access starts, stops and plugin changes one at a time. */
   #remoteLock: Promise<void> = Promise.resolve();
   #closing: Promise<void> | undefined;
 
@@ -253,21 +212,14 @@ export class DesktopHost {
     );
   }
 
-  /** The opened host, for the composition root's own reads and for tests. */
   host(): Promise<Host> {
     return this.#opened.then((opened) => opened.host);
   }
 
-  /**
-   * Opens the one host over its default store, `<home>/.nyte/nyte.db`, and
-   * local provider, with Home as its workspace, the desktop's settings, its
-   * viewport browser and the browser and codemode tools, then binds the
-   * loopback listener the renderer connects to.
-   */
   async #open(): Promise<Opened> {
     const { home } = this.#deps;
-    // Every process the host starts inherits `process.env`, so it must hold the login shell's first.
     await ensureShellEnvironment();
+    performance.mark("nyte:shell-environment-ready");
 
     const host = await sdk.open({
       models: this.#deps.models,
@@ -276,11 +228,10 @@ export class DesktopHost {
       plugins: [
         desktopSettingsPlugin,
         desktopBrowserPlugin(this.#deps.browser.agent, home),
-        browserToolsPlugin,
         codemodePlugin(codemodeRuntimeOptions()),
-        canvasPlugin,
       ],
     });
+    performance.mark("nyte:host-opened");
 
     const token = newToken();
 
@@ -289,11 +240,11 @@ export class DesktopHost {
       auth: { kind: "token", token },
       origins: [this.#deps.rendererOrigin],
     });
+    performance.mark("nyte:endpoint-ready");
 
     return { host, listener, url: addressOf(listener), token };
   }
 
-  /** Reads the desktop's settings from every host view until the host closes. */
   async #followView(host: Host): Promise<void> {
     for await (const view of host.watch()) {
       this.#settings = desktopSettings(view);
@@ -302,7 +253,6 @@ export class DesktopHost {
     }
   }
 
-  /** Keeps the directory rows, children included, that Keep awake and update activity read. */
   async #followRows(host: Host): Promise<void> {
     for await (const rows of host.sessions.watch({ parents: { kind: "all" } })) {
       this.#rows = rows;
@@ -348,9 +298,12 @@ export class DesktopHost {
         };
       case "host.openWorkspace":
         return this.#openWorkspace(window, CALL_INPUT_SCHEMAS[path].Parse(input).path);
+      case "host.trustWorkspace":
+        return this.#openWorkspace(window, CALL_INPUT_SCHEMAS[path].Parse(input).path, true);
       case "host.closeWorkspace":
         CALL_INPUT_SCHEMAS[path].Parse(input);
-        this.#selections.delete(window);
+        if (this.#selections.delete(window))
+          this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
 
         return undefined;
       case "host.usage": {
@@ -555,7 +508,6 @@ export class DesktopHost {
     }
   }
 
-  /** A reloaded or closed renderer owns no terminals and no selection anymore. */
   releaseWindow(window: HostWindow): void {
     this.#selections.delete(window);
     const terminals = this.#terminals.get(window);
@@ -563,11 +515,6 @@ export class DesktopHost {
     terminals?.dispose();
   }
 
-  /**
-   * Closes terminals, account remote access and remote access, then the host
-   * (its listeners and store with it). Accepted work stays on record for the
-   * next open.
-   */
   close(): Promise<void> {
     this.#closing ??= (async () => {
       for (const terminals of this.#terminals.values()) terminals.dispose();
@@ -583,7 +530,6 @@ export class DesktopHost {
     return this.#closing;
   }
 
-  /** What an update would interrupt: chats at work on this host and terminals running a command. */
   updateActivity(): DesktopUpdateActivity {
     const terminalCommandCount = [...this.#terminals.values()].reduce(
       (total, terminals) => total + terminals.busyCount(),
@@ -599,7 +545,6 @@ export class DesktopHost {
       : { kind: "busy", taskCount, terminalCommandCount };
   }
 
-  /** Serve account remote access if it was left on. */
   async autostartConnect(): Promise<void> {
     await this.#deps.connect?.autostart(this.#connectShare);
   }
@@ -619,12 +564,11 @@ export class DesktopHost {
     return terminals;
   }
 
-  /**
-   * Registers the folder with its inspected identity pinned and selects it
-   * for this window. A folder swapped under the path while it was inspected,
-   * or one the local provider cannot reach, fails with why.
-   */
-  async #openWorkspace(window: HostWindow, path: string): Promise<OpenWorkspaceOutcome> {
+  async #openWorkspace(
+    window: HostWindow,
+    path: string,
+    trust = false,
+  ): Promise<OpenWorkspaceOutcome> {
     const { host } = await this.#opened;
     const seen = await host.workspaces.inspect({ kind: "local", path });
     const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
@@ -634,6 +578,8 @@ export class DesktopHost {
 
     if (added.kind === "unavailable")
       return { kind: "failed", message: "This folder can't be opened here." };
+
+    if (trust) await host.workspace(added.workspace).update({ projectResources: true });
     const workspace = (await host.workspaces.list()).find((entry) => entry.id === added.workspace);
 
     if (workspace === undefined)
@@ -641,11 +587,15 @@ export class DesktopHost {
     const folder = "path" in workspace.target ? workspace.target.path : path;
     const selected = { id: workspace.id, path: folder, name: basename(folder) };
     this.#selections.set(window, selected);
+    this.#deps.emitHostEvent({ kind: "workspace_opened", workspace: selected }, window);
 
-    return { kind: "opened", workspace: selected, needsTrust: false };
+    return {
+      kind: "opened",
+      workspace: selected,
+      needsTrust: workspace.trusted === null && seen.projectSources.length > 0,
+    };
   }
 
-  /** The remembered server as it answers now: its version, or why it did not answer. */
   async #serverState(): Promise<ServerState> {
     const saved = await this.#servers.read();
 
@@ -665,7 +615,6 @@ export class DesktopHost {
     );
   }
 
-  /** Connects once with the token to learn which host answers, then remembers the three together. */
   async #connectServer(input: { readonly baseUrl: string; readonly token: string }) {
     const answered = await probeServer(input.baseUrl, input.token).catch((cause: unknown) =>
       serverProblem(cause),
@@ -734,7 +683,6 @@ export class DesktopHost {
     return plugin;
   }
 
-  /** The running listener, or nothing once a start has failed. */
   async #activeRemote(): Promise<ActiveRemote | undefined> {
     const pending = this.#remote;
 
@@ -749,7 +697,6 @@ export class DesktopHost {
     }
   }
 
-  /** Serves the whole host at the reach asked for; runs under the remote lock. */
   async #startRemote(reach: RemoteReach): Promise<RemoteAccessState> {
     if (this.#closing !== undefined)
       throw new ExpectedHostError({
@@ -775,11 +722,6 @@ export class DesktopHost {
     return state;
   }
 
-  /**
-   * A token reach binds loopback or the tailnet address with a fresh token
-   * and a pairing link to the hosted web app; a plugin reach binds the port
-   * its exposure names under its auth, then starts the connector.
-   */
   async #serve(reach: RemoteReach): Promise<ActiveRemote> {
     const { host } = await this.#opened;
 
@@ -827,7 +769,6 @@ export class DesktopHost {
     }
   }
 
-  /** A plugin's connector stops before its port is released; runs under the remote lock. */
   async #stopRemote(): Promise<void> {
     const active = await this.#activeRemote();
 
@@ -839,12 +780,6 @@ export class DesktopHost {
     this.#remoteChanged();
   }
 
-  /**
-   * Forget a device, then drop every open connection on the plugin's
-   * listener: a stream outlives the credential check that opened it. If the
-   * plugin cannot record the revoke, remote access stops. Runs under the
-   * remote lock.
-   */
   async #revokeRemoteDevice(input: {
     readonly plugin: RemoteAccessPluginId;
     readonly deviceId: string;
@@ -874,11 +809,6 @@ export class DesktopHost {
     return connect;
   }
 
-  /**
-   * How account remote access binds: the whole host on an ephemeral
-   * `127.0.0.1` port, each relayed request authorized by Connect, an owner
-   * device with owner authority and a controller as a participant.
-   */
   readonly #connectShare: ConnectShare = async (listen) => {
     if (this.#closing !== undefined)
       throw new ExpectedHostError({
@@ -887,28 +817,6 @@ export class DesktopHost {
       });
     const { host } = await this.#opened;
 
-    const listener = await host.listen({
-      transport: { kind: "http", hostname: "127.0.0.1" },
-      auth: {
-        kind: "custom",
-        authorize: async (request) => {
-          const decision = await listen.authorize(request);
-
-          return decision.kind === "allow"
-            ? {
-                principal: asId(decision.principal),
-                authority: decision.device.role === "owner" ? OWNER : PARTICIPANT,
-              }
-            : { deny: decision.reason };
-        },
-      },
-      before: listen.handle,
-    });
-
-    return {
-      port: Number(new URL(addressOf(listener)).port),
-      disconnectClients: () => listener.disconnectClients(),
-      close: () => listener.close(),
-    };
+    return hostShare(host)(listen);
   };
 }

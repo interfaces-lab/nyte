@@ -1,9 +1,3 @@
-/**
- * The client's two boundary rules, checked over the source: the interface
- * reaches the host only through `@nyte-ai/sdk` (and plugins through
- * `@nyte-ai/plugin`), and it reads views rather than events, so no file
- * names a session event, a fold, or an outbox of its own.
- */
 import assert from "node:assert/strict";
 import { glob, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,7 +18,7 @@ async function sources(): Promise<readonly { readonly path: string; readonly tex
 
 test("no source imports core, protocol, host or the old client", async () => {
   const offenders = (await sources()).filter(({ text }) =>
-    /from "@nyte-ai\/(core|protocol|host|client|server|telemetry)(\/[^"]*)?"/u.test(text),
+    /from "(?:@nyte-ai\/(?:core|protocol|host|client|server|telemetry)(?:\/[^"]*)?|@nyte-ai\/plugin\/core(?:\/[^"]*)?)"/u.test(text),
   );
 
   assert.deepEqual(

@@ -32,7 +32,9 @@ import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
@@ -179,7 +181,6 @@ export interface CommitBarResult {
   readonly offerPublish?: boolean;
 }
 
-/** What a git write that did not apply says, whichever step it was. */
 function refusedMessage(
   result: Exclude<GitOutcome, { readonly kind: "applied" }>,
   what: string,
@@ -306,28 +307,26 @@ const styles = create({
   bar: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: space.s1_5,
     flexShrink: 0,
-    padding: 8,
+    padding: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  actions: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
+  actions: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
   branchField: { flex: 1 },
   primary: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
   result: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: space.s0_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   resultError: { color: role.contentSecondary },
-  resultDetail: { color: role.contentSecondary, fontSize: type.fontXs, lineHeight: type.leadingXs },
-  resultActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  resultDetail: { color: role.contentSecondary },
+  resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
 export interface ChangesCommitBarProps {
@@ -597,6 +596,7 @@ export function ChangesCommitBar({
         <div
           role={result.tone === "error" ? "alert" : "status"}
           {...props(
+            text.sm,
             result.tone === "error" && intent.danger,
             styles.result,
             result.tone === "error" && styles.resultError,
@@ -604,7 +604,7 @@ export function ChangesCommitBar({
         >
           <span>{result.text.trim()}</span>
           {result.detail !== undefined && result.detail !== "" && (
-            <span {...props(styles.resultDetail)}>{result.detail}</span>
+            <span {...props(text.xs, styles.resultDetail)}>{result.detail}</span>
           )}
           {(result.url !== undefined || result.offerPublish === true) && (
             <span {...props(styles.resultActions)}>

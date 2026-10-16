@@ -24,7 +24,6 @@ function post(listener: Listener, name: string, authorization: string): Promise<
   );
 }
 
-/** Returns a reader that yields byte 7 and then waits until it is closed, counting its closes. */
 function endless(): ByteReader & { closes(): number } {
   let closes = 0;
   const closed = Promise.withResolvers<void>();

@@ -1,4 +1,3 @@
-/** Thinking: streams unheaded; settled shows "◆ Thought" with a head-3/tail-3 preview; Ctrl+O expands. */
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
@@ -20,7 +19,6 @@ export function Thought(props: {
   const { kit } = useApp();
   const live = (): boolean => props.message.status.kind === "live";
 
-  /** The preview cut waits for settle: a sliding tail would rebuild every block per delta. */
   const text = createMemo(() => {
     const { markdown } = props.message.state;
 

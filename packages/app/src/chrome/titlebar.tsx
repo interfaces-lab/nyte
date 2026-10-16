@@ -1,4 +1,5 @@
 import { titlebarStyles } from "./titlebar.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 /**
  * Permanent window chrome. The sidebar toggle stays on the rail side; chat
  * actions and the stage-level workbench entry stay at the trailing edge.
@@ -64,10 +65,10 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
 
   return (
     <>
-      <span title={workspace.path} {...props(titlebarStyles.sessionCrumb)}>
+      <span title={workspace.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
         {workspace.name}
       </span>
-      <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
+      <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
     </>
   );
 }
@@ -90,6 +91,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
             aria-label="Back to parent chat"
             to="/session/$sessionId"
             params={{ sessionId: parentSessionId }}
+            preload={false}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
@@ -99,7 +101,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
         </span>
       )}
       <SessionLocation sessionId={sessionId} />
-      <span title={title} {...props(titlebarStyles.sessionTitle)}>
+      <span title={title} {...props(text.sm, titlebarStyles.sessionTitle)}>
         {title}
       </span>
     </span>

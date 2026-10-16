@@ -6,7 +6,6 @@ import { idSchema } from "./ids.ts";
 import { JsonType, withJson } from "./json.ts";
 import { nullable } from "./nullable.ts";
 
-/** The TypeBox schema of a `ToolClass`. */
 export const ToolClassType = Type.Union([
   Type.Object({ kind: Type.Literal("read"), path: Type.String() }),
   Type.Object({ kind: Type.Literal("list"), path: Type.String() }),
@@ -25,7 +24,6 @@ export const ToolClassType = Type.Union([
   Type.Object({ kind: Type.Literal("custom"), label: Type.String() }),
 ]);
 
-/** The TypeBox schema of a `ToolContent`. */
 export const ToolContentType = Type.Union([
   Type.Object({ kind: Type.Literal("text"), text: Type.String() }),
   Type.Object({
@@ -36,7 +34,6 @@ export const ToolContentType = Type.Union([
   }),
 ]);
 
-/** The TypeBox schema of a `ToolOutcome`. */
 export const ToolOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("ok"),
@@ -50,21 +47,16 @@ export const ToolOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("stopped") }),
 ]);
 
-/** The TypeBox schema of a `ToolProgress`. */
 export const ToolProgressType = Type.Object({
   text: Type.Optional(Type.String()),
   fraction: Type.Optional(Type.Number()),
   detail: Type.Optional(JsonType),
 });
 
-/** Validates a `ToolClass`. */
 export const ToolClassSchema: Schema<ToolClass> = standard(ToolClassType);
 
-/** Validates a `ToolContent`. */
 export const ToolContentSchema: Schema<ToolContent> = standard(ToolContentType);
 
-/** Validates a `ToolOutcome`. */
 export const ToolOutcomeSchema: Schema<ToolOutcome> = standard(withJson(ToolOutcomeType));
 
-/** Validates a `ToolProgress`. */
 export const ToolProgressSchema: Schema<ToolProgress> = standard(withJson(ToolProgressType));

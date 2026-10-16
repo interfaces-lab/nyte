@@ -1,8 +1,5 @@
 /**
  * TypeBox helpers for tool parameter schemas.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/typebox-helpers.ts
- * Synced with pi 7ebf9087e.
  */
 import { Type } from "typebox";
 

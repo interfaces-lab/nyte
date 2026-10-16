@@ -25,11 +25,6 @@ export interface ShellProcess {
   cancel(): void;
 }
 
-/**
- * Every live descendant of `root`, from a single process listing. Package
- * managers and dev servers start their children in new process groups, so a
- * group signal alone leaves them running with the output pipe open.
- */
 function listDescendants(root: number): Promise<number[]> {
   return new Promise((resolve) => {
     const listing = spawn("ps", ["-A", "-o", "pid=,ppid="], {
@@ -81,7 +76,6 @@ export function startLocalShell(options: {
   const completion =
     Promise.withResolvers<Exclude<ShellExecution, { readonly state: "running" }>>();
 
-  // Leave room for the log notice inside the roughly 50 KB display budget.
   const tail = Buffer.alloc(48 * 1024);
   let cursor = 0;
   let length = 0;
@@ -130,8 +124,6 @@ export function startLocalShell(options: {
 
   function killOwnedProcesses() {
     const pid = ownedPid;
-    // Revoke ownership before signalling. In particular, cancellation after exit
-    // must never send a delayed signal to a recycled process/group ID.
     ownedPid = undefined;
 
     if (pid === undefined) return;
@@ -160,8 +152,6 @@ export function startLocalShell(options: {
       return;
     }
 
-    // After exit the tree has already been reparented, so only the group remains.
-    // Before, descendants are listed first: a parent's death orphans its children.
     if (exited) {
       kill(-pid);
 
@@ -257,8 +247,6 @@ export function startLocalShell(options: {
   }
 
   options.signal.addEventListener("abort", cancel, { once: true });
-  // The controller must register ownership before any update, including launch
-  // failure and a signal that was already aborted when this function was called.
   queueMicrotask(() => {
     if (cancelled) {
       void finish(null, null);
@@ -279,8 +267,6 @@ export function startLocalShell(options: {
               "/bin/sh",
               [
                 "-c",
-                // The reader pins the process group until cleanup, even if the
-                // command exits first. exec preserves its native exit status/signal.
                 '(read -r _ <&3) & exec 3<&-; exec /bin/sh -c "$1"',
                 "nyte-shell",
                 options.command,

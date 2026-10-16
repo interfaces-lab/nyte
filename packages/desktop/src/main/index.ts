@@ -1,3 +1,4 @@
+import "./startup.ts";
 import {
   app,
   BrowserWindow,
@@ -81,7 +82,6 @@ let connect: ConnectRuntime | undefined;
 
 let rendererUrl: string;
 
-/** Where the renderer loads the canvas shell; handed to the preload as a window argument. */
 let canvasShell: string;
 
 registerBunOAuthFlows();
@@ -141,16 +141,15 @@ app.setName(updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte (D
 
 app.setPath(
   "userData",
-  join(
-    app.getPath("appData"),
-    updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
-  ),
+  app.commandLine.getSwitchValue("user-data-dir") ||
+    join(
+      app.getPath("appData"),
+      updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
+    ),
 );
 
-// The packaged test must remain isolated after an update relaunches without shell variables.
 if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 
-/** The directory whose `.nyte` the host keeps its store, settings and keys in; the packaged update test keeps its own. */
 const home = updateTest ? app.getPath("userData") : homedir();
 
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
@@ -178,10 +177,8 @@ function reveal(window: BrowserWindow): void {
   window.focus();
 }
 
-/** The desktop's host settings as the host view last carried them; the browser surfaces read them per request. */
 let settings = DEFAULT_DESKTOP_SETTINGS;
 
-/** The page whose forwarded key is running a menu item: it held keyboard focus when the key was pressed. */
 let forwardingSurface: string | undefined;
 
 const browserHistory = new BrowserHistoryStore(
@@ -199,7 +196,6 @@ const browserSurfaces = createBrowserSurfaces({
     : join(app.getAppPath(), "resources", "adblock.bin"),
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
   pagePreload: join(import.meta.dirname, "../preload/browser-page.js"),
-  // A key the page forwarded runs the menu item it names, as it would have without the page.
   forwardKey: ({ surface, window, contents, key }) => {
     const entry = windows.get(window);
 
@@ -215,7 +211,6 @@ const browserSurfaces = createBrowserSurfaces({
       return;
     }
 
-    // A held key repeats the item only where a browser would; a one-shot item runs once.
     if (key.repeat && !menuItemRepeats(item)) return;
     forwardingSurface = surface;
 
@@ -234,7 +229,6 @@ const browserSurfaces = createBrowserSurfaces({
   },
 });
 
-/** What the View menu does to the Nyte window itself, as Electron's own roles would. */
 function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
   switch (command) {
     case "reload":
@@ -271,7 +265,6 @@ function applyViewCommand(contents: Electron.WebContents, command: ViewCommand):
 
 let updates: ReturnType<typeof registerUpdates> | undefined;
 
-/** The power save blocker Keep awake holds while a chat works. */
 let awakeBlocker: number | undefined;
 
 const hostDependencies = {
@@ -284,7 +277,6 @@ const hostDependencies = {
   },
   keepAwake: (awake: boolean) => {
     if (awake) {
-      // The system stays up; the display may still sleep.
       awakeBlocker ??= powerSaveBlocker.start("prevent-app-suspension");
 
       return;
@@ -542,6 +534,8 @@ function createWindow(): NyteWindow {
   nativeTheme.on("updated", updateWindowBackground);
   created.once("ready-to-show", () => {
     created.show();
+    if (performance.getEntriesByName("nyte:window-shown").length === 0)
+      performance.mark("nyte:window-shown");
     entry.shown = true;
   });
 
@@ -614,6 +608,7 @@ if (!hasSingleInstanceLock) {
   });
 
   void app.whenReady().then(async () => {
+    performance.mark("nyte:electron-ready");
     registerIpc();
 
     // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.

@@ -1,8 +1,5 @@
-/**
- * `hostPort` over the real in-process host: send, withdraw, revise, answer and
- * stop round trips, each checked against the view the SDK then shows.
- */
-import { openQuestions, question } from "@nyte-ai/plugin/question";
+import { question } from "@nyte-ai/plugin/core/question";
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { asId } from "@nyte-ai/schema";
 import type { MessageId, SessionView } from "@nyte-ai/sdk";
 import { expect, test } from "bun:test";
@@ -26,7 +23,7 @@ async function viewWhere(
 
 test("send, withdraw and stop round trips with real views", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host);
+  const port = hostPort(fixture.host, null);
   const id = await port.create({ workspace: null, selection: null });
   const session = port.session(id);
   expect((await session.info()).id).toBe(id);
@@ -48,7 +45,6 @@ test("send, withdraw and stop round trips with real views", async () => {
   expect(await session.withdraw(later.message)).toBe("gone");
   expect(await session.withdraw(asId("never-sent"))).toBe("gone");
 
-  // The first message landed and its run is live: a withdraw would stop that run, so the adapter reports it.
   expect(await session.withdraw(first.message)).toBe("landed-first");
   const idle = await viewWhere(session, (view) => view.execution.kind === "idle");
   expect(idle.execution).toMatchObject({ kind: "idle", lastRun: { end: { kind: "stopped" } } });
@@ -60,7 +56,7 @@ test("send, withdraw and stop round trips with real views", async () => {
 
 test("revise replaces a pending message in place and refuses one that landed", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host);
+  const port = hostPort(fixture.host, null);
   const session = port.session(await port.create({ workspace: null, selection: null }));
   fixture.reply({ content: [{ type: "text", text: "Hold." }], hold: true });
   const first = await session.send("first", { delivery: "steer" });
@@ -85,35 +81,49 @@ test("revise replaces a pending message in place and refuses one that landed", a
 
 test("answer settles a question part once; a different answer afterwards is refused", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host);
+  const port = hostPort(fixture.host, null);
   const id = await port.create({ workspace: null, selection: null });
   const session = port.session(id);
 
   const part = await fixture.host.session(id).parts.create(question, {
-    state: { prompt: "Pick one", options: ["A", "B"], answer: null },
+    state: {
+      questions: [
+        {
+          question: "Pick one",
+          header: "Pick",
+          options: [
+            { label: "A", description: "" },
+            { label: "B", description: "" },
+          ],
+        },
+      ],
+      answers: null,
+    },
     placement: { kind: "modal" },
   });
 
   const asked = await viewWhere(session, (view) => openQuestions(view).length === 1);
-  expect(openQuestions(asked)).toMatchObject([{ part: part.id, prompt: "Pick one" }]);
-  expect(await session.answer(part.id, "A")).toBe(true);
+  expect(openQuestions(asked)).toMatchObject([
+    { part: part.id, questions: [{ question: "Pick one" }] },
+  ]);
+  expect(await session.answer(part.id, [["A"]])).toBe(true);
   const answered = await viewWhere(session, (view) => openQuestions(view).length === 0);
   expect(answered.parts.find((candidate) => candidate.id === part.id)).toMatchObject({
-    state: { answer: "A" },
+    state: { answers: [["A"]] },
   });
 
-  expect(await session.answer(part.id, "A")).toBe(true);
-  expect(await session.answer(part.id, "B").catch(() => false)).toBe(false);
+  expect(await session.answer(part.id, [["A"]])).toBe(true);
+  expect(await session.answer(part.id, [["B"]]).catch(() => false)).toBe(false);
 });
 
 test("the host port lists the catalog, root sessions and tasks, and configures the head", async () => {
   await using fixture = await openTestHost();
-  const port = hostPort(fixture.host);
+  const port = hostPort(fixture.host, null);
   const id = await port.create({ workspace: null, selection: null });
   const session = port.session(id);
   const catalog = await port.listModels();
   expect(catalog.providers.map((provider) => provider.id)).toEqual(["test"]);
-  expect((await port.rootSessions()).map((info) => info.id)).toEqual([id]);
+  expect((await Array.fromAsync(port.rootSessions())).map((info) => info.id)).toEqual([id]);
 
   expect(await session.configure({ effort: "off" })).toMatchObject({
     kind: "configured",

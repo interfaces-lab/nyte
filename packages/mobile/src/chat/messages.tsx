@@ -33,7 +33,6 @@ function copySheet(text: string) {
   );
 }
 
-/** Returns a blob's bytes as a data URI, closing the reader whatever happens. */
 async function blobUri(client: Connection, blob: BlobId, mime: string): Promise<string> {
   const reader = await client.blob(blob);
   let binary = "";
@@ -48,10 +47,6 @@ async function blobUri(client: Connection, blob: BlobId, mime: string): Promise<
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
-/**
- * Draws a photo a message carries as a blob, read once from the host and
- * shown as a data URI; nothing until the bytes arrive.
- */
 function BlobImage({ blob, mime, width }: { blob: BlobId; mime: string; width: number }) {
   const { client } = useHost();
 
@@ -158,7 +153,6 @@ function AssistantMessage({
   );
 }
 
-/** A canvas takes the whole column: charts and tables want the width a bubble gives up. */
 function CanvasRow({
   item,
   layout,

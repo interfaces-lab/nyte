@@ -1,9 +1,3 @@
-/**
- * The Nyte sign-in the desktop keeps across restarts, in a 0600 file: Clerk's
- * client token sealed under the host's secrets key, beside the address
- * Settings shows. Loading reads only the file; the key is read when Clerk
- * first needs the token (the relay dialing) or a new one is saved (§55).
- */
 import { readFile, rm } from "node:fs/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
@@ -40,15 +34,10 @@ export class AccountStore {
     }
   }
 
-  /** The client token, or undefined when the key cannot be read or did not seal it. */
   open(sealed: string): Promise<string | undefined> {
     return openSecret(this.secrets, sealed).catch(() => undefined);
   }
 
-  /**
-   * Keep this sign-in, or forget the saved one. A token that cannot be sealed
-   * is never written, and the older one goes. Saves run one at a time.
-   */
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
     const run = this.writes.then(async () => {
       const sealed =

@@ -306,8 +306,14 @@ test("unknown event and content variants do not interrupt known content", async 
     limits.map((value) => value.windows),
     [
       [
-        { id: "five_hour", usedPercent: 50, windowMinutes: 300, resetsAt: 1790898600000 },
-        { id: "seven_day", usedPercent: 16, windowMinutes: 10080 },
+        {
+          id: "five_hour",
+          label: "5-hour",
+          usedPercent: 50,
+          windowMinutes: 300,
+          resetsAt: 1790898600000,
+        },
+        { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10080 },
       ],
     ],
   );

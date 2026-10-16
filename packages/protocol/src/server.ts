@@ -30,6 +30,8 @@ import {
   sseFrames,
 } from "./wire.ts";
 import type { SseFrame } from "./wire.ts";
+import { CANCEL_PATH, CHANNEL_HEADER, CHANNEL_PATH, STREAM_HEADER } from "./stream-channel.ts";
+import { createStreamChannels } from "./stream-server.ts";
 
 /** Describes the handler: how a request authenticates to a connection (with the headers its answer carries, such as a pairing's `X-Nyte-Credential`, §40j), what the binding needs, the body limit and the allowed origins. */
 export type HandlerOptions = BindingOptions & {
@@ -44,8 +46,6 @@ export type HandlerOptions = BindingOptions & {
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-const HEARTBEAT_MS = 15_000;
-
 const BYTE_ROWS: { readonly [N in ByteName]: true } = {
   "connection.blob": true,
   "files.bytes": true,
@@ -58,9 +58,9 @@ const UPLOADS: ReadonlySet<string> = new Set([
   "files.upload",
 ] satisfies readonly CallName[]);
 
-const ALLOWED_HEADERS = `Authorization, Content-Type, Last-Event-ID, ${INPUT_HEADER}`;
+const ALLOWED_HEADERS = `Authorization, Content-Type, Last-Event-ID, ${INPUT_HEADER}, ${CHANNEL_HEADER}, ${STREAM_HEADER}`;
 
-const EXPOSED_HEADERS = `X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential, ${HOST_HEADER}`;
+const EXPOSED_HEADERS = `X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential, ${HOST_HEADER}, ${CHANNEL_HEADER}`;
 
 const tooLarge = new WeakSet<SdkError>();
 
@@ -68,6 +68,7 @@ const tooLarge = new WeakSet<SdkError>();
 export function createHandler(options: HandlerOptions): (request: Request) => Promise<Response> {
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const bindings = new WeakMap<Connection, Binding>();
+  const channels = createStreamChannels();
 
   const bindingOf = (connection: Connection): Binding => {
     const known = bindings.get(connection);
@@ -97,13 +98,55 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       });
 
     try {
-      const name = nameOf(request);
+      const path = new URL(request.url).pathname.slice(1);
+      const name =
+        request.method === "POST" && (path === CHANNEL_PATH || path === CANCEL_PATH)
+          ? path
+          : nameOf(request);
       const authenticated = await options.connection(request);
+      if (name === CHANNEL_PATH) {
+        await bodyOf(request, limit);
+        return withHeaders(channels.open(authenticated.connection, request.signal), {
+          ...cors,
+          ...authenticated.headers,
+        });
+      }
+      if (name === CANCEL_PATH) {
+        const value = await bodyOf(request, limit);
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("channel" in value) ||
+          typeof value.channel !== "string" ||
+          !("stream" in value) ||
+          typeof value.stream !== "string"
+        )
+          throw new SdkError("invalid", "A stream cancellation needs its channel and stream.");
+        channels.cancel(authenticated.connection, value.channel, value.stream);
+        return withHeaders(new Response(null, { status: 204 }), {
+          ...cors,
+          ...authenticated.headers,
+        });
+      }
       const needed = declarations[name].authority;
 
       if (!authenticated.authority.has(needed))
         throw new SdkError("denied", `${name} needs ${needed} authority.`);
-      const response = await serve(bindingOf(authenticated.connection), name, request, limit);
+      const binding = bindingOf(authenticated.connection);
+      let response: Response;
+      const channel = request.headers.get(CHANNEL_HEADER);
+      const stream = request.headers.get(STREAM_HEADER);
+      if (channel !== null || stream !== null) {
+        if (channel === null || stream === null)
+          throw new SdkError("invalid", "A shared stream needs its channel and identifier.");
+        response = await channels.start(
+          authenticated.connection,
+          channel,
+          stream,
+          request.signal,
+          (signal) => serve(binding, name, request, limit, signal),
+        );
+      } else response = await serve(binding, name, request, limit);
 
       return withHeaders(response, { ...cors, ...authenticated.headers });
     } catch (error) {
@@ -117,8 +160,9 @@ async function serve(
   name: OperationName,
   request: Request,
   limit: number,
+  signal = request.signal,
 ): Promise<Response> {
-  const context: BindingRequest = { body: null, signal: request.signal };
+  const context: BindingRequest = { body: null, signal };
 
   if (UPLOADS.has(name) && isCall(name)) {
     const body = limited(request, limit);
@@ -133,7 +177,7 @@ async function serve(
   if (name === "job.output")
     return new Response(
       outputFrames(
-        abortable(await binding["job.output"](decodeInput(name, value), context), request.signal),
+        abortable(await binding["job.output"](decodeInput(name, value), context), signal),
       ),
       { status: 200, headers: { "Content-Type": "application/octet-stream" } },
     );
@@ -142,12 +186,10 @@ async function serve(
 
   const resumed = name === "head.watch" ? resumeOf(value, request) : value;
 
-  return new Response(
-    sseFrames(ending(await frames(binding, name, resumed, context), request.signal), {
-      heartbeatMs: HEARTBEAT_MS,
-    }),
-    { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } },
-  );
+  return new Response(sseFrames(ending(await frames(binding, name, resumed, context), signal)), {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+  });
 }
 
 async function call<N extends CallName>(
@@ -181,7 +223,6 @@ async function frames<N extends FrameName>(
   });
 }
 
-/** Returns a stream row's frames ended by the request's abort; when the abort's reason is an `SdkError` (a revoke's `unauthenticated`), the end throws it, so the client reads why its stream ended. */
 function ending<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {
@@ -243,7 +284,6 @@ async function bodyOf(request: Request, limit: number): Promise<unknown> {
   return text.trim() === "" ? {} : parseJson(text);
 }
 
-/** Returns the request's body capped at `limit` bytes; the request's abort cancels its source and fails a read in flight, so an upload ends with its listener. */
 function limited(request: Request, limit: number): ReadableStream<Uint8Array> | null {
   const declared = Number(request.headers.get("Content-Length") ?? "0");
 

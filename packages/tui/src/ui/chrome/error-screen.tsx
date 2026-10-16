@@ -1,9 +1,7 @@
-/** The root boundary's fallback: fixed colours, the error, the crash log path; R resets, Q quits. */
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { onMount } from "solid-js";
 
-/** Not the theme: the theme may be what failed. */
 const PALETTE = {
   background: "#171717",
   foreground: "#e5e5e5",

@@ -18,7 +18,6 @@ import type {
   ToolClass,
   ToolInfo,
   ToolOutcome,
-  ToolPartState,
   ToolResult,
 } from "@nyte-ai/schema";
 import { settling } from "./transcript.ts";
@@ -27,10 +26,9 @@ import type { StepEnd } from "./durable.ts";
 import { dev } from "./dev-log.ts";
 import { createInvocation } from "./invocation.ts";
 import type { Kernel } from "./kernel.ts";
-import { sessionOfPart } from "./part-handle.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
 import { definePart, tool } from "./parts.ts";
-import type { ActionContext, ActionOutput } from "./parts.ts";
+import type { ActionContext, ActionOutput, PartState } from "./parts.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodeChangesRecord, decodePartRecord, decodeRunRecord, isJsonObject } from "./records.ts";
 import type { CallRecord, PartRecord } from "./records.ts";
@@ -41,7 +39,7 @@ import {
   attempt,
   changeCall,
   commit,
-  expectOf,
+  readRefExpectation,
   load,
   put,
   readCall,
@@ -51,30 +49,25 @@ import {
 } from "./session-state.ts";
 import type { Durable, ToolDefinition } from "./tools.ts";
 
-/** Resolves the tools a session can call in one run: what `executeCall` looks up and an invocation's `tools` lists and activates; `kernel.tools(runtime, run)` fills it from a runtime's registries. */
 export interface ToolSource {
-  /** Returns the tool a name resolves to with the plugin that contributed it, or undefined when the session has none by that name. */
   get(name: string): { readonly definition: ToolDefinition; readonly owner: string } | undefined;
-  /** Returns the session's tools with output schemas and exposure, deferred ones marked. */
+
   list(): readonly ToolInfo[];
-  /** Brings deferred tools into the declared set for the rest of the run. */
+
   activate(names: readonly string[]): Promise<void>;
 }
 
-/** Returns what a tool call's step records as its intent before `execute`: the tool's name, its arguments, and the principal the call runs as. */
 export type ToolIntent = {
   readonly name: string;
   readonly args: Json;
   readonly principal: PrincipalId;
 };
 
-/** Returns what a call does once its definition, `before_tool` and arguments are settled: execute the tool, or settle at once with an outcome decided before it ran. */
 type Plan = { readonly args: Json; readonly class: ToolClass } & (
   | { readonly kind: "execute"; readonly definition: ToolDefinition; readonly input: unknown }
   | { readonly kind: "settle"; readonly outcome: ToolOutcome }
 );
 
-/** Returns what a call settles with: its outcome after `after_tool`, the line counts and paths it changed, and the files for the session's `changes`. */
 interface Settled {
   readonly outcome: ToolOutcome;
   readonly changes: {
@@ -83,11 +76,9 @@ interface Settled {
     readonly paths: readonly string[];
   } | null;
   readonly files: readonly FileChange[];
-  /** The snapshot after the call, the run's next diff base; null when the call did not diff. */
+
   readonly snapshot: SnapshotId | null;
 }
-
-type ToolActions = (typeof tool)["actions"];
 
 interface Where {
   readonly session: SessionId;
@@ -113,7 +104,6 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = compile(withJson(ToolOutcomeType));
 
-/** Returns the tool intent a call record's `intent` holds, or null when it holds another shape. */
 export function decodeToolIntent(value: Json): ToolIntent | null {
   if (!isJsonObject(value) || !("args" in value)) return null;
   const { name, args, principal } = value;
@@ -123,13 +113,6 @@ export function decodeToolIntent(value: Json): ToolIntent | null {
     : null;
 }
 
-/**
- * Runs one tool call to its outcome, or parks it: `before_tool` through `kernel.beforeTool`,
- * the arguments validated, the tool part opened with `call intent`, then `execute` as a durable step
- * of kind `tool` that settles the part, the head commit and the session's `changes` in one set. The
- * tool resolves on `runtime`, the one the call's request holds. The call runs
- * under its own abort controller, so the part's `stop` aborts it alone.
- */
 export async function executeCall(
   kernel: Kernel,
   input: Where & { readonly args: Json; readonly runtime: PluginRuntime },
@@ -161,7 +144,6 @@ export async function executeCall(
   }
 }
 
-/** Runs a nested `tools.execute` from the step `call` as the call `<call>:<key>`, its outcome recorded in and replayed from the parent's `nested[key]`. */
 export async function executeNested(
   kernel: Kernel,
   input: Where & { readonly args: Json; readonly key: string; readonly runtime: PluginRuntime },
@@ -183,7 +165,6 @@ export async function executeNested(
   return outcome;
 }
 
-/** Returns a run's tool calls that have not settled, read from their step records: each with its intent and whether it is parked (its step, its `before_tool` hook or a call nested under it waits). A nested call is its parent's to re-run. */
 export async function owedCalls(
   kernel: Kernel,
   session: SessionId,
@@ -195,11 +176,11 @@ export async function owedCalls(
     (record) => record.run === run && record.kind !== "action",
   );
 
-  const ids = [...new Set(records.map(callOf))];
+  const ids = [...new Set(records.map(stripHookPrefix))];
 
   return ids.flatMap((id) => {
     if (ids.some((other) => id.startsWith(`${other}:`))) return [];
-    const own = records.filter((record) => callOf(record) === id);
+    const own = records.filter((record) => stripHookPrefix(record) === id);
     const step = own.find((record) => record.kind === "tool");
 
     if (step !== undefined && step.result !== null) return [];
@@ -211,20 +192,19 @@ export async function owedCalls(
       (record) =>
         record.waiting !== null &&
         record.result === null &&
-        (callOf(record) === id || callOf(record).startsWith(`${id}:`)),
+        (stripHookPrefix(record) === id || stripHookPrefix(record).startsWith(`${id}:`)),
     );
 
     return [{ call: asId<"call">(id), intent, parked }];
   });
 }
 
-/** Returns the `tool` built-in with its `stop` action wired, for the kernel's part definitions to hold in place of the plain one: stopping a tool part aborts that call's signal when it runs in this process, or else wakes the wait it, its `before_tool` hook or a call nested under it is parked on with `stopped`; either way the call settles `stopped`. */
 export function stoppableTool(kernel: Kernel): typeof tool {
   const actions: {
-    readonly [A in keyof ToolActions]: (
-      input: Infer<ToolActions[A]["input"]>,
-      context: ActionContext<ToolPartState, ToolActions>,
-    ) => Awaitable<ActionOutput<ToolActions[A]>>;
+    readonly [A in keyof typeof tool.actions]: (
+      input: Infer<(typeof tool.actions)[A]["input"]>,
+      context: ActionContext<PartState<typeof tool>, typeof tool.actions>,
+    ) => Awaitable<ActionOutput<(typeof tool.actions)[A]>>;
   } = {
     async stop(_input, context) {
       const running = kernel.calls.get(context.part.id);
@@ -235,12 +215,8 @@ export function stoppableTool(kernel: Kernel): typeof tool {
         return undefined;
       }
 
-      const session = sessionOfPart(context.part);
-
-      if (session === undefined) return undefined;
-
       for (const call of [context.part.id, `${HOOK}${context.part.id}`])
-        await kernel.waits.callStopped(session, asId<"call">(call));
+        await kernel.waits.callStopped(context.session, asId<"call">(call));
 
       return undefined;
     },
@@ -252,7 +228,6 @@ export function stoppableTool(kernel: Kernel): typeof tool {
   });
 }
 
-/** Plans the call, opens its part with `call intent`, and runs or settles it as a durable step of kind `tool`; returns the recorded outcome. */
 async function perform(
   kernel: Kernel,
   where: Where & { readonly args: Json; readonly runtime: PluginRuntime },
@@ -310,7 +285,6 @@ async function perform(
   return step.value;
 }
 
-/** Resolves the definition, runs `before_tool` through `kernel.beforeTool`, and validates the arguments it leaves; parked when the hook parks. */
 async function plan(
   kernel: Kernel,
   where: Where & { readonly args: Json; readonly runtime: PluginRuntime },
@@ -332,7 +306,7 @@ async function plan(
     call,
     name,
     args: where.args,
-    class: classOf(definition, where.args, call) ?? custom,
+    class: classifyToolCall(definition, where.args, call) ?? custom,
   };
 
   const gated = await kernel.beforeTool(proposed, {
@@ -377,7 +351,7 @@ async function plan(
       args,
       class: custom,
     };
-  const known = classOf(definition, checked.value, call);
+  const known = classifyToolCall(definition, checked.value, call);
 
   if (known === null)
     return {
@@ -390,7 +364,6 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
-/** Returns the updates writing the tool part, phase `calling`, and its `call intent` (phase `running`), expecting its run unfenced; none when the part exists. A run stopping or ended gets the part settled `stopped` and failed with the step's result `stopped`, its tool never run, and the run aborted here. */
 async function partOpening(
   kernel: Kernel,
   where: Where,
@@ -491,7 +464,6 @@ async function partOpening(
   };
 }
 
-/** Runs the tool's `execute` with its invocation, a call that may write taking the run's first snapshot first, and returns the outcome: output validated, throws as `failed`, an aborted signal as `stopped`. */
 async function execute(
   kernel: Kernel,
   where: Where & { readonly runtime: PluginRuntime },
@@ -520,16 +492,17 @@ async function execute(
 
     const result = await planned.definition.execute(planned.input, invocation);
 
-    return signal.aborted ? STOPPED : await outcomeOf(planned.definition, result);
+    return signal.aborted ? STOPPED : await validateToolResult(planned.definition, result);
   } catch (error) {
     if (isParked(error)) throw error;
 
-    return signal.aborted ? STOPPED : failed(messageOf(error));
+    return signal.aborted
+      ? STOPPED
+      : failed(error instanceof Error ? error.message : String(error));
   }
 }
 
-/** Returns a returned result as an outcome: `ok` with its content, output and parts, or `failed` when its output fails the definition's output schema. */
-async function outcomeOf(
+async function validateToolResult(
   definition: ToolDefinition,
   result: ToolResult<unknown>,
 ): Promise<ToolOutcome> {
@@ -556,7 +529,6 @@ async function outcomeOf(
   };
 }
 
-/** Returns what a call settles with: `after_tool` over its outcome, and the changes a call that may write made since the run's last snapshot. */
 async function conclude(
   kernel: Kernel,
   where: Where & { readonly runtime: PluginRuntime },
@@ -603,7 +575,6 @@ async function conclude(
   };
 }
 
-/** Returns the updates that settle a call's part: its settled state with `call settled`, then, unless its run's stop fence failed it, `part settled` and the head commit, plus the run's next diff base and the session's merged `changes` when files changed. */
 async function settlement(
   kernel: Kernel,
   where: Where,
@@ -655,7 +626,7 @@ async function settlement(
     },
   });
 
-  if (found.record.status.kind === "failed") {
+  if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
     const target = await put(kernel, "part", record, at);
 
     return [opened(target), ...based, ...merged];
@@ -666,7 +637,7 @@ async function settlement(
     head,
     run,
     parent: tip.id,
-    expect: expectOf(tip.ref),
+    expect: readRefExpectation(tip.ref),
     record,
     body: { kind: "part", part },
     at,
@@ -675,7 +646,6 @@ async function settlement(
   return [opened(landed.target), ...landed.updates, ...based, ...merged];
 }
 
-/** Takes the run's first snapshot before a call that may write, once per run, into `RunRecord.snapshot`. */
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   if ((await diffBase(kernel, session, run)) !== null) return;
   const snapshots = await kernel.snapshots(session);
@@ -704,7 +674,6 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
   });
 }
 
-/** Returns the snapshot a run's next write-class call diffs from, as its record keeps it: its last such call's, else its first; null before the first. */
 async function diffBase(
   kernel: Kernel,
   session: SessionId,
@@ -719,7 +688,6 @@ async function diffBase(
   return found?.record.lastSnapshot ?? found?.record.snapshot ?? null;
 }
 
-/** Returns the update that makes `to` the run's diff base, or none once the run ended or when it is already. */
 async function nextBase(
   kernel: Kernel,
   session: SessionId,
@@ -743,7 +711,6 @@ async function nextBase(
   ];
 }
 
-/** Returns the update merging `files` into the session's changes record, latest per path in first-seen order, with `changes` carrying the whole list; it expects the record as read, so a concurrent merge makes the settlement read and merge again. */
 async function mergeChanges(
   kernel: Kernel,
   session: SessionId,
@@ -762,14 +729,17 @@ async function mergeChanges(
     {
       name,
       target: await put(kernel, "changes", { files: merged }),
-      expect: expectOf(ref),
+      expect: readRefExpectation(ref),
       event: { head: null, kind: "changes", files: merged },
     },
   ];
 }
 
-/** Returns what a tool's class says about its call, or null when the class function throws. */
-function classOf(definition: ToolDefinition, args: unknown, call: CallId): ToolClass | null {
+function classifyToolCall(
+  definition: ToolDefinition,
+  args: unknown,
+  call: CallId,
+): ToolClass | null {
   try {
     return definition.class(args, { call });
   } catch {
@@ -777,24 +747,16 @@ function classOf(definition: ToolDefinition, args: unknown, call: CallId): ToolC
   }
 }
 
-/** Returns whether a call of this class may change files, so its changes are diffed. */
 function writes(klass: ToolClass): boolean {
   return klass.kind !== "read" && klass.kind !== "list";
 }
 
-/** Returns the tool call a step record belongs to: a `before_tool` hook's call, else its own id. */
-function callOf(record: CallRecord): string {
+function stripHookPrefix(record: CallRecord): string {
   return record.kind === "hook" && record.id.startsWith(HOOK)
     ? record.id.slice(HOOK.length)
     : record.id;
 }
 
-/** Returns a failed outcome. */
 function failed(message: string): ToolOutcome {
   return { kind: "failed", message };
-}
-
-/** Returns an error's message, or the thrown value as text. */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

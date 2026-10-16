@@ -1,8 +1,5 @@
 /**
  * Header helpers: flatten a fetch Headers object, and merge caller-supplied ProviderHeaders case-insensitively, where a later source replaces an earlier header. A null survives the merge for SDKs that use it to suppress their defaults; the string record drops it instead. Presence checks ignore null and blank values.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/headers.ts
- * Synced with pi 7fbbd5f4a.
  */
 import type { ProviderHeaders } from "../types.ts";
 

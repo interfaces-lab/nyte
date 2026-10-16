@@ -1,12 +1,3 @@
-/**
- * Link transactions: how a host without a browser joins an account. The host
- * opens one under its key, prints the code, and polls; a signed-in browser
- * looks the code up, compares the key fingerprint, and approves; the host
- * then completes with a fresh proof and the store claims its environment in
- * one batch. The code and the id alone retrieve nothing: every host call
- * carries a proof, every browser call a session, and approval binds the
- * owner to the thumbprint the browser saw.
- */
 import {
   LINK_AUTHORIZATION_LIFETIME_SECONDS,
   LINK_POLL_INTERVAL_SECONDS,
@@ -42,7 +33,6 @@ import {
 } from "./store.ts";
 import type { LinkTransaction } from "./store.ts";
 
-/** Where the owner approves: the hosted app's link page on the first HTTPS web origin. */
 function verifyUrl(context: Context): string {
   const origins = context.config.webOrigins;
   const origin = origins.find((candidate) => candidate.startsWith("https://")) ?? origins[0];
@@ -56,7 +46,6 @@ function keyOf(transaction: LinkTransaction): PublicJwk {
   return { kty: "OKP", crv: "Ed25519", x: transaction.public_key };
 }
 
-/** The transaction the proof's key opened, in any state. A wrong key and an unknown id are the same refusal. */
 async function provenTransaction(
   context: Context,
   input: { readonly request: Request; readonly transactionId: string },
@@ -76,7 +65,6 @@ async function provenTransaction(
   return { transaction, body };
 }
 
-/** The state a client may see. A pending row past its deadline reads as expired before the sweep marks it. */
 function stateOf(transaction: LinkTransaction, now: number): LinkTransactionStatus["state"] {
   if (transaction.state === "pending" && transaction.expires_at <= now) return "expired";
 
@@ -143,7 +131,6 @@ export async function openTransaction(context: Context, request: Request): Promi
   }
 }
 
-/** What a code names, for the owner's eyes before approving. Creates and binds nothing. */
 export async function lookupTransaction(context: Context, request: Request): Promise<Response> {
   const session = await verifySession(context, request);
 
@@ -168,11 +155,6 @@ export async function lookupTransaction(context: Context, request: Request): Pro
   return json(200, answer);
 }
 
-/**
- * The owner approves the key whose fingerprint they compared. Clerk is asked
- * for the owner's standing and label first, outside the store; the binding
- * itself is one compare-and-set on a still-pending row.
- */
 export async function approveTransaction(
   context: Context,
   request: Request,
@@ -245,15 +227,6 @@ export async function pollTransaction(
   return json(200, answer);
 }
 
-/**
- * Claim the environment the approval allows. Owner standing is the broker's
- * bounded cached view (`ownerStanding` asks Clerk only when its record is
- * stale); the claim itself then guards that record and the session's
- * effective D1 denial atomically with the transaction's state. A revocation
- * counts from the moment it reaches D1, not from Clerk's side. A key that
- * already consumed this transaction gets the same receipt back; nothing is
- * renamed or re-approved for it.
- */
 export async function completeTransaction(
   context: Context,
   request: Request,
@@ -280,8 +253,6 @@ export async function completeTransaction(
   switch (claimed.kind) {
     case "linked":
     case "recovered": {
-      // The receipt is the transaction's: its immutable name and the owner it bound, not what
-      // a later transaction on the same key may have renamed the environment to.
       const bound = claimed.kind === "recovered" ? claimed.transaction : transaction;
       const ownerId = bound.owner_id;
       const label = bound.owner_label;
@@ -308,7 +279,6 @@ export async function completeTransaction(
   }
 }
 
-/** The host gives up. The answer is what stands: `cancelled`, or `consumed` when completion won. */
 export async function cancelTransaction(
   context: Context,
   request: Request,

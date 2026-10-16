@@ -293,20 +293,17 @@ export interface Harness {
     input: { readonly deviceId: string; readonly environmentId?: string; readonly body?: string },
   ): Promise<Answer>;
   removeEnvironment(actor: Actor, environmentId: string): Promise<Answer>;
-  /** A host opens a link transaction under its key; `operationId` and `userCode` default to fresh ones. */
   openTransaction(input: {
     readonly desktop: FakeDesktop;
     readonly name?: string;
     readonly operationId?: string;
     readonly userCode?: string;
   }): Promise<{ readonly answer: Answer; readonly operationId: string; readonly userCode: string }>;
-  /** A signed-in browser looks a code up. */
   lookupTransaction(input: {
     readonly userId: string;
     readonly sessionId?: string;
     readonly userCode: string;
   }): Promise<Answer>;
-  /** A signed-in browser approves or denies by transaction id. */
   decideTransaction(input: {
     readonly userId: string;
     readonly sessionId?: string;
@@ -314,7 +311,6 @@ export interface Harness {
     readonly decision: "approve" | "deny";
     readonly fingerprint?: string;
   }): Promise<Answer>;
-  /** The host's proof-bound calls on its transaction. */
   transactionCall(input: {
     readonly desktop: FakeDesktop;
     readonly transactionId: string;

@@ -109,7 +109,7 @@ There is no app-level Cmd+C binding, matching OpenCode; native Cmd+C belongs to 
 The host loads core plugins from `~/.nyte/plugins/` and the workspace's `.nyte/plugins/`: a
 `<name>.ts` or `<name>.js` file, or `<name>/index.<ext>`, exporting a `Plugin` from
 `@nyte-ai/plugin/core`. The terminal mounts its own client plugins: run notifications and the
-`@nyte-ai/plugin/renderers/tui` part renderers.
+`@nyte-ai/plugin/client/transcript-tui` part renderers and the `@nyte-ai/plugin/client/questions-tui` question plugin.
 
 `/reload` re-reads the workspace's project resources and this terminal's settings.
 

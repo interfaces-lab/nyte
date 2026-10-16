@@ -56,7 +56,6 @@ export async function listen(
   };
 }
 
-/** Binds `node:http` and resolves the server with its `http://<host>:<port>` address. */
 async function bind(
   transport: { readonly hostname?: string; readonly port?: number },
   fetch: (request: Request) => Promise<Response>,
@@ -90,7 +89,6 @@ async function bind(
   return { server, address: origin };
 }
 
-/** Answers one Node request through `fetch`: the request adapted with a streamed body and a signal that aborts when the client goes away, the response written back as its body streams. */
 async function respond(
   incoming: IncomingMessage,
   outgoing: ServerResponse,
@@ -143,7 +141,6 @@ function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSigna
   return new Request(url.href, { method, headers, signal, ...body });
 }
 
-/** Returns a Node request's body as a stream that pauses the socket while the reader is full. */
 function bodyOf(incoming: IncomingMessage): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -164,7 +161,6 @@ function bodyOf(incoming: IncomingMessage): ReadableStream<Uint8Array> {
   });
 }
 
-/** Writes a `Response` to a Node response: status and headers flushed at once, then each body chunk as it arrives, waiting for the socket to drain; a client gone cancels the body. */
 async function write(response: Response, outgoing: ServerResponse): Promise<void> {
   const headers: Record<string, string | string[]> = {};
 
@@ -199,8 +195,14 @@ async function write(response: Response, outgoing: ServerResponse): Promise<void
 
       if (!outgoing.write(read.value))
         await new Promise<void>((drained) => {
-          outgoing.once("drain", drained);
-          outgoing.once("close", drained);
+          const done = (): void => {
+            outgoing.off("drain", done);
+            outgoing.off("close", done);
+            drained();
+          };
+
+          outgoing.on("drain", done);
+          outgoing.on("close", done);
         });
 
       if (outgoing.destroyed) return;

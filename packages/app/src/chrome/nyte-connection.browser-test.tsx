@@ -274,7 +274,6 @@ export async function run() {
     await until(() => statusMenu()?.textContent?.includes("Reachable") === true, "a current lease");
     check(!container.textContent.includes("someone-else@example.test"), "The session leaked");
 
-    // Revoking asks first; only confirming removes the device.
     const listed = () =>
       document.querySelector('[aria-label="Devices"]')?.textContent?.includes("iPhone") === true;
 

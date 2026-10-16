@@ -1,8 +1,5 @@
 /**
  * Interruptible reimplementation of the OpenAI and Anthropic SDK retry policy. The SDKs' own backoff timers ignore the request AbortSignal, so adapters call them with `maxRetries: 0` and wrap the request here.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/provider-retry.ts
- * Synced with pi 7ebf9087e.
  */
 import { sleep } from "./abort.ts";
 

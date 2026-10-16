@@ -1,4 +1,5 @@
 import type {
+  Awaitable,
   Disposer,
   HostView,
   Json,
@@ -18,6 +19,7 @@ import { SdkError } from "./error.ts";
 import { createHookDispatch, isCoreHook } from "./hooks.ts";
 import type { HookDispatch } from "./hooks.ts";
 import type { Kernel } from "./kernel.ts";
+import { convertJsonSchema } from "./json-schema.ts";
 import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import type { PartDefinition } from "./parts.ts";
 import type { HookName, Plugin, PluginApi, Registries, Registry, RegistryDraft } from "./plugin.ts";
@@ -25,7 +27,7 @@ import { CORE_CONTEXT, LOCAL } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodeKvValue, isJsonObject } from "./records.ts";
 import { kvRef } from "./refs.ts";
-import { bumpGeneration, createRegistrySet, jsonSchemaOf, publishCatalog } from "./registry.ts";
+import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import type { CoreRegistry, RegistrySet } from "./registry.ts";
 import { commit, isCovered, put, requireSession } from "./session-state.ts";
 import { activationSession, sessionHandle } from "./session.ts";
@@ -33,55 +35,51 @@ import type { Session } from "./session.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 import { activateSession } from "./workspaces.ts";
 
-/** Holds one session's core plugins in this process: their apis, the registries they write and the hooks they register. */
 export interface PluginRuntime {
   readonly registries: RegistrySet;
   readonly hooks: HookDispatch;
-  /** The session's activation, settled once: admission, `session.command` and `advance` await it. A rejected activation rejects `unavailable` unless it failed with an `SdkError`, and drops the runtime and the session's attach while it is still the one held, so the next `pluginsFor` activates and attaches again. */
+
   readonly ready: Promise<void>;
-  /** Loads plugins after those already loaded, one outcome per plugin in order, after `checkPlugins`' preflight. A plugin rejected in preflight or by its `activate` falls back to the version the replaced runtime ran (`kept-previous`). Rejects when the session's resources cannot be read. */
+
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
-  /** Returns what the last `load` answered. */
+
   outcomes(): readonly PluginLoadOutcome[];
-  /** Returns this session's share of `HostView.plugins`: each loaded or rejected plugin with every issue it has had. */
+
   issues(): readonly HostView["plugins"][number][];
-  /** Returns the api of the active plugin with this id, core's own for `core`, or undefined. */
+  resolvedUncovered(): boolean;
+
   api(owner: string): PluginApi<"core"> | undefined;
-  /** Returns the active plugins in load order. */
+
   plugins(): readonly Plugin<"core">[];
-  /** Returns the activation of the active plugin with this id: what the next runtime keeps when it rejects that plugin's new version. */
+
   instance(id: string): PluginInstance | undefined;
-  /** Returns the list `Host.plugins.replace(plugins, { session })` gave this session; null while it follows `kernel.hostPlugins`. */
+
   assigned(): readonly Plugin<"core">[] | null;
-  /** Keeps this runtime open until the disposer runs: a request holds the runtime it was prepared on until its calls and `after_request` finish. */
+
   hold(): Disposer;
-  /** Once nothing holds it, lets every plugin go in reverse load order and runs a last reload pass; a plugin no other runtime runs deactivates. `load` and `close` run one at a time. */
+
   close(): Promise<void>;
 }
 
-/** One plugin's activation, shared by the runtimes that run it, so a kept-previous plugin moves to a new runtime without activating again. */
 export interface PluginInstance {
   readonly plugin: Plugin<"core">;
   readonly api: PluginApi<"core">;
-  /** Applies every registration the plugin made, and each one it makes later, to a runtime. The disposer takes them back and deactivates the plugin once no runtime runs it. */
+
   join(host: InstanceHost): Disposer;
 }
 
-/** What a runtime lends the plugins it runs: its registries, its hook dispatch and its issue rows. */
 export interface InstanceHost {
   readonly registries: RegistrySet;
   readonly hooks: HookDispatch;
   report(owner: string, issue: ValidationIssue): void;
 }
 
-/** The plugin tables a kernel owns: assigned lists, held part definitions, the secrets key, setting listeners, deferred tool activations, catalog publish queues and credential verdicts. */
 export interface PluginState {
   readonly assigned: Map<SessionId, readonly Plugin<"core">[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly activated: Map<RunId, Set<string>>;
   readonly publishing: Map<SessionId, Promise<void>>;
-  readonly verdicts: Map<string, "verified" | "failed">;
   secretKey: Promise<CryptoKey> | null;
 }
 
@@ -90,7 +88,6 @@ interface Active {
   readonly leave: Disposer;
 }
 
-/** How one session's reload settled for a host-wide replace. */
 type SessionLoad =
   | { readonly kind: "loaded"; readonly outcomes: readonly PluginLoadOutcome[] }
   | { readonly kind: "failed"; readonly session: SessionId; readonly message: string }
@@ -98,7 +95,6 @@ type SessionLoad =
 
 type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
 
-/** Applies one registration a plugin made to one runtime, removed when `signal` aborts. */
 type Apply = (to: InstanceHost, signal: AbortSignal) => Disposer;
 
 interface Preflight {
@@ -112,23 +108,21 @@ interface Resolved {
   readonly inputs: Resources | null;
 }
 
-/** The decision-13 built-ins: their rows say `builtin` and they may contribute the reserved part kinds. */
 const BUILT_IN: ReadonlySet<string> = new Set([
   "system-prompt",
   "environment",
   "resources",
   "delegation",
-  "parts",
 ]);
 
-/** The plugin ids the host owns. */
-const RESERVED_IDS: ReadonlySet<string> = new Set(["models", "settings"]);
+const RESERVED_IDS: readonly string[] = ["models", "settings"];
+
+const ACTIVATE_SECONDS = 30;
 
 const NEVER = new AbortController().signal;
 
 const UNRESOLVED: Resolved = { env: { env: null }, inputs: null };
 
-/** Returns empty plugin tables. */
 export function createPluginState(): PluginState {
   return {
     assigned: new Map(),
@@ -136,17 +130,10 @@ export function createPluginState(): PluginState {
     settings: new Set(),
     activated: new Map(),
     publishing: new Map(),
-    verdicts: new Map(),
     secretKey: null,
   };
 }
 
-/** Returns the kernel's plugin tables. */
-export function pluginState(kernel: Kernel): PluginState {
-  return kernel.pluginState;
-}
-
-/** Returns a session's plugin runtime and starts its activation once `previous` settled: `activateSession` loads `sessionPlugins` into it, then `previous` closes. After every reload pass it syncs the `parts` registry into `kernel.partDefinitions` (a reserved kind from a non-built-in is a collision), publishes the catalog and republishes `HostView.plugins`. */
 export function createPluginRuntime(
   kernel: Kernel,
   session: SessionId,
@@ -170,6 +157,8 @@ export function createPluginRuntime(
   let queue: Promise<unknown> = Promise.resolve();
   let holds = 0;
   let idle: PromiseWithResolvers<void> | null = null;
+  let shownIssues = "";
+  let resolvedUncovered = false;
 
   const serial = <T>(work: () => Promise<T>): Promise<T> => {
     const next = queue.then(work, work);
@@ -178,7 +167,6 @@ export function createPluginRuntime(
     return next;
   };
 
-  /** Runs one hook dispatch as an operation `close` waits for. */
   const held = <T>(work: () => Promise<T>): Promise<T> => {
     const release = hold();
 
@@ -220,17 +208,17 @@ export function createPluginRuntime(
   const own: HookDispatch = {
     register: (plugin, api, name, entry) => dispatch.register(plugin, api, name, entry),
     observe: (name, event, context) => held(() => dispatch.observe(name, event, context)),
-    transform: (name, value, context) => held(() => dispatch.transform(name, value, context)),
+    transform: (name, value, context, signal) =>
+      held(() => dispatch.transform(name, value, context, signal)),
     decide: (name, value, context, step) => held(() => dispatch.decide(name, value, context, step)),
   };
 
-  /** The predecessor serves this runtime's dispatches until its activation settles, so no hook meets a half-activated runtime. */
   let serving = previous?.hooks ?? own;
 
   const hooks: HookDispatch = {
     register: (plugin, api, name, entry) => own.register(plugin, api, name, entry),
     observe: (name, event, context) => serving.observe(name, event, context),
-    transform: (name, value, context) => serving.transform(name, value, context),
+    transform: (name, value, context, signal) => serving.transform(name, value, context, signal),
     decide: (name, value, context, step) => serving.decide(name, value, context, step),
   };
 
@@ -240,15 +228,36 @@ export function createPluginRuntime(
     report(owner, issue) {
       if (!active.has(owner)) return;
       rows.set(owner, [...(rows.get(owner) ?? []), issue]);
-      publishPlugins(kernel);
+      publishIssues();
     },
   };
+
+  function issueRows(): readonly HostView["plugins"][number][] {
+    return [...rows].map(([id, issues]) => ({
+      id,
+      source: BUILT_IN.has(id) ? "builtin" : "inline",
+      path: null,
+      issues: [...issues, ...(found.get(id) ?? [])],
+    }));
+  }
+
+  function publishIssues(): void {
+    const listed = new Set(hostPluginRows(kernel).map((row) => row.id));
+
+    const key = JSON.stringify(
+      issueRows().filter((row) => row.issues.length > 0 || !listed.has(row.id)),
+    );
+
+    if (key === shownIssues) return;
+    shownIssues = key;
+    publishPlugins(kernel);
+  }
 
   function afterPass(): void {
     syncParts();
     found = finding;
     finding = new Map();
-    publishPlugins(kernel);
+    publishIssues();
 
     if (!closed) void publishCatalog(kernel, session).catch(() => undefined);
   }
@@ -266,6 +275,14 @@ export function createPluginRuntime(
 
       if (kept?.definition === item) continue;
       kept?.release();
+      parts.delete(item.kind);
+      const registered = kernel.partDefinitions.get(item.kind);
+
+      if (registered !== undefined && registered.definition !== item) {
+        pend(owner, takenKind(item.kind, owner, registered.owner));
+        continue;
+      }
+
       parts.set(item.kind, { definition: item, release: holdPart(kernel, item, owner) });
     }
 
@@ -276,10 +293,13 @@ export function createPluginRuntime(
     }
   }
 
-  /** Resolves the environment and the resources once per runtime; a failed attach rejects, failing the activation. */
   const resolve = (): Promise<Resolved> =>
     (resolving ??= (async (): Promise<Resolved> => {
-      if (!(await isCovered(kernel, session))) return UNRESOLVED;
+      if (!(await isCovered(kernel, session))) {
+        resolvedUncovered = true;
+
+        return UNRESOLVED;
+      }
       const [env, inputs] = await Promise.all([kernel.env(session), kernel.resources(session)]);
 
       return { env: { env }, inputs };
@@ -293,7 +313,7 @@ export function createPluginRuntime(
     try {
       dev("plugins", "activate", { session, plugin: plugin.id });
       install(plugin, instance.api);
-      await plugin.activate?.(instance.api);
+      await bounded(plugin.activate?.(instance.api));
 
       return null;
     } catch (error) {
@@ -310,7 +330,6 @@ export function createPluginRuntime(
     }
   };
 
-  /** Starts a plugin that passed preflight; a rejected one keeps the activation the replaced runtime ran, if any. */
   const loadOne = async ({
     plugin,
     issues,
@@ -382,7 +401,9 @@ export function createPluginRuntime(
   const ready = (previous?.ready.catch(() => undefined) ?? Promise.resolve())
     .then(() => activateSession(kernel, session, runtime))
     .catch((error: unknown) => {
-      throw error instanceof SdkError ? error : new SdkError("unavailable", messageOf(error));
+      throw error instanceof SdkError
+        ? error
+        : new SdkError("unavailable", formatErrorMessage(error));
     });
 
   const runtime: PluginRuntime = {
@@ -392,13 +413,8 @@ export function createPluginRuntime(
     hold,
     load: (plugins) => serial(() => loadAll(plugins)),
     outcomes: () => last,
-    issues: () =>
-      [...rows].map(([id, issues]) => ({
-        id,
-        source: BUILT_IN.has(id) ? "builtin" : "inline",
-        path: null,
-        issues: [...issues, ...(found.get(id) ?? [])],
-      })),
+    issues: issueRows,
+    resolvedUncovered: () => resolvedUncovered,
     api(owner) {
       if (owner !== "core") return active.get(owner)?.instance.api;
       core ??= corePluginApi(kernel, { session, registries, ...resolved });
@@ -407,7 +423,7 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
-    assigned: () => pluginState(kernel).assigned.get(session) ?? null,
+    assigned: () => kernel.pluginState.assigned.get(session) ?? null,
     close: () =>
       serial(async () => {
         while (holds > 0) await (idle ??= Promise.withResolvers()).promise;
@@ -430,12 +446,17 @@ export function createPluginRuntime(
 
   void ready.then(serve, serve);
 
-  if (previous !== null) {
-    const retire = (): Promise<void> => previous.close();
-    void ready.then(retire, retire);
-  }
+  const retired =
+    previous === null
+      ? Promise.resolve()
+      : ready.then(
+          () => previous.close(),
+          () => previous.close(),
+        );
 
-  ready.catch(() => {
+  ready.catch(async () => {
+    await retired.catch(() => undefined);
+
     if (kernel.runtimes().get(session) !== runtime) return;
     void kernel.environments.detach(session);
     void kernel.closePlugins(session);
@@ -444,12 +465,6 @@ export function createPluginRuntime(
   return runtime;
 }
 
-/** Returns every plugin runtime the kernel holds. */
-export function pluginRuntimes(kernel: Kernel): readonly PluginRuntime[] {
-  return [...kernel.runtimes().values()];
-}
-
-/** Runs the preflight over `plugins` as one set and touches nothing: what `Host.plugins.check` answers. A duplicate or reserved id (`models`, `settings`), a second provider of one environment kind or a schema without JSON Schema rejects a plugin; collisions between plugins are warnings. */
 export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
   return {
     plugins: preflight(plugins, []).map(({ plugin, issues, ok }) => ({
@@ -461,18 +476,16 @@ export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckRep
   };
 }
 
-/** Returns what a session runs: `kernel.builtins`, then its assigned list or `kernel.hostPlugins`. */
 export function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
   return [...kernel.builtins, ...(runtime.assigned() ?? kernel.hostPlugins)];
 }
 
-/** Replaces one session's plugins, or the host's, by installing a new runtime for each session and answers each plugin's outcome, its worst across sessions host-wide. Host-wide, a removed session is skipped and an existing session whose activation fails rejects every plugin that passed preflight, with the failure as an issue; `kernel.hostPlugins` becomes the versions that activated or were kept where sessions loaded. The built-ins stay ahead of either list. */
 export async function replacePlugins(
   kernel: Kernel,
   plugins: readonly Plugin<"core">[],
   scope?: { readonly session: SessionId },
 ): Promise<PluginReplacementReport> {
-  const { assigned } = pluginState(kernel);
+  const { assigned } = kernel.pluginState;
   const builtins = kernel.builtins.length;
 
   if (scope !== undefined) {
@@ -496,7 +509,7 @@ export async function replacePlugins(
       } catch (error) {
         if (error instanceof SdkError && error.code === "unknown") return { kind: "gone" };
 
-        return { kind: "failed", session, message: messageOf(error) };
+        return { kind: "failed", session, message: formatErrorMessage(error) };
       }
     }),
   );
@@ -564,11 +577,10 @@ export async function replacePlugins(
   return { generation: bumpGeneration(kernel), plugins: reported };
 }
 
-function messageOf(error: unknown): string {
+function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Returns `HostView.plugins` before any session's issues: the built-ins, then `kernel.hostPlugins` with the source and path `kernel.pluginSources` holds, else `inline`. */
 export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
   const rows = new Map<string, HostView["plugins"][number]>();
 
@@ -588,7 +600,6 @@ export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][num
   return [...rows.values()];
 }
 
-/** Installs a new runtime for a session and answers its activation's load; `reloadPlugins` installs it before returning. */
 async function reloadSession(
   kernel: Kernel,
   session: SessionId,
@@ -600,11 +611,10 @@ async function reloadSession(
   return runtime.outcomes();
 }
 
-/** Republishes `HostView.plugins`: `hostPluginRows` merged with every runtime's issues. */
 function publishPlugins(kernel: Kernel): void {
   const merged = new Map(hostPluginRows(kernel).map((row) => [row.id, row]));
 
-  for (const runtime of pluginRuntimes(kernel)) {
+  for (const runtime of kernel.runtimes().values()) {
     for (const row of runtime.issues()) {
       const known = merged.get(row.id);
       merged.set(
@@ -617,7 +627,6 @@ function publishPlugins(kernel: Kernel): void {
   kernel.host.update({ plugins: [...merged.values()] });
 }
 
-/** Checks each plugin against the others and `loaded`. */
 function preflight(
   plugins: readonly Plugin<"core">[],
   loaded: readonly Plugin<"core">[],
@@ -638,8 +647,10 @@ function preflight(
     if (taken.has(plugin.id) || plugins.filter((other) => other.id === plugin.id).length > 1)
       error(["id"], `More than one plugin is named ${plugin.id}.`);
 
-    if (RESERVED_IDS.has(plugin.id))
+    if (RESERVED_IDS.includes(plugin.id))
       error(["id"], `The plugin id ${plugin.id} is reserved for the host.`);
+
+    if (plugin.id.includes("/")) error(["id"], `The plugin id ${plugin.id} contains "/".`);
 
     const kind = plugin.environment?.kind;
 
@@ -649,9 +660,9 @@ function preflight(
       else providers.add(kind);
     }
 
-    for (const { path, schema, direction } of schemasOf(plugin)) {
+    for (const { path, schema, direction } of listContributionSchemas(plugin)) {
       try {
-        jsonSchemaOf(schema, direction);
+        convertJsonSchema(schema, direction);
       } catch (thrown) {
         error(
           path,
@@ -664,8 +675,7 @@ function preflight(
   });
 }
 
-/** Returns every schema a plugin's static contributions declare, with its path and direction. */
-function schemasOf(plugin: Plugin<"core">): readonly {
+function listContributionSchemas(plugin: Plugin<"core">): readonly {
   readonly path: readonly string[];
   readonly schema: Schema<unknown>;
   readonly direction: "input" | "output";
@@ -693,13 +703,13 @@ function schemasOf(plugin: Plugin<"core">): readonly {
       ...at(["parts", part.kind, "state"], part.state, "output"),
       ...Object.entries(part.actions).flatMap(([action, spec]) => [
         ...at(["parts", part.kind, action, "input"], spec.input, "input"),
+        ...at(["parts", part.kind, action, "answer"], spec.input, "output"),
         ...at(["parts", part.kind, action, "output"], spec.output, "output"),
       ]),
     ]),
   ];
 }
 
-/** Returns the warnings against the later of two plugins claiming one tool name, setting id or part kind, and against a non-built-in contributing a reserved part kind. */
 function collisions(plugins: readonly Plugin<"core">[]): readonly ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const claims = new Map<string, string>();
@@ -746,7 +756,15 @@ function reservedKind(kind: string, owner: string): ValidationIssue {
   };
 }
 
-/** Installs a plugin's declared contributions and hooks through its api, so its deactivation removes them. */
+function takenKind(kind: string, owner: string, holder: string | null): ValidationIssue {
+  return {
+    severity: "warning",
+    path: ["parts", kind],
+    message: `${holder ?? "Another definition"} already registered the ${kind} part kind; ${owner}'s definition is ignored.`,
+    source: { plugin: owner },
+  };
+}
+
 function install(plugin: Plugin<"core">, api: PluginApi<"core">): void {
   const declared = plugin.contribute;
   const { contribute } = api;
@@ -781,9 +799,8 @@ function installHook<N extends HookName<"core">>(
   if (entry !== undefined) api.hook(name, entry);
 }
 
-/** Registers a part definition on the kernel while any session's runtime holds it, and returns this hold's release. */
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
-  const { holds } = pluginState(kernel);
+  const { holds } = kernel.pluginState;
 
   const held = holds.get(definition) ?? {
     count: 0,
@@ -818,10 +835,8 @@ function unique(issues: readonly ValidationIssue[]): readonly ValidationIssue[] 
   });
 }
 
-/** A session's environment as its runtime attached it, null where this host does not attach the session. */
 export type Attached = { readonly env: ExecutionEnv | null };
 
-/** Activates nothing: returns one plugin's api in a session, its registrations recorded so every runtime that joins the instance gets them. `session` is the activation's own handle, whose sends do not wait on the activation; `contribute`, `hook` and `wrapEnv` are undone at deactivation. Reading `env` throws `unavailable` where nothing attached. */
 function createInstance(
   kernel: Kernel,
   input: {
@@ -838,19 +853,18 @@ function createInstance(
   const registrations = new Map<Apply, Map<InstanceHost, Disposer>>();
   let home: InstanceHost | null = null;
 
-  const signalOf = (to: InstanceHost): AbortSignal =>
+  const createHostSignal = (to: InstanceHost): AbortSignal =>
     AbortSignal.any([controller.signal, hosts.get(to)?.signal ?? controller.signal]);
 
-  /** Applies one registration to every host and returns what the first application returned, its disposer taking it back everywhere. */
   const register = <R extends Disposer>(apply: (to: InstanceHost, signal: AbortSignal) => R): R => {
     const [first, ...rest] = hosts.size > 0 ? [...hosts.keys()] : home === null ? [] : [home];
 
     if (first === undefined)
       throw new SdkError("unavailable", `${owner} runs in no session runtime.`);
-    const result = apply(first, hosts.has(first) ? signalOf(first) : controller.signal);
+    const result = apply(first, hosts.has(first) ? createHostSignal(first) : controller.signal);
     const applied = new Map<InstanceHost, Disposer>([[first, result]]);
 
-    for (const to of rest) applied.set(to, apply(to, signalOf(to)));
+    for (const to of rest) applied.set(to, apply(to, createHostSignal(to)));
     registrations.set(apply, applied);
 
     const dispose = (): void => {
@@ -922,7 +936,8 @@ function createInstance(
       home = to;
       hosts.set(to, new AbortController());
 
-      for (const [apply, applied] of registrations) applied.set(to, apply(to, signalOf(to)));
+      for (const [apply, applied] of registrations)
+        applied.set(to, apply(to, createHostSignal(to)));
 
       return () => {
         hosts.get(to)?.abort();
@@ -936,7 +951,23 @@ function createInstance(
   };
 }
 
-/** Returns a disposer that also runs when `signal` aborts. */
+async function bounded(activation: Awaitable<void> | undefined): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`did not settle within ${ACTIVATE_SECONDS} s`)),
+      ACTIVATE_SECONDS * 1000,
+    );
+  });
+
+  try {
+    await Promise.race([activation, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function untilAborted(signal: AbortSignal, dispose: Disposer): Disposer {
   signal.addEventListener("abort", dispose, { once: true });
 
@@ -948,12 +979,10 @@ function untilAborted(signal: AbortSignal, dispose: Disposer): Disposer {
   };
 }
 
-/** Returns whether an add is a derivation: contribution items are plain objects. */
 function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
   return typeof value === "function";
 }
 
-/** Returns core's own api in a session, what an ownerless part definition's action receives: owner `core`, a signal that never aborts, and no-op `hook`, `report` and `reload`. */
 export function corePluginApi(
   kernel: Kernel,
   input: {
@@ -977,7 +1006,6 @@ export function corePluginApi(
   });
 }
 
-/** Returns a plugin's api for one execution of a durable decide step: `session` and `sdk` act from `context`, so what the handler acquires is the step's and comes back on a re-run. */
 export function stepPluginApi(
   kernel: Kernel,
   api: PluginApi<"core">,
@@ -1057,7 +1085,58 @@ function build(
   };
 }
 
-/** Returns one plugin's storage in a session: `kv` envelopes at `kvRef(scope, owner, key)`, scope `session:<id>`, `host` or `workspace:<id>`, last write wins, `get` widening `Json` to `T` unchecked. `secrets` are host-scope at `kvRef("secret", owner, key)`, AES-256-GCM under `kernel.secrets.key()` with a random 12-byte IV. Without `kernel.secrets`, `secrets.set` throws `unavailable` and `secrets.get` resolves undefined. */
+/** The plugin's secrets, sealed with the host's key under `secret/<owner>/`. */
+export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["secrets"] {
+  return {
+    async get(key) {
+      const sealed = await readKv(kernel, kvRef("secret", owner, validateStorageKey(key)));
+
+      if (sealed === undefined || !isJsonObject(sealed)) return undefined;
+      const { iv, ciphertext } = sealed;
+      const cipher = loadSecretCipherKey(kernel);
+
+      if (cipher === null || typeof iv !== "string" || typeof ciphertext !== "string")
+        return undefined;
+
+      const plain = await globalThis.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: Uint8Array.fromBase64(iv) },
+        await cipher,
+        Uint8Array.fromBase64(ciphertext),
+      );
+
+      return new TextDecoder().decode(plain);
+    },
+    async set(key, value) {
+      const name = kvRef("secret", owner, validateStorageKey(key));
+      const cipher = loadSecretCipherKey(kernel);
+
+      if (cipher === null)
+        throw new SdkError("unavailable", "This host has no secrets key, so it stores no secrets.");
+      const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+
+      const sealed = new Uint8Array(
+        await globalThis.crypto.subtle.encrypt(
+          { name: "AES-GCM", iv },
+          await cipher,
+          new TextEncoder().encode(value),
+        ),
+      );
+
+      await commit(kernel, [
+        {
+          name,
+          target: await put(kernel, "kv", { iv: iv.toBase64(), ciphertext: sealed.toBase64() }),
+        },
+      ]);
+    },
+    async delete(key) {
+      await commit(kernel, [
+        { name: kvRef("secret", owner, validateStorageKey(key)), target: null },
+      ]);
+    },
+  };
+}
+
 export function createPluginStorage(
   kernel: Kernel,
   input: { readonly owner: string; readonly session: SessionId },
@@ -1073,15 +1152,11 @@ export function createPluginStorage(
       return `workspace:${(await requireSession(kernel, session)).record.workspace}`;
     };
 
-    const name = async (key: string): Promise<string> => kvRef(await prefix(), owner, key);
-
-    function get<T extends Json>(key: string): Promise<T | undefined>;
-    async function get(key: string): Promise<Json | undefined> {
-      return readKv(kernel, await name(key));
-    }
+    const name = async (key: string): Promise<string> =>
+      kvRef(await prefix(), owner, validateStorageKey(key));
 
     return {
-      get,
+      get: async (key) => readKv(kernel, await name(key)),
       async set(key, value) {
         await commit(kernel, [{ name: await name(key), target: await put(kernel, "kv", value) }]);
       },
@@ -1098,56 +1173,11 @@ export function createPluginStorage(
     };
   };
 
-  const secrets: PluginStorage["secrets"] = {
-    async get(key) {
-      const sealed = await readKv(kernel, kvRef("secret", owner, key));
-
-      if (sealed === undefined || !isJsonObject(sealed)) return undefined;
-      const { iv, ciphertext } = sealed;
-      const cipher = keyOf(kernel);
-
-      if (cipher === null || typeof iv !== "string" || typeof ciphertext !== "string")
-        return undefined;
-
-      const plain = await globalThis.crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: Uint8Array.fromBase64(iv) },
-        await cipher,
-        Uint8Array.fromBase64(ciphertext),
-      );
-
-      return new TextDecoder().decode(plain);
-    },
-    async set(key, value) {
-      const cipher = keyOf(kernel);
-
-      if (cipher === null)
-        throw new SdkError("unavailable", "This host has no secrets key, so it stores no secrets.");
-      const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-
-      const sealed = new Uint8Array(
-        await globalThis.crypto.subtle.encrypt(
-          { name: "AES-GCM", iv },
-          await cipher,
-          new TextEncoder().encode(value),
-        ),
-      );
-
-      await commit(kernel, [
-        {
-          name: kvRef("secret", owner, key),
-          target: await put(kernel, "kv", { iv: iv.toBase64(), ciphertext: sealed.toBase64() }),
-        },
-      ]);
-    },
-    async delete(key) {
-      await commit(kernel, [{ name: kvRef("secret", owner, key), target: null }]);
-    },
-  };
+  const secrets = pluginSecrets(kernel, owner);
 
   return scoped("session");
 }
 
-/** Returns the value a kv ref holds, or undefined when the ref is absent. */
 export async function readKv(kernel: Kernel, name: string): Promise<Json | undefined> {
   const ref = await kernel.store.refs.get(name);
 
@@ -1156,12 +1186,17 @@ export async function readKv(kernel: Kernel, name: string): Promise<Json | undef
     : decodeKvValue(await kernel.store.objects.get(ref.target));
 }
 
-/** Returns the kernel's AES-256-GCM key, imported on first use; null without `kernel.secrets`. */
-function keyOf(kernel: Kernel): Promise<CryptoKey> | null {
+function validateStorageKey(key: string): string {
+  if (key.includes("/")) throw new SdkError("invalid", `The storage key ${key} contains "/".`);
+
+  return key;
+}
+
+function loadSecretCipherKey(kernel: Kernel): Promise<CryptoKey> | null {
   const source = kernel.secrets;
 
   if (source === null) return null;
-  const state = pluginState(kernel);
+  const state = kernel.pluginState;
 
   state.secretKey ??= source.key().then((bytes) => {
     if (bytes.length !== 32)

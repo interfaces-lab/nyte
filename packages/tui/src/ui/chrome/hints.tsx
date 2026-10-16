@@ -1,8 +1,3 @@
-/**
- * The hint row from `screen().hints`: the labels of the interactions that are
- * on now, so a hint never advertises a key the table would refuse. Keycaps
- * carry the weight, labels stay quiet, and a hint that does not fit is cut.
- */
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { useApp } from "../../app/context.tsx";

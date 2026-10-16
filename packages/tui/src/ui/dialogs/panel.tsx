@@ -1,9 +1,3 @@
-/**
- * The chrome every dialog shares: a padded column with a
- * bold accent title, an optional query line, the body, and the hint line.
- * Widths and row budgets come from the terminal size through Yoga, never
- * from a declared row count; typed text is the model's, drawn with a caret.
- */
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -12,31 +6,26 @@ import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
 import type { ChatCommand } from "../../lib/constants.ts";
-import { truncateDisplay } from "../../lib/width.ts";
+import { displayWidth, truncateDisplay } from "../../lib/width.ts";
 
-/** Margin and padding the panel spends across both sides. */
 const CHROME_WIDTH = 5;
 
-/** The body's width in cells: the terminal minus the panel's chrome. */
 export function useBodyWidth(): () => number {
   const dimensions = useTerminalDimensions();
 
   return () => Math.max(1, dimensions().width - CHROME_WIDTH);
 }
 
-/** Rows a slot dialog may give its list: half the terminal less the chrome around it. */
 export function useRowCap(): () => number {
   const dimensions = useTerminalDimensions();
 
   return () => Math.max(1, Math.floor(dimensions().height / 2) - 6);
 }
 
-/** Cut to `width` cells with an ellipsis when there is room for one. */
 export function cut(text: string, width: number): string {
   return truncateDisplay(text, width, width <= 1 ? "" : GLYPHS.ellipsis);
 }
 
-/** `enter select`, `↑↓ move`: a keycap and what it does. */
 export function hint(command: ChatCommand, label: string, style?: "symbol"): string {
   return `${keycap(command, style)} ${label}`;
 }
@@ -52,11 +41,11 @@ export function joinHints(hints: readonly string[]): string {
 export function Panel(props: {
   readonly title: string;
   readonly hints: string;
-  /** Screen dialogs fill the column; slot dialogs take their content height. */
   readonly fill?: boolean;
   readonly children: JSX.Element;
 }): JSX.Element {
   const { kit } = useApp();
+  const width = useBodyWidth();
 
   return (
     <box
@@ -75,11 +64,12 @@ export function Panel(props: {
       <text
         fg={kit.theme().accent}
         attributes={TextAttributes.BOLD}
-        wrapMode="word"
+        height={1}
+        wrapMode="none"
         selectable={false}
         flexShrink={0}
       >
-        {props.title}
+        {cut(props.title, width())}
       </text>
       {props.children}
       <text fg={kit.theme().dim} wrapMode="none" height={1} selectable={false} flexShrink={0}>
@@ -91,14 +81,10 @@ export function Panel(props: {
 
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/**
- * The query line: the typed text with the model's caret (a UTF-16 offset,
- * absent at the end), or the placeholder. `marker` reserves the two prompt
- * cells of a typed-answer row, lit while `active`.
- */
 export function QueryLine(props: {
   readonly text: string;
   readonly caret?: number;
+  readonly anchor?: number;
   readonly placeholder: string;
   readonly marker?: boolean;
   readonly active?: boolean;
@@ -108,20 +94,79 @@ export function QueryLine(props: {
 }): JSX.Element {
   const { kit } = useApp();
   const active = () => props.active ?? true;
+  const width = useBodyWidth();
 
   const mask = (text: string): string =>
-    props.masked ? "•".repeat(Array.from(text).length) : text;
+    props.masked ? "•".repeat([...GRAPHEMES.segment(text)].length) : text;
 
-  /** The text before the caret, the cell under it (a space at the end), and the rest. */
+  const viewport = createMemo(() => {
+    const caret = Math.max(0, Math.min(props.caret ?? props.text.length, props.text.length));
+
+    const segments = [...GRAPHEMES.segment(props.text)].map((segment) => ({
+      index: segment.index,
+      cells: props.masked ? 1 : displayWidth(segment.segment),
+    }));
+
+    const found = segments.findIndex((segment) => segment.index >= caret);
+    const cursor = found === -1 ? segments.length : found;
+
+    const available = Math.max(
+      1,
+      width() - (props.marker ? 2 : 0) - displayWidth(props.trailing ?? ""),
+    );
+
+    let start = active() ? cursor : 0;
+    let used = active() ? Math.max(1, segments[cursor]?.cells ?? 1) : 0;
+
+    while (start > 0) {
+      const previous = segments[start - 1];
+
+      if (previous === undefined || used + previous.cells > available) break;
+      start -= 1;
+      used += previous.cells;
+    }
+
+    let end = start;
+    let cells = 0;
+
+    while (end < segments.length) {
+      const next = segments[end];
+
+      if (next === undefined || cells + next.cells > available) break;
+      cells += next.cells;
+      end += 1;
+    }
+
+    return {
+      from: segments[start]?.index ?? props.text.length,
+      to: segments[end]?.index ?? props.text.length,
+    };
+  });
+
   const parts = createMemo(() => {
     const caret = Math.max(0, Math.min(props.caret ?? props.text.length, props.text.length));
-    const rest = props.text.slice(caret);
+    const rest = props.text.slice(caret, viewport().to);
     const under = GRAPHEMES.segment(rest)[Symbol.iterator]().next().value?.segment ?? "";
 
     return {
-      before: mask(props.text.slice(0, caret)),
+      before: mask(props.text.slice(viewport().from, caret)),
       under: under === "" ? " " : mask(under),
       after: mask(rest.slice(under.length)),
+    };
+  });
+
+  const selection = createMemo(() => {
+    const caret = Math.max(0, Math.min(props.caret ?? props.text.length, props.text.length));
+    const anchor = Math.max(0, Math.min(props.anchor ?? caret, props.text.length));
+
+    if (caret === anchor) return null;
+    const from = Math.max(viewport().from, Math.min(caret, anchor));
+    const to = Math.min(viewport().to, Math.max(caret, anchor));
+
+    return {
+      before: mask(props.text.slice(viewport().from, from)),
+      selected: mask(props.text.slice(from, to)),
+      after: mask(props.text.slice(to, viewport().to)),
     };
   });
 
@@ -157,19 +202,61 @@ export function QueryLine(props: {
       >
         <Show
           when={active()}
-          fallback={<span style={{ fg: kit.theme().foreground }}>{mask(props.text)}</span>}
+          fallback={
+            <span style={{ fg: kit.theme().foreground }}>
+              {mask(props.text.slice(viewport().from, viewport().to))}
+            </span>
+          }
         >
-          <span
-            style={{ fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground }}
+          <Show
+            when={selection()}
+            fallback={
+              <>
+                <span
+                  style={{
+                    fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground,
+                  }}
+                >
+                  {parts().before}
+                </span>
+                <span style={{ attributes: TextAttributes.INVERSE }}>{parts().under}</span>
+                <span
+                  style={{
+                    fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground,
+                  }}
+                >
+                  {parts().after}
+                </span>
+              </>
+            }
           >
-            {parts().before}
-          </span>
-          <span style={{ attributes: TextAttributes.INVERSE }}>{parts().under}</span>
-          <span
-            style={{ fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground }}
-          >
-            {parts().after}
-          </span>
+            {(range: Accessor<NonNullable<ReturnType<typeof selection>>>) => (
+              <>
+                <span
+                  style={{
+                    fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground,
+                  }}
+                >
+                  {range().before}
+                </span>
+                <span
+                  style={{
+                    fg: kit.theme().selectionForeground,
+                    bg: kit.theme().selectionBackground,
+                  }}
+                >
+                  {range().selected}
+                </span>
+                <span
+                  style={{
+                    fg: props.marker ? kit.theme().selectionForeground : kit.theme().foreground,
+                  }}
+                >
+                  {range().after}
+                </span>
+              </>
+            )}
+          </Show>
         </Show>
       </Show>
       <Show when={props.trailing}>
@@ -179,7 +266,6 @@ export function QueryLine(props: {
   );
 }
 
-/** A dim one-line note: loading, empty and failed states. */
 export function Note(props: {
   readonly text: string;
   readonly tone?: "dim" | "error";

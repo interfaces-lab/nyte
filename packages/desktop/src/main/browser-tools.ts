@@ -19,7 +19,6 @@ import type {
 } from "./browser-agent.ts";
 import { sanitizeLine } from "./browser-report.ts";
 
-/** Returns what a failed agent action means as a page outcome. */
 function failureOutcome(
   failure: BrowserActionFailure,
   state: BrowserPageState | null,
@@ -42,7 +41,6 @@ function failureOutcome(
   }
 }
 
-/** Returns a page state's accessibility nodes as a snapshot at its revision, each page-written field kept to one line. */
 function snapshotOf(state: BrowserPageState): PageSnapshot {
   return {
     revision: asId(String(state.snapshot)),
@@ -56,7 +54,6 @@ function snapshotOf(state: BrowserPageState): PageSnapshot {
   };
 }
 
-/** Returns PNG bytes as an owned one-chunk reader. */
 function pngReader(bytes: Uint8Array): ByteReader {
   return {
     size: bytes.byteLength,
@@ -69,13 +66,6 @@ function pngReader(bytes: Uint8Array): ByteReader {
   };
 }
 
-/**
- * Returns one session's browser over the desktop's agent surface: a single
- * page per session, the one `stage:session:<id>` shows. Every action
- * reports the page it reached as the outcome's snapshot; history and
- * stop-loading run as page scripts, since the agent surface has no verbs
- * for them.
- */
 function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserOwner): BrowserApi {
   const id = asId<"page">(agent.sessionSurfaceId(session));
   let state: BrowserPageState | null = null;
@@ -213,13 +203,6 @@ function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserO
   };
 }
 
-/**
- * Returns the core plugin that gives each session the desktop's viewport
- * browser through `wrapEnv`, so `@nyte-ai/plugin/browser-tools` reaches it
- * as `workspace.browser()`. A session in `home` uses the home cookie jar,
- * any other folder its own; the session's hold on its page is released when
- * the plugin deactivates.
- */
 export function desktopBrowserPlugin(agent: BrowserAgent, home: string): Plugin {
   return {
     id: "desktop-browser",

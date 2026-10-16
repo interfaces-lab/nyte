@@ -4,8 +4,8 @@ import type {
   HeadName,
   Json,
   MessageId,
-  MoveOutcome,
   ReceiptId,
+  RefUpdate,
   SessionId,
   StopOutcome,
 } from "@nyte-ai/schema";
@@ -14,54 +14,77 @@ import { stopBatch } from "./files.ts";
 import type { Kernel } from "./kernel.ts";
 import { LOCAL } from "./principals.ts";
 import type { Receipt, SendReceipt } from "./receipt.ts";
-import { settleReceipt } from "./receipts.ts";
 import type { ReceiptRecord } from "./records.ts";
 import { inboxRef, receiptRef } from "./refs.ts";
 import { stopRun } from "./runs.ts";
-import { isJsonObject } from "./records.ts";
 import {
   STALE,
   attempt,
   commit,
-  expectOf,
+  readRefExpectation,
   inboxWithout,
   put,
   readInbox,
   readReceipt,
   withFold,
 } from "./session-state.ts";
-import type { MoveFailure } from "./session-state.ts";
-import { onReceipt, waitFor } from "./waits.ts";
+import { notifyReceipt, onReceipt, waitFor } from "./waits.ts";
 
-/** Returns what a send receipt settles with. */
 export type SendOutcome = Awaited<ReturnType<SendReceipt["settled"]>>;
 
-/** Returns what a send receipt's `landed()` resolves with. */
 export type Landing = Awaited<ReturnType<SendReceipt["landed"]>>;
-
-const SEND_OUTCOMES: ReadonlySet<string> = new Set([
-  "completed",
-  "stopped",
-  "failed",
-  "withdrawn",
-  "stale",
-  "busy",
-  "pending-input",
-  "missing-target",
-  "summary-failed",
-]);
-
-const MOVE_FAILURES: ReadonlySet<string> = new Set([
-  "stale",
-  "busy",
-  "pending-input",
-  "missing-target",
-  "summary-failed",
-]);
 
 const RECEIPT_EVENTS: ReadonlySet<string> = new Set(["input", "run", "head"]);
 
-/** Writes a new receipt record; resolves false when the id is already taken. */
+type Settlement = {
+  readonly [K in ReceiptRecord["kind"]]: {
+    readonly kind: K;
+    readonly outcome: NonNullable<Extract<ReceiptRecord, { readonly kind: K }>["outcome"]>;
+  };
+}[ReceiptRecord["kind"]];
+
+export function receiptHandle(kernel: Kernel, session: SessionId, id: ReceiptId): Receipt<unknown> {
+  return typedReceipt(kernel, session, id, (record) => record.outcome);
+}
+
+export function sendReceipt(kernel: Kernel, session: SessionId, id: ReceiptId): SendReceipt {
+  const message = asId<"message">(id);
+
+  return {
+    ...typedReceipt(kernel, session, id, (record) => {
+      if (record.kind !== "send") throw new SdkError("internal", `Receipt ${id} is not a send.`);
+
+      return record.outcome;
+    }),
+    message,
+    landed: () => landed(kernel, session, id, message),
+  };
+}
+
+export async function settleReceipt(
+  kernel: Kernel,
+  session: SessionId,
+  id: ReceiptId,
+  settlement: Settlement,
+): Promise<void> {
+  const settled = await attempt(`Settling receipt ${id}`, async () => {
+    const found = await readReceipt(kernel, session, id);
+
+    if (found === null || found.record.outcome !== null) return false;
+    if (found.record.kind !== settlement.kind)
+      throw new SdkError("internal", `Receipt ${id} is not a ${settlement.kind}.`);
+    const target = await put(kernel, "receipt", { ...found.record, ...settlement });
+
+    const result = await commit(kernel, [
+      { name: receiptRef(session, id), target, expect: found.ref.revision },
+    ]);
+
+    return result.kind === "set" ? true : STALE;
+  });
+
+  if (settled) notifyReceipt(kernel, session, id);
+}
+
 export async function reserve(
   kernel: Kernel,
   session: SessionId,
@@ -78,7 +101,6 @@ export async function reserve(
   return outcome.kind === "set";
 }
 
-/** Returns whether the session holds a receipt id for the same command; throws `invalid` when another command took it. */
 export async function known(
   kernel: Kernel,
   session: SessionId,
@@ -96,20 +118,12 @@ export async function known(
   return true;
 }
 
-/** Returns a receipt whose stored outcome is checked to be `O`: status from its ref, settlement from in-process settles and session events, stop by its kind. A record naming another receipt (a revise's names its target) is followed to it. */
 export function typedReceipt<O extends Json>(
   kernel: Kernel,
   session: SessionId,
   id: ReceiptId,
-  is: (value: Json) => value is O,
+  readOutcome: (record: ReceiptRecord) => O | null,
 ): Receipt<O> {
-  const outcomeOf = (value: Json): O => {
-    if (!is(value))
-      throw new SdkError("internal", `Receipt ${id} holds another command's outcome.`);
-
-    return value;
-  };
-
   const named = async (): Promise<ReceiptId> =>
     (await readReceipt(kernel, session, id))?.record.id ?? id;
 
@@ -119,11 +133,9 @@ export function typedReceipt<O extends Json>(
       const found = await readReceipt(kernel, session, await named());
 
       if (found === null) return { kind: "missing" };
-      const outcome = found.record.outcome;
+      const outcome = readOutcome(found.record);
 
-      return outcome === null
-        ? { kind: "pending" }
-        : { kind: "settled", outcome: outcomeOf(outcome) };
+      return outcome === null ? { kind: "pending" } : { kind: "settled", outcome };
     },
     async settled(options) {
       const target = await named();
@@ -134,9 +146,9 @@ export function typedReceipt<O extends Json>(
           const found = await readReceipt(kernel, session, target);
 
           if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
-          const outcome = found.record.outcome;
+          const outcome = readOutcome(found.record);
 
-          return outcome === null ? null : { value: outcomeOf(outcome) };
+          return outcome === null ? null : { value: outcome };
         },
         subscribe: (trigger) =>
           both(
@@ -147,11 +159,10 @@ export function typedReceipt<O extends Json>(
           ),
       });
     },
-    stop: async () => stopReceipt(kernel, session, await named(), outcomeOf),
+    stop: async () => stopReceipt(kernel, session, await named(), readOutcome),
   };
 }
 
-/** Waits until a sent message lands, is withdrawn, or its edit settles with a move failure. */
 export async function landed(
   kernel: Kernel,
   session: SessionId,
@@ -172,11 +183,30 @@ export async function landed(
         const found = await readReceipt(kernel, session, id);
 
         if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
+        if (found.record.kind !== "send")
+          throw new SdkError("internal", `Receipt ${id} is not a send.`);
         const outcome = found.record.outcome;
 
-        return outcome !== null && (isWithdrawn(outcome) || isMoveFailure(outcome))
-          ? { value: outcome }
-          : null;
+        if (outcome === null) return null;
+
+        switch (outcome.kind) {
+          case "completed":
+          case "stopped":
+          case "failed":
+            return null;
+          case "withdrawn":
+          case "stale":
+          case "busy":
+          case "pending-input":
+          case "missing-target":
+          case "summary-failed":
+            return { value: outcome };
+          default: {
+            const _exhaustive: never = outcome;
+
+            return _exhaustive;
+          }
+        }
       },
       subscribe: (trigger) =>
         both(
@@ -189,7 +219,6 @@ export async function landed(
   }
 }
 
-/** Withdraws pending inputs from a head's inbox with one `input withdrawn` each, settles their receipts `withdrawn`, and returns the ones it found. */
 export async function withdraw(
   kernel: Kernel,
   session: SessionId,
@@ -204,49 +233,56 @@ export async function withdraw(
 
     const target = await put(kernel, "inbox", inboxWithout(inbox, due));
 
-    const outcome = await commit(
-      kernel,
-      due.map((message, index) => ({
+    const receipts = await Promise.all(
+      due.map(async (message): Promise<readonly RefUpdate[]> => {
+        const found = await readReceipt(kernel, session, message);
+
+        if (found === null || found.record.outcome !== null) return [];
+
+        return [
+          {
+            name: found.ref.name,
+            target: await put(kernel, "receipt", {
+              ...found.record,
+              outcome: { kind: "withdrawn" },
+            }),
+            expect: found.ref.revision,
+          },
+        ];
+      }),
+    );
+
+    const outcome = await commit(kernel, [
+      ...due.map((message, index) => ({
         name: inboxRef(session, head),
         target,
-        expect: index === 0 ? expectOf(inbox.ref) : undefined,
-        event: { head, kind: "input", message, change: "withdrawn" },
+        expect: index === 0 ? readRefExpectation(inbox.ref) : undefined,
+        event: { head, kind: "input", message, change: "withdrawn" } as const,
       })),
-    );
+      ...receipts.flat(),
+    ]);
 
     return outcome.kind === "set" ? due : STALE;
   });
 
-  for (const message of withdrawn)
-    await settleReceipt(kernel, session, asId<"receipt">(message), { kind: "withdrawn" });
+  for (const message of withdrawn) notifyReceipt(kernel, session, asId<"receipt">(message));
 
   return withdrawn;
-}
-
-export function isSendOutcome(value: Json): value is SendOutcome {
-  return isJsonObject(value) && typeof value.kind === "string" && SEND_OUTCOMES.has(value.kind);
-}
-
-export function isMoveOutcome(value: Json): value is MoveOutcome {
-  return isJsonObject(value) && (value.kind === "moved" || isMoveFailure(value));
-}
-
-export function isAnyOutcome(_value: Json): _value is Json {
-  return true;
 }
 
 async function stopReceipt<O extends Json>(
   kernel: Kernel,
   session: SessionId,
   id: ReceiptId,
-  outcomeOf: (value: Json) => O,
+  readOutcome: (record: ReceiptRecord) => O | null,
 ): Promise<StopOutcome<O>> {
   const found = await readReceipt(kernel, session, id);
 
   if (found === null) return { kind: "missing" };
 
-  if (found.record.outcome !== null)
-    return { kind: "settled", outcome: outcomeOf(found.record.outcome) };
+  const outcome = readOutcome(found.record);
+
+  if (outcome !== null) return { kind: "settled", outcome };
 
   if (found.record.kind === "batch") stopBatch(kernel, id);
 
@@ -267,17 +303,12 @@ async function stopReceipt<O extends Json>(
   if (run === null) return { kind: "missing" };
   const stopped = await stopRun(kernel, session, run);
 
-  return stopped.kind === "settled"
-    ? { kind: "settled", outcome: outcomeOf(stopped.outcome) }
-    : stopped;
-}
+  if (stopped.kind !== "settled") return stopped;
+  const settled = readOutcome({ ...found.record, outcome: stopped.outcome });
 
-function isWithdrawn(value: Json): value is { readonly kind: "withdrawn" } {
-  return isJsonObject(value) && value.kind === "withdrawn";
-}
+  if (settled === null) throw new SdkError("internal", `Receipt ${id} has no settled outcome.`);
 
-function isMoveFailure(value: Json): value is MoveFailure {
-  return isJsonObject(value) && typeof value.kind === "string" && MOVE_FAILURES.has(value.kind);
+  return { kind: "settled", outcome: settled };
 }
 
 function both(left: Disposer, right: Disposer): Disposer {

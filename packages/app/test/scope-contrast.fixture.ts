@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { surfaceTheme } from "../../ui/src/surface-theme.ts";
-import { role } from "../../ui/src/vars.stylex.ts";
+import { role } from "../../ui/src/styles/vars.stylex.ts";
 
 const styles = create({
   primary: { color: role.contentPrimary },

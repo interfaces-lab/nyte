@@ -1,17 +1,3 @@
-/**
- * Fast mode as a model of its own. Each eligible catalog model gets a
- * `<id>-fast` sibling that names the base and the mode, so a session selects
- * fast the way it selects any model and the choice travels as a model ref.
- *
- * Two identities, one rule. The sibling is the selected identity: config,
- * catalog, availability, spans. The base is the provider identity: what a
- * request is sent as (`providerRequest`, applied where `Models` and the
- * one-shot calls hand a request over) and what every answer, checkpoint and
- * stored message is recorded under, so history stays one model's history
- * whether a session runs fast or not. Anything that compares history with
- * the selected model compares through `providerIdentity`. The sibling keeps
- * the base's rates; the API prices the premium once, from the mode.
- */
 import { getFastModeCostMultiplier } from "./model-pricing.ts";
 import type { Api, Model } from "./types.ts";
 
@@ -65,7 +51,6 @@ export function providerIdentity(model: Pick<Model<Api>, "provider" | "api" | "i
   return { provider: model.provider, api: model.api, model: model.variant?.base ?? model.id };
 }
 
-/** What leaves for a provider: a variant goes as its base with its mode requested. */
 export function providerRequest<M extends Model<Api>, O extends { fast?: boolean } | undefined>(
   model: M,
   options: O,

@@ -1,22 +1,25 @@
-/**
- * The transcript as identities. Rows are string keys in drawing order;
- * content is looked up by id from the SDK's own objects, which keep identity
- * when unchanged (`core/src/fold.ts` `reuse`). A streaming delta therefore
- * changes one Message object and re-renders one block, never the row list.
- */
-import type { Failure, Message, MessageId, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
-import { openQuestions } from "@nyte-ai/plugin/question";
+import type {
+  Execution,
+  Failure,
+  Message,
+  MessageId,
+  SessionView,
+  TurnId,
+  TurnInfo,
+} from "@nyte-ai/sdk";
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
+import { isToolMessage, landingMessages, pendingReports } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
 import { mountWindow } from "./window.ts";
 import type { MountWindow } from "./window.ts";
 
-/** `turn:<id>` | `note:<message id>` | `shell:<job id>`. Strings, so Solid's `<For>` keys them by value. */
 export type RowKey = string;
 
 export type Row =
   | { readonly kind: "turn"; readonly key: RowKey; readonly turn: TurnId }
   | { readonly kind: "note"; readonly key: RowKey; readonly message: MessageId }
+  | { readonly kind: "landing"; readonly key: RowKey; readonly message: MessageId }
   | { readonly kind: "shell"; readonly key: RowKey; readonly job: string };
 
 export interface TranscriptModel {
@@ -28,13 +31,12 @@ export interface TranscriptModel {
   readonly following: boolean;
   readonly toolOutput: "collapsed" | "expanded";
   readonly disclosures: ReadonlySet<string>;
+  readonly execution: Execution | null;
 }
 
 export interface TurnModel {
   readonly info: TurnInfo;
-  /** Landed messages of this turn in view order, notes excluded (they are rows of their own). */
   readonly blocks: readonly MessageId[];
-  /** Drawn after every block, always: content cannot land below "Worked for". */
   readonly status: TurnStatus | null;
 }
 
@@ -58,21 +60,10 @@ export type TurnStatus =
 
 const STOPPED: Failure = { class: "aborted", message: "Run stopped." };
 
-/** A row's mount cost: a turn is 1 plus 1 per expanded block; notes and shells are 1. */
-export function rowWeight(
-  row: Row,
-  turns: ReadonlyMap<TurnId, TurnModel>,
-  local: Pick<TranscriptLocal, "toolOutput" | "disclosures">,
-): number {
+export function rowWeight(row: Row, turns: ReadonlyMap<TurnId, TurnModel>): number {
   if (row.kind !== "turn") return 1;
-  const turn = turns.get(row.turn);
 
-  if (turn === undefined) return 1;
-
-  if (local.toolOutput === "expanded") return 1 + turn.blocks.length;
-  const open = [...local.disclosures];
-
-  return 1 + turn.blocks.filter((id) => open.some((key) => key.startsWith(`${id}:`))).length;
+  return Math.max(1, turns.get(row.turn)?.blocks.length ?? 1);
 }
 
 function sameStatus(left: TurnStatus | null, right: TurnStatus | null): boolean {
@@ -95,6 +86,13 @@ export function deriveTranscript(
 
   for (const message of view?.messages ?? []) {
     if (message.kind === "user" && message.status.kind !== "landed") continue;
+
+    if (
+      isToolMessage(message) &&
+      message.state.class.kind === "delegate" &&
+      message.state.class.role === "await"
+    )
+      continue;
     messages.set(message.id, message);
 
     if (message.kind === "part" && message.role === "note") {
@@ -139,6 +137,14 @@ export function deriveTranscript(
     });
   }
 
+  for (const message of view === null ? [] : [...landingMessages(view), ...pendingReports(view)]) {
+    messages.set(message.id, message);
+    timed.push({
+      row: { kind: "landing", key: `landing:${message.id}`, message: message.id },
+      at: message.at,
+    });
+  }
+
   const jobs = shells.toSorted(
     (left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id),
   );
@@ -169,7 +175,7 @@ export function deriveTranscript(
       ? previous.rows
       : rows;
 
-  const window = mountWindow(keptRows, (row) => rowWeight(row, turns, local), local.window);
+  const window = mountWindow(keptRows, (row) => rowWeight(row, turns), local.window);
 
   return {
     rows: keptRows,
@@ -185,10 +191,10 @@ export function deriveTranscript(
     following: local.following,
     toolOutput: local.toolOutput,
     disclosures: local.disclosures,
+    execution: view?.execution ?? null,
   };
 }
 
-/** What a turn's status row shows; the live (last) turn also reads the head's execution. */
 export function turnStatus(
   info: TurnInfo,
   blocks: readonly Message[],

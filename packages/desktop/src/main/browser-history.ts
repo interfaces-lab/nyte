@@ -1,16 +1,3 @@
-/**
- * Pages a user visited in browser panels, per cookie jar: home, or one
- * workspace. The file sits in the app's user data beside the guest sessions it
- * pairs with, so clearing a jar's history and its cookies speak about the same
- * profile. Newest first, one entry per URL, at most `HISTORY_LIMIT` per owner.
- *
- * Changes run one at a time against the history as it stands after every
- * earlier change. Visits change memory at once; the file and listeners follow
- * within one write window. A removal or clear lands on disk before memory takes
- * it, so a failed write rejects and changes nothing. Every write replaces the
- * whole file through a renamed temporary file, and a failed one is retried by
- * the next. A file that cannot be read or parsed reads as no history.
- */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Type } from "typebox";
@@ -23,7 +10,6 @@ export const HISTORY_LIMIT = 200;
 
 export const TITLE_LIMIT = 300;
 
-/** A longer address is not remembered at all; a cut one would open a different page. */
 export const URL_LIMIT = 2048;
 
 const WRITE_DELAY = 2000;
@@ -74,10 +60,8 @@ export class BrowserHistoryStore {
   private readonly delay: number;
   private loaded: Promise<History> | undefined;
   private tail: Promise<unknown> = Promise.resolve();
-  /** Memory holds changes the file lacks. */
   private dirty = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  /** Owners whose entries changed since the listener last heard. */
   private readonly unpublished = new Set<string | null>();
   private listener: Listener = () => undefined;
 
@@ -87,7 +71,6 @@ export class BrowserHistoryStore {
     this.delay = options.delay ?? WRITE_DELAY;
   }
 
-  /** Hears an owner's entries at most once per write window, and once a removal or clear lands. */
   listen(listener: Listener): void {
     this.listener = listener;
   }
@@ -96,7 +79,6 @@ export class BrowserHistoryStore {
     return (await this.read()).get(ownerKey(owner)) ?? [];
   }
 
-  /** A visit moves the URL to the front; a title it already had survives a reload that has none yet. */
   record(
     owner: BrowserOwner,
     visit: { readonly url: string; readonly title?: string; readonly at: number },
@@ -142,7 +124,6 @@ export class BrowserHistoryStore {
     return this.commit(owner, (entries) => (entries.length === 0 ? undefined : []));
   }
 
-  /** Writes pending visits now. A failure is kept as a diagnostic and the next write retries it. */
   flush(): Promise<void> {
     return this.queue(async () => {
       clearTimeout(this.timer);

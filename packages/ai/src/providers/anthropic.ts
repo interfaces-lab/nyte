@@ -1,4 +1,5 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
+import { fetchAnthropicAccountLimits } from "../api/deferred.ts";
 import { lazyOAuth } from "../auth/helpers.ts";
 import { loadAnthropicOAuth } from "../auth/oauth/load.ts";
 import type { ApiKeyAuth, ProviderAuth } from "../auth/types.ts";
@@ -6,9 +7,15 @@ import { verifyWithRequest } from "../auth/verify.ts";
 import {
   ANTHROPIC_API_KEY_ENV,
   ANTHROPIC_AUTH_TOKEN_ENV,
+  ANTHROPIC_FEDERATION_RULE_ID_ENV,
+  ANTHROPIC_IDENTITY_TOKEN_FILE_ENV,
   ANTHROPIC_OAUTH_TOKEN_ENV,
+  ANTHROPIC_ORGANIZATION_ID_ENV,
+  ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
+  ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../env-api-keys.ts";
 import { createProvider, type Provider } from "../models.ts";
+import type { ProviderEnv } from "../types.ts";
 
 function anthropicApiKeyAuth(): ApiKeyAuth {
   return {
@@ -48,7 +55,29 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
         if (apiKey) return { auth: { apiKey }, source: envVar };
       }
 
-      return undefined;
+      const federation: ProviderEnv = {};
+
+      for (const envVar of [
+        ANTHROPIC_FEDERATION_RULE_ID_ENV,
+        ANTHROPIC_ORGANIZATION_ID_ENV,
+        ANTHROPIC_IDENTITY_TOKEN_FILE_ENV,
+      ]) {
+        const value = await ctx.env(envVar);
+        signal.throwIfAborted();
+
+        if (!value) return undefined;
+
+        federation[envVar] = value;
+      }
+
+      for (const envVar of [ANTHROPIC_SERVICE_ACCOUNT_ID_ENV, ANTHROPIC_WORKSPACE_ID_ENV]) {
+        const value = await ctx.env(envVar);
+        signal.throwIfAborted();
+
+        if (value) federation[envVar] = value;
+      }
+
+      return { auth: {}, env: federation, source: "workload identity federation" };
     },
   };
 }
@@ -88,6 +117,22 @@ export function anthropicProvider(): Provider<"anthropic-messages"> {
         load: loadAnthropicOAuth,
       }),
       verify: verifyAnthropicAuth,
+    },
+    fetchAccountLimits: async ({ auth, signal }) => {
+      const authorization = Object.entries(auth.headers ?? {}).find(
+        ([name]) => name.toLowerCase() === "authorization",
+      )?.[1];
+      const token = auth.apiKey ?? authorization?.replace(/^Bearer\s+/u, "");
+
+      if (!token?.includes("sk-ant-oat")) return undefined;
+
+      return fetchAnthropicAccountLimits(
+        {
+          provider: "anthropic",
+          baseUrl: auth.baseUrl ?? ANTHROPIC_BASE_URL,
+        },
+        { apiKey: token, headers: auth.headers, signal },
+      );
     },
     api: { "anthropic-messages": anthropicMessagesApi() },
   });

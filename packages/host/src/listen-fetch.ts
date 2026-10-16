@@ -19,7 +19,6 @@ import {
 } from "@nyte-ai/protocol";
 import type { HandlerOptions } from "@nyte-ai/protocol";
 
-/** Returns one cached connection: what it serves and how it leaves the cache. */
 type Cached = {
   readonly connection: Connection;
   readonly principal: PrincipalId;
@@ -33,10 +32,8 @@ type Flight = {
   principal: PrincipalId | null;
 };
 
-/** Returns who a request is when no token of this listener names it: the principal and authority `authorize` gave. */
 type Verdict = { readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> };
 
-/** Returns a device token remembered by digest: its principal and authority until `expiresAt`, and the token, read again at each window boundary while it has a request open. */
 type Device = {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
@@ -61,6 +58,7 @@ export async function listenFetch(
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
+  const flights = new WeakMap<Request, Flight>();
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
   let rechecking: ReturnType<typeof setInterval> | null = null;
@@ -125,7 +123,6 @@ export async function listenFetch(
     return entry;
   };
 
-  /** Reads a device token from the store for another window, or forgets it and revokes its principal here when no paired principal holds it any more. */
   const reread = async (
     token: string,
     digest: string,
@@ -156,7 +153,6 @@ export async function listenFetch(
     return device === null ? null : { digest, device };
   };
 
-  /** Re-reads every device token with a request open, once per window (§58), so a stream outlives a revoke on another instance by one window at most and ends `unauthenticated`; the timer stops when none is open. */
   const recheck = async (): Promise<void> => {
     const open = [...devices].filter(([, device]) => streams.has(device.principal));
 
@@ -174,7 +170,6 @@ export async function listenFetch(
     );
   };
 
-  /** Remembers a device token for one window and starts the per-window re-check (§58) of open streams when it is not running. */
   const remember = (digest: string, device: Device): void => {
     devices.set(digest, device);
     rechecking ??= setInterval(() => {
@@ -257,14 +252,16 @@ export async function listenFetch(
     };
   };
 
-  /** Returns the protocol handler for one flight, so authentication registers that flight without looking it up. */
-  const handlerFor = (flight: Flight) =>
-    createHandler({
-      kernel,
-      origins: options.origins,
-      maxBodyBytes: options.maxBodyBytes,
-      connection: (request) => authenticate(request, flight),
-    });
+  const handler = createHandler({
+    kernel,
+    origins: options.origins,
+    maxBodyBytes: options.maxBodyBytes,
+    connection: (request) => {
+      const flight = flights.get(request);
+      if (flight === undefined) throw new Error("The listener did not register this request.");
+      return authenticate(request, flight);
+    },
+  });
 
   const cors = (request: Request): Readonly<Record<string, string>> => {
     const origin = request.headers.get("Origin");
@@ -318,7 +315,8 @@ export async function listenFetch(
     });
 
     const flight: Flight = { request: forwarded, controller, principal: null };
-    const response = await handlerFor(flight)(forwarded);
+    flights.set(forwarded, flight);
+    const response = await handler(forwarded);
     trace.principal = flight.principal;
 
     return landing(response, () => land(flight));
@@ -416,7 +414,6 @@ function failure(error: SdkError, headers: Readonly<Record<string, string>>): Re
   });
 }
 
-/** Returns the SHA-256 digest of a string's UTF-8 bytes through Web Crypto. */
 async function sha256(text: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(text)));
 }
@@ -425,7 +422,6 @@ function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** Compares a presented secret with the expected one in constant time: both are digested with SHA-256 (so the length leaks nothing) and every byte pair is XOR-folded into one accumulator before it is read. */
 async function sameSecret(given: string, expected: string): Promise<boolean> {
   const [left, right] = await Promise.all([sha256(given), sha256(expected)]);
   let difference = left.length ^ right.length;

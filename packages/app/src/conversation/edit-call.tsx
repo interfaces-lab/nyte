@@ -1,4 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
 import { toolStatus } from "../view-helpers.ts";
 import type { ToolMessage } from "../view-helpers.ts";
@@ -6,7 +7,7 @@ import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -41,11 +42,8 @@ const styles = create({
   line: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minWidth: 0,
-    fontSize: type.fontLg,
-    lineHeight: type.leadingLg,
-    letterSpacing: type.letterLg,
     whiteSpace: "nowrap",
     userSelect: "none",
     "--_action": role.contentSecondary,
@@ -89,16 +87,12 @@ const styles = create({
   stats: {
     display: "inline-flex",
     flexShrink: 0,
-    gap: 4,
+    gap: space.s1,
     fontVariantNumeric: "tabular-nums",
   },
-  statsLine: { marginInlineStart: 8 },
+  statsLine: { marginInlineStart: space.s2 },
   stat: { color: role.contentSecondary },
   chevron: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
     width: glyph.md,
     height: glyph.md,
     color: role.contentTertiary,
@@ -111,7 +105,7 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    marginBlock: 2,
+    marginBlock: space.s0_5,
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
@@ -127,15 +121,13 @@ const styles = create({
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     width: "100%",
     minWidth: 0,
-    paddingBlock: 6,
-    paddingInline: 8,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textDecorationLine: "none",
     whiteSpace: "nowrap",
     userSelect: "none",
@@ -173,7 +165,7 @@ const styles = create({
     alignItems: "flex-end",
     justifyContent: "center",
     height: button.heightXs,
-    paddingBottom: 1,
+    paddingBottom: space.px,
     backgroundImage: `linear-gradient(to bottom, transparent 0%, ${role.bgBase} 100%)`,
     color: {
       default: role.contentSecondary,
@@ -287,7 +279,7 @@ export const EditCallView = memo(function EditCallView({
           <TooltipTrigger
             render={
               openFile === undefined || file === undefined ? (
-                <div {...props(styles.header)}>{header}</div>
+                <div {...props(text.base, styles.header)}>{header}</div>
               ) : (
                 <a
                   href={file.url}
@@ -295,7 +287,7 @@ export const EditCallView = memo(function EditCallView({
                     event.preventDefault();
                     openFile();
                   }}
-                  {...props(styles.header, styles.headerLink, focus.ringInset)}
+                  {...props(text.base, styles.header, styles.headerLink, focus.ringInset)}
                 >
                   {header}
                 </a>

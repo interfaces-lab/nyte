@@ -1,7 +1,3 @@
-/**
- * The one chapter that skips the seeded baseline: the desktop over a home
- * that has never been opened, as a new install sees it.
- */
 import { expect, test } from "@playwright/test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,6 +22,7 @@ test("an empty home opens on a new chat with nothing listed", async () => {
     "true",
   );
   await expect(page.getByRole("button", { name: "Go back" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Go forward" })).toBeDisabled();
   await expect(chatPane(page).getByRole("button", { name: "Home", exact: true })).toBeVisible();
   await expect(chatPane(page).getByRole("button", { name: "This Mac" })).toBeVisible();
   await expect(composer(page)).toHaveAttribute("data-placeholder", /^Ask Nyte/u);

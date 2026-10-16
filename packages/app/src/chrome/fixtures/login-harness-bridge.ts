@@ -1,18 +1,17 @@
-/**
- * The connection and host as the login test's browser sees them: only what
- * Settings › Providers calls, every call recorded, and every answer chosen
- * by the test from outside the page. Installed before any renderer module
- * reads `window.nyte` or the connection.
- */
 import type { HostView, ModelCatalogView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostBridge } from "../../bridge.ts";
 import { installConnection } from "../../sdk.tsx";
 import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
 
-/** A login step the host's flow yields. */
 export type HarnessStep =
   | { readonly kind: "open"; readonly url: string; readonly code?: string }
+  | { readonly kind: "paste"; readonly message: string; readonly secret: boolean }
+  | {
+      readonly kind: "choose";
+      readonly message: string;
+      readonly options: readonly { readonly id: string; readonly label: string }[];
+    }
   | { readonly kind: "waiting" }
   | { readonly kind: "done" }
   | { readonly kind: "failed"; readonly reason: string };
@@ -20,9 +19,14 @@ export type HarnessStep =
 export type RecordedHostCall =
   | {
       readonly path: "models.login";
-      readonly input: { readonly provider: string; readonly method: { readonly kind: string } };
+      readonly input: {
+        readonly provider: string;
+        readonly method: { readonly kind: string };
+        readonly browser?: string;
+      };
     }
   | { readonly path: "models.login.cancel" }
+  | { readonly path: "login.answer"; readonly input: string }
   | { readonly path: "models.logout"; readonly input: string }
   | {
       readonly path: "host.openExternal";
@@ -40,9 +44,8 @@ interface LoginHarness {
   readonly clipboard: readonly string[];
   /** Which boundary calls refuse from now on. */
   setFailures(failures: Partial<HarnessFailures>): void;
-  /** The catalog `models.list` answers; the host view's generation moves with it. */
   setCatalog(catalog: Omit<ModelCatalogView, "generation">): void;
-  /** Yields one step of the running sign-in. */
+  setEndpoint(url: string): void;
   step(step: HarnessStep): void;
 }
 
@@ -59,6 +62,8 @@ const clipboard: string[] = [];
 let failures: HarnessFailures = { open: false, clipboard: false };
 
 let generation = 0;
+
+let endpointUrl = "http://127.0.0.1:4100";
 
 let catalog: ModelCatalogView = {
   generation: asId<"catalog-generation">("0"),
@@ -83,7 +88,6 @@ const host = viewStream(hostView());
 
 const steps = new Set<(step: HarnessStep) => void>();
 
-/** One sign-in's steps: each step the test yields, until the page drops the iterator, which is recorded. */
 function flow(): AsyncIterable<HarnessStep> {
   const queued: HarnessStep[] = [];
   let pull: ((result: IteratorResult<HarnessStep>) => void) | undefined;
@@ -132,7 +136,12 @@ installConnection(
       login: (input) => {
         calls.push({ path: "models.login", input });
 
-        return { steps: flow, answer: async () => undefined };
+        return {
+          steps: flow,
+          answer: async (code) => {
+            calls.push({ path: "login.answer", input: code });
+          },
+        };
       },
       logout: async (provider) => {
         calls.push({ path: "models.logout", input: provider });
@@ -141,15 +150,17 @@ installConnection(
   }).connection,
 );
 
-const bridgeHost: Pick<HostBridge, "openExternal" | "setThemePreference" | "onEvent"> = {
-  openExternal: async (input) => {
-    calls.push({ path: "host.openExternal", input });
+const bridgeHost: Pick<HostBridge, "endpoint" | "openExternal" | "setThemePreference" | "onEvent"> =
+  {
+    endpoint: async () => ({ url: endpointUrl, credentials: { kind: "token", token: "harness" } }),
+    openExternal: async (input) => {
+      calls.push({ path: "host.openExternal", input });
 
-    if (failures.open) throw new Error("open refused");
-  },
-  setThemePreference: () => undefined,
-  onEvent: () => () => undefined,
-};
+      if (failures.open) throw new Error("open refused");
+    },
+    setThemePreference: () => undefined,
+    onEvent: () => () => undefined,
+  };
 
 const harness: LoginHarness = {
   calls,
@@ -161,6 +172,9 @@ const harness: LoginHarness = {
     generation += 1;
     catalog = { ...next, generation: asId<"catalog-generation">(String(generation)) };
     host.push(hostView());
+  },
+  setEndpoint: (url) => {
+    endpointUrl = url;
   },
   step: (step) => {
     for (const take of steps) take(step);

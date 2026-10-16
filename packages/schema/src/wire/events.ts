@@ -25,7 +25,6 @@ const REPLACED = nullable(
   Type.Object({ previous: idSchema<"message">(), stopped: nullable(idSchema<"run">()) }),
 );
 
-/** The TypeBox schema of a `CommitBody`. */
 export const CommitBodyType = Type.Union([
   Type.Object({
     kind: Type.Literal("user"),
@@ -159,6 +158,12 @@ function durableEvent<Common extends TProperties>(common: Common) {
       endedAt: Type.Number(),
     }),
     Type.Object({ ...common, ...PART, change: Type.Literal("failed"), failure: FailureType }),
+    Type.Object({
+      ...common,
+      ...PART,
+      change: Type.Literal("answered"),
+      answer: Type.Object({ action: Type.String(), input: JsonType }),
+    }),
     Type.Object({ ...common, ...PART, change: Type.Literal("closed") }),
     Type.Object({
       ...common,
@@ -197,31 +202,24 @@ function durableEvent<Common extends TProperties>(common: Common) {
   ]);
 }
 
-/** The TypeBox schema of a `DurableEvent`. */
 export const DurableEventType = durableEvent({ head: nullable(idSchema<"head">()) });
 
-/** The TypeBox schema of a `SessionEvent`. */
 export const SessionEventType = durableEvent({
   seq: SeqType,
   at: Type.Number(),
   head: nullable(idSchema<"head">()),
 });
 
-/** The TypeBox schema of a `PatchEvent`. */
 export const PatchEventType = Type.Union([
   Type.Object({ ...PATCH, append: Type.String() }),
   Type.Object({ ...PATCH, markdown: Type.String() }),
   Type.Object({ ...PATCH, progress: ToolProgressType }),
 ]);
 
-/** Validates a `CommitBody`. */
 export const CommitBodySchema: Schema<CommitBody> = standard(CommitBodyType);
 
-/** Validates a `DurableEvent`. */
 export const DurableEventSchema: Schema<DurableEvent> = standard(withJson(DurableEventType));
 
-/** Validates a `SessionEvent`. */
 export const SessionEventSchema: Schema<SessionEvent> = standard(withJson(SessionEventType));
 
-/** Validates a `PatchEvent`. */
 export const PatchEventSchema: Schema<PatchEvent> = standard(withJson(PatchEventType));

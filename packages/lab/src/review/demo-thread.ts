@@ -12,7 +12,6 @@ import type { Json, Message, PatchEntry, ToolClass, TurnInfo } from "@nyte-ai/sd
 /** Who answers: a fork of the guide, which only reads, or Nyte, which edits the branch. */
 export type Recipient = "reviewer" | "nyte";
 
-/** A scripted turn and how many of its messages have played. */
 export interface DemoExchange {
   readonly turn: ConversationTurn;
   readonly shown: number;
@@ -74,7 +73,6 @@ type Step =
         readonly paths: readonly string[];
       };
       readonly output?: string;
-      /** The patch an edit settles with as its output. */
       readonly patch?: PatchEntry;
     };
 

@@ -1,8 +1,3 @@
-/**
- * The window and the scrollport: only the tail mounts, revealing earlier
- * rows keeps the viewport where it was, `row` and `turn` jumps resolve
- * positions at call time, and leaving the bottom reports `scrolled(false)`.
- */
 import { describe, expect, test } from "bun:test";
 import type { App } from "../../../src/app/context.tsx";
 import type { ScrollPort } from "../../../src/model/native.ts";
@@ -10,12 +5,15 @@ import type { State } from "../../../src/model/state.ts";
 import { rowWeight } from "../../../src/model/transcript.ts";
 import { revealEarlier, WINDOW } from "../../../src/model/window.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
+import { frameShowing } from "../../fixture/render.tsx";
 import { stateOf } from "../../fixture/state.ts";
 import { followed, viewOf } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
 import type { TranscriptHarness } from "./harness.tsx";
 
 const TURNS = 50;
+
+const MOUNTED = WINDOW.tail / 2;
 
 const VIEW = viewOf((v) => {
   let built = v;
@@ -35,7 +33,6 @@ interface Driver {
   readonly port: () => ScrollPort;
   readonly scrolled: boolean[];
   readonly reveals: () => number;
-  /** What the reducer does for `reveal-earlier`, then the runner's `keep-viewport`. */
   readonly reveal: () => void;
   readonly node: (app: App) => ReturnType<typeof Transcript>;
 }
@@ -56,7 +53,7 @@ function driver(
 
     const window = revealEarlier(
       transcript.rows,
-      (row) => rowWeight(row, transcript.turns, local),
+      (row) => rowWeight(row, transcript.turns),
       transcript.window,
     );
 
@@ -104,7 +101,7 @@ describe("scroll", () => {
     const state = stateOf(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
-    const hidden = TURNS - WINDOW.tail;
+    const hidden = TURNS - MOUNTED;
 
     expect(app.screen().transcript.window).toEqual({ start: hidden, hidden });
     expect(app.renderer.root.findDescendantById(`turn:t${String(hidden)}`)).toBeUndefined();
@@ -116,9 +113,9 @@ describe("scroll", () => {
     const state = stateOf(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
-    const first = `question ${String(TURNS - WINDOW.tail + 1)}`;
+    const first = `question ${String(TURNS - MOUNTED + 1)}`;
 
-    drive.port().row(`turn:t${String(TURNS - WINDOW.tail + 1)}`);
+    drive.port().row(`turn:t${String(TURNS - MOUNTED + 1)}`);
     await app.renderOnce();
     await app.renderOnce();
     const before = app.captureCharFrame();
@@ -142,7 +139,7 @@ describe("scroll", () => {
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
-    drive.port().row(`turn:t${String(TURNS - WINDOW.tail + 1)}`);
+    drive.port().row(`turn:t${String(TURNS - MOUNTED + 1)}`);
     await app.renderOnce();
     await app.mockMouse.scroll(10, 5, "up");
     await app.renderOnce();
@@ -167,7 +164,7 @@ describe("scroll", () => {
     await app.renderOnce();
 
     expect(drive.scrolled.at(-1)).toBe(true);
-    expect(app.captureCharFrame()).toContain(`answer ${String(TURNS)}`);
+    expect(await frameShowing(app, `answer ${String(TURNS)}`)).toContain(`answer ${String(TURNS)}`);
   });
 
   test("by(lines) moves the viewport by whole rows", async () => {
@@ -175,16 +172,16 @@ describe("scroll", () => {
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
-    drive.port().row("turn:t30");
+    drive.port().row("turn:t40");
     await app.renderOnce();
     await app.renderOnce();
-    const before = lineOf(app.captureCharFrame(), "question 30");
+    const before = lineOf(app.captureCharFrame(), "question 40");
 
     drive.port().by(-2);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 30")).toBe(before + 2);
+    expect(lineOf(app.captureCharFrame(), "question 40")).toBe(before + 2);
     expect(drive.scrolled.at(-1)).toBe(false);
   });
 
@@ -193,23 +190,23 @@ describe("scroll", () => {
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
-    drive.port().row("turn:t30");
+    drive.port().row("turn:t40");
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 30")).toBeLessThan(5);
+    expect(lineOf(app.captureCharFrame(), "question 40")).toBeLessThan(5);
 
     drive.port().turn(-1);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 29")).toBeLessThan(5);
+    expect(lineOf(app.captureCharFrame(), "question 39")).toBeLessThan(5);
 
     drive.port().turn(1);
     drive.port().turn(1);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 31")).toBeLessThan(5);
+    expect(lineOf(app.captureCharFrame(), "question 41")).toBeLessThan(5);
   });
 });

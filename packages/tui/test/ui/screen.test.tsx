@@ -1,21 +1,20 @@
-/**
- * The screen's layout from `deriveScreen`: the loading line on top, the live
- * column (queue rows, composer and its powerline, the slot) above the hints,
- * the welcome on an empty session, completion in the slot, and a screen
- * dialog taking the transcript's place without dropping the draft.
- */
 import { RGBA, ScrollBoxRenderable } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
 import { DARK_THEME } from "../../src/lib/theme.ts";
+import type { Task } from "../../src/lib/tasks.ts";
 import { NO_PARTS } from "../../src/model/draft.ts";
 import { Screen } from "../../src/ui/screen.tsx";
-import { viewOf } from "../fixture/view.ts";
+import { followed, viewOf } from "../fixture/view.ts";
 import { blank, play, ready, typed } from "../model/support.ts";
 import { mount } from "./chrome/support.tsx";
 
 const empty = viewOf((v) => v);
 
 const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+
+const talked = viewOf((v) =>
+  v.turn("t1", (t) => t.user("where is the tree").text("Here it is.").ended("completed")),
+);
 
 const queued = viewOf((v) =>
   v
@@ -28,10 +27,14 @@ function row(frame: string, text: string): number {
 }
 
 describe("screen", () => {
-  test("starting shows the loading line above everything", async () => {
+  test("starting shows the welcome with a spinner, and no loading line", async () => {
     await using app = await mount(blank(), () => <Screen />);
+    const frame = app.captureCharFrame();
 
-    expect(row(app.captureCharFrame(), "Opening workspace…")).toBe(0);
+    expect(frame).toContain("Welcome to Nyte");
+    expect(frame).not.toContain("for files");
+    expect(frame).not.toContain("loading");
+    expect(frame).not.toContain("Loading");
   });
 
   test("queue rows sit above the composer, the notice under its rule, the hints last", async () => {
@@ -72,7 +75,7 @@ describe("screen", () => {
     const lines = wide.captureCharFrame().split("\n");
     const first = lines.findIndex((line) => line.includes("❯ /"));
 
-    expect(lines[first]).toContain("Auto-update");
+    expect(lines[first]).toContain("Choose a saved account");
     expect(
       wide
         .captureSpans()
@@ -87,8 +90,8 @@ describe("screen", () => {
       .split("\n")
       .find((line) => line.includes("❯ /"));
 
-    expect(highlighted).toContain("/auto-update");
-    expect(highlighted).not.toContain("Auto-update");
+    expect(highlighted).toContain("/accounts");
+    expect(highlighted).not.toContain("Choose a saved account");
   });
 
   test("an empty menu says why: no command, no file, or a listing still loading", async () => {
@@ -103,8 +106,41 @@ describe("screen", () => {
     }
   });
 
+  test("the tree opens under the composer with the transcript kept, and a refusal shows above it", async () => {
+    const opened = play(ready(talked), {
+      kind: "open",
+      dialog: { kind: "tree", filter: "default" },
+    }).state;
+
+    const state = play(opened, {
+      kind: "refuse",
+      reason: "Already at that point in the chat",
+      tone: "info",
+    }).state;
+
+    await using app = await mount(state, () => <Screen />);
+    const frame = app.captureCharFrame();
+    const rule = frame.split("\n").findIndex((line) => line.includes("╰"));
+
+    expect(row(frame, "Here it is.")).toBeLessThan(rule);
+    expect(row(frame, "Already at that point in the chat")).toBeGreaterThan(rule);
+    expect(row(frame, "Session Tree")).toBeGreaterThan(
+      row(frame, "Already at that point in the chat"),
+    );
+  });
+
   test("a screen dialog replaces the transcript and hides the composer; the draft survives", async () => {
     const state = ready(idle);
+    const child = followed(idle, "c1");
+
+    const task: Task = {
+      kind: "agent",
+      id: child.id,
+      info: child.info,
+      view: child.view ?? undefined,
+    };
+
+    const inspecting = { ...state, facts: { ...state.facts, tasks: [task] } };
 
     await using app = await mount(state, () => <Screen />);
     app.composer().set({ text: "keep me", parts: NO_PARTS });
@@ -112,7 +148,7 @@ describe("screen", () => {
     expect(app.captureCharFrame()).toContain("keep me");
 
     await app.show(
-      play(state, { kind: "open", dialog: { kind: "tree", filter: "default" } }).state,
+      play(inspecting, { kind: "open", dialog: { kind: "inspector", task: child.id } }).state,
     );
     expect(app.captureCharFrame()).not.toContain("keep me");
 

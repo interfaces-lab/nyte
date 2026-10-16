@@ -1,4 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
@@ -48,7 +49,10 @@ function TerminalStatus({
   if (isJobTerminal(tab)) {
     if (tab.rendering.kind === "failed") {
       return (
-        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
+        <div
+          role="alert"
+          {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
+        >
           <span>{tab.rendering.message}</span>
           <Button variant="outline" onClick={() => terminalActions.retryRender(tab.id)}>
             Try Again
@@ -60,7 +64,7 @@ function TerminalStatus({
     switch (tab.state.kind) {
       case "running":
         return (
-          <div {...props(terminalStyles.state)}>
+          <div {...props(text.sm, terminalStyles.state)}>
             <span>Agent command · read-only</span>
             <Button variant="outline" loading={stopping} onClick={stop}>
               Stop Command
@@ -69,24 +73,24 @@ function TerminalStatus({
         );
       case "exited":
         return tab.state.reason === "terminated" ? (
-          <div role="status" {...props(terminalStyles.state)}>
+          <div role="status" {...props(text.sm, terminalStyles.state)}>
             Command cancelled
           </div>
         ) : tab.state.code === 0 ? (
-          <div role="status" {...props(terminalStyles.state)}>
+          <div role="status" {...props(text.sm, terminalStyles.state)}>
             Command completed
           </div>
         ) : (
           <div
             role="status"
-            {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}
+            {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
           >
             Command failed
           </div>
         );
       case "lost":
         return (
-          <div role="status" {...props(terminalStyles.state)}>
+          <div role="status" {...props(text.sm, terminalStyles.state)}>
             Command interrupted
           </div>
         );
@@ -101,7 +105,7 @@ function TerminalStatus({
   switch (tab.state.kind) {
     case "starting":
       return (
-        <div role="status" {...props(terminalStyles.state)}>
+        <div role="status" {...props(text.sm, terminalStyles.state)}>
           Starting terminal…
         </div>
       );
@@ -109,7 +113,10 @@ function TerminalStatus({
       return null;
     case "failed":
       return (
-        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
+        <div
+          role="alert"
+          {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
+        >
           <span>{tab.state.message}</span>
           <Button variant="outline" onClick={restart}>
             Try Again
@@ -118,7 +125,7 @@ function TerminalStatus({
       );
     case "exited":
       return (
-        <div role="status" {...props(terminalStyles.state)}>
+        <div role="status" {...props(text.sm, terminalStyles.state)}>
           <span>
             {tab.state.exitCode === 0
               ? "Shell exited"
@@ -183,7 +190,7 @@ export function TerminalPanel({
   return (
     <section aria-label="Terminal" {...props(terminalStyles.root)}>
       {tab === undefined ? (
-        <div {...props(terminalStyles.empty)}>
+        <div {...props(text.base, terminalStyles.empty)}>
           <Icon name="console" size={24} />
           <span>Terminal unavailable.</span>
         </div>
@@ -205,7 +212,7 @@ export function TerminalPanel({
         </div>
       )}
       {cancellation.isSuccess && (
-        <div role="status" {...props(terminalStyles.state)}>
+        <div role="status" {...props(text.sm, terminalStyles.state)}>
           {cancellation.data.kind === "requested"
             ? "Cancellation requested."
             : cancellation.data.kind === "settled"
@@ -214,12 +221,18 @@ export function TerminalPanel({
         </div>
       )}
       {cancellation.isError && (
-        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
+        <div
+          role="alert"
+          {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
+        >
           {errorMessage(cancellation.error)}
         </div>
       )}
       {error !== undefined && (
-        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
+        <div
+          role="alert"
+          {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
+        >
           {error}
         </div>
       )}

@@ -40,7 +40,6 @@ export interface RemoteExposure {
     readonly port: number;
     readonly auth: ListenOptions["auth"];
     readonly browserOrigins: readonly string[];
-    /** Routes this exposure answers itself, before the listener and its auth. */
     readonly handle?: (request: Request) => Promise<Response | undefined>;
   };
   /** Start carrying outside traffic. The host calls it only after the listener is bound. */

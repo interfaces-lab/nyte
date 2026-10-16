@@ -1,43 +1,13 @@
-/**
- * `@opentui/keymap` is the transport; the interaction table is the decision.
- * Bindings come from CHAT_KEYBINDS (the one list). Each binding's handler
- * refreshes the draft mirror from the textarea, then dispatches the
- * interaction's intent from `screen().interactions`. A command whose
- * interaction has no intent returns false, so the key falls through to the
- * next layer and finally to the textarea.
- *
- * Layers, by priority:
- *   200 error      R resets the root boundary, Q and Ctrl+C quit (enabled iff the error screen shows)
- *   100 selection  Ctrl+C copies, Esc clears, while a selection exists (above dialogs); with
- *                  copy-on-select, Ctrl+C on a transcript selection clears it and falls through
- *    20 dialog     every non-composer command → its interaction (enabled iff screen.dialog)
- *    10 field      FIELD_KEYBINDS → an edit of the dialog's typed field, when it takes text
- *     5 completion completion.* (enabled iff screen.completion and no dialog)
- *     1 chat       chat.* (enabled iff no dialog)
- *    -1 textarea   managed textarea editing keys, composer.newline, composer.delete.to.line.start
- *
- * Two intercepts run before the layers: every key dismisses the notice and
- * any other key clears a transcript selection, and a printable key is
- * inserted at the open dialog's caret when it takes text. After the layers, a
- * key nobody handled while a dialog or the error screen shows is consumed,
- * so it never edits the composer underneath.
- * No component adds a raw `keyInput` listener.
- */
 import { InputRenderable, TextareaRenderable } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
 import type { Command } from "@opentui/keymap";
-import {
-  registerCommaBindings,
-  registerDefaultKeys,
-  registerEnabledFields,
-  registerMetadataFields,
-} from "@opentui/keymap/addons";
+import { registerCommaBindings } from "@opentui/keymap/addons";
 import {
   registerBaseLayoutFallback,
   registerManagedTextareaLayer,
 } from "@opentui/keymap/addons/opentui";
 import { commandBindings } from "@opentui/keymap/extras";
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui";
 import type { Accessor } from "solid-js";
 import { CHAT_KEYBINDS, FIELD_KEYBINDS } from "../lib/constants.ts";
 import type { ChatCommand, FieldCommand } from "../lib/constants.ts";
@@ -51,9 +21,7 @@ import type { Store } from "./store.ts";
 export interface KeymapOptions {
   readonly renderer: CliRenderer;
   readonly store: Store;
-  /** The root boundary's reset while the error screen shows. */
   readonly fallen: Accessor<(() => void) | null>;
-  /** Leaves the app without the store, which may be what failed. */
   readonly quit: () => void;
 }
 
@@ -66,12 +34,8 @@ interface LayerSpec {
 
 export function installKeymap(options: KeymapOptions): () => void {
   const { renderer, store, fallen } = options;
-  const keymap = createOpenTuiKeymap(renderer);
-  registerDefaultKeys(keymap);
-  registerEnabledFields(keymap);
-  registerMetadataFields(keymap);
+  const keymap = createDefaultOpenTuiKeymap(renderer);
   registerCommaBindings(keymap);
-  // Dvorak and AZERTY keep the same physical shortcuts.
   registerBaseLayoutFallback(keymap);
 
   const live = (): boolean => fallen() === null;
@@ -114,6 +78,38 @@ export function installKeymap(options: KeymapOptions): () => void {
 
     return open !== null && dialogText(open) !== null;
   };
+
+  let killed = "";
+
+  const composerCommands: readonly Command<Renderable, KeyEvent>[] = [
+    {
+      name: "composer.delete.to.line.start",
+      run() {
+        const editor = composer();
+
+        if (editor === null) return false;
+        const before = editor.plainText;
+        editor.deleteToLineStart();
+        const { text, cursor } = readDraft(editor);
+        const removed = before.slice(cursor, cursor + before.length - text.length);
+
+        if (removed !== "") killed = removed;
+
+        return true;
+      },
+    },
+    {
+      name: "composer.yank",
+      run() {
+        const editor = composer();
+
+        if (editor === null || killed === "") return false;
+        editor.insertText(killed);
+
+        return true;
+      },
+    },
+  ];
 
   const fields = Object.keys(FIELD_KEYBINDS).filter((name): name is FieldCommand =>
     Object.hasOwn(FIELD_EDITS, name),
@@ -163,6 +159,31 @@ export function installKeymap(options: KeymapOptions): () => void {
       keys: { "selection.copy": CHAT_KEYBINDS["chat.quit"], "selection.clear": "escape" },
     },
     {
+      priority: 30,
+      enabled: () => live() && typing(),
+      commands: [
+        {
+          name: "field.select.all",
+          run() {
+            store.dispatch({
+              kind: "dialog",
+              command: { kind: "edit", edit: { kind: "select-all" } },
+            });
+          },
+        },
+        {
+          name: "dialog.clipboard.paste",
+          run() {
+            store.dispatch({ kind: "paste", source: { kind: "clipboard" } });
+          },
+        },
+      ],
+      keys: {
+        "field.select.all": FIELD_KEYBINDS["field.select.all"],
+        "dialog.clipboard.paste": CHAT_KEYBINDS["chat.clipboard.paste"],
+      },
+    },
+    {
       priority: 20,
       enabled: () => live() && dialog() !== null,
       ...table(names.filter((name) => !name.startsWith("completion."))),
@@ -170,12 +191,14 @@ export function installKeymap(options: KeymapOptions): () => void {
     {
       priority: 10,
       enabled: () => live() && typing(),
-      commands: fields.map((name) => ({
-        name,
-        run() {
-          store.dispatch({ kind: "dialog", command: { kind: "edit", edit: FIELD_EDITS[name] } });
-        },
-      })),
+      commands: fields
+        .filter((name) => name !== "field.select.all")
+        .map((name) => ({
+          name,
+          run() {
+            store.dispatch({ kind: "dialog", command: { kind: "edit", edit: FIELD_EDITS[name] } });
+          },
+        })),
       keys: Object.fromEntries(fields.map((name) => [name, FIELD_KEYBINDS[name]])),
     },
     {
@@ -203,13 +226,15 @@ export function installKeymap(options: KeymapOptions): () => void {
     registerManagedTextareaLayer(keymap, renderer, {
       priority: -1,
       enabled: () => live() && dialog() === null && composer() !== null,
+      commands: composerCommands,
       bindings: [
         { key: CHAT_KEYBINDS["chat.submit"], cmd: "input.submit" },
         { key: CHAT_KEYBINDS["composer.newline"], cmd: "input.newline" },
         {
           key: CHAT_KEYBINDS["composer.delete.to.line.start"],
-          cmd: "input.delete.to.line.start",
+          cmd: "composer.delete.to.line.start",
         },
+        { key: CHAT_KEYBINDS["composer.yank"], cmd: "composer.yank" },
       ],
     }),
     keymap.intercept("key", ({ event, consume }) => {
@@ -239,7 +264,6 @@ export function installKeymap(options: KeymapOptions): () => void {
   };
 }
 
-/** The composer: the focused textarea, never a single-line input a dialog may focus. */
 function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
   const editor = renderer.currentFocusedEditor;
 
@@ -248,7 +272,6 @@ function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
     : null;
 }
 
-/** A key that types its sequence: no modifier but Shift, no control character. */
 function printable(event: KeyEvent): boolean {
   if (event.ctrl || event.meta || event.option || event.super === true) return false;
   const first = event.sequence.codePointAt(0);
@@ -256,7 +279,6 @@ function printable(event: KeyEvent): boolean {
   return first !== undefined && first >= 32 && first !== 127;
 }
 
-/** Ctrl+C and Esc: the keys the selection layer answers, so they keep the selection. */
 function selectionKey(event: KeyEvent): boolean {
   // Kitty can report a non-Latin key name with a Latin base-layout C.
   const c = event.name === "c" || event.baseCode === 99 || event.baseCode === 67;
@@ -264,7 +286,6 @@ function selectionKey(event: KeyEvent): boolean {
   return (event.ctrl && c) || event.name === "escape";
 }
 
-/** The selection is inside the focused editor, which handles its own keys. */
 function editingSelection(renderer: CliRenderer): boolean {
   const focus = renderer.currentFocusedEditor;
   const selection = renderer.getSelection();

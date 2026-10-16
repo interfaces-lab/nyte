@@ -28,7 +28,17 @@ allowBuilds:
   react-native-enriched-markdown: true
 minimumReleaseAge: 0
 patchedDependencies:
+  "@pierre/diffs@1.4.1": patches/@pierre__diffs@1.4.1.patch
   "@use-voltra/ios-client@2.3.2": patches/@use-voltra__ios-client@2.3.2.patch
+permissions:
+  "@central-icons-react/round-filled-radius-2-stroke-1.5":
+    skills: false
+  "@central-icons-react/round-outlined-radius-1-stroke-1.5":
+    skills: false
+  "@central-icons-react/round-outlined-radius-2-stroke-1.5":
+    skills: false
+  "@tanstack/react-start":
+    skills: true
 skills:
   dirs:
     - .agents/skills

@@ -17,6 +17,7 @@ import { answerLogin } from "./login-attempts.ts";
 import type { BrowserSignIn } from "./login-attempts.ts";
 import { nyte } from "../nyte.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 /** The site a verification link points at, for a button that says where it goes. */
 function linkHost(url: string): string | undefined {
@@ -36,13 +37,7 @@ function linkText(url: string): string {
  * to enter it. The flow's messages sit under it so a poll update never hides
  * what the user still has to type.
  */
-export function DeviceCodePanel({
-  deviceCode,
-  message,
-}: {
-  deviceCode: DeviceCode;
-  message: string | undefined;
-}): ReactElement {
+export function DeviceCodePanel({ deviceCode }: { deviceCode: DeviceCode }): ReactElement {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
 
@@ -52,10 +47,10 @@ export function DeviceCodePanel({
   return (
     <div {...props(styles.deviceCodePanel)}>
       <div {...props(styles.deviceCodeBox)}>
-        <code aria-label="Device code" {...props(styles.deviceCode)}>
+        <code aria-label="Device code" {...props(text.lg, styles.deviceCode)}>
           {userCode}
         </code>
-        <span {...props(styles.deviceCodeLead)}>
+        <span {...props(text.base, styles.deviceCodeLead)}>
           Enter this code on{" "}
           <a
             href={verificationUri}
@@ -88,20 +83,17 @@ export function DeviceCodePanel({
           }}
         />
       </div>
-      {instructions !== undefined && <span {...props(styles.deviceCodeNote)}>{instructions}</span>}
+      {instructions !== undefined && (
+        <span {...props(text.sm, styles.deviceCodeNote)}>{instructions}</span>
+      )}
       {copyStatus === "copied" && (
         <span role="status" {...props(srOnly)}>
           Sign-in code copied
         </span>
       )}
       {copyStatus === "failed" && (
-        <span role="alert" {...props(styles.deviceCodeNote)}>
+        <span role="alert" {...props(text.sm, styles.deviceCodeNote)}>
           Couldn&rsquo;t copy the code. Select it and copy it yourself.
-        </span>
-      )}
-      {message !== undefined && (
-        <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-          {message}
         </span>
       )}
     </div>
@@ -119,7 +111,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 
   if (send.isSuccess) {
     return (
-      <span role="status" {...props(styles.deviceCodeNote)}>
+      <span role="status" {...props(text.sm, styles.deviceCodeNote)}>
         Finishing sign-in…
       </span>
     );
@@ -135,7 +127,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
       }}
     >
       <Input
-        variant="quiet"
+        variant="code"
         aria-label="Code or address"
         autoComplete="off"
         spellCheck={false}
@@ -166,11 +158,9 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 export function BrowserSignInPanel({
   provider,
   browser,
-  message,
 }: {
   provider: string;
   browser: BrowserSignIn;
-  message: string | undefined;
 }): ReactElement {
   const host = linkHost(browser.url);
   const acceptsCode = browser.acceptsCode;
@@ -178,13 +168,10 @@ export function BrowserSignInPanel({
   return (
     <div {...props(styles.deviceCodePanel)}>
       {acceptsCode && (
-        <span {...props(styles.deviceCodeLead)}>
+        <span {...props(text.base, styles.deviceCodeLead)}>
           Sign in at {host ?? "the provider's page"}, then paste the code it shows or the address it
           ends on.
         </span>
-      )}
-      {browser.instructions !== undefined && (
-        <span {...props(styles.deviceCodeNote)}>{browser.instructions}</span>
       )}
       <div {...props(styles.deviceCodeRow)}>
         <ButtonLink
@@ -206,8 +193,8 @@ export function BrowserSignInPanel({
         </ButtonLink>
       </div>
       {acceptsCode && <AnswerForm answer={(code) => answerLogin(provider, code)} />}
-      <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-        {message ?? (acceptsCode ? undefined : "Nyte connects on its own once you sign in.")}
+      <span role="status" aria-live="polite" {...props(text.sm, styles.deviceCodeNote)}>
+        {acceptsCode ? undefined : "Nyte connects on its own once you sign in."}
       </span>
     </div>
   );

@@ -1,17 +1,14 @@
 import { isPart, text } from "@nyte-ai/plugin/client";
 import type { FileStatus, SessionView, TurnInfo } from "@nyte-ai/sdk";
 
-/** Returns whether a turn's run changed files, by the summary the fold keeps. */
 export function changedFiles(turn: TurnInfo): boolean {
   return turn.summary.added + turn.summary.removed > 0 || turn.summary.byClass.edit.count > 0;
 }
 
-/** The newest turn that changed files — the anchor for the review summary. */
 export function latestChangedTurn(view: SessionView): TurnInfo | undefined {
   return view.turns.findLast(changedFiles);
 }
 
-/** Returns a turn's last answer, the agent's own summary of what it did. */
 export function turnAnswer(view: SessionView, turn: TurnInfo): string | undefined {
   const answer = view.messages.findLast(
     (message) => message.turn === turn.id && isPart(message, text),
@@ -20,7 +17,6 @@ export function turnAnswer(view: SessionView, turn: TurnInfo): string | undefine
   return answer !== undefined && isPart(answer, text) ? answer.state.markdown : undefined;
 }
 
-/** The one-letter badge of a changed path. */
 export function fileStatus(status: FileStatus): "A" | "M" | "D" | "R" {
   switch (status) {
     case "added":

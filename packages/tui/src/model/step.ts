@@ -1,9 +1,3 @@
-/**
- * Small state transitions shared by `reduce` and the fact transitions: one
- * notice, one id, and the composer edits. The textarea owns the characters,
- * but every edit `reduce` asks of it is mirrored here at once, so the next
- * decision (and a second handback) sees the text the textarea is about to show.
- */
 import type { Effect } from "./effect.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
@@ -27,14 +21,12 @@ export function withNotice(state: State, text: string, tone: Notice["tone"], now
   return withLocal(state, { notice: { tone, text, at: now } });
 }
 
-/** A fresh id for something `reduce` creates, e.g. `dialog-3`. */
 export function mint(state: State, prefix: string) {
   const sequence = state.local.sequence + 1;
 
   return { state: withLocal(state, { sequence }), id: `${prefix}-${String(sequence)}` };
 }
 
-/** Runs `next` on a step's state and concatenates the effects. */
 export function andThen(step: Step, next: (state: State) => Step): Step {
   const after = next(step.state);
 
@@ -45,7 +37,6 @@ function rowOf(text: string): Draft["row"] {
   return text.includes("\n") ? "last" : "only";
 }
 
-/** Replaces the draft (text and parts) and moves the cursor to its end. */
 export function setDraft(state: State, draft: DraftSnapshot): Step {
   const text = draft.text;
 
@@ -59,7 +50,6 @@ export function setDraft(state: State, draft: DraftSnapshot): Step {
   };
 }
 
-/** Empties the composer and drops every part, the way a send or Ctrl+C does. */
 export function clearDraft(state: State): Step {
   return {
     state: withLocal(state, {
@@ -72,7 +62,6 @@ export function clearDraft(state: State): Step {
   };
 }
 
-/** Replaces `[from, to)` of the draft with `text`, cursor after the insertion. */
 export function replaceRange(state: State, from: number, to: number, text: string): Step {
   const { draft } = state.local;
   const next = `${draft.text.slice(0, from)}${text}${draft.text.slice(to)}`;
@@ -86,7 +75,6 @@ export function replaceRange(state: State, from: number, to: number, text: strin
   };
 }
 
-/** Inserts `text` at the cursor or at the start of the draft. */
 export function insertText(state: State, text: string, at: "cursor" | "start"): Step {
   const { draft } = state.local;
   const position = at === "start" ? 0 : draft.cursor;

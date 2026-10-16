@@ -1,11 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/e98f287ee498e0116546f4e9aa083fdec9793cd2/packages/ai/test/retry.test.ts
- * Synced with pi e98f287ee.
- *
- * Nyte divergence: pi builds messages with `fauxAssistantMessage` from
- * `providers/faux.ts`; that provider is ported with the registry, so a local
- * builder with the same signature stands in here.
- */
 import assert from "node:assert/strict";
 import { describe, vi, test } from "vitest";
 import type { AssistantMessage } from "@nyte-ai/schema/model";

@@ -2,7 +2,6 @@ import { asId } from "@nyte-ai/schema";
 import type {
   CallId,
   CommitId,
-  Disposer,
   DurableEvent,
   ExecutionCoverage,
   HeadInfo,
@@ -46,43 +45,33 @@ import type {
   SessionRecord,
 } from "./records.ts";
 import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
-import { sessionInfo } from "./session.ts";
 import { publishSet } from "./watch.ts";
 
-/** The head every session has; "main" is the session itself. */
 export const MAIN: HeadName = asId<"head">("main");
 
-/** The revision of a ref that does not exist yet; every `expect` treats it as `"absent"`. */
 export const EMPTY_REVISION: Revision = asId<"revision">("");
 
-/** The position before the first commit. */
 export const START: Position = { kind: "start" };
 
-/** What a write returns when its compare-and-set lost, so `attempt` re-reads and tries again. */
 export const STALE: unique symbol = Symbol("stale");
 
-/** Returns a ref with the record its object holds. */
 export interface Found<T> {
   readonly ref: Ref;
   readonly record: T;
 }
 
-/** Returns a head's ref, the commit it points at and that commit's id; all null at the start. */
 export interface Tip {
   readonly ref: Ref | null;
   readonly id: CommitId | null;
   readonly commit: CommitRecord | null;
 }
 
-/** Returns a head's inbox ref and its record. */
 export interface Inbox extends InboxRecord {
   readonly ref: Ref | null;
 }
 
-/** Returns the outcomes a move or an edit settles with when nothing moved. */
 export type MoveFailure = Exclude<MoveOutcome, { readonly kind: "moved" }>;
 
-/** Returns the next state of a call record and what lands in the same set: the event its own entry carries and further ref updates. */
 export interface CallChange {
   readonly record: CallRecord;
   readonly event?: DurableEvent;
@@ -91,7 +80,12 @@ export interface CallChange {
 
 const CALL_TRIES = 8;
 
-/** Returns the record a ref's object holds, or null when the ref is absent; throws `internal` when the object is another record. */
+const DISPATCH_RETRIES = 3;
+
+const DISPATCH_BACKOFF_MS = 50;
+
+const SESSION_PAGE = 100;
+
 export async function load<T>(
   kernel: Kernel,
   ref: Ref | null,
@@ -106,7 +100,6 @@ export async function load<T>(
   return { ref, record };
 }
 
-/** Returns the session record and its ref, or null when the session does not exist. */
 export async function readSession(
   kernel: Kernel,
   session: SessionId,
@@ -114,7 +107,6 @@ export async function readSession(
   return load(kernel, await kernel.store.refs.get(sessionRef(session)), decodeSessionRecord);
 }
 
-/** Returns the session record and its ref; throws `unknown` when the session does not exist. */
 export async function requireSession(
   kernel: Kernel,
   session: SessionId,
@@ -126,7 +118,6 @@ export async function requireSession(
   return found;
 }
 
-/** Returns the receipt record and its ref, or null when the host does not have it. */
 export async function readReceipt(
   kernel: Kernel,
   session: SessionId,
@@ -139,7 +130,6 @@ export async function readReceipt(
   );
 }
 
-/** Returns a head's ref and tip commit. */
 export async function readTip(kernel: Kernel, session: SessionId, head: HeadName): Promise<Tip> {
   const ref = await kernel.store.refs.get(headRef(session, head));
 
@@ -150,7 +140,6 @@ export async function readTip(kernel: Kernel, session: SessionId, head: HeadName
   };
 }
 
-/** Returns a head's inbox ref and its inputs in order. */
 export async function readInbox(
   kernel: Kernel,
   session: SessionId,
@@ -163,7 +152,6 @@ export async function readInbox(
   return { ref, messages: record?.messages ?? [], pendingInput: record?.pendingInput ?? [] };
 }
 
-/** Returns an inbox's record once `ids` left it. */
 export function inboxWithout(inbox: Inbox, ids: readonly MessageId[]): InboxRecord {
   return {
     messages: inbox.messages.filter((message) => !ids.includes(message)),
@@ -171,7 +159,6 @@ export function inboxWithout(inbox: Inbox, ids: readonly MessageId[]): InboxReco
   };
 }
 
-/** Returns every run record whose ref exists: the runs live in the session. */
 export async function liveRuns(
   kernel: Kernel,
   session: SessionId,
@@ -182,7 +169,6 @@ export async function liveRuns(
   return runs.flatMap((run) => (run === null ? [] : [run]));
 }
 
-/** Returns the run live on a head, or null when the head is idle. */
 export async function liveRun(
   kernel: Kernel,
   session: SessionId,
@@ -191,17 +177,14 @@ export async function liveRun(
   return (await liveRuns(kernel, session)).find((run) => run.record.view.head === head) ?? null;
 }
 
-/** Returns the `expect` that holds a ref where it is: its revision, or `"absent"`. */
-export function expectOf(ref: Ref | null): Revision | "absent" {
+export function readRefExpectation(ref: Ref | null): Revision | "absent" {
   return ref === null ? "absent" : ref.revision;
 }
 
-/** Returns whether a client's `expect` still matches a ref; the empty revision matches only an absent ref. */
 export function sameRevision(expect: Revision, ref: Ref | null): boolean {
   return expect === EMPTY_REVISION ? ref === null : ref?.revision === expect;
 }
 
-/** Returns a move's `stale` outcome: the head ref's current revision. */
 export async function staleHead(
   kernel: Kernel,
   session: SessionId,
@@ -213,7 +196,6 @@ export async function staleHead(
   };
 }
 
-/** Writes a new receipt record, pending or already settled; throws `stale` when the id exists. */
 export async function writeReceipt(
   kernel: Kernel,
   session: SessionId,
@@ -230,7 +212,6 @@ export async function writeReceipt(
   if (outcome.kind === "stale") throw new SdkError("stale", `Receipt ${record.id} already exists.`);
 }
 
-/** Stores a record in its envelope and returns its object id. */
 export async function put(
   kernel: Kernel,
   kind: RecordKind,
@@ -244,20 +225,25 @@ export async function put(
   return id;
 }
 
-/** Publishes one batch and its events: the one `refs.set` of a durable change. A part the batch failed resolves its pending local `answer()` with null, as no answer can land on it. */
 export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Promise<SetOutcome> {
   const outcome = await kernel.store.refs.set(updates);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
-  await publishSet(kernel, updates, outcome);
 
   if (outcome.kind === "set")
     for (const { name, event } of updates)
       if (event?.kind === "part" && event.change === "failed") dismiss(kernel.partTable, name);
 
+  try {
+    await publishSet(kernel, updates, outcome);
+  } catch (error) {
+    dev("store", "publish failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return outcome;
 }
 
-/** Runs a read-then-write until it wins: a lost compare-and-set means another write landed, so it reads again. */
 export async function attempt<T>(what: string, write: () => Promise<T | typeof STALE>): Promise<T> {
   for (;;) {
     const result = await write();
@@ -267,7 +253,6 @@ export async function attempt<T>(what: string, write: () => Promise<T | typeof S
   }
 }
 
-/** Reads the session's shared fold, as the host sees it, without keeping it. */
 export async function withFold<T>(
   kernel: Kernel,
   session: SessionId,
@@ -284,8 +269,7 @@ export async function withFold<T>(
   }
 }
 
-/** Returns the ids of the commits from the root to a tip, oldest first. */
-export function pathOf(
+export function walkCommitPath(
   commits: ReadonlyMap<CommitId, CommitRecord>,
   tip: CommitId | null,
 ): readonly CommitId[] {
@@ -305,41 +289,22 @@ export function pathOf(
   return path.reverse();
 }
 
-/** Returns the commit a position names, or null at the start. */
-export function tipOf(position: Position): CommitId | null {
+export function readPositionCommit(position: Position): CommitId | null {
   return position.kind === "commit" ? position.id : null;
 }
 
-/** Returns the position of a commit, or the start for null. */
-export function positionOf(commit: CommitId | null): Position {
+export function createPosition(commit: CommitId | null): Position {
   return commit === null ? START : { kind: "commit", id: commit };
 }
 
-/** Stores a commit in its envelope and returns its id: the object id the store returned. */
-export async function putCommit(kernel: Kernel, record: CommitRecord): Promise<CommitId> {
-  const object = envelope("commit", record, record.at);
-  const id = asId<"commit">(await kernel.store.objects.put(object));
-  dev("store", "objects.put", { id, kind: "commit", bytes: dev.bytes(object) });
-
-  return id;
-}
-
-/** Returns the object a commit is stored as: the object whose id is the commit's. */
-export function objectOf(commit: CommitId): ObjectId {
+export function toCommitObjectId(commit: CommitId): ObjectId {
   return asId<"object">(commit);
 }
 
-/** Returns the commit stored under an id, or null when no commit has it. */
 export async function readCommit(kernel: Kernel, commit: CommitId): Promise<CommitRecord | null> {
-  return decodeCommitRecord(await kernel.store.objects.get(objectOf(commit)));
+  return decodeCommitRecord(await kernel.store.objects.get(toCommitObjectId(commit)));
 }
 
-/** Returns, by run, the messages this process landed into it; `endRun` settles their receipts. */
-export function landedIn(kernel: Kernel): Map<RunId, MessageId[]> {
-  return kernel.executionState.landedRuns;
-}
-
-/** Returns a durable step's call record and its ref, or null when the step has none. */
 export async function readCall(
   kernel: Kernel,
   session: SessionId,
@@ -348,7 +313,6 @@ export async function readCall(
   return load(kernel, await kernel.store.refs.get(callRef(session, call)), decodeCallRecord);
 }
 
-/** Returns every call record in a session. */
 export async function readCalls(
   kernel: Kernel,
   session: SessionId,
@@ -359,7 +323,6 @@ export async function readCalls(
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }
 
-/** Returns the parts of a run the session's log shows live or waiting: the candidates a run's fence or end fails, each re-read by the write. */
 export function liveParts(
   kernel: Kernel,
   session: SessionId,
@@ -374,7 +337,6 @@ export function liveParts(
   );
 }
 
-/** Changes a call record one change at a time per call in this process: reads it (null when absent), asks `change` for the next state, and compare-and-sets it with the change's updates in one set; a lost race reads and asks again. Resolves the record as written, or as read when `change` returned null, and whether it wrote. */
 export function changeCall(
   kernel: Kernel,
   session: SessionId,
@@ -395,7 +357,7 @@ export function changeCall(
         {
           name,
           target: await put(kernel, "call", next.record),
-          expect: expectOf(found?.ref ?? null),
+          expect: readRefExpectation(found?.ref ?? null),
           event: next.event,
         },
         ...(next.updates ?? []),
@@ -420,7 +382,6 @@ export function changeCall(
   return done;
 }
 
-/** Returns whether a coverage includes a session: every session, its workspace, or it or an ancestor listed (`sessions` names sessions and their descendants). */
 export async function covers(
   kernel: Kernel,
   coverage: ExecutionCoverage,
@@ -439,69 +400,117 @@ export async function covers(
   return false;
 }
 
-/** Records a coverage an in-process driver or an open `cover` runs while it is open, so `isCovered` counts it on a kernel whose own execution is `admit-only`; the disposer removes it. */
-export function addDriven(kernel: Kernel, coverage: ExecutionCoverage): Disposer {
-  const coverages = kernel.executionState.driven;
-  const entry = { ...coverage };
-  coverages.add(entry);
+/** Every session record, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
+export async function listSessionRecords(kernel: Kernel): Promise<readonly SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  let after: { readonly at: number; readonly id: SessionId } | undefined;
 
-  return () => {
-    coverages.delete(entry);
-  };
+  for (;;) {
+    const refs = await kernel.store.sessions.list({
+      parents: { kind: "all" },
+      after,
+      limit: SESSION_PAGE,
+    });
+    const found = await Promise.all(refs.map(({ ref }) => load(kernel, ref, decodeSessionRecord)));
+    const page = found.flatMap((entry) => (entry === null ? [] : [entry.record]));
+    records.push(...page);
+    const last = page.at(-1);
+
+    if (refs.length < SESSION_PAGE || last === undefined) return records;
+    after = { at: last.lastActivityAt, id: last.id };
+  }
 }
 
-/** Returns whether this host runs a session: always on a `dispatch` kernel, else when its own `run` coverage or an open driver's or `cover`'s coverage includes it. */
+export async function coveredSessions(
+  kernel: Kernel,
+  coverage: Exclude<ExecutionCoverage, { readonly kind: "all" }>,
+): Promise<readonly SessionRecord[]> {
+  if (coverage.kind === "sessions" && coverage.sessions.length === 0) return [];
+  const records = await listSessionRecords(kernel);
+
+  if (coverage.kind === "workspace")
+    return records.filter((record) => record.workspace === coverage.workspace);
+  const included = new Set(coverage.sessions);
+  let grew = true;
+
+  while (grew) {
+    grew = false;
+
+    for (const record of records)
+      if (!included.has(record.id) && record.parent !== null && included.has(record.parent)) {
+        included.add(record.id);
+        grew = true;
+      }
+  }
+
+  return records.filter((record) => included.has(record.id));
+}
+
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 
   if (kernel.execution.kind === "run" && (await covers(kernel, kernel.execution.coverage, session)))
     return true;
 
-  for (const coverage of kernel.executionState.driven)
+  for (const coverage of kernel.executionState.covers.values())
     if (await covers(kernel, coverage, session)) return true;
 
   return false;
 }
 
-/** Hands a head owed a step to a `dispatch` kernel's dispatcher: at most one dispatch per head in flight in this instance, a later wake while it is pending dropped; a rejected one is recorded nowhere, the head staying owed for `repair`. */
 export function dispatchHead(
   kernel: Kernel,
   execution: Extract<Kernel["execution"], { readonly kind: "dispatch" }>,
   session: SessionId,
   head: HeadName,
 ): void {
-  const inFlight = kernel.executionState.pending;
+  const pending = kernel.executionState.pending;
   const key = JSON.stringify([session, head]);
 
-  if (inFlight.has(key)) return;
-  inFlight.add(key);
-  dev("execution", "dispatch", { session, head });
+  if (pending.has(key)) {
+    pending.set(key, true);
 
-  void Promise.resolve()
-    .then(() => execution.dispatch({ session, head }))
-    .catch(() => undefined)
-    .finally(() => inFlight.delete(key));
+    return;
+  }
+
+  pending.set(key, false);
+
+  void (async () => {
+    for (let tries = 0; tries <= DISPATCH_RETRIES; tries += 1) {
+      if (tries > 0)
+        await new Promise((resolve) => setTimeout(resolve, DISPATCH_BACKOFF_MS * 2 ** tries));
+      dev("execution", "dispatch", { session, head, tries });
+
+      const dispatched = await Promise.resolve()
+        .then(() => execution.dispatch({ session, head }))
+        .then(
+          () => true,
+          () => false,
+        );
+
+      if (dispatched) break;
+    }
+
+    const again = pending.get(key) === true;
+    pending.delete(key);
+
+    if (again) dispatchHead(kernel, execution, session, head);
+  })();
 }
 
-/** Returns the `session` event for a record about to be written: the current directory row with the record's fields and heads, and `rows` laid over named heads. */
 export async function sessionEvent(
   kernel: Kernel,
   record: SessionRecord,
   rows?: ReadonlyMap<HeadName, Partial<HeadInfo>>,
 ): Promise<DurableEvent> {
-  const before = await sessionInfo(kernel, record.id, LOCAL);
-
-  const heads = record.heads.map((head): HeadInfo => {
-    const row: HeadInfo = before?.heads.find((current) => current.name === head.name) ?? {
-      name: head.name,
-      tip: START,
-      stack: head.stack,
-      execution: { kind: "idle", lastRun: head.lastRun },
-      unread: false,
-    };
-
-    return { ...row, stack: head.stack, ...rows?.get(head.name) };
-  });
+  const heads = record.heads.map((head): HeadInfo => ({
+    name: head.name,
+    tip: START,
+    stack: head.stack,
+    execution: { kind: "idle", lastRun: head.lastRun },
+    unread: false,
+    ...rows?.get(head.name),
+  }));
 
   return {
     head: null,
@@ -510,6 +519,7 @@ export async function sessionEvent(
       id: record.id,
       name: record.name,
       parent: record.parent,
+      call: record.origin?.call ?? null,
       workspace: record.workspace,
       pinned: record.pinned,
       archived: record.archived,
@@ -521,8 +531,7 @@ export async function sessionEvent(
   };
 }
 
-/** Returns the text items of user content joined, or the string itself. */
-export function textOf(content: UserContent): string {
+export function extractUserText(content: UserContent): string {
   if (typeof content === "string") return content;
 
   return content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join(" ");

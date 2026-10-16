@@ -61,7 +61,6 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
   }
 
-  // An HTTPS page can only fetch plain HTTP from loopback, which browsers count as secure.
   if (url.protocol === "http:" && location.protocol === "https:" && !isLoopbackHost(url.hostname)) {
     throw new Error(
       "This page is served over HTTPS, so it needs an HTTPS address, such as one from Tailscale HTTPS.",

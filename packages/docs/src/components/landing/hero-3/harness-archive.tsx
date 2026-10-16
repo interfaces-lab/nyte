@@ -46,7 +46,7 @@ export function HarnessArchive() {
         ))}
         <li>
           <Link
-            to="/docs"
+            to="/docs/$"
             className={`${tileClass} bg-(--hero-blue) text-white outline-none transition-[background-color] duration-150 hover:bg-(--hero-blue)/88 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
           >
             <div className="grid aspect-[4/3] w-full place-items-center rounded-[10px] bg-white/10">

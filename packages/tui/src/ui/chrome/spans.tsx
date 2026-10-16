@@ -1,4 +1,3 @@
-/** A row drawn as coloured runs: the hint row, the powerline, the moon. */
 import type { JSX } from "@opentui/solid";
 import { For } from "solid-js";
 

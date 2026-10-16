@@ -1,8 +1,3 @@
-/**
- * The web project's server: a host opened with `sdk.open` over an in-memory
- * store, whose provider answers "Echo: <last user text>" without a network,
- * listening on the e2e port and serving the built app from the same origin.
- */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -34,7 +29,6 @@ const model: Model<Api> = {
   maxTokens: 1_000,
 };
 
-/** Answers `Echo: <last user text>`. */
 const echo: Provider["stream"] = (selected, context) => {
   const message = context.messages.findLast((candidate) => candidate.role === "user");
 
@@ -104,7 +98,6 @@ const TYPES: Readonly<Record<string, string>> = {
   ".json": "application/json",
 };
 
-/** The built app: a file under `dist`, else the shell for any route. */
 async function serveApp(request: Request): Promise<Response | undefined> {
   const { pathname } = new URL(request.url);
 

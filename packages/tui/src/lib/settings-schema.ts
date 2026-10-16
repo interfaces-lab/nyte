@@ -1,7 +1,3 @@
-/**
- * The terminal's own preferences as stored and as resolved: theme, keys,
- * editor and updates. Parsing trusts nothing until the whole file checks out.
- */
 import type { Json, Thinking } from "@nyte-ai/sdk";
 import { isJsonObject, type JsonObject } from "../json.ts";
 import { THINKING_LEVELS } from "./constants.ts";
@@ -9,15 +5,11 @@ import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 
 export interface SettingsFile {
   readonly externalEditor?: string;
-  /** Install a newer release when the TUI starts, instead of only saying one exists. */
   readonly autoUpdate?: boolean;
-  /** A pinned mode, or `auto` to follow the terminal. */
   readonly theme?: ThemeChoice;
   readonly copyOnSelect?: boolean;
-  /** Use timing-sensitive wheel acceleration instead of the fixed three-row step. */
   readonly scrollAcceleration?: boolean;
   readonly followUp?: "steer" | "queue";
-  /** The last thinking level the user chose; a session the TUI creates starts at it. */
   readonly thinkingLevel?: Thinking;
 }
 
@@ -61,9 +53,7 @@ function optionalBoolean(object: JsonObject, key: string, path: string): boolean
   return field;
 }
 
-/** Parse the complete settings file before any of it is trusted. */
 export function parseSettingsFile(value: Json, path = "settings"): SettingsFile {
-  // The host and other frontends keep their own keys in the same file.
   if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
 
   let settings: SettingsFile = {};

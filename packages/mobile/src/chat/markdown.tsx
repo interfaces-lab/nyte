@@ -29,7 +29,6 @@ function filePath(url: string): string {
   }
 }
 
-/** Opens an http(s) link in the system browser; resolves false for any other URL or when the system refused it. */
 export function openExternalLink(url: string): Promise<boolean> {
   if (!/^https?:\/\//i.test(url)) return Promise.resolve(false);
 

@@ -1,219 +1,222 @@
 import { create, props } from "@stylexjs/stylex";
-import { useMutation } from "@tanstack/react-query";
-import { Fragment, useId, useRef } from "react";
+import { useContext, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { openQuestions } from "@nyte-ai/plugin/question";
-import type { OpenQuestion } from "@nyte-ai/plugin/question";
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { Row } from "@nyte-ai/ui/row";
+import { Button } from "@nyte-ai/ui/button";
 import {
   Questionnaire,
   QuestionnaireChoice,
+  QuestionnaireChoiceDescription,
   QuestionnaireChoices,
+  QuestionnaireDescription,
   QuestionnaireError,
   QuestionnaireItem,
   QuestionnaireTitle,
 } from "@nyte-ai/ui/questionnaire";
-import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
-import { checkbox, radius } from "@nyte-ai/ui/styles/schema.stylex";
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { useChildSessions, useSessionView } from "../../queries.ts";
-import { tray } from "../../theme/schema.stylex.ts";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
-import { answerQuestion, questionAnswerOptions } from "./questions-state.ts";
+import { QuestionDockContext } from "./questions-state.ts";
+import type { QuestionDock } from "./questions-state.ts";
 
 const styles = create({
-  list: { gap: 12, paddingTop: 6, paddingBottom: 6 },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    minWidth: 0,
-    fontSize: type.fontBase,
-    color: role.contentPrimary,
-  },
+  list: { gap: space.s3, paddingTop: space.s1_5, paddingBottom: space.s1_5 },
+  cardHeight: (height: number) => ({ maxHeight: height }),
   header: {
     display: "flex",
-    alignItems: "baseline",
-    gap: 12,
-    paddingTop: 4,
-    paddingBottom: 4,
-    paddingInline: 6,
-  },
-  heading: {
-    flex: 1,
-    minWidth: 0,
-    margin: 0,
-    fontSize: type.fontBase,
-    fontWeight: 600,
-    lineHeight: type.leadingBase,
-    textWrap: "pretty",
-  },
-  origin: {
-    display: "block",
-    fontWeight: 400,
-    color: role.contentSecondary,
-    overflowWrap: "anywhere",
-  },
-  deadline: {
     flexShrink: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    fontVariantNumeric: "tabular-nums",
+    alignItems: "center",
+    gap: space.s2,
+    paddingInline: space.s1_5,
   },
-  choices: { display: "flex", flexDirection: "column", gap: 1 },
-  choice: {
-    "--_row-fill": {
-      default: "transparent",
-      ":hover:not(:disabled)": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
-    },
-    alignItems: "flex-start",
-    gap: 8,
-    minHeight: tray.rowHeight,
-    paddingBlock: 4,
-    paddingInline: 6,
-    borderRadius: radius.control,
-    lineHeight: type.leadingBase,
-    color: { default: role.contentPrimary, ":disabled": role.contentDisabled },
-  },
-  choiceText: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
-  description: {
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    textWrap: "pretty",
-  },
-  box: {
-    display: "grid",
-    placeItems: "center",
+  summary: { flex: 1 },
+  progress: { display: "flex", alignItems: "center", gap: space.px },
+  choices: { flex: "1 1 auto", overflowY: "auto", overscrollBehavior: "contain" },
+  footer: {
+    display: "flex",
     flexShrink: 0,
-    width: checkbox.sizeMd,
-    height: checkbox.sizeMd,
-    marginTop: 1,
-    borderWidth: 1.5,
-    borderStyle: "solid",
-    borderColor: role.borderControlTranslucent,
-    borderRadius: checkbox.radius,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.s2,
+    paddingInline: space.s1_5,
+    paddingBottom: space.s1_5,
   },
-  // A ticked box paints inside the primary intent, as the checkbox does.
-  boxChecked: {
-    borderColor: role.bgControlSelected,
-    backgroundColor: role.bgControlSelected,
-    color: role.contentOnControl,
-  },
-  footer: { display: "flex", justifyContent: "flex-end", paddingInline: 6, paddingBottom: 6 },
-  note: { paddingInline: 6, color: role.contentSecondary, fontSize: type.fontSm },
-  error: { color: role.contentSecondary, fontSize: type.fontSm },
+  actions: { display: "flex", alignItems: "center", gap: space.s2 },
 });
 
 function QuestionCard({
-  sessionId,
-  origin,
-  question,
+  dock,
   disabled,
+  availableHeight,
 }: {
-  readonly sessionId: SessionId;
-  readonly origin?: string;
-  readonly question: OpenQuestion;
+  readonly dock: QuestionDock;
   readonly disabled: boolean;
+  readonly availableHeight: number;
 }): ReactElement {
   const id = useId();
-  const submitting = useRef(false);
-  const reply = useMutation(questionAnswerOptions({ sessionId, question }));
-  const blocked = disabled || reply.isPending || reply.isSuccess;
+  const [collapsed, setCollapsed] = useState(false);
+  const blocked = disabled || dock.pending || dock.settled;
+  const multiple = dock.field.multiple === true;
+  const fieldName = `${dock.request.part}:${dock.current}`;
+  const form = useRef<HTMLFormElement>(null);
+  const restoreFocus = useRef(false);
+  useLayoutEffect(() => {
+    const element = form.current;
 
-  const send = (choice: string) => {
-    if (blocked || submitting.current) return;
-    submitting.current = true;
-    reply.mutate(choice, {
-      onSettled: () => {
-        submitting.current = false;
-      },
-    });
-  };
+    if (restoreFocus.current)
+      element
+        ?.querySelector<HTMLInputElement>("input:not(:disabled)")
+        ?.focus({ preventScroll: true });
+
+    return () => {
+      restoreFocus.current = element?.contains(document.activeElement) ?? false;
+    };
+  }, [fieldName]);
 
   return (
     <Questionnaire
+      key={fieldName}
+      ref={form}
       aria-labelledby={`${id}-title`}
-      item={question.part}
+      item={fieldName}
       items={[
         {
-          name: question.part,
-          required: true,
-          choices: question.options.map((option) => ({ value: option, disabled: blocked })),
+          name: fieldName,
+          required: false,
+          choices: dock.field.options.map((_, index) => ({
+            value: String(index),
+            disabled: blocked,
+          })),
         },
       ]}
-      onSubmit={(event) => event.preventDefault()}
-      {...props(styles.card)}
+      shortcuts={collapsed ? undefined : "numbers"}
+      onSubmit={(event) => {
+        event.preventDefault();
+
+        if (!blocked) void dock.advance().catch(() => undefined);
+      }}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing)
+          return;
+
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "Enter") {
+          event.preventDefault();
+          void dock.advance().catch(() => undefined);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          void dock.dismiss().catch(() => undefined);
+        }
+      }}
+      xstyle={styles.cardHeight(availableHeight)}
     >
       <QuestionnaireItem
-        name={question.part}
-        multiple={false}
-        required
+        name={fieldName}
+        multiple={multiple}
+        required={false}
         aria-labelledby={`${id}-title`}
-        {...props(trayParts.presence)}
       >
         <div {...props(styles.header)}>
-          <QuestionnaireTitle render={<h2 />} id={`${id}-title`} {...props(styles.heading)}>
-            {origin !== undefined && <span {...props(styles.origin)}>Asked by {origin}</span>}
-            {question.prompt}
-          </QuestionnaireTitle>
+          <QuestionnaireDescription render={<span />} xstyle={styles.summary}>
+            {dock.total === 1 ? "Question" : `${dock.current + 1} of ${dock.total} questions`}
+          </QuestionnaireDescription>
+          {dock.total > 1 && (
+            <div {...props(styles.progress)}>
+              {dock.request.questions.map((field, index) => (
+                <Button
+                  key={index}
+                  size="2xs"
+                  iconOnly
+                  icon={dock.answered[index] ? "checkmark" : undefined}
+                  variant={index === dock.current ? "outline" : "plain"}
+                  aria-label={`${field.header}, question ${index + 1}`}
+                  aria-current={index === dock.current ? "step" : undefined}
+                  disabled={blocked}
+                  onClick={() => dock.jump(index)}
+                >
+                  {dock.answered[index] ? undefined : index + 1}
+                </Button>
+              ))}
+            </div>
+          )}
+          <Button
+            size="2xs"
+            iconOnly
+            icon={collapsed ? "chevron-right" : "chevron-down"}
+            aria-label={collapsed ? "Show choices" : "Hide choices"}
+            aria-expanded={!collapsed}
+            disabled={blocked}
+            onClick={() => setCollapsed(!collapsed)}
+          />
         </div>
+        <QuestionnaireTitle render={<h2 />} id={`${id}-title`} aria-live="polite" aria-atomic>
+          {dock.field.question}
+        </QuestionnaireTitle>
+        {dock.origin !== undefined && (
+          <QuestionnaireDescription>Asked by {dock.origin}</QuestionnaireDescription>
+        )}
         <QuestionnaireChoices
-          role="group"
+          hidden={collapsed || dock.field.options.length === 0}
+          role={multiple ? "group" : "radiogroup"}
           aria-labelledby={`${id}-title`}
-          aria-busy={reply.isPending}
-          {...props(styles.choices)}
+          aria-busy={dock.pending}
+          xstyle={styles.choices}
         >
-          {question.options.map((option) => (
-            <Fragment key={option}>
-              <QuestionnaireChoice
-                hidden
-                value={option}
-                checked={false}
-                disabled={blocked}
-                onChange={() => send(option)}
-              >
-                {option}
-              </QuestionnaireChoice>
-              <Row
-                variant="nav"
-                aria-label={option}
-                disabled={blocked}
-                xstyle={[styles.choice, focus.ring]}
-                onClick={(event) => {
-                  const input = event.currentTarget.previousElementSibling?.querySelector("input");
-
-                  if (input instanceof HTMLInputElement) input.click();
-                }}
-              >
-                <span {...props(styles.choiceText)}>
-                  <span>{option}</span>
-                </span>
-              </Row>
-            </Fragment>
+          {dock.field.options.map((option, index) => (
+            <QuestionnaireChoice
+              key={option.label}
+              value={String(index)}
+              checked={dock.isSelected(option.label)}
+              disabled={blocked}
+              onChange={() => dock.select(option.label)}
+            >
+              <span>{option.label}</span>
+              {option.description !== "" && (
+                <QuestionnaireChoiceDescription>
+                  {option.description}
+                </QuestionnaireChoiceDescription>
+              )}
+            </QuestionnaireChoice>
           ))}
         </QuestionnaireChoices>
-        {reply.isPending && (
-          <div role="status" {...props(styles.note)}>
-            Sending answer…
-          </div>
-        )}
-        {reply.isSuccess && (
-          <div role="status" {...props(styles.note)}>
-            Answer sent.
-          </div>
-        )}
-        {reply.isError && (
-          <QuestionnaireError
-            hidden={false}
-            render={<div />}
-            role="alert"
-            {...props(intent.danger, styles.note, styles.error)}
+        <div {...props(styles.footer)}>
+          <Button
+            size="sm"
+            disabled={blocked}
+            onClick={() => void dock.dismiss().catch(() => undefined)}
           >
-            Couldn&rsquo;t send your answer. Try again.
+            Dismiss
+          </Button>
+          <div {...props(styles.actions)}>
+            {dock.current > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={blocked}
+                onClick={() => dock.jump(dock.current - 1)}
+              >
+                Back
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant={dock.last ? "solid" : "outline"}
+              type="button"
+              onClick={() => void dock.advance().catch(() => undefined)}
+              disabled={blocked}
+              aria-keyshortcuts="Meta+Enter Control+Enter"
+            >
+              {dock.last ? "Submit" : "Next"}
+            </Button>
+          </div>
+        </div>
+        {dock.pending && (
+          <QuestionnaireDescription role="status">Sending answers…</QuestionnaireDescription>
+        )}
+        {dock.settled && (
+          <QuestionnaireDescription role="status">Answers sent.</QuestionnaireDescription>
+        )}
+        {dock.error !== undefined && (
+          <QuestionnaireError hidden={false} render={<div />} role="alert">
+            {dock.error}
           </QuestionnaireError>
         )}
       </QuestionnaireItem>
@@ -221,111 +224,28 @@ function QuestionCard({
   );
 }
 
-/** What the composer answers while a question waits, with the words it asks for. */
-export interface ComposerAnswer {
-  readonly placeholder: string;
-  readonly send: (text: string) => Promise<void>;
-}
-
-/**
- * The first waiting question of this session, in the tray's order. The
- * composer answers it in the user's own words, as the terminal's does.
- */
-export function useComposerAnswer(sessionId: SessionId): ComposerAnswer | undefined {
-  const [question] = openQuestions(useSessionView(sessionId));
-
-  if (question === undefined) return undefined;
-
-  return {
-    placeholder: "Answer in your own words",
-    send: (text) => answerQuestion(sessionId, question, text),
-  };
-}
-
-/** A delegated child's waiting questions, watched while the child waits on one. */
-function ChildQuestions({
-  child,
-  disabled,
-}: {
-  readonly child: SessionInfo;
-  readonly disabled: boolean;
-}): ReactElement {
-  const questions = openQuestions(useSessionView(child.id));
-
-  return (
-    <>
-      {questions.map((question) => (
-        <QuestionCard
-          key={`${child.id}:${question.part}`}
-          sessionId={child.id}
-          origin={child.name ?? "a subagent"}
-          question={question}
-          disabled={disabled}
-        />
-      ))}
-    </>
-  );
-}
-
-/** Whether a child's main head is parked on a part, which is how a question waits. */
-function waitsOnQuestion(child: SessionInfo): boolean {
-  const execution = child.heads[0]?.execution;
-
-  return execution?.kind === "waiting" && execution.on.kind === "part";
-}
-
-/** Every question waiting on this session or on a session it delegated to. */
-export function Questions({
-  sessionId,
-  disabled,
-}: {
-  readonly sessionId: SessionId;
-  readonly disabled: boolean;
-}): ReactElement {
-  const questions = openQuestions(useSessionView(sessionId));
-  const children = useChildSessions(sessionId);
-
-  return (
-    <>
-      {questions.map((question) => (
-        <QuestionCard
-          key={`${sessionId}:${question.part}`}
-          sessionId={sessionId}
-          question={question}
-          disabled={disabled}
-        />
-      ))}
-      {(children.data ?? []).filter(waitsOnQuestion).map((child) => (
-        <ChildQuestions key={child.id} child={child} disabled={disabled} />
-      ))}
-    </>
-  );
-}
-
-/** Questions wait above the composer, which answers them in the user's own words. */
 export function QuestionTray({
-  sessionId,
   disabled,
   viewport,
 }: {
-  readonly sessionId: SessionId;
   readonly disabled: boolean;
   readonly viewport: HTMLElement | null;
 }): ReactElement {
+  const dock = useContext(QuestionDockContext);
   const { ref, availableHeight } = useTrayRoot(viewport);
-  const children = useChildSessions(sessionId);
-  const count =
-    openQuestions(useSessionView(sessionId)).length +
-    (children.data ?? []).filter(waitsOnQuestion).length;
 
   return (
     <div ref={ref} {...props(trayParts.root)}>
-      <Tray open={count > 0} label="Questions">
-        <div
-          data-nyte-scrollport
-          {...props(trayStyles.list, styles.list, trayParts.listHeight(availableHeight))}
-        >
-          <Questions sessionId={sessionId} disabled={disabled} />
+      <Tray open={dock !== undefined} label="Questions">
+        <div data-nyte-scrollport {...props(trayStyles.list, styles.list)}>
+          {dock !== undefined && (
+            <QuestionCard
+              key={dock.request.part}
+              dock={dock}
+              disabled={disabled}
+              availableHeight={availableHeight}
+            />
+          )}
         </div>
       </Tray>
     </div>

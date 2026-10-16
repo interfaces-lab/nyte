@@ -1,8 +1,3 @@
-/**
- * TanStack Query over the connection's one-shot reads. Startup connects and
- * seeds local data before mounting the shell; everything that changes without
- * this client's action is a shared watch from `sdk.tsx`, never an invalidation.
- */
 import {
   QueryClient,
   useMutation,
@@ -115,27 +110,39 @@ const readHost = () => nyte.host.state();
 
 const readWorkspaces = () => connection().workspaces.list();
 
-const readCatalog = async (): Promise<DesktopCatalog> =>
-  catalogOf(await connection().models.list());
+const readModelCatalog = () => connection().models.list();
 
-/** The selected folder's workspace id; Home has none. */
+function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
+  if (previous !== undefined) return previous;
+  const recent = queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ["catalog", "models"] })
+    .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
+    .find((query) => query.state.data !== undefined);
+
+  return recent === undefined
+    ? undefined
+    : queryClient.getQueryData<ModelCatalogView>(recent.queryKey);
+}
+
 export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
-/** The folder a listed session's workspace lives in: its path, null for one no local folder backs, undefined when unlisted. */
 export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
   const session = directoryWatch("all").value?.find((candidate) => candidate.id === sessionId);
 
   if (session === undefined) return undefined;
+
   const workspace = queryClient
     .getQueryData<readonly WorkspaceInfo[]>(keys.workspaces)
     ?.find((candidate) => candidate.id === session.workspace);
 
-  return workspace === undefined ? null : workspacePath(workspace);
+  return workspace === undefined || workspace.availability.kind === "unavailable"
+    ? null
+    : workspacePath(workspace);
 }
 
-/** The selected folder's files capability, or the reason it has none. */
 export async function workspaceFiles(): Promise<FilesApi> {
   const id = selectedWorkspaceId();
 
@@ -147,7 +154,6 @@ export async function workspaceFiles(): Promise<FilesApi> {
   return capability.api;
 }
 
-/** The selected folder's git capability, or the reason it has none. */
 export async function workspaceGit(): Promise<GitApi> {
   const id = selectedWorkspaceId();
 
@@ -198,12 +204,10 @@ export function useRemoteAccessState(active: boolean) {
   });
 }
 
-/** A registered workspace as the rail lists it: its folder's path and name, and whether it is reachable. */
 export interface RailWorkspace extends SelectedWorkspace {
   readonly available: boolean;
 }
 
-/** The host's registered local workspaces, as the rail lists them; a forget in flight hides its row. */
 export function useWorkspaces() {
   const pending = useMutationState<MutationState<void, Error, WorkspaceId>>({
     filters: { mutationKey: ["workspace", "forget"], status: "pending" },
@@ -262,7 +266,6 @@ export function useForgetWorkspace() {
   });
 }
 
-/** The root sessions, as the directory watch yields them, with pending edits projected. */
 export function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
   const all = useWatch(directoryWatch("all"));
@@ -278,11 +281,6 @@ export function useRootSessions(): readonly SessionInfo[] | undefined {
 
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
 
-/**
- * Roots to draw as working whatever their own head says: a session a child
- * still works for. The directory lists every session with its parent, so a
- * busy child marks each ancestor.
- */
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
   const all = useWatch(directoryWatch("all"));
 
@@ -304,7 +302,6 @@ export function useWorkingSessionIds(): ReadonlySet<SessionId> {
   }, [all]);
 }
 
-/** The root sessions grouped by the workspace they live in, Home first. */
 export function useWorkspaceSessionDirectory(): {
   readonly data: readonly WorkspaceSessionDirectory[] | undefined;
 } {
@@ -319,7 +316,6 @@ export function useWorkspaceSessionDirectory(): {
   );
 }
 
-/** Sessions matching a search, from the directory the sidebar already holds. */
 export function useSessionSearch(search: string, enabled = true) {
   const roots = useRootSessions();
   const needle = search.trim().toLocaleLowerCase();
@@ -340,7 +336,6 @@ export function useSessionSearch(search: string, enabled = true) {
   );
 }
 
-/** One session's directory row: the directory's when it lists it, else one read; null when the host has none. */
 export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
   const roots = useWatch(directoryWatch("all"));
@@ -360,19 +355,16 @@ export function useSession(sessionId: SessionId | undefined) {
   };
 }
 
-/** One session's view, watched while mounted, with pending model choices projected. */
 export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
   return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId));
 }
 
-/** Opens a session's watch from route intent and resolves with its first view, or at once when one is held. */
 export async function warmSession(sessionId: SessionId): Promise<void> {
   const store = sessionWatch(sessionId);
 
   if (store.value === undefined) await store.next();
 }
 
-/** The model and thinking a session runs with: what it selected, with pending choices painted over it. */
 export function useSessionChoice(sessionId: SessionId) {
   const view = useSessionView(sessionId);
   const pending = useMutationState<PendingConfiguration>({
@@ -382,19 +374,16 @@ export function useSessionChoice(sessionId: SessionId) {
   return view === undefined ? undefined : projectSessionChoice(view, pending);
 }
 
-/** The child sessions one chat delegated to, as the directory watch yields them. */
 export function useChildSessions(sessionId: SessionId | undefined) {
   const children = useWatch(sessionId === undefined ? undefined : childrenWatch(sessionId));
 
   return { data: children };
 }
 
-/** The selected workspace's jobs, watched while mounted. */
 export function useWorkspaceJobs(workspace: WorkspaceId | undefined) {
   return useWatch(workspace === undefined ? undefined : jobsWatch(workspace));
 }
 
-/** The files a comparison changes at the repository revision the status names. */
 export function useVcsChanges(
   scope: GitScope | undefined,
   ignoreWhitespace: boolean,
@@ -416,7 +405,6 @@ export function useVcsChanges(
   });
 }
 
-/** A page of history, newest first; `cursor` continues where the previous page ended. */
 export function useVcsLog(
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,
@@ -436,7 +424,6 @@ export function useVcsLog(
   });
 }
 
-/** Branches, tags and remotes. */
 export function useVcsRefs(enabled: boolean) {
   const host = useHostState();
   const workspace = host.data?.workspace?.id;
@@ -449,7 +436,6 @@ export function useVcsRefs(enabled: boolean) {
   });
 }
 
-/** What one run changed, from the environment's recorded snapshots. */
 export function useRunChanges(input: {
   readonly workspace: WorkspaceId | undefined;
   readonly runId: RunId | undefined;
@@ -470,10 +456,6 @@ export function useRunChanges(input: {
   });
 }
 
-/**
- * The first patch set that answers every requested path freshly, from a
- * `patches` stream; the stream closes once it has.
- */
 async function firstPatches(
   stream: AsyncIterable<PatchSet>,
   paths: readonly string[],
@@ -491,7 +473,6 @@ async function firstPatches(
   return [];
 }
 
-/** Parsed patches for paths under a git scope of the selected workspace. */
 export async function readGitPatches(
   scope: GitScope,
   paths: readonly string[],
@@ -500,7 +481,6 @@ export async function readGitPatches(
   return firstPatches((await workspaceGit()).patches(scope, paths, { ignoreWhitespace }), paths);
 }
 
-/** Parsed patches for paths one run changed, from the environment's recorded snapshots. */
 export function readRunPatches(
   workspace: WorkspaceId,
   run: RunId,
@@ -513,7 +493,6 @@ export function readRunPatches(
   );
 }
 
-/** Every file in the selected workspace, as `@` names it, for mentions and the file tree. */
 async function scanFiles(): Promise<readonly MentionFile[]> {
   const root = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
   const files = await workspaceFiles();
@@ -529,13 +508,11 @@ async function scanFiles(): Promise<readonly MentionFile[]> {
   return entries;
 }
 
-/** The user asked for a fresh look: the file list and open documents are read again. */
 export function refreshVcs(): void {
   void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
   void queryClient.invalidateQueries({ queryKey: ["files", "document"] });
 }
 
-/** The selected workspace's git status, watched while mounted. */
 export function useVcsSnapshot(enabled: boolean) {
   const host = useHostState();
   const workspace = host.data?.workspace?.id;
@@ -573,7 +550,6 @@ export function useWorkspaceFile(path: string | undefined) {
   });
 }
 
-/** Content matches for a query: every match the host yields, and whether it stopped at a limit. */
 export function useWorkspaceSearch(
   input: { readonly query: string; readonly limit?: number } | undefined,
   enabled = true,
@@ -630,14 +606,10 @@ export function useSaveWorkspaceFile() {
   });
 }
 
-/** The catalog generation the host view carries; before it arrives, the one startup read. */
 function useCatalogGeneration(): string {
-  return useWatch(hostWatch("host"))?.catalog ?? INITIAL_CATALOG;
+  return useWatch(hostWatch("host"))?.catalog ?? "initial";
 }
 
-const INITIAL_CATALOG = "initial";
-
-/** Providers, models, and the default model, in one read; read again when the host's catalog generation moves. */
 export function useCatalog(_sessionId?: SessionId) {
   const generation = useCatalogGeneration();
   const pending = useMutationState<MutationState<unknown, Error, ModelRef>>({
@@ -645,10 +617,11 @@ export function useCatalog(_sessionId?: SessionId) {
   });
 
   return useQuery({
-    queryKey: keys.catalog(generation),
-    queryFn: readCatalog,
-    placeholderData: (previous) => previous,
-    select: (catalog) => {
+    queryKey: keys.modelCatalog(generation),
+    queryFn: readModelCatalog,
+    placeholderData: cachedModelCatalog,
+    select: (view): DesktopCatalog => {
+      const catalog = catalogOf(view);
       const model = pending.at(-1)?.variables;
 
       return model === undefined || catalog.defaults === undefined
@@ -658,14 +631,13 @@ export function useCatalog(_sessionId?: SessionId) {
   });
 }
 
-/** The raw catalog view, for the provider rows Settings › Models draws. */
 export function useModelCatalog() {
   const generation = useCatalogGeneration();
 
   return useQuery<ModelCatalogView>({
     queryKey: keys.modelCatalog(generation),
-    queryFn: () => connection().models.list(),
-    placeholderData: (previous) => previous,
+    queryFn: readModelCatalog,
+    placeholderData: cachedModelCatalog,
   });
 }
 
@@ -688,10 +660,6 @@ export function usageReportOptions(untilDay: string) {
   } as const;
 }
 
-/**
- * A usage read, flattened to what the page actually branches on. A failed
- * refresh keeps the last good report and reports the error alongside it.
- */
 interface UsageQueryView {
   readonly report: UsageSnapshot | undefined;
   readonly error: Error | null;
@@ -715,21 +683,19 @@ export function useUsageReport(untilDay: string): UsageQueryView {
   };
 }
 
-/** Provider-reported account windows, as the catalog's providers carry them. */
-export function useAccountLimits() {
-  const catalog = useModelCatalog();
-
+export function accountLimitsOptions(generation: string) {
   return {
-    ...catalog,
-    data: catalog.data?.providers.flatMap((provider) =>
-      provider.limits.length === 0
-        ? []
-        : [{ provider: provider.id, name: provider.name, limits: provider.limits }],
-    ),
-  };
+    queryKey: keys.accountLimits(generation),
+    queryFn: () => connection().models.usage(),
+    refetchOnMount: true,
+    staleTime: USAGE_STALE_AFTER_MS,
+  } as const;
 }
 
-/** The app's own `/compact`, offered beside a session's plugin commands and run through `head.compact`. */
+export function useAccountLimits() {
+  return useQuery(accountLimitsOptions(useCatalogGeneration()));
+}
+
 export const COMPACT_COMMAND = {
   name: "compact",
   owner: "",
@@ -739,7 +705,6 @@ export const COMPACT_COMMAND = {
   arguments: null,
 } satisfies CommandInfo;
 
-/** What plugins contribute to a session: commands, settings, skills. Empty before a chat exists. */
 export function usePluginCatalog(sessionId?: SessionId) {
   const catalog = useSessionView(sessionId)?.catalog;
 
@@ -754,7 +719,6 @@ export function usePluginCatalog(sessionId?: SessionId) {
   return { data, isError: false };
 }
 
-/** The commands a session's palette offers: its view's, then the app's own. */
 export function useSessionCommands(sessionId: SessionId) {
   const commands = useSessionView(sessionId)?.catalog.commands;
 
@@ -766,7 +730,6 @@ export function useSessionCommands(sessionId: SessionId) {
   return { data };
 }
 
-/** Sets the model a new chat starts with; the picker paints the choice until the host answers. */
 export function useSetPreference() {
   const client = useQueryClient();
 
@@ -786,10 +749,6 @@ export function useSetPreference() {
 
 let localLoadVersion = 0;
 
-/**
- * The host has changed folders: the stage rebinds to that folder's panes now,
- * before the caches behind it refill.
- */
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
   queryClient.setQueryData<HostState>(keys.host, (host) =>
     host === undefined ? host : { ...host, workspace },
@@ -815,11 +774,13 @@ export async function loadLocalResources(): Promise<void> {
         throw cause;
       });
   await connecting;
+  if (version === 1) performance.mark("nyte:sdk-connected");
 
   const [host, workspaces, catalog] = await Promise.all([
     readHost(),
     readWorkspaces(),
-    readCatalog(),
+    readModelCatalog(),
+    hostWatch("host").value === undefined ? hostWatch("host").next() : undefined,
   ]);
 
   if (version !== localLoadVersion) return;
@@ -829,9 +790,11 @@ export async function loadLocalResources(): Promise<void> {
     predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
   });
   queryClient.setQueryData(keys.workspaces, workspaces);
-  queryClient.setQueryData(keys.catalog(INITIAL_CATALOG), catalog);
+  queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
+  if (version === 1) performance.mark("nyte:catalog-ready");
 
   if (directoryWatch("all").value === undefined) await directoryWatch("all").next();
+  if (version === 1) performance.mark("nyte:directory-ready");
   queryClient.setQueryData(keys.host, host);
 }
 
@@ -852,7 +815,6 @@ interface ApplyPluginSettingInput {
   readonly value: Json;
 }
 
-/** Paints pending setting values over the ones a view carries. */
 export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
   const pending = useMutationState<MutationState<void, Error, ApplyPluginSettingInput>>({
     filters: { mutationKey: ["plugins", "apply", sessionId], status: "pending" },
@@ -870,7 +832,6 @@ export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
     }, settings);
 }
 
-/** Writes one setting: a session setting through `configure`, a host setting through `settings.apply`. */
 export function useApplyPluginSetting(sessionId: SessionId | undefined) {
   return useMutation({
     mutationKey: ["plugins", "apply", sessionId],

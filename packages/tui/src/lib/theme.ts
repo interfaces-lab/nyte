@@ -2,17 +2,12 @@ import process from "node:process";
 
 export type ThemeMode = "dark" | "light";
 
-/** What the user picks: a mode, or `auto` to follow the terminal's own color scheme. */
 export type ThemeChoice = "auto" | ThemeMode;
 
 export function isThemeChoice(value: string): value is ThemeChoice {
   return value === "auto" || value === "dark" || value === "light";
 }
 
-/**
- * Semantic colors for every OpenTUI surface. Components consume roles from
- * this object; they do not own palettes or choose colors independently.
- */
 export interface CliTheme {
   readonly mode: ThemeMode;
   readonly transparent: "transparent";
@@ -24,7 +19,6 @@ export interface CliTheme {
   readonly dim: string;
   readonly muted: string;
   readonly accent: string;
-  /** The welcome moon's lit face. */
   readonly moon: string;
   readonly user: string;
   readonly thinking: string;
@@ -49,27 +43,15 @@ export interface CliTheme {
   readonly pasteForeground: string;
   readonly scrollbarTrack: string;
   readonly scrollbarThumb: string;
-  /** Pierre's addition and deletion bases: the sign, and what every diff tint mixes toward. */
   readonly diffAdded: string;
   readonly diffRemoved: string;
   readonly diffAddedBackground: string;
   readonly diffRemovedBackground: string;
-  /** The gutter sits a step closer to the page than its line. */
   readonly diffAddedGutterBackground: string;
   readonly diffRemovedGutterBackground: string;
-  /** A changed word: the line tint with the base laid over it; the text keeps its colour. */
   readonly diffAddedEmphasis: string;
   readonly diffRemovedEmphasis: string;
 }
-/**
- * Pierre's dark roles. Diff rows are `codeBackground` mixed 80% in CIELAB
- * with Pierre's added and removed bases, gutters 85%, and a changed word is
- * the row with the base at 20% over it, fixed here because terminals cannot
- * mix.
- *
- * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/dark.ts
- * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
- */
 export const DARK_THEME: CliTheme = Object.freeze({
   mode: "dark",
   transparent: "transparent",
@@ -115,14 +97,6 @@ export const DARK_THEME: CliTheme = Object.freeze({
   diffRemovedEmphasis: "#663431",
 });
 
-/**
- * Pierre's light roles, with the diff row mix at 88%, the gutter at 91%, and
- * the changed word at 15%. Text takes the 600 shade where Pierre's light
- * roles use 500, as its `ansi` roles do.
- *
- * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/light.ts
- * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
- */
 const LIGHT_THEME: CliTheme = Object.freeze({
   mode: "light",
   transparent: "transparent",
@@ -168,7 +142,6 @@ const LIGHT_THEME: CliTheme = Object.freeze({
   diffRemovedEmphasis: "#fcc6c5",
 });
 
-/** `dark`/`light`, plus the `night`/`day` aliases. Anything else is no answer. */
 function byName(raw: string | undefined): ThemeMode | undefined {
   const name = raw?.trim().toLowerCase();
 
@@ -179,10 +152,6 @@ function byName(raw: string | undefined): ThemeMode | undefined {
   return undefined;
 }
 
-/**
- * Vim's `COLORFGBG` heuristic: background `0-6` and `8` are dark, `7` and
- * `9-15` are light. The background is the last field.
- */
 function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
   const field = raw?.split(";").at(-1)?.trim();
 
@@ -194,14 +163,6 @@ function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
   return background <= 15 ? "light" : undefined;
 }
 
-/**
- * The mode to draw with. A pinned choice wins; `auto` follows what the
- * terminal reports about its color scheme, then `NYTE_THEME` (and its
- * SSH-surviving alias `LC_NYTE_THEME`), then `COLORFGBG`, then dark.
- *
- * Based on opencode v2, where a locked mode beats the terminal's and the
- * terminal's beats the default: https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/context/theme.tsx
- */
 export function resolveThemeMode(
   choice: ThemeChoice,
   terminal: ThemeMode | null,

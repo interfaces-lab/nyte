@@ -189,7 +189,6 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
 
   for (const character of TYPED) {
     sentAt.push(performance.now());
-    // execCommand goes through beforeinput, the same path a key press takes into Lexical.
     document.execCommand("insertText", false, character);
     await wait(KEY_INTERVAL_MS);
   }

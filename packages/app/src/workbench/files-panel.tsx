@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -51,13 +51,13 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  toolbar: { gap: 8, height: "auto", minHeight: workbench.headerHeight },
+  toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
   explorerHeader: {
     display: "flex",
     alignItems: "center",
     height: workbench.headerHeight,
     flexShrink: 0,
-    paddingInline: 10,
+    paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontBase,
   },
@@ -67,11 +67,10 @@ const styles = create({
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
-  empty: { padding: 20, color: role.contentSecondary, fontSize: type.fontSm },
+  empty: { padding: space.s5, color: role.contentSecondary, fontSize: type.fontSm },
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-    borderRadius: radius.control,
   },
   tree: {
     display: "block",

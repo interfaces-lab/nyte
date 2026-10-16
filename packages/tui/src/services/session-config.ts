@@ -1,29 +1,10 @@
-/**
- * Ordered configuration intent for one followed session.
- *
- * A known cycle changes selection at once; discovery reserves its input
- * order before yielding. Keep the local selection until a view's selected
- * configuration shows the acknowledged one. Pending selections stay visible
- * while the view catches up; failures restore the last acknowledged choice
- * or, once reconciled, the view's selection.
- *
- * Dispatch is one ordered queue of configuration intents and submission
- * slots. One configure is in flight at a time. Consecutive intents coalesce
- * into the newest of their run; a slot ends a run, so the configuration a
- * message was pressed under is dispatched exactly as captured, and later
- * intents wait until that message is admitted or abandoned. This orders
- * admission: the head is configured before the message is sent and later
- * configuration after it.
- */
 import type { ConfigureOutcome, ModelRef, Thinking } from "@nyte-ai/sdk";
 
-/** What the next run would use: a model and a thinking level. */
 export interface RunChoice {
   readonly model: ModelRef;
   readonly thinkingLevel: Thinking;
 }
 
-/** The fields one request changes; unspecified fields keep the selected value. */
 export interface ConfigPatch {
   readonly model?: ModelRef;
   readonly thinkingLevel?: Thinking;
@@ -31,29 +12,18 @@ export interface ConfigPatch {
 
 type ConfigureResult =
   | { readonly kind: "acknowledged" }
-  /** No dispatch was needed, or a newer request carried this change instead. */
   | { readonly kind: "superseded" }
   | { readonly kind: "failed"; readonly message: string };
 
-/** A message's place in the order, reserved when Enter is pressed. */
 export interface SubmissionSlot {
-  /**
-   * Settles once every configuration selected before the reservation has been
-   * acknowledged or failed, with the result of the newest one; nothing when
-   * none was outstanding.
-   */
   readonly configured: Promise<ConfigureResult | undefined>;
-  /** The message was admitted or abandoned: configuration selected after it may go. */
   release(): void;
 }
 
 interface SessionConfiguratorOptions {
   readonly configure: (patch: ConfigPatch) => Promise<ConfigureOutcome>;
-  /** The view's selected configuration, or the fallback before a view has one. */
   readonly readSelected: () => RunChoice;
-  /** The selected configuration moved; repaint from it. */
   readonly onChange: (selected: RunChoice) => void;
-  /** The head stored the choice; `patch` names the fields the user chose. */
   readonly onAcknowledged: (choice: RunChoice, patch: ConfigPatch) => void;
 }
 
@@ -67,7 +37,6 @@ interface Intent {
 
 interface Slot {
   readonly kind: "slot";
-  /** The newest intent selected before the reservation. */
   readonly awaiting: Intent | undefined;
   readonly configured: PromiseWithResolvers<ConfigureResult | undefined>;
   reached: boolean;
@@ -115,11 +84,9 @@ function isIntent(entry: Intent | Slot): entry is Intent {
 export class SessionConfigurator {
   private readonly options: SessionConfiguratorOptions;
   private selectedChoice: RunChoice | undefined;
-  /** Retained until a view's selection shows it. */
   private acknowledgedChoice: RunChoice | undefined;
   private readonly queue: (Intent | Slot)[] = [];
   private inFlight: Intent | undefined;
-  /** Fields a failed intent established nothing for; the next dispatch carries them. */
   private carried: ConfigPatch = {};
   private disposed = false;
   private preparing = false;
@@ -130,22 +97,18 @@ export class SessionConfigurator {
     this.options = options;
   }
 
-  /** What the user selected, or core's projection when nothing is outstanding. */
   get selected(): RunChoice {
     return this.selectedChoice ?? this.options.readSelected();
   }
 
-  /** A configuration request has not been acknowledged or failed yet. */
   get pending(): boolean {
     return this.preparingSelection || this.inFlight !== undefined || this.queue.some(isIntent);
   }
 
-  /** Discovery is still preparing a selection earlier than the next input. */
   get preparingSelection(): boolean {
     return this.preparing || this.preparations.length > 0;
   }
 
-  /** A view's selection that shows the acknowledged choice lets the local one go. */
   observeSelected(selected: RunChoice): void {
     if (this.acknowledgedChoice === undefined || !sameChoice(this.acknowledgedChoice, selected))
       return;
@@ -157,7 +120,6 @@ export class SessionConfigurator {
     return this.prepareSelection(() => patch);
   }
 
-  /** Register discovery before it yields; known selections still update synchronously. */
   prepareSelection(
     prepare: (selected: RunChoice) => ConfigPatch | undefined | Promise<ConfigPatch | undefined>,
   ): Promise<ConfigureResult> {
@@ -243,9 +205,7 @@ export class SessionConfigurator {
     return intent.settled.promise;
   }
 
-  /** Reserve the next place in the order for a message, before anything yields. */
   reserveSubmission(): SubmissionSlot {
-    // Only submissions registered during this discovery inherit its failure.
     const preparation =
       this.latestPreparation?.outcome.kind === "pending" ? this.latestPreparation : undefined;
 
@@ -292,18 +252,12 @@ export class SessionConfigurator {
 
         if (index !== -1) this.queue.splice(index, 1);
 
-        // Released before its turn came: nothing was waited for.
         if (!slot.reached) slot.configured.resolve(undefined);
         this.pump();
       },
     };
   }
 
-  /**
-   * The shell stopped following this session. Outstanding work still settles
-   * by its real outcome so a reserved slot tells the truth; only the callbacks
-   * that paint or persist fall silent.
-   */
   dispose(): void {
     this.disposed = true;
   }
@@ -326,8 +280,6 @@ export class SessionConfigurator {
     if (head === undefined) return;
 
     if (head.kind === "slot") {
-      // Everything selected before the message has settled; the slot now
-      // holds later configuration until the message is admitted.
       if (!head.reached) {
         head.reached = true;
         head.configured.resolve(head.awaiting?.result);
@@ -347,8 +299,6 @@ export class SessionConfigurator {
     const next = run.pop();
 
     if (next === undefined) return;
-    // The newest choice already includes every earlier change; the dispatch
-    // names each field any of them touched, plus what a failed one left behind.
     const touched = [...run, next];
 
     const carriesModel =
@@ -392,10 +342,8 @@ export class SessionConfigurator {
 
       if (!this.disposed) this.options.onAcknowledged(intent.choice, intent.patch);
     } else if (this.queue.some(isIntent)) {
-      // A newer intent was computed on top of this one; it must establish these fields itself.
       this.carried = { ...this.carried, ...intent.patch };
     } else {
-      // Nothing newer was asked for, so the failed choice stops being shown.
       this.selectedChoice = this.acknowledgedChoice;
 
       if (!this.disposed) this.options.onChange(this.selected);

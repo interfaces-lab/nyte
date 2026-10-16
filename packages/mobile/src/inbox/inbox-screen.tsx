@@ -94,6 +94,7 @@ export function InboxScreen() {
   const searchBar = useRef<SearchBarCommands>(null);
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { list, busy, error, refresh, more } = useSessionList(client, search);
   // A pull is the only load that blanks the rows, so the spinner belongs to it
@@ -213,7 +214,7 @@ export function InboxScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           paddingTop: spacing.xs,
-          paddingBottom: (searchActive ? 0 : controls.composerBar) + insets.bottom + spacing.xl,
+          paddingBottom: (searchActive ? insets.bottom : composerHeight) + spacing.xl,
         }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -336,6 +337,7 @@ export function InboxScreen() {
         )}
       </ScrollView>
       <KeyboardStickyView
+        onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
         pointerEvents={searchActive ? "none" : "auto"}
         style={{
           display: searchActive ? "none" : "flex",

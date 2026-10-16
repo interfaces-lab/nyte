@@ -10,14 +10,21 @@ import {
   move,
   receiptRef,
   runRef,
-  startRun,
   stopRun,
 } from "../src/index.ts";
 import type { Plugin, Store, StoreConnection } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { completed, configuration, label, livePart, main, setup, usage } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  label,
+  livePart,
+  main,
+  setup,
+  startRun,
+  usage,
+} from "./harness.ts";
 
-/** Returns `connection` with `refs.set` routed through `set`, which may hold, change or refuse a batch. */
 function hooked(
   connection: StoreConnection,
   set: (updates: readonly RefUpdate[], inner: StoreConnection["refs"]) => Promise<SetOutcome>,
@@ -28,14 +35,12 @@ function hooked(
   };
 }
 
-/** Returns a store whose connections are `hooked`. */
 function hookedStore(
   set: (updates: readonly RefUpdate[], inner: StoreConnection["refs"]) => Promise<SetOutcome>,
 ): Store {
   const inner = memoryStore();
 
   return {
-    kind: inner.kind,
     open: async () => hooked(await inner.open(), set),
     close: () => inner.close(),
   };

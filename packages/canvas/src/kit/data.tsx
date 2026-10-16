@@ -91,7 +91,6 @@ const meter = create({
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
 
-/** The ui meter composed for one call: a label with the value over the bar, the bar painted in the tone's intent. */
 export function Meter({
   value,
   max = 100,

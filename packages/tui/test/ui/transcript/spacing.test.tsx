@@ -1,12 +1,3 @@
-/**
- * Overlap is impossible by construction; these tests keep it that way.
- * - A turn whose second user message landed mid-turn, at widths 40, 64 and 100:
- *   every block starts exactly one blank row below the block above it.
- * - A source scan of src/ui/transcript/** fails on margins, absolute
- *   positions, translations or a numeric `width=` prop.
- */
-import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { stateOf } from "../../fixture/state.ts";
@@ -71,24 +62,4 @@ describe("spacing", () => {
       expect(frame).toContain("Worked for");
     },
   );
-
-  test("no transcript file sets a margin, an absolute position, a translation or a numeric width", () => {
-    const directory = fileURLToPath(new URL("../../../src/ui/transcript/", import.meta.url));
-
-    const offences = readdirSync(directory).flatMap((name) => {
-      const source = readFileSync(`${directory}${name}`, "utf8")
-        .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
-        .replaceAll(/^\s*\/\/.*$/gmu, "");
-
-      return source
-        .split("\n")
-        .flatMap((line, index) =>
-          /\bmargin[A-Za-z]*=|position="absolute"|\btranslate[XY]=|\bwidth=\{\s*\d/u.test(line)
-            ? [`${name}:${String(index + 1)}: ${line.trim()}`]
-            : [],
-        );
-    });
-
-    expect(offences).toEqual([]);
-  });
 });

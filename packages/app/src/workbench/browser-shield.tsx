@@ -12,6 +12,7 @@ import {
   MenuSwitchItem,
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { changeHostSettings, hostSetting, useSetting } from "../preferences/index.ts";
 
@@ -19,7 +20,7 @@ const styles = create({
   badge: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     fontSize: type.fontCode,
     fontFamily: type.fontMono,
     fontVariantNumeric: "tabular-nums",
@@ -42,7 +43,6 @@ function covers(allowed: string, host: string): boolean {
 
 interface ShieldMenuProps {
   readonly state: BrowserSurfaceState;
-  /** A changed shield applies to the next load, so the page reloads. */
   readonly onChanged: () => void;
 }
 

@@ -1,17 +1,3 @@
-/**
- * This Mac's WebSocket to the broker's relay, and the relayed HTTP exchanges
- * it carries to the account listener on `127.0.0.1`.
- *
- * Every relayed request goes to the one loopback port the host bound, with
- * the host `node:http` writes for it and only the method, path, and headers
- * the contract's schemas let through, so a frame can name nothing else on
- * this Mac. Redirects are never followed, and only success and failure
- * statuses travel back. Bodies move under per-channel credit: request bytes
- * are acknowledged only once the local socket took them, and response bytes
- * are read from the local server only as the relay grants room. Anything
- * that breaks the framing closes the socket; every close, replacement, or
- * `dropStreams` ends every relayed exchange.
- */
 import { request } from "node:http";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import {
@@ -66,19 +52,15 @@ export interface RelayConnectionOptions {
   readonly timing?: Partial<RelayTiming>;
 }
 
-/** One relayed HTTP exchange. */
 interface Channel {
   readonly id: string;
   readonly method: RelayMethod;
   readonly local: ClientRequest;
-  /** Request bytes taken in and not yet returned as credit. */
   unreturned: number;
   received: number;
   requestEnded: boolean;
-  /** Response bytes the relay still has room for. */
   credit: number;
   response: IncomingMessage | undefined;
-  /** Read from the local response, waiting for credit. */
   pending: Buffer;
   responseEnded: boolean;
 }
@@ -105,7 +87,6 @@ export class RelayConnection {
   private current: ConnectRelay = { kind: "stopped" };
   private attempt = 0;
   private readyAt: number | undefined;
-  /** Advanced by every dial, reconnect, and close; a dial from an older one opens nothing. */
   private dialing = 0;
   private awaitingPong = false;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -154,9 +135,6 @@ export class RelayConnection {
     this.setStatus({ kind: "stopped" });
   }
 
-  // -------------------------------------------------------------------------
-  // The socket
-  // -------------------------------------------------------------------------
 
   private async connect(): Promise<void> {
     const dialing = ++this.dialing;
@@ -189,7 +167,6 @@ export class RelayConnection {
     this.readyTimer = setTimeout(() => this.drop(socket, 1000), this.timing.readyMs);
   }
 
-  /** Let go of the current socket and every exchange on it. */
   private detach(code: number): WebSocket | undefined {
     this.dialing += 1;
     const socket = this.socket;
@@ -205,7 +182,6 @@ export class RelayConnection {
     return socket;
   }
 
-  /** This side closes the socket, then backs off. */
   private drop(socket: WebSocket, code: number): void {
     if (this.socket !== socket) return;
     this.detach(code);
@@ -228,7 +204,6 @@ export class RelayConnection {
   private retry(): void {
     if (this.stopped || this.current.kind === "failed") return;
 
-    // A socket that stayed up through a ping round trip starts the backoff over.
     if (this.readyAt !== undefined && Date.now() - this.readyAt >= this.timing.pingMs)
       this.attempt = 0;
     this.readyAt = undefined;
@@ -309,7 +284,6 @@ export class RelayConnection {
 
     const channel = this.channels.get(frame.ch);
 
-    // Resets race; frames for an exchange already over are expected.
     if (channel === undefined) return;
 
     if (!this.channelFrame(channel, frame)) this.drop(socket, RELAY_CLOSE.invalid);
@@ -328,9 +302,6 @@ export class RelayConnection {
     socket.send(RELAY_PING);
   }
 
-  // -------------------------------------------------------------------------
-  // Exchanges
-  // -------------------------------------------------------------------------
 
   private open(frame: Extract<RelayFrame, { t: "open" }>): void {
     const local = request({
@@ -360,7 +331,6 @@ export class RelayConnection {
     local.on("response", (response) => this.respond(channel, response));
   }
 
-  /** False when the frame breaks the channel's order or flow control. */
   private channelFrame(
     channel: Channel,
     frame: Extract<RelayFrame, { t: "data" | "end" | "credit" | "reset" }>,
@@ -456,7 +426,6 @@ export class RelayConnection {
     });
   }
 
-  /** Send what the credit allows; read more from the local server only once all of it went. */
   private pump(channel: Channel): void {
     if (this.channels.get(channel.id) !== channel) return;
     const size = Math.min(channel.credit, channel.pending.byteLength);
@@ -485,7 +454,6 @@ export class RelayConnection {
     this.finish(channel);
   }
 
-  /** End the exchange here and tell the relay. */
   private reset(channel: Channel): void {
     if (this.channels.get(channel.id) !== channel) return;
     this.finish(channel);

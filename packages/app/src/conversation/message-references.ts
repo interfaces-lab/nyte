@@ -10,21 +10,20 @@
  */
 import type { FileEntryView } from "@nyte-ai/sdk";
 import { Type } from "typebox";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
-/**
- * One file or folder `@` can name: its absolute path, the `file:` URL a
- * message spells it as, the path relative to the workspace root (`/` after a
- * folder) and its basename (`/` after a folder).
- */
-export interface MentionFile {
-  readonly path: string;
-  readonly url: string;
-  readonly displayPath: string;
-  readonly label: string;
-}
+const mentionFileSchema = Type.ReadonlyObject(
+  Type.Object({
+    path: Type.String(),
+    url: Type.String(),
+    displayPath: Type.String(),
+    label: Type.String(),
+  }),
+);
 
-/** A scanned entry under a workspace root, as `@` names it. */
+export type MentionFile = Static<typeof mentionFileSchema>;
+
 export function mentionFile(
   root: string,
   entry: Pick<FileEntryView, "path" | "kind">,
@@ -43,15 +42,26 @@ export function mentionFile(
   };
 }
 
-export type MessageReference =
-  | {
-      readonly kind: "file";
-      readonly file: MentionFile;
-      readonly lines?: { readonly start: number; readonly end: number };
-    }
-  | { readonly kind: "skill"; readonly name: string; readonly path: string }
-  | { readonly kind: "mention"; readonly id: "current-conversation" }
-  | { readonly kind: "clipboard"; readonly body: string };
+export const messageReferenceSchema = Type.Union([
+  Type.ReadonlyObject(
+    Type.Object({
+      kind: Type.Literal("file"),
+      file: mentionFileSchema,
+      lines: Type.Optional(
+        Type.ReadonlyObject(Type.Object({ start: Type.Number(), end: Type.Number() })),
+      ),
+    }),
+  ),
+  Type.ReadonlyObject(
+    Type.Object({ kind: Type.Literal("skill"), name: Type.String(), path: Type.String() }),
+  ),
+  Type.ReadonlyObject(
+    Type.Object({ kind: Type.Literal("mention"), id: Type.Literal("current-conversation") }),
+  ),
+  Type.ReadonlyObject(Type.Object({ kind: Type.Literal("clipboard"), body: Type.String() })),
+]);
+
+export type MessageReference = Static<typeof messageReferenceSchema>;
 
 type ClipboardReference = Extract<MessageReference, { readonly kind: "clipboard" }>;
 

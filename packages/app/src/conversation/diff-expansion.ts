@@ -13,10 +13,8 @@ import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@pierr
 import type { GitApi, GitScope } from "@nyte-ai/sdk";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 
-/** A file's old and new sides under a scope, as `git.contents` answers. */
 export type DiffContents = Awaited<ReturnType<GitApi["contents"]>>;
 
-/** `git.contents`, passed in so this module stays testable. */
 export type DiffContentsReader = (input: {
   readonly scope: GitScope;
   readonly path: string;

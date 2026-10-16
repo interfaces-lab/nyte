@@ -46,7 +46,7 @@ function GitHubGroup({
   const state = query.data;
 
   const item = (label: string, onClick: () => void) => (
-    <MenuItem icon="github" disabled={busy} xstyle={styles.accountMenuItem} onClick={onClick}>
+    <MenuItem icon="github" disabled={busy} variant="quiet" onClick={onClick}>
       {label}
     </MenuItem>
   );
@@ -91,14 +91,14 @@ function NyteGroup({
     <MenuGroup>
       <MenuGroupLabel>Nyte account</MenuGroupLabel>
       {account.kind === "signed_in" ? (
-        <MenuItem icon="user" xstyle={styles.accountMenuItem} onClick={onOpenProfile}>
+        <MenuItem icon="user" variant="quiet" onClick={onOpenProfile}>
           {account.label}
         </MenuItem>
       ) : (
         <MenuItem
           icon="user"
           disabled={signIn.isPending}
-          xstyle={styles.accountMenuItem}
+          variant="quiet"
           onClick={() => signIn.mutate()}
         >
           Sign In to Nyte…
@@ -123,7 +123,6 @@ export function AccountFooterMenu({
   const account = useGitHubAccount(github);
   const update = useUpdateState().data ?? { kind: "idle" };
   const busy = update.kind === "downloading" || update.kind === "installing";
-  // Busy states ask nothing of the user; the dot is for a restart or a retry.
   const attention = update.kind !== "idle" && !busy;
   // A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile.
   const [last, setLast] = useState(account.query.data);
@@ -169,8 +168,7 @@ export function AccountFooterMenu({
             <MenuItem
               layout="plain"
               disabled={busy}
-              variant={update.kind === "failed" ? "danger" : "default"}
-              xstyle={styles.accountMenuItem}
+              variant={update.kind === "failed" ? "danger" : "quiet"}
               onClick={() => void nyte.host.updates?.check().catch(() => undefined)}
             >
               {updateLabel(update)}
@@ -181,11 +179,7 @@ export function AccountFooterMenu({
         <GitHubGroup account={account} onOpenProfile={onOpenProfile} />
         <NyteGroup connect={connect} onOpenProfile={onOpenProfile} />
         <MenuSeparator inset />
-        <MenuItem
-          icon="bubble-heart"
-          xstyle={styles.accountMenuItem}
-          onClick={() => openExternal(FEEDBACK_URL)}
-        >
+        <MenuItem icon="bubble-heart" variant="quiet" onClick={() => openExternal(FEEDBACK_URL)}>
           Give Feedback
         </MenuItem>
       </MenuContent>

@@ -9,9 +9,11 @@ import type {
 } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
+import { declarations } from "./declarations.ts";
 import { parseJson } from "./json.ts";
 import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
 import type { SseFrame } from "./wire.ts";
+import { createStreamClient } from "./stream-client.ts";
 
 /** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
 export type TransportOptions = {
@@ -50,7 +52,7 @@ export function createTransport(options: TransportOptions): Transport {
   let host: HostId | null = null;
 
   const post = async (
-    name: OperationName,
+    name: string,
     init: { readonly headers: Readonly<Record<string, string>> } & Omit<RequestInit, "headers">,
   ): Promise<Response> => {
     const headers = { ...(await options.headers()), ...init.headers };
@@ -87,25 +89,31 @@ export function createTransport(options: TransportOptions): Transport {
     headers: { "Content-Type": "application/json", ...headers },
   });
 
+  const stream = createStreamClient(post);
+
   return {
     async invoke(name, input, request) {
+      if ("wait" in declarations[name]) {
+        const controller = new AbortController();
+        const signal = request?.signal ?? controller.signal;
+        try {
+          return parseJson(await new Response(await stream(name, input, signal)).text());
+        } finally {
+          controller.abort();
+        }
+      }
       const response = await post(name, { ...json(input), signal: request?.signal });
 
       return parseJson(await response.text());
     },
     frames(name, input) {
       return cancellable(async function* (signal) {
-        const response = await post(name, { ...json(input), signal });
-
-        if (response.body !== null)
-          for await (const frame of parseSse(response.body)) yield frame.data;
+        for await (const frame of parseSse(await stream(name, input, signal))) yield frame.data;
       });
     },
     output(input) {
       return cancellable(async function* (signal) {
-        const response = await post("job.output", { ...json(input), signal });
-
-        if (response.body !== null) yield* parseOutputFrames(response.body);
+        yield* parseOutputFrames(await stream("job.output", input, signal));
       });
     },
     async bytes(name, input, request) {
@@ -140,9 +148,7 @@ export function createTransport(options: TransportOptions): Transport {
     watch(name, input, lastEventId) {
       return cancellable(async function* (signal) {
         const headers = lastEventId === undefined ? undefined : { "Last-Event-ID": lastEventId };
-        const response = await post(name, { ...json(input, headers), signal });
-
-        if (response.body !== null) yield* parseSse(severable(response.body));
+        yield* parseSse(await stream(name, input, signal, headers));
       });
     },
     async upload(name, input, body, request) {
@@ -158,7 +164,6 @@ export function createTransport(options: TransportOptions): Transport {
   };
 }
 
-/** Returns the frames `open` yields for one request behind a hand-written iterator: `return()` aborts the request and resolves at once, even while a `next()` waits, which then settles done (§40x); a source suspended between frames is returned so its readers release. */
 function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {
@@ -217,23 +222,6 @@ function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncI
       };
     },
   };
-}
-
-/** Returns a watch body whose read failures are link loss (`unavailable`, §47c): a socket reset mid-stream, never a failure parsing what was read. */
-function severable(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const reader = body.getReader();
-
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const read = await reader.read().catch((error: unknown) => {
-        throw new SdkError("unavailable", error instanceof Error ? error.message : String(error));
-      });
-
-      if (read.done) controller.close();
-      else controller.enqueue(read.value);
-    },
-    cancel: (reason) => reader.cancel(reason),
-  });
 }
 
 function jsonOrText(text: string): Json {

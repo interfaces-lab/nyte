@@ -18,10 +18,8 @@ const CLASS_SUMMARY = Type.Object({ count: Type.Number(), paths: Type.Array(Type
 
 const MESSAGE = { id: idSchema<"message">(), turn: idSchema<"turn">(), at: Type.Number() };
 
-/** The TypeBox schema of `ViewOptions`. */
 export const ViewOptionsType = Type.Object({ tail: Type.Optional(Type.Number()) });
 
-/** The TypeBox schema of a `UserStatus`. */
 export const UserStatusType = Type.Union([
   Type.Object({
     kind: Type.Literal("unsent"),
@@ -39,7 +37,6 @@ export const UserStatusType = Type.Union([
   }),
 ]);
 
-/** The TypeBox schema of a view `Message`. */
 export const MessageType = Type.Union([
   Type.Object({
     ...MESSAGE,
@@ -66,7 +63,6 @@ export const MessageType = Type.Union([
   }),
 ]);
 
-/** The TypeBox schema of a `TurnInfo`. */
 export const TurnInfoType = Type.Object({
   id: idSchema<"turn">(),
   run: nullable(idSchema<"run">()),
@@ -96,7 +92,6 @@ export const TurnInfoType = Type.Object({
   }),
 });
 
-/** The TypeBox schema of a `SessionView`. */
 export const SessionViewType = Type.Object({
   revision: nullable(idSchema<"revision">()),
   seq: SeqType,
@@ -116,17 +111,12 @@ export const SessionViewType = Type.Object({
   catalog: SessionCatalogViewType,
 });
 
-/** Validates `ViewOptions`. */
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);
 
-/** Validates a `UserStatus`. */
 export const UserStatusSchema: Schema<UserStatus> = standard(UserStatusType);
 
-/** Validates a view `Message`. */
 export const MessageSchema: Schema<Message> = standard(MessageType);
 
-/** Validates a `TurnInfo`. */
 export const TurnInfoSchema: Schema<TurnInfo> = standard(TurnInfoType);
 
-/** Validates a `SessionView`. */
 export const SessionViewSchema: Schema<SessionView> = standard(withJson(SessionViewType));

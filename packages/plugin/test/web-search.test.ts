@@ -3,7 +3,6 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import webSearch, { adapters } from "../src/web-search.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
-/** Returns a fetch that records each request and answers with `body`. */
 function recording(body: string) {
   const sent: { readonly url: string; readonly headers: Headers; readonly body: unknown }[] = [];
 
@@ -22,7 +21,6 @@ function recording(body: string) {
 
 const signal = new AbortController().signal;
 
-/** Returns an MCP `tools/call` answer carrying one text block, as an SSE frame. */
 function frame(result: unknown): string {
   return `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: 1, result })}\n\n`;
 }

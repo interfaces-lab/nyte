@@ -20,11 +20,6 @@ export type TranscriptRow =
       readonly messageId: string;
       readonly scrollAnchor: boolean;
       readonly turn: ConversationTurn;
-      /**
-       * Turns opened under this one without a prompt. A background report
-       * opens its own turn, but the prompt it answers is this row's; drawing
-       * them here keeps that prompt stuck above the work they hold.
-       */
       readonly continuations: readonly ConversationTurn[];
       readonly trailing: boolean;
     }
@@ -34,6 +29,7 @@ export type TranscriptRow =
       readonly scrollAnchor: true;
       readonly message: UserMessage;
       readonly pending: boolean;
+      readonly held: boolean;
     }
   | {
       readonly kind: "retry";
@@ -48,21 +44,10 @@ export type TranscriptRow =
       readonly working: boolean;
     };
 
-/**
- * A landing prompt and the turn it opens are the same row: the message id is
- * minted before the network and kept until the commit, so the turn re-measures
- * the landing row instead of replacing it.
- */
 function turnMessageId(turn: ConversationTurn): string {
   return turn.info.prompt === null ? `turn:${turn.info.id}` : `landing:${turn.info.prompt}`;
 }
 
-/**
- * Where each user message the view lists outside a turn draws: under the
- * transcript while it lands (muted behind a live run when it joined it), in
- * the tray while it waits for the next turn, or as an unsent row while its
- * journal entry retries.
- */
 export function conversationMessages(view: SessionView | undefined) {
   const running = view !== undefined && isBusy(view.execution);
   const loose = view === undefined ? [] : conversationTurns(view).loose;
@@ -73,7 +58,12 @@ export function conversationMessages(view: SessionView | undefined) {
       case "unsent":
         return message.status.retrying === null && !running;
       case "pending":
-        return !running || message.status.schedule.kind === "joined";
+        return (
+          !running ||
+          message.status.schedule.kind === "joined" ||
+          message.source.kind === "child" ||
+          message.source.kind === "job"
+        );
       case "landed":
         return true;
       default: {
@@ -86,10 +76,15 @@ export function conversationMessages(view: SessionView | undefined) {
 
   return {
     running,
+    held: view?.execution.kind === "idle" && view.execution.lastRun?.end.kind !== "completed",
     submitted: landing,
     queued: users.filter(
       (message) =>
-        running && message.status.kind === "pending" && message.status.schedule.kind !== "joined",
+        running &&
+        message.status.kind === "pending" &&
+        message.status.schedule.kind !== "joined" &&
+        message.source.kind !== "child" &&
+        message.source.kind !== "job",
     ),
     unsent: users.filter(
       (message) =>
@@ -103,6 +98,7 @@ export function transcriptRows({
   failed,
   turns,
   landing,
+  held,
   retrying,
   working,
   running,
@@ -111,6 +107,7 @@ export function transcriptRows({
   readonly failed: boolean;
   readonly turns: readonly ConversationTurn[];
   readonly landing: readonly UserMessage[];
+  readonly held: boolean;
   /** The retry status's title; absent while the run is not retrying. */
   readonly retrying: string | undefined;
   readonly working: boolean;
@@ -153,6 +150,7 @@ export function transcriptRows({
       scrollAnchor: true,
       message,
       pending: running,
+      held,
     });
   }
 

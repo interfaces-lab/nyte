@@ -2,9 +2,6 @@
  * Anthropic OAuth flow (Claude Pro/Max): PKCE against claude.ai with browser
  * callback or copy-code login, and token refresh against platform.claude.com.
  * Node-only (node:http); the callback server is for CLI use, not browsers.
- *
- * Based on https://github.com/earendil-works/pi/blob/83692682f095528f8b71652ddacff7075e36e893/packages/ai/src/auth/oauth/anthropic.ts
- * Login methods aligned with pi 83692682f; Nyte owns callback handling and token validation.
  */
 
 import { createServer, type Server } from "node:http";
@@ -398,15 +395,20 @@ export const anthropicOAuth: OAuthAuth = {
   async login(interaction) {
     if (interaction.signal.aborted) throw new Error("Login cancelled");
 
-    const method = await interaction.prompt({
-      type: "select",
-      message: "Select Anthropic login method:",
-      options: [
-        { id: "browser", label: "Browser login (default)" },
-        { id: "copy_code", label: "Copy code login (headless)" },
-      ],
-      signal: interaction.signal,
-    });
+    const method =
+      interaction.browser === "host"
+        ? "browser"
+        : interaction.browser === "elsewhere"
+          ? "copy_code"
+          : await interaction.prompt({
+              type: "select",
+              message: "Select Anthropic login method:",
+              options: [
+                { id: "browser", label: "Browser login (default)" },
+                { id: "copy_code", label: "Copy code login (headless)" },
+              ],
+              signal: interaction.signal,
+            });
 
     if (interaction.signal.aborted) throw new Error("Login cancelled");
     if (method !== "browser" && method !== "copy_code") {

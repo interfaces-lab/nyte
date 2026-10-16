@@ -1,12 +1,9 @@
 /**
  * Request option and adapter contract types for @nyte-ai/ai. The neutral message,
  * model, and tool types live in @nyte-ai/schema and are re-exported here so
- * callers that follow pi's layout can import everything from one place; this
+ * callers can import everything from one place; this
  * file adds only what a provider request needs on top of them: transport and
  * auth options, the stream function contract, and the per-API option map.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
- * Synced with pi 7ebf9087e.
  */
 import type {
   Api,
@@ -112,6 +109,8 @@ export interface ProviderResponse {
 export interface AccountLimitWindow {
   /** Stable provider-owned bucket id, for example `five_hour` or `seven_day`. */
   id: string;
+  /** Display name, for example `5-hour`, `Weekly`, or `Opus weekly`. */
+  label: string;
   usedPercent: number;
   /** Unix timestamp in milliseconds. */
   resetsAt?: number;
@@ -126,6 +125,29 @@ export interface AccountLimits {
   /** Unix timestamp in milliseconds when the provider supplied this state. */
   observedAt: number;
 }
+
+/** Account windows from a cached refresh, retaining the last reading on failure. */
+export type AccountLimitsResult =
+  | {
+      readonly kind: "ready";
+      readonly limits: AccountLimits;
+      readonly stale: boolean;
+      readonly error: string | null;
+    }
+  | {
+      readonly kind: "unavailable";
+      readonly reason: "unsupported" | "unconfigured" | "failed";
+      readonly message: string;
+    };
+
+/** Account endpoint metadata, independent of a provider's model catalog. */
+export type AccountLimitsTarget = Pick<Model<Api>, "provider" | "baseUrl" | "headers">;
+
+/** Auth and transport for a provider's non-generating account usage request. */
+export type AccountLimitsFetchOptions = Pick<
+  ProviderRequestOptions,
+  "apiKey" | "headers" | "fetch" | "signal" | "timeoutMs"
+>;
 
 /** Authentication, HTTP transport, and lifecycle callbacks shared by provider requests. */
 export interface ProviderRequestOptions<TModel = Model<Api>> {
@@ -149,11 +171,7 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
    * Optional callback for inspecting or replacing provider payloads before sending.
    * Return undefined to keep the payload unchanged.
    */
-  onPayload?: (
-    payload: unknown,
-    model: TModel,
-    // oxlint-disable-next-line no-redundant-type-constituents -- pi's signature: the union documents that undefined means keep the payload, whose shape is the provider's own request body
-  ) => unknown | undefined | Promise<unknown | undefined>;
+  onPayload?: (payload: unknown, model: TModel) => unknown;
   /**
    * Optional callback invoked after an HTTP response is received.
    */

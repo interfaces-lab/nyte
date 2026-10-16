@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
-import { appearance } from "../../ui/src/vars.stylex.ts";
+import { appearance } from "../../ui/src/styles/vars.stylex.ts";
 import {
   applyFocusModality,
   applyPointerCursors,

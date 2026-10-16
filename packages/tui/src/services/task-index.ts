@@ -1,9 +1,7 @@
-/** The tasks of one session, followed live: its children with their views, and the jobs that report to it. */
 import type { Connection, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
 
-/** One child the index follows: its directory row, its latest view, and how to stop following it. */
 interface Child {
   info: SessionInfo;
   view: SessionView | undefined;
@@ -16,10 +14,6 @@ interface TaskIndexOptions {
   readonly onError: (error: unknown) => void;
 }
 
-/**
- * The tasks of one session: its children from the directory, each followed by
- * its own view, and the jobs of its workspace that report to it.
- */
 export class TaskIndex {
   private readonly options: TaskIndexOptions;
   private readonly children = new Map<SessionId, Child>();

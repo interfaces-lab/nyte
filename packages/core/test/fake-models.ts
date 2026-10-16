@@ -22,7 +22,6 @@ import { composeHost, memoryStore } from "../src/index.ts";
 import type { ComposeOptions, Plugin, Store } from "../src/index.ts";
 import { env } from "./harness.ts";
 
-/** One content block a scripted reply streams. */
 export type Block =
   | { readonly type: "text"; readonly text: string; readonly signature?: string }
   | {
@@ -38,7 +37,6 @@ export type Block =
       readonly arguments: Record<string, unknown>;
     };
 
-/** One scripted provider answer: what it streams, what it reports, and how it ends. */
 export interface Reply {
   readonly content?: readonly Block[];
   readonly usage?: Partial<{
@@ -51,39 +49,28 @@ export interface Reply {
   }>;
   readonly stopReason?: Extract<StopReason, "stop" | "length" | "toolUse">;
   readonly rawStopReason?: string;
-  /** Ends the stream with this provider error, cutting its last block short (no `*_end`). */
   readonly error?: string;
-  /** Holds the stream after its first delta until the request's signal aborts. */
   readonly hold?: boolean;
-  /** Stalls the stream after its first delta for good, deaf to the request's signal. */
   readonly stall?: boolean;
-  /** Holds the stream's end until this settles. */
   readonly until?: Promise<void>;
-  /** Account windows reported on the response. */
   readonly limits?: readonly AccountLimitWindow[];
 }
 
-/** One request the fake provider received. */
 export interface Request {
   readonly model: Model<Api>;
   readonly context: TranscriptContext;
   readonly options: SimpleStreamOptions | undefined;
 }
 
-/** A scripted provider inside a real `Models`: replies answered in order, every request recorded, and its auth state. */
 export interface FakeModels {
   readonly models: MutableModels;
   readonly provider: Provider;
   readonly requests: Request[];
-  /** Queues replies; a function sees the request it answers. */
   reply(...replies: readonly (Reply | ((request: Request) => Reply))[]): void;
-  /** Whether the provider's api key resolves; default true. */
   configured: boolean;
-  /** What the provider's verify request answers; null makes it throw, as an unreachable provider does. */
   verdict: ProviderAuthVerification | null;
 }
 
-/** Returns a catalog model of the fake provider. */
 export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Api> {
   return {
     id,
@@ -100,7 +87,6 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
   };
 }
 
-/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. */
 export function fakeModels(input?: {
   readonly id?: string;
   readonly name?: string;
@@ -211,7 +197,6 @@ export function fakeModels(input?: {
   return fake;
 }
 
-/** An environment provider of kind `chat-only` whose files and processes refuse: the workspace a chat needs. */
 export const chatOnly: Plugin<"core"> = {
   id: "chat-only",
   environment: {
@@ -221,11 +206,10 @@ export const chatOnly: Plugin<"core"> = {
       availability: { kind: "available" },
       projectSources: [],
     }),
-    attach: async () => env,
+    attach: async () => ({ ...env, identity: asId("chat-only") }),
   },
 };
 
-/** Composes a host over a memory store (or `store`) with the fake models, the chat-only environment and `plugins`. */
 export async function open(
   fake: FakeModels,
   options?: {
@@ -247,7 +231,6 @@ export async function open(
   });
 }
 
-/** Returns a stream that plays a reply as provider events, honouring the request's abort signal. */
 function streamOf(
   model: Model<Api>,
   reply: Reply,

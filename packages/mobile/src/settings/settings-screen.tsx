@@ -6,7 +6,7 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SdkError } from "@nyte-ai/sdk";
 import { useAccount } from "../account/account-provider.tsx";
-import { ConnectSheet } from "../account/connect-panel.tsx";
+import { ConnectSheet, type ConnectionSheetPage } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
@@ -29,9 +29,9 @@ type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, connection, saved, edit, disconnect } = useHost();
+  const { client, connection, saved, disconnect } = useHost();
   const account = useAccount();
-  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectionPage, setConnectionPage] = useState<ConnectionSheetPage>();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -46,8 +46,6 @@ export function SettingsScreen() {
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
 
-  // An account host that refuses this iPhone is not retried or re-enrolled on
-  // its own: a revocation must stay revoked until the user reconnects.
   const refused =
     saved.kind === "managed" &&
     ((check.kind === "failed" &&
@@ -66,7 +64,6 @@ export function SettingsScreen() {
           ? "unreachable"
           : "connected";
 
-  // Disconnecting deletes the saved token, so reconnecting means copying it from the host again.
   function confirmDisconnect() {
     if (busy) return;
     Alert.alert(
@@ -117,18 +114,12 @@ export function SettingsScreen() {
       }}
       contentInsetAdjustmentBehavior="automatic"
     >
-      {account === undefined ? null : (
-        <ConnectSheet
-          open={connectOpen}
-          onClose={() => setConnectOpen(false)}
-          account={account}
-          current={{ saved, reconnect: refused }}
-          onManual={() => {
-            setConnectOpen(false);
-            edit();
-          }}
-        />
-      )}
+      <ConnectSheet
+        page={connectionPage}
+        onClose={() => setConnectionPage(undefined)}
+        account={account}
+        current={{ saved, reconnect: refused }}
+      />
       <SectionHeader label="Display" first />
       <Group>
         <ChoiceRow label="Appearance" icon="circle.lefthalf.filled" setting={appearance} />
@@ -157,7 +148,7 @@ export function SettingsScreen() {
       </Group>
       <SectionHeader label="Connection" />
       <Group>
-        <GroupRow onClick={account === undefined ? undefined : () => setConnectOpen(true)}>
+        <GroupRow onClick={() => setConnectionPage("overview")}>
           <IconTile name="laptopcomputer" color={theme.foreground} />
           <html.div style={styles.rowText}>
             <html.span style={textStyles.headline}>{connection.name}</html.span>
@@ -186,7 +177,9 @@ export function SettingsScreen() {
           )}
         </GroupRow>
         {status === "refused" ? (
-          <GroupRow onClick={account === undefined ? edit : () => setConnectOpen(true)}>
+          <GroupRow
+            onClick={() => setConnectionPage(saved.kind === "manual" ? "manual" : "overview")}
+          >
             <IconTile name="arrow.triangle.2.circlepath" />
             <html.span style={textStyles.body}>Reconnect</html.span>
           </GroupRow>
@@ -205,9 +198,13 @@ export function SettingsScreen() {
             </html.span>
           </GroupRow>
         )}
-        <GroupRow onClick={edit}>
+        <GroupRow
+          onClick={() => setConnectionPage(saved.kind === "manual" ? "manual" : "overview")}
+        >
           <IconTile name="pencil" />
-          <html.span style={textStyles.body}>Edit connection</html.span>
+          <html.span style={textStyles.body}>
+            {saved.kind === "manual" ? "Edit connection" : "Manage connection"}
+          </html.span>
         </GroupRow>
       </Group>
       {error !== undefined && (

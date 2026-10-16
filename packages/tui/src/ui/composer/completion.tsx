@@ -1,4 +1,3 @@
-/** The completion dropdown: rows from `CompletionModel`, highlight, click to pick. */
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -10,18 +9,14 @@ import type { CompletionModel } from "../../model/completion.ts";
 
 const MAX_ROWS = 10;
 
-/** The rows the slot keeps for the composer and the chrome around the menu. */
 const CHROME_ROWS = 6;
 
-/** Margins and padding across both sides. */
 const CHROME_COLUMNS = 5;
 
-/** `❯ ` before the label. */
 const PREFIX_WIDTH = 2;
 
 const LABEL_GAP = 4;
 
-/** Below this body width, a complete label is worth more than a clipped detail column. */
 const DETAIL_MIN_WIDTH = 43;
 
 const EMPTY: Readonly<Record<CompletionModel["token"]["trigger"], string>> = {

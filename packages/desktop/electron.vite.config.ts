@@ -2,12 +2,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type UserConfig } from "electron-vite";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/codemode-runtime";
+import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { dropInlinedGhosttyWasm, stylex } from "@nyte-ai/app/vite";
 import { deferredClerk } from "./account.vite.ts";
 
-/** Mode `e2e` builds main alone into `out-e2e/main`, over the offline catalog instead of `src/main/models.ts`. */
 const offlineModels: Plugin = {
   name: "nyte:e2e-models",
   enforce: "pre",

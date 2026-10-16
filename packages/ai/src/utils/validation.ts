@@ -1,8 +1,5 @@
 /**
  * Validates and coerces tool-call arguments against a tool's TypeBox (or plain JSON Schema) parameters, applying AJV-compatible primitive coercion for serialized schemas and treating null as omission for optional non-nullable properties.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/validation.ts
- * Synced with pi 7ebf9087e.
  */
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";

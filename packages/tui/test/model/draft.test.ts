@@ -1,8 +1,3 @@
-/**
- * The draft codec: what a draft means, how markers are named and found, and
- * the round trip between a draft and the `UserContent` it sends (and back,
- * for history recall and queued edits).
- */
 import { asId } from "@nyte-ai/schema";
 import type { SkillInfo } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";

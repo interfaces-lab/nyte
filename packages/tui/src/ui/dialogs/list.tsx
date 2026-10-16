@@ -1,11 +1,11 @@
-/** The one list view: title, search line, rows (❯, mark, label, description · status), typed-answer row, count, hint line. */
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
-import { GLYPHS } from "../../lib/constants.ts";
+import { GLYPHS, keycap } from "../../lib/constants.ts";
+import { formatTiming } from "../../lib/format.ts";
 import { displayWidth, padDisplay } from "../../lib/width.ts";
 import type { Choice, ListDialog } from "../../model/dialogs/list.ts";
 import {
@@ -29,14 +29,12 @@ import {
   useRowCap,
 } from "./panel.tsx";
 
-/** `❯ ` plus the gap between the label column and the detail. */
 const PREFIX_WIDTH = 2;
 
 const MARK_WIDTH = 2;
 
 const LABEL_GAP = 4;
 
-/** Below this width, a complete label is worth more than a clipped detail column, and the count goes. */
 const DETAIL_MIN_WIDTH = 43;
 
 interface Detail {
@@ -45,13 +43,8 @@ interface Detail {
   readonly tone: "muted" | "ok" | "warning" | "error";
 }
 
-function detailOf(choice: Choice): string {
-  const separator = choice.description === "" || choice.status === null ? "" : " · ";
+const CLOCK_INTERVAL_MS = 1_000;
 
-  return `${choice.description}${separator}${choice.status?.text ?? ""}`;
-}
-
-/** Scrolls the least that brings row `index` into the box's viewport. */
 export function revealRow(box: ScrollBoxRenderable | undefined, index: number): void {
   if (box === undefined) return;
   const height = box.viewport.height;
@@ -70,6 +63,7 @@ function ListRow(props: {
   readonly marked: boolean;
   readonly labelColumn: number;
   readonly width: number;
+  readonly now: number;
 }): JSX.Element {
   const app = useApp();
   const theme = app.kit.theme;
@@ -77,14 +71,21 @@ function ListRow(props: {
   const markWidth = () => (props.marked ? MARK_WIDTH : 0);
   const [hovered, setHovered] = createSignal(false);
 
-  /** The detail cut to its column; the status keeps its tone where it survived the cut. */
   const detail = createMemo((): Detail | null => {
-    const text = detailOf(props.choice);
+    const { timing, description, status } = props.choice;
+
+    const text = [
+      timing === null ? "" : formatTiming(timing, props.now),
+      description,
+      status?.text ?? "",
+    ]
+      .filter((part) => part !== "")
+      .join(" · ");
+
     const room = props.width - PREFIX_WIDTH - markWidth() - props.labelColumn - LABEL_GAP;
 
     if (props.width < DETAIL_MIN_WIDTH || text === "" || room <= 0) return null;
     const shown = cut(text, room);
-    const { status } = props.choice;
     const lead = text.length - (status?.text.length ?? 0);
 
     if (status === null || status.tone === "muted" || shown.length <= lead)
@@ -145,10 +146,31 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
   const app = useApp();
   const width = useBodyWidth();
   const cap = useRowCap();
+  const question = () => props.dialog.purpose.kind === "question";
+  const [detailContentRows, setDetailContentRows] = createSignal(1);
+  const detailText = createMemo(() => props.dialog.title);
+  const detailSequence = createMemo(() => props.dialog.detailScroll?.seq);
+  const detailRows = () => Math.min(detailContentRows(), Math.max(1, Math.floor(cap() / 2)));
+  const detailOverflows = () => question() && detailContentRows() > detailRows();
+  const choiceRows = () =>
+    Math.max(1, cap() - (question() ? detailRows() : 0) - (detailOverflows() ? 1 : 0));
+  let detail: ScrollBoxRenderable | undefined;
   const rows = createMemo(() => visibleChoices(props.dialog));
   const typed = () => typedLabel(props.dialog.purpose);
   const answering = () => answeringActive(props.dialog);
   const marked = createMemo(() => rows().some((choice) => choice.mark !== null));
+  const ticking = createMemo(() => rows().some((choice) => choice.timing?.endedAt === null));
+  const [now, setNow] = createSignal(app.kit.now());
+
+  createEffect(() => {
+    if (!ticking()) return;
+    const tick = app.kit.ticker(CLOCK_INTERVAL_MS);
+
+    createEffect(() => {
+      tick();
+      setNow(app.kit.now());
+    });
+  });
 
   const labelColumn = createMemo(() => {
     const widest = rows().reduce((max, choice) => Math.max(max, displayWidth(choice.label)), 0);
@@ -199,12 +221,52 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
     ),
   );
 
+  createEffect(on(detailText, () => detail?.scrollTo(0)));
+
+  createEffect(
+    on(detailSequence, () => {
+      const request = props.dialog.detailScroll;
+
+      if (request !== undefined && detail !== undefined)
+        detail.scrollBy(request.by * Math.max(1, detail.viewport.height / 2));
+    }),
+  );
+
   return (
-    <Panel title={props.dialog.title} hints={hints()}>
-      <Show when={typed() === null}>
+    <Panel title={question() ? "Question" : props.dialog.title} hints={hints()}>
+      <Show when={question()}>
+        <scrollbox
+          ref={(box) => {
+            detail = box;
+          }}
+          height={detailRows()}
+          flexShrink={0}
+          scrollX={false}
+          scrollY
+          stickyScroll={false}
+          scrollbarOptions={{ visible: false }}
+        >
+          <box
+            flexDirection="column"
+            flexShrink={0}
+            onSizeChange={function () {
+              setDetailContentRows(this.height);
+            }}
+          >
+            <text fg={app.kit.theme().foreground} wrapMode="word">
+              {props.dialog.title}
+            </text>
+          </box>
+        </scrollbox>
+      </Show>
+      <Show when={detailOverflows()}>
+        <Note text={`${keycap("picker.detail.up")}/${keycap("picker.detail.down")} question`} />
+      </Show>
+      <Show when={typed() === null && props.dialog.purpose.kind !== "question"}>
         <QueryLine
           text={props.dialog.query}
           caret={props.dialog.caret}
+          anchor={props.dialog.anchor}
           placeholder="type to filter"
           trailing={count()}
           active={!props.dialog.busy}
@@ -214,12 +276,14 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
         <scrollbox
           ref={(box) => {
             scroll = box;
+            const reveal = () => revealRow(box, props.dialog.highlighted);
+            box.viewport.on("resize", reveal);
+            onCleanup(() => box.viewport.off("resize", reveal));
           }}
-          height={Math.min(rows().length, cap())}
+          height={Math.min(rows().length, choiceRows())}
           scrollX={false}
           scrollY
           scrollbarOptions={{ visible: false }}
-          onSizeChange={() => revealRow(scroll, props.dialog.highlighted)}
         >
           <For each={rows()}>
             {(choice, index) => (
@@ -230,6 +294,7 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
                 marked={marked()}
                 labelColumn={labelColumn()}
                 width={width()}
+                now={now()}
               />
             )}
           </For>
@@ -241,6 +306,7 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
             marker
             text={props.dialog.answering ?? ""}
             caret={props.dialog.caret}
+            anchor={props.dialog.anchor}
             placeholder={placeholder()}
             active={answering()}
             onClick={() =>

@@ -1,9 +1,3 @@
-/**
- * Mounts a component under `AppProvider` with a static store: `screen()` is
- * `deriveScreen` of a state the test can replace, `dispatch` records every
- * message, and the kit is the dark theme with a stopped ticker. The composer
- * port the component attaches is kept for the test to drive.
- */
 import { SyntaxStyle } from "@opentui/core";
 import type { TestRendererSetup } from "@opentui/core/testing";
 import { testRender, useRenderer } from "@opentui/solid";
@@ -20,9 +14,7 @@ import type { State } from "../../../src/model/state.ts";
 
 export interface Mounted extends TestRendererSetup {
   readonly dispatched: Msg[];
-  /** Replaces the state the screen derives from, then draws a frame. */
   show(state: State): Promise<void>;
-  /** The ComposerPort the Composer attached, once it mounted. */
   composer(): ComposerPort;
 }
 

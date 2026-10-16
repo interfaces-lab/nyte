@@ -17,8 +17,8 @@ import {
   renderNotification,
   sanitizeCanvasVariables,
   sizeChangedNotification,
-} from "../src/canvas-protocol.ts";
-import type { CanvasHostContext } from "../src/canvas-protocol.ts";
+} from "../src/canvas/canvas-protocol.ts";
+import type { CanvasHostContext } from "../src/canvas/canvas-protocol.ts";
 
 const context: CanvasHostContext = {
   theme: "dark",
@@ -28,7 +28,6 @@ const context: CanvasHostContext = {
   deviceCapabilities: { touch: false, hover: true },
 };
 
-/** Round-trips a message through JSON, as postMessage and the WebView bridge do. */
 const wire = (message: unknown): unknown => JSON.parse(JSON.stringify(message));
 
 describe("the shell's messages", () => {

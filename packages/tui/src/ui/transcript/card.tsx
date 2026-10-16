@@ -1,4 +1,3 @@
-/** Draws a `ToolCardModel`: the coloured heading, then a text, diff or activity body. */
 import type { TextChunk } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { For, Match, Show, Switch } from "solid-js";
@@ -34,7 +33,6 @@ function Panel(props: { readonly text: string; readonly error: boolean }): JSX.E
   );
 }
 
-/** A heading word; a shell command takes bash highlights once they land and stays plain until then. */
 function Chunk(props: { readonly chunk: HeadingChunk }): JSX.Element {
   const { kit } = useApp();
 

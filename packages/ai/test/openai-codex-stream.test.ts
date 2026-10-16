@@ -5,7 +5,6 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   closeOpenAICodexWebSocketSessions,
-  resetOpenAICodexWebSocketDebugStats,
   stream,
   streamSimple,
 } from "../src/api/openai-codex-responses.ts";
@@ -14,7 +13,6 @@ import type { Context, Model } from "../src/types.ts";
 afterEach(() => {
   vi.unstubAllGlobals();
   closeOpenAICodexWebSocketSessions();
-  resetOpenAICodexWebSocketDebugStats();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -134,7 +132,6 @@ interface FakeSocket {
   emit(...events: unknown[]): void;
 }
 
-/** Stubs `WebSocket` with a server scripted by `onSend`, recording each connection and sent body. */
 function fakeWebSockets(
   onSend: (socket: FakeSocket, body: unknown, index: number) => void = () => {},
   { opens = true } = {},
@@ -214,7 +211,6 @@ describe("openai-codex streaming", () => {
     expect(eventTypes).toContain("done");
   });
 
-  // Regression test for https://github.com/earendil-works/pi/issues/9047
   it("processes a terminal SSE event without a trailing blank line", async () => {
     const sse = buildSSEPayload({ status: "completed" }).trimEnd();
     vi.stubGlobal(
@@ -786,6 +782,14 @@ describe("openai-codex streaming", () => {
     expect(second.stopReason).toBe("stop");
     expect(sockets).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    closeOpenAICodexWebSocketSessions(options.sessionId);
+    fakeWebSockets((socket) => socket.emit(completed("resp_after_cleanup", { end_turn: true })));
+
+    const resumed = await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), options).result();
+
+    expect(resumed.stopReason).toBe("stop");
+    expect(resumed.endTurn).toBe(true);
   });
 
   it("reconnects once when the websocket connection limit is reached before output starts", async () => {

@@ -2,7 +2,6 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { SdkErrorCode } from "@nyte-ai/sdk";
 
-/** A failure carried across IPC as plain data: its sdk error code, its message, and the call it answers. */
 export type IpcFailure = {
   readonly code: SdkErrorCode;
   readonly message: string;

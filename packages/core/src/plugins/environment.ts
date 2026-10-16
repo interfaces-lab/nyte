@@ -17,16 +17,16 @@ const SHELL_BYTES = 32 * 1024;
 
 const PROGRESS_BYTES = 4 * 1024;
 
-const MIME_TYPES: Readonly<Record<string, string>> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  bmp: "image/bmp",
-  svg: "image/svg+xml",
-  pdf: "application/pdf",
-};
+const MIME_TYPES = new Map([
+  ["png", "image/png"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["gif", "image/gif"],
+  ["webp", "image/webp"],
+  ["bmp", "image/bmp"],
+  ["svg", "image/svg+xml"],
+  ["pdf", "application/pdf"],
+]);
 
 const readParameters = standard(
   Type.Object({
@@ -76,7 +76,6 @@ const bashParameters = standard(
   }),
 );
 
-/** Reads a file: text as numbered lines (at most 2000 lines and 50 KiB, noting where to continue), a binary or large file uploaded and returned as `file` content. */
 const read: ToolDefinition<Infer<typeof readParameters>> = {
   name: "read",
   description:
@@ -101,7 +100,6 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
   },
 };
 
-/** Writes a whole file with `parents`, its output the patch from what it replaced, none when that was binary or large; replaying writes the same content again. */
 const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
   name: "write",
   description:
@@ -124,11 +122,10 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
     if (previous.kind === "binary" || previous.kind === "large") return result;
     const before = previous.kind === "text" ? previous.contents : null;
 
-    return { ...result, output: await patchOf(args.path, before, args.content) };
+    return { ...result, output: await createTextPatch(args.path, before, args.content) };
   },
 };
 
-/** Edits a text file by unique, non-overlapping exact replacements written against the version read; a replay whose `oldText` no longer occurs fails, since an earlier run's edit cannot be told apart. */
 const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
   name: "edit",
   description:
@@ -185,12 +182,11 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
       ...text(
         `Edited ${args.path}: ${spans.length} ${spans.length === 1 ? "replacement" : "replacements"}.`,
       ),
-      output: await patchOf(args.path, contents, edited),
+      output: await createTextPatch(args.path, contents, edited),
     };
   },
 };
 
-/** Lists one directory, ignored entries excluded: one entry per line, directories ending in `/`. */
 const list: ToolDefinition<Infer<typeof listParameters>> = {
   name: "list",
   description: "List a directory in the workspace, one entry per line; directories end in /.",
@@ -239,7 +235,6 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   },
 };
 
-/** Runs a command in the workspace root: its last 32 KiB of output and exit code, the last 4 KiB published as progress while it runs; never replayed, so a crash settles it `interrupted`. */
 const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   name: "bash",
   description:
@@ -275,7 +270,7 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
         dropped += first?.byteLength ?? 0;
       }
 
-      invocation.progress({ text: tailOf(chunks, PROGRESS_BYTES) });
+      invocation.progress({ text: decodeOutputTail(chunks, PROGRESS_BYTES) });
     }
 
     const end = await job.settled();
@@ -298,7 +293,6 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   },
 };
 
-/** Returns the chunks as one byte array, in order. */
 function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
   const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
   let offset = 0;
@@ -311,8 +305,7 @@ function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
   return joined;
 }
 
-/** Returns the last `limit` bytes of the chunks as text, from a whole line when it had to cut. */
-function tailOf(chunks: readonly Uint8Array[], limit: number): string {
+function decodeOutputTail(chunks: readonly Uint8Array[], limit: number): string {
   const tail: Uint8Array[] = [];
   let size = 0;
 
@@ -327,12 +320,11 @@ function tailOf(chunks: readonly Uint8Array[], limit: number): string {
   return (size > limit ? text.slice(text.indexOf("\n") + 1) : text).trimEnd();
 }
 
-/** Contributes the workspace tools `read`, `write`, `edit`, `list` and `bash` (decision 13), and the `cwd` prompt section when the session has an environment here. */
 export const environmentPlugin: Plugin<"core"> = {
   id: "environment",
   contribute: { tools: [read, write, edit, list, bash] },
   activate(api) {
-    const cwd = cwdOf(() => api.env);
+    const cwd = tryReadCwd(() => api.env);
 
     if (cwd !== null)
       api.contribute.prompt.add({
@@ -343,13 +335,15 @@ export const environmentPlugin: Plugin<"core"> = {
   },
 };
 
-/** Returns a tool result of one text item. */
-function text(value: string): { readonly content: readonly ToolContent[] } {
-  return { content: [{ kind: "text", text: value }] };
+function text(value: string) {
+  return { content: [{ kind: "text", text: value } satisfies ToolContent] };
 }
 
-/** Returns a write's change to one path: hunks with three lines of context and real line numbers, `added` when nothing was there, `empty` when nothing changed, `digest` the SHA-256 of both sides. */
-async function patchOf(path: string, before: string | null, after: string): Promise<PatchEntry> {
+async function createTextPatch(
+  path: string,
+  before: string | null,
+  after: string,
+): Promise<PatchEntry> {
   const status = before === null ? "added" : "modified";
   const digest = await textDigest(`${before ?? ""}\u0000${after}`);
   const diffed = lineDiff(before ?? "", after);
@@ -359,8 +353,7 @@ async function patchOf(path: string, before: string | null, after: string): Prom
   return { path, status, digest, kind: "text", ...diffed };
 }
 
-/** Returns the environment's cwd, or null when the session has none here. */
-function cwdOf(env: () => { readonly cwd: string }): string | null {
+function tryReadCwd(env: () => { readonly cwd: string }): string | null {
   try {
     return env().cwd;
   } catch {
@@ -368,7 +361,6 @@ function cwdOf(env: () => { readonly cwd: string }): string | null {
   }
 }
 
-/** Returns text as `cat -n` style lines, bounded, with a note on where to continue. */
 function numbered(
   path: string,
   contents: string,
@@ -402,7 +394,6 @@ function numbered(
     : shown.join("\n");
 }
 
-/** Uploads a file and returns it as `file` content. */
 async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   const reader = await files.bytes(path);
 
@@ -413,7 +404,7 @@ async function upload(files: FilesApi, path: string): Promise<ToolContent> {
     return {
       kind: "file",
       blob,
-      mime: reader.mime ?? MIME_TYPES[extension] ?? "application/octet-stream",
+      mime: reader.mime ?? MIME_TYPES.get(extension) ?? "application/octet-stream",
       name: path.slice(path.lastIndexOf("/") + 1),
     };
   } finally {
@@ -421,7 +412,6 @@ async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   }
 }
 
-/** Returns how many places `needle` matches in `haystack`, overlaps included. */
 function count(haystack: string, needle: string): number {
   if (needle === "") return 0;
   let found = 0;

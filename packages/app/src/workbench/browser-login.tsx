@@ -4,20 +4,21 @@ import type { FormEvent, ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { dismissLogin } from "./browser-surfaces.ts";
 
 const styles = create({
   popup: { width: 380 },
-  form: { display: "flex", flexDirection: "column", gap: 10 },
+  form: { display: "flex", flexDirection: "column", gap: space.s2_5 },
   host: {
     overflowWrap: "anywhere",
     color: role.contentSecondary,
     fontSize: type.fontSm,
     fontFamily: type.fontMono,
   },
-  field: { display: "flex", flexDirection: "column", gap: 4 },
+  field: { display: "flex", flexDirection: "column", gap: space.s1 },
   label: { color: role.contentSecondary, fontSize: type.fontSm },
 });
 
@@ -27,7 +28,6 @@ interface LoginDialogProps {
   readonly realm: string;
 }
 
-/** The page answered 401; Chromium holds the request until this answers it. */
 export function LoginDialog({ surface, host, realm }: LoginDialogProps): ReactElement {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

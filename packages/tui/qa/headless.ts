@@ -9,7 +9,6 @@ import { FIXTURE_CHILD_MODEL, FIXTURE_MODEL, FIXTURE_PROVIDER } from "./workspac
 import type { Workspace } from "./workspace.ts";
 import type { Scenario } from "./types.ts";
 
-/** The `-p --json` stdout contract: one JSON record per line, ending with the result. */
 const printRecord = Compile(
   Type.Union([
     Type.Object({ type: Type.Literal("text"), text: Type.String() }),
@@ -34,7 +33,6 @@ type CliRun = {
   code: number | undefined;
 };
 
-/** Every stdout line parsed against the contract; the last one is the result. */
 function records(stdout: string) {
   const lines = stdout.split("\n").filter((line) => line !== "");
 
@@ -56,7 +54,6 @@ function records(stdout: string) {
   };
 }
 
-/** Ends a launched binary's process group; a group that already ended is not an error. */
 function killGroup(pid: number) {
   try {
     process.kill(-pid, "SIGKILL");
@@ -65,7 +62,6 @@ function killGroup(pid: number) {
   }
 }
 
-/** The compiled binary with pipes for stdin, stdout and stderr: no terminal anywhere. */
 function launcher(binary: string, workspace: Workspace) {
   const runs: CliRun[] = [];
   const live = new Set<{ readonly finish: () => Promise<void> }>();
@@ -80,7 +76,6 @@ function launcher(binary: string, workspace: Workspace) {
       stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
       stdout: "pipe",
       stderr: "pipe",
-      // Its own process group, so a failed step can stop everything the binary started.
       detached: true,
     });
 
@@ -94,7 +89,6 @@ function launcher(binary: string, workspace: Workspace) {
       run[key] += decoder.decode();
     };
 
-    // A tool the binary started can hold the pipes open after the binary exits.
     const settled = Promise.all([
       child.exited,
       collect(readers[0], "stdout"),
@@ -103,7 +97,6 @@ function launcher(binary: string, workspace: Workspace) {
       run.code = code;
     });
 
-    /** Kills the group, then stops reading pipes that a process outside it still holds. */
     const finish = async () => {
       killGroup(child.pid);
       const grace = Promise.withResolvers<void>();
@@ -159,7 +152,6 @@ function launcher(binary: string, workspace: Workspace) {
   };
 }
 
-/** Polls the growing stdout; with the provider holding its stream, text here precedes completion. */
 async function waitForOutput(run: CliRun, predicate: (stdout: string) => boolean) {
   const until = deadline();
 
@@ -356,7 +348,6 @@ export const headless: Scenario = {
             assert.equal(done.code, 143, done.stderr);
             assert.equal(output.result.kind, "cancelled");
             assert.equal(output.result.signal, "SIGTERM");
-            // Checked before any QA cleanup runs, so cleanup cannot make this pass.
             await work.stopped(true);
           },
         );

@@ -1,4 +1,3 @@
-/** Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/utils/version-check.ts */
 import process from "node:process";
 import { gt, valid } from "semver";
 import packageMetadata from "../package.json" with { type: "json" };

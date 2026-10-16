@@ -53,7 +53,12 @@ beforeAll(async () => {
       // as a design-scale violation.
       categories: {},
       jsPlugins: [join(here, "design-scale.js")],
-      rules: { "nyte-design/spacing-scale": "error", "nyte-design/size-grid": "error" },
+      rules: {
+        "nyte-design/spacing-scale": "error",
+        "nyte-design/size-grid": "error",
+        "nyte-design/no-raw-font-weight": "error",
+        "nyte-design/no-light-dark-outside-tokens": "error",
+      },
     }),
   );
 
@@ -91,16 +96,27 @@ afterAll(() => {
   rmSync(configDirectory, { recursive: true, force: true });
 });
 
-test("reports every off-scale length and nothing else", () => {
+const message = (needle: string): string =>
+  violations.find((entry) => entry.line === lineOf(needle))?.message ?? "";
+
+test("reports every raw spacing length, off-grid size, raw weight, and light-dark()", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
     new Set([
+      lineOf("onScale:"),
+      lineOf("negativeOnScale:"),
       lineOf("offScale:"),
       lineOf("aboveScale:"),
       lineOf("negative:"),
       lineOf("condition:"),
       lineOf("pseudo:"),
       lineOf("shorthandString:"),
+      lineOf("mixedShorthand:"),
       lineOf("offGridSize:"),
+      lineOf("rawWeight:"),
+      lineOf("stringWeight:"),
+      lineOf("offTokenWeight:"),
+      lineOf("lightDark:"),
+      lineOf("lightDarkTemplate:"),
       lineOf("bare: {"),
       lineOf("return { paddingInline: 3"),
     ]),
@@ -117,7 +133,11 @@ test("reads both call forms, conditions, and shorthand strings", () => {
   expect(rulesOn("bare: {")).toEqual(["nyte-design(spacing-scale)"]);
   expect(rulesOn("return { paddingInline: 3")).toEqual(["nyte-design(spacing-scale)"]);
   expect(rulesOn("condition:")).toEqual(["nyte-design(spacing-scale)"]);
-  expect(rulesOn("shorthandString:")).toEqual(["nyte-design(spacing-scale)"]);
+  expect(rulesOn("mixedShorthand:")).toEqual(["nyte-design(spacing-scale)"]);
+  expect(rulesOn("shorthandString:")).toEqual([
+    "nyte-design(spacing-scale)",
+    "nyte-design(spacing-scale)",
+  ]);
   expect(rulesOn("offGridSize:")).toEqual(["nyte-design(size-grid)", "nyte-design(size-grid)"]);
   expect(rulesOn("offScale:")).toEqual([
     "nyte-design(spacing-scale)",
@@ -125,12 +145,30 @@ test("reads both call forms, conditions, and shorthand strings", () => {
   ]);
 });
 
-test("names a replacement step, and a token past the end of the scale", () => {
-  const message = (needle: string): string =>
-    violations.find((entry) => entry.line === lineOf(needle))?.message ?? "";
+test("names the space handle, the steps around an off-scale length, or a named measurement", () => {
+  expect(message("onScale:")).toContain("Use space.s2 from @nyte-ai/ui/styles/schema.stylex");
+  expect(message("negativeOnScale:")).toContain("Use calc(${space.s1} * -1)");
+  expect(message("mixedShorthand:")).toContain("Use space.s2");
+  expect(message("offScale:")).toContain("Use space.s1_5 (6) or space.s2 (8)");
+  expect(message("negative:")).toContain(
+    "Use calc(${space.s1} * -1) (-4) or calc(${space.s1_5} * -1) (-6)",
+  );
+  expect(message("aboveScale:")).toContain("packages/ui/src/styles/schema.stylex.ts");
+  expect(message("offGridSize:")).toContain("Use 14, 16, or glyph.box (15)");
+});
 
-  expect(message("offScale:")).toContain("Use 6 or 8");
-  expect(message("negative:")).toContain("Use -4 or -6");
-  expect(message("aboveScale:")).toContain("schema.stylex.ts");
-  expect(message("offGridSize:")).toContain("Use 14 or 16");
+test("sends a literal font weight to its type.weight* handle", () => {
+  expect(rulesOn("rawWeight:")).toEqual(["nyte-design(no-raw-font-weight)"]);
+  expect(rulesOn("stringWeight:")).toEqual([
+    "nyte-design(no-raw-font-weight)",
+    "nyte-design(no-raw-font-weight)",
+  ]);
+  expect(message("rawWeight:")).toContain("Use type.weightSemibold");
+  expect(message("offTokenWeight:")).toContain("Use the nearest, type.weightSemibold (600)");
+});
+
+test("reports light-dark() in a style value, under a condition or a template", () => {
+  expect(rulesOn("lightDark:")).toEqual(["nyte-design(no-light-dark-outside-tokens)"]);
+  expect(rulesOn("lightDarkTemplate:")).toEqual(["nyte-design(no-light-dark-outside-tokens)"]);
+  expect(message("lightDark:")).toContain("packages/ui/src/styles/roles.stylex.ts");
 });

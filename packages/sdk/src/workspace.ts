@@ -21,7 +21,8 @@ import type {
   Workspace,
 } from "@nyte-ai/core";
 import type { OperationInput } from "@nyte-ai/protocol";
-import { capabilityOf } from "./capability.ts";
+import { resolveCapability } from "./capability.ts";
+import { loginHandle } from "./client.ts";
 import { batchOutcome, receiptHandle } from "./receipts.ts";
 import type { Rows } from "./rows.ts";
 
@@ -33,18 +34,25 @@ type Pending =
 
 const encoder = new TextEncoder();
 
-/**
- * Returns a handle on a workspace over the `workspace.*`, `jobs.*` and
- * `job.*` rows. `files()`, `git()` and `browser()` read the capability from
- * the host and bind its api to the `files.*`, `git.*` and `browser.*` /
- * `page.*` rows; `patches` rebuilds each `PatchSet`'s map. Binds
- * synchronously.
- */
 export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
   return {
     id: workspace,
     info: () => rows.call("workspace.info", { workspace }),
     watch: () => rows.watch("workspace.watch", { workspace }),
+    mcp: {
+      watch: () => rows.watch("mcp.watch", { workspace }),
+      reconnect: (server) => rows.call("mcp.reconnect", { workspace, server }),
+      setEnabled: (server, enabled) => rows.call("mcp.setEnabled", { workspace, server, enabled }),
+      login: (server) =>
+        loginHandle(
+          rows,
+          async () => (await rows.call("mcp.login", { workspace, server })).login,
+          null,
+        ),
+      logout: (server) => rows.call("mcp.logout", { workspace, server }),
+      add: (server, config, scope) => rows.call("mcp.add", { workspace, server, config, scope }),
+      remove: (server, scope) => rows.call("mcp.remove", { workspace, server, scope }),
+    },
     update: (patch) => rows.call("workspace.update", { workspace, patch }),
     reload: () => rows.call("workspace.reload", { workspace }),
     jobs: jobsApi(rows, workspace),
@@ -53,22 +61,23 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     patches: (run, paths, options) =>
       mapped(rows.frames("workspace.patches", { workspace, run, paths, options }), patchSet),
     files: async () =>
-      capabilityOf(await rows.call("workspace.files", { workspace }), () =>
+      resolveCapability(await rows.call("workspace.files", { workspace }), () =>
         filesApi(rows, workspace),
       ),
     git: async () =>
-      capabilityOf(await rows.call("workspace.git", { workspace }), () => gitApi(rows, workspace)),
+      resolveCapability(await rows.call("workspace.git", { workspace }), () =>
+        gitApi(rows, workspace),
+      ),
     browser: async () =>
-      capabilityOf(await rows.call("workspace.browser", { workspace }), () =>
+      resolveCapability(await rows.call("workspace.browser", { workspace }), () =>
         browserApi(rows, workspace),
       ),
   };
 }
 
-/** Returns the files api over the `files.*` rows: `write` and `upload` send their bytes as the body, `bytes` answers a reader, and `batch()` an immutable plan whose `apply()` uploads `Uint8Array` contents first (§40i) and mints the batch's id (§40o). */
 function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   const upload = (source: AsyncIterable<Uint8Array>): Promise<BlobId> =>
-    rows.upload("files.upload", { workspace }, streamOf(source));
+    rows.upload("files.upload", { workspace }, streamBytes(source));
 
   const plan = (pending: readonly Pending[]): FileBatch => ({
     put: (input) => plan([...pending, { kind: "put", ...input }]),
@@ -86,7 +95,10 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
 
         entries.push({
           ...rest,
-          contents: typeof contents === "string" ? contents : await upload(once(contents)),
+          contents:
+            typeof contents === "string" || !(contents instanceof Uint8Array)
+              ? contents
+              : { blob: await upload(once(contents)) },
         });
       }
 
@@ -121,7 +133,6 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   };
 }
 
-/** Returns the git api over the `git.*` rows; `patches` rebuilds each `PatchSet`'s map. */
 function gitApi(rows: Rows, workspace: WorkspaceId): GitApi {
   return {
     status: () => rows.call("git.status", { workspace }),
@@ -143,7 +154,6 @@ function gitApi(rows: Rows, workspace: WorkspaceId): GitApi {
   };
 }
 
-/** Returns the browser api over the `browser.*` rows; `open` mints the page's wire id (§40o) so a replay opens one page. */
 function browserApi(rows: Rows, workspace: WorkspaceId): BrowserApi {
   return {
     open: async ({ url }) =>
@@ -159,7 +169,6 @@ function browserApi(rows: Rows, workspace: WorkspaceId): BrowserApi {
   };
 }
 
-/** Returns a handle on a page over the `page.*` rows; `capture` answers a reader. Binds synchronously. */
 function pageHandle(rows: Rows, workspace: WorkspaceId, page: PageId): Page {
   const close = async (): Promise<void> => {
     await rows.call("page.close", { workspace, page });
@@ -189,7 +198,6 @@ function pageHandle(rows: Rows, workspace: WorkspaceId, page: PageId): Page {
   };
 }
 
-/** Returns the jobs api over the `jobs.*` rows; a started or recovered job is a handle carrying its key. */
 function jobsApi(rows: Rows, workspace: WorkspaceId): Jobs {
   return {
     async start(input) {
@@ -209,7 +217,6 @@ function jobsApi(rows: Rows, workspace: WorkspaceId): Jobs {
   };
 }
 
-/** Returns a handle on a job over the `job.*` rows, bound synchronously: `write` sends its bytes as the body, `output` yields byte frames and the `gap`/`exit` control frames (§40h), and `settled` is retried across link loss. `close` returns this handle's open outputs on the client (ADV G4); the process keeps running. */
 function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey | null): Job {
   const readers = new Set<() => Promise<void>>();
 
@@ -245,12 +252,10 @@ function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey |
   };
 }
 
-/** Rebuilds a `PatchSet` from its wire form: the entries as a map. */
 function patchSet(wire: PatchSetWire): PatchSet {
   return { revision: wire.revision, entries: new Map(Object.entries(wire.entries)) };
 }
 
-/** Returns a source with each value mapped; `return()` reaches the source at once. */
 function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): AsyncIterable<U> {
   return {
     [Symbol.asyncIterator]() {
@@ -274,8 +279,7 @@ function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): AsyncIter
   };
 }
 
-/** Returns a byte stream pulling from an async iterable; cancelling it returns the iterable. */
-function streamOf(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
+function streamBytes(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
   const iterator = source[Symbol.asyncIterator]();
 
   return new ReadableStream<Uint8Array>({

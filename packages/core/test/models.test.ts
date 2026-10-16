@@ -1,9 +1,17 @@
 import { asId, standard } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
 import type { Configuration, ModelRef } from "@nyte-ai/schema";
+import type { AuthCheck } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import { contributionsOf, createLogin, modelInfo, settingsVersion, usageOf } from "../src/index.ts";
+import {
+  collectContributions,
+  createLogin,
+  modelInfo,
+  settingsVersion,
+  calculateUsage,
+  memoryStore,
+} from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { main, until } from "./harness.ts";
@@ -12,7 +20,6 @@ const smart: ModelRef = { provider: "test", id: "smart" };
 
 const basic: ModelRef = { provider: "test", id: "model" };
 
-/** Returns a fake provider with a plain model and a reasoning model that has a fast sibling. */
 function catalog() {
   return fakeModels({
     models: [
@@ -55,7 +62,19 @@ describe("models", () => {
     const plain = fakeModels({ id: "plain", into: fake.models, verify: false });
     plain.configured = false;
     await using host = await open(fake, { plugins: [extras] });
-    const listed = await host.models.list();
+    const initial = await host.models.list();
+    expect(initial.default).toBeNull();
+    expect(initial.providers.map((provider) => provider.credential)).toEqual([
+      "unknown",
+      "unknown",
+    ]);
+    const listed = await until(async () => {
+      const snapshot = await host.models.list();
+
+      return snapshot.providers.some((provider) => provider.credential === "unknown")
+        ? undefined
+        : snapshot;
+    });
 
     expect(listed.generation).toBe(host.kernel.host.current().catalog);
     expect(listed.default).toEqual(basic);
@@ -100,8 +119,8 @@ describe("models", () => {
     fake.reply({
       content: [{ type: "text", text: "Hi." }],
       limits: [
-        { id: "five_hour", usedPercent: 40, resetsAt: 1_000 },
-        { id: "seven_day", usedPercent: 5 },
+        { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 },
+        { id: "seven_day", label: "Weekly", usedPercent: 5 },
       ],
     });
 
@@ -111,8 +130,8 @@ describe("models", () => {
     });
 
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "five_hour", used: 40, limit: 100, resetsAt: 1_000 },
-      { label: "seven_day", used: 5, limit: 100, resetsAt: null },
+      { label: "5-hour", used: 40, limit: 100, resetsAt: 1_000 },
+      { label: "Weekly", used: 5, limit: 100, resetsAt: null },
     ]);
   });
 
@@ -121,7 +140,7 @@ describe("models", () => {
     await using host = await open(fake);
     const session = await host.sessions.create();
     const messages = [{ role: "user" as const, content: "Hi.", timestamp: 0 }];
-    const window = { id: "five_hour", usedPercent: 40, resetsAt: 1_000 };
+    const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
     const generation = () => host.kernel.host.current().catalog;
 
     await until(() => (host.kernel.catalog(session.id).tools.length > 0 ? true : undefined));
@@ -151,7 +170,7 @@ describe("models", () => {
 
     expect(generation()).not.toBe(limited);
     expect((await host.models.list()).providers[0].limits).toEqual([
-      { label: "five_hour", used: 45, limit: 100, resetsAt: 1_000 },
+      { label: "5-hour", used: 45, limit: 100, resetsAt: 1_000 },
     ]);
   });
 
@@ -175,7 +194,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
-        contributions: contributionsOf(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -227,7 +246,105 @@ describe("models", () => {
 
     await host.models.logout("test");
 
-    expect(await credential("test")).toBe("configured");
+    expect(
+      await until(async () =>
+        (await credential("test")) === "configured" ? "configured" : undefined,
+      ),
+    ).toBe("configured");
+  });
+
+  it("returns the saved model while one shared external check is pending and aborts it when the host closes", async () => {
+    const store = memoryStore();
+    const fake = catalog();
+    const auth = fake.provider.auth.apiKey;
+    assert(auth !== undefined);
+    const result = Promise.withResolvers<AuthCheck | undefined>();
+    let checks = 0;
+    let aborted = false;
+    fake.models.setProvider({
+      ...fake.provider,
+      auth: {
+        ...fake.provider.auth,
+        apiKey: {
+          ...auth,
+          check: async ({ signal }) => {
+            checks += 1;
+            signal.addEventListener(
+              "abort",
+              () => {
+                aborted = true;
+              },
+              { once: true },
+            );
+
+            return result.promise;
+          },
+        },
+      },
+    });
+    const host = await open(fake, { store });
+
+    try {
+      await host.models.setDefault(smart);
+      const snapshots = await Promise.all(Array.from({ length: 8 }, () => host.models.list()));
+      expect(snapshots.map((snapshot) => snapshot.default)).toEqual(
+        Array.from({ length: 8 }, () => smart),
+      );
+      expect(snapshots[0]?.providers[0]?.models.map((model) => model.ref.id)).toEqual([
+        "model",
+        "smart",
+      ]);
+      expect(snapshots[0]?.providers[0]?.credential).toBe("unknown");
+      await until(() => (checks === 1 ? true : undefined));
+      expect(checks).toBe(1);
+      await host.close();
+      expect(aborted).toBe(true);
+      const generation = host.kernel.host.current().catalog;
+      result.resolve({ type: "api_key", source: "external" });
+      await result.promise;
+      await Promise.resolve();
+      expect(host.kernel.host.current().catalog).toBe(generation);
+      expect(
+        (await (await store.open()).refs.list("kv/host/models/")).map((ref) => ref.name),
+      ).toEqual(["kv/host/models/default"]);
+    } finally {
+      result.resolve(undefined);
+      await host.close();
+    }
+  });
+
+  it("does not start an external check when an account-metadata read finishes after close", async () => {
+    const fake = catalog();
+    const auth = fake.provider.auth.apiKey;
+    assert(auth !== undefined);
+    let checks = 0;
+    fake.models.setProvider({
+      ...fake.provider,
+      auth: {
+        ...fake.provider.auth,
+        apiKey: {
+          ...auth,
+          check: async () => {
+            checks += 1;
+            return undefined;
+          },
+        },
+      },
+    });
+    const host = await open(fake);
+    const gate = Promise.withResolvers<void>();
+    const list = fake.models.listAccounts.bind(fake.models);
+    fake.models.listAccounts = async (provider, options) => {
+      await gate.promise;
+
+      return list(provider, options);
+    };
+    const reading = host.models.list();
+    const rejected = expect(reading).rejects.toBeDefined();
+    await host.close();
+    gate.resolve();
+    await rejected;
+    expect(checks).toBe(0);
   });
 
   it("runs a key login through paste, and an oauth login through open, choose and waiting", async () => {
@@ -243,7 +360,7 @@ describe("models", () => {
     for await (const step of key.steps()) {
       keySteps.push(step);
 
-      if (step.kind === "paste") await key.answer("sk-test");
+      if (step.kind === "paste") await key.answer(step.secret ? "sk-test" : "Work");
     }
 
     expect(keySteps).toEqual([
@@ -252,7 +369,11 @@ describe("models", () => {
     ]);
     expect((await host.models.list()).providers[0].credential).toBe("configured");
 
-    const oauth = host.models.login({ provider: "test", method: { kind: "oauth" } });
+    const oauth = host.models.login({
+      provider: "test",
+      method: { kind: "oauth" },
+      label: "Personal",
+    });
     const oauthSteps: unknown[] = [];
 
     for await (const step of oauth.steps()) {
@@ -291,19 +412,92 @@ describe("models", () => {
     }
 
     expect(last.at(-1)).toEqual({ kind: "failed", reason: "Organisation two has no access." });
+
+    const accounts = await host.models.accounts("test");
+    const work = accounts.find((account) => account.label === "Account 1");
+    assert(work !== undefined);
+
+    expect(accounts.map((account) => [account.label, account.method.kind, account.active])).toEqual(
+      [
+        ["Account 1", "key", false],
+        ["Personal", "oauth", true],
+      ],
+    );
+    await host.models.verify("test");
+    const generation = host.kernel.host.current().catalog;
+    await host.models.selectAccount("test", work.id);
+
+    expect(host.kernel.host.current().catalog).not.toBe(generation);
+    expect((await host.models.list()).providers[0].credential).toBe("configured");
+    expect((await host.models.accounts("test")).find((account) => account.active)?.label).toBe(
+      "Account 1",
+    );
+    expect((await host.models.usage())[0]).toMatchObject({
+      provider: "test",
+      account: { id: work.id, label: "Account 1" },
+      state: { kind: "unavailable", reason: "unsupported" },
+    });
+    await host.models.logout("test");
+
+    expect(
+      (await host.models.accounts()).map((account) => [account.label, account.active]),
+    ).toEqual([["Personal", false]]);
+    expect((await host.models.usage())[0].state).toMatchObject({
+      kind: "unavailable",
+      reason: "unsupported",
+    });
   });
 
-  it("cancels a login when its iterator is dropped", async () => {
+  it("cancels a pending login pull at the key prompt and permits another login", async () => {
     const fake = catalog();
+    fake.configured = false;
+    const apiKey = fake.provider.auth.apiKey;
+    assert(apiKey !== undefined && apiKey.login !== undefined);
+    const original = apiKey.login.bind(apiKey);
+    let signal: AbortSignal | undefined;
+
+    fake.models.setProvider({
+      ...fake.provider,
+      auth: {
+        ...fake.provider.auth,
+        apiKey: {
+          ...apiKey,
+          login(interaction) {
+            signal = interaction.signal;
+
+            return original(interaction);
+          },
+        },
+      },
+    });
+
     await using host = await open(fake);
     const login = host.models.login({ provider: "test", method: { kind: "key" } });
+    const steps = login.steps()[Symbol.asyncIterator]();
 
-    for await (const step of login.steps()) {
-      expect(step.kind).toBe("paste");
-      break;
+    expect((await steps.next()).value).toEqual({
+      kind: "paste",
+      message: "Paste your key.",
+      secret: true,
+    });
+
+    const waiting = steps.next();
+    await steps.return?.();
+
+    expect(await waiting).toEqual({ done: true, value: undefined });
+    expect(signal?.aborted).toBe(true);
+    expect(await host.models.accounts()).toEqual([]);
+    await expect(login.answer("late")).rejects.toMatchObject({ code: "invalid" });
+
+    const retry = host.models.login({ provider: "test", method: { kind: "key" } });
+
+    for await (const step of retry.steps()) {
+      if (step.kind === "paste") await retry.answer("sk-retry");
+
+      if (step.kind === "failed") throw new Error(step.reason);
     }
 
-    await expect(login.answer("late")).rejects.toMatchObject({ code: "invalid" });
+    expect((await host.models.accounts()).map((account) => account.label)).toEqual(["Account 1"]);
   });
 });
 
@@ -322,11 +516,11 @@ describe("resolveConfiguration", () => {
         head: main,
         selected,
         patch,
-        contributions: contributionsOf(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
       });
 
     const version = await settingsVersion(
-      contributionsOf(host.kernel.pluginsFor(session.id)).settings,
+      collectContributions(host.kernel.pluginsFor(session.id)).settings,
     );
 
     const base = await resolve(null);
@@ -506,7 +700,7 @@ describe("request", () => {
       timestamp: 0,
     };
 
-    expect(usageOf(message, info)).toEqual({
+    expect(calculateUsage(message, info)).toEqual({
       input: 1_000_000,
       output: 500_000,
       cacheRead: 0,
@@ -526,7 +720,7 @@ describe("request", () => {
       },
     };
 
-    expect(usageOf(priced, info)).toMatchObject({
+    expect(calculateUsage(priced, info)).toMatchObject({
       reasoning: 7,
       total: 1_500_010,
       cost: { total: 2 },

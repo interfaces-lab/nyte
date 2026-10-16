@@ -1,11 +1,10 @@
-import { asId, isJson } from "@nyte-ai/schema";
+import { asId, isJson, standard } from "@nyte-ai/schema";
 import type {
   CallId,
   Json,
   PartId,
   Placement,
   RefUpdate,
-  Schema,
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -13,9 +12,9 @@ import { objectId } from "./content.ts";
 import { openAction, recordAcquisition, reserveRerun } from "./durable.ts";
 import type { ActionIntent } from "./durable.ts";
 import { SdkError } from "./error.ts";
-import { check } from "./json-schema.ts";
-import type { Checked } from "./json-schema.ts";
+import { check, convertJsonSchema, matchesOutput } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
+import { RESERVED_PART_KINDS } from "./part-definitions.ts";
 import type { RegisteredDefinition } from "./part-definitions.ts";
 import { release, settle, storedAnswer } from "./parts.ts";
 import type {
@@ -27,7 +26,7 @@ import type {
   PartDefinition,
   PartState,
 } from "./parts.ts";
-import { PARTICIPANT_AUTHORITY } from "./principals.ts";
+import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { decodePartRecord, isJsonObject } from "./records.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
@@ -38,32 +37,24 @@ import {
   STALE,
   attempt,
   commit,
-  expectOf,
+  readRefExpectation,
   load,
-  objectOf,
+  toCommitObjectId,
   put,
-  putCommit,
   readCall,
   readTip,
   requireSession,
 } from "./session-state.ts";
 
-/** Returns what an action handler ended with: its return value, what it threw, or the part closing first. */
 type Performed =
   | { readonly kind: "returned"; readonly output: unknown }
   | { readonly kind: "threw"; readonly error: unknown }
   | { readonly kind: "closed" };
 
-/** Returns what `answer()` resolves with on a handle typed by `K`, short of null. */
 type Answer<K extends PartDefinition> = NonNullable<Awaited<ReturnType<Part<K>["answer"]>>>;
 
-/** Returns what `update` resolves with. */
 type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 
-/** The session each handle this module bound acts in. */
-const boundIn = new WeakMap<object, SessionId>();
-
-/** Creates a part from a definition and returns its handle; an existing id with the same kind and state is a replay, any other is `invalid`. A transcript part lands as a commit, in the same set, on the head the creating step runs on, else main. Any other part a step creates belongs to the step's run, so the run's stop or failure fails it; one created while the run is stopping is never written. From a durable step the creation is an acquisition recorded on the step's call first, so a re-run returns the part it created. */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -83,7 +74,12 @@ export async function createPart<K extends PartDefinition>(
           key: input.id ?? `acq:${origin.sequence.next()}`,
         };
 
-  const checked = await check(kind.state, input.state);
+  const registered = kernel.partDefinitions.get(kind.kind);
+
+  if (registered !== undefined && registered.definition !== kind)
+    throw new SdkError("invalid", `Another definition is registered for ${kind.kind}.`);
+  for (const action of Object.values(kind.actions)) convertJsonSchema(action.input, "output");
+  const checked = await check(registered?.definition.state ?? kind.state, input.state);
 
   if (checked.kind === "invalid")
     throw new SdkError("invalid", `The state fails ${kind.kind}'s schema.`, {
@@ -92,11 +88,31 @@ export async function createPart<K extends PartDefinition>(
   const state = checked.value;
 
   if (!isJson(state)) throw new SdkError("invalid", `${kind.kind}'s state is not JSON.`);
-  const registered = kernel.partDefinitions.get(kind.kind);
 
   if (registered === undefined && kind.onAction !== undefined)
     throw new SdkError("invalid", "a definition with onAction must be contributed");
   await requireSession(kernel, session);
+
+  const owner = registered?.owner ?? null;
+  const definition =
+    owner === null && !RESERVED_PART_KINDS.has(kind.kind)
+      ? {
+          state: convertJsonSchema(kind.state, "output"),
+          actions: Object.fromEntries(
+            Object.entries(kind.actions).map(([action, schemas]) => {
+              const inputSchema = convertJsonSchema(schemas.input, "input");
+
+              return [
+                action,
+                schemas.output === undefined
+                  ? { input: inputSchema }
+                  : { input: inputSchema, output: convertJsonSchema(schemas.output, "output") },
+              ];
+            }),
+          ),
+        }
+      : undefined;
+
   const minted = input.id ?? asId<"part">(crypto.randomUUID());
 
   const acquired = step === null ? minted : await recordAcquisition(kernel, step, step.key, minted);
@@ -104,7 +120,6 @@ export async function createPart<K extends PartDefinition>(
   const id = typeof acquired === "string" ? asId<"part">(acquired) : minted;
   const transcript = input.placement.kind === "transcript";
   const run = transcript ? null : (from?.run ?? null);
-  const owner = registered?.owner ?? null;
   const name = partRef(session, id);
 
   await attempt(`Creating part ${id}`, async () => {
@@ -155,7 +170,12 @@ export async function createPart<K extends PartDefinition>(
         ...(held === null ? [] : [held]),
         {
           name,
-          target: await put(kernel, "part", stored, at),
+          target: await put(
+            kernel,
+            "part",
+            definition === undefined ? stored : { ...stored, definition },
+            at,
+          ),
           expect: "absent",
           event: { head: null, ...created },
         },
@@ -174,7 +194,7 @@ export async function createPart<K extends PartDefinition>(
       body: { kind: "part", part: id },
     };
 
-    const landed = await putCommit(kernel, record);
+    const landed = asId<"commit">(await put(kernel, "commit", record, record.at));
 
     const stored: PartRecord = {
       id,
@@ -187,7 +207,12 @@ export async function createPart<K extends PartDefinition>(
       status: { kind: "settled", commit: landed, endedAt: at },
     };
 
-    const target = await put(kernel, "part", stored, at);
+    const target = await put(
+      kernel,
+      "part",
+      definition === undefined ? stored : { ...stored, definition },
+      at,
+    );
 
     const updates: readonly RefUpdate[] = [
       { name, target, expect: "absent", event: { head, ...created } },
@@ -198,8 +223,8 @@ export async function createPart<K extends PartDefinition>(
       },
       {
         name: headRef(session, head),
-        target: objectOf(landed),
-        expect: expectOf(tip.ref),
+        target: toCommitObjectId(landed),
+        expect: readRefExpectation(tip.ref),
         event: {
           head,
           kind: "commit",
@@ -214,14 +239,9 @@ export async function createPart<K extends PartDefinition>(
     return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
   });
 
-  const table = kernel.partTable;
-  table.closed.delete(name);
-  table.created.set(name, kind);
-
   return partHandleFor(kernel, context, session, id, kind);
 }
 
-/** Returns a handle on a part by id, binding synchronously with no I/O. */
 export function partHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -231,7 +251,6 @@ export function partHandle(
   return partHandleFor<PartDefinition>(kernel, context, session, id, null);
 }
 
-/** Returns a handle on a part typed by `kind`, or untyped when it is null; the governing definition is the registered one, else `kind`, else the one that created the part here. */
 function partHandleFor<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -240,21 +259,54 @@ function partHandleFor<K extends PartDefinition>(
   kind: K | null,
 ): Part<K> {
   const name = partRef(session, id);
-  const table = kernel.partTable;
 
-  const definitionOf = (partKind: string): PartDefinition | null =>
-    kernel.partDefinitions.get(partKind)?.definition ?? kind ?? table.created.get(name) ?? null;
+  const readDefinition = (
+    record: PartRecord,
+  ): Pick<PartDefinition, "kind" | "state" | "actions"> | null => {
+    const registered = kernel.partDefinitions.get(record.partKind)?.definition ?? kind;
 
-  const handle: Part<K> = {
+    if (registered !== null) return registered;
+
+    if (record.definition === undefined) return null;
+
+    return {
+      kind: record.partKind,
+      state: standard(record.definition.state),
+      actions: Object.fromEntries(
+        Object.entries(record.definition.actions).map(([action, schemas]) => {
+          const inputSchema = standard(schemas.input);
+
+          return [
+            action,
+            schemas.output === undefined
+              ? { input: inputSchema }
+              : { input: inputSchema, output: standard(schemas.output) },
+          ];
+        }),
+      ),
+    };
+  };
+
+  const guarded = (record: PartRecord): boolean =>
+    record.owner === null &&
+    RESERVED_PART_KINDS.has(record.partKind) &&
+    context !== CORE_CONTEXT &&
+    context.origin === null;
+
+  return {
     id,
-    async update(next) {
+    async update(next, options) {
       return attempt<PartUpdateOutcome>(`Updating part ${id}`, async () => {
-        const found = table.closed.has(name)
-          ? null
-          : await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-        if (found === null) return { kind: table.closed.has(name) ? "closed" : "missing" };
+        if (found === null) return { kind: "missing" };
         const { ref, record } = found;
+
+        if (guarded(record))
+          return { kind: "invalid", issues: [issue(`${record.partKind} is a built-in part.`)] };
+
+        if (options?.version !== undefined && options.version !== record.version)
+          return { kind: "stale" };
         const given = nextState(kind, next, record.state);
 
         if (given === null)
@@ -262,12 +314,11 @@ function partHandleFor<K extends PartDefinition>(
             kind: "invalid",
             issues: [issue(`Part ${id}'s stored state fails its schema.`)],
           };
-        const definition = definitionOf(record.partKind);
+        const definition = readDefinition(record);
 
-        const checked: Checked<unknown> =
-          definition === null
-            ? { kind: "valid", value: given.value }
-            : await check(definition.state, given.value);
+        if (definition === null)
+          return { kind: "invalid", issues: [issue(`No state schema is available for ${id}.`)] };
+        const checked = await check(definition.state, given.value);
 
         if (checked.kind === "invalid") return checked;
         const state = checked.value;
@@ -288,15 +339,9 @@ function partHandleFor<K extends PartDefinition>(
       });
     },
     async act(action, input) {
-      const found = table.closed.has(name)
-        ? null
-        : await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+      const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-      if (found === null) {
-        if (table.closed.has(name)) return { kind: "closed" };
-
-        throw new SdkError("unknown", `No part has the id ${id}.`);
-      }
+      if (found === null) throw new SdkError("unknown", `No part has the id ${id}.`);
 
       const record = found.record;
       const modal = record.placement.kind === "modal";
@@ -305,7 +350,7 @@ function partHandleFor<K extends PartDefinition>(
       const registered = kernel.partDefinitions.get(record.partKind);
 
       if (registered === undefined && record.owner !== null) return { kind: "no-owner" };
-      const definition = definitionOf(record.partKind);
+      const definition = readDefinition(record);
       const named = String(action);
       const accepted = await actInput(definition, named, input);
 
@@ -348,7 +393,7 @@ function partHandleFor<K extends PartDefinition>(
             };
       const output = performed.output;
 
-      if (!isOutputOf(kind, definition, action, output, handler !== null))
+      if (!isPartActionOutput(kind, definition, action, output, handler !== null))
         return {
           kind: "failed",
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
@@ -358,18 +403,19 @@ function partHandleFor<K extends PartDefinition>(
 
       return { kind: "ok", output };
     },
-    async answer() {
-      const settled = await firstAnswer(kernel, session, name);
+    async answer(options) {
+      const settled = await firstAnswer(kernel, session, name, options?.signal);
 
-      return settled !== null && isAnswerOf(kind, settled) ? settled : null;
+      return settled !== null && isPartAnswer(kind, settled) ? settled : null;
     },
     async close() {
-      if (table.closed.has(name)) return;
-
       const closed = await attempt(`Closing part ${id}`, async () => {
         const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
         if (found === null) return null;
+
+        if (guarded(found.record))
+          throw new SdkError("denied", `${found.record.partKind} is a built-in part.`);
 
         const outcome = await commit(kernel, [
           {
@@ -384,7 +430,7 @@ function partHandleFor<K extends PartDefinition>(
       });
 
       if (closed === null) return;
-      release(table, name);
+      release(kernel.partTable, name);
       await kernel.waits.partClosed(
         session,
         id,
@@ -392,13 +438,8 @@ function partHandleFor<K extends PartDefinition>(
       );
     },
   };
-
-  boundIn.set(handle, session);
-
-  return handle;
 }
 
-/** Keeps an act's answer on a live modal part's status, its one home, unless the part holds one; offers the winner to the step the status names as waiting and to the waits here, then settles `answer()`. Resolves false when the part is no longer live. */
 async function answered(
   kernel: Kernel,
   session: SessionId,
@@ -421,6 +462,7 @@ async function answered(
         name,
         target: await put(kernel, "part", { ...found.record, status: { ...status, answer } }),
         expect: found.ref.revision,
+        event: { head: null, kind: "part", part: id, change: "answered", answer },
       },
     ]);
 
@@ -434,7 +476,6 @@ async function answered(
   return true;
 }
 
-/** Runs a head-less action step again when a wake recorded its outcome and no act here waits on it, as after a restart; a modal part keeps the answer once it returns. */
 export async function rerunAction(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
   const step = (await readCall(kernel, session, call))?.record;
 
@@ -473,12 +514,6 @@ export async function rerunAction(kernel: Kernel, session: SessionId, call: Call
     await answered(kernel, session, intent.part, { action: intent.action, input: intent.input });
 }
 
-/** Returns the session a part handle this module bound acts in, or undefined for any other object. */
-export function sessionOfPart(part: object): SessionId | undefined {
-  return boundIn.get(part);
-}
-
-/** Runs a registered definition's `onAction` as the durable step `call`; resolves closed as soon as the part closes, aborting the handler's signal. A parked step leaves the act pending; an interrupted one fails it. */
 async function perform(
   kernel: Kernel,
   context: ConnectionContext,
@@ -494,8 +529,6 @@ async function perform(
   const { session, record, registered } = input;
   const name = partRef(session, record.id);
   const table = kernel.partTable;
-
-  if (table.closed.has(name)) return { kind: "closed" };
   const controller = new AbortController();
   const acting = table.acting.get(name) ?? new Set<AbortController>();
   acting.add(controller);
@@ -518,6 +551,7 @@ async function perform(
           memo: (key, compute) => durable.memo(key, compute),
           now: () => durable.now(),
           part: partHandle(kernel, context, session, record.id),
+          session,
           get api() {
             return kernel.pluginApi(registered.owner ?? "core", session);
           },
@@ -554,46 +588,45 @@ async function perform(
   }
 }
 
-/** Returns a part's first answer as the store holds it, else waits for one; null once the part is gone or closes, or a modal part is no longer live. */
 async function firstAnswer(
   kernel: Kernel,
   session: SessionId,
   name: string,
+  signal: AbortSignal | undefined,
 ): Promise<Answered | null> {
+  if (signal?.aborted === true) return null;
   const table = kernel.partTable;
-  const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+  const { promise, resolve } = Promise.withResolvers<Answered | null>();
+  const waiting = table.waiters.get(name) ?? new Set();
+  waiting.add(resolve);
+  table.waiters.set(name, waiting);
+  const abort = (): void => resolve(null);
+  signal?.addEventListener("abort", abort, { once: true });
 
-  if (
-    found === null ||
-    (found.record.placement.kind === "modal" && found.record.status.kind !== "live")
-  ) {
-    table.answered.delete(name);
+  try {
+    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
 
-    return null;
+    if (
+      found === null ||
+      found.record.placement.kind !== "modal" ||
+      found.record.status.kind !== "live"
+    )
+      return null;
+
+    const stored = await storedAnswer(kernel, session, found.record);
+
+    if (stored !== null) settle(table, name, stored);
+
+    return await promise;
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    const left = table.waiters.get(name);
+    left?.delete(resolve);
+
+    if (left?.size === 0) table.waiters.delete(name);
   }
-
-  const stored = await storedAnswer(kernel, session, found.record);
-
-  if (stored !== null) {
-    settle(table, name, stored);
-
-    return stored;
-  }
-
-  const settled = table.answered.get(name);
-
-  if (settled !== undefined) return settled;
-
-  if (table.closed.has(name)) return null;
-
-  return new Promise((resolve) => {
-    const waiting = table.waiters.get(name) ?? new Set();
-    waiting.add(resolve);
-    table.waiters.set(name, waiting);
-  });
 }
 
-/** Returns the action intent a call record's `intent` holds, or null when it holds another shape. */
 function decodeActionIntent(value: Json): ActionIntent | null {
   if (!isJsonObject(value)) return null;
   const { part, action, input, principal } = value;
@@ -606,14 +639,13 @@ function decodeActionIntent(value: Json): ActionIntent | null {
     : null;
 }
 
-/** Returns an act's input as the definition validates it for the action, or null when the definition has no such action; throws `invalid` with the issues. Without a definition the input passes as given. */
 async function actInput(
-  definition: PartDefinition | null,
+  definition: Pick<PartDefinition, "kind" | "state" | "actions"> | null,
   action: string,
   input: unknown,
 ): Promise<{ readonly value: unknown } | null> {
-  if (definition === null) return { value: input };
-  const spec = actionOf(definition, action);
+  if (definition === null) return null;
+  const spec = findAction(definition, action);
 
   if (spec === undefined) return null;
   const checked = await check(spec.input, input);
@@ -626,9 +658,8 @@ async function actInput(
   return { value: checked.value };
 }
 
-/** Returns a definition's action by name, or undefined when it has none by that name. */
-function actionOf(
-  definition: PartDefinition | null,
+function findAction(
+  definition: Pick<PartDefinition, "actions"> | null,
   action: string,
 ): ActionSchemas[string] | undefined {
   return definition !== null && Object.hasOwn(definition.actions, action)
@@ -636,7 +667,6 @@ function actionOf(
     : undefined;
 }
 
-/** Returns the state an update gives: the value itself, or the derivation applied to the current state; null when the current state fails `kind`'s schema, so the derivation cannot read it. */
 function nextState<K extends PartDefinition>(
   kind: K | null,
   next: PartState<K> | ((current: PartState<K>) => PartState<K>),
@@ -644,54 +674,42 @@ function nextState<K extends PartDefinition>(
 ): { readonly value: unknown } | null {
   if (!isDerivation(next)) return { value: next };
 
-  return isStateOf(kind, current) ? { value: next(current) } : null;
+  return isPartState(kind, current) ? { value: next(current) } : null;
 }
 
-/** Returns whether an update derives the state from the current one rather than giving it: states are JSON, never functions. */
 function isDerivation<S>(next: S | ((current: S) => S)): next is (current: S) => S {
   return typeof next === "function";
 }
 
-/** Returns whether a state is `kind`'s: what its state schema accepts; any state on a handle bound without a definition, whose state type is unknown. */
-function isStateOf<K extends PartDefinition>(
+function isPartState<K extends PartDefinition>(
   kind: K | null,
-  value: unknown,
-): value is PartState<K> {
-  return kind === null || accepts(kind.state, value);
+  value: Json,
+): value is Json & PartState<K> {
+  return kind === null || matchesOutput(kind.state, value);
 }
 
-/** Returns whether an answer is one of `kind`'s actions with an input its schema accepts; any answer on a handle bound without a definition. */
-function isAnswerOf<K extends PartDefinition>(
+function isPartAnswer<K extends PartDefinition>(
   kind: K | null,
   answer: Answered,
 ): answer is Answered & Answer<K> {
   if (kind === null) return true;
-  const spec = actionOf(kind, answer.action);
+  const spec = findAction(kind, answer.action);
 
-  return spec !== undefined && accepts(spec.input, answer.input);
+  return spec !== undefined && matchesOutput(spec.input, answer.input);
 }
 
-/** Returns whether a value is what `act` answers for an action: undefined when no handler ran, else what the action's `output` schema accepts, or undefined when it declares none. */
-function isOutputOf<K extends PartDefinition, A extends keyof PartActions<K>>(
+function isPartActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
   kind: K | null,
-  definition: PartDefinition | null,
+  definition: Pick<PartDefinition, "actions"> | null,
   action: A,
   value: unknown,
   handled: boolean,
 ): value is PartActions<K>[A]["output"] {
-  const output = handled ? actionOf(kind ?? definition, String(action))?.output : undefined;
+  const output = handled ? findAction(kind ?? definition, String(action))?.output : undefined;
 
-  return output === undefined ? value === undefined : accepts(output, value);
+  return output === undefined ? value === undefined : matchesOutput(output, value);
 }
 
-/** Returns whether a schema accepts a value synchronously: what the type guards rest on; a schema that validates asynchronously does not accept here. */
-function accepts(schema: Schema<unknown>, value: unknown): boolean {
-  const result = schema["~standard"].validate(value);
-
-  return !(result instanceof Promise) && result.issues === undefined;
-}
-
-/** Returns an error issue at the root. */
 function issue(message: string): ValidationIssue {
   return { severity: "error", path: [], message };
 }

@@ -8,19 +8,16 @@ import type {
 } from "@nyte-ai/schema";
 import { dev } from "./dev-log.ts";
 
-/** A head ref as one write left it: the commit it targets (null when deleted) and its revision (empty when deleted). */
 export interface HeadPair {
   readonly tip: CommitId | null;
   readonly revision: Revision;
 }
 
-/** One event as a feed carries it, with the head ref its write left when it moved a head. */
 export interface FeedItem {
   readonly event: SessionEvent | PatchEvent;
   readonly head: HeadPair | null;
 }
 
-/** Carries every session's live events, durable and transient, to in-process listeners. */
 export interface SessionBus {
   publish(session: SessionId, event: SessionEvent | PatchEvent, head?: HeadPair | null): void;
   subscribe(
@@ -30,7 +27,6 @@ export interface SessionBus {
   subscribeAll(listener: (session: SessionId, event: SessionEvent | PatchEvent) => void): Disposer;
 }
 
-/** Returns an in-process bus with no listeners. */
 export function createBus(): SessionBus {
   const sessions = new Map<
     SessionId,
@@ -41,11 +37,17 @@ export function createBus(): SessionBus {
 
   return {
     publish(session, event, head = null) {
-      dev("bus", event.kind, { session, seq: "seq" in event ? event.seq : null });
+      const deliver = (call: () => void) => {
+        try {
+          call();
+        } catch (error) {
+          dev("bus", "listener failed", { session, event: event.kind, error: String(error) });
+        }
+      };
 
-      for (const listener of sessions.get(session) ?? []) listener(event, head);
+      for (const listener of sessions.get(session) ?? []) deliver(() => listener(event, head));
 
-      for (const listener of everyone) listener(session, event);
+      for (const listener of everyone) deliver(() => listener(session, event));
     },
     subscribe(session, listener) {
       const listeners = sessions.get(session) ?? new Set();

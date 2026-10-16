@@ -38,5 +38,7 @@ export const HARNESSES = [
 ] as const satisfies readonly Harness[];
 
 export function harnessMeta(harness: Harness): string {
-  return harness.modality ? `${harness.by} · ${harness.modality} agent` : harness.by;
+  const by = harness.by === harness.name ? [] : [harness.by];
+  const modality = harness.modality ? [`${harness.modality} agent`] : [];
+  return [...by, ...modality].join(" · ");
 }

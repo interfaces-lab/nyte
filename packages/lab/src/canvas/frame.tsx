@@ -10,10 +10,8 @@ import { canvasRequest } from "./api";
 import { FrameMessageSchema } from "./messages";
 import { CanvasSnapshotSchema, type CanvasSnapshot } from "./wire";
 
-/** The frame's first height, before it reports its own: the SDK's default chart height. */
 const PLACEHOLDER_HEIGHT = 240;
 
-// The sandbox document sits outside StyleX: it reads only the variables the host resolves below.
 const FRAME_CSS =
   ":root{color-scheme:light dark}html,body{margin:0;padding:0;background:transparent}" +
   "body{color:var(--canvas-fg);font-family:var(--canvas-font);font-size:var(--canvas-font-size);line-height:1.45;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}" +
@@ -219,7 +217,6 @@ const styles = create({
   border: { color: role.borderPrimary },
   surface: { color: role.bgMuted },
   series: { color: role.bgInteractiveStrong },
-  // DERIVED: the height is what the sandboxed page measured, not a layout choice here.
   frame: (height: number) => ({ display: "block", width: "100%", height, borderStyle: "none" }),
   hidden: { display: "none" },
 });

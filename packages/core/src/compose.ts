@@ -21,11 +21,12 @@ import type { Host } from "./host.ts";
 import { createKernel } from "./kernel.ts";
 import type { Kernel } from "./kernel.ts";
 import { createConfigurationResolver, createModelsApi } from "./models.ts";
-import { checkPlugins, hostPluginRows, readKv } from "./plugin-runtime.ts";
+import { readMcpWorkspace } from "./mcp.ts";
+import { checkPlugins, hostPluginRows, pluginSecrets, readKv } from "./plugin-runtime.ts";
 import type { Plugin } from "./plugin.ts";
 import { delegationPlugin } from "./plugins/delegation.ts";
 import { environmentPlugin } from "./plugins/environment.ts";
-import { partsPlugin } from "./plugins/parts.ts";
+import { mcpPlugin } from "./plugins/mcp.ts";
 import { systemPromptPlugin } from "./plugins/system-prompt.ts";
 import { decodeHostIdentity, envelope } from "./records.ts";
 import type { HostIdentity } from "./records.ts";
@@ -37,7 +38,6 @@ import type { StoreConnection } from "./store.ts";
 import { createTurnDriver } from "./turn.ts";
 import { pollStore } from "./watch.ts";
 
-/** Describes what `composeHost` needs: `OpenOptions` plus what the platform host supplies: the home `Resources.user` attaches at, protocol's operations catalog, the host's description, and where each file-loaded plugin came from. */
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
   readonly operations: HostView["operations"];
@@ -46,24 +46,21 @@ export type ComposeOptions = OpenOptions & {
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
   >;
-  /** The interval in ms at which this host re-reads a store it shares with other instances; the Vercel deploy sets 1000. */
+
   readonly poll?: number;
-  /** Host settings applied before any driver attaches, skipping an id already stored so a value set over the wire survives; what did not apply is reported on one `settings` row naming `path`. */
+
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
-  /** Loads plugin files by path for `PluginsApi`; absent, a file answers `unavailable`. */
+
   readonly loadPlugins?: Kernel["loadPlugins"];
 };
 
-/** The core plugins every session loads first, in decision 13's order: what `kernel.builtins` holds. */
 export const BUILTINS: readonly Plugin<"core">[] = [
   systemPromptPlugin,
   environmentPlugin,
   resourcesPlugin,
   delegationPlugin,
-  partsPlugin,
 ];
 
-/** Composes the in-process host `sdk.open` serves: preflights `BUILTINS` and `options.plugins` (a rejected file plugin is dropped and reported, any other throws `invalid`), opens the store, creates the kernel, registers `options.workspace` as the default, applies the seed and starts the in-process driver and the poll. `close()` stops them, releases the leases without waiting on turns in flight, closes every session's plugins and environments, then the store connection. */
 export async function composeHost(
   options: ComposeOptions,
 ): Promise<Omit<Host, "listen"> & { readonly kernel: Kernel }> {
@@ -121,8 +118,14 @@ export async function composeHost(
 
   kernel.defaultWorkspace = added.workspace;
 
-  if (options.seed !== undefined) await applySeed(kernel, options.seed);
-  kernel.host.update({ settings: await settingInfos(kernel, null) });
+  try {
+    if (options.seed !== undefined) await applySeed(kernel, options.seed);
+    kernel.host.update({ settings: await settingInfos(kernel, null) });
+  } catch (error) {
+    await release(kernel, null);
+
+    throw error;
+  }
 
   const driver =
     kernel.execution.kind === "run" ? driveInProcess(kernel, kernel.execution.coverage) : null;
@@ -145,7 +148,6 @@ export async function composeHost(
   return { ...host, kernel, close, [Symbol.asyncDispose]: close };
 }
 
-/** Returns the host's identity at `host/identity`, minting and writing it once on first open; a lost race reads the winner. */
 export async function hostIdentity(store: StoreConnection): Promise<HostIdentity> {
   const known = await storedIdentity(store);
 
@@ -168,7 +170,6 @@ export async function hostIdentity(store: StoreConnection): Promise<HostIdentity
   return winner;
 }
 
-/** Applies a settings seed through `kernel.settings.apply`, skipping ids already stored; unknown ids and invalid values become warnings on one `settings` report row. */
 async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"]>): Promise<void> {
   const issues: ValidationIssue[] = [];
   let applied = 0;
@@ -214,7 +215,6 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
     kernel.host.report({ id: "settings", source: "user", path: seed.path, issues });
 }
 
-/** Returns the kernel `composeHost` serves: every slot filled over `options.models`, each built on first use once the kernel exists. */
 async function composeKernel(options: ComposeOptions, store: StoreConnection): Promise<Kernel> {
   const identity = await hostIdentity(store);
   const models = options.models;
@@ -240,8 +240,23 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
   const request = bound(createRequest);
   const api = bound(createModelsApi);
 
+  const secrets = bound((kernel) => pluginSecrets(kernel, "mcp"));
+  const kernel = bound((composedKernel) => composedKernel);
+
+  const mcp =
+    options.mcp?.({
+      secrets: {
+        get: (key) => secrets().get(key),
+        set: (key, value) => secrets().set(key, value),
+        delete: (key) => secrets().delete(key),
+      },
+    }) ?? null;
+
   const catalog: ModelsApi = {
     list: () => api().list(),
+    accounts: (provider) => api().accounts(provider),
+    selectAccount: (provider, account) => api().selectAccount(provider, account),
+    usage: () => api().usage(),
     refresh: (provider) => api().refresh(provider),
     setDefault: (ref) => api().setDefault(ref),
     verify: (provider) => api().verify(provider),
@@ -268,7 +283,11 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
       return request()(session, input);
     },
     models: catalog,
-    builtins: BUILTINS,
+    mcp,
+    builtins:
+      mcp === null
+        ? BUILTINS
+        : [...BUILTINS, mcpPlugin(mcp, (id) => readMcpWorkspace(kernel(), id))],
     hostPlugins: options.plugins,
     pluginSources: options.pluginSources,
     secrets: options.secrets,
@@ -282,22 +301,31 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
   return composed;
 }
 
-/** Releases what a composed host holds, once: the in-process driver and its leases, every session's plugins, every attached environment (each session's, then each registered workspace's own), then the store connection. */
 async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
+  await kernel.modelState.close();
+  await kernel.mcp?.close();
   await driver?.close();
   const sessions = [...kernel.runtimes().keys()];
+
+  const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>
+    asId<"workspace">(ref.name.slice("workspaces/".length)),
+  );
+
+  await Promise.allSettled(
+    workspaces.flatMap((workspace) =>
+      kernel.jobs
+        .list(workspace)
+        .flatMap((job) => (job.view.state.kind === "running" ? [job.process.stop()] : [])),
+    ),
+  );
 
   for (const session of sessions) await kernel.closePlugins(session);
 
   for (const session of sessions) await kernel.environments.detach(session);
 
-  for (const ref of await kernel.store.refs.list("workspaces/"))
-    await kernel.environments.detachWorkspace(
-      asId<"workspace">(ref.name.slice("workspaces/".length)),
-    );
+  for (const workspace of workspaces) await kernel.environments.detachWorkspace(workspace);
 }
 
-/** Returns the identity `host/identity` holds, or null before the first open. */
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {
   const ref = await store.refs.get(hostIdentityRef());
 

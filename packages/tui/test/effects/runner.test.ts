@@ -1,11 +1,3 @@
-/**
- * The runner against `fakeHost`:
- * - withdraw calls `withdraw(messageId)` on the session port (the receipt id is the message id)
- *   only when the latest state still shows the row pending;
- * - a plugin reject answers `send-refused` with the snapshot, and the app test sees the draft come back;
- * - a handler that throws writes the crash log and dispatches `effect-failed`; later effects still run;
- * - a watch that ends dispatches `watch-ended`, never hangs `follow`.
- */
 import { asId } from "@nyte-ai/schema";
 import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
@@ -36,7 +28,6 @@ interface Harness {
   readonly ports: FakePorts;
   readonly dispatched: Msg[];
   set(state: State): void;
-  /** Resolves with the first dispatched message of `kind` once it arrives. */
   received<K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>>;
 }
 
@@ -273,6 +264,48 @@ test("a saved edit sends with replace while its message is pending, and is refus
   await app.runner.settled();
   expect(session.calls.send).toHaveLength(1);
   expect(app.dispatched.at(-1)).toMatchObject({ kind: "send-refused", submission: "sub-3" });
+});
+
+test("answer success and IO failure preserve the request identity", async () => {
+  const app = harness(stateOf(followed(PENDING)));
+  const session = app.ports.host.addSession("s1");
+  session.answerResult = new Error("offline");
+  app.runner.run({
+    kind: "answer",
+    session: asId("s1"),
+    part: asId("q-old"),
+    answers: [["A"]],
+    typed: null,
+  });
+  await app.runner.settled();
+  session.answerResult = true;
+  app.runner.run({
+    kind: "answer",
+    session: asId("s1"),
+    part: asId("q-new"),
+    answers: [["B"]],
+    typed: null,
+  });
+  await app.runner.settled();
+
+  expect(app.dispatched).toEqual([
+    {
+      kind: "answered",
+      request: { session: asId("s1"), part: asId("q-old") },
+      result: { kind: "failed", message: "offline" },
+      typed: null,
+    },
+    {
+      kind: "answered",
+      request: { session: asId("s1"), part: asId("q-new") },
+      result: { kind: "accepted" },
+      typed: null,
+    },
+  ]);
+  expect(session.calls.answer).toEqual([
+    { part: "q-old", answers: [["A"]] },
+    { part: "q-new", answers: [["B"]] },
+  ]);
 });
 
 test("a handler that throws writes the crash log and answers effect-failed; later effects still run", async () => {

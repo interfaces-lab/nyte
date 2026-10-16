@@ -1,22 +1,43 @@
 import { asSeq } from "@nyte-ai/schema";
-import type { Ref, RefUpdate, Revision, Seq, SessionId, SetOutcome } from "@nyte-ai/schema";
-import { blobId, objectId } from "@nyte-ai/core";
-import type { Store, StoreConnection } from "@nyte-ai/core";
-import { Pool } from "pg";
+import type {
+  ObjectId,
+  Ref,
+  RefUpdate,
+  Revision,
+  Seq,
+  SessionId,
+  SetOutcome,
+} from "@nyte-ai/schema";
 import {
   admits,
+  assertStoreVersion,
+  blobId,
+  decodeObject,
+  collectSessionEvents,
+  migrateStore,
+  objectId,
+  setSeq,
+  sessionIndexRef,
+  parseSessionRef,
+} from "@nyte-ai/core";
+import type { MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+import { Pool } from "pg";
+import {
   collect,
   decodeEvent,
-  decodeObject,
-  eventsOf,
   memoryReader,
   mintRevision,
   numberOf,
   prefixEnd,
   refOf,
-  setSeq,
+  storedRecordOf,
   textOf,
 } from "./store-rows.ts";
+import {
+  postgresSessionIndexQuery,
+  sessionIndexChanges,
+  sqlSessionIndex,
+} from "./session-index.ts";
 
 /** Returns one pooled client: what `PostgresPool.connect` lends, a query at a time, released once. */
 export type PostgresClient = {
@@ -33,13 +54,12 @@ export type PostgresPool = {
   end(): Promise<void>;
 };
 
-const SCHEMA = [
-  "CREATE TABLE IF NOT EXISTS objects (id TEXT PRIMARY KEY, body TEXT NULL, bytes BYTEA NULL)",
-  'CREATE TABLE IF NOT EXISTS refs (name TEXT COLLATE "C" PRIMARY KEY, target TEXT NULL, revision TEXT NOT NULL)',
-  "CREATE TABLE IF NOT EXISTS log (session TEXT NOT NULL, seq BIGINT NOT NULL, at BIGINT NOT NULL, event TEXT NOT NULL, PRIMARY KEY (session, seq))",
-];
+const MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('nyte:store', 0))";
 
-/** Returns a `Store` (`kind: "postgres"`) over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` creates the sqlite store's three tables if absent, `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that first takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs, checks every `expect` against them, and applies and appends as the sqlite store does, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
+const SHARED_MIGRATION_LOCK =
+  "SELECT pg_advisory_xact_lock_shared(hashtextextended('nyte:store', 0))";
+
+/** Returns a `Store` over Postgres: a `pg` `Pool` of its own from `connectionString`, ended by `close()`, or the caller's `pool` (any `PostgresPool`, §41c), left open. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore`, the sqlite store's tables with `bytes` as `BYTEA`, `seq`/`at` as `BIGINT` and `refs.name` collated `"C"` so `list` ranges and orders by code point as the other stores do; each commit is one transaction under an exclusive advisory lock, so instances opening at once serialize, and the open rejects with `SdkError("unavailable")` for a store a newer Nyte migrated. There is no backup. Semantics are the sqlite store's (§41f); each `refs.set` is one transaction on one pooled client that shares the migration's advisory lock, rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store, then takes `pg_advisory_xact_lock` on every ref name and session it touches, in sorted order (a row lock cannot hold an absent ref or a session's next seq), then reads those refs and applies `RefStore.set`, rolling back on any error. Every `open()` returns a connection whose reads go through the pool. */
 export function postgresStore(
   input: { readonly connectionString: string } | { readonly pool: PostgresPool },
 ): Store {
@@ -49,9 +69,8 @@ export function postgresStore(
   let ready: Promise<StoreConnection> | null = null;
 
   return {
-    kind: "postgres",
     open() {
-      ready ??= migrate(pool).then(
+      ready ??= migrateStore(postgresTarget(pool)).then(
         () => connect(pool),
         (error: unknown) => {
           ready = null;
@@ -70,13 +89,97 @@ export function postgresStore(
   };
 }
 
-async function migrate(pool: PostgresPool): Promise<void> {
-  await withClient(pool, async (client) => {
-    for (const statement of SCHEMA) await client.query(statement);
-  });
+async function storedVersion(client: PostgresClient): Promise<number> {
+  const { rows } = await client.query("SELECT to_regclass('store_meta') IS NOT NULL AS stamped");
+
+  if (rows[0]?.stamped !== true) return 0;
+  const stamp = await client.query("SELECT version FROM store_meta WHERE id = 1");
+  const version = stamp.rows[0]?.version;
+
+  return version === undefined ? 0 : numberOf(version);
 }
 
-/** Runs `work` on one pooled client and releases it, whatever `work` does. */
+function postgresTarget(pool: PostgresPool): MigrationTarget {
+  return {
+    dialect: "postgres",
+    stamp: () =>
+      withClient(pool, async (client) => {
+        const version = await storedVersion(client);
+        const { rows } = await client.query("SELECT to_regclass('refs') IS NOT NULL AS present");
+
+        const empty =
+          rows[0]?.present !== true ||
+          (await client.query("SELECT 1 FROM refs LIMIT 1")).rows.length === 0;
+
+        return { version, empty };
+      }),
+    records: async () =>
+      (
+        await withClient(pool, (client) =>
+          client.query(
+            "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+          ),
+        )
+      ).rows.map(storedRecordOf),
+    commit: (change) =>
+      withClient(pool, async (client) => {
+        await client.query("BEGIN");
+
+        try {
+          await client.query(MIGRATION_LOCK);
+
+          if ((await storedVersion(client)) !== change.from) {
+            await client.query("ROLLBACK");
+
+            return "moved";
+          }
+
+          for (const statement of change.sql) await client.query(statement);
+
+          for (const moved of change.repoints) {
+            await client.query(
+              "INSERT INTO objects (id, body) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL",
+              [moved.id, moved.body],
+            );
+
+            const { rows } = await client.query(
+              "UPDATE refs SET target = $1, revision = $2 WHERE name = $3 AND revision = $4 RETURNING name",
+              [moved.id, mintRevision(), moved.name, moved.expect],
+            );
+
+            if (rows.length === 0) {
+              await client.query("ROLLBACK");
+
+              return "conflict";
+            }
+            await updateSessionIndex(client, moved.name, moved.id, mintRevision());
+          }
+
+          if (change.reindexSessions) {
+            const { rows } = await client.query("SELECT name, target, revision FROM refs");
+
+            for (const row of rows) {
+              const ref = refOf(row);
+              await updateSessionIndex(client, ref.name, ref.target, ref.revision);
+            }
+          }
+
+          await client.query(
+            "INSERT INTO store_meta (id, version) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
+            [change.to],
+          );
+          await client.query("COMMIT");
+
+          return "committed";
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => undefined);
+
+          throw error;
+        }
+      }),
+  };
+}
+
 async function withClient<T>(
   pool: PostgresPool,
   work: (client: PostgresClient) => Promise<T>,
@@ -105,6 +208,9 @@ function connect(pool: PostgresPool): StoreConnection {
   };
 
   return {
+    sessions: sqlSessionIndex(
+      async (text, values) => (await query(postgresSessionIndexQuery(text), values)).rows,
+    ),
     objects: {
       async put(object) {
         const id = await objectId(object);
@@ -153,7 +259,10 @@ function connect(pool: PostgresPool): StoreConnection {
 
         const { rows } =
           end === null
-            ? await query("SELECT name, target, revision FROM refs ORDER BY name")
+            ? await query(
+                "SELECT name, target, revision FROM refs WHERE name >= $1 ORDER BY name",
+                [prefix],
+              )
             : await query(
                 "SELECT name, target, revision FROM refs WHERE name >= $1 AND name < $2 ORDER BY name",
                 [prefix, end],
@@ -177,15 +286,22 @@ function connect(pool: PostgresPool): StoreConnection {
   };
 }
 
-/** Publishes one batch in one transaction on `client`, as `postgresStore` describes. */
 async function publish(
   client: PostgresClient,
   updates: readonly RefUpdate[],
   tailOf: (client: PostgresClient, session: SessionId) => Promise<Seq>,
 ): Promise<SetOutcome> {
-  const logged = eventsOf(updates);
+  const logged = collectSessionEvents(updates);
   const names = [...new Set(updates.map((update) => update.name))];
-  const sessions = [...new Set(logged.map(({ session }) => session))];
+  const sessions = [
+    ...new Set(
+      updates.flatMap(({ name }) => {
+        const session = parseSessionRef(name);
+
+        return session === null ? [] : [session];
+      }),
+    ),
+  ];
 
   const locks = [
     ...names.map((name) => `ref:${name}`),
@@ -195,6 +311,9 @@ async function publish(
   await client.query("BEGIN");
 
   try {
+    await client.query(SHARED_MIGRATION_LOCK);
+    assertStoreVersion(await storedVersion(client));
+
     for (const key of locks)
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
 
@@ -227,6 +346,7 @@ async function publish(
     }
 
     const revisions: Revision[] = [];
+    const touched = new Map<SessionId, Revision>();
 
     for (const update of updates) {
       const revision = mintRevision();
@@ -239,7 +359,17 @@ async function publish(
           "INSERT INTO refs (name, target, revision) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET target = excluded.target, revision = excluded.revision",
           [update.name, update.target, revision],
         );
+      await updateSessionIndex(client, update.name, update.target, revision);
+      const session = parseSessionRef(update.name);
+
+      if (session !== null) touched.set(session, revision);
     }
+
+    for (const [session, version] of touched)
+      await client.query("UPDATE session_index SET version = $1 WHERE session = $2", [
+        version,
+        session,
+      ]);
 
     const at = Date.now();
     const tails = new Map<SessionId, number>();
@@ -266,4 +396,26 @@ async function publish(
 
     throw error;
   }
+}
+
+async function updateSessionIndex(
+  client: PostgresClient,
+  name: string,
+  target: ObjectId | null,
+  revision: Revision,
+): Promise<void> {
+  if (sessionIndexRef(name) === null) return;
+  const body =
+    target === null
+      ? null
+      : textOf(
+          (await client.query("SELECT body FROM objects WHERE id = $1", [target])).rows[0]?.body,
+        );
+
+  for (const change of sessionIndexChanges(
+    name,
+    body === null ? null : decodeObject(body),
+    revision,
+  ))
+    await client.query(postgresSessionIndexQuery(change.text), change.values);
 }

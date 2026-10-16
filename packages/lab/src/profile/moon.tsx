@@ -1,7 +1,3 @@
-/**
- * The moon from `public/icon.svg`, redrawn on its own 12-cell grid so it can
- * take `currentColor`. Each row lists the columns that hold a cell.
- */
 import type { ReactElement } from "react";
 
 const LIT = [
@@ -33,7 +29,6 @@ const SHADOW = [
   [4, 5, 6, 7],
 ] as const;
 
-/* DERIVED: the icon draws a 29.3 cell on a 43.9 pitch. */
 const CELL = 2 / 3;
 
 function cells(rows: readonly (readonly number[])[]): string {

@@ -36,7 +36,7 @@ export const accountAppearance = {
     headerTitle: {
       fontSize: "var(--nyte-font-size-lg)",
       lineHeight: "var(--nyte-line-height-lg)",
-      fontWeight: 600,
+      fontWeight: "var(--nyte-font-weight-semibold)",
       color: "var(--_title)",
     },
     buttonArrowIcon: { display: "none" },

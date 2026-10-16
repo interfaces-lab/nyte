@@ -23,8 +23,6 @@ import {
   memoryStore,
   runRef,
   runStep,
-  startRun,
-  text,
 } from "../src/index.ts";
 import type {
   ActionContext,
@@ -35,7 +33,16 @@ import type {
   StepOutcome,
 } from "../src/index.ts";
 import { kernelOver, world } from "./fake-env.ts";
-import { completed, configuration, label, livePart, main, setup, until } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  label,
+  livePart,
+  main,
+  setup,
+  startRun,
+  until,
+} from "./harness.ts";
 
 const timedState = standard(Type.Object({}));
 
@@ -74,7 +81,6 @@ const timed = definePart({
   onAction: (action, input, context) => timedHandlers[action](input, context),
 });
 
-/** Runs a test step whose body returns JSON; its result records `{ ended }`. */
 function step(
   kernel: Kernel,
   input: {
@@ -110,7 +116,6 @@ function step(
   });
 }
 
-/** Returns a body that waits once and returns the outcome's kind. */
 function waiting(target: Parameters<Durable["wait"]>[0]) {
   return async (durable: Durable): Promise<Json> => (await durable.wait(target)).kind;
 }
@@ -133,7 +138,6 @@ async function runWaiting(kernel: Kernel, session: SessionId, run: RunId) {
   return (await runRecord(kernel, session, run))?.waiting;
 }
 
-/** Starts a run on main that no turn drives here, as a run parked on a wait is. */
 async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
   const run = await startRun(
     kernel,
@@ -315,7 +319,7 @@ describe("durable steps", () => {
     });
 
     await session.send("A child reported.", {
-      source: { kind: "child", session: session.id },
+      source: { kind: "child", session: session.id, end: "completed" },
       delivery: "attach",
     });
 
@@ -585,8 +589,8 @@ describe("durable steps", () => {
       fallback: (_state, { id }) => `Ask ${id}`,
     });
 
-    const closed = await session.parts.create(text, {
-      state: { markdown: "Gone.", signature: null },
+    const closed = await session.parts.create(question, {
+      state: {},
       placement: { kind: "panel" },
     });
 
@@ -699,6 +703,34 @@ describe("durable steps", () => {
 
     expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
     expect(await run()).toEqual({ kind: "done", value: "RECORDED" });
+  });
+
+  it("settles an action whose handler throws as failed, rejecting with the error and replaying it without running again", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+    let ran = 0;
+
+    const act = () =>
+      kernel.durable.run({
+        session: session.id,
+        part: asId("p1"),
+        action: "boom",
+        call: asId("boom"),
+        signal: new AbortController().signal,
+        body: async () => {
+          ran += 1;
+
+          throw new Error("Boom.");
+        },
+      });
+
+    await expect(act()).rejects.toThrow("Boom.");
+    expect((await readCall(kernel, session.id, asId("boom"))).result).toEqual({
+      kind: "failed",
+      failed: "Boom.",
+    });
+    await expect(act()).rejects.toMatchObject({ code: "internal", message: "Boom." });
+    expect(ran).toBe(1);
   });
 
   it("rejects an action's output that is not JSON at settlement and on replay, recording nothing; undefined replays as undefined (D3b, audit 2 item 2)", async () => {

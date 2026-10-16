@@ -10,7 +10,6 @@ interface Read {
   readonly fail: (cause: Error) => void;
 }
 
-/** A source whose reads answer only when the test answers them. */
 function source(key: string, paths: readonly string[]) {
   const reads: Read[] = [];
 

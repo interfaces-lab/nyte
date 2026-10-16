@@ -125,6 +125,32 @@ describe("admission", () => {
     expect(await steer.settled()).toEqual(completed);
   });
 
+  it("lands steers in inbox order: two sent while idle start the run together, one sent during it joins", async () => {
+    const { host, script } = await setup();
+    const session = await host.sessions.create();
+    const first = await session.send("One.");
+    const second = await session.send("Two.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    const turn = await script.started(1);
+    const third = await session.send("Three.");
+    await turn.input.boundary();
+
+    expect(
+      (await session.view()).messages.map((current) =>
+        current.kind === "user" ? [current.id, current.status.kind] : [],
+      ),
+    ).toEqual([
+      [first.message, "landed"],
+      [second.message, "landed"],
+      [third.message, "landed"],
+    ]);
+
+    turn.finish();
+
+    expect(await step).toEqual({ kind: "idle" });
+    expect(script.turns).toHaveLength(1);
+  });
+
   it("replays a send with the same id and content, and refuses the id for other content", async () => {
     const { host } = await setup();
     const session = await host.sessions.create();
@@ -250,7 +276,7 @@ describe("admission", () => {
     });
   });
 
-  it("summarizes an edit's abandoned path after the fence, then admits in one set", async () => {
+  it("summarizes an edit's abandoned path, then fences the run and admits in one set", async () => {
     const recorder = recording(await memoryStore().open());
     const summarized: (readonly CommitId[])[] = [];
 
@@ -281,12 +307,9 @@ describe("admission", () => {
 
     expect(summarized).toEqual([[landed.commit]]);
     const sets = recorder.sets.slice(from).map((set) => set.join(" "));
-    const fence = sets.indexOf("run:stopping");
-
-    expect(fence).toBeGreaterThanOrEqual(0);
-    expect(
-      sets.indexOf("part:created part:settled commit head:moved input:admitted"),
-    ).toBeGreaterThan(fence);
+    expect(sets).toContain(
+      "run:stopping part:created part:settled commit head:moved input:admitted",
+    );
     expect((await session.view()).messages).toMatchObject([
       { kind: "part", partKind: "branchSummary", state: { markdown: "Tried v1." } },
       { id: edit.message, kind: "user", status: { kind: "pending" } },
@@ -302,7 +325,7 @@ describe("admission", () => {
     });
   });
 
-  it("settles an edit `summary-failed` when its summary fails, admitting nothing", async () => {
+  it("settles an edit `summary-failed` when its summary fails, admitting nothing and leaving the run live", async () => {
     const { host, script } = await setup({
       summarize: async () => ({ kind: "failed", reason: "No model." }),
     });
@@ -310,7 +333,7 @@ describe("admission", () => {
     const session = await host.sessions.create();
     const original = await session.send("Use v1.");
     const step = host.execution.advance({ session: session.id, head: main });
-    await script.started(1);
+    const turn = await script.started(1);
     await original.landed();
 
     const edit = await session.send("Use v2.", {
@@ -322,8 +345,10 @@ describe("admission", () => {
 
     expect(await edit.settled()).toEqual(outcome);
     expect(await edit.landed()).toEqual(outcome);
+    expect((await session.view()).execution).toMatchObject({ kind: "live" });
+    turn.finish();
     await step;
-    expect(await original.settled()).toEqual({ kind: "stopped" });
+    expect(await original.settled()).toEqual(completed);
     expect((await session.view()).messages.map((current) => current.id)).toEqual([
       original.message,
     ]);
@@ -373,7 +398,7 @@ describe("admission", () => {
 
     const report = await session.send("Child report.", {
       delivery: "attach",
-      source: { kind: "child", session: child.id },
+      source: { kind: "child", session: child.id, end: "completed" },
     });
 
     const edit = await session.send("First v2.", { replace: first.message });
@@ -403,7 +428,7 @@ describe("admission", () => {
 
     await session.send("Child report.", {
       delivery: "attach",
-      source: { kind: "child", session: child.id },
+      source: { kind: "child", session: child.id, end: "completed" },
     });
 
     expect(await host.execution.advance({ session: session.id, head: main })).toMatchObject({
@@ -439,7 +464,7 @@ describe("admission", () => {
 
     const wake = await session.send("Child done; wake up.", {
       delivery: "queue",
-      source: { kind: "child", session: child.id },
+      source: { kind: "child", session: child.id, end: "completed" },
     });
 
     const ref = await kernel.store.refs.get(inboxRef(session.id, main));

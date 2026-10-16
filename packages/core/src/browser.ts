@@ -13,6 +13,7 @@ import type {
   PageOutcome,
   PageSnapshot,
   PageView,
+  RunId,
   SessionId,
 } from "@nyte-ai/schema";
 import { objectId } from "./content.ts";
@@ -22,27 +23,40 @@ import type { Kernel } from "./kernel.ts";
 
 export interface BrowserApi {
   open(input: { readonly url: string }): Promise<Page>;
+
   adopt(id: PageId): Promise<Page>;
+
   list(): Promise<readonly PageInfo[]>;
+
   watch(): AsyncIterable<readonly PageInfo[]>;
 }
 
 export interface Page {
   readonly id: PageId;
+
   view(): Promise<PageView>;
+
   watch(): AsyncIterable<PageView>;
+
   snapshot(input?: { readonly ref?: string }): Promise<PageSnapshot>;
+
   navigate(url: string): Promise<PageOutcome>;
+
   back(): Promise<PageOutcome>;
+
   forward(): Promise<PageOutcome>;
+
   reload(): Promise<PageOutcome>;
+
   stopLoading(): Promise<PageOutcome>;
+
   click(input: {
     readonly ref: string;
     readonly button?: "left" | "right" | "middle";
     readonly double?: boolean;
     readonly expect?: DocumentRevision;
   }): Promise<PageOutcome>;
+
   type(input: {
     readonly ref: string;
     readonly text: string;
@@ -50,23 +64,29 @@ export interface Page {
     readonly submit?: boolean;
     readonly expect?: DocumentRevision;
   }): Promise<PageOutcome>;
+
   press(input: { readonly key: string; readonly ref?: string }): Promise<PageOutcome>;
+
   scroll(input: {
     readonly direction: "up" | "down" | "top" | "bottom";
     readonly ref?: string;
     readonly pages?: number;
   }): Promise<PageOutcome>;
+
   wait(
     condition:
       | { readonly kind: "loaded" }
       | { readonly kind: "text"; readonly text: string; readonly present: boolean }
       | { readonly kind: "delay"; readonly ms: number },
   ): Promise<PageOutcome>;
+
   console(input?: {
     readonly limit?: number;
     readonly clear?: boolean;
   }): Promise<readonly ConsoleEntry[]>;
+
   capture(): Promise<ByteReader>;
+
   evaluate(
     expression: string,
     options?: { readonly ref?: string },
@@ -74,25 +94,33 @@ export interface Page {
     | { readonly kind: "value"; readonly value: Json }
     | { readonly kind: "threw"; readonly message: string }
   >;
+
   close(): Promise<void>;
+
   [Symbol.asyncDispose](): Promise<void>;
 }
 
 const OPENED_IDS = 256;
 
-/** Names who takes a page hold: the origin's session and head, its step's call and acquisition counter; null for a client. */
 export type PageHolder = {
-  readonly session: SessionId;
-  readonly head: HeadName;
-  readonly call: CallId | null;
-  readonly sequence: { next(): number };
+  readonly client: object | null;
+  readonly origin: {
+    readonly session: SessionId;
+    readonly head: HeadName;
+    readonly run: RunId | null;
+    readonly call: CallId | null;
+    readonly sequence: { next(): number };
+  } | null;
 };
 
-/** Holds the browser pages opened or adopted through this kernel, in memory: a page lives while any hold does, and a holder's head shows it as an unlogged `background` item. */
+export type PageRelease =
+  | { readonly session: SessionId }
+  | { readonly run: RunId }
+  | { readonly client: object };
+
 export interface PageTable {
-  /** Takes one more hold on a provider page; the returned page's `close()` releases this hold once, the last one closing the provider's page. */
   hold(page: Page, title: string, holder: PageHolder | null): Page;
-  /** Runs `open` once per `id`: a replay with the same input returns the same page, another input throws `invalid`, and a replay after the page closed throws `unknown`, the digest kept (G6). */
+
   open(request: {
     readonly id?: string;
     readonly input: Json;
@@ -100,31 +128,34 @@ export interface PageTable {
   }): Promise<Page>;
   page(id: PageId): Page | undefined;
   holders(id: PageId): number;
+
+  release(holder: PageRelease): Promise<void>;
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
 }
 
-/** Returns one page the table holds, with its holds per head. */
 interface Entry {
   readonly page: Page;
   readonly title: string;
   holds: number;
-  readonly heads: Map<string, { readonly holder: PageHolder; count: number }>;
+  readonly heads: Map<string, { readonly holder: Origin; count: number }>;
 }
 
-/** Returns an empty page table over a kernel. */
+type Origin = NonNullable<PageHolder["origin"]>;
+
 export function createPageTable(kernel: Kernel): PageTable {
   const entries = new Map<PageId, Entry>();
+  const held = new Map<() => Promise<void>, PageHolder | null>();
 
   const opened = new Map<
     string,
     { readonly page: Promise<Page>; readonly digest: Promise<ObjectId> }
   >();
 
-  const itemOf = (
+  const createPageBackgroundItem = (
     entry: Entry,
-    holder: PageHolder,
+    holder: Origin,
     state: BackgroundItem["state"],
   ): BackgroundItem => ({
     kind: "page",
@@ -134,13 +165,13 @@ export function createPageTable(kernel: Kernel): PageTable {
     startedBy: holder.call,
   });
 
-  const publish = (entry: Entry, holder: PageHolder, state: BackgroundItem["state"]): void => {
+  const publish = (entry: Entry, holder: Origin, state: BackgroundItem["state"]): void => {
     kernel.bus.publish(holder.session, {
       seq: asSeq(0),
       at: Date.now(),
       head: holder.head,
       kind: "background",
-      item: itemOf(entry, holder, state),
+      item: createPageBackgroundItem(entry, holder, state),
     });
   };
 
@@ -178,13 +209,14 @@ export function createPageTable(kernel: Kernel): PageTable {
       const entry: Entry = entries.get(page.id) ?? { page, title, holds: 0, heads: new Map() };
       entries.set(page.id, entry);
       entry.holds += 1;
-      const key = holder === null ? null : JSON.stringify([holder.session, holder.head]);
-      const held = key === null ? undefined : entry.heads.get(key);
+      const origin = holder?.origin ?? null;
+      const key = origin === null ? null : JSON.stringify([origin.session, origin.head]);
+      const known = key === null ? undefined : entry.heads.get(key);
 
-      if (held !== undefined) held.count += 1;
-      else if (key !== null && holder !== null) {
-        entry.heads.set(key, { holder, count: 1 });
-        publish(entry, holder, "working");
+      if (known !== undefined) known.count += 1;
+      else if (key !== null && origin !== null) {
+        entry.heads.set(key, { holder: origin, count: 1 });
+        publish(entry, origin, "working");
       }
 
       let released = false;
@@ -192,6 +224,7 @@ export function createPageTable(kernel: Kernel): PageTable {
       const release = async (): Promise<void> => {
         if (released) return;
         released = true;
+        held.delete(release);
         entry.holds -= 1;
         const head = key === null ? undefined : entry.heads.get(key);
 
@@ -209,6 +242,8 @@ export function createPageTable(kernel: Kernel): PageTable {
         if (entries.get(entry.page.id) === entry) entries.delete(entry.page.id);
         await entry.page.close();
       };
+
+      held.set(release, holder);
 
       const inner = entry.page;
 
@@ -236,18 +271,29 @@ export function createPageTable(kernel: Kernel): PageTable {
     },
     page: (id) => entries.get(id)?.page,
     holders: (id) => entries.get(id)?.holds ?? 0,
+    async release(by) {
+      const matches = (holder: PageHolder | null): boolean =>
+        "client" in by
+          ? holder?.client === by.client
+          : "run" in by
+            ? holder?.origin?.run === by.run
+            : holder?.origin?.session === by.session;
+
+      await Promise.allSettled(
+        [...held].flatMap(([release, holder]) => (matches(holder) ? [release()] : [])),
+      );
+    },
     background: (session) =>
       [...entries.values()].flatMap((entry) =>
         [...entry.heads.values()].flatMap(({ holder }) =>
           holder.session === session
-            ? [{ head: holder.head, item: itemOf(entry, holder, "working") }]
+            ? [{ head: holder.head, item: createPageBackgroundItem(entry, holder, "working") }]
             : [],
         ),
       ),
   };
 }
 
-/** Returns a provider's browser with every page held through `kernel.pages` for `holder`; `open` from a step is an acquisition (`acquire`), a re-run adopting the recorded page. `list` and `watch` report the table's hold count as `holders`. */
 export function wrapBrowser(
   kernel: Kernel,
   browser: BrowserApi,
@@ -265,7 +311,7 @@ export function wrapBrowser(
     async open(input) {
       const acquired = await acquire(
         kernel,
-        holder,
+        holder?.origin ?? null,
         undefined,
         () => browser.open(input),
         (page) => page.close(),

@@ -1,11 +1,3 @@
-/**
- * Host ids this phone pinned, by route: an address entered by hand or
- * scanned, or an account environment. A route pins the id its host answered
- * on first pairing, and every later connect, resume included, must answer the
- * same one. The id is not signed: the sdk's `expect` check needs WebCrypto
- * Ed25519, which Hermes lacks. A pin outlives the saved token, device
- * enrollments, disconnects and sign-outs; only an explicit re-pair replaces it.
- */
 import { base64ToBase64Url } from "@nyte-ai/connect";
 import type { DeviceCrypto } from "@nyte-ai/connect/enrollment";
 import type { HostId } from "@nyte-ai/sdk";
@@ -15,7 +7,6 @@ import type { SavedConnection } from "./connection.ts";
 
 export type PinRoute =
   | { readonly kind: "address"; readonly url: string }
-  /** The broker, the owner the environment is linked under, and the environment. Never the device. */
   | {
       readonly kind: "account";
       readonly origin: string;
@@ -34,14 +25,12 @@ export function routeOf(saved: SavedConnection): PinRoute {
       };
 }
 
-/** Keychain items: one per route, apart from the saved connection. */
 export interface PinStorage {
   readonly read: (key: string) => Promise<string | null>;
   readonly write: (key: string, text: string) => Promise<void>;
 }
 
 export interface PinStore {
-  /** Undefined when the route never pinned. Unreadable or malformed storage throws. */
   readonly read: (route: PinRoute) => Promise<string | undefined>;
   readonly write: (route: PinRoute, hostId: HostId) => Promise<void>;
 }

@@ -1,8 +1,3 @@
-/**
- * Prompt history for Up/Down: the user's own landed messages, oldest first,
- * as drafts with their markers rebuilt. Reports and action prompts are not
- * the user's words, so they never come back.
- */
 import type { SessionView } from "@nyte-ai/sdk";
 import { isReport } from "../lib/view-helpers.ts";
 import { draftFromContent } from "./draft.ts";

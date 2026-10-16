@@ -19,7 +19,6 @@ import {
   definePart,
   executeCall,
   kvRef,
-  startRun,
   systemPromptPlugin,
   text,
 } from "../src/index.ts";
@@ -36,7 +35,16 @@ import type {
   SettingDefinition,
   ToolDefinition,
 } from "../src/index.ts";
-import { completed, configuration, env, main, setup, until, workspace } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  env,
+  main,
+  setup,
+  startRun,
+  until,
+  workspace,
+} from "./harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -61,7 +69,6 @@ const echo = {
   execute: async (args) => ({ content: [{ kind: "text", text: args.text }] }),
 } satisfies ToolDefinition<{ text: string }>;
 
-/** A schema with no JSON Schema: a plugin declaring it is rejected at load. */
 const opaque: Schema<unknown> = {
   "~standard": {
     version: 1,
@@ -98,7 +105,6 @@ const theme: SettingDefinition<string> = {
   scope: "host",
 };
 
-/** A consent modal a gate creates and waits on: no `onAction`, so its first act answers it. */
 const approve = definePart({
   kind: "gate/approve",
   state: standard(Type.Object({ tool: Type.String() })),
@@ -109,7 +115,6 @@ const approve = definePart({
   fallback: (state, { id }) => `Allow ${state.tool}? (${id})`,
 });
 
-/** Returns the ids of a session's stored parts of the consent kind. */
 async function approvals(kernel: Kernel, session: SessionId): Promise<readonly PartId[]> {
   const stored = await Promise.all(
     (await kernel.store.refs.list(`sessions/${session}/parts/`)).map(async (ref) =>
@@ -120,12 +125,10 @@ async function approvals(kernel: Kernel, session: SessionId): Promise<readonly P
   return stored.flatMap((record) => (record?.partKind === approve.kind ? [record.id] : []));
 }
 
-/** Returns a command that answers with its text. */
 function says(name: string, answer: string): Command {
   return { name, title: name, description: `Says ${answer}.`, run: () => answer };
 }
 
-/** Returns an environment provider of a kind that serves nothing. */
 function provider(kind: string): EnvironmentProvider {
   return {
     kind,
@@ -138,7 +141,6 @@ function provider(kind: string): EnvironmentProvider {
   };
 }
 
-/** Creates a session on a kernel whose host plugins are `plugins`, so the session loads them. */
 async function loaded(plugins: readonly Plugin<"core">[], options?: Parameters<typeof setup>[0]) {
   const built = await setup(options);
   built.kernel.hostPlugins = plugins;
@@ -1182,6 +1184,68 @@ describe("settings", () => {
     await values.return?.();
   });
 
+  it("sets a session-scope value from activate without waiting on that activation", async () => {
+    const { host, session } = await loaded(
+      [
+        {
+          id: "mixer",
+          contribute: {
+            commands: [{ name: "ping", title: "Ping", description: "", run: () => "pong" }],
+          },
+          async activate(api) {
+            await api.contribute.settings.add({ ...volume, scope: "session" }).set(4);
+          },
+        },
+      ],
+      {
+        resolveConfiguration: async ({ selected, patch }) => ({
+          ...configuration,
+          settings: { ...selected?.settings, ...patch?.settings },
+        }),
+      },
+    );
+
+    expect(await session.command("ping")).toEqual({ kind: "ran", output: "pong" });
+    expect((await session.view()).catalog.settings).toEqual([
+      expect.objectContaining({ id: "volume", value: 4, from: "session" }),
+    ]);
+    expect((await host.sessions.create()).id).not.toBe(session.id);
+  });
+
+  it("announces a client's configure of a session-scope setting to watchers and the catalog", async () => {
+    let handle: Setting<unknown> | undefined;
+
+    const { session } = await loaded(
+      [
+        {
+          id: "mixer",
+          activate(api) {
+            handle = api.contribute.settings.add({ ...volume, scope: "session" });
+          },
+        },
+      ],
+      {
+        resolveConfiguration: async ({ selected, patch }) => ({
+          ...configuration,
+          settings: { ...selected?.settings, ...patch?.settings },
+        }),
+      },
+    );
+
+    assert(handle !== undefined);
+    const values = handle.watch()[Symbol.asyncIterator]();
+
+    expect(await values.next()).toEqual({ done: false, value: 3 });
+    expect(await session.configure({ settings: { volume: 6 } })).toMatchObject({
+      kind: "configured",
+    });
+    expect(await values.next()).toEqual({ done: false, value: 6 });
+    expect((await session.view()).catalog.settings).toEqual([
+      expect.objectContaining({ id: "volume", value: 6, from: "session" }),
+    ]);
+    await values.return?.();
+  });
+
   it("reads a session-scope value from the session's configuration", async () => {
     let handle: Setting<unknown> | undefined;
 
@@ -1213,6 +1277,28 @@ describe("settings", () => {
 });
 
 describe("plugin storage", () => {
+  it("rejects slash-delimited ids and keys while permitting distinct plugin names", async () => {
+    let storage: PluginStorage | undefined;
+
+    const { kernel, host } = await loaded([
+      { id: "a", activate: (api) => void (storage = api.storage) },
+    ]);
+
+    const report = await host.plugins.check([{ id: "a/b" }, { id: "settingsx" }, { id: "ok" }]);
+
+    expect(report.plugins.map((outcome) => [outcome.kind, outcome.id])).toEqual([
+      ["rejected", "a/b"],
+      ["activated", "settingsx"],
+      ["activated", "ok"],
+    ]);
+
+    assert(storage !== undefined);
+    await expect(storage.set("b/c", 1)).rejects.toMatchObject({ code: "invalid" });
+    await expect(storage.at("host").get("b/c")).rejects.toMatchObject({ code: "invalid" });
+    await expect(storage.secrets.set("b/c", "x")).rejects.toMatchObject({ code: "invalid" });
+    expect(await kernel.store.refs.list("kv/")).toEqual([]);
+  });
+
   it("keeps keys per scope: session by default, host and workspace through at()", async () => {
     const storages: PluginStorage[] = [];
 

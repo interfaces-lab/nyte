@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { compileCanvas } from "../src/canvas-compile.ts";
+import { compileCanvas } from "../src/canvas/canvas-compile.ts";
 import {
   CANVAS_CODE_LIMIT,
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
   CANVAS_SOURCE_LIMIT,
   KIT_SPECIFIER,
-} from "../src/canvas-protocol.ts";
+} from "../src/canvas/canvas-protocol.ts";
 
 const VIEW = `
 import { useState } from "react";

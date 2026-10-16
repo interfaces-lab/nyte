@@ -43,7 +43,6 @@ function page(overrides: Partial<BrowserPageState> = {}): BrowserPageState {
   };
 }
 
-/** A browser agent that records what the tools asked of it and answers with one page. */
 function recordingAgent() {
   const calls: { verb: string; input: unknown }[] = [];
   const ok = (state = page()): BrowserActionResult => ({ kind: "ok", state });
@@ -74,7 +73,6 @@ function recordingAgent() {
   return { agent, calls };
 }
 
-/** Returns the settled tool parts of a view as name and result text. */
 function toolResults(view: SessionView): { readonly name: string; readonly text: string }[] {
   return view.messages.flatMap((message) => {
     if (!isPart(message, tool) || message.state.phase !== "settled") return [];

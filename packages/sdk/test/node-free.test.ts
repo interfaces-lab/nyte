@@ -13,7 +13,6 @@ const WALKED: Readonly<Record<string, string>> = {
 
 const SPECIFIER = /^(?:import|export)\s[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;
 
-/** Returns the file a specifier names when the walk follows it: a relative path, or the root of core, protocol or schema; null for anything else. */
 function fileOf(from: string, specifier: string): string | null {
   if (specifier.startsWith(".")) return resolve(dirname(from), specifier);
   const entry = WALKED[specifier];
@@ -21,7 +20,6 @@ function fileOf(from: string, specifier: string): string | null {
   return entry === undefined ? null : join(packages, entry);
 }
 
-/** Returns every specifier the files reachable from `entry` import, type-only ones included (a DOM program must not see Node's types either), walking the sdk's files and the core, protocol and schema roots. */
 function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
   const seen = new Map<string, readonly string[]>();
   const queue = [join(packages, entry)];

@@ -8,7 +8,6 @@ import { doSqlStub } from "./do-sql-stub.ts";
 
 const main: HeadName = asId("main");
 
-/** Returns a host for `pass` whose advances answer from `reports` by session, recording each advance, tick and repair; a repair wakes each runnable head through `wake`, as core's does. */
 function fakeHost(input: {
   readonly reports: Readonly<Record<string, AdvanceReport | Error>>;
   readonly runnable?: readonly { readonly session: SessionId; readonly head: HeadName }[];
@@ -56,7 +55,6 @@ function fakeHost(input: {
   return host;
 }
 
-/** Writes schedule rows the way a wake does. */
 function due(storage: Pick<DurableObjectSql, "sql">, rows: readonly [string, number][]): void {
   storage.sql.exec(
     "CREATE TABLE IF NOT EXISTS nyte_schedule (session TEXT NOT NULL, head TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (session, head))",

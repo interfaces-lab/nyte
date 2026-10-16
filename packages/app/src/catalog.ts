@@ -1,6 +1,5 @@
 import type { ModelCatalogView, ModelInfo, ModelRef, Thinking } from "@nyte-ai/sdk";
 
-/** One provider as the picker and Settings › Models draw it. */
 export type ProviderStatus = ModelCatalogView["providers"][number];
 
 /** One base model as the picker lists it: `provider/id` as its key, its fast sibling, and whether it is listed. */
@@ -16,18 +15,15 @@ export interface DesktopModelOption {
     | { readonly kind: "unavailable" }
     | { readonly kind: "available"; readonly id: string };
   readonly input: ModelInfo["input"];
-  /** The provider has a credential, so its models are offered. */
   readonly listed: boolean;
 }
 
-/** Providers, their models, and the model a new chat starts with. */
 export interface DesktopCatalog {
   readonly providers: readonly ProviderStatus[];
   readonly models: readonly DesktopModelOption[];
   readonly defaults?: { readonly model: ModelRef; readonly thinkingLevel: Thinking | undefined };
 }
 
-/** The catalog view as the picker reads it: every provider's base models in one list. */
 export function catalogOf(view: ModelCatalogView): DesktopCatalog {
   const models = view.providers.flatMap((provider) =>
     provider.models.map((model): DesktopModelOption => ({

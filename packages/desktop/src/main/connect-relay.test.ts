@@ -47,9 +47,7 @@ function pattern(offset: number, length: number): Buffer {
 
 interface Local {
   readonly port: number;
-  /** Bytes `/head.watch` has handed to its response. */
   written: number;
-  /** While set, `/files.upload` reads nothing. */
   uploadGate: PromiseWithResolvers<void> | undefined;
   uploadsAborted: number;
   holdsClosed: number;

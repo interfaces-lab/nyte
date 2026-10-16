@@ -1,7 +1,3 @@
-/**
- * A draft of the profile page as a member passport. Fixture data only; see
- * `fixtures.ts`.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useState, type ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
@@ -24,7 +20,6 @@ export function ProfilePage(): ReactElement {
   const [open, setOpen] = useState(false);
   const [scheme, setScheme] = useState<Scheme>("system");
 
-  // On the document, so the copy button's tooltip, which portals out, follows it.
   useEffect(() => {
     const value = SCHEMES.find(([name]) => name === scheme)?.[2] ?? "light dark";
     document.documentElement.style.colorScheme = value;

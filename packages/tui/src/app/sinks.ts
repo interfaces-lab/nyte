@@ -1,10 +1,3 @@
-/**
- * Derived outputs written to the terminal: the title, OSC 7501 program
- * status, and the palette the kit draws with. Each is an effect over a memo
- * with an idempotent write, so they need no state of their own. Call under a
- * Solid owner; the returned `dispose` resets the title and clears the
- * program status before the renderer goes, once however often it is called.
- */
 import { createEffect, createMemo } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { TerminalPort } from "../effects/ports.ts";

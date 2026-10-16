@@ -13,7 +13,6 @@ const schemas = {
   upgradeToHttps: Type.Boolean(),
 };
 
-/** The desktop's own host settings as main reads them from `HostView.settings`. */
 export type DesktopSettings = { readonly [K in keyof typeof schemas]: Static<(typeof schemas)[K]> };
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -24,11 +23,6 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   upgradeToHttps: true,
 };
 
-/**
- * Contributes the desktop's host-scope settings, `desktop.<key>`: keep
- * awake, the terminal shell and the browser shield. The renderer writes them
- * with `connection.settings.apply`; main reads them back from `host.watch()`.
- */
 export const desktopSettingsPlugin = {
   id: "desktop",
   contribute: {
@@ -72,7 +66,6 @@ export const desktopSettingsPlugin = {
   },
 } satisfies Plugin;
 
-/** Returns the desktop settings a host view carries, each falling back to its default when absent or malformed. */
 export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettings {
   const value = (key: keyof DesktopSettings) =>
     view.settings.find((setting) => setting.id === `desktop.${key}`)?.value;

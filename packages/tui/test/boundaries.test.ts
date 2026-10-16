@@ -1,11 +1,3 @@
-/**
- * Import rules that keep internals unreachable, checked by reading sources:
- * - src/model/** imports only @nyte-ai/* types, @nyte-ai/plugin/question, fuzzysort (pure JS),
- *   src/lib/**, src/model/**; never solid-js, @opentui/*, node:*, src/effects, src/services, src/ui, src/app.
- * - src/ui/** never imports src/effects or src/services, and imports @nyte-ai/sdk only as types.
- * - Only src/effects/host-port.ts imports SDK values.
- * - No source registers `setFrameCallback` or adds a raw `keyInput` listener.
- */
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { Glob } from "bun";
@@ -19,9 +11,7 @@ const DIRS = ["app", "model", "effects", "ui", "lib", "services"] as const;
 interface Import {
   readonly file: string;
   readonly spec: string;
-  /** Some binding survives type erasure. */
   readonly value: boolean;
-  /** The `src/`-relative target of a relative import, else null. */
   readonly target: string | null;
 }
 
@@ -70,7 +60,7 @@ test("model imports only lib, model, fuzzysort and @nyte-ai types (question rule
     if (entry.target !== null)
       return !(entry.target.startsWith("lib/") || entry.target.startsWith("model/"));
 
-    if (entry.spec === "@nyte-ai/plugin/question" || entry.spec === "fuzzysort") return false;
+    if (entry.spec === "@nyte-ai/plugin/question/schema" || entry.spec === "fuzzysort") return false;
 
     return !entry.spec.startsWith("@nyte-ai/") || entry.value;
   });

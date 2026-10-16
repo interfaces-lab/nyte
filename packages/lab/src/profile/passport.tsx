@@ -1,11 +1,5 @@
-/**
- * The account as a member passport. Closed, it is a cover with the moon on
- * it. Open, the cover swings back on its spine to show the identity page,
- * with the stamps page beside it on a wide screen and below it on a narrow one.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
-import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -14,7 +8,6 @@ import { Guilloche } from "./guilloche";
 import { Moon } from "./moon";
 import { StampMark } from "./stamp";
 
-/* The machine-readable zone: two 44-character lines, `<` for every gap. */
 function mrzLine(text: string): string {
   return text
     .toUpperCase()
@@ -102,7 +95,6 @@ export function Passport({
   const coverRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<"name" | "cover" | null>(null);
 
-  // Whichever face is leaving goes inert, so focus follows to the one arriving.
   useEffect(() => {
     const target = focusAfter.current === "name" ? nameRef.current : coverRef.current;
 
@@ -138,9 +130,9 @@ export function Passport({
           </header>
 
           <div {...props(styles.holder)}>
-            <Avatar tone="blue" xstyle={styles.photo}>
-              <AvatarFallback xstyle={styles.backdrop}>{INITIALS}</AvatarFallback>
-            </Avatar>
+            <span {...props(surfaceTheme.blue, styles.photo)}>
+              <span {...props(styles.backdrop)}>{INITIALS}</span>
+            </span>
             <div {...props(styles.holderText)}>
               <h2 ref={nameRef} id={`${id}-name`} tabIndex={-1} {...props(styles.name)}>
                 {FULL_NAME}
@@ -228,46 +220,38 @@ export function Passport({
   );
 }
 
-/* The two-page spread fits once the stage can hold two 360px pages. */
 const WIDE = "@container (min-width: 760px)";
 
 const MOTION = "@media (prefers-reduced-motion: no-preference)";
 
 const PEEK = "@media (hover: hover) and (prefers-reduced-motion: no-preference)";
 
-/* DERIVED: long enough to read the cover passing the spine, short enough not to wait on. */
 const FLIP = "720ms";
 
-/* DERIVED: the plate gradient and moon of public/icon.svg. The cover is a printed object, so it keeps them in both appearances. */
 const COVER_TOP = "#232a44";
 
 const COVER_BOTTOM = "#0c1020";
 
 const COVER_INK = "#c1d0f6";
 
-/* Pebbled leather: fractal noise, kept only where it runs dark, so the grain reads as relief without catching light. */
 const GRAIN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.8 0 0 0 -0.7'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")`;
 
 const LEATHER = `${GRAIN}, linear-gradient(${COVER_TOP}, ${COVER_BOTTOM})`;
 
 const OVERHANG = "-6px";
 
-/* DERIVED: a breath of warmth on white, so the page reads as paper. Dark keeps the neutral surface. */
 const PAPER = `light-dark(color-mix(in oklab, ${role.bgElevated} 96%, #b8955a), ${role.bgElevated})`;
 
-/* The gutter only ever darkens. A tint of the content colour would light it up in dark mode. */
 const GUTTER = "light-dark(rgb(0 0 0 / 0.07), rgb(0 0 0 / 0.32))";
 
 const PAGE_SHADOW = `0 0 0 1px ${role.borderSecondaryTranslucent}, ${shadow.shadowLg}`;
 
-/* The leaves under each open page, stepping out toward its fore-edge. */
 const LEAF = `color-mix(in oklab, ${PAPER} 88%, #000)`;
 
 const LEAF_UNDER = `color-mix(in oklab, ${PAPER} 78%, #000)`;
 
 const SPREAD_EDGE = "0 0 0 0.5px rgb(0 0 0 / 0.4)";
 
-/* One page at the passport's 88 × 125 proportion. */
 const PAGE_HEIGHT = "calc(min(100cqi, 400px) * 125 / 88)";
 
 const settle = keyframes({
@@ -299,7 +283,6 @@ const styles = create({
     transform: { default: "none", [WIDE]: "translateX(-25%)" },
   },
 
-  /* The inside of the cover, showing a few millimetres past the pages once the book lies open. */
   binding: {
     display: { default: "none", [WIDE]: "block" },
     gridColumn: "1 / -1",
@@ -417,6 +400,7 @@ const styles = create({
     insetInline: 0,
     insetBlockStart: 0,
     blockSize: "62%",
+    // oxlint-disable-next-line nyte-design/no-light-dark-outside-tokens -- passport artwork: the watermark ink thins on a dark page; no role describes print ink
     color: `light-dark(color-mix(in oklab, ${role.contentInteractivePrimary} 22%, transparent), color-mix(in oklab, ${role.contentInteractivePrimary} 14%, transparent))`,
     maskImage: "linear-gradient(#000 20%, transparent)",
     pointerEvents: "none",
@@ -430,18 +414,29 @@ const styles = create({
     marginBlockStart: 8,
   },
   photo: {
+    display: "flex",
+    flexShrink: 0,
+    boxSizing: "border-box",
     width: 84,
     height: 108,
+    overflow: "clip",
+    borderWidth: 0.5,
+    borderStyle: "solid",
     borderRadius: 4,
     borderColor: role.borderSecondaryTranslucent,
     backgroundColor: PAPER,
     color: `color-mix(in oklab, ${role.contentInteractivePrimary} 70%, ${role.contentSecondary})`,
+    fontFamily: type.fontSans,
     fontSize: 26,
     fontWeight: 500,
     letterSpacing: "0.01em",
+    userSelect: "none",
   },
-  /* A studio backdrop, lit from above. */
   backdrop: {
+    display: "flex",
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundImage: `linear-gradient(color-mix(in oklab, ${role.contentInteractivePrimary} 6%, transparent), color-mix(in oklab, ${role.contentInteractivePrimary} 15%, transparent))`,
   },
   holderText: {
@@ -518,7 +513,6 @@ const styles = create({
     marginBlockStart: "auto",
     color: role.contentTertiary,
     fontFamily: type.fontMono,
-    /* DERIVED: 44 monospace characters at about 0.6em each fill the line. */
     fontSize: "min(12px, 3.6cqi)",
     lineHeight: 1.6,
     whiteSpace: "pre",
@@ -571,14 +565,12 @@ const styles = create({
     flexDirection: "column",
     alignItems: "center",
     minBlockSize: { default: PAGE_HEIGHT, [WIDE]: "512px" },
-    /* On the spread the cover is the binding, so it overhangs the page by the same margin. */
     margin: { default: 0, [WIDE]: `${OVERHANG} ${OVERHANG} ${OVERHANG} 0` },
     paddingBlock: 52,
     paddingInline: 24,
     borderWidth: 0,
     borderRadius: "3px 12px 12px 3px",
     backgroundColor: COVER_BOTTOM,
-    /* The hinge: a pressed line where the cover folds, a few millimetres in from the spine. */
     backgroundImage: `linear-gradient(to right, transparent 14px, rgb(0 0 0 / 0.35) 14px 15px, transparent 15px), ${LEATHER}`,
     backgroundSize: "auto, 160px 160px, auto",
     boxShadow: `inset 12px 0 14px -12px rgb(0 0 0 / 0.6), ${shadow.shadowXl}`,
@@ -610,7 +602,6 @@ const styles = create({
     transitionDuration: { default: "0s, 150ms", [MOTION]: `${FLIP}, 0s` },
     transitionDelay: { default: "0s", [MOTION]: `0s, ${FLIP}` },
   },
-  /* A wrapper because the lab reset's unlayered `button { color: inherit }` outranks the button's own colour. */
   coverInk: {
     display: "contents",
     color: COVER_INK,

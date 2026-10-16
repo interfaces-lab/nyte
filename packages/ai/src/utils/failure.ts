@@ -3,12 +3,6 @@
  * stopped with `error` or `aborted` is classified here, once, into a closed
  * `FailureClass`; everything downstream switches on the class.
  *
- * Context-window patterns are based on
- * https://github.com/earendil-works/pi/blob/3dd803d7e780fb04b815261b510f76bff563d46d/packages/ai/src/utils/overflow.ts
- * (synced with pi 3dd803d7e) and the transient-error patterns on
- * https://github.com/earendil-works/pi/blob/3874b3e98983c70fa05fa193b675d42cfcb8b9f8/packages/ai/src/utils/retry.ts
- * (synced with pi 3874b3e98, without the ChatGPT subscription-sharing patterns from 02eed88fd).
- *
  * Context-window examples by provider:
  *
  * - Anthropic: "prompt is too long: 213462 tokens > 200000 maximum"
@@ -196,13 +190,13 @@ function classOf(text: string, provider: string): FailureClass {
     return "context_window";
   }
 
+  if (QUOTA_PATTERN.test(text)) return "quota";
+
   if (RATE_LIMIT_PATTERN.test(text)) return "rate_limit";
 
   if (OVERLOADED_PATTERN.test(text)) return "overloaded";
 
   if (NETWORK_PATTERN.test(text)) return "network";
-
-  if (QUOTA_PATTERN.test(text)) return "quota";
 
   if (AUTH_PATTERN.test(text)) return "auth";
 

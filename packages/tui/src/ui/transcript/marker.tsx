@@ -1,4 +1,3 @@
-/** Notes between turns: "compacting context…", the compaction card, the branch summary card, `[kind]`. */
 import { branchSummary, compaction, isPart } from "@nyte-ai/plugin/client";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Match, Show, Switch } from "solid-js";
@@ -13,7 +12,6 @@ type MarkerProps =
 
 const SUMMARY_LINES = 40;
 
-/** A note as the marker between turns. */
 export function markerProps(message: PartMessage): MarkerProps {
   if (isPart(message, compaction))
     return message.status.kind === "live"

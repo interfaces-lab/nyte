@@ -1,12 +1,3 @@
-/**
- * `deriveScreen` is the one place the TUI decides what anything means:
- * busy, the open question, what blocks the composer, the queue rows, the
- * placeholder, the hints, the footer, which dialog has the keyboard. Every
- * component reads a field of the result; no component recomputes one.
- *
- * Pure. `previous` lets sub-results keep identity when nothing changed, so
- * Solid's `<For>` and memos downstream stop at unchanged rows.
- */
 import type { RunId } from "@nyte-ai/sdk";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
@@ -17,6 +8,7 @@ import { statusOf } from "../lib/program-status.ts";
 import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
+import { landingMessages } from "../lib/view-helpers.ts";
 import { liveDialog } from "./choices.ts";
 import { runnableCommand, slashNamespace } from "./commands.ts";
 import { completionModel } from "./completion.ts";
@@ -29,8 +21,8 @@ import type { FooterModel, Hint } from "./footer.ts";
 import { keepEqual } from "./identity.ts";
 import { blockedReason, interactionsFor } from "./interactions.ts";
 import type { Interactions, TableInput } from "./interactions.ts";
-import { queuedCount, queueRows, reportRows, sameQueueRow, sameReportRow } from "./queue.ts";
-import type { QueueRow, ReportRow } from "./queue.ts";
+import { queuedCount, queueRows, sameQueueRow } from "./queue.ts";
+import type { QueueRow } from "./queue.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedShells } from "./state.ts";
@@ -40,27 +32,21 @@ import type { TranscriptModel } from "./transcript.ts";
 
 export interface ScreenModel {
   readonly loading: string | null;
-  /** Non-null while the followed session's watch has failed or ended; the failure line offers `retry-watch`. */
+  readonly opening: boolean;
   readonly watch: WatchModel | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
   readonly draft: DraftModel;
-  /** The draft's live attachment markers, which the composer highlights. */
   readonly markers: readonly MarkerSpan[];
-  /** The attachment preview open under the composer; it closes when its marker leaves the draft. */
   readonly preview: PreviewModel | null;
   readonly editing: EditingModel | null;
   readonly shell: ShellJob | null;
   readonly completion: CompletionModel | null;
-  /** The dialog that owns the keyboard: the top of the stack, else the question panel when it is showing. */
   readonly dialog: Dialog | null;
   readonly blocked: Blocked | null;
   readonly queue: readonly QueueRow[];
-  readonly reports: readonly ReportRow[];
   readonly transcript: TranscriptModel;
-  /** The followed session's tasks: the inspector, delegation cards and report titles read them. */
   readonly tasks: readonly Task[];
-  /** Wheel scrolling accelerates with speed (the `scrollAcceleration` setting). */
   readonly scrollAcceleration: boolean;
   readonly interactions: Interactions;
   readonly hints: readonly Hint[];
@@ -81,11 +67,9 @@ export interface PreviewModel {
 }
 
 export interface WatchModel {
-  /** The error the watch threw, or null when it ended on its own. */
   readonly failure: string | null;
 }
 
-/** `view.execution` read once. `busy` is `kind !== "idle"`; nothing else defines it. */
 export type RunModel =
   | { readonly kind: "idle" }
   | { readonly kind: "working"; readonly run: RunId; readonly stopping: boolean }
@@ -100,11 +84,9 @@ export type RunModel =
 export interface EditingModel {
   readonly message: string;
   readonly delivery: "steer" | "queue";
-  /** False once the message left the queue; `reduce` cancels the edit on the same view. */
   readonly stillPending: boolean;
 }
 
-/** Why the composer refuses input now. Ordered: the first that applies wins. */
 export type Blocked =
   | { readonly kind: "starting" }
   | { readonly kind: "no-session" }
@@ -117,12 +99,6 @@ export interface TasksLine {
   readonly text: string;
   readonly attention: boolean;
 }
-
-const LOADING_STEPS = {
-  workspace: "Opening workspace…",
-  settings: "Loading settings…",
-  providers: "Loading providers…",
-} as const;
 
 export function runModel(view: State["facts"]["session"]): RunModel {
   const execution = view?.view?.execution;
@@ -151,11 +127,6 @@ export function runModel(view: State["facts"]["session"]): RunModel {
   }
 }
 
-/**
- * The single ordered rule; replaces `composerBlocked` and the separate
- * `submitComposer` guards. A switch outranks "no session", so the reason
- * names the switch while the new session's first view loads.
- */
 export function blockedBy(state: State): Blocked | null {
   const { pending } = state.local;
 
@@ -176,16 +147,6 @@ export function blockedBy(state: State): Blocked | null {
   return null;
 }
 
-/**
- * One placeholder per situation, from the same inputs as the table:
- * question panel showing → "" (the panel takes the answer);
- * question → "Type an answer, or press Enter to pick one" (names the subagent for a child's),
- * editing → "Edit the queued message",
- * shell running → "Esc stops the command",
- * blocked → its reason,
- * busy → followUp steer ? "Steer the run" : "Queue a follow-up",
- * else "Plan, search, build anything".
- */
 export function placeholderFor(
   screen: Pick<ScreenModel, "question" | "editing" | "shell" | "run" | "blocked" | "followUp">,
 ): string {
@@ -211,14 +172,14 @@ export function placeholderFor(
   return COMPOSER_PLACEHOLDER;
 }
 
+function opening(state: State): boolean {
+  return (state.facts.session?.view ?? null) === null;
+}
+
 function loadingLine(state: State): string | null {
-  const { phase, session } = state.facts;
+  if (opening(state)) return null;
 
-  if (phase.kind === "starting") return LOADING_STEPS[phase.step];
-
-  if (state.local.pending.some((op) => op.kind === "switch")) return "Loading session…";
-
-  return session !== null && session.view === null ? "Loading session…" : null;
+  return state.local.pending.some((op) => op.kind === "switch") ? "Loading session…" : null;
 }
 
 function tasksLine(state: State, question: QuestionModel | null): TasksLine | null {
@@ -232,7 +193,6 @@ function tasksLine(state: State, question: QuestionModel | null): TasksLine | nu
   return { text: `${String(active)} running in background`, attention: false };
 }
 
-/** The table's inputs for a state, with `dialog` as the one that owns the keyboard (or none). */
 export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   const { session } = state.facts;
 
@@ -278,7 +238,6 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   };
 }
 
-/** The dialog with the keyboard: the stack's top with its live choices, else the question panel. */
 export function keyboardDialog(state: State): Dialog | null {
   const top = state.local.dialogs.at(-1);
 
@@ -336,12 +295,6 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const input = tableInputFor(state, dialog);
   const queue = keepEqual(previous?.queue, input.queue, sameQueueRow);
 
-  const reports = keepEqual(
-    previous?.reports,
-    reportRows(session, state.facts.tasks),
-    sameReportRow,
-  );
-
   const interactions = interactionsFor(input);
 
   const hints =
@@ -355,6 +308,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
 
   return {
     loading: loadingLine(state),
+    opening: opening(state),
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,
     question,
@@ -367,7 +321,6 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     dialog,
     blocked: input.blocked,
     queue,
-    reports,
     transcript: deriveTranscript(
       view,
       followedShells(state),
@@ -391,7 +344,11 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
       },
       state.local.watchedRun ?? undefined,
     ),
-    welcome: view !== null && view.turns.length === 0 && followedShells(state).length === 0,
+    welcome:
+      view !== null &&
+      view.turns.length === 0 &&
+      landingMessages(view).length === 0 &&
+      followedShells(state).length === 0,
     followUp: input.followUp,
     selectionActive: state.facts.terminal.selection,
   };

@@ -1,10 +1,3 @@
-/**
- * One desktop per spec file: a worker launches the e2e build over a copy
- * of the seeded baseline once, and every test in the file drives that same
- * window. A file names itself with `test.use({ chapter })`, which keys its
- * own worker, so any chapter runs alone with a single launch. Each test
- * records its own trace chunk and fails on any page or console error.
- */
 import { expect, test as base } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
@@ -17,9 +10,7 @@ import { launchDesktop } from "./launch.ts";
 export interface Desktop extends PreparedHome {
   readonly application: ElectronApplication;
   readonly page: Page;
-  /** Where the desktop saves downloads for this chapter. */
   readonly downloads: string;
-  /** The main process's stdout and stderr since launch. */
   readonly output: readonly string[];
 }
 
@@ -43,11 +34,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const prepared = await prepareHome(parent);
       const downloads = join(parent, "downloads");
       await mkdir(downloads);
+
       const launched = await launchDesktop({
         home: prepared.home,
         parentDirectory: parent,
         downloadsDirectory: downloads,
       });
+
       stack.defer(() => launched.close());
       const tracing = launched.application.context().tracing;
       await tracing.start({ screenshots: true, snapshots: true });
@@ -71,11 +64,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const consoleErrors: string[] = [];
       const failedResponses: string[] = [];
       const onPageError = (error: Error): number => pageErrors.push(error.message);
+
       const onConsole = (message: { type(): string; text(): string }): void => {
-        // Core's `dev()` trace goes to `console.error` by design; it is not an error.
         if (message.type() === "error" && !message.text().startsWith("DEV:"))
           consoleErrors.push(message.text());
       };
+
       const onResponse = (response: { status(): number; url(): string }): void => {
         if (response.status() >= 400)
           failedResponses.push(`${String(response.status())} ${response.url()}`);
@@ -94,6 +88,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         page.off("pageerror", onPageError);
         page.off("console", onConsole);
         page.off("response", onResponse);
+
         const failed =
           testInfo.status !== testInfo.expectedStatus ||
           pageErrors.length > 0 ||

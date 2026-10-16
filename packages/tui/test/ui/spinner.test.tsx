@@ -1,4 +1,3 @@
-/** With the manual schedule, the spinner shows frame 0, then frame 1 after one tick, and stops its interval when unmounted. */
 import { expect, test } from "bun:test";
 import { createTickers } from "../../src/app/ticker.ts";
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../src/lib/constants.ts";

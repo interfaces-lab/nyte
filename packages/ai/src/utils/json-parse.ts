@@ -1,8 +1,5 @@
 /**
  * Tolerant JSON parsing for tool-call arguments: repairs malformed string literals, and parses partial JSON during streaming so clients can render arguments before the call is complete.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/json-parse.ts
- * Synced with pi 7ebf9087e.
  */
 import { parse as partialParse } from "partial-json";
 import { Type, type Static } from "typebox";

@@ -5,38 +5,29 @@ import { join, sep } from "node:path";
 import type { Disposer } from "@nyte-ai/schema";
 import ignore from "ignore";
 
-/** Returns one walked entry: its path relative to the walk's root (`/`-separated), its kind, and a file's or symlink's size (null for a directory). */
 export type TreeEntry = {
   readonly path: string;
   readonly kind: "file" | "directory" | "symlink";
   readonly size: number | null;
 };
 
-/** Returns one frame of a walk: a page of entries, then `complete`, or `incomplete` at the entry limit or after an unreadable directory. */
 export type WalkFrame =
   | { readonly kind: "entries"; readonly entries: readonly TreeEntry[] }
   | { readonly kind: "complete" }
   | { readonly kind: "incomplete"; readonly reason: "limit" | "permission" };
 
-/** Answers whether a path under a root is ignored the way git ignores it: `.git` always, then the rules of `.git/info/exclude` and of every `.gitignore` from the root down to the path's directory, a deeper rule overriding a shallower one. */
 export type Ignores = {
-  /** Whether the path matches, its ancestors assumed kept (what a walk asks). */
   matches(path: string, directory: boolean): Promise<boolean>;
-  /** Whether the path or any of its ancestor directories is ignored (what a watcher asks). */
   ignored(path: string, directory: boolean): Promise<boolean>;
-  /** Drops a directory's cached rules, after its `.gitignore` changed. */
   forget(directory: string): void;
 };
 
-/** The entry limit of a walk: past it the walk answers `incomplete { limit }`. */
 export const WALK_LIMIT = 50_000;
 
-/** The entries in one page of a walk. */
 export const WALK_PAGE = 500;
 
 type Matcher = ReturnType<typeof ignore>;
 
-/** Returns a root's ignore rules, each directory's read once on first use. */
 export function createIgnores(root: string): Ignores {
   const rules = new Map<string, Promise<Matcher | null>>();
 
@@ -101,7 +92,6 @@ export function createIgnores(root: string): Ignores {
   };
 }
 
-/** Walks `directory` (relative to `root`, default the root) breadth-first in name order, without following symlinks or entering `.git`, yielding pages of `page` entries: everything when `ignored` is `include`, else what `ignores` keeps. Ends with `complete`, `incomplete { limit }` once `limit` entries were yielded, or `incomplete { permission }` when a directory could not be read (the rest is still walked). A missing directory yields `complete` alone. */
 export async function* walkTree(
   root: string,
   options: {
@@ -183,7 +173,6 @@ export async function* walkTree(
   yield denied ? { kind: "incomplete", reason: "permission" } : { kind: "complete" };
 }
 
-/** Watches a tree: calls `changed` with the `/`-separated relative paths that changed (an empty path when the platform did not say which), coalesced over `delay` ms. Uses a recursive `fs.watch` where the platform has one; where it has none or it fails, polls every `poll` ms comparing each walked entry's size and modification time, or, with `poll` null, reports nothing (the caller polls on its own). The disposer stops it. */
 export function watchTree(
   root: string,
   options: { readonly delay: number; readonly poll: number | null },
@@ -266,7 +255,6 @@ export function watchTree(
   };
 }
 
-/** Returns an error's `code` (`ENOENT`, `EACCES`, …), or null. */
 export function codeOf(error: unknown): string | null {
   return typeof error === "object" &&
     error !== null &&

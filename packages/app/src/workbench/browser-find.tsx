@@ -4,6 +4,7 @@ import type { ReactElement, Ref } from "react";
 import type { BrowserFindResult } from "../bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { setBrowserFinding } from "./browser-surfaces.ts";
@@ -12,10 +13,10 @@ const styles = create({
   bar: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     flexShrink: 0,
-    paddingBlock: 4,
-    paddingInline: 10,
+    paddingBlock: space.s1,
+    paddingInline: space.s2_5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -45,7 +46,6 @@ export function FindBar({
 }: {
   readonly surface: string;
   readonly ref: Ref<FindBarHandle>;
-  /** The bar closed, so the page takes the keyboard back. */
   readonly onClose: () => void;
 }): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +96,6 @@ export function FindBar({
             if (!(details.event instanceof InputEvent && details.event.isComposing))
               find(value, "next");
           }}
-          // Composing text is not yet typed; the finished text searches once.
           onCompositionEnd={(event) => find(event.currentTarget.value, "next")}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;

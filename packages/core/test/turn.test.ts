@@ -60,7 +60,6 @@ const nap: ToolDefinition<Infer<typeof nothing>> = {
   },
 };
 
-/** Returns a plugin that records what its hooks saw, with the echo tool and an optional gated tool. */
 function recorder(gate?: Promise<void>) {
   const seen: string[] = [];
 
@@ -106,7 +105,6 @@ function recorder(gate?: Promise<void>) {
   return { plugin, seen };
 }
 
-/** Collects the session's durable events as labels, from now on. */
 function events(kernel: Kernel, session: SessionId): DurableEvent[] {
   const logged: DurableEvent[] = [];
 
@@ -117,7 +115,6 @@ function events(kernel: Kernel, session: SessionId): DurableEvent[] {
   return logged;
 }
 
-/** Returns the text of every message a request sent, by role. */
 function sent(fake: FakeModels, index: number): readonly string[] {
   return fake.requests[index].context.messages.map((message) => {
     switch (message.role) {
@@ -133,7 +130,6 @@ function sent(fake: FakeModels, index: number): readonly string[] {
   });
 }
 
-/** Returns the text of the last message a request sent. */
 function lastUserText(fake: FakeModels, index: number): string {
   const message = fake.requests[index].context.messages.at(-1);
 
@@ -142,14 +138,12 @@ function lastUserText(fake: FakeModels, index: number): string {
   return contentText(message.content);
 }
 
-/** Returns the markdown of every settled text part, in order. */
 function settledText(messages: readonly Message[]): readonly string[] {
   return messages.flatMap((message) =>
     isPart(message, text) && message.status.kind === "settled" ? [message.state.markdown] : [],
   );
 }
 
-/** Returns the run the first user message landed in. */
 function runOf(messages: readonly Message[]): RunId {
   const message = messages.find((entry) => entry.kind === "user");
   assert(
@@ -196,7 +190,7 @@ describe("turn", () => {
 
     expect(user).toMatchObject({ kind: "user", content: "Go." });
     assert(thought !== undefined && isPart(thought, thinking));
-    expect(thought.id).toBe(`${run}:1:0`);
+    expect(thought.id).toBe(`${run}:a1:0`);
     expect(thought.state).toEqual({
       markdown: "Plan the call.\n\nCheck it.",
       merged: 2,
@@ -206,7 +200,11 @@ describe("turn", () => {
       ],
     });
     assert(answer !== undefined && isPart(answer, text));
-    expect(answer).toMatchObject({ id: `${run}:1:1`, role: "answer", status: { kind: "settled" } });
+    expect(answer).toMatchObject({
+      id: `${run}:a1:1`,
+      role: "answer",
+      status: { kind: "settled" },
+    });
     expect(answer.state).toEqual({ markdown: "Calling echo.", signature: "msg-1" });
     assert(call !== undefined && isPart(call, tool));
     expect(call.id).toBe(`${run}:1:call-1`);
@@ -216,7 +214,7 @@ describe("turn", () => {
       outcome: { kind: "ok", content: [{ kind: "text", text: "echo: hi" }] },
     });
     assert(done !== undefined && isPart(done, text));
-    expect(done).toMatchObject({ id: `${run}:1:2`, state: { markdown: "Done." } });
+    expect(done).toMatchObject({ id: `${run}:a1:2`, state: { markdown: "Done." } });
 
     expect(sent(fake, 1)).toEqual([
       "system",
@@ -709,6 +707,61 @@ describe("turn", () => {
     ).toEqual(["compaction", "assistant"]);
   });
 
+  it("runs calls without a provider id or repeating one each under its own id", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [
+          { type: "text", text: "Echoing." },
+          { type: "toolCall", id: "", name: "echo", arguments: { text: "a" } },
+          { type: "toolCall", id: "", name: "echo", arguments: { text: "b" } },
+          { type: "toolCall", id: "dup", name: "echo", arguments: { text: "c" } },
+          { type: "toolCall", id: "dup", name: "echo", arguments: { text: "d" } },
+        ],
+      },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+
+    await using host = await open(fake, { plugins: [recorder().plugin] });
+    const session = await host.sessions.create();
+    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+
+    const view = await session.view();
+    const run = runOf(view.messages);
+
+    expect(
+      view.messages.flatMap((message) =>
+        isPart(message, tool) &&
+        message.state.phase === "settled" &&
+        message.state.outcome.kind === "ok"
+          ? [[message.id, message.state.outcome.content]]
+          : [],
+      ),
+    ).toEqual([
+      [`${run}:1:call_1`, [{ kind: "text", text: "echo: a" }]],
+      [`${run}:1:call_2`, [{ kind: "text", text: "echo: b" }]],
+      [`${run}:1:dup`, [{ kind: "text", text: "echo: c" }]],
+      [`${run}:1:dup_4`, [{ kind: "text", text: "echo: d" }]],
+    ]);
+    expect(sent(fake, 1).slice(2)).toEqual([
+      "assistant:Echoing.|echo()|echo()|echo()|echo()",
+      "result:echo: a",
+      "result:echo: b",
+      "result:echo: c",
+      "result:echo: d",
+    ]);
+    expect(
+      fake.requests[1].context.messages.flatMap((message) =>
+        message.role === "assistant"
+          ? message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : []))
+          : message.role === "toolResult"
+            ? [message.toolCallId]
+            : [],
+      ),
+    ).toEqual(["call_1", "call_2", "dup", "dup_4", "call_1", "call_2", "dup", "dup_4"]);
+  });
+
   it("retries a retryable failure at the next attempt, then succeeds", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     const fake = fakeModels();
@@ -739,14 +792,14 @@ describe("turn", () => {
     const parts = view.messages.filter((message) => message.kind === "part");
 
     expect(parts).toHaveLength(1);
-    expect(parts[0]).toMatchObject({ id: `${run}:2:0`, state: { markdown: "Recovered." } });
+    expect(parts[0]).toMatchObject({ id: `${run}:a2:0`, state: { markdown: "Recovered." } });
     expect(
-      await host.kernel.store.refs.get(partRef(session.id, asId(`${run}:1:0`))),
+      await host.kernel.store.refs.get(partRef(session.id, asId(`${run}:a1:0`))),
     ).not.toBeNull();
 
     const failed = logged.find((event) => event.kind === "part" && event.change === "failed");
 
-    expect(failed).toMatchObject({ part: `${run}:1:0`, failure: { class: "overloaded" } });
+    expect(failed).toMatchObject({ part: `${run}:a1:0`, failure: { class: "overloaded" } });
     expect(fake.requests).toHaveLength(2);
   });
 
@@ -776,8 +829,8 @@ describe("turn", () => {
     const run = runOf(retrying.messages);
 
     expect(retrying.messages.filter((message) => message.kind === "part")).toMatchObject([
-      { id: `${run}:1:0`, status: { kind: "failed", failure: { class: "overloaded" } } },
-      { id: `${run}:1:1`, status: { kind: "failed", failure: { class: "overloaded" } } },
+      { id: `${run}:a1:0`, status: { kind: "failed", failure: { class: "overloaded" } } },
+      { id: `${run}:a1:1`, status: { kind: "failed", failure: { class: "overloaded" } } },
     ]);
 
     await vi.advanceTimersByTimeAsync(2_000);
@@ -787,14 +840,18 @@ describe("turn", () => {
     const view = await session.view();
 
     expect(view.messages.filter((message) => message.kind === "part")).toMatchObject([
-      { id: `${run}:2:0`, state: { markdown: "Clean answer." }, status: { kind: "settled" } },
+      { id: `${run}:a2:0`, state: { markdown: "Clean answer." }, status: { kind: "settled" } },
     ]);
 
-    for (const id of [`${run}:1:0`, `${run}:1:1`]) {
+    for (const [id, streamed] of [
+      [`${run}:a1:0`, "First half."],
+      [`${run}:a1:1`, "Second"],
+    ]) {
       const ref = await host.kernel.store.refs.get(partRef(session.id, asId(id)));
 
       assert(ref?.target);
       expect(decodePartRecord(await host.kernel.store.objects.get(ref.target))).toMatchObject({
+        state: { markdown: streamed },
         status: { kind: "failed", failure: { class: "overloaded" } },
       });
     }
@@ -803,7 +860,7 @@ describe("turn", () => {
       logged.flatMap((event) =>
         event.kind === "part" && event.change === "settled" ? [event.part] : [],
       ),
-    ).toEqual([`${run}:2:0`]);
+    ).toEqual([`${run}:a2:0`]);
     expect(sent(fake, 1)).toEqual(["system", "user:Go."]);
   });
 
@@ -1004,10 +1061,63 @@ describe("turn", () => {
     });
     expect(fake.requests[0].options?.signal?.aborted).toBe(true);
   });
+
+  it("keeps a tool call stopped mid-run in history once the next message lands", async () => {
+    const fake = fakeModels();
+    const started = Promise.withResolvers<void>();
+
+    const hang: ToolDefinition<Infer<typeof nothing>> = {
+      name: "hang",
+      description: "Run until stopped.",
+      parameters: nothing,
+      class: () => ({ kind: "custom", label: "Hanging" }),
+      replay: "safe",
+      async execute(_args, invocation) {
+        started.resolve();
+        await new Promise((resolve) =>
+          invocation.signal.addEventListener("abort", resolve, { once: true }),
+        );
+
+        return { content: [{ kind: "text", text: "done" }] };
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "call-hang", name: "hang", arguments: {} }] },
+      { content: [{ type: "text", text: "Okay." }] },
+    );
+
+    await using host = await open(fake, {
+      plugins: [{ id: "hang", contribute: { tools: [hang] } }],
+    });
+
+    const session = await host.sessions.create();
+    const receipt = await session.send("Go.");
+    await started.promise;
+
+    expect(await session.run(runOf((await session.view()).messages)).stop()).toEqual({
+      kind: "requested",
+    });
+    expect(await receipt.settled()).toEqual({ kind: "stopped" });
+    expect(await (await session.send("Next.")).settled()).toMatchObject({ kind: "completed" });
+
+    const call = (await session.view()).messages.find((message) => isPart(message, tool));
+
+    expect(call).toMatchObject({
+      status: { kind: "settled" },
+      state: { name: "hang", phase: "settled", outcome: { kind: "stopped" } },
+    });
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:Go.",
+      "assistant:hang()",
+      "result:The tool call was stopped before it finished.",
+      "user:Next.",
+    ]);
+  });
 });
 
 describe("turn findings (CORE-DIET D3)", () => {
-  /** Returns a part's status as the store holds it. */
   async function storedStatus(kernel: Kernel, session: SessionId, part: string) {
     const ref = await kernel.store.refs.get(partRef(session, asId(part)));
 
@@ -1143,7 +1253,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     assert(
       second?.kind === "user" && second.status.kind === "landed" && second.status.run !== null,
     );
-    expect(await storedStatus(host.kernel, session.id, `${second.status.run}:1:0`)).toMatchObject({
+    expect(await storedStatus(host.kernel, session.id, `${second.status.run}:a1:0`)).toMatchObject({
       kind: "failed",
     });
   });
@@ -1205,7 +1315,7 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     const run = runOf((await session.view()).messages);
 
-    expect(await storedStatus(host.kernel, session.id, `${run}:1:0`)).toMatchObject({
+    expect(await storedStatus(host.kernel, session.id, `${run}:a1:0`)).toMatchObject({
       kind: "failed",
       failure: { class: "aborted" },
     });
@@ -1391,12 +1501,12 @@ describe("turn findings (CORE-DIET D3)", () => {
         : [],
     );
 
-    expect(await storedStatus(host.kernel, session.id, `${runs[0]}:1:0`)).toMatchObject({
+    expect(await storedStatus(host.kernel, session.id, `${runs[0]}:a1:0`)).toMatchObject({
       kind: "failed",
     });
   });
 
-  it("validates a before_compaction result once, failing the compaction, never dropping history at read (D9)", async () => {
+  it("validates a before_compaction result once, failing the threshold compaction and sending the request uncompacted, never dropping history at read (D9)", async () => {
     const fake = fakeModels();
 
     const broken: Plugin<"core"> = {
@@ -1421,20 +1531,25 @@ describe("turn findings (CORE-DIET D3)", () => {
       },
     };
 
-    fake.reply({ content: [{ type: "text", text: "First answer." }] });
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      { content: [{ type: "text", text: "Second answer." }] },
+    );
     await using host = await open(fake, { plugins: [broken] });
     const session = await host.sessions.create();
     await (await session.send("First?")).settled();
     const end = await (await session.send("Second?")).settled();
 
-    expect(end).toMatchObject({
-      kind: "failed",
-      failure: { class: "runner", message: expect.stringContaining("before_compaction") },
-    });
+    expect(end.kind).toBe("completed");
     expect((await session.view()).messages.some((message) => isPart(message, compaction))).toBe(
       false,
     );
-    expect(fake.requests).toHaveLength(1);
+    expect(sent(fake, 1)).toEqual([
+      "system",
+      "user:First?",
+      "assistant:First answer.",
+      "user:Second?",
+    ]);
   });
 
   it("fails a stream that ends without a result as a provider failure, its streamed text failed in the store (D7, audit)", async () => {
@@ -1474,7 +1589,7 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "provider" } });
     expect(
-      await storedStatus(host.kernel, session.id, `${runOf((await session.view()).messages)}:1:0`),
+      await storedStatus(host.kernel, session.id, `${runOf((await session.view()).messages)}:a1:0`),
     ).toMatchObject({
       kind: "failed",
       failure: { class: "provider" },
@@ -1608,7 +1723,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     const run = runOf((await session.view()).messages);
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });
-    expect(await storedStatus(host.kernel, session.id, `${run}:1:0`)).toMatchObject({
+    expect(await storedStatus(host.kernel, session.id, `${run}:a1:0`)).toMatchObject({
       kind: "failed",
       failure: { class: "runner" },
     });

@@ -41,7 +41,6 @@ const deleted = (id: string) => ({
   data: { object: "user", id, deleted: true },
 });
 
-/** The fake Clerk knows this owner, as a browser session implies. */
 function knownOwner(userId: string): void {
   if (!harness.clerkApi.users.has(userId))
     harness.clerkApi.users.set(userId, {
@@ -52,7 +51,6 @@ function knownOwner(userId: string): void {
     });
 }
 
-/** A host opened a transaction and the owner looked its code up. */
 async function opened(input: { readonly name?: string; readonly desktop?: FakeDesktop } = {}) {
   knownOwner("user_alice");
   const desktop = input.desktop ?? (await harness.newDesktop());
@@ -131,7 +129,6 @@ describe("opening a link transaction", () => {
     expect((await harness.rows("link_transactions")).length).toBe(1);
     const rows = await harness.rows("link_transactions");
 
-    // The code is stored as its hash only.
     expect(JSON.stringify(rows)).not.toContain(first.userCode.replace("-", ""));
   });
 
@@ -558,7 +555,6 @@ describe("browser access", () => {
 
 describe("claim atomicity and authority", () => {
   it("consumes alongside the claim even while an unrelated session is denied, for new and resumed keys", async () => {
-    // Bob's phone enrolled with his session, then was revoked: an effective denial exists in D1.
     const { desktop: bobs } = await harness.link({ userId: "user_bob" });
     const phone = await harness.enroll({
       userId: "user_bob",
@@ -598,7 +594,6 @@ describe("claim atomicity and authority", () => {
   });
 
   it("refuses a direct resume whose session was denied between verification and the claim", async () => {
-    // The route verifies the session, then a denial lands before the batch: the store must not call it linked.
     const { desktop } = await harness.link({ userId: "user_alice", sessionId: "sess_alice_mac" });
     await harness.db
       .prepare(
@@ -674,7 +669,6 @@ describe("claim atomicity and authority", () => {
       userCode: cancelledOne.userCode,
     });
 
-    // The exact open answers the cancelled transaction as it stands; nothing reopens.
     expect(replayed.answer.status).toBe(200);
     expect(read(replayed.answer.body, "transactionId")).toBe(cancelledId);
     expect(read(replayed.answer.body, "state")).toBe("cancelled");

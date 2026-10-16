@@ -4,10 +4,8 @@ import { patchDigest } from "./changes-viewed.ts";
 import { parsePatch } from "./patch-parse.ts";
 import { formatPatch } from "./patch-text.ts";
 
-/** Paths one explicit read names at most. */
 export const PATCH_READ_MAX = 50;
 
-/** What one file's patch became once it was read and parsed. */
 export type PatchEntry =
   | {
       readonly kind: "ready";
@@ -18,17 +16,10 @@ export type PatchEntry =
       readonly removed: number;
     }
   | { readonly kind: "binary"; readonly text: string; readonly digest: string }
-  /** The comparison reports the file but its patch has no text, as under ignore-whitespace. */
   | { readonly kind: "empty" }
   | { readonly kind: "too_large"; readonly limit: number }
   | { readonly kind: "failed" };
 
-/**
- * Where patches come from. `key` names one comparison at one state: entries
- * read under another key are stale. `lineage` names the comparison across
- * states, so an earlier state's entry may stand in until the fresh one lands.
- * `paths` are the files the comparison reports now; nothing else is kept.
- */
 export interface PatchSource {
   readonly key: string;
   readonly lineage: string;
@@ -39,29 +30,16 @@ export interface PatchSource {
 export interface PatchSnapshot {
   readonly key: string | undefined;
   readonly lineage: string | undefined;
-  /** Entries read under `key`. */
   readonly fresh: ReadonlyMap<string, PatchEntry>;
-  /**
-   * For reported paths not yet read under `key`, the entry an earlier state of
-   * the same lineage left, shown until the fresh one replaces it.
-   */
   readonly stale: ReadonlyMap<string, PatchEntry>;
 }
 
-/** What an explicit request answers: every entry, or that its source was replaced first. */
 export type EnsuredPatches =
   | { readonly kind: "read"; readonly entries: ReadonlyMap<string, PatchEntry> }
   | { readonly kind: "superseded" };
 
-/**
- * Paths one read of rendered headers or prepared files sends. Every read
- * repeats the comparison's discovery and the host runs four patch processes
- * at once, so eight paths amortize discovery while a header that scrolls in
- * waits at most two rounds behind the read in flight.
- */
 const READ_BATCH = 8;
 
-/** Paths one explicit request (mark all viewed) sends per read: as many as a read may name. */
 const PINNED_BATCH = PATCH_READ_MAX;
 
 const EMPTY_ENTRIES: ReadonlyMap<string, PatchEntry> = new Map();
@@ -79,7 +57,6 @@ const EMPTY: PatchEntry = { kind: "empty" };
 
 const FAILED: PatchEntry = { kind: "failed" };
 
-/** One host patch as the stack draws it; an unchanged patch keeps what was already parsed. */
 async function entryOf(diff: HostPatch, earlier: PatchEntry | undefined): Promise<PatchEntry> {
   switch (diff.kind) {
     case "too-large":
@@ -119,27 +96,9 @@ interface Waiter {
   readonly resolve: (answer: EnsuredPatches) => void;
 }
 
-/**
- * Reads the patches a stack shows, one read at a time, until every expanded
- * file is read. Each read takes the first non-empty tier:
- *
- * 1. headers the stack renders, so a file scrolled to or revealed jumps ahead
- *    of everything queued behind the read in flight;
- * 2. explicit requests (mark viewed), including collapsed files;
- * 3. prepared files with nothing to show yet;
- * 4. prepared files still showing an earlier state's entry.
- *
- * Each read's entries publish together, so a stack re-renders once per read.
- *
- * Demand belongs to the source it was made against: replacing the source, or
- * releasing the loader, drops queued explicit demand and answers its waiters
- * `superseded`. A read answered after that is dropped too; the host still
- * finishes it, since nothing cancels a read in flight.
- */
 export function createPatchLoader() {
   let source: PatchSource | undefined;
   let snapshot = EMPTY_SNAPSHOT;
-  /** Bumped whenever the source's key changes or the loader is released. */
   let generation = 0;
   const mounted = new Map<string, number>();
   const pinned = new Set<string>();
@@ -231,8 +190,6 @@ export function createPatchLoader() {
   };
 
   const nextBatch = (): readonly string[] => {
-    // Rendered headers in prepared order, nearest the file in view first, so a
-    // revealed file is not queued behind its neighbors' headers.
     const visible = wanted(
       new Set([...prepared.filter((path) => mounted.has(path)), ...mounted.keys()]),
       READ_BATCH,
@@ -270,7 +227,6 @@ export function createPatchLoader() {
     void pump();
   };
 
-  // Headers mounting in one commit register before the first read takes its batch.
   const schedule = (): void => {
     if (scheduled) return;
     scheduled = true;
@@ -289,11 +245,6 @@ export function createPatchLoader() {
       return () => listeners.delete(listener);
     },
 
-    /**
-     * Reads from `next` from now on. A new key starts a new generation: the
-     * last entries of the same lineage stay as stand-ins, but only for paths
-     * `next` still reports, and a fresh entry discards its stand-in.
-     */
     setSource(next: PatchSource): void {
       const previous = source;
       source = next;
@@ -330,7 +281,6 @@ export function createPatchLoader() {
       schedule();
     },
 
-    /** Drops every source, demand, waiter, and entry; a read still in flight is discarded. */
     release(): void {
       source = undefined;
       mounted.clear();
@@ -339,21 +289,14 @@ export function createPatchLoader() {
       publish(EMPTY_SNAPSHOT);
     },
 
-    /**
-     * The expanded files to read without a header asking for them, in the
-     * order to read them. Collapsed files stay out, and a hidden stack names
-     * none, so neither costs a read unless something explicitly asks.
-     */
     prepare(paths: readonly string[]): void {
       prepared = paths;
       schedule();
     },
 
-    /** A rendered, expanded header asks for its patch while it stays mounted. */
     mount: (path: string): (() => void) => {
       mounted.set(path, (mounted.get(path) ?? 0) + 1);
 
-      // A failed read is retried when its header comes back into view.
       if (snapshot.fresh.get(path)?.kind === "failed") {
         const fresh = new Map(snapshot.fresh);
         fresh.delete(path);
@@ -370,11 +313,6 @@ export function createPatchLoader() {
       };
     },
 
-    /**
-     * Reads every named path under the current source, ahead of prepared
-     * files but behind rendered headers, and answers once each has an entry,
-     * or `superseded` if the source is replaced or the loader released first.
-     */
     ensure(paths: readonly string[]): Promise<EnsuredPatches> {
       if (source === undefined) return Promise.resolve(SUPERSEDED);
 

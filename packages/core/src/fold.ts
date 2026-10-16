@@ -40,52 +40,52 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
-import { SdkError } from "./error.ts";
 import type { HeadPair } from "./bus.ts";
 import type { CommitRecord, PartRecord } from "./records.ts";
 import { isJsonObject } from "./records.ts";
-import { START, pathOf, tipOf } from "./session-state.ts";
+import { START, walkCommitPath, readPositionCommit } from "./session-state.ts";
 
-/** Returns a session as the fold holds it for one principal: every head, commit, input, part, run, call and turn. The maps and each head's `messages` and `turns` belong to the fold and change in place; every object a view carries is immutable and shared between steps. */
 export interface FoldState {
+  readonly [INDEX]: Index;
   readonly session: SessionId;
+
   readonly principal: PrincipalId;
-  /** The last durable event folded; for resume, never on the view. */
+
+  readonly seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
+
   readonly seq: Seq;
   readonly activation: Activation;
   readonly catalog: SessionCatalogView;
-  /** Files this session changed, latest per path, first-seen order. */
+
   readonly changes: readonly FileChange[];
   readonly heads: ReadonlyMap<HeadName, FoldHead>;
-  /** Every head's row in `heads` order: `SessionView.heads`, shared by every head's view. */
+
   readonly headInfos: readonly HeadInfo[];
   readonly commits: ReadonlyMap<CommitId, CommitRecord>;
-  /** User commits sharing a parent, in creation order, by parent; null is the root. */
+
   readonly siblings: ReadonlyMap<CommitId | null, readonly CommitId[]>;
   readonly inputs: ReadonlyMap<MessageId, FoldInput>;
   readonly parts: ReadonlyMap<PartId, PartRecord>;
-  /** Every open part not placed in the transcript, in creation order: `SessionView.parts`. */
+
   readonly partViews: readonly PartView[];
   readonly runs: ReadonlyMap<RunId, FoldRun>;
   readonly calls: ReadonlyMap<CallId, FoldCall>;
   readonly turns: ReadonlyMap<TurnId, FoldTurn>;
-  /** The one message object per id, shared by every head whose list carries it. */
+
   readonly messages: ReadonlyMap<MessageId, Message>;
 }
 
 export interface FoldHead {
-  /** Name, tip, stack, execution and unread; the same object sits in `FoldState.headInfos`. */
   readonly info: HeadInfo;
-  /** The head ref's revision paired with this head's tip; null when no pair names the tip. */
+
   readonly revision: Revision | null;
-  readonly seen: CommitId | null;
-  /** The path's committed messages oldest first, then `live`, then `pending`. */
+
   readonly messages: readonly Message[];
-  /** Transcript parts of this head's runs not yet committed, in creation order. */
+
   readonly live: readonly PartId[];
-  /** Admitted inputs not yet landed, in inbox order. */
+
   readonly pending: readonly MessageId[];
-  /** Turns over `messages`, in the same order. */
+
   readonly turns: readonly TurnInfo[];
   readonly background: readonly BackgroundItem[];
   readonly configuration: SessionView["configuration"];
@@ -121,7 +121,7 @@ export interface FoldCall {
 export interface FoldTurn {
   readonly info: TurnInfo;
   readonly head: HeadName;
-  /** Tool calls in this turn not yet settled, oldest first; the newest names `activity`. */
+
   readonly live: readonly CallId[];
 }
 
@@ -139,7 +139,6 @@ const UNCONFIGURED: SessionView["configuration"] = { selected: null, effective: 
 
 const NO_CONTEXT: ContextView = { tokens: 0, window: 0, lastRequest: null };
 
-/** The catalog of a session with no plugin contributions: what a fold starts with and `kernel.catalog` answers before any publish. */
 export const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],
   settings: [],
@@ -182,45 +181,44 @@ interface Index {
   readonly turns: Map<TurnId, FoldTurn>;
   readonly messages: Map<MessageId, Message>;
   readonly byRun: Map<RunId, PartId[]>;
-  /** Landed attach inputs still on their pending turn, waiting for a run to ride. */
+
   readonly riders: Set<MessageId>;
-  /** Thinking steps per turn on its head's path, beside `TurnInfo.steps`. */
+
   readonly thinking: Map<TurnId, number>;
   readonly paths: Map<HeadName, Path>;
 }
 
 interface Path {
   readonly messages: Message[];
-  /** How many leading `messages` are committed; live parts and pending inputs follow. */
+
   committed: number;
   readonly at: Map<MessageId, number>;
   readonly turns: TurnInfo[];
   readonly turnAt: Map<TurnId, number>;
-  /** The position in `messages` of each turn's first message, beside `turns`. */
+
   readonly firstAt: number[];
 }
 
 interface Draft extends Index {
-  readonly principal: PrincipalId;
+  seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
   seq: Seq;
   activation: Activation;
   catalog: SessionCatalogView;
   changes: readonly FileChange[];
   partViews: readonly PartView[];
-  /** Heads whose tip left the end of their path. */
+
   readonly walk: Set<HeadName>;
   readonly appended: Map<HeadName, CommitId>;
-  /** Heads whose live parts or pending inputs changed. */
+
   readonly rebuild: Set<HeadName>;
   readonly swapped: Set<MessageId>;
   readonly retitled: Set<TurnId>;
-  /** Steps entering and leaving each turn's own head path. */
+
   readonly steps: Map<TurnId, { steps: number; thinking: number }>;
 }
 
-const indexes = new WeakMap<ReadonlyMap<MessageId, Message>, Index>();
+const INDEX = Symbol("fold-index");
 
-/** Returns a session's state before its first event, for one principal. */
 export function emptyFold(input: {
   readonly session: SessionId;
   readonly principal: PrincipalId;
@@ -241,11 +239,11 @@ export function emptyFold(input: {
     paths: new Map(),
   };
 
-  indexes.set(index.messages, index);
-
   return {
+    [INDEX]: index,
     session: input.session,
     principal: input.principal,
+    seen: new Map(),
     seq: asSeq(0),
     activation: INACTIVE,
     catalog: EMPTY_CATALOG,
@@ -264,7 +262,6 @@ export function emptyFold(input: {
   };
 }
 
-/** Returns the state after one event: a token touches one part and the spine above it, and every object a view carries stays immutable and shared. The input state is consumed; callers hold only the returned state. */
 export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldState {
   const draft = open(state);
 
@@ -278,7 +275,14 @@ export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldSt
   return finish(state, draft);
 }
 
-const projections = new WeakMap<FoldHead, Map<number, SessionView>>();
+const projections = new WeakMap<FoldHead, Map<PrincipalId, Map<number, SessionView>>>();
+
+const unreads = new WeakMap<
+  readonly HeadInfo[],
+  WeakMap<ReadonlyMap<HeadName, CommitId | null>, readonly HeadInfo[]>
+>();
+
+const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
 
 const tails = new WeakMap<readonly Message[], Map<number, readonly Message[]>>();
 
@@ -289,18 +293,20 @@ const snapshots = new WeakMap<
 
 const absent = new WeakMap<ReadonlyMap<HeadName, FoldHead>, Map<HeadName, FoldHead>>();
 
-/** Returns a head's view, memoised per head: an unchanged head returns the same object, and unchanged messages and turns keep identity. `messages` is the tail; `turns` is every turn on the head's path. */
 export function project(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
   const folded = state.heads.get(head) ?? absentHead(state.heads, head);
   const tail = options?.tail ?? DEFAULT_TAIL;
-  const cached = projections.get(folded)?.get(tail);
+  const heads = headsFor(state);
+  const byPrincipal = projections.get(folded) ?? new Map<PrincipalId, Map<number, SessionView>>();
+  const byTail = byPrincipal.get(state.principal) ?? new Map<number, SessionView>();
+  const cached = byTail.get(tail);
 
   if (
     cached !== undefined &&
     cached.seq === state.seq &&
     cached.activation === state.activation &&
     cached.parts === state.partViews &&
-    cached.heads === state.headInfos &&
+    cached.heads === heads &&
     cached.changes === state.changes &&
     cached.catalog === state.catalog
   )
@@ -310,28 +316,53 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
     revision: folded.revision,
     seq: state.seq,
     activation: state.activation,
-    messages: tailOf(folded.messages, tail),
+    messages: readMessageTail(folded.messages, tail),
     parts: state.partViews,
     turns: frozen(folded.turns),
     execution: folded.info.execution,
     background: folded.background,
     configuration: folded.configuration,
     context: folded.context,
-    heads: state.headInfos,
+    heads,
     changes: state.changes,
     catalog: state.catalog,
   };
 
-  const byTail = projections.get(folded) ?? new Map<number, SessionView>();
   byTail.set(tail, view);
-  projections.set(folded, byTail);
+  byPrincipal.set(state.principal, byTail);
+  projections.set(folded, byPrincipal);
 
   return view;
 }
 
-/** Returns the state with a head pair applied: the head's revision is the pair's when the pair's tip is the head's tip, else null; the input state is consumed. */
+export function readSeenCommit(state: FoldState, head: HeadName): CommitId | null {
+  return state.seen.get(state.principal)?.get(head) ?? null;
+}
+
+function headsFor(state: FoldState): readonly HeadInfo[] {
+  const seen = state.seen.get(state.principal) ?? NOTHING_SEEN;
+  const known = unreads.get(state.headInfos) ?? new WeakMap();
+  const cached = known.get(seen);
+
+  if (cached !== undefined) return cached;
+
+  const heads = reuse(
+    state.headInfos,
+    state.headInfos.map((info) => {
+      const unread = readPositionCommit(info.tip) !== (seen.get(info.name) ?? null);
+
+      return info.unread === unread ? info : { ...info, unread };
+    }),
+  );
+
+  known.set(seen, heads);
+  unreads.set(state.headInfos, known);
+
+  return heads;
+}
+
 export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {
-  const tip = tipOf(state.heads.get(head)?.info.tip ?? START);
+  const tip = readPositionCommit(state.heads.get(head)?.info.tip ?? START);
 
   return withRevision(state, head, tip === pair.tip ? pair.revision : null);
 }
@@ -340,24 +371,15 @@ function withRevision(state: FoldState, head: HeadName, revision: Revision | nul
   const folded = state.heads.get(head);
 
   if (folded === undefined || folded.revision === revision) return state;
-  indexOf(state).heads.set(head, { ...folded, revision });
+  state[INDEX].heads.set(head, { ...folded, revision });
 
   return { ...state };
 }
 
-function indexOf(state: FoldState): Index {
-  const index = indexes.get(state.messages);
-
-  if (index === undefined)
-    throw new SdkError("internal", "The fold state was not made by emptyFold or fold.");
-
-  return index;
-}
-
 function open(state: FoldState): Draft {
   return {
-    ...indexOf(state),
-    principal: state.principal,
+    ...state[INDEX],
+    seen: state.seen,
     seq: state.seq,
     activation: state.activation,
     catalog: state.catalog,
@@ -456,7 +478,7 @@ function applyCommit(draft: Draft, event: Logged<"commit">): void {
   }));
   draft.appended.set(name, event.id);
 
-  if (tipOf(tip) !== event.parent) draft.walk.add(name);
+  if (readPositionCommit(tip) !== event.parent) draft.walk.add(name);
 
   if (body.kind === "user") dropFailed(draft, name);
 }
@@ -530,6 +552,7 @@ function applyHead(draft: Draft, event: Logged<"head">): void {
   if (event.reason === "removed") {
     draft.heads.delete(name);
     draft.paths.delete(name);
+    forget(draft, name);
 
     return;
   }
@@ -545,10 +568,23 @@ function applyHead(draft: Draft, event: Logged<"head">): void {
 
 function applySeen(draft: Draft, event: Logged<"seen">): void {
   const name = event.head;
+  const marks = draft.seen.get(event.principal);
 
-  if (name === null || event.principal !== draft.principal || !draft.heads.has(name)) return;
-  updateHead(draft, name, (head) =>
-    head.seen === event.commit ? head : { ...head, seen: event.commit },
+  if (name === null || !draft.heads.has(name) || marks?.get(name) === event.commit) return;
+  draft.seen = new Map(draft.seen).set(event.principal, new Map(marks).set(name, event.commit));
+}
+
+function forget(draft: Draft, name: HeadName): void {
+  if (![...draft.seen.values()].some((marks) => marks.has(name))) return;
+
+  draft.seen = new Map(
+    Array.from(draft.seen, ([principal, marks]) => {
+      if (!marks.has(name)) return [principal, marks];
+      const kept = new Map(marks);
+      kept.delete(name);
+
+      return [principal, kept];
+    }),
   );
 }
 
@@ -561,10 +597,7 @@ function applySession(draft: Draft, event: Logged<"session">): void {
     if (current === undefined) {
       const path = newPath();
       draft.paths.set(row.name, path);
-      heads.set(row.name, {
-        ...emptyHead(row.name, path),
-        info: { ...row, unread: tipOf(row.tip) !== null },
-      });
+      heads.set(row.name, { ...emptyHead(row.name, path), info: { ...row, unread: false } });
       draft.walk.add(row.name);
       continue;
     }
@@ -583,7 +616,9 @@ function applySession(draft: Draft, event: Logged<"session">): void {
   for (const [name, head] of heads) draft.heads.set(name, head);
 
   for (const name of draft.paths.keys()) {
-    if (!heads.has(name)) draft.paths.delete(name);
+    if (heads.has(name)) continue;
+    draft.paths.delete(name);
+    forget(draft, name);
   }
 }
 
@@ -847,7 +882,7 @@ function work(draft: Draft, id: TurnId): void {
   const turn = draft.turns.get(id);
 
   if (turn !== undefined)
-    turnState(draft, id, { kind: "working", activity: activityOf(draft, turn.live) });
+    turnState(draft, id, { kind: "working", activity: describeLiveActivity(draft, turn.live) });
 }
 
 function turnState(draft: Draft, id: TurnId, state: TurnInfo["state"]): void {
@@ -884,8 +919,14 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
         ...part,
         status: { kind: "failed", run: part.run, failure: event.failure },
       }));
+    case "answered":
+      return updatePart(draft, id, (part) =>
+        part.status.kind === "live"
+          ? { ...part, status: { ...part.status, answer: event.answer } }
+          : part,
+      );
     case "closed":
-      if (!draft.parts.has(id) || draft.messages.has(messageOf(id))) return;
+      if (!draft.parts.has(id) || draft.messages.has(toPartMessageId(id))) return;
       draft.parts.delete(id);
       draft.partViews = draft.partViews.filter((view) => view.id !== id);
   }
@@ -934,7 +975,7 @@ function create(
   if (execution?.kind !== "live" || !execution.stopping) dropFailed(draft, head);
   const turn = folded?.turn ?? noteTurn(draft, head, id, event.at);
   setMessage(draft, {
-    id: messageOf(id),
+    id: toPartMessageId(id),
     turn,
     at: event.at,
     kind: "part",
@@ -972,7 +1013,7 @@ function updatePart(draft: Draft, id: PartId, change: (part: PartRecord) => Part
 
   if (next === current) return;
   draft.parts.set(id, next);
-  const message = draft.messages.get(messageOf(id));
+  const message = draft.messages.get(toPartMessageId(id));
 
   if (message?.kind === "part")
     return setMessage(draft, {
@@ -1079,14 +1120,14 @@ function callTurn(draft: Draft, part: PartId, head: HeadName | null): FoldTurn |
 
 function withActivity(draft: Draft, turn: FoldTurn): FoldTurn {
   if (turn.info.state.kind !== "working") return turn;
-  const activity = activityOf(draft, turn.live);
+  const activity = describeLiveActivity(draft, turn.live);
 
   if (turn.info.state.activity === activity) return turn;
 
   return { ...turn, info: { ...turn.info, state: { kind: "working", activity } } };
 }
 
-function activityOf(draft: Draft, live: readonly CallId[]): string | null {
+function describeLiveActivity(draft: Draft, live: readonly CallId[]): string | null {
   const newest = live.at(-1);
   const call = newest === undefined ? undefined : draft.calls.get(newest);
 
@@ -1124,7 +1165,9 @@ function summarise(
     return { ...summary, stopped: summary.stopped + 1, added, removed };
 
   if (outcome.kind !== "ok") return { ...summary, failed: summary.failed + 1, added, removed };
-  const entry = summary.byClass[tool.kind];
+  const kind = tool.kind;
+
+  const entry = summary.byClass[kind];
   const touched = ["path" in tool ? [tool.path] : [], changes?.paths ?? []].flat();
 
   const paths = [
@@ -1138,7 +1181,7 @@ function summarise(
     ...summary,
     added,
     removed,
-    byClass: { ...summary.byClass, [tool.kind]: { count: entry.count + 1, paths } },
+    byClass: { ...summary.byClass, [kind]: { count: entry.count + 1, paths } },
   };
 }
 
@@ -1184,6 +1227,7 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
   }
 
   if (
+    !("progress" in event) ||
     (part.status.kind !== "live" && part.status.kind !== "waiting") ||
     !isJsonObject(state) ||
     state.phase !== "running"
@@ -1206,8 +1250,10 @@ function finish(state: FoldState, draft: Draft): FoldState {
   }
 
   return {
+    [INDEX]: state[INDEX],
     session: state.session,
     principal: state.principal,
+    seen: draft.seen,
     seq: draft.seq,
     activation: draft.activation,
     catalog: draft.catalog,
@@ -1247,7 +1293,7 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     const appended = draft.appended.get(name);
     const from = walked ? 0 : path.committed;
     const commits = walked
-      ? pathOf(draft.commits, tipOf(head.info.tip))
+      ? walkCommitPath(draft.commits, readPositionCommit(head.info.tip))
       : appended === undefined
         ? []
         : [appended];
@@ -1261,7 +1307,7 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
 
     path.committed = path.messages.length;
 
-    for (const id of [...head.live.map(messageOf), ...head.pending]) {
+    for (const id of [...head.live.map(toPartMessageId), ...head.pending]) {
       const message = draft.messages.get(id);
 
       if (message !== undefined) push(draft, name, path, message);
@@ -1382,7 +1428,7 @@ function committed(draft: Draft, id: CommitId): Message | undefined {
   if (commit === undefined) return undefined;
   const body = commit.body;
 
-  if (body.kind !== "user") return draft.messages.get(messageOf(body.part));
+  if (body.kind !== "user") return draft.messages.get(toPartMessageId(body.part));
   const message = draft.messages.get(body.message);
 
   if (message?.kind !== "user") return message;
@@ -1450,10 +1496,8 @@ function turnInfo(id: TurnId, prompt: MessageId | null, at: number): TurnInfo {
 function updateHead(draft: Draft, name: HeadName, change: (head: FoldHead) => FoldHead): void {
   const current = draft.heads.get(name);
   const next = change(current ?? createHead(draft, name));
-  const unread = tipOf(next.info.tip) !== next.seen;
-  const settled = next.info.unread === unread ? next : { ...next, info: { ...next.info, unread } };
 
-  if (settled !== current) draft.heads.set(name, settled);
+  if (next !== current) draft.heads.set(name, next);
 }
 
 function eachHead(draft: Draft, name: HeadName | null, change: (head: FoldHead) => FoldHead): void {
@@ -1494,7 +1538,6 @@ function emptyHead(
   return {
     info: { name, tip: START, stack: null, execution: IDLE, unread: false },
     revision: null,
-    seen: null,
     messages: path.messages,
     live: [],
     pending: [],
@@ -1514,7 +1557,7 @@ function absentHead(heads: ReadonlyMap<HeadName, FoldHead>, name: HeadName): Fol
   return head;
 }
 
-function tailOf(messages: readonly Message[], tail: number): readonly Message[] {
+function readMessageTail(messages: readonly Message[], tail: number): readonly Message[] {
   const known = tails.get(messages) ?? new Map<number, readonly Message[]>();
   const slice = reuse(known.get(tail) ?? [], messages.slice(Math.max(0, messages.length - tail)));
   known.set(tail, slice);
@@ -1597,7 +1640,7 @@ function sameStack(left: HeadInfo["stack"], right: HeadInfo["stack"]): boolean {
   return (
     left.parent === right.parent &&
     left.stale === right.stale &&
-    tipOf(left.base) === tipOf(right.base)
+    readPositionCommit(left.base) === readPositionCommit(right.base)
   );
 }
 
@@ -1609,7 +1652,7 @@ function sameTurnState(left: TurnInfo["state"], right: TurnInfo["state"]): boole
   return left === right;
 }
 
-function messageOf(part: PartId): MessageId {
+function toPartMessageId(part: PartId): MessageId {
   return asId<"message">(part);
 }
 

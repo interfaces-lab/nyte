@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nyte TUI vs OpenCode: diffs, keystrokes, subagents</title>
+<style>
+  :root {
+    --terminal: #f5f5f5; --page: #ffffff; --fg: #0a0a0a; --user: #404040; --dim: #737373; --muted: #a3a3a3;
+    --line: #e5e5e5; --code: #f5f5f5; --accent: #1a85d4; --warning: #d5a910; --ok: #18a46c; --error: #d52c36;
+    --add: #0dbe4e; --rem: #ff2e3f; --addBg: #e0efe1; --remBg: #fce1dd; --addGut: #e5f1e6; --remGut: #fbe6e3;
+    --addEm: #c0e8cb; --remEm: #fcc6c5;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--user); font: 15px/1.55 -apple-system, system-ui, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 40px 20px 72px; }
+  h1 { color: var(--fg); font-size: 23px; margin: 0 0 6px; }
+  h2 { color: var(--fg); font-size: 17px; margin: 44px 0 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+  h3 { color: var(--fg); font-size: 14px; margin: 18px 0 8px; }
+  p { margin: 0 0 10px; max-width: 74ch; }
+  .lede { color: var(--dim); }
+  code { font-family: var(--mono); font-size: 13px; color: var(--fg); }
+  .pill { display: inline-block; font: 600 11px/1 var(--mono); padding: 4px 7px; border-radius: 99px; vertical-align: 2px; margin-left: 6px; }
+  .pill.fixed { background: var(--addBg); color: #0d7a35; }
+  .pill.idea { background: #eef4fb; color: var(--accent); }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .tag { font: 600 12px var(--mono); color: var(--dim); margin: 0 0 6px; }
+  .term { background: var(--terminal); border: 1px solid var(--line); border-radius: 10px; font: 13px/1.55 var(--mono); padding: 10px 0; overflow-x: auto; color: var(--fg); }
+  .r { white-space: pre; padding: 0 12px; }
+  .r.add { background: var(--addBg); } .r.rem { background: var(--remBg); }
+  .g { color: var(--dim); display: inline-block; min-width: 4.2ch; }
+  .add .g { background: var(--addGut); } .rem .g { background: var(--remGut); }
+  .s-add { color: var(--add); } .s-rem { color: var(--rem); }
+  .err { color: #ef4444; }
+  .ts-add { background: var(--addEm); } .ts-rem { background: var(--remEm); }
+  .dim { color: var(--dim); } .ok { color: var(--ok); } .acc { color: var(--accent); } .warn { color: var(--warning); }
+
+  pre.flow { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; font: 12.5px/1.6 var(--mono); overflow-x: auto; margin: 0; color: var(--user); }
+  pre.flow b { color: var(--fg); } pre.flow .x { color: var(--error); } pre.flow .y { color: var(--ok); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; font-size: 12.5px; }
+  td:first-child { color: var(--fg); font-weight: 500; white-space: nowrap; }
+  .files { font: 13px/1.75 var(--mono); color: var(--dim); }
+  .files b { color: var(--fg); font-weight: 500; }
+
+  @media (max-width: 760px) {
+    .two { grid-template-columns: 1fr; }
+    td:first-child { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Diffs, keystrokes and subagents: Nyte TUI vs OpenCode</h1>
+  <p class="lede">Compares OpenCode's <code>dev</code> branch (<code>packages/tui</code>) with ours. Your screenshots showed three of our bugs, and all three are fixed.</p>
+
+  <h2>1 · "Error parsing diff" on a new file <span class="pill fixed">fixed</span></h2>
+  <p>Core numbers an empty side the way unified headers do: <code>oldStart: 0</code>. jsdiff's <code>StructuredPatch</code> stores it one higher and subtracts 1 when it formats. We passed core's number straight through, so the header came out as <code>-1</code>.</p>
+  <pre class="flow">core write → hunk { oldStart: <b>0</b>, oldLines: 0, newStart: 1, newLines: 161 }
+patchDiff → formatPatch()  <span class="x">@@ --1,0 +1,161 @@</span>   ← OpenTUI parse fails
+fixed     → oldStart + 1    <span class="y">@@ -0,0 +1,161 @@</span>    (same for a file emptied: newStart)</pre>
+  <h3>Why the colors looked wrong</h3>
+  <p>When OpenTUI can't parse a diff, it falls back: it prints a hardcoded <code>#ef4444</code> error line, then highlights the raw patch with tree-sitter's <code>diff</code> grammar. That grammar's <code>diff.plus</code>/<code>diff.minus</code> colors are our <em>changed-word</em> emphasis tokens, so every row got word-emphasis color and no gutter. Our diff tokens never applied because the diff never rendered.</p>
+  <div class="two">
+    <div>
+      <p class="tag">before: fallback</p>
+      <div class="term">
+        <div class="r"><span class="ok">✓</span> edited <u>show-me-subagent-reports.html</u>  <span class="dim">+161 -0</span></div>
+        <div class="r err">Error parsing diff: Hunk at line 1 contained invalid line</div>
+        <div class="r">@@ -<span class="ts-rem">-1,0 +1,161 @@</span></div>
+        <div class="r"><span class="ts-add">+&lt;!doctype html&gt;</span></div>
+        <div class="r"><span class="ts-add">+&lt;html lang="en"&gt;</span></div>
+        <div class="r"><span class="ts-add">+&lt;head&gt;</span></div>
+      </div>
+    </div>
+    <div>
+      <p class="tag">after: our diff tokens</p>
+      <div class="term">
+        <div class="r"><span class="ok">✓</span> edited <u>show-me-subagent-reports.html</u>  <span class="dim">+161 -0</span></div>
+        <div class="r add"><span class="g">  1 <span class="s-add">+</span></span>&lt;!doctype html&gt;</div>
+        <div class="r add"><span class="g">  2 <span class="s-add">+</span></span>&lt;html lang="en"&gt;</div>
+        <div class="r add"><span class="g">  3 <span class="s-add">+</span></span>&lt;head&gt;</div>
+        <div class="r add"><span class="g">  4 <span class="s-add">+</span></span>&lt;meta charset="utf-8"&gt;</div>
+      </div>
+    </div>
+  </div>
+  <p class="lede" style="margin-top:10px">OpenCode never hits this. Its Write tool skips diffs and shows the content as <code>&lt;code&gt;</code> with line numbers, while Edit and Patch use a unified patch string built by the server.</p>
+
+  <h2>2 · Every keystroke rebuilt every diff <span class="pill fixed">fixed</span></h2>
+  <p>Each keystroke produces a new <code>ScreenModel</code>. Values read through <code>screen()</code> are plain getters, so any memo that touched one subscribed to the whole screen. That made the card build a new diff object, which made <code>&lt;For&gt;</code> destroy the <code>&lt;diff&gt;</code> and mount a new one: parse and tree-sitter highlighting all over again, for every diff in view.</p>
+  <pre class="flow">keystroke → reduce → <b>deriveScreen</b> → new ScreenModel
+  MessageView   expanded = () =&gt; scope.model().toolOutput === "expanded"   <span class="x">getter: tracks screen()</span>
+  ToolCard      createMemo(() =&gt; toolCard(msg, <b>scope.tasks()</b>, <b>props.expanded</b>))  <span class="x">reruns</span>
+  CardView      body().diff  → new OutputDiff object
+  DiffView      &lt;For each={diff.files}&gt;  → new items → <span class="x">destroy + mount &lt;diff&gt;, re-highlight</span>
+
+fixed
+  MessageView   expanded = <b>createMemo</b>(…)          <span class="y">a boolean: unchanged → nothing downstream runs</span>
+  Transcript    tasks = <b>createMemo</b>(() =&gt; props.tasks())  <span class="y">fires only when the task list changes</span>
+  ToolCard      reads tasks only for delegate cards   <span class="y">a running subagent no longer rebuilds edit diffs</span></pre>
+  <p class="lede" style="margin-top:10px">I checked this with a throwaway render test (since deleted): mount a transcript containing a diff, change the draft three times, then compare the <code>DiffRenderable</code>. Old code: destroyed after the first keystroke. With the fix: the same instance after all three.</p>
+  <h3>How OpenCode avoids it</h3>
+  <table>
+    <tr><th>Mechanism</th><th>OpenCode</th><th>Nyte TUI</th></tr>
+    <tr><td>Prompt text</td><td>Lives in the native textarea and a prompt-local store. The transcript never reads it (<code>component/prompt/index.tsx:358</code>)</td><td>Lives in <code>State.local.draft</code>, so it flows through the single <code>deriveScreen</code> memo. Anything reading <code>screen()</code> unmemoized re-runs</td></tr>
+    <tr><td>Rows</td><td>A keyed <code>createStore</code> updated with <code>reconcile(…, { key })</code> (<code>routes/session/rows.ts:86</code>)</td><td><code>keepEqual</code> and the per-key Row cache. Same goal</td></tr>
+    <tr><td>Parts</td><td>Rows carry IDs, and each part is resolved by <code>createMemo</code>. <code>splitPatchHunks</code> is memoized (<code>patch-diff.tsx:39</code>)</td><td>Same ID-plus-memo shape. The leak was the props read <em>alongside</em> the message</td></tr>
+  </table>
+  <p style="margin-top:10px">The lasting lesson: inside the transcript, read anything derived from <code>screen()</code> through a <code>createMemo</code> that returns a stable value, never a bare getter.</p>
+
+  <h2>3 · Diff colors</h2>
+  <p>Both TUIs pass theme tokens into OpenTUI's <code>&lt;diff&gt;</code>. Ours come from Pierre's palette, the same base as the desktop app. OpenCode has two more knobs: a context background and a hunk-header color.</p>
+  <table>
+    <tr><th>Prop</th><th>OpenCode token</th><th>Ours (light)</th></tr>
+    <tr><td>addedBg / removedBg</td><td><code>diff.background.added/removed</code></td><td><code>diffAddedBackground</code> <span class="r add" style="padding:0 6px">#e0efe1</span> / <span class="r rem" style="padding:0 6px">#fce1dd</span></td></tr>
+    <tr><td>line-number bg</td><td><code>diff.lineNumber.background.*</code></td><td><code>diffAdded/RemovedGutterBackground</code> #e5f1e6 / #fbe6e3</td></tr>
+    <tr><td>sign color</td><td><code>diff.highlight.added/removed</code></td><td><code>diffAdded</code> <span class="s-add">#0dbe4e</span> / <code>diffRemoved</code> <span class="s-rem">#ff2e3f</span></td></tr>
+    <tr><td>contextBg, hunkFg</td><td><code>diff.background.context</code>, <code>diff.text.hunkHeader</code></td><td>not set: context uses <code>codeBackground</code>, and we print "… N unchanged lines" instead of headers</td></tr>
+  </table>
+
+  <h2>4 · Shell output that looks like a diff</h2>
+  <div class="two">
+    <div>
+      <p class="tag">OpenCode: plain muted text</p>
+      <div class="term">
+        <div class="r">$ git diff</div>
+        <div class="r dim">@@ -98,7 +100,7 @@</div>
+        <div class="r dim">-  test("…labelled waiting", …</div>
+        <div class="r dim">+  test("…labelled by what they wait for", …</div>
+      </div>
+      <p class="lede" style="margin-top:8px">ANSI is stripped, output collapses to 10 lines, and clicking expands it (<code>index.tsx:2931</code>).</p>
+    </div>
+    <div>
+      <p class="tag">Ours: detected and drawn as a real diff</p>
+      <div class="term">
+        <div class="r">$ git diff</div>
+        <div class="r rem"><span class="g"> 98 <span class="s-rem">-</span></span>  test("…labelled waiting", …</div>
+        <div class="r add"><span class="g">100 <span class="s-add">+</span></span>  test("…labelled by what they <span class="ts-add">wait for</span>", …</div>
+      </div>
+      <p class="lede" style="margin-top:8px"><code>diffFromOutput</code> renders through the same <code>DiffView</code> and tokens as edits, so your second screenshot was already on our palette. I kept this; it's a step ahead of OpenCode.</p>
+    </div>
+  </div>
+
+  <h2>5 · Subagent call → response</h2>
+  <table>
+    <tr><th>Stage</th><th>OpenCode</th><th>Nyte TUI</th></tr>
+    <tr><td>While running</td><td>One inline row: spinner, <code>&lt;Agent&gt; Subagent — desc · model</code>, and a "Background" badge when detached. No live steps; you click through to the child session</td><td>A delegation card showing the child's <em>latest step</em> live; clicking opens the inspector</td></tr>
+    <tr><td>Sync result</td><td>The tool part turns ✓; the output is not shown inline</td><td>Same: the await wakes the tool call and no report is sent</td></tr>
+    <tr><td>Background result</td><td>The server inserts a synthetic notice right away: <code>↳ Agent finished · desc</code>, which links to the child (<code>index.tsx:1982</code>)</td><td>A report message sent with <code>attach</code>. It waits in the pending rows until the parent's next response boundary, then lands as <code>↳ subagent … completed</code> with the answer</td></tr>
+    <tr><td>"Stuck" case</td><td>None: the notice is display only, and it doesn't wait for the parent to deliver it to the model</td><td>A report waits indefinitely if the parent's last run stopped or failed. Now drawn at once and labelled <span class="warn">held · send a message to deliver</span></td></tr>
+    <tr><td>Queued user msgs</td><td>Removed from the transcript; a dock above the prompt shows <code>N queued · first text</code>, and steers stay inline, dimmed</td><td>A row per message above the composer, each labelled with where it's scheduled</td></tr>
+  </table>
+  <h3>Instant reports <span class="pill fixed">done</span></h3>
+  <p>As in OpenCode, what you <em>see</em> is now separate from what the model <em>receives</em>. A finished subagent's report draws in the transcript immediately and no longer waits beside the composer. Until the model reads it, the title says when it will:</p>
+  <div class="term">
+    <div class="r"> go</div>
+    <div class="r"> working on it</div>
+    <div class="r"> <span class="acc">⠰</span> Working</div>
+    <div class="r"> <span class="ok">↳</span> subagent fix-lint completed  <span class="dim">reaches the model after tool calls</span></div>
+    <div class="r dim"> all done</div>
+    <div class="r">&nbsp;</div>
+    <div class="r"> <span class="ok">↳</span> subagent audit-deps completed  <span class="warn">held · send a message to deliver</span></div>
+  </div>
+  <p class="lede" style="margin-top:10px">Once the report lands, the label disappears and the block moves into its turn. The composer only shows your own queued messages now.</p>
+
+  <h2>What changed</h2>
+  <div class="files">
+    packages/tui/src/lib/<b>output-diff.ts</b>: <code>patchDiff</code> converts empty-side starts to jsdiff's convention<br>
+    packages/tui/src/ui/transcript/<b>turn.tsx</b>: <code>expanded</code> is a memo<br>
+    packages/tui/src/ui/transcript/<b>transcript.tsx</b>: <code>tasks</code> is a memo<br>
+    packages/tui/src/ui/transcript/<b>tool-card.tsx</b>: reads tasks only for delegation cards<br>
+    packages/tui/src/model/<b>transcript.ts</b>: pending reports become transcript rows; the model carries <code>execution</code><br>
+    packages/tui/src/ui/transcript/<b>report.tsx</b>: shows when the model reads it (<code>reportHold</code>, moved to lib/tasks.ts)<br>
+    packages/tui/src/model/<b>queue.ts</b>, ui/composer/<b>queue.tsx</b>, model/<b>screen.ts</b>: report rows removed
+  </div>
+</main>
+</body>
+</html>

@@ -100,7 +100,6 @@ export function sandboxProvider(options: {
   };
 }
 
-/** Returns the `FilesApi` of a workspace with no files: reads find nothing, changes are refused. */
 function chatOnlyFiles(): FilesApi {
   const refuse = async (): Promise<never> => {
     throw new SdkError("unavailable", "A chat-only workspace has no files to change.");

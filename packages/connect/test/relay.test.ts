@@ -2,6 +2,12 @@ import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { createTransport, declarations } from "@nyte-ai/protocol";
 import {
+  CANCEL_PATH,
+  CHANNEL_HEADER,
+  CHANNEL_PATH,
+  STREAM_HEADER,
+} from "../../protocol/src/stream-channel.ts";
+import {
   PUBLIC_RELAY_BEARER,
   RELAY_CHUNK_BYTES,
   RELAY_FRAME_CHARS,
@@ -9,6 +15,9 @@ import {
   RELAY_PING,
   RELAY_PONG,
   RELAY_REFUSALS,
+  RELAY_REQUEST_HEADER_NAMES,
+  RELAY_RESPONSE_HEADER_NAMES,
+  RELAY_STREAMS,
   RELAY_WINDOW_BYTES,
   RelayPath,
   decodeChunk,
@@ -35,6 +44,16 @@ const refusals = Object.keys(RELAY_REFUSALS).filter((name): name is RelayRefusal
 describe("public relay targets", () => {
   it("names every row of protocol's declarations table and nothing else", () => {
     expect([...RELAY_OPERATIONS].sort()).toEqual(Object.keys(declarations).sort());
+  });
+
+  it("carries protocol's stream channel: its paths, the stream headers, and the channel id back", () => {
+    expect(RELAY_STREAMS).toEqual({ channel: `/${CHANNEL_PATH}`, cancel: `/${CANCEL_PATH}` });
+    expect(target(`/${CHANNEL_PATH}`)).toEqual({ kind: "api", environmentId, path: `/${CHANNEL_PATH}` });
+    expect(target(`/${CANCEL_PATH}`)).toEqual({ kind: "api", environmentId, path: `/${CANCEL_PATH}` });
+    expect(RELAY_REQUEST_HEADER_NAMES).toEqual(
+      expect.arrayContaining([CHANNEL_HEADER.toLowerCase(), STREAM_HEADER.toLowerCase()]),
+    );
+    expect(RELAY_RESPONSE_HEADER_NAMES).toContain(CHANNEL_HEADER.toLowerCase());
   });
 
   it("forwards each operation, the discovery routes, and the device release", () => {

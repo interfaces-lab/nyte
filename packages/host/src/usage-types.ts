@@ -13,7 +13,7 @@ export interface UsageTotals {
   readonly reasoning: number;
   readonly tokens: number;
   readonly cost: number;
-  readonly turns: number;
+  readonly cacheSavings: number;
 }
 
 export type UsageSubject =
@@ -66,6 +66,7 @@ export interface UsageSummary {
   readonly compaction: Usage;
   readonly tools: Usage;
   readonly total: Usage;
+  readonly cacheSavings: number;
 }
 
 export type LocalHistoryUsage =

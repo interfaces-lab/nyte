@@ -4,8 +4,9 @@ import { setTimeout } from "node:timers/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Static } from "typebox";
+import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import type { Json } from "@nyte-ai/sdk";
-import { FIXTURE_API_KEY, FIXTURE_MODEL, FIXTURE_TITLE_MODEL } from "./workspace.ts";
+import { FIXTURE_API_KEY, FIXTURE_MODEL, FIXTURE_SECONDARY_KEY } from "./workspace.ts";
 
 const textPart = Type.Object({ type: Type.Literal("text"), text: Type.String() });
 
@@ -17,7 +18,6 @@ const imagePart = Type.Object({
 const requestSchema = Type.Object({
   model: Type.String(),
   stream: Type.Literal(true),
-  // OpenAI 6.40 Chat Completions wire values. Off is omitted by this fixture's model.
   reasoning_effort: Type.Optional(
     Type.Union([
       Type.Literal("none"),
@@ -59,7 +59,6 @@ const requestSchema = Type.Object({
 
 const requestParser = Compile(requestSchema);
 
-/** Title requests are answered outside the script; they are not runs a person started. */
 export const TITLE_SCRIPT = "automatic conversation title";
 
 export type ProviderPayload = Static<typeof requestSchema>;
@@ -71,7 +70,6 @@ export type ProviderAction =
   | {
       readonly kind: "tool";
       readonly name: string;
-      /** Fixed, or read from the request, as a call naming a subagent an earlier call created. */
       readonly arguments:
         | Record<string, Json>
         | ((payload: ProviderPayload) => Record<string, Json>);
@@ -93,6 +91,7 @@ export interface CapturedRequest {
   readonly prompt: string;
   readonly payload: ProviderPayload;
   readonly script: string;
+  readonly account: "primary" | "secondary";
 }
 
 export interface ProviderEvent {
@@ -179,7 +178,6 @@ export async function openProvider(
   };
 
   const serve = async (request: IncomingMessage, response: ServerResponse) => {
-    // Absolute-form proxy traffic is never forwarded. The fixture has no outbound HTTP client.
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       errors.push(`Blocked ${request.method ?? "unknown"} ${request.url ?? "unknown"}`);
       response.writeHead(403).end("QA accepts only loopback chat completions");
@@ -187,7 +185,14 @@ export async function openProvider(
       return;
     }
 
-    if (request.headers.authorization !== `Bearer ${FIXTURE_API_KEY}`) {
+    const account =
+      request.headers.authorization === `Bearer ${FIXTURE_API_KEY}`
+        ? "primary"
+        : request.headers.authorization === `Bearer ${FIXTURE_SECONDARY_KEY}`
+          ? "secondary"
+          : null;
+
+    if (account === null) {
       throw new Error("Unexpected provider credentials");
     }
 
@@ -217,14 +222,12 @@ export async function openProvider(
       return wanted === undefined || inputs.some((input) => input.includes(wanted));
     });
 
-    const title =
-      payload.model === FIXTURE_TITLE_MODEL &&
-      payload.messages.some(
-        (message) =>
-          (message.role === "system" || message.role === "developer") &&
-          !Array.isArray(message.content) &&
-          message.content?.includes("You are a title generator.") === true,
-      );
+    const title = payload.messages.some(
+      (message) =>
+        (message.role === "system" || message.role === "developer") &&
+        !Array.isArray(message.content) &&
+        message.content?.includes(TITLE_PROMPT) === true,
+    );
 
     const step: ProviderStep | undefined = title
       ? {
@@ -237,6 +240,7 @@ export async function openProvider(
 
     const id = requests.length + 1;
     requests.push({
+      account,
       id,
       model: payload.model,
       prompt,
@@ -328,8 +332,10 @@ export async function openProvider(
           },
         ],
       });
+
       const args =
         typeof action.arguments === "function" ? action.arguments(payload) : action.arguments;
+
       chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify(args) } }] });
       finish();
 
@@ -438,11 +444,14 @@ export async function openProvider(
   };
 }
 
-/** A bash call that Nyte's production bash tool runs in the workspace. */
 export function bashRequest(command: string): ProviderStep {
   return {
     name: "bash",
     model: FIXTURE_MODEL,
-    action: { kind: "tool", name: "bash", arguments: { command } },
+    action: {
+      kind: "tool",
+      name: "bash",
+      arguments: { command, description: "Runs the QA command" },
+    },
   };
 }

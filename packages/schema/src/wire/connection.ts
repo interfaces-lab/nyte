@@ -13,16 +13,13 @@ import { UserContentType } from "./messages.ts";
 import { nullable } from "./nullable.ts";
 import { SettingInfoType } from "./sessions.ts";
 
-/** Returns the wire form of a `HostView`: the principal's authority as an array, and the principal the connection acts as, which the sdk reads into `Connection.principal` (wire-only, §47a). */
 export type HostViewWire = Omit<HostView, "authority"> & {
   readonly authority: readonly Authority[];
   readonly principal: PrincipalId;
 };
 
-/** Returns the wire form of a `CredentialSource`: a token or a pairing code; `custom` never crosses. */
 export type CredentialSourceWire = Exclude<CredentialSource, { readonly kind: "custom" }>;
 
-/** The TypeBox schema of a `HostViewWire`. */
 export const HostViewWireType = Type.Object({
   id: idSchema<"host">(),
   link: Type.Union([
@@ -63,13 +60,11 @@ export const HostViewWireType = Type.Object({
   ),
 });
 
-/** The TypeBox schema of a `CredentialSourceWire`. */
 export const CredentialSourceWireType = Type.Union([
   Type.Object({ kind: Type.Literal("token"), token: Type.String() }),
   Type.Object({ kind: Type.Literal("pairing"), code: Type.String() }),
 ]);
 
-/** The TypeBox schema of a `JournalEntry`. */
 export const JournalEntryType = Type.Object({
   id: idSchema<"receipt">(),
   session: idSchema<"session">(),
@@ -79,22 +74,17 @@ export const JournalEntryType = Type.Object({
   at: Type.Number(),
 });
 
-/** The TypeBox schema of a `SettingOutcome`. */
 export const SettingOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("applied") }),
   Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
   Type.Object({ kind: Type.Literal("unknown") }),
 ]);
 
-/** Validates a `HostViewWire`. */
 export const HostViewWireSchema: Schema<HostViewWire> = standard(withJson(HostViewWireType));
 
-/** Validates a `CredentialSourceWire`. */
 export const CredentialSourceWireSchema: Schema<CredentialSourceWire> =
   standard(CredentialSourceWireType);
 
-/** Validates a `JournalEntry`. */
 export const JournalEntrySchema: Schema<JournalEntry> = standard(withJson(JournalEntryType));
 
-/** Validates a `SettingOutcome`. */
 export const SettingOutcomeSchema: Schema<SettingOutcome> = standard(SettingOutcomeType);

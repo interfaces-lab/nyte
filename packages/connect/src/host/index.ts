@@ -36,3 +36,4 @@ export type { RelayConnectionOptions, RelayDial, RelayTiming } from "./relay.ts"
 export { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
 export type { AuthorizingRequest, RouteAnswer } from "./routes.ts";
 export { machineName } from "./machine-name.ts";
+export { hostShare } from "./share.ts";

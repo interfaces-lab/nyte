@@ -1,8 +1,5 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/main/packages/ai/test/oauth-auth.test.ts
- * Synced with pi a276dabe5.
- */
 import { describe, expect, it } from "vitest";
+import { storedAccounts } from "./credential-fixture.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 import { createModels } from "../src/models.ts";
@@ -32,13 +29,14 @@ describe("OAuthAuth adapters", () => {
 describe("OAuth through Models.getAuth (lazy load chain)", () => {
   it("resolves stored anthropic oauth credentials via the lazy flow import", async () => {
     const credentials = new InMemoryCredentialStore();
-    await credentials.modify("anthropic", async () => ({
-      type: "oauth",
-      access: "oauth-access-token",
-      refresh: "r",
-      // Keep this beyond getAuth()'s refresh window.
-      expires: Date.now() + 10 * 60_000,
-    }));
+    await credentials.modify("anthropic", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "oauth-access-token",
+        refresh: "r",
+        expires: Date.now() + 10 * 60_000,
+      }),
+    );
     const models = createModels({ credentials });
     models.setProvider(anthropicProvider());
 
@@ -50,14 +48,15 @@ describe("OAuth through Models.getAuth (lazy load chain)", () => {
   it("resolves stored github-copilot oauth credentials including per-credential baseUrl", async () => {
     const access = "tid=abc;exp=123;proxy-ep=proxy.business.githubcopilot.com;rest";
     const credentials = new InMemoryCredentialStore();
-    await credentials.modify("github-copilot", async () => ({
-      type: "oauth",
-      access,
-      refresh: "r",
-      // Keep this beyond getAuth()'s refresh window.
-      expires: Date.now() + 10 * 60_000,
-      availableModelIds: [],
-    }));
+    await credentials.modify("github-copilot", async () =>
+      storedAccounts({
+        type: "oauth",
+        access,
+        refresh: "r",
+        expires: Date.now() + 10 * 60_000,
+        availableModelIds: [],
+      }),
+    );
     const models = createModels({ credentials });
     models.setProvider(githubCopilotProvider());
 

@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The pairing code the iOS app scans. The matrix is drawn as one SVG path so it
  * stays crisp at any size, and stays black on white in every theme so scanners
@@ -14,7 +14,7 @@ const styles = create({
   frame: {
     display: "grid",
     placeItems: "center",
-    padding: 10,
+    padding: space.s2_5,
     borderRadius: radius.control,
     backgroundColor: "#ffffff",
   },

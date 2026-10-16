@@ -1,5 +1,5 @@
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { ActOutcome } from "@nyte-ai/sdk";
-import { SymbolView } from "expo-symbols";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { TextInput } from "react-native";
@@ -10,109 +10,192 @@ import { controls, useTheme, radii, spacing, textStyles, tokens, typography } fr
 
 type WaitingSelectionProps = {
   question: OpenQuestion;
-  onReply: (choice: string) => Promise<ActOutcome<unknown> | undefined>;
+  onReply: (answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
 };
 
 type AnswerState =
-  | { kind: "editing" }
-  | { kind: "sending" }
-  | { kind: "failed" }
-  | { kind: "settled"; outcome: ActOutcome<unknown> };
+  | { kind: "editing" | "sending" | "sent" | "closed" }
+  | { kind: "failed"; message: string };
+
+type QuestionDraft = {
+  choices: QuestionAnswers[number];
+  custom: string;
+};
 
 export function WaitingSelection({ question, onReply }: WaitingSelectionProps): ReactElement {
-  return <SelectionForm key={question.id} question={question} onReply={onReply} />;
+  return <SelectionForm key={question.part} question={question} onReply={onReply} />;
 }
 
-/** One choice of the question's options, or the user's own words. */
 function SelectionForm({ question, onReply }: WaitingSelectionProps): ReactElement {
   const theme = useTheme();
   const titleId = useId();
-  const [selected, setSelected] = useState<string>();
-  const [other, setOther] = useState("");
+  const [index, setIndex] = useState(0);
+
+  const [drafts, setDrafts] = useState<QuestionDraft[]>(() =>
+    question.questions.map(() => ({ choices: [], custom: "" })),
+  );
+
   const [answerState, setAnswerState] = useState<AnswerState>({ kind: "editing" });
   const sending = useRef(false);
-  const blocked = answerState.kind === "sending" || answerState.kind === "settled";
-  const answer = other.trim() === "" ? selected : other.trim();
-  const canSubmit = answer !== undefined;
+
+  const blocked =
+    answerState.kind === "sending" || answerState.kind === "sent" || answerState.kind === "closed";
+
+  const item = question.questions[index];
+  const draft = drafts[index];
+  const last = index === question.questions.length - 1;
 
   const submit = async (): Promise<void> => {
-    if (blocked || sending.current || answer === undefined) return;
+    if (blocked || sending.current) return;
     sending.current = true;
     setAnswerState({ kind: "sending" });
 
+    const answers = drafts.map((current, position) => {
+      const custom = current.custom.trim();
+
+      if (custom === "" || current.choices.includes(custom)) return current.choices;
+
+      return question.questions[position].multiple ? [...current.choices, custom] : [custom];
+    });
+
     try {
-      const outcome = await onReply(answer);
-      setAnswerState(outcome === undefined ? { kind: "failed" } : { kind: "settled", outcome });
+      const outcome = await onReply(answers);
+
+      if (outcome === undefined) {
+        setAnswerState({ kind: "failed", message: "Couldn't send your answers. Try again." });
+      } else {
+        switch (outcome.kind) {
+          case "ok":
+            setAnswerState({ kind: "sent" });
+            break;
+          case "rejected":
+            setAnswerState({ kind: "failed", message: outcome.reason });
+            break;
+          case "failed":
+            setAnswerState({ kind: "failed", message: outcome.message });
+            break;
+          case "no-owner":
+            setAnswerState({
+              kind: "failed",
+              message: "Your Mac can't accept these answers right now. Try again.",
+            });
+            break;
+          case "unknown-action":
+            setAnswerState({
+              kind: "failed",
+              message:
+                "Your Mac doesn't support answering this question. Update Nyte, then try again.",
+            });
+            break;
+          case "closed":
+            setAnswerState({ kind: "closed" });
+            break;
+          default: {
+            const exhaustive: never = outcome;
+
+            return exhaustive;
+          }
+        }
+      }
     } catch {
-      setAnswerState({ kind: "failed" });
-    } finally {
-      sending.current = false;
+      setAnswerState({ kind: "failed", message: "Couldn't send your answers. Try again." });
     }
+
+    sending.current = false;
+  };
+
+  const advance = () => {
+    if (blocked) return;
+
+    if (last) {
+      void submit();
+
+      return;
+    }
+
+    setIndex(index + 1);
   };
 
   return (
     <html.div style={styles.wrap}>
-      <html.span style={textStyles.secondary}>Needs your answer</html.span>
       <html.div aria-labelledby={titleId} style={styles.card}>
+        <html.div style={styles.header}>
+          <html.span style={textStyles.secondary}>{item.header}</html.span>
+          {question.questions.length > 1 && (
+            <html.span style={textStyles.secondary}>
+              {index + 1} of {question.questions.length}
+            </html.span>
+          )}
+        </html.div>
         <html.h2 id={titleId} style={[textStyles.headline, styles.title]}>
-          {question.prompt}
+          {item.question}
         </html.h2>
-        <html.p style={textStyles.secondary}>Choose one answer.</html.p>
+        {item.multiple && <html.p style={textStyles.secondary}>Choose any that apply.</html.p>}
         <html.div
-          role="radiogroup"
+          role={item.multiple ? "group" : "radiogroup"}
           aria-labelledby={titleId}
           aria-busy={answerState.kind === "sending"}
           style={styles.choices}
         >
-          {question.options.map((choice, index) => {
-            const chosen = selected === choice;
+          {item.options.map((option) => {
+            const chosen = draft.choices.includes(option.label);
 
             return (
               <html.button
-                key={choice}
-                role="radio"
-                aria-label={choice}
+                key={option.label}
+                role={item.multiple ? "checkbox" : "radio"}
+                aria-label={option.label}
                 aria-checked={chosen}
                 disabled={blocked}
                 onClick={() => {
                   if (blocked) return;
-                  setSelected(choice);
-                  setOther("");
+
+                  setDrafts((current) =>
+                    current.map((value, position) => {
+                      if (position !== index) return value;
+
+                      if (!item.multiple) return { choices: [option.label], custom: "" };
+
+                      return {
+                        ...value,
+                        choices: value.choices.includes(option.label)
+                          ? value.choices.filter((choice) => choice !== option.label)
+                          : [...value.choices, option.label],
+                      };
+                    }),
+                  );
                 }}
-                style={[
-                  styles.choice,
-                  index < question.options.length - 1 && styles.choiceSeparator,
-                  blocked && styles.disabled,
-                ]}
+                style={[styles.choice, chosen && styles.selected, blocked && styles.disabled]}
               >
-                <SymbolView
-                  name={chosen ? "checkmark.circle.fill" : "circle"}
-                  size={22}
-                  tintColor={chosen ? theme.accent : theme.interactiveTertiary}
-                />
                 <html.div style={styles.choiceText}>
-                  <html.span style={textStyles.body}>{choice}</html.span>
+                  <html.span style={textStyles.body}>{option.label}</html.span>
+                  <html.span style={textStyles.secondary}>{option.description}</html.span>
                 </html.div>
               </html.button>
             );
           })}
         </html.div>
         <TextInput
-          accessibilityLabel="Answer in your own words"
-          placeholder="Answer in your own words"
+          accessibilityLabel={`Type your own answer for ${item.header}`}
+          placeholder="Type your own answer"
           placeholderTextColor={theme.muted}
           selectionColor={theme.accent}
-          value={other}
+          value={draft.custom}
           editable={!blocked}
-          onChangeText={(text) => {
-            setOther(text);
-
-            if (text.trim() !== "") setSelected(undefined);
+          onChangeText={(custom) => {
+            setDrafts((current) =>
+              current.map((value, position) =>
+                position === index
+                  ? {
+                      choices: !item.multiple && custom.trim() !== "" ? [] : value.choices,
+                      custom,
+                    }
+                  : value,
+              ),
+            );
           }}
-          returnKeyType="send"
-          onSubmitEditing={() => {
-            void submit();
-          }}
+          returnKeyType={last ? "send" : "next"}
+          onSubmitEditing={advance}
           style={{
             ...typography.body,
             color: theme.foreground,
@@ -122,24 +205,32 @@ function SelectionForm({ question, onReply }: WaitingSelectionProps): ReactEleme
             borderRadius: radii.control,
           }}
         />
-        <GlassButton
-          label={answerState.kind === "sending" ? "Sending answer…" : "Send answer"}
-          disabled={blocked || !canSubmit}
-          prominent
-          fill
-          onPress={() => {
-            void submit();
-          }}
-        />
-        {answerState.kind === "settled" ? (
+        <html.div style={styles.actions}>
+          {question.questions.length > 1 && (
+            <GlassButton
+              label="Back"
+              disabled={blocked || index === 0}
+              onPress={() => setIndex(index - 1)}
+            />
+          )}
+          <GlassButton
+            label={answerState.kind === "sending" ? "Sending answers…" : last ? "Submit" : "Next"}
+            disabled={blocked}
+            prominent
+            onPress={advance}
+          />
+        </html.div>
+        {answerState.kind === "sent" ? (
           <html.p role="status" style={textStyles.secondary}>
-            {answerState.outcome.kind === "ok"
-              ? "Answer sent."
-              : "This question is no longer waiting for an answer."}
+            Answers sent.
+          </html.p>
+        ) : answerState.kind === "closed" ? (
+          <html.p role="status" style={textStyles.secondary}>
+            These questions are no longer waiting.
           </html.p>
         ) : answerState.kind === "failed" ? (
           <html.p role="alert" style={textStyles.error}>
-            Couldn't send your answer. Try again.
+            {answerState.message}
           </html.p>
         ) : null}
       </html.div>
@@ -151,7 +242,6 @@ const styles = css.create({
   wrap: {
     display: "flex",
     flexDirection: "column",
-    gap: spacing.sm,
     marginBlock: spacing.md,
   },
   card: {
@@ -166,28 +256,39 @@ const styles = css.create({
     borderColor: tokens.border,
     boxShadow: tokens.shadow,
   },
+  header: {
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
   title: { margin: 0 },
-  choices: { display: "flex", flexDirection: "column" },
+  choices: { display: "flex", flexDirection: "column", gap: spacing.sm },
   choice: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
     minHeight: controls.touchTarget,
-    borderWidth: 0,
+    padding: spacing.md,
+    borderWidth: controls.borderWidth,
+    borderStyle: "solid",
+    borderColor: tokens.border,
+    borderRadius: radii.control,
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
-  choiceSeparator: {
-    borderBottomWidth: controls.hairline,
-    borderBottomStyle: "solid",
-    borderBottomColor: tokens.separator,
-  },
+  selected: { borderColor: tokens.accent },
   choiceText: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start",
     gap: spacing.xs,
+  },
+  actions: {
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.md,
   },
   disabled: { opacity: controls.disabledOpacity },
 });

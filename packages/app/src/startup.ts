@@ -1,9 +1,3 @@
-/**
- * The HTML startup shell stays up until the interface can paint complete:
- * local caches filled, the initial route resolved, and that route's first
- * screen warmed. The shell then mounts once, so the first React frame shows
- * the sidebar and the last chat rather than placeholders that fill in.
- */
 interface RendererStartupOptions {
   /** Replace the startup shell with the interface. Runs once, when everything below has landed. */
   readonly mountShell: () => void;
@@ -23,7 +17,13 @@ export function startRendererStartup(options: RendererStartupOptions): void {
     void (async () => {
       try {
         await options.loadResources();
+
+        if (performance.getEntriesByName("nyte:startup-resources-loaded").length === 0)
+          performance.mark("nyte:startup-resources-loaded");
         await options.loadRouter();
+
+        if (performance.getEntriesByName("nyte:route-ready").length === 0)
+          performance.mark("nyte:route-ready");
       } catch {
         loading = false;
         options.showError(load);

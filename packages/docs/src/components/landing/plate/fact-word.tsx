@@ -7,11 +7,22 @@ interface FactWordProps {
   below: string;
   /** Tailwind class setting --tint, the pill and hover colour. */
   tint: string;
+  /** Tailwind classes recolouring one pill, such as a model's brand colour. */
+  aboveTint?: string;
+  belowTint?: string;
   children: ReactNode;
 }
 
 /* A word in the sentence that, on hover or focus, throws two facts about itself and lets them drift with the pointer. */
-export function FactWord({ href, above, below, tint, children }: FactWordProps) {
+export function FactWord({
+  href,
+  above,
+  below,
+  tint,
+  aboveTint = "",
+  belowTint = "",
+  children,
+}: FactWordProps) {
   return (
     <HrefLink
       href={href}
@@ -28,13 +39,13 @@ export function FactWord({ href, above, below, tint, children }: FactWordProps) 
       {children}
       <span
         aria-hidden="true"
-        className="fact-pill bottom-full mb-0.5 [--dx:-22%] [--dy-rest:8px] [--r:-7deg]"
+        className={`fact-pill bottom-full mb-0.5 [--dx:-22%] [--dy-rest:8px] [--r:-7deg] ${aboveTint}`}
       >
         {above}
       </span>
       <span
         aria-hidden="true"
-        className="fact-pill top-full mt-1 [--dx:14%] [--dy-rest:-8px] [--r:5deg]"
+        className={`fact-pill top-full mt-1 [--dx:14%] [--dy-rest:-8px] [--r:5deg] ${belowTint}`}
       >
         {below}
       </span>

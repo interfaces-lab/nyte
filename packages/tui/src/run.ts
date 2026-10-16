@@ -1,25 +1,24 @@
-/**
- * From flags to the session a launch opens: which chat, and the model and
- * thinking level the flags ask the head to use.
- */
 import process from "node:process";
-import notificationsPlugin from "@nyte-ai/plugin/notifications";
-import tuiRenderersPlugin from "@nyte-ai/plugin/renderers/tui";
+import { asId } from "@nyte-ai/schema";
+import notificationsPlugin from "@nyte-ai/plugin/client/notifications";
+import tuiRenderersPlugin from "@nyte-ai/plugin/client/transcript-tui";
+import questionsPlugin from "@nyte-ai/plugin/client/questions-tui";
 import type { Plugin } from "@nyte-ai/plugin/client";
-import type { ConfigurationPatch, Connection, Cursor, Session, SessionInfo } from "@nyte-ai/sdk";
+import type {
+  ConfigurationPatch,
+  Connection,
+  Cursor,
+  Session,
+  SessionInfo,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { availableModels } from "./lib/catalog.ts";
 import type { ResumeTarget, RunFlags } from "./flags.ts";
 
-/** The terminal's client plugins: run notifications and the part renderers it draws with. */
 export function tuiPlugins(): readonly Plugin[] {
-  return [notificationsPlugin, tuiRenderersPlugin];
+  return [notificationsPlugin, tuiRenderersPlugin, questionsPlugin];
 }
 
-/**
- * Returns the head configuration `--provider`, `--model` (or `NYTE_MODEL`)
- * and `--effort` (or `NYTE_EFFORT`) ask for, or undefined when none is given.
- * A bare model id is looked up across the signed-in providers.
- */
 export async function flagConfiguration(
   connection: Connection,
   flags: Pick<RunFlags, "provider" | "model" | "effort">,
@@ -46,9 +45,7 @@ export async function flagConfiguration(
   return { ...configuration, model: found.ref };
 }
 
-/** Returns every root session, newest activity first, across the directory's pages. */
-async function rootSessions(connection: Connection): Promise<readonly SessionInfo[]> {
-  const sessions: SessionInfo[] = [];
+export async function* rootSessions(connection: Connection): AsyncIterable<SessionInfo> {
   let cursor: Cursor | null = null;
 
   do {
@@ -56,55 +53,47 @@ async function rootSessions(connection: Connection): Promise<readonly SessionInf
       cursor === null ? { parents: { kind: "roots" } } : { parents: { kind: "roots" }, cursor },
     );
 
-    sessions.push(...page.items);
+    yield* page.items;
     cursor = page.next;
   } while (cursor !== null);
-
-  return sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt);
 }
 
-/**
- * The session a launch targets: a new one, the newest root session anything
- * was written to (a launch that never sent creates nothing worth resuming),
- * or the one an id names.
- */
+export async function addFolder(connection: Connection, path: string): Promise<WorkspaceId> {
+  const seen = await connection.workspaces.inspect({ kind: "local", path });
+  const added = await connection.workspaces.add(seen.target, {
+    expect: { identity: seen.identity },
+  });
+
+  if (added.kind === "stale") throw new Error(`${path} changed while it was opened. Try again.`);
+
+  if (added.kind === "unavailable") throw new Error(`Couldn't open ${path}: ${added.reason}`);
+
+  return added.workspace;
+}
+
 export async function targetSession(
   connection: Connection,
   target: ResumeTarget,
-  configuration: ConfigurationPatch | undefined,
+  workspace: WorkspaceId,
 ): Promise<Session> {
-  const create = (): Promise<Session> =>
-    connection.sessions.create(configuration === undefined ? {} : { configuration });
+  const create = (): Promise<Session> => connection.sessions.create({ workspace });
 
   switch (target.kind) {
     case "new":
       return create();
     case "latest": {
-      const used = (await rootSessions(connection)).find((info) =>
-        info.heads.some((head) => head.tip.kind !== "start"),
-      );
+      for await (const info of rootSessions(connection))
+        if (info.heads.some((head) => head.tip.kind !== "start"))
+          return connection.session(info.id);
 
-      return used === undefined ? create() : connection.session(used.id);
+      return create();
     }
 
     case "session": {
-      const sessions: SessionInfo[] = [];
-      let cursor: Cursor | null = null;
+      const session = connection.session(asId(target.id));
+      await session.info();
 
-      do {
-        const page = await connection.sessions.list(
-          cursor === null ? { parents: { kind: "all" } } : { parents: { kind: "all" }, cursor },
-        );
-
-        sessions.push(...page.items);
-        cursor = page.next;
-      } while (cursor !== null && !sessions.some((info) => info.id === target.id));
-
-      const found = sessions.find((info) => info.id === target.id);
-
-      if (found === undefined) throw new Error(`Session not found: ${target.id}`);
-
-      return connection.session(found.id);
+      return session;
     }
 
     default: {

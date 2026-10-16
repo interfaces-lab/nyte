@@ -1,21 +1,13 @@
-/**
- * Loads the built shell in headless Chromium the way a client does: a host
- * page embeds `dist/shell/index.html` in a sandboxed frame, answers
- * `ui/initialize`, hands over each compiled fixture and waits for its height;
- * then the inline build is loaded from memory under its own CSP meta. Writes
- * light and dark screenshots to `dist/check/`. Playwright comes from the
- * app's devDependencies, so this stays a script rather than a test.
- */
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileCanvas } from "@nyte-ai/plugin/canvas";
+import { compileCanvas } from "@nyte-ai/plugin/core/canvas";
 import {
   CANVAS_RUNTIME,
   initializeResult,
   renderNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
 import { chromium } from "../../app/node_modules/@playwright/test/index.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -65,7 +57,6 @@ const server = createServer(async (request, response) => {
   try {
     const body = await readFile(join(shell, path === "/" ? "index.html" : path));
     const type = TYPES[extname(path)] ?? "application/octet-stream";
-    // A sandboxed frame has an opaque origin, and module scripts and fonts are CORS requests: every shell asset answers with `*`.
     response.writeHead(200, {
       "Content-Type": type,
       "Access-Control-Allow-Origin": "*",
@@ -190,7 +181,6 @@ for (const theme of ["light", "dark"]) {
   }
 }
 
-// The inline build: one document with the CSP meta and no assets, routed from memory as the phone loads it.
 {
   const { shell: inline } = await import("../dist/shell-inline.js");
   const page = await browser.newPage({ viewport: { width: 390, height: 800 } });

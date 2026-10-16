@@ -1,8 +1,7 @@
-/** The session tree: gutters, fold glyphs, role colours, `(i/n) [filter]` footer. */
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, createSignal, For, on } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
 import type { CliTheme } from "../../lib/theme.ts";
@@ -10,7 +9,16 @@ import { displayWidth, truncateDisplay } from "../../lib/width.ts";
 import type { TreeDialog, TreeRow } from "../../model/dialogs/tree.ts";
 import { selectedIndex, treeRows } from "../../model/dialogs/tree.ts";
 import { revealRow } from "./list.tsx";
-import { hint, joinHints, moveHint, Note, Panel, QueryLine, useBodyWidth } from "./panel.tsx";
+import {
+  hint,
+  joinHints,
+  moveHint,
+  Note,
+  Panel,
+  QueryLine,
+  useBodyWidth,
+  useRowCap,
+} from "./panel.tsx";
 
 const PREFIX_WIDTH = 2;
 
@@ -38,7 +46,6 @@ function roleColor(row: TreeRow, theme: CliTheme): string {
   }
 }
 
-/** Cuts the segments to `width` cells in order, ending on an ellipsis when something was dropped. */
 function fit(segments: readonly Segment[], width: number): Segment[] {
   const shown: Segment[] = [];
   let remaining = width;
@@ -109,15 +116,24 @@ function TreeRowView(props: {
 
 export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
   const width = useBodyWidth();
-  const rows = createMemo(() => treeRows(props.dialog));
+  const cap = useRowCap();
+  const tree = createMemo(() => props.dialog.tree);
+  const filter = createMemo(() => props.dialog.filter);
+  const query = createMemo(() => props.dialog.query);
+  const folded = createMemo(() => props.dialog.folded);
+
+  const rows = createMemo(() =>
+    treeRows({ tree: tree(), filter: filter(), query: query(), folded: folded() }),
+  );
+
   const selected = createMemo(() => selectedIndex(props.dialog, rows()));
 
   const empty = () => {
-    const { tree } = props.dialog;
+    const loaded = tree();
 
-    if (tree.kind === "loading") return { text: "Loading…", tone: "dim" as const };
+    if (loaded.kind === "loading") return { text: "Loading…", tone: "dim" as const };
 
-    if (tree.kind === "failed") return { text: tree.message, tone: "error" as const };
+    if (loaded.kind === "failed") return { text: loaded.message, tone: "error" as const };
 
     return { text: "No entries found", tone: "dim" as const };
   };
@@ -148,36 +164,39 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
   createEffect(on(selected, (index) => revealRow(scroll, index)));
 
   return (
-    <Panel title="Session Tree" hints={hints} fill>
+    <Panel title="Session Tree" hints={hints}>
       <Note text={help} />
       <QueryLine
         text={props.dialog.query}
         caret={props.dialog.caret}
+        anchor={props.dialog.anchor}
         placeholder="type to filter"
       />
-      <scrollbox
-        ref={(box) => {
-          scroll = box;
-        }}
-        flexGrow={1}
-        flexShrink={1}
-        minHeight={1}
-        scrollX={false}
-        scrollY
-        scrollbarOptions={{ visible: false }}
-        onSizeChange={() => revealRow(scroll, selected())}
-      >
-        <For each={rows()} fallback={<Note text={empty().text} tone={empty().tone} />}>
-          {(row, index) => (
-            <TreeRowView
-              row={row}
-              index={index()}
-              selected={index() === selected()}
-              width={width()}
-            />
-          )}
-        </For>
-      </scrollbox>
+      <Show when={rows().length > 0} fallback={<Note text={empty().text} tone={empty().tone} />}>
+        <scrollbox
+          ref={(box) => {
+            scroll = box;
+            const reveal = () => revealRow(box, selected());
+            box.viewport.on("resize", reveal);
+            onCleanup(() => box.viewport.off("resize", reveal));
+          }}
+          height={Math.min(rows().length, cap())}
+          scrollX={false}
+          scrollY
+          scrollbarOptions={{ visible: false }}
+        >
+          <For each={rows()}>
+            {(row, index) => (
+              <TreeRowView
+                row={row}
+                index={index()}
+                selected={index() === selected()}
+                width={width()}
+              />
+            )}
+          </For>
+        </scrollbox>
+      </Show>
       <Note text={footer()} />
     </Panel>
   );

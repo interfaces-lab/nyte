@@ -1,9 +1,3 @@
-/**
- * The appearance settings as StyleX classes on <html>. Each concern is its own
- * token group, so its variant only ever adds or removes its own classes. The
- * colour scheme and the tint live in `@nyte-ai/ui/appearance`, shared with
- * the canvas shell.
- */
 import { createTheme, props } from "@stylexjs/stylex";
 import type { CompiledStyles, StyleXArray } from "@stylexjs/stylex";
 import { focusModality, pointerCursor, transparency } from "@nyte-ai/ui/styles/tokens.stylex";

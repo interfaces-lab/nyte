@@ -18,7 +18,6 @@ import { SdkError } from "./error.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { CORE_CONTEXT, LOCAL } from "./principals.ts";
-import { settleReceipt } from "./receipts.ts";
 import { decodeRunRecord, isJsonObject } from "./records.ts";
 import type { RunRecord, SessionRecord } from "./records.ts";
 import { inboxRef, runRef, sessionRef } from "./refs.ts";
@@ -28,49 +27,30 @@ import {
   STALE,
   attempt,
   commit,
-  expectOf,
+  readRefExpectation,
   inboxWithout,
-  landedIn,
   liveParts,
   load,
   put,
   readInbox,
+  readReceipt,
   readSession,
+  readTip,
   sessionEvent,
   withFold,
 } from "./session-state.ts";
-import { failedParts } from "./transcript.ts";
-import { waitFor } from "./waits.ts";
+import { failedParts, stoppedParts } from "./transcript.ts";
+import { notifyReceipt, waitFor } from "./waits.ts";
 
-/** The failure the stop fence writes on a run's live parts. */
 export const FENCED: Failure = { class: "aborted", message: "Stopped." };
 
 const REPORT_LIMIT = 4096;
 
-/** A run's stop fence as its record reads: ended, already stopping, or live with the updates that fence it. */
 type Fence =
   | { readonly kind: "ended" }
   | { readonly kind: "stopping"; readonly head: HeadName }
   | { readonly kind: "live"; readonly head: HeadName; readonly updates: readonly RefUpdate[] };
 
-/** Starts a run on a head: writes its record with `run started` alone, then begins it here. Advance starts a run in the set that lands its inputs instead. */
-export async function startRun(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  origin: RunView["origin"],
-  configuration: Configuration,
-): Promise<RunView> {
-  const started = await newRun(kernel, session, head, origin, configuration);
-
-  if ((await commit(kernel, [started.update])).kind === "stale")
-    throw new SdkError("internal", `Run ${started.view.id} already exists.`);
-  begin(kernel, session, started.view);
-
-  return started.view;
-}
-
-/** Returns a new run's view and the update writing its record with `run started`, expecting it absent, for the caller's set. */
 export async function newRun(
   kernel: Kernel,
   session: SessionId,
@@ -107,7 +87,6 @@ export async function newRun(
   };
 }
 
-/** Opens a landed run's controller here and observes `run_started`. */
 export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   kernel.runs.start(view.id);
   void kernel.runtimes().get(session)?.hooks.observe("run_started", view, {
@@ -118,7 +97,6 @@ export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   });
 }
 
-/** Stops one run at the fence: a run live here drops its patches from now on; the fence lands, or finds the run stopping or ended; then its signal aborts, its parked waits wake `stopped` and its head wakes. */
 export async function stopRun(
   kernel: Kernel,
   session: SessionId,
@@ -144,7 +122,7 @@ export async function stopRun(
   }
 
   if (fenced.kind === "ended") {
-    const end = await endOf(kernel, session, run);
+    const end = await readRunEnd(kernel, session, run);
 
     return end === null ? { kind: "missing" } : { kind: "settled", outcome: end };
   }
@@ -156,7 +134,6 @@ export async function stopRun(
   return { kind: "requested" };
 }
 
-/** Returns a run's fence for the caller's one set: `run stopping`, `part failed` for each of the run's live or waiting parts, and the head's inbox rewritten, each expecting the revision it read. A part opened or an input landed into the run expects the run ref (`unfenced`), so either it lands first and this set loses, or it reads `stopping`. */
 export async function fence(kernel: Kernel, session: SessionId, run: RunId): Promise<Fence> {
   const found = await load(
     kernel,
@@ -169,14 +146,15 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
 
   if (found.record.stopping) return { kind: "stopping", head };
 
-  const [live, inbox] = await Promise.all([
+  const [live, inbox, tip] = await Promise.all([
     liveParts(kernel, session, run),
     readInbox(kernel, session, head),
+    readTip(kernel, session, head),
   ]);
 
-  const [stopping, failed, rewritten] = await Promise.all([
+  const [stopping, stopped, rewritten] = await Promise.all([
     put(kernel, "run", { ...found.record, stopping: true }),
-    failedParts(kernel, session, head, live, FENCED),
+    stoppedParts(kernel, session, head, tip, live, FENCED),
     put(kernel, "inbox", inboxWithout(inbox, [])),
   ]);
 
@@ -190,13 +168,12 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
         expect: found.ref.revision,
         event: { head, kind: "run", run, change: "stopping" },
       },
-      ...failed,
-      { name: inboxRef(session, head), target: rewritten, expect: expectOf(inbox.ref) },
+      ...stopped,
+      { name: inboxRef(session, head), target: rewritten, expect: readRefExpectation(inbox.ref) },
     ],
   };
 }
 
-/** Returns the update that holds a run unfenced in the caller's set: its ref rewritten as read, expecting that revision; null once the run is stopping or ended. */
 export async function unfenced(
   kernel: Kernel,
   session: SessionId,
@@ -213,7 +190,6 @@ export async function unfenced(
     : { name: found.ref.name, target: found.ref.target, expect: found.ref.revision };
 }
 
-/** Ends a run with `end`, or `stopped` when its record is fenced: deletes its ref, records the head's `lastRun`, rewrites the head's inbox and fails the parts a failed or stopped run left live in one set, so an input admitted against the live run loses its compare-and-set and reads again. Then it settles the receipts of the inputs that landed in the run, parks the waits listed in `waitedBy` here, delivers a child's report when no wait took the end, and wakes the head when input is due. */
 export async function endRun(
   kernel: Kernel,
   session: SessionId,
@@ -245,6 +221,28 @@ export async function endRun(
       [head, { execution: { kind: "idle", lastRun } }],
     ]);
 
+    const landed = await withFold(kernel, session, (state) =>
+      [...state.inputs.values()].flatMap((input) =>
+        input.landed?.run === run ? [asId<"receipt">(input.id)] : [],
+      ),
+    );
+
+    const receipts = await Promise.all(
+      landed.map(async (id): Promise<readonly RefUpdate[]> => {
+        const receipt = await readReceipt(kernel, session, id);
+
+        if (receipt === null || receipt.record.outcome !== null) return [];
+
+        return [
+          {
+            name: receipt.ref.name,
+            target: await put(kernel, "receipt", { ...receipt.record, outcome: final }),
+            expect: receipt.ref.revision,
+          },
+        ];
+      }),
+    );
+
     const outcome = await commit(kernel, [
       {
         name: runRef(session, run),
@@ -261,7 +259,7 @@ export async function endRun(
       {
         name: inboxRef(session, head),
         target: await put(kernel, "inbox", inboxWithout(inbox, [])),
-        expect: expectOf(inbox.ref),
+        expect: readRefExpectation(inbox.ref),
       },
       ...(final.kind === "completed"
         ? []
@@ -272,6 +270,7 @@ export async function endRun(
             await liveParts(kernel, session, run),
             final.kind === "failed" ? final.failure : FENCED,
           )),
+      ...receipts.flat(),
     ]);
 
     return outcome.kind === "set"
@@ -281,6 +280,9 @@ export async function endRun(
           parent: record.parent,
           waitedBy: found.record.waitedBy,
           pending: inbox.messages,
+          settled: receipts.flatMap((updates, index) =>
+            updates.length > 0 ? [landed[index]] : [],
+          ),
         }
       : STALE;
   });
@@ -295,15 +297,7 @@ export async function endRun(
     .get(session)
     ?.hooks.observe("run_ended", ended.end, { session, head: ended.head, run, principal: LOCAL });
 
-  const landed = landedIn(kernel).get(run) ?? [];
-  landedIn(kernel).delete(run);
-
-  const folded = await withFold(kernel, session, (state) =>
-    [...state.inputs.values()].flatMap((input) => (input.landed?.run === run ? [input.id] : [])),
-  );
-
-  for (const message of new Set([...landed, ...folded]))
-    await settleReceipt(kernel, session, asId<"receipt">(message), ended.end);
+  for (const id of ended.settled) notifyReceipt(kernel, session, id);
 
   const woke = await kernel.waits.runEnded(session, run, ended.end, ended.waitedBy);
 
@@ -312,7 +306,6 @@ export async function endRun(
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
 
-/** Returns a handle on one run: `stop()` is the fence; `settled()` waits for `run ended`, or reads the head's `lastRun` after a restart. Binds synchronously; no I/O. */
 export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
   return {
     id,
@@ -322,7 +315,7 @@ export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
         options,
         async check() {
           if ((await kernel.store.refs.get(runRef(session, id))) !== null) return null;
-          const end = await endOf(kernel, session, id);
+          const end = await readRunEnd(kernel, session, id);
 
           if (end === null) throw new SdkError("unknown", `No run has the id ${id}.`);
 
@@ -336,7 +329,6 @@ export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
   };
 }
 
-/** Publishes a transient patch to a run's part, or drops it once the run is stopping. */
 export function publishPatch(
   kernel: Kernel,
   session: SessionId,
@@ -347,8 +339,7 @@ export function publishPatch(
   kernel.bus.publish(session, patch);
 }
 
-/** Returns how a run ended: its head's `lastRun`, else the ended turn the fold holds; null while it is live or when no run has the id. */
-export async function endOf(
+export async function readRunEnd(
   kernel: Kernel,
   session: SessionId,
   run: RunId,
@@ -367,14 +358,12 @@ export async function endOf(
   });
 }
 
-/** Marks a run stopping and aborts its signal when it is live here; another instance driving it reads its fence from the store. */
 export function abortHere(kernel: Kernel, run: RunId): void {
   if (kernel.runs.get(run) === undefined) return;
   kernel.runs.markStopping(run);
   kernel.runs.abort(run);
 }
 
-/** Attaches a bounded report of a child's run to the parent's originating head. */
 async function deliverChildReport(
   kernel: Kernel,
   child: SessionId,
@@ -392,23 +381,20 @@ async function deliverChildReport(
   const head = target.record.heads.some((entry) => entry.name === origin) ? origin : MAIN;
 
   const answer = capped(
-    (await withFold(kernel, child, (state) => answerOf(state, run))).trim(),
+    (await withFold(kernel, child, (state) => extractRunAnswer(state, run))).trim(),
     REPORT_LIMIT,
   );
-
-  const title = `Child ${child} ${end.kind}:`;
 
   await send(kernel, {
     session: parent,
     head,
     context: CORE_CONTEXT,
-    content: answer === "" ? title : `${title}\n\n${answer}`,
-    options: { source: { kind: "child", session: child }, delivery: "attach" },
+    content: answer,
+    options: { source: { kind: "child", session: child, end: end.kind }, delivery: "attach" },
   });
 }
 
-/** Returns the last text the child wrote in its run's turn: its final message, not the narration before its tool calls. */
-function answerOf(state: FoldState, run: RunId): string {
+function extractRunAnswer(state: FoldState, run: RunId): string {
   const messages = state.heads.get(MAIN)?.messages ?? [];
   const turn = state.runs.get(run)?.turn ?? messages.at(-1)?.turn;
 

@@ -1,13 +1,3 @@
-/**
- * The table is the spec. One test per cell of the header table, plus a
- * generated matrix: every combination of run × question × draft × editing ×
- * shell × completion × blocked × followUp × dialog, asserting the invariants:
- * - every core key has an interaction, and a visible hint has a label;
- * - Enter never sends while blocked or while a shell runs; an open completion owns it unless blocked;
- * - no row emits `send` for an empty or blank draft;
- * - Ctrl+C is never `quit` while the draft has text;
- * - with a dialog open every interaction is off or forwarded to the dialog.
- */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import type { ChatCommand } from "../../src/lib/constants.ts";
@@ -235,7 +225,7 @@ describe("question open", () => {
         kind: "answer",
         session: asId("s1"),
         part: asId("q1"),
-        choice: "Green",
+        value: "Green",
         typed: true,
       },
       label: "answer",

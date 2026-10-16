@@ -47,22 +47,32 @@ keys, mouse and resize. The steps are in `qa/tui.ts`:
 7. A run started at `/effort low` keeps `low` for its tool continuation while Shift+Tab sets
    `medium`. A Ctrl+Enter follow-up shows in the queue row, waits for the run to finish, and is
    sent at `medium`.
-8. A question tool waits for a picked answer. The answer reaches the provider as the tool result,
-   with no extra user message.
+8. Grouped questions show described choices and keep multi-select answers through Back.
+   The group reaches the provider once, and a custom answer uses the composer without an extra user message.
 9. A `!` command runs locally without a model request, and Esc stops it and its process. `!echo
     kept` puts its output in the composer, and the next prompt carries one exact `<shell>` block.
 10. Settings lists the thinking level. Esc closes it.
-11. `/quit` prints the two-line resume command. `--session=` reopens the transcript, model and
+11. `/tree` opens under the composer. Enter on the latest message says it is already there, and
+    Esc closes the tree.
+12. `/quit` prints the two-line resume command. `--session=` reopens the transcript, model and
     level, and the next request carries the history.
-12. SIGTERM prints the same resume command and exits 143.
-13. A new session shows the saved model and level, and `/effort low` before its first message
-    reaches that request.
+13. SIGTERM prints the same resume command and exits 143.
+14. A new session shows the saved model and level, and `/effort low` before its first message
+    reaches that request. That message goes straight into the transcript and never shows as a
+    pending row beside the composer first.
 
 A failure names its step. `--show` plays the same `tui` scenario on a real CLI renderer, with the
 step and latest input captioned above Nyte's screen and a short pause after each step. Pauses
 come before inputs, never between an input and its measured screen. Your keys never reach Nyte:
 Enter or Space continues a `--step` run, and Ctrl+C stops the run and cleans up. The terminal must
 be at least 100x33.
+
+The scenario also opens every slash-menu family under the composer, checks `/usage` before
+and after a response, selects a saved account, and verifies that the next request and a
+request after restart use that account's credential. Login fields exercise bracketed paste,
+Cmd+A and Ctrl+A, deletion, repaste, masking, and saving the replacement key. The provider
+accepts only isolated fixture credentials. Menu rendering tests cover short terminals, long
+questions, large auth lists, and the fullscreen exception for loaded subagent transcripts.
 
 ## Isolation
 

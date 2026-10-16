@@ -1,7 +1,3 @@
-/**
- * Settings › Providers mounted alone in a real Chromium, over the recorded
- * connection from ./login-harness-bridge.ts.
- */
 import "./login-harness-bridge.ts";
 import "../../../test/window-bridge.ts";
 import "../../theme/global.css";

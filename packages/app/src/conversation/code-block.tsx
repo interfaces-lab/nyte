@@ -4,6 +4,7 @@ import { Value } from "typebox/value";
 // Fenced code paints as escaped plain text immediately. Known grammars upgrade
 // in a bundled worker, keeping grammars and syntax work off the UI thread.
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -343,12 +344,12 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
       </span>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         {html === undefined ? (
-          <pre {...props(codeBlockStyles.pre)}>
+          <pre {...props(text.code, codeBlockStyles.pre)}>
             <code>{code}</code>
           </pre>
         ) : (
           <div
-            {...props(codeBlockStyles.pre)}
+            {...props(text.code, codeBlockStyles.pre)}
             // Shiki output over escaped code; see module note.
             dangerouslySetInnerHTML={{ __html: html }}
           />

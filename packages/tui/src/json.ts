@@ -11,7 +11,6 @@ export function isJsonString(value: Json | undefined): value is string {
   return typeof value === "string";
 }
 
-/** Returns a parsed value as `Json`, or throws when it holds something JSON cannot carry. */
 export function toJson(value: unknown): Json {
   if (
     value === null ||

@@ -160,7 +160,7 @@ export const controls = {
   composerBar: 64,
   iconXs: 12,
   iconSm: 15,
-  icon: 17,
+  icon: 22,
   badge: 20,
   diffGutter: 40,
   disabledOpacity: 0.4,
@@ -268,10 +268,8 @@ export const textStyles = css.create({
 /** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
-/** A link the model writes to name an agent it created: `[title](agent:<session>)`. */
 export const AGENT_LINK = "^agent:.";
 
-/** A `file:` URL, or a link with no scheme, which names a workspace path. */
 export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
 
 export function markdownStyle(
@@ -286,8 +284,6 @@ export function markdownStyle(
 
   const scopes = platformScopes[scheme];
 
-  // Pills stay within the 23pt body line so a link that completes mid-stream
-  // does not move the text around it.
   const citation = {
     color: theme.accent,
     backgroundColor: theme.fill,

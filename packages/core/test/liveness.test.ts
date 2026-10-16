@@ -19,15 +19,13 @@ import {
   runRef,
   runStep,
   sessionRef,
-  startRun,
   stopRun,
 } from "../src/index.ts";
 import type { Kernel, PartRecord, Plugin, StoreConnection } from "../src/index.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { completed, configuration, livePart, main, setup, until } from "./harness.ts";
+import { completed, configuration, livePart, main, setup, startRun, until } from "./harness.ts";
 
-/** Parks a durable step of `session` on `target` as a tool waiting on a child does, inside `run` when given. */
 function park(
   kernel: Kernel,
   session: SessionId,
@@ -51,7 +49,6 @@ function park(
   });
 }
 
-/** Returns a store whose next `refs.set` matching `match` first runs `before`, once. */
 function interrupting(store: StoreConnection) {
   let armed: {
     match: (names: readonly string[]) => boolean;
@@ -93,7 +90,6 @@ async function record<T>(
   return ref?.target ? decode(await store.objects.get(ref.target)) : null;
 }
 
-/** Ends a run in the store the way an instance that crashed after `endRun`'s set leaves it: no wait parked, no head woken. */
 async function endSilently(store: StoreConnection, session: SessionId, run: RunId): Promise<void> {
   const ref = await store.refs.get(sessionRef(session));
   const found = await record(store, sessionRef(session), decodeSessionRecord);

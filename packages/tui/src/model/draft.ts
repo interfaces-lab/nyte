@@ -1,8 +1,3 @@
-/**
- * The draft's meaning: what kind of thing Enter would send, and the rich
- * parts behind its markers. The textarea owns the characters; this module
- * owns the parts and the codec between markers and `UserContent`.
- */
 import type { BlobId, SkillInfo, UserContent } from "@nyte-ai/sdk";
 import {
   expandInlineSkills,
@@ -24,7 +19,6 @@ export type DraftModel =
     }
   | { readonly kind: "shell"; readonly command: string; readonly include: boolean };
 
-/** Keyed by the marker text the textarea shows, e.g. `[File a.ts]`, `[Image 2]`, `[Paste #1 40 lines]`, `[Shell ls]`. */
 export type DraftParts = ReadonlyMap<string, DraftPart>;
 
 export type DraftPart =
@@ -32,7 +26,6 @@ export type DraftPart =
       readonly kind: "file";
       readonly path: string;
       readonly directory: boolean;
-      /** The body a landed `<file>` block carried; absent until the runner reads the file at submit. */
       readonly body?: string;
     }
   | {
@@ -49,7 +42,6 @@ export type DraftPart =
       readonly exit: number;
     };
 
-/** What a handback, a saved per-session draft or an edit restores: text plus the parts its markers name. */
 export interface DraftSnapshot {
   readonly text: string;
   readonly parts: DraftParts;
@@ -68,7 +60,6 @@ export interface MarkerSpan {
 
 export const NO_PARTS: DraftParts = new Map();
 
-/** A paste this tall stops being text you are editing and becomes an attachment. */
 export const PASTE_COLLAPSE_LINES = 8;
 
 const IMAGE_MARKER = /\[Image \d+\]/gu;
@@ -104,7 +95,6 @@ export function draftModel(draft: Draft): DraftModel {
   }
 }
 
-/** Markers present in `text`; parts not present stay until the draft is cleared, so undo can bring one back. */
 export function liveMarkers(draft: Pick<Draft, "text" | "parts">): readonly MarkerSpan[] {
   const spans: MarkerSpan[] = [];
 
@@ -120,7 +110,6 @@ export function liveMarkers(draft: Pick<Draft, "text" | "parts">): readonly Mark
   return spans.toSorted((left, right) => left.from - right.from);
 }
 
-/** The marker the cursor sits in or right after (past its trailing space too), the one Ctrl+Space acts on. */
 export function markerAt(draft: Draft): MarkerSpan | null {
   return (
     liveMarkers(draft).find(
@@ -140,7 +129,6 @@ export function snapshot(draft: Pick<Draft, "text" | "parts">): DraftSnapshot {
   };
 }
 
-/** Two snapshots that would send the same thing. */
 export function sameSnapshot(left: DraftSnapshot, right: DraftSnapshot): boolean {
   if (left.text.trim() !== right.text.trim()) return false;
   const leftLive = snapshot(left).parts;
@@ -213,7 +201,6 @@ function nextNumber(parts: DraftParts, kind: DraftPart["kind"]): number {
   );
 }
 
-/** The parts a new marker gets: suffix ` 2`, ` 3` on name collisions; images de-duplicated by bytes or blob. */
 export function addPart(parts: DraftParts, part: DraftPart) {
   const existing = [...parts].find(([, candidate]) =>
     part.kind === "file"
@@ -248,7 +235,6 @@ function markerFor(parts: DraftParts, part: DraftPart): string {
   }
 }
 
-/** `file:` URL for an absolute POSIX path, the spelling a message carries. */
 export function fileUrl(path: string): string {
   return `file://${encodeURI(path).replaceAll("?", "%3F").replaceAll("#", "%23")}`;
 }
@@ -287,22 +273,16 @@ function commandFromAttribute(command: string): string {
     .replaceAll("&amp;", "&");
 }
 
-/** A `!command` the way it travels inside a message, so any client folds it back to a tag. */
 export function shellBlock(command: string, output: string, exit: number): string {
   const closingBreak = output.endsWith("\n") ? "" : "\n";
 
   return `<shell command="${shellAttribute(command)}" exit="${String(exit)}">\n${output}${closingBreak}</shell>`;
 }
 
-/** An attached file's body inside the message, so the model spends no read call on it. */
 export function fileBlock(path: string, body: string): string {
   return `<file src="${fileUrl(path)}">\n${body}\n</file>`;
 }
 
-/**
- * Rebuilds markers from landed content, for history recall and for editing a
- * queued message: `<file>`, `<skill>` and `<shell>` blocks become parts again.
- */
 export function draftFromContent(content: UserContent): DraftSnapshot {
   let parts: DraftParts = NO_PARTS;
   let text = "";
@@ -367,14 +347,12 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
   return { text: promptDraft(text), parts };
 }
 
-/** File markers whose body the runner still has to read (≤256 KB text, else they become `@file://` mentions). */
 export function unreadFiles(draft: DraftSnapshot): readonly string[] {
   return [...snapshot(draft).parts.values()].flatMap((part) =>
     part.kind === "file" && !part.directory && part.body === undefined ? [part.path] : [],
   );
 }
 
-/** Image markers holding bytes the runner uploads before sending, by marker. */
 export function pendingUploads(
   draft: DraftSnapshot,
 ): readonly { readonly marker: string; readonly bytes: Uint8Array; readonly mime: string }[] {
@@ -385,19 +363,12 @@ export function pendingUploads(
   );
 }
 
-/** What the runner gathered before sending: file bodies by path (null → mention) and uploaded blobs by marker. */
 export interface ContentInputs {
   readonly bodies: ReadonlyMap<string, string | null>;
   readonly uploads: ReadonlyMap<string, BlobId>;
   readonly skills: ReadonlyMap<string, SkillInfo>;
 }
 
-/**
- * The message a snapshot sends: a leading `/skill args` becomes its
- * invocation block, inline `/skill` tokens expand, file markers become
- * `<file>` blocks or mentions, pastes and shell runs expand, and images
- * become file parts at their marker's place.
- */
 export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserContent {
   const text = draft.text.trim();
   const { parts } = snapshot(draft);

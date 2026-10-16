@@ -1,5 +1,8 @@
 import process from "node:process";
-import type { Host, LoginMethod } from "@nyte-ai/sdk";
+import type { Connection, LoginMethod } from "@nyte-ai/sdk";
+import { portConflict, probePort } from "@nyte-ai/service";
+import { accountCommand } from "./account-command.ts";
+import { mcpCommand } from "./mcp-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
 import {
@@ -12,14 +15,22 @@ import {
   statusGlyph,
   updateSeverity,
 } from "./cli-style.ts";
-import { parseFlags, parseUpdateArgs, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
+import {
+  parseFlags,
+  parseServeArgs,
+  parseUpdateArgs,
+  readStdin,
+  resolveTuiResume,
+  wantsPrint,
+} from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
 import { openTerminalHost } from "./host.ts";
 import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
-import { flagConfiguration, targetSession } from "./run.ts";
+import { addFolder, flagConfiguration, targetSession } from "./run.ts";
+import { connectLocalService, serviceCommandMain } from "./service.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
@@ -40,12 +51,21 @@ const invocation = new PrintInvocation({ json, output });
 
 const signal = invocation.controller.signal;
 
-/** Opens the host for this folder; the invocation closes it. */
-async function openHost(): Promise<Host> {
-  const host = await openTerminalHost();
-  invocation.defer(() => host.close());
+function untilInterrupted(): AbortSignal {
+  invocation.handoff();
+  const interrupted = new AbortController();
+  const end = (): void => interrupted.abort();
+  process.once("SIGINT", end);
+  process.once("SIGTERM", end);
 
-  return host;
+  return interrupted.signal;
+}
+
+async function openHost(): Promise<Connection> {
+  const { connection } = await connectLocalService();
+  invocation.defer(() => connection.close());
+
+  return connection;
 }
 
 function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
@@ -232,6 +252,34 @@ async function update(args: readonly string[]): Promise<void> {
   if (severity !== "ok") process.exitCode = 1;
 }
 
+async function serve(args: readonly string[]): Promise<void> {
+  const options = parseServeArgs(args);
+  const interrupted = untilInterrupted();
+  const token = options.token ?? crypto.randomUUID();
+  const host = await openTerminalHost();
+  invocation.defer(() => host.close());
+
+  const listener = await host
+    .listen({
+      transport: { kind: "http", port: options.port },
+      auth: { kind: "token", token },
+    })
+    .catch(async (cause: unknown) => {
+      const conflict = portConflict(options.port, await probePort(options.port));
+
+      throw conflict === undefined
+        ? cause
+        : new Error(`${conflict} Free it, or pass another --port.`);
+    });
+
+  output.write(`${listener.address}\n`);
+
+  if (options.token === undefined) output.error(`token ${token}`);
+
+  if (!interrupted.aborted)
+    await new Promise((done) => interrupted.addEventListener("abort", done, { once: true }));
+}
+
 async function status(): Promise<void> {
   const host = await openHost();
 
@@ -282,7 +330,7 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
       );
   }
 
-  const session = await targetSession(host, flags.resume, undefined);
+  const session = await targetSession(host, flags.resume, await addFolder(host, process.cwd()));
   invocation.sessionId = session.id;
   signal.throwIfAborted();
 
@@ -315,7 +363,16 @@ async function main(): Promise<PrintOutcome | undefined> {
     return undefined;
   }
 
-  if (command === "login" || command === "logout" || command === "status" || command === "update") {
+  if (
+    command === "login" ||
+    command === "logout" ||
+    command === "status" ||
+    command === "update" ||
+    command === "serve" ||
+    command === "account" ||
+    command === "service" ||
+    command === "mcp"
+  ) {
     if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
       if (invocationArgs.length !== 2) throw new Error(`Use nyte ${command} --help on its own.`);
       console.log(renderCommandHelp(command));
@@ -342,6 +399,43 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   if (command === "update") {
     await update(invocationArgs.slice(1));
+
+    return undefined;
+  }
+
+  if (command === "serve") {
+    await serve(invocationArgs.slice(1));
+
+    return undefined;
+  }
+
+  if (command === "account") {
+    await accountCommand(
+      invocationArgs.slice(1),
+      invocationArgs.length === 1 ? untilInterrupted() : signal,
+      output,
+    );
+
+    return undefined;
+  }
+
+  if (command === "mcp") {
+    process.exitCode = await mcpCommand({
+      args: invocationArgs.slice(1),
+      connection: openHost,
+      signal,
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "service") {
+    await serviceCommandMain(
+      invocationArgs.slice(1),
+      invocationArgs[1] === "run" ? untilInterrupted() : signal,
+      output,
+    );
 
     return undefined;
   }

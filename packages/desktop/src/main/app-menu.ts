@@ -9,7 +9,6 @@ import type {
 import { clientActionAccelerator, clientActions } from "@nyte-ai/app/client-actions.ts";
 import { shortcutCharacter } from "@nyte-ai/app/workbench/browser-shortcuts.ts";
 
-/** View commands act on the focused browser page, and on the Nyte window everywhere else. */
 export type ViewCommand = Extract<
   BrowserNavigationAction,
   "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
@@ -211,7 +210,6 @@ const CODE_KEYS = new Map([
   ["Quote", "'"],
 ]);
 
-/** Whether a forwarded key is the one an Electron accelerator names, modifiers exactly. */
 export function acceleratorMatches(accelerator: string, key: BrowserKey, mac: boolean): boolean {
   const parts = accelerator.toLowerCase().split("+");
   const name = parts.pop() ?? "";
@@ -228,14 +226,11 @@ export function acceleratorMatches(accelerator: string, key: BrowserKey, mac: bo
   const wanted = ACCELERATOR_KEYS.get(name) ?? name;
   const character = shortcutCharacter(key);
 
-  // Letters and digits follow the layout as the panel's shortcuts do; Option and Shift
-  // change a punctuation key's character, so its physical key names it too.
   if (character !== undefined) return character === wanted;
 
   return key.key.toLowerCase() === wanted || CODE_KEYS.get(key.code) === wanted;
 }
 
-/** Electron's runtime menu: a leaf item's `submenu` and an item's `accelerator` are null, not undefined. */
 interface KeyMenu<Item> {
   readonly items: readonly Item[];
 }
@@ -247,10 +242,6 @@ interface KeyMenuItem<Item> {
   readonly submenu?: KeyMenu<Item> | null;
 }
 
-/**
- * The enabled item a native key equivalent would run for this key. A page that
- * forwards a key has already consumed it, so the menu never sees it otherwise.
- */
 export function menuItemForKey<Item extends KeyMenuItem<Item>>(
   menu: KeyMenu<Item>,
   key: BrowserKey,
@@ -269,29 +260,20 @@ export function menuItemForKey<Item extends KeyMenuItem<Item>>(
   return undefined;
 }
 
-/** A held key repeats only zoom, as in a browser; every other item runs once per press. */
 export function menuItemRepeats(item: { readonly id: string }): boolean {
   return item.id === "zoom-in" || item.id === "zoom-out";
 }
 
-/** What a role item acts on when a forwarded key runs it. */
 export interface MenuRoleTarget {
   readonly app: Pick<App, "quit" | "hide">;
   readonly window: Pick<BaseWindow, "minimize" | "close" | "isFullScreen" | "setFullScreen">;
-  /** The page or DevTools the key was pressed in. */
   readonly contents: Pick<
     WebContents,
     "undo" | "redo" | "cut" | "copy" | "paste" | "pasteAndMatchStyle" | "selectAll"
   >;
-  /** Sends a Cocoa action to the first responder, for roles only macOS implements. */
   readonly sendAction: (action: string) => void;
 }
 
-/**
- * Runs a role the menu gives a key equivalent. On macOS `MenuItem.click` leaves native
- * roles such as quit and hide to AppKit, which never sees a key the page consumed.
- * Electron reports roles in lower case at runtime. False for a role this does not run.
- */
 export function performMenuRole(role: string, target: MenuRoleTarget): boolean {
   switch (role.toLowerCase()) {
     case "quit":

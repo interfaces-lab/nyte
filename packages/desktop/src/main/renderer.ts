@@ -9,20 +9,13 @@ import {
 import { ACCOUNT_HOST, CANVAS_HOST } from "../account/scheme.ts";
 import type { accountScheme } from "../account/scheme.ts";
 
-/** Where a renderer loads the canvas shell page from. */
 export function canvasShellUrl(scheme: ReturnType<typeof accountScheme>): string {
   return `${scheme}://${CANVAS_HOST}/index.html`;
 }
 
-/**
- * Serves the renderer and the canvas shell on the privileged scheme. The
- * renderer page comes from the dev server in development, with its policy
- * added to the dev server's response; the shell is a static build in both.
- */
 export function registerRenderer(input: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly frontendApiHost: string | undefined;
-  /** The built shell: `packages/canvas/dist/shell`, or `canvas` beside the packaged resources. */
   readonly shellRoot: string;
 }): string {
   protocol.registerSchemesAsPrivileged([

@@ -225,7 +225,6 @@ export function durableStepGroupPresentation({
   return { active: true, runningClasses, added, removed };
 }
 
-/** The active verb: the newest running call's activity, else Thinking while a thought streams, else Working. */
 export function liveStepGroupPresentation({
   durable,
   messages,

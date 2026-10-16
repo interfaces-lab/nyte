@@ -44,7 +44,6 @@ function useWidth() {
   return [ref, width] as const;
 }
 
-/** Round ticks covering low..high: steps of 1, 2, 2.5 or 5 times a power of ten. */
 function niceTicks(low: number, high: number, count = 4) {
   const span = high - low || Math.abs(high) || 1;
   const rough = span / count;
@@ -149,7 +148,6 @@ function axisWidth(ticks: readonly number[]): number {
   return Math.max(...ticks.map((tick) => compact.format(tick).length)) * CHAR_WIDTH + 14;
 }
 
-/** Every nth label, so labels never collide at narrow widths. */
 function labelStride(labels: readonly string[], slot: number): number {
   const widest = Math.max(1, ...labels.map((label) => label.length)) * CHAR_WIDTH + 12;
 
@@ -408,7 +406,6 @@ export function PieChart({
   const size = height;
   const outer = size / 2 - 4;
   const inner = Math.min(outer - 8, Math.max(0, innerRadius));
-  // A whole slice cannot be one arc, and a single slice needs no gap.
   const pad = positive.filter((value) => value > 0).length > 1 ? 1.5 / outer : 0;
 
   const slices = positive.map((value, index) => {

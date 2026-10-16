@@ -1,9 +1,3 @@
-/**
- * The attachment preview under the composer: the marker as a title, then the
- * image, or the paste, shell output or file body in a scrollable code view.
- * Ctrl+Space on the marker opens and closes it (`open-attachment`); a click
- * on the title closes it (`close-preview`).
- */
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { Show } from "solid-js";

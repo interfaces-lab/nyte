@@ -35,10 +35,6 @@ function placeholderDiff(path: string): FileDiffMetadata {
   };
 }
 
-/**
- * Turns stack sections into CodeView items, reusing each item while its
- * section is unchanged. Patches arrive parsed; nothing here parses.
- */
 export function createChangesCodeViewItems() {
   const cachedById = new Map<string, CachedItem>();
 
@@ -146,7 +142,6 @@ export function createChangesCodeViewItems() {
         continue;
       }
 
-      // A patch Pierre could not parse still shows, as its raw text.
       const contents =
         source.kind === "diff" ? source.patch : source.kind === "raw" ? source.text : "";
 

@@ -1,9 +1,3 @@
-/**
- * The textarea reports what it holds and draws what the screen says: the
- * draft mirror through `draft-changed`, pastes as messages, the placeholder
- * from `deriveScreen` (naming a child's question), markers as `attachment`
- * extmarks, and the port the runner drives.
- */
 import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
 import { BoxRenderable, RGBA } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
@@ -52,7 +46,19 @@ describe("composer", () => {
     const asking = viewOf((v) =>
       v
         .turn("c", (t) => t.user("go"))
-        .question("Which file?", ["a", "b"], { id: "q9" })
+        .question(
+          [
+            {
+              question: "Which file?",
+              header: "Question",
+              options: [
+                { label: "a", description: "" },
+                { label: "b", description: "" },
+              ],
+            },
+          ],
+          { id: "q9" },
+        )
         .waiting("q9"),
     );
 

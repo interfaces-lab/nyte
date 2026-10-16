@@ -1,7 +1,6 @@
 import { JournalEntrySchema } from "@nyte-ai/schema";
 import type { JournalEntry, RequestJournal } from "@nyte-ai/sdk";
 
-/** The slice of MMKV the journal writes through; tests pass a map. */
 export interface JournalStorage {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;
@@ -9,12 +8,6 @@ export interface JournalStorage {
   getAllKeys(): string[];
 }
 
-/**
- * Returns the sdk's request journal for one route, kept in `storage` under
- * `prefix`, one key per send, so an unacknowledged message survives the app
- * being killed and `sdk.connect` resends it with its id. An entry that no
- * longer reads as a `JournalEntry` is removed on load.
- */
 export function createJournal(storage: JournalStorage, prefix: string): RequestJournal {
   const keyOf = (id: string) => JSON.stringify([prefix, id]);
   const head = `${JSON.stringify([prefix]).slice(0, -1)},`;
@@ -42,7 +35,6 @@ export function createJournal(storage: JournalStorage, prefix: string): RequestJ
   };
 }
 
-/** Returns the entry a stored text holds, or null when it is not JSON or not an entry. */
 function entryOf(text: string): JournalEntry | null {
   let value: unknown;
 

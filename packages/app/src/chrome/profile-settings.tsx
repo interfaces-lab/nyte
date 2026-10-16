@@ -9,8 +9,9 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
-import { avatar, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { avatar, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -44,8 +45,8 @@ const styles = create({
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    columnGap: 12,
-    rowGap: 8,
+    columnGap: space.s3,
+    rowGap: space.s2,
     padding: settings.rowPadding,
     "::before": {
       position: "absolute",
@@ -58,28 +59,28 @@ const styles = create({
     ":first-child::before": { display: "none" },
   },
   glyph: { display: "grid", placeItems: "center", width: glyph.md, color: role.contentTertiary },
-  copy: { display: "flex", flexDirection: "column", gap: 2, flex: "1 1 160px", minWidth: 0 },
+  copy: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s0_5,
+    flex: "1 1 160px",
+    minWidth: 0,
+  },
   title: {
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     overflowWrap: "anywhere",
   },
   description: {
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     overflowWrap: "anywhere",
   },
   value: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     minWidth: 0,
     overflow: "hidden",
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
   },
@@ -112,10 +113,12 @@ function Row({
     <div {...props(styles.row)}>
       {glyph !== undefined && <span {...props(styles.glyph)}>{glyph}</span>}
       <span {...props(styles.copy)}>
-        <span {...props(styles.title)}>{title}</span>
-        {description !== undefined && <span {...props(styles.description)}>{description}</span>}
+        <span {...props(text.base, styles.title)}>{title}</span>
+        {description !== undefined && (
+          <span {...props(text.base, styles.description)}>{description}</span>
+        )}
       </span>
-      {value !== undefined && <span {...props(styles.value)}>{value}</span>}
+      {value !== undefined && <span {...props(text.base, styles.value)}>{value}</span>}
       {control}
       {expansion !== undefined && <div {...props(styles.expansion)}>{expansion}</div>}
     </div>
@@ -326,7 +329,7 @@ function GitHubAccountRow({
               Cancel
             </Button>
           }
-          expansion={<DeviceCodePanel deviceCode={state.deviceCode} message={undefined} />}
+          expansion={<DeviceCodePanel deviceCode={state.deviceCode} />}
         />
       );
     case "ready": {

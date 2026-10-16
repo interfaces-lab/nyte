@@ -3,9 +3,6 @@
  * server on port 1455 against a manual paste prompt; device-code login covers
  * headless boxes via the shared RFC 8628 poller. Node-only (node:crypto,
  * node:http) and loaded lazily so browser builds never pull those in.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/openai-codex.ts
- * Synced with pi 7ebf9087e.
  */
 
 import { Type } from "typebox";
@@ -50,8 +47,6 @@ const SCOPE = "openid profile email offline_access";
 
 const JWT_CLAIM_PATH = "https://api.openai.com/auth";
 
-// Nyte divergence: exported for Nyte's legacy api/responses.ts, which stamps
-// the same originator on Codex requests; pi inlines "pi" at the call sites.
 export const ORIGINATOR = "nyte";
 
 type OAuthToken = { access: string; refresh: string; expires: number };
@@ -422,9 +417,7 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
           close: () => {
             try {
               server.close();
-            } catch {
-              // ignore
-            }
+            } catch {}
           },
           cancelWait: () => {},
           waitForCode: async () => null,
@@ -433,8 +426,6 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
   });
 }
 
-// Nyte divergence: exported (pi keeps it module-private) because Nyte's legacy
-// index.ts re-exports it for @nyte-ai/core until core migrates.
 export function getAccountId(accessToken: string): string | null {
   return decodeJwt(accessToken)?.[JWT_CLAIM_PATH]?.chatgpt_account_id || null;
 }
@@ -577,14 +568,22 @@ export const openaiCodexOAuth: OAuthAuth = {
   isSubscription: true,
 
   async login(interaction) {
-    const method = await interaction.prompt({
-      type: "select",
-      message: "Select OpenAI Codex login method:",
-      options: [
-        { id: OPENAI_CODEX_BROWSER_LOGIN_METHOD, label: "Browser login (default)" },
-        { id: OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD, label: "Device code login (headless)" },
-      ],
-    });
+    const method =
+      interaction.browser === "host"
+        ? OPENAI_CODEX_BROWSER_LOGIN_METHOD
+        : interaction.browser === "elsewhere"
+          ? OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD
+          : await interaction.prompt({
+              type: "select",
+              message: "Select OpenAI Codex login method:",
+              options: [
+                { id: OPENAI_CODEX_BROWSER_LOGIN_METHOD, label: "Browser login (default)" },
+                {
+                  id: OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD,
+                  label: "Device code login (headless)",
+                },
+              ],
+            });
 
     if (method === OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD) {
       return loginOpenAICodexDeviceCode(interaction);
@@ -600,8 +599,6 @@ export const openaiCodexOAuth: OAuthAuth = {
   refresh: (credential, signal) => refreshOpenAICodexToken(credential.refresh, signal),
 
   async toAuth(credential) {
-    // Nyte divergence: Nyte's legacy Responses adapter only sees ModelAuth, so
-    // the ChatGPT account header rides along here until core migrates.
     const accountId = getAccountId(credential.access);
 
     if (!accountId) throw new Error("OpenAI Codex credential missing account id");

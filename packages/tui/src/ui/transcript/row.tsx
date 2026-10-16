@@ -1,4 +1,3 @@
-/** One transcript row by kind. Rows are keyed by string, so a re-derive with the same keys mounts nothing. */
 import type { Message } from "@nyte-ai/sdk";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
@@ -11,11 +10,13 @@ import { Column } from "./block.tsx";
 import { Marker } from "./marker.tsx";
 import { useTranscript } from "./scope.tsx";
 import { ShellCard } from "./shell-card.tsx";
-import { TurnView } from "./turn.tsx";
+import { MessageView, TurnView } from "./turn.tsx";
 
 type TurnRow = Extract<Row, { readonly kind: "turn" }>;
 
 type NoteRow = Extract<Row, { readonly kind: "note" }>;
+
+type LandingRow = Extract<Row, { readonly kind: "landing" }>;
 
 type ShellRow = Extract<Row, { readonly kind: "shell" }>;
 
@@ -50,6 +51,13 @@ export function RowView(props: {
             </Column>
           );
         }}
+      </Match>
+      <Match when={props.row.kind === "landing" ? props.row : undefined}>
+        {(row: Accessor<LandingRow>) => (
+          <Column id={row().key} ref={props.anchor}>
+            <MessageView id={row().message} />
+          </Column>
+        )}
       </Match>
       <Match when={props.row.kind === "shell" ? props.row : undefined}>
         {(row: Accessor<ShellRow>) => {

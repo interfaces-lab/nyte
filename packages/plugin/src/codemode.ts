@@ -6,12 +6,12 @@ import type {
 } from "@earendil-works/pi-codemode";
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { CODEMODE_SOURCE_GRAMMAR, parseCodemodeSource } from "@earendil-works/pi-codemode/source";
-import { dev } from "@nyte-ai/core";
+import { SdkError, dev, isJsonObject } from "@nyte-ai/core";
 import type { ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { isJson, standard } from "@nyte-ai/schema";
 import type { Json, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Plugin, PluginApi } from "./core.ts";
+import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
 
 const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw JavaScript (not JSON, no code fence), run as an async function body in a QuickJS sandbox: top-level \`await\` and \`return\` work. No Node, file system, network, or timers.
 - \`await tools.<name>({ ...args })\` resolves to the tool's output, or its text, and rejects with an Error on failure.
@@ -44,7 +44,6 @@ export function codemodePlugin(
   };
 }
 
-/** Returns the `codemode` tool; the script's store lives in the plugin's session storage. */
 function codemode(
   api: PluginApi,
   runtime: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">,
@@ -61,7 +60,10 @@ function codemode(
       const callable = invocation.tools
         .list()
         .filter((info) => info.name !== "codemode" && info.exposure !== "hidden");
-      const stored = await api.storage.get<{ readonly [key: string]: Json }>("store");
+      const stored = await api.storage.get("store");
+
+      if (stored !== undefined && !isJsonObject(stored))
+        throw new SdkError("internal", "Codemode's stored values are not a JSON object.");
 
       const sandbox = new CodemodeSandbox({
         ...runtime,
@@ -72,9 +74,12 @@ function codemode(
       });
 
       dev("codemode", "run", { call: invocation.call, tools: callable.length });
-      const result = await sandbox
-        .execute(code, { signal: invocation.signal, store: stored ?? {} })
-        .finally(() => sandbox.close());
+      let result: CodemodeResult;
+      try {
+        result = await sandbox.execute(code, { signal: invocation.signal, store: stored ?? {} });
+      } finally {
+        await sandbox.close();
+      }
       dev("codemode", "end", { call: invocation.call, ok: result.ok, calls: result.calls.length });
 
       if (!result.ok)
@@ -120,7 +125,6 @@ function codemode(
   };
 }
 
-/** Returns a sandbox tool that runs one session tool under `before_tool`, each call keyed by its start order so a re-run replays it. */
 function bridge(info: ToolInfo, invocation: ToolInvocation): CodemodeTool {
   let sequence = 0;
 
@@ -132,15 +136,14 @@ function bridge(info: ToolInfo, invocation: ToolInvocation): CodemodeTool {
     async execute(args, { signal }) {
       const key = `codemode:${info.name}:${sequence++}`;
 
-      return valueOf(
+      return unwrapToolOutcome(
         await invocation.tools.execute(info.name, isJson(args) ? args : null, { key, signal }),
       );
     },
   };
 }
 
-/** Returns what a script receives for a settled call: the output when the tool declares one, else its text; a call that did not succeed throws. */
-function valueOf(outcome: ToolOutcome): Json {
+function unwrapToolOutcome(outcome: ToolOutcome): Json {
   if (outcome.kind === "ok")
     return (
       outcome.output ??
@@ -156,7 +159,6 @@ function valueOf(outcome: ToolOutcome): Json {
   );
 }
 
-/** Returns the discovery globals over the callable tools: `searchTools(query, { limit, namespace })` ranked by shared words, within one `ToolInfo.namespace` when given (§48d), and `describeTool(name)` a tool's declaration. */
 function discovery(tools: readonly ToolInfo[]): CodemodeTool[] {
   return [
     {
@@ -195,7 +197,7 @@ function discovery(tools: readonly ToolInfo[]): CodemodeTool[] {
               .filter((word) => words.has(word)).length,
           }))
           .filter((entry) => entry.score > 0)
-          .sort((left, right) => right.score - left.score)
+          .toSorted((left, right) => right.score - left.score)
           .slice(0, limit)
           .map(({ info }) => ({
             name: info.name,
@@ -222,14 +224,12 @@ function discovery(tools: readonly ToolInfo[]): CodemodeTool[] {
   ];
 }
 
-/** Returns the calls a failed script made, which are not undone. */
 function calls(result: CodemodeResult): string {
   return result.calls.length === 0
     ? "No tool calls were made."
     : `Tool calls made before the failure (not undone): ${result.calls.map((call) => `${call.name} (${call.status})`).join(", ")}`;
 }
 
-/** Returns one chunk as a stream, for `files.upload`. */
 async function* once(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   yield bytes;
 }

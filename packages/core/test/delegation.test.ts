@@ -7,7 +7,6 @@ import { fakeModels, open } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
 import { until } from "./harness.ts";
 
-/** Returns the tool part a view holds for a provider call id (the call id is `${run}:${id}`, §38w), settled. */
 function settledCall(messages: readonly Message[], call: string) {
   const found = messages.find(
     (message) => isPart(message, tool) && message.state.call.endsWith(`:${call}`),
@@ -18,7 +17,6 @@ function settledCall(messages: readonly Message[], call: string) {
   return found.state;
 }
 
-/** Returns the text of a request's last tool result. */
 function lastResult(request: Request | undefined): string {
   const result = request?.context.messages.findLast((message) => message.role === "toolResult");
   assert(result?.role === "toolResult");

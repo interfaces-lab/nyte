@@ -5,15 +5,15 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useLayoutEffect, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { useSession, warmSession } from "../../queries.ts";
+import { useSession } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
-import type { SubagentSession } from "../subagent-sessions.ts";
+import type { SubagentTrayState } from "../agent-status.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 export type SubagentTrayView =
@@ -21,16 +21,11 @@ export type SubagentTrayView =
   | { readonly kind: "list"; readonly retainedSessionId: SessionId | undefined }
   | { readonly kind: "detail"; readonly sessionId: SessionId };
 
-function trayState(agent: SubagentSession) {
-  return "kind" in agent ? "starting" : subagentTrayState(agent);
-}
-
 const TRAY_STATE_LABEL = {
-  starting: "Starting",
   working: "Working",
   attention: "Needs attention",
   inactive: "Completed",
-} satisfies Readonly<Record<ReturnType<typeof trayState>, string>>;
+} satisfies Readonly<Record<SubagentTrayState, string>>;
 
 const styles = create({
   attentionDot: {
@@ -47,16 +42,8 @@ const styles = create({
   detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "clip" },
 });
 
-function agentTitle(agent: SubagentSession | undefined, sessionId: SessionId): string {
-  if (agent === undefined) return sessionId;
-
-  if ("kind" in agent) return agent.title;
-
-  return agent.name ?? sessionId;
-}
-
-function agentActivityAt(agent: SubagentSession): number {
-  return "kind" in agent ? agent.startedAt : agent.lastActivityAt;
+function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): string {
+  return agent?.name ?? sessionId;
 }
 
 export function SubagentTray({
@@ -70,7 +57,7 @@ export function SubagentTray({
   detail,
 }: {
   readonly parentSessionId: SessionId;
-  readonly agents: readonly SubagentSession[];
+  readonly agents: readonly SessionInfo[];
   readonly view: SubagentTrayView;
   readonly onViewChange: (view: SubagentTrayView) => void;
   readonly onExpand: (sessionId: SessionId) => void;
@@ -101,24 +88,26 @@ export function SubagentTray({
   const active = useMemo(
     () =>
       agents
-        .filter((agent) => trayState(agent) !== "inactive")
+        .filter((agent) => subagentTrayState(agent) !== "inactive")
         .toSorted((left, right) => {
           const attention =
-            Number(trayState(left) !== "attention") - Number(trayState(right) !== "attention");
+            Number(subagentTrayState(left) !== "attention") -
+            Number(subagentTrayState(right) !== "attention");
 
           return (
             attention ||
-            agentActivityAt(right) - agentActivityAt(left) ||
+            right.lastActivityAt - left.lastActivityAt ||
             left.id.localeCompare(right.id)
           );
         }),
     [agents],
   );
 
-  const running = active.filter((agent) => trayState(agent) === "working");
-  const stoppable = active.filter((agent) => !("kind" in agent));
+  const running = active.filter((agent) => subagentTrayState(agent) === "working");
 
-  const settled = agents.find((agent) => agent.id === pinnedId && trayState(agent) === "inactive");
+  const settled = agents.find(
+    (agent) => agent.id === pinnedId && subagentTrayState(agent) === "inactive",
+  );
 
   const listed = settled === undefined ? active : [...active, settled];
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
@@ -165,7 +154,7 @@ export function SubagentTray({
             {running.length > 0 ? (
               <StatusDot mark="working" />
             ) : (
-              active.some((agent) => trayState(agent) === "attention") && (
+              active.some((agent) => subagentTrayState(agent) === "attention") && (
                 <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
               )
             )}
@@ -193,7 +182,7 @@ export function SubagentTray({
           <>
             <div {...props(trayStyles.header)}>
               <span {...props(trayStyles.title)}>Agents</span>
-              {stoppable.length > 0 && (
+              {active.length > 0 && (
                 <Button
                   aria-description={
                     stopCandidates === undefined
@@ -205,16 +194,14 @@ export function SubagentTray({
                   disabled={stop.isPending}
                   onClick={() => {
                     if (stopCandidates === undefined) {
-                      setStopCandidates(stoppable.map((agent) => agent.id));
+                      setStopCandidates(active.map((agent) => agent.id));
 
                       return;
                     }
 
                     const candidates = new Set(stopCandidates);
                     stopAll.mutate(
-                      stoppable
-                        .filter((agent) => candidates.has(agent.id))
-                        .map((agent) => agent.id),
+                      active.filter((agent) => candidates.has(agent.id)).map((agent) => agent.id),
                     );
                     setStopCandidates(undefined);
                   }}
@@ -235,15 +222,12 @@ export function SubagentTray({
               {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
             >
               {listed.map((agent) => {
-                const state = trayState(agent);
+                const state = subagentTrayState(agent);
 
                 return (
                   <Row key={agent.id} xstyle={trayParts.row} interactive>
                     <Row.Primary
                       aria-label={`Open ${agentTitle(agent, agent.id)}`}
-                      onPointerEnter={() => void warmSession(agent.id).catch(() => undefined)}
-                      onFocus={() => void warmSession(agent.id).catch(() => undefined)}
-                      onPointerDown={() => void warmSession(agent.id).catch(() => undefined)}
                       onClick={() => {
                         setStopCandidates(undefined);
                         onViewChange({ kind: "detail", sessionId: agent.id });
@@ -281,17 +265,15 @@ export function SubagentTray({
               <span title={agentTitle(selected, selectedId)} {...props(trayStyles.title)}>
                 {agentTitle(selected, selectedId)}
               </span>
-              {selected !== undefined &&
-                !("kind" in selected) &&
-                trayState(selected) !== "inactive" && (
-                  <Button
-                    tone="danger"
-                    loading={pendingAction}
-                    onClick={() => stop.mutate(selectedId)}
-                  >
-                    Stop Agent
-                  </Button>
-                )}
+              {selected !== undefined && subagentTrayState(selected) !== "inactive" && (
+                <Button
+                  tone="danger"
+                  loading={pendingAction}
+                  onClick={() => stop.mutate(selectedId)}
+                >
+                  Stop Agent
+                </Button>
+              )}
               <TrayIconAction
                 icon="expand"
                 size={15}

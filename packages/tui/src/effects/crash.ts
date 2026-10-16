@@ -1,15 +1,3 @@
-/**
- * The one error sink. Every failure source calls `report`:
- * - the root Solid ErrorBoundary (render, memo and effect errors on the owner chain)
- * - per-part ErrorBoundaries around plugin renderers
- * - the runner (every effect handler)
- * - the store (a reducer or derive that throws keeps the previous state)
- * - `process.on("uncaughtException" | "unhandledRejection")`
- * Each report appends a timestamped entry with stack to the log file and
- * dispatches a `failure` fact; the screen shows it with the log path, and the
- * exit output lists it. The renderer runs with `openConsoleOnError: false`
- * and the app registers no frame callbacks, so no error goes to the overlay.
- */
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -18,7 +6,6 @@ import type { CrashLog } from "./ports.ts";
 
 const ROTATE_AT = 1024 * 1024;
 
-/** `$NYTE_HOME/logs/tui.log`, appended synchronously (a crash may be the last thing that happens), rotated at 1 MB. */
 export function openCrashLog(home: string): CrashLog {
   const path = join(home, "logs", "tui.log");
 
@@ -30,7 +17,6 @@ export function openCrashLog(home: string): CrashLog {
         rotate(path);
         appendFileSync(path, entry(origin, error), { mode: 0o600 });
       } catch {
-        // The log is the last resort; a failure to write it has nowhere else to go.
       }
     },
   };
@@ -72,7 +58,6 @@ function rotate(path: string): void {
   try {
     if (statSync(path).size >= ROTATE_AT) renameSync(path, `${path}.1`);
   } catch {
-    // No file yet: nothing to rotate.
   }
 }
 

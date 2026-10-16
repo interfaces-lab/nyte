@@ -11,10 +11,8 @@ test.use({ chapter: "remote-access" });
 
 const CREATED = "Created in the browser";
 
-// The desktop listener is API only; the pairing link opens the hosted web app.
-// The browser gets the built shell from `dist` on an origin the host allows,
-// without anything listening there.
 const WEB_ORIGIN = APP_ORIGINS[2];
+
 const DIST = join(import.meta.dirname, "../../dist");
 
 const TYPES: Readonly<Record<string, string>> = {
@@ -83,8 +81,6 @@ test("a browser paired through Remote access shares the desktop's chats until it
 
   for (const name of Object.values(FIXTURES)) await expect(chatRow(remote, name)).toBeVisible();
 
-  // The browser creates a chat over the same API with the paired token, so
-  // the desktop's sidebar must pick it up without a reload.
   const status = await remote.evaluate(
     async (input) => {
       const response = await fetch(`${input.host}/sessions.create`, {
@@ -102,7 +98,6 @@ test("a browser paired through Remote access shares the desktop's chats until it
   );
 
   expect(status).toBe(200);
-  // An empty chat lands on the Done shelf.
   await sidebar(page)
     .getByRole("button", { name: /^Done \d+$/u })
     .click();

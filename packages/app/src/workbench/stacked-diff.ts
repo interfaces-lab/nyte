@@ -9,11 +9,6 @@ function tooLargeText(limit: number): string {
   return `This diff is larger than ${String(Math.round(limit / 1_000_000))} MB, so it isn’t shown.`;
 }
 
-/**
- * One file in the stack. `pending` has no patch yet: the stack shows its
- * header alone until the patch is read, first if its header is rendered and
- * otherwise in the background.
- */
 export type ChangeStackSection =
   | {
       readonly kind: "diff";

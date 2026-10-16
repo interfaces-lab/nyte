@@ -109,6 +109,7 @@ describe("Anthropic auth token env", () => {
         windows: [
           {
             id: "five_hour",
+            label: "5-hour",
             usedPercent: 42,
             windowMinutes: 300,
             resetsAt: 2_000_000_000_000,

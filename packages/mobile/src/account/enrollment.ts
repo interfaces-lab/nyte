@@ -22,11 +22,8 @@ type Fetch = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 export type ConnectEnding =
   | { readonly kind: "connected" }
   | { readonly kind: "broker"; readonly failure: BrokerFailure }
-  /** Enrolled, but the host kept refusing the new bearer through the readiness window. */
   | { readonly kind: "notAccepted" }
-  /** Enrolled, but the host never answered through the readiness window. */
   | { readonly kind: "silent" }
-  /** Accepted, but the host did not prove this environment's pinned identity, or any it named. */
   | {
       readonly kind: "unproven";
       readonly failure: Extract<
@@ -39,17 +36,6 @@ export type ConnectEnding =
   | { readonly kind: "unexpected"; readonly detail: string }
   | { readonly kind: "cancelled" };
 
-/**
- * Enroll this phone with one of the account's computers and save the result.
- *
- * The phone makes the bearer and sends the broker only its digest, asking for
- * the controller role. The address is this broker's relay for the picked
- * environment, derived here and never taken from an answer. Once the host
- * accepts the bearer, `verify` holds it to the identity pinned for this
- * broker, owner and environment, and only then is the connection saved under
- * `signal`, so an account change that aborts it leaves nothing behind. A
- * bearer that is not kept is released on the host.
- */
 export async function connectEnvironment(input: {
   readonly broker: BrokerClient;
   readonly environment: EnvironmentSummary;

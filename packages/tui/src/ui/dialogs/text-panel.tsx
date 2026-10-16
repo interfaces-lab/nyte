@@ -1,4 +1,3 @@
-/** Usage, keyboard shortcuts and the plugins report: selectable text in a scrollbox, position line. */
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable, TextRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
@@ -6,35 +5,31 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { useApp } from "../../app/context.tsx";
 import { keycap } from "../../lib/constants.ts";
 import type { TextDialog } from "../../model/dialogs/dialog.ts";
-import { hint, joinHints, Note, Panel } from "./panel.tsx";
+import { hint, joinHints, Note, Panel, useRowCap } from "./panel.tsx";
 
 export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
   const { kit } = useApp();
+  const cap = useRowCap();
 
   const lines = createMemo(() =>
     props.dialog.body.kind === "ready" ? props.dialog.body.lines : [],
   );
 
-  const [viewportRows, setViewportRows] = createSignal(0);
+  const [contentRows, setContentRows] = createSignal(1);
   const nodes: TextRenderable[] = [];
   let scroll: ScrollBoxRenderable | undefined;
 
-  const hints = joinHints([
-    hint("picker.close", "close"),
-    `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} scroll`,
-    `${keycap("picker.page.up")}/${keycap("picker.page.down")} page`,
-    `${keycap("chat.message.previous", "symbol")}/${keycap("chat.message.next", "symbol")} top/end`,
-  ]);
-
-  const position = () => {
-    const total = lines().length;
-
-    if (total === 0) return "";
-    const first = Math.min(total, props.dialog.scroll + 1);
-    const last = Math.max(first, Math.min(total, props.dialog.scroll + viewportRows()));
-
-    return `${String(first)}-${String(last)}/${String(total)}${last < total ? " · more below" : " · end"}`;
-  };
+  const hints = () =>
+    joinHints([
+      hint("picker.close", "close"),
+      ...(contentRows() <= cap()
+        ? []
+        : [
+            `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} scroll`,
+            `${keycap("picker.page.up")}/${keycap("picker.page.down")} page`,
+            `${keycap("chat.message.previous", "symbol")}/${keycap("chat.message.next", "symbol")} top/end`,
+          ]),
+    ]);
 
   const reveal = (): void => {
     const node = nodes[props.dialog.scroll];
@@ -46,7 +41,7 @@ export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
   createEffect(on(() => props.dialog.scroll, reveal));
 
   return (
-    <Panel title={props.dialog.title} hints={hints} fill>
+    <Panel title={props.dialog.title} hints={hints()}>
       <Show
         when={props.dialog.body.kind === "ready"}
         fallback={
@@ -60,8 +55,8 @@ export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
           ref={(box) => {
             scroll = box;
           }}
-          flexGrow={1}
-          flexShrink={1}
+          height={Math.max(1, Math.min(contentRows(), cap()))}
+          flexShrink={0}
           minHeight={1}
           scrollX={false}
           scrollY
@@ -72,12 +67,15 @@ export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
               foregroundColor: kit.theme().scrollbarThumb,
             },
           }}
-          onSizeChange={() => {
-            setViewportRows(scroll?.viewport.height ?? 0);
-            reveal();
-          }}
+          onSizeChange={reveal}
         >
-          <box flexDirection="column">
+          <box
+            flexDirection="column"
+            flexShrink={0}
+            onSizeChange={function () {
+              setContentRows(this.height);
+            }}
+          >
             <For each={lines()}>
               {(line, index) => (
                 <text
@@ -113,7 +111,6 @@ export function TextPanel(props: { readonly dialog: TextDialog }): JSX.Element {
           </box>
         </scrollbox>
       </Show>
-      <Note text={position()} />
     </Panel>
   );
 }

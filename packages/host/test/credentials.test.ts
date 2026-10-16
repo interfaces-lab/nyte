@@ -1,36 +1,85 @@
-import { SdkError, kvRef, memoryStore } from "@nyte-ai/core";
+import { SdkError, envelope, kvRef, memoryStore } from "@nyte-ai/core";
 import type { Store } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
+import { storedAccounts } from "../../ai/test/credential-fixture.ts";
 import { credentialStore, openSecret, sealSecret } from "../src/credentials.ts";
 
 const key = (fill: number) => ({ key: async () => new Uint8Array(32).fill(fill) });
 
 describe("credentialStore", () => {
+  it("migrates an encrypted single credential and lists multiple accounts without its key", async () => {
+    const store = memoryStore();
+    const legacy = { type: "api_key", key: "legacy-secret" };
+
+    const [iv = "", ciphertext = ""] = (await sealSecret(key(1), JSON.stringify(legacy))).split(
+      ".",
+    );
+
+    const connection = await store.open();
+
+    const target = await connection.objects.put(
+      envelope("kv", { type: "api_key", iv, ciphertext }, Date.now()),
+    );
+
+    await connection.refs.set([{ name: kvRef("secret", "models", "p"), target }]);
+    const credentials = credentialStore(store, key(1));
+    expect(await credentials.read("p")).toEqual(
+      storedAccounts({ type: "api_key", key: "legacy-secret" }),
+    );
+    await credentials.modify("p", async (current) => ({
+      active: "work",
+      accounts: [
+        ...(current?.accounts ?? []),
+        { id: "work", label: "Work", credential: { type: "api_key", key: "work-secret" } },
+      ],
+    }));
+
+    const withoutKey = credentialStore(store, {
+      key: async () => {
+        throw new Error("No secrets key");
+      },
+    });
+
+    expect(await withoutKey.list()).toEqual([
+      { providerId: "p", id: "default", label: "Default", type: "api_key", active: false },
+      { providerId: "p", id: "work", label: "Work", type: "api_key", active: true },
+    ]);
+    expect(await withoutKey.read("p")).toBeUndefined();
+  });
+
   it("round-trips, lists and deletes credentials encrypted at rest", async () => {
     const store = memoryStore();
     const credentials = credentialStore(store, key(1));
 
     expect(await credentials.read("anthropic")).toBeUndefined();
-    await credentials.modify("anthropic", async () => ({ type: "api_key", key: "sk-secret" }));
-    await credentials.modify("openai", async () => ({
-      type: "oauth",
-      access: "a",
-      refresh: "r",
-      expires: 5,
-      accountId: "acct",
-    }));
+    await credentials.modify("anthropic", async () =>
+      storedAccounts({ type: "api_key", key: "sk-secret" }),
+    );
+    await credentials.modify("openai", async () =>
+      storedAccounts({
+        type: "oauth",
+        access: "a",
+        refresh: "r",
+        expires: 5,
+        accountId: "acct",
+      }),
+    );
 
-    expect(await credentials.read("anthropic")).toEqual({ type: "api_key", key: "sk-secret" });
-    expect(await credentials.read("openai")).toEqual({
-      type: "oauth",
-      access: "a",
-      refresh: "r",
-      expires: 5,
-      accountId: "acct",
-    });
+    expect(await credentials.read("anthropic")).toEqual(
+      storedAccounts({ type: "api_key", key: "sk-secret" }),
+    );
+    expect(await credentials.read("openai")).toEqual(
+      storedAccounts({
+        type: "oauth",
+        access: "a",
+        refresh: "r",
+        expires: 5,
+        accountId: "acct",
+      }),
+    );
     expect(await credentials.list()).toEqual([
-      { providerId: "anthropic", type: "api_key" },
-      { providerId: "openai", type: "oauth" },
+      { providerId: "anthropic", type: "api_key", id: "default", label: "Default", active: true },
+      { providerId: "openai", type: "oauth", id: "default", label: "Default", active: true },
     ]);
 
     const connection = await store.open();
@@ -41,12 +90,14 @@ describe("credentialStore", () => {
 
     await credentials.delete("anthropic");
     expect(await credentials.read("anthropic")).toBeUndefined();
-    expect(await credentials.list()).toEqual([{ providerId: "openai", type: "oauth" }]);
+    expect(await credentials.list()).toEqual([
+      { providerId: "openai", type: "oauth", id: "default", label: "Default", active: true },
+    ]);
   });
 
   it("modifies on the current credential and keeps it when fn returns undefined", async () => {
     const credentials = credentialStore(memoryStore(), key(1));
-    await credentials.modify("p", async () => ({ type: "api_key", key: "one" }));
+    await credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "one" }));
     const seen: unknown[] = [];
 
     const kept = await credentials.modify("p", async (current) => {
@@ -55,8 +106,8 @@ describe("credentialStore", () => {
       return undefined;
     });
 
-    expect(seen).toEqual([{ type: "api_key", key: "one" }]);
-    expect(kept).toEqual({ type: "api_key", key: "one" });
+    expect(seen).toEqual([storedAccounts({ type: "api_key", key: "one" })]);
+    expect(kept).toEqual(storedAccounts({ type: "api_key", key: "one" }));
   });
 
   it("reads another instance's write and runs fn again on stale, then gives up after 5 retries", async () => {
@@ -64,7 +115,6 @@ describe("credentialStore", () => {
     let sets = 0;
 
     const stale: Store = {
-      kind: inner.kind,
       close: () => inner.close(),
       async open() {
         const connection = await inner.open();
@@ -89,7 +139,7 @@ describe("credentialStore", () => {
       .modify("p", async () => {
         runs.push(runs.length);
 
-        return { type: "api_key", key: "k" };
+        return storedAccounts({ type: "api_key", key: "k" });
       })
       .catch((error: unknown) => error);
 
@@ -101,7 +151,9 @@ describe("credentialStore", () => {
 
   it("reads a record sealed under another key as absent; without a key, read is undefined and modify rejects", async () => {
     const store = memoryStore();
-    await credentialStore(store, key(1)).modify("p", async () => ({ type: "api_key", key: "k" }));
+    await credentialStore(store, key(1)).modify("p", async () =>
+      storedAccounts({ type: "api_key", key: "k" }),
+    );
 
     expect(await credentialStore(store, key(2)).read("p")).toBeUndefined();
 
@@ -112,7 +164,9 @@ describe("credentialStore", () => {
     });
 
     expect(await locked.read("p")).toBeUndefined();
-    expect(await locked.list()).toEqual([{ providerId: "p", type: "api_key" }]);
+    expect(await locked.list()).toEqual([
+      { providerId: "p", type: "api_key", id: "default", label: "Default", active: true },
+    ]);
     await expect(locked.modify("p", async () => undefined)).rejects.toMatchObject({
       code: "unavailable",
     });
@@ -132,14 +186,16 @@ describe("credentialStore", () => {
     expect(await credentials.read("p")).toBeUndefined();
     expect(await credentials.list()).toEqual([]);
     expect(reads).toBe(0);
-    await credentials.modify("p", async () => ({ type: "api_key", key: "k" }));
+    await credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "k" }));
 
     expect(reads).toBe(1);
   });
 
   it("never calls key() to list, nor to read a provider without a record, while other records exist (§55)", async () => {
     const store = memoryStore();
-    await credentialStore(store, key(5)).modify("p", async () => ({ type: "api_key", key: "k" }));
+    await credentialStore(store, key(5)).modify("p", async () =>
+      storedAccounts({ type: "api_key", key: "k" }),
+    );
     let reads = 0;
 
     const credentials = credentialStore(store, {
@@ -150,10 +206,12 @@ describe("credentialStore", () => {
       },
     });
 
-    expect(await credentials.list()).toEqual([{ providerId: "p", type: "api_key" }]);
+    expect(await credentials.list()).toEqual([
+      { providerId: "p", type: "api_key", id: "default", label: "Default", active: true },
+    ]);
     expect(await credentials.read("q")).toBeUndefined();
     expect(reads).toBe(0);
-    expect(await credentials.read("p")).toEqual({ type: "api_key", key: "k" });
+    expect(await credentials.read("p")).toEqual(storedAccounts({ type: "api_key", key: "k" }));
     expect(reads).toBe(1);
   });
 
@@ -177,11 +235,11 @@ describe("credentialStore", () => {
     });
 
     await expect(
-      credentials.modify("p", async () => ({ type: "api_key", key: "k" })),
+      credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "k" })),
     ).rejects.toMatchObject({ code: "unavailable" });
     ready = true;
-    await credentials.modify("p", async () => ({ type: "api_key", key: "k" }));
+    await credentials.modify("p", async () => storedAccounts({ type: "api_key", key: "k" }));
 
-    expect(await credentials.read("p")).toEqual({ type: "api_key", key: "k" });
+    expect(await credentials.read("p")).toEqual(storedAccounts({ type: "api_key", key: "k" }));
   });
 });

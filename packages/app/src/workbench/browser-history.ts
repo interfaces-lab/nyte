@@ -5,7 +5,6 @@ import { keys, queryClient } from "../queries.ts";
 
 const NONE: readonly BrowserHistoryEntry[] = [];
 
-/** Main's history for a cookie jar: a workspace path, or null for home. Events keep it current. */
 export function useBrowserHistory(owner: string | null): readonly BrowserHistoryEntry[] {
   const history = useQuery({
     queryKey: keys.browserHistory(owner),

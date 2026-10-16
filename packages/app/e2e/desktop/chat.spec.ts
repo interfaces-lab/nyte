@@ -33,7 +33,7 @@ test("a seeded chat shows both of its turns", async ({ desktop }) => {
   await expect(composer(page)).toHaveAttribute("data-placeholder", "Add a follow-up");
 });
 
-test("a new chat is created by its first message and answered", async ({ desktop }) => {
+test("a new chat is created by its first message, answered and named", async ({ desktop }) => {
   const { page } = desktop;
   await openNewChat(page);
   await send(page, "Hello desktop");
@@ -41,13 +41,12 @@ test("a new chat is created by its first message and answered", async ({ desktop
     "Hello desktop",
     "Echo: Hello desktop",
   ]);
-  await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
-  await expect(chatRow(page, "New chat")).toBeVisible();
+  await expect(chatTab(page, "Hello desktop")).toHaveAttribute("aria-selected", "true");
+  await expect(chatRow(page, "Hello desktop")).toBeVisible();
   await expect(sidebar(page).getByRole("button", { name: /^Draft /u })).toHaveCount(0);
 });
 
 test("a follow-up appends to the open chat", async ({ desktop }) => {
-  test.fixme(true, "A second send in a live chat is never admitted; the host logs no admission.");
   const { page } = desktop;
   await send(page, "And again");
   await expect(messages(page).getByRole("paragraph")).toHaveText([
@@ -58,11 +57,7 @@ test("a follow-up appends to the open chat", async ({ desktop }) => {
   ]);
 });
 
-test("a held response can be stopped", async ({ desktop }) => {
-  test.fixme(
-    true,
-    "The renderer posts /run.stop but the host never answers it; Stop stays visible.",
-  );
+test("a held response can be stopped", async ({ desktop }, testInfo) => {
   const { page } = desktop;
   await openNewChat(page);
   await send(page, "/hold");
@@ -75,6 +70,16 @@ test("a held response can be stopped", async ({ desktop }) => {
   await stop.click();
   await expect(stop).toBeHidden();
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+  await send(page, "After stopping");
+  await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: After stopping");
+  await testInfo.attach("chat-after-stop", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  await testInfo.attach("chat-after-stop-accessibility", {
+    body: await page.locator("body").ariaSnapshot(),
+    contentType: "text/plain",
+  });
 });
 
 test("a refused turn shows the provider's error", async ({ desktop }) => {

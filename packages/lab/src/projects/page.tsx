@@ -1,17 +1,3 @@
-/**
- * Projects, in the desktop's shell: you talk to one coordinator, and it runs
- * the agents.
- *
- * The chrome is the app's: the titlebar with the window tabs, the sidebar on
- * the material, and the main area as a card set into it. Projects are folders
- * in the sidebar. The coordinator is the project's first tab; any agent opens
- * beside it, so ten agents are ten tabs in the titlebar, not ten rows in your
- * sidebar. The project's panel sits inside the card where the workbench does.
- *
- * The folder and the tabs borrow from define.app; the lab tray at the bottom
- * right steps the scripted coordinator and switches between the designs.
- * Reference: https://cursor.com/blog/projects
- */
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
@@ -95,7 +81,6 @@ function AgentGlyph({ agent }: { readonly agent: Agent }): ReactElement {
       />
     );
 
-  // Cloud is where agents run; only the exception carries a badge, as in the sidebar.
   if (agent.place === "cloud") return glyph;
 
   return (
@@ -280,7 +265,6 @@ function Rail({
   );
 }
 
-/** A quiet line in the transcript: something the coordinator handled so you didn't have to. */
 function Aside({
   icon,
   children,
@@ -454,7 +438,6 @@ function ContextRow({
   );
 }
 
-/** The transcript's scroller: its top dissolves once there is more above, as the desktop's does. */
 function FadedScroll({
   reversed = false,
   children,
@@ -497,7 +480,6 @@ function PaneHeader({
   );
 }
 
-/** What an agent tab shows: enough to know what it is doing and what it made. */
 function AgentPane({ agent }: { readonly agent: Agent }): ReactElement {
   return (
     <>
@@ -591,7 +573,6 @@ function Composer({
 interface TabState {
   readonly open: readonly string[];
   readonly active: string;
-  /** Most recent first; picks what to show when the active tab closes. */
   readonly history: readonly string[];
   readonly closed: readonly { readonly id: string; readonly index: number }[];
 }
@@ -720,7 +701,6 @@ export function ProjectsPage(): ReactElement {
       : file,
   );
 
-  // Tabs for agents this step has not started yet fall away with the step.
   const openIds = tabs.open.filter((id) => project.agents.has(id));
 
   const activeId =
@@ -919,7 +899,7 @@ export function ProjectsPage(): ReactElement {
                       <Icon name="agent" size={14} label="Coordinator" />
                     </span>
                   </PaneHeader>
-                  {/* Reversed so the newest entry holds the bottom as steps add more. */}
+                  {}
                   <FadedScroll reversed>
                     <div {...props(styles.transcript)}>
                       {project.entries.map((entry, index) => (
@@ -1186,7 +1166,6 @@ export function ProjectsPage(): ReactElement {
 }
 
 const styles = create({
-  /** The chrome runs behind everything; the main area is a card set into it. */
   window: {
     position: "relative",
     display: "flex",
@@ -1199,7 +1178,6 @@ const styles = create({
     fontFamily: type.fontSans,
   },
   lights: { display: "flex", alignItems: "center", gap: 8, paddingInline: "6px 10px" },
-  // Stand-ins for the macOS window controls the real titlebar leaves room for.
   light: {
     width: 12,
     height: 12,
@@ -1209,7 +1187,6 @@ const styles = create({
   fill: { flex: 1 },
   stage: { display: "flex", flex: 1, minHeight: 0 },
   rail: { width: sidebar.width },
-  // The lab's page switcher floats over the bottom corner; the list scrolls clear of it.
   railScroll: { paddingBlockEnd: 56 },
   card: {
     display: "flex",
@@ -1227,7 +1204,6 @@ const styles = create({
     transitionTimingFunction: motionTokens.easeOut,
   },
   cardSidebarHidden: { marginInlineStart: shell.cardInset },
-  // A 1px corner, not 0, keeps the hairline continuous where the tab meets the card.
   cardSquare: { borderStartStartRadius: 1 },
   pane: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   paneHeader: {
@@ -1429,7 +1405,6 @@ const styles = create({
     fontFamily: type.fontSans,
     fontSize: type.fontXs,
   },
-  /** The lab's own controls float over the bottom corner, clear of the page switcher. */
   tray: {
     position: "fixed",
     insetBlockEnd: 12,

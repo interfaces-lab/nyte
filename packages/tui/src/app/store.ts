@@ -1,9 +1,3 @@
-/**
- * The loop: dispatch → reduce → signal → derive → effects. The only place
- * `State` is held. Messages dispatched while reducing or while effects are
- * being handed off (a failure report, a handler that dispatches before its
- * first await) queue and drain in order, so reduce never re-enters.
- */
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Runner, RunnerContext } from "../effects/runner.ts";
@@ -19,9 +13,7 @@ export interface Store {
   readonly screen: Accessor<ScreenModel>;
   readonly runner: Runner;
   readonly dispatch: (msg: Msg) => void;
-  /** Resolves when the queue is drained and every effect settled (tests). */
   settled(): Promise<void>;
-  /** Disposes the screen memo's root; the runner is disposed by its owner. */
   dispose(): void;
 }
 
@@ -61,7 +53,6 @@ export function createStore(options: StoreOptions): Store {
         current = result.state;
         effects.push(...result.effects);
       } catch (error) {
-        // A failure fact that throws would report itself forever.
         if (msg.kind !== "failure") options.report("reducer", error);
       }
     };

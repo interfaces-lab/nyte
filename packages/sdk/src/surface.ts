@@ -1,4 +1,3 @@
-/** Every type the baseline names on the sdk's surface, from core and schema, and the one error class; not the part built-ins or `definePart`/`isPart`, which a plugin imports from core. */
 export type {
   ActionContext,
   ActionOutput,
@@ -32,6 +31,7 @@ export type {
   ListenOptions,
   Listener,
   Login,
+  McpApi,
   ModelContextPolicy,
   ModelsApi,
   ObjectStore,
@@ -155,10 +155,21 @@ export type {
   Json,
   LineStat,
   LoginMethod,
+  McpChange,
+  McpExposure,
+  McpExposureName,
+  McpOAuthConfig,
+  McpScope,
+  McpServerConfig,
+  McpServerState,
+  McpServerView,
+  McpToolView,
+  McpView,
   MergeOutcome,
   Message,
   MessageId,
   MessageSource,
+  ModelAccount,
   ModelCatalogView,
   ModelContext,
   ModelInfo,
@@ -191,6 +202,7 @@ export type {
   PrincipalId,
   PrincipalView,
   PromptOverride,
+  ProviderUsage,
   ReceiptId,
   Ref,
   RefUpdate,
@@ -249,7 +261,9 @@ export type {
   WorkspaceTarget,
   WriteOutcome,
 } from "@nyte-ai/schema";
+
 export type { Failure } from "@nyte-ai/schema/model";
 
 export { dev, SdkError } from "@nyte-ai/core";
+
 export type { DevRow } from "@nyte-ai/core";

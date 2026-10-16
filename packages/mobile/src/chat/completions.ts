@@ -1,28 +1,14 @@
-/**
- * What `@` and `/` offer in the composer, and what accepting one writes.
- *
- * The choices come from the host: files from the workspace's `files.find`,
- * commands and skills from the session view's catalog. A chat starts with its
- * first message, so a new chat offers no commands or skills, and files from
- * the folder chosen here.
- */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CommandInfo, Connection, SessionCatalogView, WorkspaceId } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
 
-/** The inline composer token being completed: its trigger, its span, and the text typed after the trigger. */
 export interface CompletionTrigger {
   readonly kind: "@" | "/";
-  /** Full token span. Accepting a result replaces this range. */
   readonly start: number;
   readonly end: number;
   readonly query: string;
 }
 
-/**
- * Returns the @ or / token under the caret. Mid-word trigger characters are
- * text, while the replacement range extends through the token's whole tail.
- */
 function completionTrigger(value: string, cursor: number): CompletionTrigger | undefined {
   const caret = Math.max(0, Math.min(cursor, value.length));
   let start = caret;
@@ -67,11 +53,6 @@ export interface Completions {
   readonly commands: readonly CommandInfo[];
 }
 
-/**
- * Where a composer's `@` and `/` look: a conversation's folder and the
- * catalog its view carries, or a new chat with the folder this phone chose,
- * if any.
- */
 export type CompletionSource =
   | {
       readonly kind: "session";
@@ -145,11 +126,6 @@ function slashChoices(
   ];
 }
 
-/**
- * The menu for the token under the caret. Commands and skills are the session
- * view's catalog; files are read per query, because the host holds the tree and
- * narrows it rather than sending a repository to a phone.
- */
 export function useCompletions(
   client: Connection,
   source: CompletionSource,

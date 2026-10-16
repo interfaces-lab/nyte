@@ -1,8 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/main/packages/ai/test/anthropic-oauth.test.ts
- * and https://github.com/earendil-works/pi/blob/main/packages/ai/test/oauth-callback-server.test.ts
- * Synced with pi a276dabe5.
- */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -197,6 +192,33 @@ describe("Anthropic OAuth", () => {
       assert.equal(fetchMock.mock.calls.length, 1);
     },
   );
+
+  test("a browser elsewhere signs in by copy code without asking for a method", async () => {
+    let authUrl = "";
+    const prompts: AuthPrompt["type"][] = [];
+    vi.stubGlobal("fetch", vi.fn(tokens));
+
+    const credentials = await anthropicOAuth.login({
+      signal: neverAbortedSignal,
+      browser: "elsewhere",
+      notify: (event) => {
+        if (event.type === "auth_url") authUrl = event.url;
+      },
+      prompt: async (prompt) => {
+        prompts.push(prompt.type);
+        const state = new URL(authUrl).searchParams.get("state");
+
+        return `manual-code#${state ?? ""}`;
+      },
+    });
+
+    assert.equal(credentials.access, "access");
+    assert.deepEqual(prompts, ["manual_code"]);
+    assert.equal(
+      new URL(authUrl).searchParams.get("redirect_uri"),
+      "https://platform.claude.com/oauth/code/callback",
+    );
+  });
 
   test("omits scope from refresh token requests", async () => {
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit): Promise<Response> => {

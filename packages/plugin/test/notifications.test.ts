@@ -1,7 +1,7 @@
 import type { ClientApi } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
-import notifications from "../src/notifications.ts";
+import notifications from "../src/client/notifications.ts";
 import { clientApi } from "./client-api.ts";
 import { fakeModels, open } from "./fake-models.ts";
 

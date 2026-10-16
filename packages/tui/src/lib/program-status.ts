@@ -1,11 +1,9 @@
 import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
-/** What the followed session is doing right now. */
 export interface Activity {
   readonly busy: boolean;
   readonly execution: Execution | undefined;
-  /** The ask in front of the user, from the followed session or one of its sub-agents. */
   readonly question: string | undefined;
 }
 
@@ -20,10 +18,8 @@ const ST = "\u001B\\";
 
 const MSG_MAX_BYTES = 2048;
 
-/** Clears the terminal's OSC 7501 root record. */
 export const CLEARED = `${OSC}state=clear${ST}`;
 
-/** Precedence: an ask, then busy, then a run that ended while watched. Stopped is the user's interrupt: idle. */
 export function statusOf(activity: Activity, live: RunId | undefined): ProgramStatus {
   const { question, busy, execution } = activity;
 
@@ -53,7 +49,6 @@ export function encode(status: ProgramStatus): string {
   return `${OSC}${pairs.join(":")}${ST}`;
 }
 
-/** Base64 of one clean line cut to the spec's byte cap at a code point boundary. */
 function message(text: string): string | undefined {
   const clean = singleLine(text);
 

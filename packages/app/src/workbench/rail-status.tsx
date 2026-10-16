@@ -5,6 +5,7 @@ import type { GitStatus, SessionId, Usage } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
@@ -30,7 +31,7 @@ function StatusRow({
   readonly children?: ReactNode;
 }): ReactElement {
   return (
-    <Row xstyle={workbenchStyles.railRow}>
+    <Row xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Leading>
         <Icon name={icon} size={14} />
       </Row.Leading>
@@ -72,13 +73,12 @@ function CostRow({
   if (usage === undefined || usage.total === 0)
     return <StatusRow icon="speed-low" label="No usage yet" quiet actions={actions} />;
 
-  // A model without a price records tokens and a zero cost.
   const label =
     usage.cost.total > 0 ? formatUsd(usage.cost.total) : `${formatTokens(usage.total)} tokens`;
 
   return (
     <Tooltip>
-      <Row interactive xstyle={workbenchStyles.railRow}>
+      <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
         <Row.Primary
           render={<TooltipTrigger />}
           onClick={
@@ -103,7 +103,6 @@ function CostRow({
   );
 }
 
-/** What the chat's last run spent and how full its context is, as its view carries them. */
 export function SessionStatusRows({
   sessionId,
   actions,
@@ -185,7 +184,7 @@ export function ChangesRow({
   readonly onOpen: () => void;
 }): ReactElement {
   return (
-    <Row interactive xstyle={workbenchStyles.railRow}>
+    <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary onClick={onOpen}>
         <Row.Leading>
           <Icon name="diff" size={14} />

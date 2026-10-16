@@ -4,7 +4,7 @@ import { SdkError } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
-import { memoryJournal } from "../src/journal.ts";
+import { createSendJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -27,7 +27,7 @@ async function client(
     kind: "token",
     token: TOKEN_SECRET,
   },
-  journal = memoryJournal(),
+  journal = createSendJournal(),
 ): Promise<Connection> {
   const connection = await connect({ url: BASE, credentials, fetch: host.fetch, journal });
   cleanups.push(() => connection.close());
@@ -47,7 +47,6 @@ function users(view: SessionView): readonly string[] {
   );
 }
 
-/** Scripts a first reply that pauses after its first token until `resume`, then `rest`. */
 function paused(host: Served, ...rest: string[]) {
   const halfway = Promise.withResolvers<void>();
   const resume = Promise.withResolvers<void>();
@@ -108,7 +107,7 @@ describe("edits", () => {
 
   it("replays a journaled revise on the next connect without editing the head again (ADV A N1, probe /tmp/adv-a2 N1-sdk)", async () => {
     const host = await open();
-    const journal = memoryJournal();
+    const journal = createSendJournal();
     const connection = await client(host, undefined, journal);
     const session = await connection.sessions.create();
     const script = paused(host, "Second answer.", "Third answer.", "Again.");
@@ -146,7 +145,7 @@ describe("edits", () => {
 
   it("shows an edit of a landed message unsent in its place in view() and watch() while it retries (ADV C N1 = A N7, probe /tmp/adversarial-c2-probe J2)", async () => {
     const host = await open();
-    const journal = memoryJournal();
+    const journal = createSendJournal();
     const connection = await client(host, undefined, journal);
     host.fake.reply(text("One."), text("Two."));
     const session = await connection.sessions.create();
@@ -171,7 +170,7 @@ describe("edits", () => {
     const owner = await client(host);
     host.fake.reply(text("One."), text("Two."));
     const session = await owner.sessions.create();
-    const journal = memoryJournal();
+    const journal = createSendJournal();
     const one = await host.host.principals.pair({ authority: new Set(["participant"]) });
     const first = await client(host, { kind: "pairing", code: one.code }, journal);
     const sent = await first.session(session.id).send("Draft.");

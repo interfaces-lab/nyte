@@ -113,6 +113,10 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
     label: "nyte update [version|--check|--models]",
     detail: "install nyte, check for an update, or refresh models",
   },
+  { label: "nyte serve [--port <n>] [--token <t>]", detail: "serve this folder over HTTP" },
+  { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
+  { label: "nyte service [status|stop|run]", detail: "manage the background service" },
+  { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
@@ -149,7 +153,9 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
   ].join("\n");
 }
 
-export function renderCommandHelp(command: "login" | "logout" | "update" | "status"): string {
+export function renderCommandHelp(
+  command: "login" | "logout" | "update" | "status" | "serve" | "account" | "service" | "mcp",
+): string {
   switch (command) {
     case "login":
       return [
@@ -181,6 +187,49 @@ export function renderCommandHelp(command: "login" | "logout" | "update" | "stat
         "List stored credential providers and methods without exposing values.",
         "--json emits a status record then a terminal result as JSONL on stdout.",
         "Example: nyte status --json",
+      ].join("\n");
+    case "serve":
+      return [
+        "Usage: nyte serve [--port <n>] [--token <t>]",
+        "Serve this folder's host over HTTP until interrupted. --port defaults to a free port.",
+        "Prints the address to stdout; without --token, prints a generated token to stderr.",
+        "Example: nyte serve --port 4100",
+      ].join("\n");
+    case "account":
+      return [
+        "Usage: nyte account [status | unlink]",
+        "Share this machine with your Nyte account until Ctrl-C. Separate from `nyte login`, which signs in a model provider.",
+        "Not linked yet: opens the approval page in your browser and prints the code to enter there.",
+        "status prints the link and its devices; unlink removes this machine from the account.",
+        "Example: nyte account",
+      ].join("\n");
+    case "service":
+      return [
+        "Usage: nyte service [status | stop | run [--port <n>]]",
+        "Every nyte command shares one background service, started on first use.",
+        "status prints its address and pid; stop stops it; run keeps it in the foreground.",
+        "It listens on a free 127.0.0.1 port; NYTE_SERVICE_PORT or --port pins one.",
+        "Example: nyte service status",
+      ].join("\n");
+    case "mcp":
+      return [
+        "Usage: nyte mcp <command>",
+        "  add <name> [options] --url <url>         add a streamable HTTP server",
+        "  add <name> [options] -- <command> [args]  add a server run over stdio",
+        "  remove <name> [--local]                  remove a server; its sign-in stays",
+        "  list [--json]                            connect every server and print its state",
+        "  login [<name>]                           sign in to a server with OAuth; choose when omitted",
+        "  logout <name>                            delete a server's stored sign-in",
+        "",
+        "add and remove change ~/.nyte/mcp.json, or this folder's .nyte/mcp.json with --local (-l),",
+        "which needs the folder to be trusted. add options: --env KEY=VALUE, --cwd <dir>,",
+        "--header KEY=VALUE, --bearer-token-env-var <NAME>, --oauth-client-id <id>,",
+        "--oauth-client-secret <secret>, --oauth-callback-port <n>, --oauth-client-name <name>,",
+        "--exposure direct|deferred|codemode|hidden, --description <text>.",
+        "list exits 1 when an entry is invalid or an enabled server is not connected.",
+        "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
+        "Examples: nyte mcp add docs --url https://example.com/mcp",
+        "          nyte mcp add files -- npx -y @modelcontextprotocol/server-filesystem .",
       ].join("\n");
     default: {
       const _exhaustive: never = command;

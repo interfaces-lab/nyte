@@ -1,18 +1,10 @@
-/**
- * Time for animation: the spinner (130 ms), the welcome moon (250 ms), the
- * running clocks on tool cards (1 s). One interval per period, shared, and
- * only while some component reads it (ref-counted through `onCleanup`).
- * Timers only set a signal; Solid schedules the repaint. No frame callbacks.
- */
 import { createSignal, getOwner, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Clock } from "../effects/ports.ts";
 
 export interface Tickers {
-  /** A counter that advances every `intervalMs` while something reads it; release is the reader's `onCleanup`. */
   ticker(intervalMs: number): Accessor<number>;
   now(): number;
-  /** Stops every interval; the renderer is closing. */
   dispose(): void;
 }
 

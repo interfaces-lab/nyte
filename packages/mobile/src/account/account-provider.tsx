@@ -67,12 +67,6 @@ export interface Account {
    */
   readonly renew: () => Promise<SignInEnding>;
   readonly signOut: () => Promise<SignOutEnding>;
-  /**
-   * Enroll with one of `ownerId`'s computers. Refused unless that owner is
-   * still the one signed in, so a list drawn for one account never enrolls
-   * under another. `repair` replaces the environment's pinned host identity,
-   * and only after the host signs for its new one.
-   */
   readonly connect: (input: {
     readonly ownerId: string;
     readonly environment: EnvironmentSummary;

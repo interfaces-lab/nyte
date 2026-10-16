@@ -27,7 +27,6 @@ const AccountDevice = Type.Object(
     deviceId: Uuid,
     name: Name,
     token: DeviceToken,
-    /** What this browser enrolled as; the host grants `owner` only with its operator's consent. */
     role: DeviceRole,
   },
   { additionalProperties: false },

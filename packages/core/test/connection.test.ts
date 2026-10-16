@@ -20,13 +20,15 @@ import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fak
 import type { FakeProvider } from "./fake-env.ts";
 import { main, setup, workspace } from "./harness.ts";
 
-/** Calls every row that needs more than participant through a connection and its workspace, answering each row's error code or `allowed`. */
 async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<string, string>> {
   const git = await at.git();
   assert(git.kind === "available");
   const login = () => sdk.models.login({ provider: "p", method: { kind: "key" } });
 
   const rows: Record<string, () => unknown> = {
+    "models.accounts": () => sdk.models.accounts(),
+    "models.selectAccount": () => sdk.models.selectAccount("p", "account"),
+    "models.usage": () => sdk.models.usage(),
     "models.refresh": () => sdk.models.refresh(),
     "models.setDefault": () => sdk.models.setDefault({ provider: "p", id: "m" }),
     "models.verify": () => sdk.models.verify("p"),
@@ -40,6 +42,13 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "workspaces.forget": () => sdk.workspaces.forget(at.id),
     "workspace.update": () => at.update({ projectResources: false }),
     "workspace.reload": () => at.reload(),
+    "mcp.watch": () => at.mcp.watch()[Symbol.asyncIterator]().next(),
+    "mcp.reconnect": () => at.mcp.reconnect("s"),
+    "mcp.setEnabled": () => at.mcp.setEnabled("s", false),
+    "mcp.login": () => at.mcp.login("s"),
+    "mcp.logout": () => at.mcp.logout("s"),
+    "mcp.add": () => at.mcp.add("s", { url: "https://s.test/mcp" }, "user"),
+    "mcp.remove": () => at.mcp.remove("s", "user"),
     "git.stage": () => git.api.stage([]),
     "git.unstage": () => git.api.unstage([]),
     "git.discard": () => git.api.discard([]),
@@ -137,7 +146,7 @@ describe("connection gate (§52 rule 5)", () => {
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
     });
 
-    expect(elevated).toHaveLength(24);
+    expect(elevated).toHaveLength(34);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

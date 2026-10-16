@@ -1,14 +1,9 @@
-/**
- * Fixed chrome copy and keycap strings for the TUI shell. Nothing here touches
- * a renderer, so tests can assert against them directly.
- */
 import process from "node:process";
 import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput } from "@opentui/keymap";
 import { defaultBindingParser } from "@opentui/keymap/addons";
 import type { Thinking } from "@nyte-ai/sdk";
 
-/** Every thinking level a model may accept, lowest first; a model's own `thinking` says which. */
 export const THINKING_LEVELS = [
   "off",
   "minimal",
@@ -19,20 +14,13 @@ export const THINKING_LEVELS = [
   "max",
 ] as const satisfies readonly Thinking[];
 
-/** Acceptance modes used by the slash command API, including mouse activation. */
-const COMPLETION_METHODS = { accept: "return", fill: "tab" } as const;
+const ENTER = "return,kpenter";
 
-/**
- * The default key for each chat command, and the list of chat commands.
- * `src/app/keymap.ts` binds them and the hint rows below read their keycaps
- * straight off this record, so a rebind cannot leave the shell advertising a
- * key that no longer does anything.
- */
 export const CHAT_KEYBINDS = {
-  "chat.submit": "return,kpenter",
+  "chat.submit": ENTER,
   "chat.quit": "ctrl+c",
-  "completion.accept": `${COMPLETION_METHODS.accept},kpenter`,
-  "completion.fill": COMPLETION_METHODS.fill,
+  "completion.accept": ENTER,
+  "completion.fill": "tab",
   "completion.close": "escape",
   "completion.previous": "up",
   "completion.next": "down",
@@ -59,19 +47,20 @@ export const CHAT_KEYBINDS = {
   "chat.task.stop": "ctrl+x",
   "chat.tools.toggle": "ctrl+o",
   "chat.skills.open": "ctrl+s",
-  // Every shortcut here takes a modifier, because a bare printable key is a
-  // character first: binding `?` would cost the ability to send `?`.
   "chat.commands.open": "ctrl+k",
   "chat.history.previous": "up",
   "chat.history.next": "down",
   "composer.newline": "shift+return,shift+kpenter,meta+return,meta+kpenter,ctrl+j",
   "composer.delete.to.line.start": "super+backspace,ctrl+u",
-  "picker.accept": "return",
-  "picker.close": "escape",
+  "composer.yank": "ctrl+y",
+  "picker.accept": ENTER,
+  "picker.close": "escape,ctrl+c",
   "picker.previous": "up,ctrl+p,shift+tab",
   "picker.next": "down,ctrl+n,tab",
   "picker.page.up": "pageup",
   "picker.page.down": "pagedown",
+  "picker.detail.up": "ctrl+pageup",
+  "picker.detail.down": "ctrl+pagedown",
   "model.previous": "up,ctrl+p",
   "model.next": "down,ctrl+n",
   "model.decrease": "left",
@@ -85,28 +74,30 @@ export const CHAT_KEYBINDS = {
   "tree.filter.default": "ctrl+d",
   "tree.filter.tools": "ctrl+t",
   "tree.filter.users": "ctrl+u",
-  "tree.filter.all": "ctrl+a",
+  "tree.filter.all": "ctrl+shift+a",
   "tree.filter.next": "ctrl+o",
   "tree.filter.previous": "ctrl+shift+o",
   "tree.copy": "ctrl+x",
   "auth.cancel": "escape,ctrl+c",
-  "auth.submit": "return",
-  "auth.open": "return,o",
+  "auth.submit": ENTER,
+  "auth.open": `${ENTER},o`,
   "auth.copy": "c",
 } as const satisfies Readonly<Record<string, string>>;
 
 export type ChatCommand = keyof typeof CHAT_KEYBINDS;
 
-/**
- * Editing keys of a dialog's typed field, as OpenTUI's input binds them. A
- * key the open dialog binds itself (Left in the model picker, Ctrl+U in the
- * tree) stays the dialog's.
- */
 export const FIELD_KEYBINDS = {
   "field.left": "left,ctrl+b",
   "field.right": "right,ctrl+f",
-  "field.home": "home,ctrl+a,meta+a,super+left",
+  "field.home": "home,super+left",
   "field.end": "end,ctrl+e,meta+e,super+right",
+  "field.select.all": "ctrl+a,super+a,meta+a",
+  "field.select.left": "shift+left",
+  "field.select.right": "shift+right",
+  "field.select.home": "shift+home,super+shift+left",
+  "field.select.end": "shift+end,super+shift+right",
+  "field.select.word.left": "meta+shift+left,ctrl+shift+left",
+  "field.select.word.right": "meta+shift+right,ctrl+shift+right",
   "field.word.left": "meta+b,meta+left,ctrl+left",
   "field.word.right": "meta+f,meta+right,ctrl+right",
   "field.delete.left": "backspace,shift+backspace",
@@ -119,7 +110,6 @@ export const FIELD_KEYBINDS = {
 
 export type FieldCommand = keyof typeof FIELD_KEYBINDS;
 
-/** Parse single-stroke alternatives with the installed keymap grammar, not a second parser. */
 export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
   return CHAT_KEYBINDS[command].split(",").map((input) => {
     const parsed = defaultBindingParser({
@@ -147,7 +137,6 @@ export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
   });
 }
 
-/** Keycaps read the way they are printed: `esc` and `enter`, not `escape` and `return`. */
 const KEYCAP_NAMES: Readonly<Record<"escape" | "return", string>> = {
   escape: "esc",
   return: "enter",
@@ -157,7 +146,6 @@ function isKeycapName(name: string): name is keyof typeof KEYCAP_NAMES {
   return Object.hasOwn(KEYCAP_NAMES, name);
 }
 
-/** The first of a command's keys, which is the one worth advertising. */
 export function keycap(command: ChatCommand, style?: "symbol"): string {
   const [primary = ""] = CHAT_KEYBINDS[command].split(",");
 
@@ -172,12 +160,10 @@ export function keycap(command: ChatCommand, style?: "symbol"): string {
 
 export const COMPOSER_PLACEHOLDER = "Plan, search, build anything";
 
-/** Enter steers the live run; the hint row names the queue key. */
 export const BUSY_COMPOSER_PLACEHOLDER = "Steer the run";
 
 export const ANSWER_COMPOSER_PLACEHOLDER = `Type an answer, or press ${keycap("picker.accept").replace(/^./u, (letter) => letter.toUpperCase())} to pick one`;
 
-/** Fixed transcript vocabulary and layout values. */
 export const ACTIVITY_WORKING_LABEL = " Working";
 
 export const ACTIVITY_THINKING_LABEL = " Thinking…";
@@ -194,29 +180,16 @@ export const ACTIVITY_WAITING_LABEL = " Waiting for your answer";
 
 export const ACTIVITY_RETRY_LABEL = " Retrying";
 
-/**
- * The resolution of `formatDuration`, which prints tenths of a second. A span
- * under it has no label, so the row carries the word alone.
- */
 export const MIN_REPORTED_DURATION_MS = 50;
 
 export const RESULT_PREVIEW_LINES = 3;
 
 export const RESULT_TAIL_LINES = 3;
 
-/** Rows a tail-only preview keeps; the label sits above them. */
 export const RESULT_TAIL_ONLY_LINES = 6;
 
 export const TOOL_INLINE_PREVIEW_LENGTH = 96;
 
-/**
- * A legacy Windows console (bare ConHost) has no font for the box and arrow
- * glyphs. Modern terminals identify themselves, so anything unrecognized on
- * Windows takes the ASCII fallback. `NYTE_FORCE_LEGACY_CONSOLE=1` forces it on
- * for testing, `=0` forces it off.
- *
- * Based on https://github.com/xai-org/grok-build/blob/07b2f71/crates/codegen/xai-grok-pager-render/src/glyphs.rs
- */
 const MODERN_TERMINALS = new Set([
   "alacritty",
   "ghostty",
@@ -246,16 +219,11 @@ function isLegacyWindowsConsole(
   return !MODERN_TERMINALS.has(brand);
 }
 
-/** One-column chrome glyphs keep animated and settled rows aligned. */
 export const GLYPHS = {
-  /** The composer's prompt and the highlighted menu row take the same arrow. */
   prompt: isLegacyWindowsConsole() ? ">" : "❯",
-  /** A steer cuts ahead of the run; a follow-up falls in behind it. */
   steer: isLegacyWindowsConsole() ? "^" : "↑",
   queue: isLegacyWindowsConsole() ? "v" : "↓",
-  /** A message still on its way to the store. */
   sending: isLegacyWindowsConsole() ? "~" : "…",
-  /** A subagent's or job's report, which arrives in the conversation but nobody typed. */
   report: isLegacyWindowsConsole() ? "<" : "↳",
   bullet: "●",
   check: "✓",
@@ -269,21 +237,12 @@ export const GLYPHS = {
   ellipsis: "…",
 } as const;
 
-/** Rows the transcript keeps clear under its last line. */
 export const TRANSCRIPT_BOTTOM_PADDING = 1;
 
-/**
- * The moon's phase cycle over a 4 by 4 disc in two braille columns: thin
- * crescent, full, thin crescent. There is no new-moon frame, so the row never blanks.
- */
 export const SPINNER_FRAMES = ["⠀⠰", "⠀⡷", "⢸⡷", "⢾⡷", "⢾⡇", "⢾⠀", "⠆⠀"] as const;
 
 export const SPINNER_INTERVAL_MS = 130;
 
-/**
- * The gutter's last row: the key that opens what is waiting, plus any rows the
- * height cap had to hide.
- */
 export function pendingHint(hidden: number): string {
   const open = `${keycap("chat.queue.open")} pending`;
 

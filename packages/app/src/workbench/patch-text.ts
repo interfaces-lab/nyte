@@ -1,10 +1,5 @@
 import type { PatchEntry } from "@nyte-ai/sdk";
 
-/**
- * A parsed text patch as unified diff text, for the renderer that takes text:
- * the hunks the host produced, written back line for line. No parsing; the
- * host already split the hunks and counted them.
- */
 export function formatPatch(entry: Extract<PatchEntry, { readonly kind: "text" }>): string {
   const before =
     entry.status === "added" || entry.status === "untracked" ? "/dev/null" : `a/${entry.path}`;

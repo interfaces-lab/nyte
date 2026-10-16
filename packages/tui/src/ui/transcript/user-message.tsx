@@ -1,9 +1,3 @@
-/**
- * A landed user message. `shownContent` (an action's label, never its
- * prompt) through `userPresentation` (lib/presentation.ts): text, tags for
- * skills, files, mentions, images and `!` shell blocks, paste fold at more
- * than 8 lines. Full width of its column; no margin of its own.
- */
 import { basename } from "node:path";
 import type { JSX } from "@opentui/solid";
 import { pathToFiletype } from "@opentui/core";
@@ -23,7 +17,6 @@ function lineCount(text: string): number {
   return text.split("\n").length;
 }
 
-/** A clickable tag that folds or opens what the message carried; clicks under a selection are ignored. */
 function Tag(props: { readonly label: string; readonly onClick: () => void }): JSX.Element {
   const app = useApp();
   const [hovered, setHovered] = createSignal(false);

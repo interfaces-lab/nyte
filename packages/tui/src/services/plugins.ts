@@ -1,9 +1,3 @@
-/**
- * The terminal's client plugin mount: each plugin activated once per app with
- * a client `PluginApi`, its renderers for the `tui` framework collected by
- * part kind, and the client hooks dispatched by the shell. Run ends anywhere
- * are read from the session directory as it changes.
- */
 import type {
   Command,
   HookEntry,
@@ -32,15 +26,12 @@ import type {
 import { follow } from "../lib/view-helpers.ts";
 import type { PartMessage } from "../lib/view-helpers.ts";
 
-/** What a notification a plugin raises carries. */
 type Notification = Parameters<PluginApi["ui"]["notify"]>[0];
 
 type ClientRegistries = PluginApi["contribute"];
 
-/** A derivation a registry runs at each read: what `add` takes besides an item. */
 type Derive<T> = (draft: RegistryDraft<T>, siblings: ClientRegistries) => void;
 
-/** One registered handler, in the order hooks run: ascending order, then registration. */
 type Handlers = {
   [N in HookName]: {
     readonly order: number;
@@ -52,28 +43,19 @@ type Handlers = {
 interface MountOptions {
   readonly connection: Connection;
   readonly plugins: readonly Plugin[];
-  /** The session on screen, or null before one opens. */
   readonly session: () => Session | null;
   readonly notify: (input: Notification) => void;
-  /** An issue a plugin reported, or a hook that threw. */
   readonly report: (plugin: string, message: string) => void;
 }
 
-/** The mounted plugins: their renderers, the hooks the shell fires, and teardown. */
 export interface ClientPlugins {
-  /** Returns the view a plugin's renderer draws for a part, or undefined when none draws its kind. */
   draw(message: PartMessage): unknown;
-  /** The plugins mounted, for `/plugins`. */
   readonly ids: readonly string[];
-  /** Runs `session_closed` for the old session and `session_opened` for the new one. */
   switched(previous: Session | null, next: Session): Promise<void>;
-  /** Runs `before_submit` over a draft; the first verdict that is not continue wins. */
   beforeSubmit(draft: SubmitDraft): Promise<Decision<SubmitDraft>>;
-  /** Runs `app_closing`, then deactivates every plugin. */
   dispose(): Promise<void>;
 }
 
-/** Returns a registry over static items and derivations; `list` runs the derivations over a fresh draft. */
 function registry<T>(
   key: (item: T) => string,
   isItem: (entry: T | Derive<T>) => entry is T,
@@ -122,7 +104,6 @@ function registry<T>(
   };
 }
 
-/** Returns a plugin's settings registry; values live in memory for this app. */
 function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["settings"] {
   const base = registry<SettingDefinition>(
     (item) => item.id,
@@ -186,7 +167,6 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
   };
 }
 
-/** Returns storage that lives as long as this app; every scope is the same map, and secrets are refused. */
 function memoryStorage(): PluginStorage {
   const values = new Map<string, Json>();
 
@@ -219,11 +199,6 @@ function memoryStorage(): PluginStorage {
   return storage;
 }
 
-/**
- * Mounts client plugins: declared hooks and contributions first, then each
- * `activate`, then `app_ready`. Renderers for the `tui` framework draw the
- * part kinds they name; the first plugin to name a kind wins.
- */
 export async function mountClientPlugins(options: MountOptions): Promise<ClientPlugins> {
   const handlers: Handlers = {
     run_ended_anywhere: [],

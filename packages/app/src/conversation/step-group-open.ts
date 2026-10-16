@@ -3,7 +3,6 @@ import { useTranscriptScope } from "./transcript.tsx";
 
 const REMEMBERED_STEP_GROUPS = 64;
 
-/** A step group's open state, remembered per session for its most recent groups. */
 export function useStepGroupOpen(
   groupKey: string | undefined,
 ): readonly [boolean | undefined, (open: boolean) => void] {

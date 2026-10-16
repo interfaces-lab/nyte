@@ -1,4 +1,3 @@
-/** A local `!` command: `!`/`!!` heading, clock, exit/signal/cancel, output tail. */
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "../../app/context.tsx";
@@ -14,7 +13,6 @@ export function ShellCard(props: { readonly job: ShellJob }): JSX.Element {
   const scope = useTranscript();
   const [now, setNow] = createSignal(props.job.startedAt);
 
-  /** The clock ticks only while the command runs; the ticker is released when the effect re-runs. */
   createEffect(() => {
     if (props.job.state.kind !== "running") return;
     const tick = kit.ticker(CLOCK_INTERVAL_MS);

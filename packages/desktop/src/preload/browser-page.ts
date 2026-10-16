@@ -1,9 +1,3 @@
-/**
- * Runs in every browser page's isolated world, and in its DevTools: it shares the
- * page's DOM, never its JavaScript, and exposes nothing. A key the page leaves
- * unhandled goes to main so Nyte's shortcuts work while the page has focus. Editing keys, typed characters,
- * and Escape stay with the page. Assume a hostile page: main validates every message.
- */
 import { ipcRenderer } from "electron";
 import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
 import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
@@ -33,7 +27,6 @@ const editing = mac
 
 const pageKeys = new Set(["Control", "Shift", "Alt", "Meta", "Insert", "Help"]);
 
-/** In text the user edits, ⌘← and ⌘→ move the caret; elsewhere they go back and forward. */
 function editsText(event: KeyboardEvent): boolean {
   const target = event.composedPath()[0];
 
@@ -79,7 +72,6 @@ function pageKeeps(event: KeyboardEvent): boolean {
   );
 }
 
-// A sign-in popup shares the page's session, and so this preload, but has no panel.
 if (window.opener === null)
   window.addEventListener("keydown", (event) => {
     if (!event.isTrusted || event.defaultPrevented || event.isComposing || pageKeeps(event)) return;

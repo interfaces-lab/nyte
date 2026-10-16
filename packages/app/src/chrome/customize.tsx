@@ -20,6 +20,7 @@ import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-li
 import { SettingsRow, SettingsSwitchRow } from "../settings/rows.tsx";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 interface Presentation {
   readonly name: string;
@@ -36,7 +37,7 @@ const BUILTINS = new Map<string, Presentation>([
     "web-search",
     { name: "Web search", description: "Search the web and read pages", icon: "globe" },
   ],
-  ["mcp", { name: "MCP servers", description: "Tools from servers in nyte.json", icon: "mcp" }],
+  ["mcp", { name: "MCP servers", description: "Tools from servers in mcp.json", icon: "mcp" }],
   [
     "codemode",
     {
@@ -69,10 +70,8 @@ const BUILTINS = new Map<string, Presentation>([
 
 const PLUGIN_SECTION = "plugin:";
 
-/** One loaded plugin as the host view lists it. */
 type PluginInfo = HostView["plugins"][number];
 
-/** What Customize lists: the host's plugins, and the settings, skills and commands in scope. */
 interface CustomizeInventory {
   readonly plugins: readonly PluginInfo[];
   readonly settings: readonly SettingInfo[];
@@ -87,7 +86,6 @@ interface PluginView extends Partial<Presentation> {
   readonly off: boolean;
 }
 
-/** The load errors a plugin reported, one per line; undefined when it loaded. */
 function loadFailure(plugin: PluginInfo): string | undefined {
   const errors = plugin.issues.filter((issue) => issue.severity === "error");
 
@@ -98,7 +96,6 @@ function isToggle(setting: SettingInfo): boolean {
   return typeof setting.value === "boolean";
 }
 
-/** A choice's value as the key a select item carries. */
 function choiceKey(value: Json): string {
   return JSON.stringify(value);
 }
@@ -380,7 +377,7 @@ function Detail({
                 Copy Error
               </Button>
             }
-            expansion={<pre {...props(styles.trace)}>{failure}</pre>}
+            expansion={<pre {...props(text.sm, styles.trace)}>{failure}</pre>}
           />
         </ConnectionList>
       )}

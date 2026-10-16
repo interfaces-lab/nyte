@@ -1,8 +1,5 @@
 /**
  * Vercel AI Gateway provider.
- *
- * Based on https://github.com/earendil-works/pi/blob/33e203354391ba26937cd1e8a210b4db10e82c66/packages/ai/src/providers/vercel-ai-gateway.ts
- * Synced with pi 33e203354.
  */
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";

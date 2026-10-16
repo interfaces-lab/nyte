@@ -1,6 +1,6 @@
 import { standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Plugin } from "./core.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 const parameters = standard(
   Type.Object({

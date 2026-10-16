@@ -20,5 +20,4 @@ export function pairingLink(token: string): string {
   return `${E2E_ORIGIN}/pair#host=${encodeURIComponent(E2E_ORIGIN)}&token=${encodeURIComponent(token)}`;
 }
 
-/** Archived chats the server seeds; 22 pages as 5, then 8 more, then the last 9 at once. */
 export const ARCHIVED_SESSION_COUNT = 22;

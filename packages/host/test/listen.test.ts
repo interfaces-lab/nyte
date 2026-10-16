@@ -108,7 +108,6 @@ async function until(
   return frames;
 }
 
-/** Creates a session and sends one message through the listener; returns the ids. */
 async function sent(
   target: Listener | string,
 ): Promise<{ readonly session: SessionId; readonly receipt: ReceiptId }> {
@@ -139,7 +138,6 @@ async function pair(host: Composed, authority: readonly Authority[]): Promise<st
   return (await host.principals.pair({ authority: new Set(authority) })).code;
 }
 
-/** Resolves what `promise` resolves, or `"timed out"` after `ms`. */
 function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   return Promise.race([
     promise,
@@ -147,7 +145,6 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   ]);
 }
 
-/** Drains an event stream and returns how it ended: "ended", or the code of the `SdkError` its error event carried. */
 async function endOf(frames: AsyncIterator<SseFrame>): Promise<string> {
   try {
     while ((await frames.next()).done !== true);
@@ -244,15 +241,12 @@ describe("listen", () => {
       const token = exchange.headers.get("X-Nyte-Credential");
       assert(token !== null);
 
-      const watch = await post(
-        listener,
-        "head.watch",
-        { session, head: main },
-        { Authorization: `Bearer ${token}` },
-      );
-
-      assert(watch.body !== null);
-      const frames = parseSse(watch.body)[Symbol.asyncIterator]();
+      const transport = createTransport({
+        url: "http://host.test",
+        headers: async () => ({ Authorization: `Bearer ${token}` }),
+        fetch: async (input, init) => listener.fetch(new Request(input, init)),
+      });
+      const frames = transport.watch("head.watch", { session, head: main })[Symbol.asyncIterator]();
       let seen = (await frames.next()).value;
 
       while (seen !== undefined && kindOf(seen) !== "catalog") seen = (await frames.next()).value;
@@ -661,7 +655,6 @@ describe("listen", () => {
 });
 
 describe("listen's execution (§41b)", () => {
-  /** Returns the host with `execution.cover` recording what it covered. */
   function recording(host: Composed): {
     readonly host: Composed;
     readonly covered: ExecutionCoverage[];

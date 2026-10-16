@@ -1,9 +1,3 @@
-/**
- * The outgoing pipeline for one submission. The reducer already cleared the
- * composer and holds the snapshot; this either sends or answers
- * `send-refused` with that snapshot, so a draft is never lost (plugin reject,
- * upload error and configuration refusal included).
- */
 import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyte-ai/sdk";
 import { draftContent, pendingUploads, unreadFiles } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
@@ -37,8 +31,6 @@ export async function submit(
     return;
   }
 
-  // Reserve this message's place behind the configuration it was pressed
-  // under, before anything yields; configuration selected later waits.
   const slot = followed.configurator.reserveSubmission();
 
   try {
@@ -79,8 +71,6 @@ export async function submit(
       return;
     }
 
-    // An edit replaces a queued message; one that landed meanwhile would become a branch, so it is refused instead.
-    // `running: "refuse"` keeps core from stopping the run of one that lands after this check.
     if (
       submission.replace !== null &&
       rowStatus(read(), submission.session, submission.replace) !== "pending"
@@ -106,7 +96,6 @@ export async function submit(
   }
 }
 
-/** Plugins are isolated: a hook that throws is a refusal with its message, never a crash of the send. */
 export async function beforeSubmit(
   plugins: PluginsPort,
   draft: SubmitDraft,
@@ -127,7 +116,6 @@ export interface PrepareDeps {
   readonly upload: (bytes: Uint8Array) => Promise<BlobId>;
 }
 
-/** Gathers what `draftContent` needs (file bodies, uploaded blobs) and builds the content a snapshot sends. */
 export async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promise<UserContent> {
   const bodies = new Map<string, string | null>();
 

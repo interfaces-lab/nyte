@@ -3,7 +3,6 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-// Paths are inserted directly into the composer and rendered in the terminal.
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\x00-\x1f\x7f]/;
 
@@ -13,7 +12,6 @@ export interface DirectoryQuery {
   readonly path: string;
 }
 
-/** A /cd argument is one path, including spaces, rather than a shell word. */
 export function directoryCompletionQuery(
   value: string,
   cursor = value.length,
@@ -28,7 +26,6 @@ export function directoryCompletionQuery(
   return { start, end: value.length, path: value.slice(start, cursor) };
 }
 
-/** One parent at a time; metadata checks keep edits visible across query prefixes. */
 export class DirectoryListing {
   private generation = 0;
   private cached:
@@ -62,7 +59,6 @@ export class DirectoryListing {
     }
 
     const entries = readdir(directory, { withFileTypes: true });
-    // Bound reuse even on filesystems whose directory timestamps are coarse.
     const next = { directory, version, expires: Date.now() + 1000, entries };
     this.cached = next;
 
@@ -75,7 +71,6 @@ export class DirectoryListing {
   }
 }
 
-/** Keep the typed path spelling; only expand ~ for filesystem access. `..` and `../..` list their own entries. */
 export async function directorySuggestions(
   options: {
     readonly path: string;
@@ -108,7 +103,6 @@ export async function directorySuggestions(
 
         if (!entry.isDirectory()) {
           if (!entry.isSymbolicLink()) return undefined;
-          // Broken links and links removed during completion are not candidates.
           const target = await stat(resolve(directory, entry.name)).catch(() => undefined);
 
           if (!target?.isDirectory()) return undefined;
@@ -122,7 +116,6 @@ export async function directorySuggestions(
       .filter((match) => match !== undefined)
       .toSorted((left, right) => left.localeCompare(right));
   } catch {
-    // Missing or unreadable parents are ordinary while editing a path.
     return [];
   }
 }

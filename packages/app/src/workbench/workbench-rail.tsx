@@ -1,9 +1,3 @@
-/**
- * The rail beside a workbench tab's main content: the changes tree, the
- * browser's visit history, the files explorer. One persisted width serves
- * all of them, written to the root as a CSS variable so a drag never waits
- * for React. The seat owns the border, the width, and the resize handle.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
@@ -19,7 +13,6 @@ const WIDTH_MAX = 560;
 
 const WIDTH_STEP = 8;
 
-/** The main content keeps at least this much, whatever the rail asks for. */
 const MAIN_WIDTH_MIN = 240;
 
 const STORAGE_KEY = "nyte.desktop.workbench-rail-width.v1";
@@ -58,7 +51,6 @@ function setWidth(next: number): void {
   try {
     storage()?.setItem(STORAGE_KEY, String(next));
   } catch {
-    // The in-memory choice still applies for this window.
   }
 
   for (const listener of listeners) listener();

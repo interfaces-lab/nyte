@@ -1,5 +1,6 @@
 import { Button } from "@nyte-ai/ui/button";
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
 import { modifierKeyLabel } from "../conversation/composer-keys.ts";
 import { macPlatform } from "../platform.ts";
@@ -36,7 +37,7 @@ function TrustedSitesRow(): ReactElement {
       title="Trusted sites"
       description="Sites you chose Always Open for. They skip the prompt"
     >
-      <span {...props(styles.rowValue)}>
+      <span {...props(text.base, styles.rowValue)}>
         {hosts.length === 1 ? "1 site" : `${String(hosts.length)} sites`}
       </span>
       <Button

@@ -6,22 +6,63 @@ import {
   callRef,
   decodeCallRecord,
   decodePartRecord,
+  decodeReceiptRecord,
   decodeRunRecord,
   driveInProcess,
   endRun,
+  emptyFold,
   envelope,
+  fold,
+  isPart,
   memoryStore,
   partRef,
   publishPatch,
+  project,
+  receiptRef,
   runRef,
   runStep,
   sessionEvents,
-  startRun,
+  text,
 } from "../src/index.ts";
-import type { Kernel } from "../src/index.ts";
-import { completed, configuration, label, livePart, main, setup } from "./harness.ts";
+import type { Kernel, StoreConnection } from "../src/index.ts";
+import { completed, configuration, label, livePart, main, setup, startRun } from "./harness.ts";
 
 describe("runs", () => {
+  it("settles the receipts of a run's landed inputs in its end set, so a crash right after it leaves none pending", async () => {
+    const store = await memoryStore().open();
+    let crashed = false;
+
+    const crashing: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async set(updates) {
+          if (crashed) throw new Error("Crashed.");
+          const outcome = await store.refs.set(updates);
+
+          crashed = updates.some(
+            (update) => update.event?.kind === "run" && update.event.change === "ended",
+          );
+
+          return outcome;
+        },
+      },
+    };
+
+    const { host, script: turns } = await setup({ store: crashing });
+    const session = await host.sessions.create();
+    const receipt = await session.send("Go.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    (await turns.started(1)).finish();
+    await step.catch(() => undefined);
+
+    expect(crashed).toBe(true);
+    const ref = await store.refs.get(receiptRef(session.id, receipt.id));
+    const record = decodeReceiptRecord(await store.objects.get(ref?.target ?? asId("none")));
+
+    expect(record?.outcome).toEqual(completed);
+  });
+
   it("logs the stop fence before the run ends, then aborts: parts fail and patches drop", async () => {
     const { kernel, host, script: turns } = await setup();
     const session = await host.sessions.create();
@@ -106,28 +147,37 @@ describe("runs", () => {
     const part = asId<"part">(`${run}:1:0`);
     await livePart(kernel, session.id, run, part, "A");
     const resume = await kernel.store.refs.tail(session.id);
+    let state = emptyFold({ session: session.id, principal: LOCAL });
+
+    for (const event of await kernel.store.refs.log(session.id, asSeq(0), 1000))
+      state = fold(state, event);
+
+    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "A" } });
     publishPatch(kernel, session.id, run, { kind: "patch", part, markdown: "" });
 
     const iterator = sessionEvents(kernel, session.id, resume)[Symbol.asyncIterator]();
-    const patches: PatchEvent[] = [];
 
-    while (patches.length < 2) {
+    for (;;) {
       const next = await iterator.next();
       assert(next.done !== true);
       const event = next.value.event;
+      state = fold(state, event);
 
       if (event.kind === "catalog")
         publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
 
-      if (event.kind === "patch") patches.push(event);
+      if (
+        project(state, main).messages.some(
+          (message) =>
+            isPart(message, text) && message.part === part && message.state.markdown === "B",
+        )
+      )
+        break;
     }
 
     await iterator.return?.();
 
-    expect(patches).toEqual([
-      { kind: "patch", part, markdown: "" },
-      { kind: "patch", part, append: "B" },
-    ]);
+    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "B" } });
     turn.finish(completed);
     await step;
   });
@@ -235,8 +285,8 @@ describe("runs", () => {
     expect(view.messages).toHaveLength(1);
     expect(view.messages[0]).toMatchObject({
       kind: "user",
-      content: `Child ${child.id} completed:\n\nFound it.`,
-      source: { kind: "child", session: child.id },
+      content: "Found it.",
+      source: { kind: "child", session: child.id, end: "completed" },
       delivery: "attach",
       status: { kind: "pending", schedule: { kind: "attached" } },
     });

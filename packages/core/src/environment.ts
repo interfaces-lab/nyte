@@ -97,27 +97,24 @@ export interface Resources {
   }[];
 }
 
-/** Returns what a workspace's `files()`, `git()` and `browser()` answer. */
 export type EnvironmentCapabilities = {
   readonly files: Capability<FilesApi>;
   readonly git: Capability<GitApi>;
   readonly browser: Capability<BrowserApi>;
 };
 
-/** Holds the environment providers the loaded plugins supply and the environments attached through them: one per session with its plugins' wraps, one per workspace for callers outside a session. A session's attach settles once and is kept, a failure included, until `detach`. */
 export interface EnvironmentRegistry {
-  /** Returns one provider per kind: the host plugins' in registration order, then those only a session's runtime has active. */
   providers(): readonly EnvironmentProvider[];
   provider(kind: string): EnvironmentProvider | undefined;
-  /** Resolves a session's environment: `exec`, `files` and a wrap's `browser` go through the session's wraps, rebuilt lazily when one is added or removed; `files` carries core's `upload` and `batch()`. Rejects with `UnavailableError` when no provider serves the kind or `inspect` answers unavailable. */
+
   attach(session: SessionId): Promise<ExecutionEnv>;
   wrap(session: SessionId, wrap: EnvironmentWrap): Disposer;
   snapshots(session: SessionId): Promise<SnapshotsApi | null>;
-  /** Resolves a session's capabilities; pages its browser opens are held through `kernel.pages` by `holder`. */
+
   capabilities(session: SessionId, holder?: PageHolder | null): Promise<EnvironmentCapabilities>;
-  /** Closes a session's environment; the next `attach` attaches again. */
+
   detach(session: SessionId): Promise<void>;
-  /** Resolves a workspace's own environment, no wraps; a failed attach is tried again by the next call. */
+
   attachWorkspace(workspace: WorkspaceId): Promise<ExecutionEnv>;
   workspaceSnapshots(workspace: WorkspaceId): Promise<SnapshotsApi | null>;
   workspaceCapabilities(
@@ -127,7 +124,6 @@ export interface EnvironmentRegistry {
   detachWorkspace(workspace: WorkspaceId): Promise<void>;
 }
 
-/** Throws when no provider serves a workspace's kind or its `inspect` answers unavailable; `reason` is the availability's, from which the activation and the capabilities are derived. */
 export class UnavailableError extends SdkError {
   readonly reason: Extract<Availability, { readonly kind: "unavailable" }>["reason"];
 
@@ -137,24 +133,21 @@ export class UnavailableError extends SdkError {
   }
 }
 
-/** Returns one attachment and what is built from it on first use. */
 interface Attachment {
   readonly provider: EnvironmentProvider;
-  readonly base: ExecutionEnv;
   readonly env: ExecutionEnv;
+  close(): Promise<void>;
   browser(): BrowserApi | undefined;
   git(): GitApi | undefined;
   snapshots(): SnapshotsApi | null;
 }
 
-/** Returns a session's wraps and its attach; `version` moves with every change to the wraps. */
 interface Slot {
   readonly wraps: { readonly wrap: EnvironmentWrap }[];
   version: number;
   attaching: Promise<Attachment> | null;
 }
 
-/** Returns a kernel's environment registry with nothing attached. */
 export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   const sessions = new Map<SessionId, Slot>();
   const workspaces = new Map<WorkspaceId, Promise<Attachment>>();
@@ -179,7 +172,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   const provider = (kind: string): EnvironmentProvider | undefined =>
     providers().find((candidate) => candidate.kind === kind);
 
-  const slotOf = (session: SessionId): Slot => {
+  const ensureSessionSlot = (session: SessionId): Slot => {
     const known = sessions.get(session);
 
     if (known !== undefined) return known;
@@ -204,7 +197,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       );
 
     const inspected = await serving.inspect(record.target).catch((error: unknown) => {
-      throw new UnavailableError("unreachable", messageOf(error));
+      throw new UnavailableError("unreachable", formatErrorMessage(error));
     });
 
     if (inspected.availability.kind === "unavailable")
@@ -213,11 +206,28 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
         `Workspace ${workspace} is ${inspected.availability.reason}.`,
       );
 
-    return attachment(kernel, serving, await serving.attach(record.target), scope, slot);
+    if (inspected.identity !== record.identity)
+      throw new UnavailableError(
+        "unreachable",
+        `Workspace ${workspace} no longer refers to its registered environment.`,
+      );
+
+    const attached = await serving.attach(record.target);
+
+    if (attached.identity !== record.identity) {
+      await attached.close();
+
+      throw new UnavailableError(
+        "unreachable",
+        `Workspace ${workspace} changed while its environment was attached.`,
+      );
+    }
+
+    return attachment(kernel, serving, attached, scope, slot);
   };
 
   const attaching = (session: SessionId): Promise<Attachment> => {
-    const slot = slotOf(session);
+    const slot = ensureSessionSlot(session);
 
     slot.attaching ??= requireSession(kernel, session).then((found) =>
       open(found.record.workspace, { session }, slot),
@@ -239,7 +249,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     return started;
   };
 
-  const capabilitiesOf = async (
+  const inspectEnvironmentCapabilities = async (
     attached: Promise<Attachment>,
     holder: PageHolder | null,
   ): Promise<EnvironmentCapabilities> => {
@@ -248,7 +258,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     try {
       found = await attached;
     } catch (error) {
-      const failure = failureOf(error);
+      const failure = classifyCapabilityFailure(error);
 
       return { files: failure, git: failure, browser: failure };
     }
@@ -258,7 +268,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
 
     return {
       files:
-        filesOf(found.provider) === "unsupported"
+        classifyFileSupport(found.provider) === "unsupported"
           ? { kind: "unsupported", reason: `The ${found.provider.kind} provider serves no files.` }
           : { kind: "available", api: found.env.files },
       git:
@@ -280,7 +290,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     provider,
     attach: async (session) => (await attaching(session)).env,
     wrap(session, wrap) {
-      const slot = slotOf(session);
+      const slot = ensureSessionSlot(session);
       const entry = { wrap };
       slot.wraps.push(entry);
       slot.version += 1;
@@ -296,7 +306,8 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     async snapshots(session) {
       return (await attaching(session).catch(() => null))?.snapshots() ?? null;
     },
-    capabilities: (session, holder) => capabilitiesOf(attaching(session), holder ?? null),
+    capabilities: (session, holder) =>
+      inspectEnvironmentCapabilities(attaching(session), holder ?? null),
     async detach(session) {
       const slot = sessions.get(session);
 
@@ -305,46 +316,48 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       slot.attaching = null;
 
       if (slot.wraps.length === 0 && sessions.get(session) === slot) sessions.delete(session);
-      await (await attached?.catch(() => null))?.base.close();
+      await (await attached?.catch(() => null))?.close();
     },
     attachWorkspace: async (workspace) => (await attachingWorkspace(workspace)).env,
     async workspaceSnapshots(workspace) {
       return (await attachingWorkspace(workspace).catch(() => null))?.snapshots() ?? null;
     },
     workspaceCapabilities: (workspace, holder) =>
-      capabilitiesOf(attachingWorkspace(workspace), holder ?? null),
+      inspectEnvironmentCapabilities(attachingWorkspace(workspace), holder ?? null),
     async detachWorkspace(workspace) {
       const known = workspaces.get(workspace);
       workspaces.delete(workspace);
-      await (await known?.catch(() => null))?.base.close();
+      await (await known?.catch(() => null))?.close();
     },
   };
 }
 
-/** Returns the kind of a workspace's files capability for its provider: the baseline requires `snapshots` "wherever files are served", so a provider without it (chat-only) or no provider at all answers `unsupported`. */
-export function filesOf(
+export function classifyFileSupport(
   provider: EnvironmentProvider | undefined,
 ): Extract<Capability<FilesApi>["kind"], "available" | "unsupported"> {
   return provider?.snapshots === undefined ? "unsupported" : "available";
 }
 
-/** Returns whether a target can be served: `unsupported` without a provider for its kind, `unreachable` when `inspect` throws. */
-export async function availabilityOf(
+export async function inspectWorkspaceAvailability(
   kernel: Kernel,
-  target: WorkspaceTarget,
+  workspace: Pick<WorkspaceRecord, "target" | "identity">,
 ): Promise<Availability> {
-  const serving = kernel.environments.provider(target.kind);
+  const serving = kernel.environments.provider(workspace.target.kind);
 
   if (serving === undefined) return { kind: "unavailable", reason: "unsupported" };
 
   try {
-    return (await serving.inspect(target)).availability;
+    const inspected = await serving.inspect(workspace.target);
+
+    return inspected.availability.kind === "unavailable" ||
+      inspected.identity === workspace.identity
+      ? inspected.availability
+      : { kind: "unavailable", reason: "unreachable" };
   } catch {
     return { kind: "unavailable", reason: "unreachable" };
   }
 }
 
-/** Returns a registered workspace's record, or null. */
 export async function readWorkspace(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -360,7 +373,14 @@ export async function readWorkspace(
   );
 }
 
-function messageOf(error: unknown): string {
+export async function workspaceRecords(kernel: Kernel): Promise<readonly WorkspaceRecord[]> {
+  const refs = await kernel.store.refs.list("workspaces/");
+  const found = await Promise.all(refs.map((ref) => load(kernel, ref, decodeWorkspaceRecord)));
+
+  return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
+}
+
+function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -373,11 +393,10 @@ async function requireWorkspace(kernel: Kernel, workspace: WorkspaceId): Promise
   return record;
 }
 
-/** Returns what every capability answers for an attach that failed, from the failure itself. */
-function failureOf(
+function classifyCapabilityFailure(
   error: unknown,
 ): Extract<Capability<never>, { readonly kind: "unsupported" | "unavailable" }> {
-  const reason = messageOf(error);
+  const reason = formatErrorMessage(error);
 
   if (error instanceof UnavailableError && error.reason === "unsupported")
     return { kind: "unsupported", reason };
@@ -387,7 +406,6 @@ function failureOf(
     : { kind: "unavailable", retry: "allowed", reason };
 }
 
-/** Returns an attachment over a provider's env; with a slot, `files`, `exec` and `browser` go through its wraps. */
 function attachment(
   kernel: Kernel,
   provider: EnvironmentProvider,
@@ -420,13 +438,33 @@ function attachment(
     return built;
   };
 
+  let running = 0;
+  let closing = false;
+
+  const closeIdle = async (): Promise<void> => {
+    if (closing && running === 0) await base.close();
+  };
+
   const env: ExecutionEnv = {
     identity: base.identity,
     cwd: base.cwd,
     get files() {
       return current().files;
     },
-    exec: (command, options) => current().env.exec(command, options),
+    async exec(command, options) {
+      const job = await current().env.exec(command, options);
+      running += 1;
+
+      void job
+        .settled()
+        .catch(() => undefined)
+        .finally(() => {
+          running -= 1;
+          void closeIdle().catch(() => undefined);
+        });
+
+      return job;
+    },
     close: async () => undefined,
   };
 
@@ -436,8 +474,12 @@ function attachment(
 
   return {
     provider,
-    base,
     env,
+    async close() {
+      if (closing) return;
+      closing = true;
+      await closeIdle();
+    },
     browser() {
       const wrapped = current().browser;
 

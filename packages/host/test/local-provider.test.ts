@@ -27,6 +27,7 @@ describe("localProvider", () => {
       ["CLAUDE.md", "claude"],
       ["AGENTS.md", "agents"],
       [".nyte/APPEND_SYSTEM.md", "append"],
+      [".nyte/mcp.json", "{}"],
       [".nyte/prompts/fix.md", "Fix it."],
       [".nyte/prompts/draft.txt", "not a prompt"],
       [".agents/skills/lint/SKILL.md", "# Lint"],
@@ -57,8 +58,7 @@ describe("localProvider", () => {
         ".agents/skills/lint/SKILL.md",
         ".nyte/prompts/fix.md",
         ".nyte/APPEND_SYSTEM.md",
-        "AGENTS.md",
-        "CLAUDE.md",
+        ".nyte/mcp.json",
       ],
     });
     expect(inspected.identity).toMatch(HEX);

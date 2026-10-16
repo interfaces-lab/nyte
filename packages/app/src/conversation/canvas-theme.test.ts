@@ -1,4 +1,4 @@
-import { CANVAS_VARIABLES, sanitizeCanvasVariables } from "@nyte-ai/plugin/canvas-protocol";
+import { CANVAS_VARIABLES, sanitizeCanvasVariables } from "@nyte-ai/plugin/canvas/protocol";
 import { describe, expect, test } from "vitest";
 import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasAppearance } from "./canvas-theme.ts";

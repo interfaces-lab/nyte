@@ -1,9 +1,3 @@
-/**
- * Every setting the shell can open or apply: `/settings` lists these, `/<id>`
- * opens one and `/<id> <choice>` applies it. Plugin settings with choices
- * join the same list. Applying a choice is an Intent, so the settings list,
- * the slash command and the palette all go through `reduce`.
- */
 import type { Json } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
 import { keycap } from "../lib/constants.ts";
@@ -20,10 +14,8 @@ export interface SettingChoice {
 export interface SettingRow {
   readonly id: string;
   readonly label: string;
-  /** The current choice's id. */
   readonly current: string;
   readonly choices: readonly SettingChoice[];
-  /** Model and effort select inputs for the next message, so they stay open while a run is live. */
   readonly whileBusy: boolean;
 }
 
@@ -196,12 +188,10 @@ export function settingRows(state: State): readonly SettingRow[] {
   ];
 }
 
-/** The label of a row's current choice, for the settings list. */
 export function settingValue(row: SettingRow): string {
   return row.choices.find((choice) => choice.id === row.current)?.label ?? row.current;
 }
 
-/** The choice `/<setting> <argument>` names: by id, by label, or a bare model id under any provider. */
 export function matchChoice(row: SettingRow, argument: string): SettingChoice | null {
   return (
     row.choices.find(
@@ -211,7 +201,6 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
   );
 }
 
-/** Changing a row that is not per-message is refused while a run is live. */
 export function busyRefusal(state: State, row: SettingRow): Intent | null {
   const execution = state.facts.session?.view?.execution;
 

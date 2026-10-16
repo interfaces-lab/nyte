@@ -1,8 +1,3 @@
-/**
- * A unified diff per hunk with line numbers, "… N unchanged lines" between
- * hunks, gutters aligned across every hunk of the card, and the changed
- * words of a one-line replacement emphasised under the syntax colours.
- */
 import {
   CodeRenderable,
   DiffRenderable,
@@ -18,15 +13,8 @@ import { unchangedLinesLabel } from "../../lib/format.ts";
 import type { ChangedLinePair, OutputDiff } from "../../lib/output-diff.ts";
 import { displayWidth } from "../../lib/width.ts";
 
-/** Beyond this a word diff costs more than the highlight is worth. */
 const WORD_SPAN_LIMIT = 4_000;
 
-/**
- * Changed words of a one-line replacement as highlight spans over the unified view's
- * content, which is the hunk's rows minus their sign joined by newlines. Offsets count
- * UTF-16 code units: OpenTUI applies a span with `content.slice(start, end)`.
- * Whitespace alone never earns a span.
- */
 export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
   if (pair.removed.length + pair.added.length > WORD_SPAN_LIMIT) return [];
   const rows = content.split("\n");
@@ -61,7 +49,6 @@ export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlig
   return spans;
 }
 
-/** Tint the changed words after the hunk's syntax colours, so the emphasis sits under them. */
 function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   const code = diff
     .getChildren()
@@ -73,11 +60,6 @@ function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   code.onHighlight = (highlights, context) => [...highlights, ...wordSpans(context.content, pair)];
 }
 
-/**
- * Keep code columns fixed when separate hunks have different line-number widths.
- * Based on OpenCode's patch diff component:
- * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/patch-diff.tsx
- */
 export function syncDiffGutters(diffs: readonly DiffRenderable[]): void {
   const gutters = diffs.flatMap((diff) =>
     diff.getChildren().filter((child) => child instanceof LineNumberRenderable),

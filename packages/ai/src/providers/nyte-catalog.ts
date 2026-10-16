@@ -2,8 +2,6 @@
  * The catalog every Nyte client composes: the same providers over the same
  * `~/.nyte` credential and model stores, so a login made in one client is a
  * login in all of them.
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
  */
 import type { ProviderId } from "@nyte-ai/schema/model";
 import { defaultProviderAuthContext } from "../auth/context.ts";

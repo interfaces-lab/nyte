@@ -1,9 +1,3 @@
-/**
- * Window tabs in the titlebar, after Dia and Arc. The whole window is drawn so
- * the strip can be judged against the traffic lights, the sidebar slot and the
- * card it sits on. Every design switch is above the window; the notes below it
- * say what each one is for and what the default should be.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
@@ -32,7 +26,6 @@ interface ShellDesign extends StripDesign {
   readonly scheme: Scheme;
 }
 
-/** Dia's defaults, with the card active style from the shipped strip as the alternative. */
 const DESIGN_DEFAULT: ShellDesign = {
   active: "connected",
   inactive: "chip",
@@ -50,7 +43,6 @@ const DESIGN_DEFAULT: ShellDesign = {
 interface TabState {
   readonly open: readonly ShellTab[];
   readonly active: string;
-  /** Most recent first. */
   readonly history: readonly string[];
   readonly closed: readonly { readonly tab: ShellTab; readonly index: number }[];
   readonly drafts: number;
@@ -206,7 +198,6 @@ function Sidebar({
   );
 }
 
-/** Enough of a page to tell which tab is showing. */
 function CardContent({ tab }: { readonly tab: ShellTab | undefined }): ReactElement {
   if (tab === undefined) return <p {...props(styles.quiet)}>No tab open.</p>;
 
@@ -326,7 +317,6 @@ export function TabsPage(): ReactElement {
   const set = <Key extends keyof ShellDesign>(key: Key, value: ShellDesign[Key]): void =>
     setDesign((current) => ({ ...current, [key]: value }));
 
-  // On the document, so menus and tooltips, which portal out of the window, follow it.
   useEffect(() => {
     document.documentElement.style.colorScheme = design.scheme;
 
@@ -339,7 +329,6 @@ export function TabsPage(): ReactElement {
     const onKey = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
 
-      // ⌥ stands in for ⌘ here: the browser keeps ⌘W and ⌘T for itself.
       if (event.altKey && key === "w") {
         event.preventDefault();
         setState((current) => closeTab(current, current.active, design.closeGoes));
@@ -687,7 +676,6 @@ const styles = create({
     color: role.contentPrimary,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
-  // Above the body, so the connected tab's one-pixel overlap paints over the card.
   titlebar: {
     position: "relative",
     zIndex: 1,
@@ -722,7 +710,6 @@ const styles = create({
     backgroundColor: role.bgHover,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
-  // Starts where the card does, so a flush tab and the card share a wall.
   center: {
     display: "flex",
     alignItems: "center",
@@ -769,7 +756,6 @@ const styles = create({
     transitionDuration: motionTokens.durationNormal,
     transitionTimingFunction: motionTokens.easeOut,
   },
-  // A 1px corner, not 0, keeps the hairline continuous where the tab meets the card.
   cardSquareLeft: { borderStartStartRadius: 1 },
   cardSquareRight: { borderStartEndRadius: 1 },
   cardHeader: {

@@ -79,7 +79,7 @@ export async function run(): Promise<string> {
     await paint();
     check(
       host.querySelector('[data-composer-readonly][contenteditable="false"]') !== null,
-      "read-only Lexical root",
+      "read-only editor root",
     );
     check(host.textContent?.includes("/review") === true, "skill invocation renders a chip");
     check(!host.textContent?.includes("Hidden instructions"), "instructions stay hidden");
@@ -119,7 +119,7 @@ export async function run(): Promise<string> {
     await paint();
     check(
       host.textContent === "Message is too long to display",
-      "oversized messages avoid mounting Lexical",
+      "oversized messages avoid mounting an editor",
     );
 
     for (const editable of [false, true]) {

@@ -1,7 +1,6 @@
 import type { HeadName, Message, MessageId, PrincipalId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "./kernel.ts";
 
-/** Returns older messages for scroll-back, newest last, ending before `before`; `[]` when `before` is unknown. */
 export async function historyHead(
   kernel: Kernel,
   input: {

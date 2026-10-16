@@ -1,3 +1,4 @@
+import { addUsage } from "@nyte-ai/core";
 import type { Usage } from "@nyte-ai/schema";
 import type { Usage as ModelUsageCounts } from "@nyte-ai/schema/model";
 import type { ModelUsage, UsageSummary } from "./usage-types.ts";
@@ -31,35 +32,17 @@ export function emptyUsageSummary(): UsageSummary {
     compaction: recordedUsage(emptyModelUsage()),
     tools: recordedUsage(emptyModelUsage()),
     total: recordedUsage(emptyModelUsage()),
-  };
-}
-
-function addUsage(left: Usage, right: Usage): Usage {
-  return {
-    input: left.input + right.input,
-    output: left.output + right.output,
-    cacheRead: left.cacheRead + right.cacheRead,
-    cacheWrite: left.cacheWrite + right.cacheWrite,
-    reasoning:
-      left.reasoning === null && right.reasoning === null
-        ? null
-        : (left.reasoning ?? 0) + (right.reasoning ?? 0),
-    total: left.total + right.total,
-    cost: {
-      input: left.cost.input + right.cost.input,
-      output: left.cost.output + right.cost.output,
-      cacheRead: left.cost.cacheRead + right.cost.cacheRead,
-      cacheWrite: left.cost.cacheWrite + right.cost.cacheWrite,
-      total: left.cost.total + right.cost.total,
-    },
+    cacheSavings: 0,
   };
 }
 
 export function summarizeModels(rows: readonly ModelUsage[]): UsageSummary {
   const models = new Map<string, ModelUsage>();
   let total = recordedUsage(emptyModelUsage());
+  let savings = 0;
 
   for (const row of rows) {
+    savings += cacheSavings(row.usage);
     const key = JSON.stringify([row.provider, row.model]);
     const previous = models.get(key);
     models.set(
@@ -81,7 +64,14 @@ export function summarizeModels(rows: readonly ModelUsage[]): UsageSummary {
         left.provider.localeCompare(right.provider),
     ),
     total,
+    cacheSavings: savings,
   };
+}
+
+export function cacheSavings(usage: Usage): number {
+  if (usage.input === 0) return 0;
+
+  return usage.cacheRead * (usage.cost.input / usage.input) - usage.cost.cacheRead;
 }
 
 export function usageTokens(usage: Usage): number {

@@ -37,13 +37,10 @@ import type { Changed } from "./patch.ts";
 import { decodeText } from "./text.ts";
 import { watchTree } from "./tree.ts";
 
-/** Returns a repository: its worktree root, its git directory, and the workspace's path under the root (`""` or `sub/dir/`, what `git rev-parse --show-prefix` answers). */
 type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
 
-/** Returns a repository status as read, with the repository it was read in. */
 type Repo = Extract<GitStatus, { readonly kind: "repository" }>;
 
-/** The most paths one `git diff` of `patches` reads (the sdk's `PATCH_READ_MAX`). */
 const PATCH_BATCH = 32;
 
 const LOG_DEFAULT = 50;
@@ -158,7 +155,6 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return ran.code === 0 ? ran.stdout.toString("utf8").trim() : null;
   };
 
-  /** Returns the `git diff` arguments that compare a scope, and whether untracked files join it. */
   const rangeOf = async (
     root: string,
     scope: GitScope,
@@ -391,7 +387,6 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
   const watcher = createWatcher(env.cwd, status, repository);
 
-  /** Yields `read` of each status whose revision moved, newest first when the reader is behind. */
   const follow = <T>(read: (current: GitStatus) => Promise<T>): AsyncIterable<T> =>
     feed<T>((sink) => {
       let seen: string | null = null;
@@ -673,7 +668,6 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   };
 }
 
-/** Holds one environment's status watch: started on the first subscriber, it re-reads the status on fs events and on a poll and hands each subscriber every status whose revision moved, a fresh read first. */
 function createWatcher(
   cwd: string,
   read: () => Promise<GitStatus>,
@@ -744,7 +738,6 @@ function createWatcher(
   };
 }
 
-/** Parses `git status --porcelain=v2 --branch -z` with the staged and unstaged numstats into a status. */
 async function readStatus(
   repo: Repository,
   porcelain: string,
@@ -846,24 +839,20 @@ async function readStatus(
   };
 }
 
-/** Returns a workspace-relative path as git takes it: relative to the repository root. */
 function into(repo: Repository, path: string): string {
   return `${repo.prefix}${path}`;
 }
 
-/** Returns a path git answered, relative to the repository root, as the workspace sees it: the prefix stripped, or `../` up to the root for a path outside the workspace. */
 function outOf(repo: Repository, path: string): string {
   return path.startsWith(repo.prefix)
     ? path.slice(repo.prefix.length)
     : `${"../".repeat(repo.prefix.split("/").length - 1)}${path}`;
 }
 
-/** Returns the pathspec that keeps a listing inside the workspace: none at the repository root. */
 function within(repo: Repository): readonly string[] {
   return repo.prefix === "" ? [] : ["--", repo.prefix];
 }
 
-/** Returns a changed file with its path, and a rename's source, mapped. */
 function withPaths<T extends { readonly path: string; readonly from?: string }>(
   file: T,
   map: (path: string) => string,
@@ -873,7 +862,6 @@ function withPaths<T extends { readonly path: string; readonly from?: string }>(
     : { ...file, path: map(file.path), from: map(file.from) };
 }
 
-/** Splits the first `count` space-separated fields off a porcelain record; the rest is the path, which may hold spaces. */
 function splitFields(
   token: string,
   count: number,
@@ -892,7 +880,6 @@ function splitFields(
   return { fields, rest: token.slice(at) };
 }
 
-/** Parses `git blame --porcelain` into one row per line. */
 function parseBlame(path: string, output: string): BlameView {
   const authors = new Map<string, { author: string; at: number }>();
   const rows: BlameView["lines"][number][] = [];
@@ -927,7 +914,6 @@ function parseBlame(path: string, output: string): BlameView {
   return { path, lines: rows };
 }
 
-/** Returns an untracked file's line stat: its lines as added, binary, or unknown past 1 MiB. */
 async function untrackedStat(path: string): Promise<LineStat> {
   const stats = await stat(path).catch(() => null);
 
@@ -938,7 +924,6 @@ async function untrackedStat(path: string): Promise<LineStat> {
   return text === null ? { kind: "binary" } : lineStat("", text);
 }
 
-/** Returns an untracked file's patch: the whole file at `target` added, diffed on the host, reported under `path`. */
 async function untrackedEntry(target: string, path: string): Promise<PatchEntry> {
   const stats = await stat(target).catch(() => null);
 
@@ -968,7 +953,6 @@ async function untrackedEntry(target: string, path: string): Promise<PatchEntry>
     : { ...textEntry(path, "untracked", null, text), digest };
 }
 
-/** Returns one side of a file from up to `PATCH_LIMIT` of its bytes. */
 function sideOf(bytes: Uint8Array, truncated: boolean): GitFileSide {
   if (bytes.includes(0)) return { kind: "binary" };
 

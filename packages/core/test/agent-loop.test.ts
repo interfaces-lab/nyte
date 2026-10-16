@@ -12,19 +12,16 @@ import type {
   LoopInput,
   LoopRequest,
   LoopResponse,
-  ToolResult,
 } from "../src/agent-loop.ts";
 import { dev } from "../src/dev-log.ts";
 import { testModel } from "./fake-models.ts";
 
-/** Returns one scripted response: its content blocks, how it stopped, and the provider error it ended with. */
 type Reply = {
   readonly content?: AssistantMessage["content"];
   readonly stopReason?: "stop" | "length" | "toolUse";
   readonly error?: string;
 };
 
-/** Returns what a scripted loop saw: the requests it was asked to prepare and the calls it ran. */
 interface Seen {
   readonly requests: LoopRequest[];
   readonly executed: string[];
@@ -61,17 +58,14 @@ afterEach(() => {
   dev.on();
 });
 
-/** Returns a tool call block. */
 function call(id: string, name: string): AssistantMessage["content"][number] {
   return { type: "toolCall", id, name, arguments: {} };
 }
 
-/** Returns a text block. */
 function said(text: string): AssistantMessage["content"][number] {
   return { type: "text", text };
 }
 
-/** Returns an assistant message of the fake model holding `content`, stopped. */
 function messageOf(content: AssistantMessage["content"]): AssistantMessage {
   return {
     role: "assistant",
@@ -92,7 +86,6 @@ function messageOf(content: AssistantMessage["content"]): AssistantMessage {
   };
 }
 
-/** Returns a reply's event stream, pushed whole: each block's start, delta and end, then `done` or `error`. */
 function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const content = reply?.content ?? [];
@@ -130,7 +123,6 @@ function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
   return stream;
 }
 
-/** Returns a stream that opens a text block, sends one delta, and ends `aborted` once the signal aborts, as a provider does. */
 function abortable(signal: AbortSignal): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const partial = messageOf([said("Hal")]);
@@ -152,7 +144,6 @@ function abortable(signal: AbortSignal): AssistantMessageEventStream {
   return stream;
 }
 
-/** Returns a stream on its way, settled once its result is. */
 function respondWith(events: AssistantMessageEventStream): LoopResponse {
   return {
     events,
@@ -160,7 +151,6 @@ function respondWith(events: AssistantMessageEventStream): LoopResponse {
   };
 }
 
-/** Returns a loop config over scripted replies and fake tools that settle `ok`, recording what it was asked; `patch` replaces any member. */
 function scripted(
   replies: readonly Reply[],
   patch: Partial<LoopConfig> = {},
@@ -206,7 +196,6 @@ function scripted(
   return { config, seen };
 }
 
-/** Runs a loop to its end and returns every event and how it ended. */
 async function collect(
   config: LoopConfig,
   signal: AbortSignal = new AbortController().signal,
@@ -219,7 +208,6 @@ async function collect(
   return { events, end: await loop.result() };
 }
 
-/** Returns each event's type, a tool event with its call's name. */
 function kinds(events: readonly LoopEvent[]): readonly string[] {
   return events.map((event) =>
     event.type === "tool_start" || event.type === "tool_end"
@@ -228,7 +216,6 @@ function kinds(events: readonly LoopEvent[]): readonly string[] {
   );
 }
 
-/** Returns the inputs a boundary landed, one per delivery. */
 function landed(...deliveries: readonly LoopInput["delivery"][]): readonly LoopInput[] {
   return deliveries.map((delivery, index) => ({
     message: asId(`m${index}`),
@@ -308,7 +295,7 @@ describe("agentLoop", () => {
 
     const { config, seen } = scripted([{ content: [call("a", "wait"), call("b", "read")] }], {
       tools: {
-        execute: async (toolCall): Promise<ToolResult> =>
+        execute: async (toolCall): Promise<ToolOutcome | { readonly kind: "parked" }> =>
           toolCall.name === "wait" ? { kind: "parked" } : OK,
       },
       boundary: async () => {
@@ -373,7 +360,10 @@ describe("agentLoop", () => {
       if (event.type === "message_update") controller.abort();
     }
 
-    expect(await loop.result()).toEqual({ reason: "stopped", response: null });
+    expect(await loop.result()).toMatchObject({
+      reason: "stopped",
+      response: { usage: { output: 1 } },
+    });
     expect(kinds(events)).not.toContain("message_end");
     expect(seen.requests).toHaveLength(1);
   });

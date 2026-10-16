@@ -19,7 +19,6 @@ import {
   repair,
   runRef,
   runStep,
-  startRun,
 } from "../src/index.ts";
 import type {
   ActionContext,
@@ -31,7 +30,7 @@ import type {
   ToolSource,
 } from "../src/index.ts";
 import { commit, put } from "../src/session-state.ts";
-import { configuration, main, setup, until } from "./harness.ts";
+import { configuration, main, setup, startRun, until } from "./harness.ts";
 
 const question = definePart({
   kind: "test/question",
@@ -128,7 +127,6 @@ const dyingHandlers: typeof gatedHandlers = {
   },
 };
 
-/** A held action whose first re-run never returns: its runner died mid-handler. */
 const dying = definePart({
   kind: "test/dying",
   state: holdState,
@@ -137,7 +135,6 @@ const dying = definePart({
   onAction: (action, input, context) => dyingHandlers[action](input, context),
 });
 
-/** Runs `body` with `Date.now` a lease later than the clock, so every claim taken before lapses. */
 async function leaseLater<T>(body: () => Promise<T>): Promise<T> {
   const real = Date.now.bind(Date);
   const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + LEASE_MS + 1);
@@ -149,7 +146,6 @@ async function leaseLater<T>(body: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Runs a test step that waits once and returns the outcome; its result records it. */
 function waitStep(
   kernel: Kernel,
   input: {
@@ -178,7 +174,6 @@ function waitStep(
   });
 }
 
-/** Returns a body that waits on a target and returns the whole outcome. */
 function waiting(target: Parameters<Durable["wait"]>[0]) {
   return async (durable: Durable): Promise<Json> => durable.wait(target);
 }
@@ -191,7 +186,6 @@ async function readCall(kernel: Kernel, session: SessionId, id: string): Promise
   return record;
 }
 
-/** Returns the id of the first step parked in a session's store. */
 function parkedCall(kernel: Kernel, session: SessionId): Promise<string> {
   return until(async () => {
     for (const ref of await kernel.store.refs.list(`sessions/${session}/calls/`)) {
@@ -226,7 +220,6 @@ async function runOf(kernel: Kernel, session: SessionId, run: RunId) {
   return decodeRunRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
 }
 
-/** Returns a new kernel over a host's store, holding nothing in memory: a restart. */
 function restart(kernel: Kernel): Kernel {
   return createKernel({
     hostId: kernel.hostId,
@@ -772,6 +765,26 @@ describe("waits as store facts", () => {
     await holder.kernel.waits.settleFromStore();
 
     expect(notified).toEqual([`${session.id}/${main}`, `${session.id}/${main}`]);
+  });
+
+  it("drops a wait held here once its deadline finds the step settled elsewhere, so it is no longer the head's next deadline", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+    const at = Date.now() + 60_000;
+
+    await waitStep(kernel, {
+      session: session.id,
+      call: "c1",
+      body: waiting({ kind: "timer", until: at }),
+    });
+
+    const elsewhere = restart(kernel);
+    await loadWaits(elsewhere);
+    await elsewhere.waits.tick(at);
+
+    expect(kernel.waits.nextDeadline(session.id, main)).toBe(at);
+    await kernel.waits.tick(at);
+    expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
   });
 
   it("judges a wait held here again from the store: repair settles one whose part went away, and a slot at an older wait gives way to the stored one (ADV E N1)", async () => {

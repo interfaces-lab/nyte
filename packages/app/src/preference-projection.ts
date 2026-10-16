@@ -4,12 +4,10 @@ import type { DesktopModelOption } from "./catalog.ts";
 import type { ModelPickerChange } from "./conversation/model-picker.tsx";
 import { modelRefFor } from "./conversation/model-picker-state.ts";
 
-/** The model a picker change leaves selected becomes what the next new chat starts with. */
 export function pickerDefaults(
   setup: {
     readonly model: DesktopModelOption | undefined;
     readonly thinkingLevel: ModelThinkingLevel | undefined;
-    /** The setup selects the model's fast sibling. */
     readonly fast: boolean;
   },
   change: ModelPickerChange,

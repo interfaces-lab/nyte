@@ -8,7 +8,6 @@ import type {
   Json,
   MessageId,
   PartId,
-  Ref,
   RefUpdate,
   RequestOptions,
   RunEnd,
@@ -26,11 +25,10 @@ import { storedAnswer } from "./parts.ts";
 import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, RunRecord } from "./records.ts";
 import { callRef, partRef, runRef } from "./refs.ts";
-import { endOf } from "./runs.ts";
+import { readRunEnd } from "./runs.ts";
 import { changeCall, load, put, readCall } from "./session-state.ts";
 import type { CallChange } from "./session-state.ts";
 
-/** Returns one parked durable wait as its call record holds it: where the step runs, the target, the outcome per target so far, and the index of the wait in the step's `waits`. */
 export interface ParkedWait {
   readonly session: SessionId;
   readonly head: HeadName | null;
@@ -41,33 +39,27 @@ export interface ParkedWait {
   readonly index: number;
 }
 
-/**
- * Holds the durable waits parked in this process, by what wakes them. A wake records the outcome
- * in the step's call record, clearing `waiting`, and moves its run to `executing` unless another of
- * the run's calls is parked in the store; then the head is notified so `advance` re-runs the step.
- */
 export interface WaitRegistry {
-  /** Parks a step, or judges again the one held here at the same wait; a target that already has its outcome settles at once, a job this instance does not hold as `lost`. */
   park(entry: ParkedWait): Promise<void>;
-  /** Wakes the waits on a run that ended and resolves whether one consumed the end; each call in `waitedBy` not parked here is offered only the run's outcome, as `partAnswered` offers its call. */
+
   runEnded(
     session: SessionId,
     run: RunId,
     end: RunEnd,
     waitedBy: RunRecord["waitedBy"],
   ): Promise<boolean>;
-  /** Wakes the waits on a job that ended and resolves whether one consumed the end or still holds it: a wait whose write the store refused stays parked here and takes the end when `repair` or the poll judges it again. */
+
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
-  /** Wakes the waits on an answered part; `call`, the step its live status names, is offered the part's outcome from its stored wait. */
+
   partAnswered(
     session: SessionId,
     part: PartId,
     answer: { readonly action: string; readonly input: Json },
     call: CallId | null,
   ): Promise<void>;
-  /** Wakes the waits on a closed part with no answer; `call`, the step its status named, from its stored wait. */
+
   partClosed(session: SessionId, part: PartId, call: CallId | null): Promise<void>;
-  /** Wakes with `input` each `untilInput` wait on the head, read from the store: those of `parked`, its live run's parked calls as admission read them, and those parked here. */
+
   inputAdmitted(
     session: SessionId,
     head: HeadName,
@@ -75,31 +67,28 @@ export interface WaitRegistry {
     parked: readonly CallId[],
   ): Promise<void>;
   runStopped(session: SessionId, run: RunId): Promise<void>;
-  /** Wakes the wait one call, and each call nested under it, has stored with `stopped`, wherever it was parked. */
+
   callStopped(session: SessionId, call: CallId): Promise<void>;
-  /** Fires the timers and deadlines due at `now`. */
+
   tick(now: number): Promise<void>;
-  /** Returns the earliest timer or deadline among a head's parked waits, or null. */
+
   nextDeadline(session: SessionId, head: HeadName): number | null;
-  /** Judges every wait held here again from its stored call record, dropping those another instance settled, and resumes each act here whose step another runner settled. */
+
   settleFromStore(): Promise<void>;
-  /** Runs a head-less step again once its wake is recorded: the act here waiting on it resumes, else the action re-runs here. */
+
   rerun(session: SessionId, call: CallId): void;
-  /** Calls `resume` when a wake records an outcome for a head-less step, so the act running it runs it again; with none, a wake written here re-runs the action. */
+
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 }
 
-/** Returns one parked wait with its targets and the outcome each has had so far. */
 interface Slot {
   readonly entry: ParkedWait;
   readonly targets: readonly WaitTarget[];
   outcomes: readonly (WaitOutcome | null)[];
 }
 
-/** How a job this instance does not hold ends for a wait on it. */
 const LOST: JobEnd = { kind: "lost" };
 
-/** Returns an empty wait registry over a kernel: what `kernel.waits` holds. */
 export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const slots = new Map<string, Slot>();
 
@@ -146,12 +135,16 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const open = (current: CallRecord, entry: ParkedWait): boolean =>
     current.result === null && current.waiting !== null && current.waits.length === entry.index;
 
-  const woken = (slot: Slot): void => {
-    const { entry } = slot;
-    const key = keyOf(entry.session, entry.call);
-    dev("waits", "wake", { session: entry.session, call: entry.call });
+  const drop = (slot: Slot): void => {
+    const key = formatWaitKey(slot.entry.session, slot.entry.call);
 
     if (slots.get(key) === slot) slots.delete(key);
+  };
+
+  const woken = (slot: Slot): void => {
+    const { entry } = slot;
+    dev("waits", "wake", { session: entry.session, call: entry.call });
+    drop(slot);
 
     if (entry.head !== null) kernel.wakes.notify(entry.session, entry.head);
     else registry.rerun(entry.session, entry.call);
@@ -164,7 +157,12 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       current !== null && open(current, entry) ? completion(current, entry, outcome) : null,
     );
 
-    if (!written.wrote) return false;
+    if (!written.wrote) {
+      if (written.record === null || !open(written.record, entry)) drop(slot);
+
+      return false;
+    }
+
     woken(slot);
 
     return true;
@@ -215,6 +213,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
     const record = written.record;
 
+    if (record === null || !open(record, entry)) drop(slot);
+
     if (!written.wrote || record === null) return false;
 
     if (record.waiting !== null) slot.outcomes = record.partial;
@@ -236,7 +236,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     );
 
   const expire = async (slot: Slot, now: number): Promise<void> => {
-    const deadline = deadlineOf(slot.entry.target);
+    const deadline = findEarliestDeadline(slot.entry.target);
 
     if (deadline !== null && deadline <= now) {
       await settle(slot, { kind: "deadline" });
@@ -256,7 +256,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const settled = async (session: SessionId, target: WaitTarget): Promise<WaitOutcome | null> => {
     switch (target.kind) {
       case "run": {
-        const end = await endOf(kernel, target.session, target.run);
+        const end = await readRunEnd(kernel, target.session, target.run);
 
         return end === null ? null : { kind: "run", session: target.session, run: target.run, end };
       }
@@ -293,7 +293,10 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     );
   };
 
-  const slotOf = (entry: ParkedWait): Slot => {
+  const slotFor = (entry: ParkedWait): Slot => {
+    const held = slots.get(formatWaitKey(entry.session, entry.call));
+
+    if (held?.entry.index === entry.index) return held;
     const target = entry.target;
     const targets = "targets" in target ? target.targets : [target];
 
@@ -304,14 +307,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     };
   };
 
-  const slotFor = (entry: ParkedWait): Slot => {
-    const held = slots.get(keyOf(entry.session, entry.call));
-
-    return held?.entry.index === entry.index ? held : slotOf(entry);
-  };
-
   const storedWait = async (session: SessionId, call: CallId): Promise<ParkedWait | null> =>
-    parkedOf(session, (await readCall(kernel, session, call))?.record ?? null);
+    readParkedWait(session, (await readCall(kernel, session, call))?.record ?? null);
 
   const offerCold = async (
     session: SessionId,
@@ -347,7 +344,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   };
 
   const park = async (entry: ParkedWait): Promise<void> => {
-    const key = keyOf(entry.session, entry.call);
+    const key = formatWaitKey(entry.session, entry.call);
     const slot = slotFor(entry);
     slot.outcomes = slot.targets.map((_target, index) => entry.partial.at(index) ?? null);
     slots.set(key, slot);
@@ -430,7 +427,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       await Promise.all(
         records.flatMap((found) => {
-          const entry = parkedOf(session, found?.record ?? null);
+          const entry = readParkedWait(session, found?.record ?? null);
 
           return entry === null ? [] : [settle(slotFor(entry), { kind: "stopped" })];
         }),
@@ -444,9 +441,9 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       await Promise.all(
         [...slots.values()].map(async (slot) => {
           const { entry } = slot;
-          const key = keyOf(entry.session, entry.call);
+          const key = formatWaitKey(entry.session, entry.call);
           const record = (await readCall(kernel, entry.session, entry.call))?.record ?? null;
-          const stored = parkedOf(entry.session, record);
+          const stored = readParkedWait(entry.session, record);
 
           if (stored !== null) {
             await park(stored);
@@ -477,7 +474,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     nextDeadline(session, head) {
       const due = [...slots.values()].flatMap((slot) => {
         if (slot.entry.session !== session || slot.entry.head !== head) return [];
-        const deadline = deadlineOf(slot.entry.target);
+        const deadline = findEarliestDeadline(slot.entry.target);
 
         return [
           ...(deadline === null ? [] : [deadline]),
@@ -492,7 +489,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       return due.length === 0 ? null : Math.min(...due);
     },
     rerun(session, call) {
-      const resumer = resumers.get(keyOf(session, call));
+      const resumer = resumers.get(formatWaitKey(session, call));
 
       if (resumer !== undefined) resumer.resume();
       else
@@ -501,7 +498,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         );
     },
     onWoken(session, call, resume) {
-      const key = keyOf(session, call);
+      const key = formatWaitKey(session, call);
       const resumer = { session, call, resume };
       resumers.set(key, resumer);
 
@@ -514,23 +511,15 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   return registry;
 }
 
-/** Rebuilds `kernel.waits` from every `calls/*` record whose `waiting` is set: every session's, or only the listed sessions'; `cover` and `repair` call it. A woken step whose re-run claim lapsed is re-run. */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
-  const refs: readonly Ref[] =
-    sessions === undefined
-      ? await kernel.store.refs.list("sessions/")
-      : (
-          await Promise.all(
-            sessions.map((session) => kernel.store.refs.list(`sessions/${session}/calls/`)),
-          )
-        ).flat();
+  const refs = await kernel.store.sessions.pending({ kind: "call", sessions });
 
   for (const ref of refs) {
     const [root, session, kind] = ref.name.split("/");
 
     if (root !== "sessions" || session === undefined || kind !== "calls") continue;
     const found = await load(kernel, ref, decodeCallRecord);
-    const entry = parkedOf(asId<"session">(session), found?.record ?? null);
+    const entry = readParkedWait(asId<"session">(session), found?.record ?? null);
 
     if (entry !== null) await kernel.waits.park(entry);
     else if (found !== null && lapsed(kernel, found.record))
@@ -538,7 +527,6 @@ export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[])
   }
 }
 
-/** Calls the listener whenever a receipt is settled in this process; the disposer stops it. */
 export function onReceipt(
   kernel: Kernel,
   session: SessionId,
@@ -557,12 +545,10 @@ export function onReceipt(
   };
 }
 
-/** Wakes every in-process wait on a receipt. */
 export function notifyReceipt(kernel: Kernel, session: SessionId, id: string): void {
   for (const listener of kernel.receipts.get(`${session}/${id}`) ?? []) listener();
 }
 
-/** Resolves with the first value `check` finds, checking once now and again on every trigger; abort rejects `unavailable` and stops the wait, never the work. */
 export function waitFor<T>(input: {
   readonly options?: RequestOptions;
   readonly check: () => Promise<{ readonly value: T } | null>;
@@ -637,7 +623,6 @@ export function waitFor<T>(input: {
   });
 }
 
-/** Returns the update writing a live run's parked calls and wait with `run waiting`, or `run phase executing` once it waits on nothing; none once the run has ended or `change` keeps it. */
 export async function runWait(
   kernel: Kernel,
   session: SessionId,
@@ -672,8 +657,7 @@ export async function runWait(
   ];
 }
 
-/** Returns the parked wait a call record holds, or null when it has a result or waits on nothing. */
-export function parkedOf(session: SessionId, record: CallRecord | null): ParkedWait | null {
+export function readParkedWait(session: SessionId, record: CallRecord | null): ParkedWait | null {
   if (record === null || record.result !== null || record.waiting === null) return null;
 
   return {
@@ -687,7 +671,6 @@ export function parkedOf(session: SessionId, record: CallRecord | null): ParkedW
   };
 }
 
-/** Returns what a wait shows as waiting on: the target, or a combination's first target with an empty slot. */
 export function waitingOn(
   target: NonNullable<CallRecord["waiting"]>,
   partial: readonly (WaitOutcome | null)[],
@@ -697,8 +680,7 @@ export function waitingOn(
   return target.targets.find((_waited, index) => (partial.at(index) ?? null) === null) ?? null;
 }
 
-/** Returns the earliest deadline bounding a wait, its own or any of its targets', or null. */
-function deadlineOf(target: NonNullable<CallRecord["waiting"]>): number | null {
+function findEarliestDeadline(target: NonNullable<CallRecord["waiting"]>): number | null {
   const bounds = [
     target.deadline,
     ...("targets" in target ? target.targets.map((waited) => waited.deadline) : []),
@@ -707,6 +689,6 @@ function deadlineOf(target: NonNullable<CallRecord["waiting"]>): number | null {
   return bounds.length === 0 ? null : Math.min(...bounds);
 }
 
-function keyOf(session: SessionId, call: CallId): string {
+function formatWaitKey(session: SessionId, call: CallId): string {
   return `${session}/${call}`;
 }

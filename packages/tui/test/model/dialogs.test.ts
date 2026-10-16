@@ -1,10 +1,3 @@
-/**
- * Dialogs as explicit state machines: the one list (filter, wrap, typed
- * row, per-row actions), accepting per purpose (settings push and pop back,
- * the queue's actions, the tree's summary step), the model picker, the
- * tree, the task inspector, the auth steps and the text panel. Loads are
- * addressed by dialog id, so a closed dialog never receives one.
- */
 import { asId } from "@nyte-ai/schema";
 import type { SessionInfo, TreeNode, TreeView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
@@ -44,6 +37,7 @@ function list(items: readonly string[], extra: Partial<ListDialog> = {}): ListDi
         id,
         label: id,
         description: `${id} description`,
+        timing: null,
         status: null,
         mark: null,
       })),
@@ -136,7 +130,19 @@ describe("accepting a row", () => {
     const asking = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
-        .question("Pick", ["First", "Second"], { id: "q1" })
+        .question(
+          [
+            {
+              question: "Pick",
+              header: "Question",
+              options: [
+                { label: "First", description: "" },
+                { label: "Second", description: "" },
+              ],
+            },
+          ],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 
@@ -144,20 +150,353 @@ describe("accepting a row", () => {
     const chosen = play(state, key("picker.next"), key("picker.accept"));
 
     expect(chosen.effects).toEqual([
-      { kind: "answer", session: S1, part: asId("q1"), choice: "Second", typed: null },
+      { kind: "answer", session: S1, part: asId("q1"), answers: [["Second"]], typed: null },
     ]);
     expect(top(chosen.state)).toBeNull();
 
-    const typedAnswer = play(
-      state,
-      key("picker.previous"),
-      { kind: "dialog", command: { kind: "query", text: "Green" } },
+    const typing = play(state, { kind: "dialog", command: { kind: "query", text: "Green" } });
+
+    expect(typing.state.local.draft.text).toBe("Green");
+    expect(top(typing.state)).toBeNull();
+    const intent = deriveScreen(typing.state, null).interactions["chat.submit"].intent;
+    const typedAnswer = intent === null ? typing : play(typing.state, intent);
+
+    expect(typedAnswer.effects).toEqual([
+      { kind: "composer", op: { kind: "clear" } },
+      {
+        kind: "answer",
+        session: S1,
+        part: asId("q1"),
+        answers: [["Green"]],
+        typed: { session: S1, draft: { text: "Green", parts: new Map() } },
+      },
+    ]);
+  });
+
+  test("grouped questions retain selections through Back and submit one complete group", () => {
+    const asking = viewOf((v) =>
+      v
+        .turn("t1", (t) => t.user("go"))
+        .question(
+          [
+            {
+              question: "Pick an approach",
+              header: "Approach",
+              options: [
+                { label: "A", description: "First approach" },
+                { label: "B", description: "Second approach" },
+              ],
+            },
+            {
+              question: "Pick features",
+              header: "Features",
+              multiple: true,
+              options: [
+                { label: "X", description: "Feature X" },
+                { label: "Y", description: "Feature Y" },
+              ],
+            },
+            {
+              question: "Anything else?",
+              header: "Other",
+              options: [{ label: "Z", description: "Extra work" }],
+            },
+          ],
+          { id: "q1" },
+        )
+        .waiting("q1"),
+    );
+
+    const state = ready(asking);
+
+    const panel = top(state);
+
+    expect(panel).toMatchObject({ title: "1/3 · Pick an approach" });
+    expect(
+      panel?.kind === "list" && panel.choices.kind === "ready"
+        ? panel.choices.items[0]?.description
+        : null,
+    ).toBe("First approach");
+
+    const chosen = play(state, key("picker.accept"));
+
+    const selected = play(
+      chosen.state,
+      key("picker.accept"),
+      key("picker.next"),
       key("picker.accept"),
     );
 
-    expect(typedAnswer.effects).toEqual([
-      { kind: "answer", session: S1, part: asId("q1"), choice: "Green", typed: null },
+    expect(selected.effects).toEqual([]);
+    expect(selected.state.local.question.drafts.get(S1)?.get(asId("q1"))).toMatchObject({
+      active: 1,
+      fields: [
+        { kind: "single", selection: { kind: "option", value: "A" } },
+        { kind: "multiple", options: ["X", "Y"] },
+        { kind: "single", selection: { kind: "empty" } },
+      ],
+    });
+
+    const next = play(selected.state, { kind: "dialog", command: { kind: "pick", index: 3 } });
+
+    const back = play(next.state, { kind: "dialog", command: { kind: "pick", index: 3 } });
+
+    expect(back.state.local.question.drafts.get(S1)?.get(asId("q1"))).toMatchObject({
+      active: 1,
+      fields: [
+        { kind: "single", selection: { kind: "option", value: "A" } },
+        { kind: "multiple", options: ["X", "Y"] },
+        { kind: "single", selection: { kind: "empty" } },
+      ],
+    });
+
+    const last = play(back.state, { kind: "dialog", command: { kind: "pick", index: 3 } });
+
+    const submitted = play(last.state, { kind: "dialog", command: { kind: "pick", index: 2 } });
+
+    expect(submitted.effects).toEqual([
+      {
+        kind: "answer",
+        session: S1,
+        part: asId("q1"),
+        answers: [["A"], ["X", "Y"], []],
+        typed: null,
+      },
     ]);
+    expect(
+      play(submitted.state, {
+        kind: "answer",
+        session: S1,
+        part: asId("q1"),
+        value: "Z",
+        typed: false,
+      }).effects,
+    ).toEqual([]);
+
+    const failed = play(submitted.state, {
+      kind: "answered",
+      request: { session: S1, part: asId("q1") },
+      result: { kind: "failed", message: "offline" },
+      typed: null,
+    });
+
+    expect(failed.state.local.question.drafts.get(S1)?.get(asId("q1"))).toMatchObject({
+      fields: [
+        { kind: "single", selection: { kind: "option", value: "A" } },
+        { kind: "multiple", options: ["X", "Y"] },
+        { kind: "single", selection: { kind: "empty" } },
+      ],
+    });
+    expect(
+      play(failed.state, { kind: "dialog", command: { kind: "pick", index: 2 } }).effects,
+    ).toEqual([
+      {
+        kind: "answer",
+        session: S1,
+        part: asId("q1"),
+        answers: [["A"], ["X", "Y"], []],
+        typed: null,
+      },
+    ]);
+  });
+
+  test("editing custom text after Back preserves an offered option with the same label", () => {
+    const asking = viewOf((v) =>
+      v
+        .turn("t1", (t) => t.user("go"))
+        .question(
+          [
+            {
+              question: "Features",
+              header: "Features",
+              multiple: true,
+              options: [
+                { label: "X", description: "Feature X" },
+                { label: "Y", description: "Feature Y" },
+              ],
+            },
+            {
+              question: "Finish?",
+              header: "Finish",
+              options: [{ label: "Finish", description: "Finish" }],
+            },
+          ],
+          { id: "q1" },
+        )
+        .waiting("q1"),
+    );
+
+    const selected = play(ready(asking), { kind: "dialog", command: { kind: "pick", index: 0 } });
+
+    const custom = play(selected.state, typed("X"), {
+      kind: "answer",
+      session: S1,
+      part: asId("q1"),
+      value: "X",
+      typed: true,
+    });
+
+    const back = play(custom.state, { kind: "dialog", command: { kind: "pick", index: 3 } });
+
+    const panel = top(back.state);
+
+    expect(
+      panel?.kind === "list" && panel.choices.kind === "ready" ? panel.choices.items[2] : null,
+    ).toMatchObject({ label: "Type an answer", description: "X", mark: { glyph: "✓" } });
+
+    const toggled = play(
+      back.state,
+      { kind: "dialog", command: { kind: "pick", index: 0 } },
+      { kind: "dialog", command: { kind: "pick", index: 0 } },
+    );
+
+    const typing = play(toggled.state, { kind: "dialog", command: { kind: "query", text: "Z" } });
+
+    const intent = deriveScreen(typing.state, null).interactions["chat.submit"].intent;
+
+    const edited = intent === null ? typing : play(typing.state, intent);
+
+    const submitted = play(edited.state, { kind: "dialog", command: { kind: "pick", index: 0 } });
+
+    expect(submitted.effects).toEqual([
+      {
+        kind: "answer",
+        session: S1,
+        part: asId("q1"),
+        answers: [["X", "Z"], ["Finish"]],
+        typed: null,
+      },
+    ]);
+  });
+
+  test("a parent question preserves an unfinished child's group with the same part id", () => {
+    const childView = viewOf((v) =>
+      v
+        .turn("c", (t) => t.user("go"))
+        .question(
+          [
+            {
+              question: "Child first",
+              header: "First",
+              options: [{ label: "A", description: "First" }],
+            },
+            {
+              question: "Child second",
+              header: "Second",
+              options: [{ label: "B", description: "Second" }],
+            },
+          ],
+          { id: "q1" },
+        )
+        .waiting("q1"),
+    );
+
+    const child: Task = {
+      kind: "agent",
+      id: asId("c1"),
+      info: { ...followed(childView, "c1").info, parent: S1 },
+      view: childView,
+    };
+
+    const started = play(
+      ready(idle),
+      { kind: "tasks", session: S1, tasks: [child] },
+      { kind: "dialog", command: { kind: "pick", index: 0 } },
+    );
+
+    const parent = viewOf((v) =>
+      v
+        .turn("t1", (t) => t.user("parent"))
+        .question(
+          [
+            {
+              question: "Parent question",
+              header: "Parent",
+              options: [{ label: "P", description: "Parent" }],
+            },
+          ],
+          { id: "q1" },
+        )
+        .waiting("q1"),
+    );
+
+    const interrupted = play(started.state, { kind: "view", session: S1, view: parent });
+
+    expect(top(interrupted.state)).toMatchObject({ title: "Parent question" });
+
+    const resumed = play(interrupted.state, { kind: "view", session: S1, view: idle });
+
+    expect(top(resumed.state)).toMatchObject({ title: "2/2 · Subagent c1: Child second" });
+    expect(
+      play(resumed.state, { kind: "dialog", command: { kind: "pick", index: 0 } }).effects,
+    ).toEqual([
+      {
+        kind: "answer",
+        session: asId("c1"),
+        part: asId("q1"),
+        answers: [["A"], ["B"]],
+        typed: null,
+      },
+    ]);
+  });
+
+  test("late answer outcomes release only their own request", () => {
+    const old = viewOf((v) =>
+      v
+        .turn("old", (t) => t.user("go"))
+        .question(
+          [{ question: "Old", header: "Old", options: [{ label: "A", description: "Old" }] }],
+          { id: "q-old" },
+        )
+        .waiting("q-old"),
+    );
+
+    const next = viewOf((v) =>
+      v
+        .turn("new", (t) => t.user("go"))
+        .question(
+          [{ question: "New", header: "New", options: [{ label: "A", description: "New" }] }],
+          { id: "q-new" },
+        )
+        .waiting("q-new"),
+    );
+
+    const submitted = play(
+      ready(old),
+      { kind: "dialog", command: { kind: "pick", index: 0 } },
+      { kind: "view", session: S1, view: next },
+      { kind: "dialog", command: { kind: "pick", index: 0 } },
+    );
+
+    expect(submitted.effects).toEqual([
+      { kind: "answer", session: S1, part: asId("q-old"), answers: [["A"]], typed: null },
+      { kind: "answer", session: S1, part: asId("q-new"), answers: [["A"]], typed: null },
+    ]);
+
+    for (const result of [
+      { kind: "failed" as const, message: "old request failed" },
+      { kind: "accepted" as const },
+    ]) {
+      const settled = play(submitted.state, {
+        kind: "answered",
+        request: { session: S1, part: asId("q-old") },
+        result,
+        typed: null,
+      });
+
+      expect(settled.state.local.question.drafts.get(S1)?.get(asId("q-new"))?.phase).toBe(
+        "submitting",
+      );
+      expect(
+        play(settled.state, {
+          kind: "answer",
+          session: S1,
+          part: asId("q-new"),
+          value: "A",
+          typed: false,
+        }).effects,
+      ).toEqual([]);
+    }
   });
 
   test("settings push a setting's choices; applying pops back to settings on the same row", () => {
@@ -430,16 +769,17 @@ const TREE: TreeView = {
   ],
 };
 
-function treeState(draft = ""): State {
+function treeState(draft = "", view: TreeView = TREE): State {
   const opened = play(ready(idle), typed(draft), {
     kind: "open",
     dialog: { kind: "tree", filter: "default" },
   });
+  const tip = view.tip.kind === "commit" ? view.tip.id : null;
 
   return play(opened.state, {
     kind: "loaded",
     dialog: "dialog-1",
-    data: { kind: "tree", tree: { view: TREE, tip: asId<"commit">("c3") } },
+    data: { kind: "tree", tree: { view, tip } },
   }).state;
 }
 
@@ -460,13 +800,47 @@ function selectTree(state: State, commit: string): State {
 }
 
 describe("tree", () => {
-  test("opens on the tip; picking the tip says so", () => {
-    const state = treeState();
+  test("opens on the tip; picking a reply at the tip says so", () => {
+    const state = treeState("", { ...TREE, tip: { kind: "commit", id: asId("c2") } });
 
-    expect(treeDialog(state)?.selected).toBe(asId<"commit">("c3"));
+    expect(treeDialog(state)?.selected).toBe(asId<"commit">("c2"));
     expect(play(state, key("picker.accept")).state.local.notice?.text).toBe(
       "Already at that point in the chat",
     );
+  });
+
+  test("picking the user message at the tip moves back to edit it", () => {
+    const state = treeState();
+
+    expect(treeDialog(state)?.selected).toBe(asId<"commit">("c3"));
+    const moved = play(state, key("picker.accept"));
+
+    expect(moved.state.local.notice?.text).not.toBe("Already at that point in the chat");
+    expect(moved.effects).toEqual([
+      {
+        kind: "move",
+        session: S1,
+        position: { kind: "commit", id: asId("c3") },
+        options: { running: "refuse", abandoned: "keep", expect: asId("rev-7") },
+        handback: null,
+      },
+    ]);
+    expect(moved.state.local.dialogs).toEqual([]);
+  });
+
+  test("a lone user message at the tip can be moved back to edit", () => {
+    const moved = play(
+      treeState("", {
+        revision: asId("rev-1"),
+        tip: { kind: "commit", id: asId("u1") },
+        nodes: [node("u1", null, "user", "only message")],
+      }),
+      key("picker.accept"),
+    );
+
+    expect(moved.effects).toMatchObject([
+      { kind: "move", position: { kind: "commit", id: asId("u1") } },
+    ]);
   });
 
   test("a user message needs an empty composer", () => {
@@ -710,10 +1084,56 @@ const secret: Dialog = {
   id: "a1",
   mode: "login",
   provider: "test",
+  name: "Test",
+  link: null,
   step: { kind: "secret", prompt: "Paste your API key", masked: true, codePoints: [] },
 };
 
 describe("paste", () => {
+  test("clipboard replacement stays with its auth prompt and is discarded after the prompt changes", () => {
+    const opened = play(ready(idle), {
+      kind: "open",
+      dialog: { kind: "auth", mode: "login", provider: "test" },
+    }).state;
+    const named = play(opened, {
+      kind: "loaded",
+      dialog: "dialog-1",
+      data: { kind: "auth", step: { kind: "secret", prompt: "Account name", masked: false } },
+    }).state;
+    const requested = play(named, { kind: "paste", source: { kind: "clipboard" } });
+    expect(requested.effects).toEqual([
+      { kind: "read-dialog-clipboard", dialog: "dialog-1", promptVersion: 1 },
+    ]);
+    const replaced = play(
+      named,
+      { kind: "dialog", command: { kind: "query", text: "old" } },
+      { kind: "dialog", command: { kind: "edit", edit: { kind: "select-all" } } },
+      { kind: "dialog-pasted", dialog: "dialog-1", promptVersion: 1, text: "Personal" },
+    ).state;
+    expect(field(top(replaced))).toEqual({ text: "Personal", caret: 8 });
+    const next = play(replaced, {
+      kind: "loaded",
+      dialog: "dialog-1",
+      data: { kind: "auth", step: { kind: "secret", prompt: "API key", masked: true } },
+    }).state;
+    const late = play(next, {
+      kind: "dialog-pasted",
+      dialog: "dialog-1",
+      promptVersion: 1,
+      text: "wrong-prompt",
+    }).state;
+    expect(field(top(late))).toEqual({ text: "", caret: 0 });
+    expect(late.local.draft.text).toBe("");
+    const image = play(next, {
+      kind: "dialog-pasted",
+      dialog: "dialog-1",
+      promptVersion: 2,
+      text: null,
+    });
+    expect(image.effects).toEqual([]);
+    expect(image.state).toBe(next);
+  });
+
   test("a paste goes in at the caret as one trimmed line", () => {
     const pasted = reduceDialog(secret, { kind: "paste", text: "sk-key\n" }).dialog;
 
@@ -810,21 +1230,36 @@ describe("typed field", () => {
     expect(field(set)).toEqual({ text: "xyz", caret: 3 });
   });
 
-  test("the question keeps its typed answer's caret between keys", () => {
+  test("typing in the question panel moves the answer into the composer", () => {
     const asking = viewOf((v) =>
       v
         .turn("t", (t) => t.user("go"))
-        .question("Which?", ["a", "b"], { id: "q1" })
+        .question(
+          [
+            {
+              question: "Which?",
+              header: "Question",
+              options: [
+                { label: "a", description: "" },
+                { label: "b", description: "" },
+              ],
+            },
+          ],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 
-    const step = play(
-      ready(asking),
-      { kind: "dialog", command: { kind: "edit", edit: { kind: "insert", text: "abc" } } },
-      { kind: "dialog", command: { kind: "edit", edit: { kind: "move", to: "left" } } },
-      { kind: "dialog", command: { kind: "edit", edit: { kind: "insert", text: "x" } } },
-    );
+    const step = play(ready(asking), {
+      kind: "dialog",
+      command: { kind: "edit", edit: { kind: "insert", text: "abc" } },
+    });
 
-    expect(step.state.local.question).toMatchObject({ answering: "abxc", caret: 3 });
+    expect(step.state.local.draft).toMatchObject({ text: "abc", cursor: 3 });
+    expect(top(step.state)).toBeNull();
+    expect(step.effects).toEqual([
+      { kind: "composer", op: { kind: "insert", text: "abc", at: "cursor" } },
+      { kind: "composer", op: { kind: "focus" } },
+    ]);
   });
 });

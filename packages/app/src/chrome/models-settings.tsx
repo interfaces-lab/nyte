@@ -1,8 +1,4 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-/**
- * Settings › Providers: provider connections, each signed in through the
- * host's `models.login`. The new-chat default renders on Settings › Agent.
- */
 import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -19,9 +15,10 @@ import type { DesktopCatalog, ProviderStatus } from "../catalog.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
 import { connection } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
+import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { cancelLogin, startLogin, useLoginAttempt } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -144,7 +141,7 @@ function ApiKeyForm({
     >
       <div {...props(styles.keyRow)}>
         <Input
-          variant="quiet"
+          variant="code"
           type="password"
           aria-label={label}
           autoComplete="off"
@@ -168,7 +165,7 @@ function ApiKeyForm({
           Cancel
         </Button>
       </div>
-      <span {...props(styles.keyHint)}>
+      <span {...props(text.sm, styles.keyHint)}>
         {nyte.clientSurface === "web"
           ? "Stored on the machine running the server"
           : "Stored on this Mac in ~/.nyte/auth.json"}
@@ -182,6 +179,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const [keyFormOpen, setKeyFormOpen] = useState(false);
   const running = useLoginAttempt(provider.id);
   const disconnected = provider.credential === "missing";
+  const unknown = provider.credential === "unknown";
   const attempt = disconnected ? running : undefined;
 
   const login = useMutation({
@@ -247,7 +245,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               ? "Sign in to connect"
               : "Connects through the environment")));
 
-  const canSignOut = !disconnected;
+  const canSignOut = !disconnected && !unknown;
 
   return (
     <ConnectionRow
@@ -255,12 +253,14 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       title={
         <span {...props(styles.providerTitle)}>
           {provider.name}
-          {badge !== undefined && <span {...props(styles.providerBadge)}>{badge}</span>}
+          {badge !== undefined && <span {...props(text.sm, styles.providerBadge)}>{badge}</span>}
         </span>
       }
       detail={detail}
       control={
-        attempt !== undefined && attempt.method === "browser" ? (
+        unknown ? (
+          <ConnectionStatus tone="off">Not checked</ConnectionStatus>
+        ) : attempt !== undefined && attempt.method === "browser" ? (
           <Button variant="outline" loading={attempt.cancelling} onClick={stopLogin}>
             Cancel
           </Button>
@@ -324,13 +324,9 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       }
       expansion={
         attempt?.deviceCode !== undefined ? (
-          <DeviceCodePanel deviceCode={attempt.deviceCode} message={attempt.message} />
+          <DeviceCodePanel deviceCode={attempt.deviceCode} />
         ) : attempt?.browser !== undefined ? (
-          <BrowserSignInPanel
-            provider={provider.id}
-            browser={attempt.browser}
-            message={attempt.message}
-          />
+          <BrowserSignInPanel provider={provider.id} browser={attempt.browser} />
         ) : keyFormOpen && apiKey !== undefined ? (
           <ApiKeyForm
             label="API key"
@@ -342,10 +338,6 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               setKeyFormOpen(false);
             }}
           />
-        ) : attempt?.message !== undefined ? (
-          <span role="status" {...props(styles.deviceCodeNote)}>
-            {attempt.message}
-          </span>
         ) : undefined
       }
     />
@@ -359,13 +351,21 @@ export function ProvidersSettings(): ReactElement | null {
     if (!catalog.isError) return null;
 
     return (
-      <div role="alert" title={catalog.error.message} {...props(intent.danger, styles.alert)}>
+      <div
+        role="alert"
+        title={catalog.error.message}
+        {...props(text.sm, intent.danger, styles.alert)}
+      >
         Couldn&rsquo;t load providers. Try again.
       </div>
     );
   }
 
-  const connected = catalog.data.providers.filter((provider) => provider.credential !== "missing");
+  const connected = catalog.data.providers.filter(
+    (provider) => provider.credential !== "missing" && provider.credential !== "unknown",
+  );
+
+  const unknown = catalog.data.providers.filter((provider) => provider.credential === "unknown");
 
   const disconnected = catalog.data.providers.filter(
     (provider) => provider.credential === "missing",
@@ -386,6 +386,7 @@ export function ProvidersSettings(): ReactElement | null {
       <section {...props(styles.providers)}>
         {[
           { title: "Connected providers", providers: connected },
+          { title: "Providers", providers: unknown },
           { title: "Popular providers", providers: popular },
           { title: "Other providers", providers: other },
         ].map((group) =>

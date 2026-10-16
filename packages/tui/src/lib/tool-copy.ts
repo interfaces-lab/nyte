@@ -1,4 +1,3 @@
-/** Wording for tool cards and turn notices: lowercase, terse, the glyph carries the state. */
 import type { Failure, ToolClass } from "@nyte-ai/sdk";
 import { ACTIVITY_FAILED_LABEL, ACTIVITY_STOPPED_LABEL, GLYPHS } from "./constants.ts";
 import type { ToolTense } from "./view-helpers.ts";
@@ -33,17 +32,10 @@ function toolVerbs(toolClass: ToolClass): Verbs {
   }
 }
 
-/** The verb for a tense that asserts one; a call that did not finish has none. */
 export function toolLabel(toolClass: ToolClass, tense: ToolTense): string | undefined {
   return tense === "none" ? undefined : toolVerbs(toolClass)[tense];
 }
 
-/**
- * What a verbless heading adds after its subject so the tool stays named: a
- * path alone does not say read from edit. A command needs nothing. A custom
- * call has no subject and its label is its verb, so without a verb the label
- * is all that names it.
- */
 export function toolNoun(toolClass: ToolClass): string | undefined {
   switch (toolClass.kind) {
     case "read":
@@ -66,7 +58,6 @@ export function toolNoun(toolClass: ToolClass): string | undefined {
   }
 }
 
-/** The words of a heading before its outcome: verb then subject, or subject then noun. */
 export function toolTitle(toolClass: ToolClass, tense: ToolTense): string {
   const subject = toolSubject(toolClass);
   const verb = toolLabel(toolClass, tense);
@@ -118,7 +109,6 @@ function delegateVerbs(role: DelegateClass["role"]): Verbs {
   }
 }
 
-/** What the call is about: the path, the command, the task. A custom call has only its label. */
 export function toolSubject(toolClass: ToolClass): string | undefined {
   switch (toolClass.kind) {
     case "read":
@@ -139,7 +129,6 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
   }
 }
 
-/** A child is named by its card; a call on it only says what kind of target it has. */
 export function delegateSubject(toolClass: DelegateClass): string {
   return (toolClass.role === "create" || toolClass.role === "task") && toolClass.title !== null
     ? toolClass.title
@@ -170,7 +159,6 @@ function failed(reason: string | undefined): Notice {
   };
 }
 
-/** The status row after a turn that stopped: a stop is a warning, everything else an error line. */
 export function failureNotice(failure: Failure): Notice {
   switch (failure.class) {
     case "aborted":

@@ -1,8 +1,9 @@
-import { input, layer, menu, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, menu, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "react";
@@ -19,23 +20,9 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     alignItems: "center",
-    marginInline: 4,
+    marginInline: space.s1,
   },
-  wrap: {
-    flex: 1,
-    gap: 6,
-    height: input.heightMd,
-    paddingInline: 8,
-    borderColor: role.borderSecondaryTranslucent,
-    borderRadius: radius.control,
-    // The ring belongs on the rounded field, not on the square input nested
-    // inside it, so its corners stay concentric with the border it wraps.
-    outlineStyle: { default: "none", ":focus-within": "solid" },
-    outlineWidth: 1,
-    outlineColor: appearance.focusRing,
-    outlineOffset: 0,
-  },
-  address: { height: "100%" },
+  wrap: { flex: 1, paddingInline: space.s2 },
   list: {
     position: "absolute",
     insetInline: 0,
@@ -43,7 +30,7 @@ const styles = create({
     zIndex: layer.menu,
     display: "flex",
     flexDirection: "column",
-    marginTop: 4,
+    marginTop: space.s1,
     padding: menu.padding,
     borderRadius: menu.radius,
     color: role.contentPrimary,
@@ -62,8 +49,6 @@ const styles = create({
       ":hover": role.bgHover,
       "[aria-selected=true]": role.bgHover,
     },
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -80,8 +65,6 @@ const styles = create({
     minWidth: 0,
     overflow: "hidden",
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -97,22 +80,14 @@ function optionLabel(row: BrowserSuggestion): string {
   return row.label || displayAddress(row.url);
 }
 
-/** What the field shows while a row is selected with the arrow keys. */
 function optionAddress(row: BrowserSuggestion): string {
   return row.kind === "search" ? row.label : displayAddress(row.url);
 }
 
 export interface AddressFieldHandle {
-  /** Focus the field with the address selected and the suggestions open. */
   focus(): void;
 }
 
-/**
- * The address bar: a combobox over the panel's draft. While it is focused it
- * lists suggestions; typing fills in the rest of the best matching address,
- * selected. The arrow keys move through the rows and show the selected row's
- * address, Enter opens it, and Escape closes the list before it drops the draft.
- */
 export function AddressField({
   ref,
   currentUrl,
@@ -127,30 +102,23 @@ export function AddressField({
 }: {
   readonly ref: Ref<AddressFieldHandle>;
   readonly currentUrl: string;
-  /** What the user is editing; undefined while the field shows the page's address. */
   readonly draft: string | undefined;
   readonly onDraftChange: (draft: string | undefined) => void;
   readonly history: readonly BrowserHistoryEntry[];
   readonly bookmarks: readonly { readonly url: string; readonly title: string }[];
   readonly onOpen: (url: string) => void;
   readonly onForget: (url: string) => void;
-  /** Escape left the field with nothing to close, so the page takes the keyboard back. */
   readonly onDismiss: () => void;
-  /** Status icons ahead of the address. */
   readonly children?: ReactNode;
 }): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
   const [open, setOpen] = useState(false);
-  /** Typed since focus; until then the list shows recent pages. */
   const [edited, setEdited] = useState(false);
-  /** The last edit inserted text at the end, so the best match may fill in the rest. */
   const [complete, setComplete] = useState(false);
   const [active, setActive] = useState(-1);
-  /** The selected row came from the arrow keys, so the field shows its address. */
   const [previewing, setPreviewing] = useState(false);
   const [now, setNow] = useState(0);
-  /** The completion Tab or the right arrow took into the draft, so going opens its page. */
   const [accepted, setAccepted] = useState<BrowserCompletion>();
 
   const typed = draft !== undefined && edited ? draft : "";
@@ -176,7 +144,6 @@ export function AddressField({
         ? displayAddress(currentUrl)
         : (completion?.text ?? draft);
 
-  /** The filled-in part stays selected, so the next key typed replaces it. */
   const selectCompletion = (typedText: string): void => {
     const field = inputRef.current;
 
@@ -193,7 +160,6 @@ export function AddressField({
     setComplete(false);
   };
 
-  /** Leaving the field drops the draft, and the panel takes the page from here. */
   const go = (url: string): void => {
     inputRef.current?.blur();
     onOpen(url);
@@ -247,7 +213,6 @@ export function AddressField({
       case "ArrowRight":
         if (preview !== undefined || completion === undefined || event.shiftKey) return;
 
-        // Tab would leave the field; the arrow already lands the caret after the completion.
         if (event.key === "Tab") event.preventDefault();
         accept(completion);
 
@@ -329,7 +294,6 @@ export function AddressField({
           aria-activedescendant={selected === undefined ? undefined : `${listId}-${active}`}
           placeholder="Search or enter address"
           value={value}
-          xstyle={styles.address}
           onFocus={(event) => {
             flushSync(() => {
               onDraftChange(currentUrl);
@@ -349,7 +313,6 @@ export function AddressField({
           }}
           onClick={() => setOpen(true)}
           onValueChange={(next, details) => change(next, details.event)}
-          // Composing text is not yet typed; the finished text fills in like an insertion.
           onCompositionEnd={(event) => {
             const field = event.currentTarget;
             const text = field.value;
@@ -376,8 +339,7 @@ export function AddressField({
               role="option"
               aria-selected={index === active}
               title={row.url}
-              {...props(styles.option)}
-              // The field keeps focus, so the draft survives until the row opens.
+              {...props(text.base, styles.option)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => go(row.url)}
             >
@@ -386,7 +348,7 @@ export function AddressField({
               </span>
               <span {...props(styles.label)}>{optionLabel(row)}</span>
               {(row.kind === "history" || row.kind === "bookmark") && row.label !== "" && (
-                <span {...props(styles.detail)}>{displayAddress(row.url)}</span>
+                <span {...props(text.sm, styles.detail)}>{displayAddress(row.url)}</span>
               )}
             </div>
           ))}

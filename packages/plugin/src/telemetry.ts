@@ -7,7 +7,7 @@ import { dev } from "@nyte-ai/core";
 import type { SettingDefinition } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Plugin } from "./core.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 const endpoint: SettingDefinition<string> = {
   id: "telemetry.endpoint",
@@ -17,27 +17,26 @@ const endpoint: SettingDefinition<string> = {
   scope: "host",
 };
 
-/** One endpoint's provider and the sessions holding it. */
 interface Held {
   readonly provider: TracerProvider;
   readonly tracer: Tracer;
   holders: number;
 }
 
-/** The tracer providers by endpoint (§48h): one per endpoint on this host, shut down when the last session holding it lets go. */
 const providers = new Map<string, Held>();
 
-/** Holds the provider for `url`, creating it on first use, and returns its tracer and the release. */
 function hold(url: string): { readonly tracer: Tracer; release(): void } {
   const known = providers.get(url);
 
+  const provider =
+    known?.provider ??
+    new TracerProvider({
+      resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "nyte" }),
+      spanProcessors: [new SimpleSpanProcessor({ exporter: new OTLPTraceExporter({ url }) })],
+    });
   const held: Held = known ?? {
-    ...traced(
-      new TracerProvider({
-        resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "nyte" }),
-        spanProcessors: [new SimpleSpanProcessor({ exporter: new OTLPTraceExporter({ url }) })],
-      }),
-    ),
+    provider,
+    tracer: provider.getTracer("@nyte-ai/plugin/core/telemetry"),
     holders: 0,
   };
 
@@ -57,14 +56,6 @@ function hold(url: string): { readonly tracer: Tracer; release(): void } {
       void held.provider.shutdown();
     },
   };
-}
-
-/** Returns a provider with its tracer. */
-function traced(provider: TracerProvider): {
-  readonly provider: TracerProvider;
-  readonly tracer: Tracer;
-} {
-  return { provider, tracer: provider.getTracer("@nyte-ai/plugin/telemetry") };
 }
 
 /**

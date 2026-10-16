@@ -6,6 +6,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { isFolder } from "../conversation/message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
@@ -14,7 +15,6 @@ import { treeStatus } from "./tree-theme.ts";
 
 const MATCH_LIMIT = 50;
 
-/** What the files panel shows before any file is open. Changes take the tree's status colors. */
 export function FilesEmptyState({
   files,
   changes,
@@ -193,7 +193,6 @@ function FileLabel({
   );
 }
 
-/** The panel sets these for its tree; a change reads the same color here. */
 const statusColor = create({
   added: { color: "var(--trees-status-added-override)" },
   untracked: { color: "var(--trees-status-untracked-override)" },
@@ -212,30 +211,35 @@ const styles = create({
   content: {
     display: "flex",
     flexDirection: "column",
-    gap: 20,
+    gap: space.s5,
     maxWidth: 880,
     marginInline: "auto",
-    paddingInline: 24,
+    paddingInline: space.s6,
     paddingBlock: "min(14vh, 96px) 24px",
   },
   columns: {
     display: "grid",
     alignItems: "start",
-    gap: 24,
+    gap: space.s6,
     gridTemplateColumns: {
       default: "minmax(0, 1fr)",
       "@container (min-width: 720px)": "minmax(0, 240px) minmax(0, 1fr)",
     },
   },
-  section: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  section: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   heading: {
     margin: 0,
-    paddingInline: 10,
-    paddingBlockEnd: 4,
+    paddingInline: space.s2_5,
+    paddingBlockEnd: space.s1,
     color: role.contentTertiary,
     fontSize: type.fontXs,
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
   },
-  directory: { marginInlineStart: 8, color: role.contentTertiary },
-  noMatch: { margin: 0, paddingInline: 10, color: role.contentSecondary, overflowWrap: "anywhere" },
+  directory: { marginInlineStart: space.s2, color: role.contentTertiary },
+  noMatch: {
+    margin: 0,
+    paddingInline: space.s2_5,
+    color: role.contentSecondary,
+    overflowWrap: "anywhere",
+  },
 });

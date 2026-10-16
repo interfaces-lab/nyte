@@ -1,8 +1,3 @@
-/**
- * One registry feeds `/name`, completion and the palette: every built-in,
- * its aliases, settings with and without an argument, plugin commands and
- * skills, first claim winning.
- */
 import { describe, expect, test } from "bun:test";
 import type { CommandInfo, SessionView } from "@nyte-ai/sdk";
 import { SLASH_COMMANDS } from "../../src/lib/slash.ts";

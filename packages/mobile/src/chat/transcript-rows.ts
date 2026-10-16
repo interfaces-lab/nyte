@@ -1,4 +1,4 @@
-import { canvas } from "@nyte-ai/plugin/canvas";
+import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import { branchSummary, compaction, isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
 import type {
   Execution,
@@ -37,10 +37,8 @@ export type ChatRow =
 
 const STOPPED: Failure = { class: "aborted", message: "" };
 
-/** Rows of one message, by the message object: the view keeps an unchanged message's identity, so its row keeps its own. */
 const rowsOf = new WeakMap<Message, ChatRow>();
 
-/** Returns the row a user, text, canvas, summary or compaction message draws as, or undefined for a step. */
 function messageRow(message: Message): ChatRow | undefined {
   const cached = rowsOf.get(message);
 
@@ -74,7 +72,6 @@ function messageRow(message: Message): ChatRow | undefined {
   return row;
 }
 
-/** Returns the step a tool or thinking message adds to an activity row, or undefined for anything else. */
 function activityPart(message: Message): ActivityPart | undefined {
   if (isPart(message, tool))
     return { kind: "tool", id: message.id, state: message.state, status: message.status };
@@ -90,12 +87,6 @@ function activityPart(message: Message): ActivityPart | undefined {
   return undefined;
 }
 
-/**
- * Returns the transcript as rows in one pass over `view.messages`: adjacent
- * steps grouped into one activity row, each turn closed by how it ended when
- * it failed or stopped, and the head's execution last while it is not idle.
- * Part kinds this app has no row for are skipped.
- */
 export function conversationRows(view: SessionView): ChatRow[] {
   const ends = new Map(view.turns.map((turn) => [turn.id, turn.state]));
   const rows: ChatRow[] = [];

@@ -1,7 +1,3 @@
-/**
- * How a message travels from the kernel to the transcript, hop by hop, with
- * the file each hop lives in. The names are the anchors.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";

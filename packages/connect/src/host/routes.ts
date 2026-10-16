@@ -1,20 +1,8 @@
-/**
- * The desktop's own routes on the account listener, answered before the
- * web app and the host's operations. They grant nothing by themselves: an
- * enrollment needs the broker's signature and only records a device, and a
- * self-revocation removes only the device whose token is presented.
- *
- * Only the broker and the phone app call them, through the relay, which
- * reaches the listener at its own loopback host. A request with an `Origin`
- * (any browser page), another `Host`, or forwarding headers is refused before
- * its body is read.
- */
 import { createHash } from "node:crypto";
 import { Value } from "typebox/value";
 import { DESKTOP_ROUTES, EnrollEnvelope } from "../index.ts";
 import type { ErrorCode } from "../index.ts";
 
-/** Larger than an envelope can be: a compact JWS is at most 8 KiB. */
 const BODY_LIMIT_BYTES = 16_384;
 
 export type RouteAnswer =
@@ -89,11 +77,6 @@ export function tokenDigest(token: string): Buffer {
   return createHash("sha256").update(token).digest();
 }
 
-/**
- * The body as text, or undefined once it passes the limit. The rest is left
- * unread rather than cancelled: cancelling would close the listener's socket
- * before it could answer 413.
- */
 async function limitedBody(request: Request): Promise<string | undefined> {
   const declared = Number(request.headers.get("content-length") ?? "0");
 
@@ -119,7 +102,6 @@ async function limitedBody(request: Request): Promise<string | undefined> {
   return text + decoder.decode();
 }
 
-/** Whether a request came to this exact host and nothing claims it was forwarded. */
 function addressed(request: Request, host: string | undefined): boolean {
   let url: URL;
 

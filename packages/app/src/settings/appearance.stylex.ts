@@ -1,4 +1,4 @@
-import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /** Controls unique to Settings › Appearance. */
 import { create } from "@stylexjs/stylex";
 import { diffView, settings } from "../theme/schema.stylex.ts";
@@ -9,7 +9,7 @@ export const appearanceStyles = create({
   tintControl: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
   },
   tintSlider: { width: 120, minWidth: 0, flex: "0 1 auto" },
   tintSlot: {
@@ -42,7 +42,7 @@ export const appearanceStyles = create({
   diffLine: {
     display: "grid",
     gridTemplateColumns: "32px minmax(0, 1fr)",
-    paddingInlineEnd: 8,
+    paddingInlineEnd: space.s2,
     whiteSpace: "pre",
   },
   diffRemovedLine: {

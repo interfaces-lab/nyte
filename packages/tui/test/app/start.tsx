@@ -1,15 +1,3 @@
-/**
- * The whole app on OpenTUI's test renderer: the real store, runner, sinks,
- * kit, keymap and `<Root/>` from `mountApp`, over the real in-process host
- * (`openTestHost()`) through `hostPort`, with the machine-local ports faked
- * and a real crash log in a temporary home. Tests drive it with `mockInput`
- * and assert on the screen, the state and what the scripted provider got.
- *
- *   await using fixture = await openTestHost();
- *   await using app = await startApp(fixture);
- *   await app.ready();
- *   await app.mockInput.typeText("hi");
- */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,22 +17,16 @@ import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakeTerminal } from "../fixture/ports.ts";
 
-// Boot asks for a newer release unless told not to.
 process.env["NYTE_SKIP_VERSION_CHECK"] = "1";
 
 export interface AppHarness extends TestRendererSetup {
   readonly app: MountedApp;
   readonly store: Store;
   readonly fixture: TestHost;
-  /** The faked terminal outputs: titles, OSC 7501 statuses, copies. */
   readonly terminal: FakeTerminal;
-  /** The temporary `$NYTE_HOME`; the crash log is `logs/tui.log` under it. */
   readonly home: string;
-  /** Resolves once the session's first view is on screen and the composer takes input. */
   ready(): Promise<void>;
-  /** Renders until `predicate` holds for the drawn frame; rejects after `timeout` ms with the last frame. */
   frame(predicate: (frame: string) => boolean, timeout?: number): Promise<string>;
-  /** Renders until `predicate` holds for the store; rejects after `timeout` ms. */
   state(predicate: (store: Store) => boolean, timeout?: number): Promise<void>;
 }
 
@@ -67,7 +49,7 @@ export async function startApp(
 
   const ports: Ports = {
     ...fakes,
-    host: hostPort(fixture.host),
+    host: hostPort(fixture.host, null),
     clock: systemClock,
     log: openCrashLog(home),
   };

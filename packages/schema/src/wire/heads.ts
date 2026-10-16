@@ -25,7 +25,6 @@ const ABANDONED = Type.Union([
   Type.Object({ summarize: Type.Object({ instructions: Type.Optional(Type.String()) }) }),
 ]);
 
-/** The TypeBox schema of a `TreeNode`. */
 export const TreeNodeType = Type.Object({
   id: idSchema<"commit">(),
   parent: nullable(idSchema<"commit">()),
@@ -40,29 +39,26 @@ export const TreeNodeType = Type.Object({
   run: nullable(idSchema<"run">()),
 });
 
-/** The TypeBox schema of a `TreeView`. */
 export const TreeViewType = Type.Object({
   revision: nullable(idSchema<"revision">()),
   tip: PositionType,
   nodes: Type.Array(TreeNodeType),
 });
 
-/** The TypeBox schema of a `CreateHeadOutcome`. */
 export const CreateHeadOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("created"), basedOn: PositionType }),
   Type.Object({ kind: Type.Literal("exists") }),
   Type.Object({ kind: Type.Literal("missing-source") }),
 ]);
 
-/** The TypeBox schema of a `MergeOutcome`. */
 export const MergeOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("merged"), revision: idSchema<"revision">() }),
   Type.Object({ kind: Type.Literal("stale"), revision: idSchema<"revision">() }),
   Type.Object({ kind: Type.Literal("diverged"), base: PositionType }),
   Type.Object({ kind: Type.Literal("is-main") }),
+  Type.Object({ kind: Type.Literal("busy"), run: idSchema<"run">() }),
 ]);
 
-/** The TypeBox schema of a `RemoveHeadOutcome`. */
 export const RemoveHeadOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("removed") }),
   Type.Object({ kind: Type.Literal("missing") }),
@@ -70,7 +66,6 @@ export const RemoveHeadOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("busy"), run: idSchema<"run">() }),
 ]);
 
-/** The TypeBox schema of a `MoveOutcome`. */
 export const MoveOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("moved"),
@@ -86,14 +81,12 @@ export const MoveOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("summary-failed"), reason: Type.String() }),
 ]);
 
-/** The TypeBox schema of `MoveOptions`. */
 export const MoveOptionsType = Type.Object({
   running: Type.Optional(Type.Enum(["refuse", "stop"])),
   abandoned: Type.Optional(ABANDONED),
   expect: Type.Optional(idSchema<"revision">()),
 });
 
-/** The TypeBox schema of `SendOptions`. */
 export const SendOptionsType = Type.Object({
   delivery: Type.Optional(DeliveryType),
   replace: Type.Optional(idSchema<"message">()),
@@ -111,7 +104,6 @@ export const SendOptionsType = Type.Object({
   id: Type.Optional(idSchema<"receipt">()),
 });
 
-/** The TypeBox schema of a `ConfigureOutcome`. */
 export const ConfigureOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("configured"),
@@ -123,31 +115,22 @@ export const ConfigureOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
 ]);
 
-/** Validates a `TreeNode`. */
 export const TreeNodeSchema: Schema<TreeNode> = standard(TreeNodeType);
 
-/** Validates a `TreeView`. */
 export const TreeViewSchema: Schema<TreeView> = standard(TreeViewType);
 
-/** Validates a `CreateHeadOutcome`. */
 export const CreateHeadOutcomeSchema: Schema<CreateHeadOutcome> = standard(CreateHeadOutcomeType);
 
-/** Validates a `MergeOutcome`. */
 export const MergeOutcomeSchema: Schema<MergeOutcome> = standard(MergeOutcomeType);
 
-/** Validates a `RemoveHeadOutcome`. */
 export const RemoveHeadOutcomeSchema: Schema<RemoveHeadOutcome> = standard(RemoveHeadOutcomeType);
 
-/** Validates a `MoveOutcome`. */
 export const MoveOutcomeSchema: Schema<MoveOutcome> = standard(MoveOutcomeType);
 
-/** Validates `MoveOptions`. */
 export const MoveOptionsSchema: Schema<MoveOptions> = standard(MoveOptionsType);
 
-/** Validates `SendOptions`. */
 export const SendOptionsSchema: Schema<SendOptions> = standard(withJson(SendOptionsType));
 
-/** Validates a `ConfigureOutcome`. */
 export const ConfigureOutcomeSchema: Schema<ConfigureOutcome> = standard(
   withJson(ConfigureOutcomeType),
 );

@@ -10,6 +10,7 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { useHostState, useVcsSnapshot } from "../queries.ts";
 import { changesRepository, scopeFiles } from "./change-scopes.ts";
@@ -101,7 +102,7 @@ function RailRow({
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <Row interactive xstyle={workbenchStyles.railRow}>
+    <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary title={title} onClick={onClick}>
         <Row.Leading>
           <Icon name={icon} size={14} />
@@ -516,8 +517,6 @@ function WorkbenchViewHost({
 
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const panelVisible = current && view.expanded;
-  // Maximized with the chat showing, the panel stays mounted but out of the
-  // way; the titlebar strip keeps the stage's width so the tabs stay put.
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
   useLayoutEffect(() => {
@@ -650,17 +649,18 @@ function WorkbenchViewHost({
         {panelShown && activeTab === null && (
           <div {...props(workbenchStyles.launcher)}>
             {workbenchTabs(scope, capabilities).map((kind) => (
-              <Row
-                key={kind}
-                variant="nav"
-                xstyle={workbenchStyles.launcherCard}
-                onClick={() =>
-                  openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })
-                }
-              >
-                <Icon name={tabIcons[kind]} size={20} />
-                {workbenchKindLabel(kind)}
-              </Row>
+              <div key={kind} {...props(workbenchStyles.launcherFrame)}>
+                <Row
+                  variant="nav"
+                  xstyle={workbenchStyles.launcherCard}
+                  onClick={() =>
+                    openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })
+                  }
+                >
+                  <Icon name={tabIcons[kind]} size={20} />
+                  {workbenchKindLabel(kind)}
+                </Row>
+              </div>
             ))}
           </div>
         )}

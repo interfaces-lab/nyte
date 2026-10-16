@@ -14,6 +14,7 @@ import type { ReactElement, ReactNode } from "react";
 import { toolOutput, toolStatus } from "../view-helpers.ts";
 import type { ToolMessage } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
@@ -55,7 +56,7 @@ function OutputTail({ children }: { children: ReactNode }): ReactElement {
       ref={rootRef}
       aria-label="Show full output"
       variant="plain"
-      xstyle={[toolCallStyles.outputBody, toolCallStyles.outputTail, focus.ringInset]}
+      xstyle={[text.code, toolCallStyles.outputBody, toolCallStyles.outputTail, focus.ringInset]}
     >
       <span ref={contentRef} {...props(toolCallStyles.outputContent)}>
         {children}
@@ -64,9 +65,9 @@ function OutputTail({ children }: { children: ReactNode }): ReactElement {
   );
 }
 
-function ToolOutput({ text, open }: { text: string; open: boolean }): ReactElement {
+function ToolOutput({ output, open }: { output: string; open: boolean }): ReactElement {
   const [copiedText, setCopiedText] = useState<string>();
-  const copied = copiedText === text;
+  const copied = copiedText === output;
 
   return (
     <div {...props(toolCallStyles.output)}>
@@ -82,8 +83,8 @@ function ToolOutput({ text, open }: { text: string; open: boolean }): ReactEleme
                   aria-label="Copy tool output"
                   onClick={() => {
                     navigator.clipboard
-                      .writeText(text)
-                      .then(() => setCopiedText(text))
+                      .writeText(output)
+                      .then(() => setCopiedText(output))
                       .catch(() => undefined);
                   }}
                 />
@@ -93,26 +94,21 @@ function ToolOutput({ text, open }: { text: string; open: boolean }): ReactEleme
           </Tooltip>
         </span>
       ) : (
-        <OutputTail>{text}</OutputTail>
+        <OutputTail>{output}</OutputTail>
       )}
       <Collapsible.Panel
         role="region"
         aria-label="Tool output"
         data-nyte-scrollport
         data-tool-body
-        xstyle={[toolCallStyles.outputBody, toolCallStyles.outputScroll]}
+        xstyle={[text.code, toolCallStyles.outputBody, toolCallStyles.outputScroll]}
       >
-        <span {...props(toolCallStyles.outputContent)}>{text}</span>
+        <span {...props(toolCallStyles.outputContent)}>{output}</span>
       </Collapsible.Panel>
     </div>
   );
 }
 
-/**
- * Open state lives in Base UI, not here: a controlled `open` would re-render
- * this component on every toggle. The preview reads `state.open` through
- * `render` instead, and the chevron follows the trigger.
- */
 export const ToolCallView = memo(function ToolCallView({
   message,
   cwd,
@@ -131,19 +127,14 @@ export const ToolCallView = memo(function ToolCallView({
       ? (state.progress?.text ?? "")
       : ""
     : toolOutput(state);
-  const text = useMemo(() => terminalText(raw), [raw]);
-  const body: ToolBody = text.trim() === "" ? { kind: "none" } : { kind: "output", text };
+  const output = useMemo(() => terminalText(raw), [raw]);
+  const body: ToolBody = output.trim() === "" ? { kind: "none" } : { kind: "output", text: output };
 
   if (toolClass.kind === "delegate") {
-    return toolClass.role === "create" && toolClass.child !== null ? (
-      <SubagentCallView
-        session={toolClass.child}
-        title={toolClass.title ?? "Subagent"}
-        message={message}
-        cwd={cwd}
-      />
+    return toolClass.role === "task" || toolClass.role === "create" ? (
+      <SubagentCallView title={toolClass.title ?? "Subagent"} message={message} cwd={cwd} />
     ) : (
-      <SubagentLineView toolClass={toolClass} message={message} output={text} />
+      <SubagentLineView toolClass={toolClass} message={message} output={output} />
     );
   }
 
@@ -207,7 +198,7 @@ export const ToolCallView = memo(function ToolCallView({
       render={(componentProps, state) => (
         <div {...componentProps}>
           {line}
-          {body.kind === "output" && <ToolOutput text={body.text} open={state.open} />}
+          {body.kind === "output" && <ToolOutput output={body.text} open={state.open} />}
         </div>
       )}
     />

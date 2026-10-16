@@ -55,7 +55,7 @@ const recorded = report({
         reasoning: 0,
         tokens: 120,
         cost: 1,
-        turns: 1,
+        cacheSavings: 0,
       },
     },
   ],
@@ -96,7 +96,6 @@ test("reopening shows a fresh cached report without re-reading", () => {
   assert.equal(observer.getCurrentResult().isFetching, false);
   assert.equal(observer.getCurrentResult().isSuccess, true);
   assert.deepEqual(observer.getCurrentResult().data, recorded);
-  // A read walks every stored commit, so a report this young is not worth one.
   assert.equal(readUsage.mock.calls.length, 0);
 });
 

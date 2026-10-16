@@ -1,11 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Hosted catalog generator.
- *
- * Based on https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/ai/scripts/generate-models.ts
- * Synced with pi 890f92088.
- */
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
@@ -27,7 +21,6 @@ import { done, fail, seconds } from "./terminal.ts";
 import type {
   AnthropicMessagesCompat,
   Api,
-  KnownProvider,
   Model,
   ModelCost,
   ModelPromptCache,
@@ -889,10 +882,6 @@ function openAICompletionsCompatDelta(
   return delta;
 }
 
-function mergeOpenAICompletionsCompat(model: Model<Api>, compat: OpenAICompletionsCompat): void {
-  model.compat = { ...model.compat, ...compat };
-}
-
 function applyOpenAICompletionsCompatMetadata(model: Model<Api>): void {
   if (model.api !== "openai-completions") return;
 
@@ -1249,7 +1238,7 @@ function applyThinkingLevelMetadata(model: Model<Api>): void {
     // Mercury 2 in instant mode (reasoning_effort: "none") disables tool calling.
     // Mark "off" unsupported so the openai-completions provider omits the reasoning param
     // instead of defaulting to {reasoning:{effort:"none"}} (see openai-completions.ts:575).
-    // Pi's low/medium/high pass through verbatim; OpenRouter normalizes to Mercury's vocabulary.
+    // low/medium/high pass through verbatim; OpenRouter normalizes to Mercury's vocabulary.
     mergeThinkingLevelMap(model, { off: null });
   }
 
@@ -1407,16 +1396,8 @@ async function fetchOpenRouterModels(): Promise<Model<Api>[]> {
   const models: Model<Api>[] = [];
 
   for (const model of data.data) {
-    // Only include models that support tools
     if (!model.supported_parameters?.includes("tools")) continue;
 
-    // Parse provider from model ID
-    let provider: KnownProvider = "openrouter";
-    let modelKey = model.id;
-
-    modelKey = model.id; // Keep full ID for OpenRouter
-
-    // Parse input modalities
     const input: ("text" | "image")[] = ["text"];
 
     if (model.architecture?.modality?.includes("image")) {
@@ -1436,11 +1417,11 @@ async function fetchOpenRouterModels(): Promise<Model<Api>[]> {
     const contextWindow = model.top_provider?.context_length || model.context_length || 4096;
 
     const normalizedModel: Model<Api> = {
-      id: modelKey,
+      id: model.id,
       name: model.name,
       api: "openai-completions",
       baseUrl: "https://openrouter.ai/api/v1",
-      provider,
+      provider: "openrouter",
       reasoning: model.supported_parameters?.includes("reasoning") || false,
       input,
       cost: {
@@ -1481,7 +1462,6 @@ async function fetchAiGatewayModels(): Promise<Model<Api>[]> {
     if (!Value.Check(AiGatewayModelSchema, model)) continue;
     const tags = model.tags ?? [];
 
-    // Only include models that support tools
     if (!tags.includes("tool-use")) continue;
 
     const input: ("text" | "image")[] = ["text"];
@@ -1795,8 +1775,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
   const nvidiaNimModelIds = data.nvidia?.models
     ? await fetchNvidiaNimModelIds()
     : new Map<string, string>();
-
-  // Process Amazon Bedrock models
   if (data["amazon-bedrock"]?.models) {
     for (const [modelId, m] of Object.entries(data["amazon-bedrock"].models)) {
       if (m.tool_call !== true) continue;
@@ -1836,11 +1814,7 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("amazon-bedrock" as const, id, m);
     }
   }
-
-  // Process Anthropic models
   if (data.anthropic?.models) {
-    // Claude Haiku 5.5 shipped 2026-10-07; keep these official values until models.dev lists it.
-    // https://platform.claude.com/docs/en/models/haiku-5-5/overview
     data.anthropic.models["claude-haiku-5-5"] ??= {
       id: "claude-haiku-5-5",
       name: "Claude Haiku 5.5",
@@ -1867,8 +1841,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       },
     };
 
-    // Sonnet 5.5 cache reads dropped to 0.05x base ($0.10) alongside the Haiku 5.5 launch.
-    // https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching
     const sonnet55 = data.anthropic.models["claude-sonnet-5-5"];
 
     if (sonnet55?.cost && sonnet55.cost.cache_read === 0.2) sonnet55.cost.cache_read = 0.1;
@@ -1891,8 +1863,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("anthropic", modelId, m);
     }
   }
-
-  // Process Google models
   if (data.google?.models) {
     for (const [modelId, m] of Object.entries(data.google.models)) {
       if (m.tool_call !== true) continue;
@@ -1948,8 +1918,8 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       }
 
       // models.dev reports Vertex cache_read/cache_write values for Gemini 2.5 Flash that
-      // do not match the official Gemini API standard pricing table. pi only accounts
-      // cachedContentTokenCount as cacheRead.
+      // do not match the official Gemini API standard pricing table. Only
+      // cachedContentTokenCount counts as cacheRead.
       const cacheRead = modelId === "gemini-2.5-flash" ? 0.03 : source.cost?.cache_read || 0;
       models.push({
         id: modelId,
@@ -1971,8 +1941,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("google-vertex", modelId, source);
     }
   }
-
-  // Process OpenAI models
   if (data.openai?.models) {
     for (const [modelId, m] of Object.entries(data.openai.models)) {
       if (m.tool_call !== true) continue;
@@ -2000,8 +1968,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("openai", modelId, m);
     }
   }
-
-  // Process Groq models
   if (data.groq?.models) {
     for (const [modelId, m] of Object.entries(data.groq.models)) {
       if (m.tool_call !== true) continue;
@@ -2026,8 +1992,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("groq", modelId, m);
     }
   }
-
-  // Process Cerebras models
   if (data.cerebras?.models) {
     for (const [modelId, m] of Object.entries(data.cerebras.models)) {
       if (m.tool_call !== true) continue;
@@ -2052,8 +2016,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("cerebras", modelId, m);
     }
   }
-
-  // Process Cloudflare Workers AI models
   if (data["cloudflare-workers-ai"]?.models) {
     for (const [modelId, m] of Object.entries(data["cloudflare-workers-ai"].models)) {
       if (m.tool_call !== true) continue;
@@ -2079,8 +2041,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("cloudflare-workers-ai", modelId, m);
     }
   }
-
-  // Process Cloudflare AI Gateway models
   if (data["cloudflare-ai-gateway"]?.models) {
     for (const [prefixedId, m] of Object.entries(data["cloudflare-ai-gateway"].models)) {
       if (m.tool_call !== true) continue;
@@ -2141,8 +2101,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("cloudflare-ai-gateway", id, m);
     }
   }
-
-  // Process xAi models
   if (data.xai?.models) {
     for (const [modelId, m] of Object.entries(data.xai.models)) {
       if (m.tool_call !== true) continue;
@@ -2170,8 +2128,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
   }
 
   models.push(...processZaiModels(data));
-
-  // Process Mistral models
   if (data.mistral?.models) {
     for (const [modelId, m] of Object.entries(data.mistral.models)) {
       if (m.tool_call !== true) continue;
@@ -2196,8 +2152,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("mistral", modelId, m);
     }
   }
-
-  // Process Hugging Face models
   if (data.huggingface?.models) {
     for (const [modelId, m] of Object.entries(data.huggingface.models)) {
       if (m.tool_call !== true) continue;
@@ -2227,8 +2181,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
   }
 
   models.push(...processFireworksModels(data["fireworks-ai"]));
-
-  // Process NVIDIA NIM models
   if (data.nvidia?.models) {
     for (const [modelId, m] of Object.entries(data.nvidia.models)) {
       if (m.tool_call !== true) continue;
@@ -2266,8 +2218,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("nvidia", liveModelId, m);
     }
   }
-
-  // Process Together AI models
   const togetherProvider = data.together ?? data.togetherai ?? data["together-ai"];
 
   if (togetherProvider?.models) {
@@ -2421,8 +2371,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata(variant.provider, modelId, m);
     }
   }
-
-  // Process GitHub Copilot models
   if (data["github-copilot"]?.models) {
     for (const [modelId, m] of Object.entries(data["github-copilot"].models)) {
       if (m.tool_call !== true) continue;
@@ -2479,8 +2427,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("github-copilot", modelId, m);
     }
   }
-
-  // Process MiniMax models
   const minimaxVariants = [
     { key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
     { key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimaxi.com/anthropic" },
@@ -2513,8 +2459,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       }
     }
   }
-
-  // Process Kimi For Coding models
   if (data["kimi-for-coding"]?.models) {
     const kimiModels = data["kimi-for-coding"].models;
     const hasKimiForCoding = Object.prototype.hasOwnProperty.call(kimiModels, "kimi-for-coding");
@@ -2562,8 +2506,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata("kimi-coding", normalizedId, m);
     }
   }
-
-  // Process Moonshot AI models
   const moonshotVariants = [
     { key: "moonshotai", provider: "moonshotai", baseUrl: "https://api.moonshot.ai/v1" },
     { key: "moonshotai-cn", provider: "moonshotai-cn", baseUrl: "https://api.moonshot.cn/v1" },
@@ -2626,8 +2568,6 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       recordModelsDevMetadata(provider, modelId, m);
     }
   }
-
-  // Process Xiaomi MiMo models
   // Built-in `xiaomi` targets the API billing endpoint (single stable URL,
   // keys from platform.xiaomimimo.com). The three `xiaomi-token-plan-*`
   // providers cover prepaid Token Plan endpoints in cn / ams / sgp.
@@ -2690,7 +2630,7 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
   // Process Alibaba Cloud Model Studio Token Plan models. International and
   // China use separate endpoints and API keys (sk-sp- prefix). The Individual
   // provider reuses the international source and endpoint with a narrower catalog.
-  // models.dev keys are "alibaba-token-plan[-cn]"; pi exposes them as
+  // models.dev keys are "alibaba-token-plan[-cn]"; Nyte exposes them as
   // "qwen-token-plan[-cn]" plus the Individual catalog view.
   const qwenTokenPlanCompat: OpenAICompletionsCompat = {
     thinkingFormat: "qwen",
@@ -2901,7 +2841,6 @@ async function generateModels() {
     }
   }
 
-  // Add missing gpt models
   const missingOpenAiModels: Model<"openai-responses">[] = [
     {
       id: "gpt-6-astra",
@@ -3183,7 +3122,7 @@ async function generateModels() {
       reasoning: true,
       input: ["text", "image"],
       cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
-      contextWindow: CODEX_CONTEXT,
+      contextWindow: 500000,
       maxTokens: CODEX_MAX_TOKENS,
     },
     {
@@ -3397,7 +3336,6 @@ async function generateModels() {
 
   applyAnthropicAllowedFallbackModelMetadata(allModels.filter(isAnthropicFallbackMetadataModel));
 
-  // Group by provider and deduplicate by model ID
   const providers: Record<string, Record<string, Model<Api>>> = {};
 
   for (const model of allModels) {
@@ -3405,7 +3343,6 @@ async function generateModels() {
       providers[model.provider] = {};
     }
 
-    // Use model ID as key to automatically deduplicate
     // Only add if not already present (models.dev takes priority over OpenRouter)
     if (!providers[model.provider][model.id]) {
       providers[model.provider][model.id] = model;

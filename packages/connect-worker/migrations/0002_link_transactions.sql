@@ -1,12 +1,3 @@
--- A host with no browser linking through a signed-in browser elsewhere. The
--- host opens the transaction under its key's thumbprint; the owner looks the
--- code up, compares the fingerprint, and approves; the host completes with a
--- fresh proof and claims its environment. `(thumbprint, operation_id)` makes a
--- retried open resume the same row. Only one pending row may hold a code.
--- Approval binds exactly one owner and session for `authorization_expires_at`
--- long; every other state carries no binding, so a cancelled or expired row
--- grants nothing. Consumed rows keep the environment they claimed so a host
--- that lost the answer can recover it with its key.
 CREATE TABLE link_transactions (
   id TEXT PRIMARY KEY,
   thumbprint TEXT NOT NULL,

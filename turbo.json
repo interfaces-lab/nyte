@@ -43,5 +43,6 @@
     "//#format:fix": {
       "cache": false
     }
-  }
+  },
+  "agentGuidance": false
 }

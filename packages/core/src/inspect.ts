@@ -14,7 +14,7 @@ import type { Kernel } from "./kernel.ts";
 import type { CommitRecord } from "./records.ts";
 import { sessionRef } from "./refs.ts";
 import { decodeCommitRecord, isJsonObject } from "./records.ts";
-import { objectOf, readCommit } from "./session-state.ts";
+import { toCommitObjectId, readCommit } from "./session-state.ts";
 
 const PAGE = 100;
 
@@ -34,10 +34,9 @@ const RECORDS: ReadonlyMap<string, string> = new Map([
 
 type Issue = IntegrityReport["issues"][number];
 
-/** Returns raw store reads for one session: its refs, its reachable objects decoded 100 to a page, its log after a seq, and an integrity check. */
 export function inspect(kernel: Kernel, session: SessionId): ReturnType<Host["inspect"]> {
   return {
-    refs: () => refsOf(kernel, session),
+    refs: () => listSessionRefs(kernel, session),
     async objects(input) {
       const cursor: string | undefined = input?.cursor;
 
@@ -75,7 +74,7 @@ export function inspect(kernel: Kernel, session: SessionId): ReturnType<Host["in
   };
 }
 
-async function refsOf(kernel: Kernel, session: SessionId): Promise<readonly Ref[]> {
+async function listSessionRefs(kernel: Kernel, session: SessionId): Promise<readonly Ref[]> {
   const [root, rest] = await Promise.all([
     kernel.store.refs.get(sessionRef(session)),
     kernel.store.refs.list(`${sessionRef(session)}/`),
@@ -88,11 +87,11 @@ async function reachable(
   kernel: Kernel,
   session: SessionId,
 ): Promise<ReadonlyMap<ObjectId, DecodedObjectView>> {
-  const refs = await refsOf(kernel, session);
+  const refs = await listSessionRefs(kernel, session);
   const ids = new Set(refs.flatMap((ref) => (ref.target === null ? [] : [ref.target])));
 
   for (const [commit, record] of await ancestry(kernel, session, refs)) {
-    if (record !== null) ids.add(objectOf(commit));
+    if (record !== null) ids.add(toCommitObjectId(commit));
   }
 
   const views = new Map<ObjectId, DecodedObjectView>();
@@ -108,7 +107,7 @@ async function reachable(
 
 async function verify(kernel: Kernel, session: SessionId): Promise<IntegrityReport> {
   const issues: Issue[] = [];
-  const refs = await refsOf(kernel, session);
+  const refs = await listSessionRefs(kernel, session);
 
   for (const ref of refs) {
     if (ref.target === null) continue;
@@ -123,7 +122,7 @@ async function verify(kernel: Kernel, session: SessionId): Promise<IntegrityRepo
       continue;
     }
 
-    const expected = recordOf(session, ref.name);
+    const expected = classifySessionRef(session, ref.name);
     const view = decodeView(ref.target, object);
 
     if (view === null || (expected !== null && view.kind !== expected))
@@ -158,7 +157,7 @@ async function ancestry(
   const found = new Map<CommitId, CommitRecord | null>();
 
   const pending = refs.flatMap((ref) =>
-    ref.target === null || recordOf(session, ref.name) !== "commit"
+    ref.target === null || classifySessionRef(session, ref.name) !== "commit"
       ? []
       : [asId<"commit">(ref.target)],
   );
@@ -175,7 +174,7 @@ async function ancestry(
   return found;
 }
 
-function recordOf(session: SessionId, name: string): string | null {
+function classifySessionRef(session: SessionId, name: string): string | null {
   const root = sessionRef(session);
 
   if (name === root) return "session";

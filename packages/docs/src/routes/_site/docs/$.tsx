@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { DocPageView, docPageHead } from "~/components/site/doc-page";
-import { getDoc } from "~/lib/docs";
+import { DocFrame } from "~/components/site/frame";
+import { docsNav, getDoc } from "~/lib/docs";
 
 export const Route = createFileRoute("/_site/docs/$")({
   beforeLoad: ({ params }) => {
@@ -14,5 +15,9 @@ function DocsPage() {
   const { _splat } = Route.useParams();
   const page = getDoc(_splat);
   if (!page) throw notFound();
-  return <DocPageView page={page} />;
+  return (
+    <DocFrame sections={docsNav}>
+      <DocPageView page={page} />
+    </DocFrame>
+  );
 }

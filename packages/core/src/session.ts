@@ -24,23 +24,24 @@ import type {
   RemoveSessionOutcome,
   Revision,
   RunId,
+  Activation,
   SessionId,
   SessionInfo,
   UpdateOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import { sendNow } from "./admission.ts";
-import { staticContributions } from "./models.ts";
+import { refusalError, staticContributions } from "./models.ts";
 import { recordAcquisition } from "./durable.ts";
 import { SdkError } from "./error.ts";
-import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
+import { configure, createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import type { Head } from "./head.ts";
 import type { Kernel } from "./kernel.ts";
+import { releaseParts } from "./parts.ts";
 import type { Part, PartDefinition, PartState } from "./parts.ts";
 import type { ConnectionContext } from "./principals.ts";
 import type { Receipt } from "./receipt.ts";
-import { withdraw } from "./receipt-handles.ts";
-import { receiptHandle } from "./receipts.ts";
+import { receiptHandle, withdraw } from "./receipt-handles.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "./records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "./records.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "./refs.ts";
@@ -72,25 +73,43 @@ const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
   "activation",
 ]);
 
+interface DirectoryEntry {
+  readonly version: Revision;
+  readonly activation: Activation;
+  readonly info: SessionInfo;
+  readonly fingerprint: string;
+}
+
 export interface Session extends Head {
   readonly id: SessionId;
+
   head(name: HeadName): Head;
   readonly heads: {
     create(name: HeadName, input?: { readonly from?: Position }): Promise<CreateHeadOutcome>;
+
     merge(name: HeadName, options?: { readonly expect?: Revision }): Promise<MergeOutcome>;
+
     remove(name: HeadName, options?: { readonly expect?: Revision }): Promise<RemoveHeadOutcome>;
   };
+
   run(id: RunId): Run;
+
   receipt(id: ReceiptId): Receipt<unknown>;
+
   info(): Promise<SessionInfo>;
+
+  /** Updates session metadata; identical values succeed without changing the revision or log. */
   update(patch: {
     readonly name?: string | null;
     readonly pinned?: boolean;
     readonly archived?: boolean;
     readonly workspace?: WorkspaceId;
   }): Promise<UpdateOutcome>;
+
   remove(): Promise<RemoveSessionOutcome>;
+
   stop(): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }>;
+
   command(name: string, args?: Json): Promise<CommandOutcome>;
   readonly parts: {
     create<K extends PartDefinition>(
@@ -98,6 +117,7 @@ export interface Session extends Head {
       input: { readonly state: PartState<K>; readonly placement: Placement; readonly id?: PartId },
     ): Promise<Part<K>>;
   };
+
   part(id: PartId): Part<PartDefinition>;
 }
 
@@ -106,6 +126,7 @@ export interface Sessions {
     readonly parents?: ParentFilter;
     readonly limit?: number;
   }): AsyncIterable<readonly SessionInfo[]>;
+
   create(input?: {
     readonly id?: SessionId;
     readonly name?: string;
@@ -114,6 +135,7 @@ export interface Sessions {
     readonly configuration?: Configuration | ConfigurationPatch;
     readonly prompt?: PromptOverride;
   }): Promise<Session>;
+
   list(input?: {
     readonly parents?: ParentFilter;
     readonly cursor?: Cursor;
@@ -121,7 +143,6 @@ export interface Sessions {
   }): Promise<Paged<SessionInfo>>;
 }
 
-/** Returns a handle on a session for a connection: its main head plus heads, runs, receipts, parts and management. Binds synchronously; no I/O. */
 export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: SessionId): Session {
   return {
     ...headHandle(kernel, context, id, MAIN),
@@ -147,7 +168,7 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     async command(name, args) {
       await kernel.pluginsFor(id).ready;
 
-      return kernel.command(id, name, args);
+      return kernel.command(context, id, name, args);
     },
     parts: {
       async create(kind, input) {
@@ -160,7 +181,6 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
   };
 }
 
-/** Returns a part handle whose `update` and `act` first await the session's activation, so the part's definition is read with its owner's plugins loaded. */
 function activated(
   kernel: Kernel,
   part: Part<PartDefinition>,
@@ -168,10 +188,10 @@ function activated(
 ): Part<PartDefinition> {
   return {
     ...part,
-    async update(next) {
+    async update(next, options) {
       await kernel.pluginsFor(session).ready;
 
-      return part.update(next);
+      return part.update(next, options);
     },
     async act(action, input) {
       await kernel.pluginsFor(session).ready;
@@ -181,23 +201,26 @@ function activated(
   };
 }
 
-/** Returns the session handle of the api a session's activation constructs: every head's `send`, `command`, `parts.create` and part handles run without awaiting the activation they are part of. */
 export function activationSession(
   kernel: Kernel,
   context: ConnectionContext,
   id: SessionId,
 ): Session {
+  const head = (name: HeadName): Head => ({
+    ...headHandle(kernel, context, id, name, sendNow),
+    configure: (patch) => configure(kernel, id, name, patch, true),
+  });
+
   return {
     ...sessionHandle(kernel, context, id),
-    ...headHandle(kernel, context, id, MAIN, sendNow),
-    head: (name) => headHandle(kernel, context, id, name, sendNow),
-    command: async (name, args) => kernel.command(id, name, args),
+    ...head(MAIN),
+    head,
+    command: async (name, args) => kernel.command(context, id, name, args),
     parts: { create: async (kind, input) => kernel.parts.create(context, id, kind, input) },
     part: (part) => kernel.parts.part(context, id, part),
   };
 }
 
-/** Returns the session directory for a connection. A `create` from a tool's step is an acquisition recorded on that step's call, so a re-run returns the session it created; a created session logs `configured` with its effective configuration and is activated before `create` resolves. */
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
     watch: (input) => watchSessions(kernel, context.principal, input),
@@ -207,7 +230,6 @@ export function createSessions(kernel: Kernel, context: ConnectionContext): Sess
   };
 }
 
-/** Returns the directory row: parent, workspace, heads, activation; null when the session ref is absent. */
 export async function sessionInfo(
   kernel: Kernel,
   id: SessionId,
@@ -216,7 +238,15 @@ export async function sessionInfo(
   const found = await readSession(kernel, id);
 
   if (found === null) return null;
-  const { record } = found;
+  return describeSession(kernel, found.record, principal);
+}
+
+async function describeSession(
+  kernel: Kernel,
+  record: SessionRecord,
+  principal: PrincipalId,
+): Promise<SessionInfo> {
+  const id = record.id;
   const runs = await liveRuns(kernel, id);
 
   const heads = await Promise.all(
@@ -235,6 +265,7 @@ export async function sessionInfo(
     id: record.id,
     name: record.name,
     parent: record.parent,
+    call: record.origin?.call ?? null,
     workspace: record.workspace,
     pinned: record.pinned,
     archived: record.archived,
@@ -245,29 +276,36 @@ export async function sessionInfo(
   };
 }
 
-/** Returns one page of the directory, newest activity first. */
 export async function listSessions(
   kernel: Kernel,
   principal: PrincipalId,
   input?: { readonly parents?: ParentFilter; readonly cursor?: Cursor; readonly limit?: number },
 ): Promise<Paged<SessionInfo>> {
-  const rows = await directory(kernel, input?.parents ?? { kind: "all" });
   const limit = Math.max(1, input?.limit ?? DEFAULT_LIMIT);
-  const start = input?.cursor === undefined ? 0 : after(rows, input.cursor);
-  const page = rows.slice(start, start + limit);
-  const infos = await Promise.all(page.map((row) => sessionInfo(kernel, row.id, principal)));
-  const last = page.at(-1);
+  const rows = await kernel.store.sessions.list({
+    parents: input?.parents ?? { kind: "all" },
+    after: input?.cursor === undefined ? undefined : directoryCursor(input.cursor),
+    limit: limit + 1,
+  });
+  const infos = await Promise.all(
+    rows.slice(0, limit).map(async ({ ref }) => {
+      const found = await load(kernel, ref, decodeSessionRecord);
+
+      return found === null ? null : describeSession(kernel, found.record, principal);
+    }),
+  );
+  const items = infos.flatMap((info) => (info === null ? [] : [info]));
+  const last = items.at(-1);
 
   return {
-    items: infos.flatMap((info) => (info === null ? [] : [info])),
+    items,
     next:
-      last !== undefined && start + limit < rows.length
+      last !== undefined && rows.length > limit
         ? asId<"cursor">(`${last.lastActivityAt}:${last.id}`)
         : null,
   };
 }
 
-/** Yields the directory as it changes: the sidebar. `return()` unsubscribes at once. */
 export function watchSessions(
   kernel: Kernel,
   principal: PrincipalId,
@@ -275,16 +313,26 @@ export function watchSessions(
 ): AsyncIterable<readonly SessionInfo[]> {
   return closable<readonly SessionInfo[]>(() => {
     let changes = 0;
-    let shown: string | null = null;
+    let shown: readonly SessionInfo[] | null = null;
+    let cached = new Map<SessionId, DirectoryEntry>();
 
     const ticks = coalesce(
-      latest(changes, (push) =>
-        kernel.bus.subscribeAll((_session, event) => {
-          if (!DIRECTORY_EVENTS.has(event.kind)) return;
+      latest(changes, (push) => {
+        const changed = (): void => {
           changes += 1;
           push(changes);
-        }),
-      ),
+        };
+        const dispose = kernel.bus.subscribeAll((_session, event) => {
+          if (!DIRECTORY_EVENTS.has(event.kind)) return;
+          changed();
+        });
+        const timer = kernel.poll === null ? undefined : setInterval(changed, kernel.poll);
+
+        return () => {
+          dispose();
+          clearInterval(timer);
+        };
+      }),
     )[Symbol.asyncIterator]();
 
     return {
@@ -294,17 +342,47 @@ export function watchSessions(
 
           if (tick.done) return tick;
 
-          const page = await listSessions(kernel, principal, {
-            parents: input?.parents,
-            limit: input?.limit,
+          const rows = await kernel.store.sessions.list({
+            parents: input?.parents ?? { kind: "all" },
+            limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
           });
+          const next = new Map<SessionId, DirectoryEntry>();
+          const infos = await Promise.all(
+            rows.map(async ({ ref, version }) => {
+              const id = asId<"session">(ref.name.slice("sessions/".length));
+              const previous = cached.get(id);
+              const activation = kernel.activation(id);
 
-          const key = JSON.stringify(page.items);
+              if (previous?.version === version && previous.activation === activation) {
+                next.set(id, previous);
 
-          if (key === shown) continue;
-          shown = key;
+                return previous.info;
+              }
+              const found = await load(kernel, ref, decodeSessionRecord);
 
-          return { done: false, value: page.items };
+              if (found === null) return null;
+              const current = await describeSession(kernel, found.record, principal);
+              const fingerprint = JSON.stringify(current);
+              const info = previous?.fingerprint === fingerprint ? previous.info : current;
+              next.set(id, { version, activation, fingerprint, info });
+
+              return info;
+            }),
+          );
+          cached = next;
+          const items = infos.flatMap((info) => (info === null ? [] : [info]));
+
+          const previous = shown;
+
+          if (
+            previous !== null &&
+            items.length === previous.length &&
+            items.every((info, index) => info === previous[index])
+          )
+            continue;
+          shown = items;
+
+          return { done: false, value: items };
         }
       },
       close() {
@@ -344,7 +422,7 @@ async function create(
   if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
     throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
 
-  const selected = await selectedOf(kernel, id, input.configuration);
+  const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
   const at = Date.now();
 
   const record: SessionRecord = {
@@ -388,7 +466,6 @@ async function create(
   return id;
 }
 
-/** Returns the configuration a new session resolves to from the host's static contributions, null when there is nothing to resolve to. */
 async function defaults(kernel: Kernel, session: SessionId): Promise<Configuration | null> {
   const result = await kernel.resolveConfiguration({
     session,
@@ -401,7 +478,7 @@ async function defaults(kernel: Kernel, session: SessionId): Promise<Configurati
   return result.kind === "exact" ? result : null;
 }
 
-async function selectedOf(
+async function resolveInitialConfiguration(
   kernel: Kernel,
   session: SessionId,
   configuration: Configuration | ConfigurationPatch | undefined,
@@ -420,12 +497,9 @@ async function selectedOf(
 
   if (result.kind === "exact") return result;
 
-  throw new SdkError("invalid", `The configuration is ${result.kind}.`, {
-    issues: result.kind === "invalid" ? result.issues : [],
-  });
+  throw refusalError(result);
 }
 
-/** Updates a session's record; a relocation detaches its environment and installs a new plugin runtime. */
 async function update(
   kernel: Kernel,
   session: SessionId,
@@ -460,6 +534,14 @@ async function update(
       workspace,
     };
 
+    if (
+      record.name === found.record.name &&
+      record.pinned === found.record.pinned &&
+      record.archived === found.record.archived &&
+      !moving
+    )
+      return { outcome: { kind: "updated" }, moved: false };
+
     const written = await commit(kernel, [
       {
         name: sessionRef(session),
@@ -490,10 +572,14 @@ async function remove(
     const runs = await liveRuns(kernel, session);
 
     if (runs.length > 0) return { kind: "busy", runs: runs.map((run) => run.record.view.id) };
-    const children = await childrenOf(kernel, context, session);
+    const children = await listChildSessionIds(kernel, context, session);
 
     if (children.length > 0) return { kind: "has-children", children };
-    const refs = await kernel.store.refs.list(`${sessionRef(session)}/`);
+
+    const refs = [
+      ...(await kernel.store.refs.list(`${sessionRef(session)}/`)),
+      ...(await kernel.store.refs.list(`kv/session:${session}/`)),
+    ];
 
     const outcome = await commit(kernel, [
       ...refs.map((ref): RefUpdate => ({ name: ref.name, target: null, expect: ref.revision })),
@@ -507,7 +593,22 @@ async function remove(
 
     if (outcome.kind === "stale") return STALE;
     kernel.pluginState.assigned.delete(session);
+    kernel.workspaceState.scans.delete(session);
     await kernel.closePlugins(session);
+    kernel.forget(session);
+    releaseParts(kernel.partTable, session);
+
+    await Promise.allSettled([
+      ...kernel.jobs
+        .list(found.record.workspace)
+        .flatMap((job) =>
+          job.view.session === session && job.view.state.kind === "running"
+            ? [job.process.stop()]
+            : [],
+        ),
+      kernel.pages.release({ session }),
+    ]);
+
     await kernel.environments.detach(session);
 
     return { kind: "removed" };
@@ -541,7 +642,7 @@ async function stop(
   return { stopped, withdrawn };
 }
 
-async function childrenOf(
+async function listChildSessionIds(
   kernel: Kernel,
   context: ConnectionContext,
   session: SessionId,
@@ -602,30 +703,7 @@ function execution(run: RunRecord): Execution {
   return { kind: "live", run: run.view, phase: run.phase, stopping: run.stopping };
 }
 
-async function directory(kernel: Kernel, parents: ParentFilter): Promise<readonly SessionRecord[]> {
-  const refs = await kernel.store.refs.list("sessions/");
-
-  const records = await Promise.all(
-    refs.flatMap((ref) =>
-      ref.name.split("/").length === 2 ? [load(kernel, ref, decodeSessionRecord)] : [],
-    ),
-  );
-
-  return records
-    .flatMap((found) => (found === null ? [] : [found.record]))
-    .filter(
-      (record) =>
-        parents.kind === "all" ||
-        (parents.kind === "roots" ? record.parent === null : record.parent === parents.session),
-    )
-    .sort(
-      (left, right) =>
-        right.lastActivityAt - left.lastActivityAt ||
-        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
-    );
-}
-
-function after(rows: readonly SessionRecord[], cursor: Cursor): number {
+function directoryCursor(cursor: Cursor): { readonly at: number; readonly id: SessionId } {
   const separator = cursor.indexOf(":");
   const at = Number(cursor.slice(0, separator));
   const id = cursor.slice(separator + 1);
@@ -633,9 +711,5 @@ function after(rows: readonly SessionRecord[], cursor: Cursor): number {
   if (separator < 0 || !Number.isFinite(at))
     throw new SdkError("invalid", `${cursor} is not a directory cursor`);
 
-  const index = rows.findIndex(
-    (row) => row.lastActivityAt < at || (row.lastActivityAt === at && row.id > id),
-  );
-
-  return index < 0 ? rows.length : index;
+  return { at, id: asId<"session">(id) };
 }

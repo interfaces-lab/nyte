@@ -3,6 +3,8 @@ import { assert, describe, expect, it } from "vitest";
 import { HOST_HEADER, createTransport, decodeOutput, outputFrames } from "../src/index.ts";
 import type { SseFrame } from "../src/index.ts";
 import { served } from "./fakes.ts";
+import { createStreamChannels } from "../src/stream-server.ts";
+import { CHANNEL_PATH, CHANNEL_HEADER, STREAM_HEADER } from "../src/stream-channel.ts";
 
 async function failure(run: () => Promise<unknown>): Promise<SdkError> {
   try {
@@ -181,7 +183,11 @@ describe("transport", () => {
     const owner = transport("Bearer owner");
 
     expect(
-      await owner.invoke("models.login", { provider: "test", method: { kind: "key" } }),
+      await owner.invoke("models.login", {
+        provider: "test",
+        method: { kind: "key" },
+        label: "Work",
+      }),
     ).toBeNull();
     const steps = owner.frames("login.steps", { provider: "test" })[Symbol.asyncIterator]();
     const paste = await steps.next();
@@ -199,11 +205,98 @@ describe("transport", () => {
     }
 
     expect(rest.at(-1)).toEqual({ kind: "done" });
+    const accounts = decodeOutput(
+      "models.accounts",
+      await owner.invoke("models.accounts", { provider: "test" }),
+    );
+    const [account] = accounts;
+    assert(account !== undefined);
+
+    expect(accounts).toEqual([
+      {
+        provider: "test",
+        id: account.id,
+        label: "Work",
+        method: { kind: "key" },
+        active: true,
+      },
+    ]);
+    expect(
+      await owner.invoke("models.selectAccount", { provider: "test", account: account.id }),
+    ).toBeNull();
+    expect(decodeOutput("models.usage", await owner.invoke("models.usage", {}))[0]).toMatchObject({
+      provider: "test",
+      account: { id: account.id, label: "Work" },
+      state: { kind: "unavailable", reason: "unsupported" },
+    });
     expect(
       await failure(() => owner.invoke("login.answer", { provider: "test", code: "x" })),
     ).toMatchObject({
       code: "unknown",
     });
+  });
+
+  it("cancels a waiting login over HTTP without saving it or blocking the next login", async () => {
+    const { host, fake, transport } = await served();
+    await using _cleanup = host;
+    const provider = fake.models.getProvider("test");
+    assert(provider !== undefined);
+    const apiKey = provider.auth.apiKey;
+    assert(apiKey !== undefined && apiKey.login !== undefined);
+    const original = apiKey.login.bind(apiKey);
+    let signal: AbortSignal | undefined;
+
+    fake.models.setProvider({
+      ...provider,
+      auth: {
+        ...provider.auth,
+        apiKey: {
+          ...apiKey,
+          login(interaction) {
+            signal = interaction.signal;
+
+            return original(interaction);
+          },
+        },
+      },
+    });
+
+    const owner = transport("Bearer owner");
+    await owner.invoke("models.login", { provider: "test", method: { kind: "key" } });
+    const steps = owner.frames("login.steps", { provider: "test" })[Symbol.asyncIterator]();
+
+    expect((await steps.next()).value).toEqual({
+      kind: "paste",
+      message: "Paste your key.",
+      secret: true,
+    });
+
+    const waiting = steps.next();
+    await steps.return?.();
+
+    expect(await waiting).toEqual({ done: true, value: undefined });
+    expect(signal?.aborted).toBe(true);
+    expect(await owner.invoke("models.accounts", {})).toEqual([]);
+    await expect(
+      owner.invoke("login.answer", { provider: "test", code: "late" }),
+    ).rejects.toMatchObject({ code: "unknown" });
+
+    await owner.invoke("models.login", { provider: "test", method: { kind: "key" } });
+
+    for await (const frame of owner.frames("login.steps", { provider: "test" })) {
+      const step = decodeOutput("login.steps", frame);
+
+      if (step.kind === "paste")
+        await owner.invoke("login.answer", { provider: "test", code: "sk-retry" });
+
+      if (step.kind === "failed") throw new Error(step.reason);
+    }
+
+    expect(
+      decodeOutput("models.accounts", await owner.invoke("models.accounts", {})).map(
+        (account) => account.label,
+      ),
+    ).toEqual(["Account 1"]);
   });
 
   it("keeps the credential a pairing exchange returns", async () => {
@@ -216,6 +309,8 @@ describe("transport", () => {
   });
 
   it("reads job output as framed octets whatever Content-Type the answer carries (ADV G8)", async () => {
+    const { owner } = await served();
+    const channels = createStreamChannels();
     const frames = async function* () {
       yield { kind: "bytes", data: new TextEncoder().encode("hi") } as const;
       yield { kind: "exit", code: 0 } as const;
@@ -224,11 +319,25 @@ describe("transport", () => {
     const transport = createTransport({
       url: "http://host.test",
       headers: async () => ({}),
-      fetch: async () =>
-        new Response(outputFrames(frames()), {
-          status: 200,
-          headers: { "Content-Type": "text/event-stream" },
-        }),
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        if (new URL(request.url).pathname === `/${CHANNEL_PATH}`)
+          return channels.open(owner, request.signal);
+        const channel = request.headers.get(CHANNEL_HEADER);
+        const stream = request.headers.get(STREAM_HEADER);
+        assert(channel !== null && stream !== null);
+        return channels.start(
+          owner,
+          channel,
+          stream,
+          request.signal,
+          async () =>
+            new Response(outputFrames(frames()), {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+        );
+      },
     });
 
     expect(await take(transport.output({}), () => false)).toEqual([

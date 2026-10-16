@@ -14,4 +14,4 @@ sh /path/to/docs/examples/prompt-file.sh ./prompt.txt
 ```
 
 These are ordinary shell source files you can copy and adapt. See the
-[usage guide](../usage.md) for setup and the [front door](../README.md) for locations.
+[front door](../README.md) for locations.

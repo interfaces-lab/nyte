@@ -59,10 +59,6 @@ export type WorkbenchTabInput = WorkbenchTab extends infer Tab
     : never
   : never;
 
-/**
- * Maximized, the stage shows one surface at a time: the workbench, or the
- * conversation behind it as a tab in the same strip.
- */
 export type WorkbenchLayout =
   | { readonly kind: "split" }
   | { readonly kind: "maximized"; readonly showing: "workbench" | "chat" };
@@ -79,7 +75,6 @@ const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
   showing: "chat",
 }) satisfies WorkbenchLayout;
 
-/** The conversation's value in the workbench tab strip; never a workbench tab id. */
 export const WORKBENCH_CHAT_TAB = "chat";
 
 export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
@@ -259,7 +254,6 @@ export interface WorkbenchController {
     readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleWorkbench: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
-    /** Maximized, shows the conversation in place of the workbench; the active tab waits. */
     readonly showChat: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
   };
@@ -431,7 +425,6 @@ function clampWorkbenchWidth(width: number): number {
     : WORKBENCH_WIDTH_DEFAULT;
 }
 
-/** Cursor's auxiliary bar default: 400px, or two fifths of the stage when that is less. */
 export function workbenchDefaultWidth(availableWidth: number): number {
   return Math.min(WORKBENCH_WIDTH_DEFAULT, Math.round(availableWidth / 2.5));
 }

@@ -1,9 +1,3 @@
-/**
- * Returns `next`, reusing `previous` items (and the array itself) where they
- * are equal by `same`, so derived lists keep identity across frames. Items
- * are compared at the same index; a list that only grew at the end keeps
- * every earlier item.
- */
 export function keepEqual<T>(
   previous: readonly T[] | undefined,
   next: readonly T[],

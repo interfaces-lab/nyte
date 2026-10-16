@@ -47,7 +47,6 @@ export function pluginLoader(dirs: readonly string[]): Kernel["loadPlugins"] {
   };
 }
 
-/** Imports each file in order and returns its plugin, or throws one `invalid` naming every file that failed. */
 async function loadAll(
   files: readonly string[],
 ): Promise<readonly { readonly plugin: Plugin<"core">; readonly path: string }[]> {
@@ -64,7 +63,6 @@ async function loadAll(
   return loaded;
 }
 
-/** Imports each file in order: the plugins that loaded with their paths, and one `error` issue per file that did not, naming the file. */
 async function importEach(files: readonly string[]): Promise<{
   readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
   readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
@@ -92,7 +90,6 @@ async function importEach(files: readonly string[]): Promise<{
   return { loaded, failed };
 }
 
-/** Returns the plugin files directly in a directory, by name: each `.ts`, `.mts`, `.js` or `.mjs` file and each subdirectory's `index` of those; a missing directory has none. */
 async function pluginFilesIn(dir: string): Promise<readonly string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
     if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
@@ -146,7 +143,6 @@ async function importPlugin(
   }
 }
 
-/** Returns whether a value has the shape of a core plugin: a string `id`, and, where present, `contribute` and `hooks` objects, an `activate` function and an `environment` provider with a string `kind` and `inspect` and `attach` functions. */
 function isCorePlugin(value: unknown): value is Plugin<"core"> {
   if (
     typeof value !== "object" ||

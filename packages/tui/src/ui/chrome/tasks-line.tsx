@@ -1,4 +1,3 @@
-/** "● N running in background" / "● a background task needs your answer" · "↓ view"; click opens the task list. */
 import type { JSX } from "@opentui/solid";
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -14,7 +13,6 @@ export function TasksLine(): JSX.Element {
   return (
     <Show when={app.screen().tasksLine}>
       {(line: Accessor<NonNullable<ScreenModel["tasksLine"]>>) => {
-        // A background child waiting on the user outranks the count: it is the one thing to act on.
         const mark = () => statusMark(line().attention ? "waiting" : "running");
 
         return (

@@ -148,6 +148,12 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   if (chat.state !== undefined) {
     return (
       <>
+        <Stack.Header
+          transparent
+          blurEffect="none"
+          style={{ backgroundColor: "transparent", shadowColor: "transparent" }}
+          largeStyle={{ backgroundColor: "transparent", shadowColor: "transparent" }}
+        />
         <Stack.Title>{name === "" ? "Conversation" : name}</Stack.Title>
         {overflow}
         <ModelPickerSheet

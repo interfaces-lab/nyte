@@ -4,10 +4,8 @@ import { formatPatch, OMIT_HEADERS, parsePatch } from "diff";
 import type { StructuredPatch } from "diff";
 import { Value } from "typebox/value";
 
-/** The patch an edit or write call settles with. */
 export type TextPatch = Extract<PatchEntry, { readonly kind: "text" }>;
 
-/** A hunk that replaces exactly one line with one line; `row` is the removed line's row within the hunk. */
 export interface ChangedLinePair {
   readonly removed: string;
   readonly added: string;
@@ -39,7 +37,6 @@ function fileHeader(lines: readonly string[], index: number): boolean {
   );
 }
 
-/** Consume exactly the declared body, never the following command's output. */
 function hunkEnd(lines: readonly string[], start: number): number {
   const header = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/u.exec(lines[start] ?? "");
 
@@ -107,7 +104,6 @@ function trimSection(lines: readonly string[]): string | undefined {
   return text === "" ? undefined : text;
 }
 
-/** One section per hunk, following OpenCode's per-hunk layout; `source` stands in for a hunkless file. */
 function patchSections(file: StructuredPatch, source: string): readonly DiffSection[] {
   let previousEnd = 1;
 
@@ -128,22 +124,21 @@ function patchSections(file: StructuredPatch, source: string): readonly DiffSect
     : sections;
 }
 
-/** Returns a tool output that is a text patch, as core's edit and write settle with; undefined for anything else. */
 export function textPatch(output: Json | null): TextPatch | undefined {
   return Value.Check(PatchEntryType, output) && output.kind === "text" ? output : undefined;
 }
 
-/** A text patch's hunks as the sections `showDiff` draws, their line numbers the file's. */
 export function patchDiff(patch: TextPatch): OutputDiff {
   const file: StructuredPatch = {
     oldFileName: patch.path,
     newFileName: patch.path,
     oldHeader: undefined,
     newHeader: undefined,
+    // Core numbers an empty side as unified headers do (`-0,0`); jsdiff stores it one higher and subtracts on format.
     hunks: patch.hunks.map((hunk) => ({
-      oldStart: hunk.oldStart,
+      oldStart: hunk.oldLines === 0 ? hunk.oldStart + 1 : hunk.oldStart,
       oldLines: hunk.oldLines,
-      newStart: hunk.newStart,
+      newStart: hunk.newLines === 0 ? hunk.newStart + 1 : hunk.newStart,
       newLines: hunk.newLines,
       lines: hunk.lines.flatMap((line) => {
         const row = `${line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}${line.text}`;
@@ -160,10 +155,6 @@ export function patchDiff(patch: TextPatch): OutputDiff {
   };
 }
 
-/**
- * jsdiff tolerates prose after hunks. Bound each file first, then use its parsed
- * hunks for both rendering and height, following OpenCode's per-hunk layout.
- */
 export function diffFromOutput(text: string): OutputDiff | undefined {
   const lines = text.split("\n");
 

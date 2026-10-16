@@ -1,8 +1,3 @@
-/**
- * The powerline and the hint row, derived. Hints are the labels of the
- * interactions that are on now, so a hint cannot advertise a key the table
- * would refuse.
- */
 import type { Json } from "@nyte-ai/sdk";
 import { keycap } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
@@ -11,7 +6,6 @@ import { displayWidth } from "../lib/width.ts";
 import type { Interactions } from "./interactions.ts";
 import type { State } from "./state.ts";
 
-/** The powerline's facts; the footer fits them to its frame with `fitPowerlineSegments`. */
 export interface FooterModel {
   readonly powerline: Partial<PowerlineState>;
 }
@@ -23,10 +17,6 @@ export interface Hint {
   readonly tier: "primary" | "secondary";
 }
 
-/**
- * The hint row's order. Primary hints (accept, submit, cancel, help) always
- * show; secondary ones join, in this order, while they fit `width - 6`.
- */
 export const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint["tier"] }[] =
   [
     { command: "completion.accept", tier: "primary" },
@@ -54,7 +44,6 @@ function sameJson(left: Json, right: Json): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-/** Selection from the configurator, context from the view, git from the workspace, badges from plugin settings. */
 export function footerFor(state: State, queued: number): FooterModel {
   const session = state.facts.session;
   const view = session?.view ?? null;
@@ -83,6 +72,7 @@ export function footerFor(state: State, queued: number): FooterModel {
         context === undefined || context.window <= 0
           ? 0
           : Math.round((context.tokens / context.window) * 100),
+      remote: state.facts.remote,
     },
   };
 }
@@ -91,7 +81,6 @@ function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
-/** The labels of the interactions that are on and not hidden: primaries always, secondaries while they fit. */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
   const interruptShown =
     interactions["chat.interrupt"].intent !== null && !interactions["chat.interrupt"].hidden;

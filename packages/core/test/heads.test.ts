@@ -3,7 +3,13 @@ import type { CommitId, HeadName, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { LOCAL, headRef, memoryStore, tree } from "../src/index.ts";
 import type { Head, Host, Kernel, StoreConnection } from "../src/index.ts";
-import { commit, expectOf, objectOf, putCommit, readTip } from "../src/session-state.ts";
+import {
+  commit,
+  readRefExpectation,
+  toCommitObjectId,
+  put,
+  readTip,
+} from "../src/session-state.ts";
 import { label, main, recording, setup, usage } from "./harness.ts";
 import type { Script } from "./harness.ts";
 
@@ -22,7 +28,6 @@ async function exchange(
   await step;
 }
 
-/** Lands a user commit on `main` straight through the store, as another instance's admission does. */
 async function land(kernel: Kernel, session: SessionId, content: string): Promise<CommitId> {
   const tip = await readTip(kernel, session, main);
   const body = {
@@ -34,13 +39,13 @@ async function land(kernel: Kernel, session: SessionId, content: string): Promis
     siblings: [],
   } as const;
   const record = { parent: tip.id, at: Date.now(), run: null, body };
-  const id = await putCommit(kernel, record);
+  const id = asId<"commit">(await put(kernel, "commit", record, record.at));
 
   const outcome = await commit(kernel, [
     {
       name: headRef(session, main),
-      target: objectOf(id),
-      expect: expectOf(tip.ref),
+      target: toCommitObjectId(id),
+      expect: readRefExpectation(tip.ref),
       event: { head: main, kind: "commit", id, parent: record.parent, run: null, body },
     },
   ]);

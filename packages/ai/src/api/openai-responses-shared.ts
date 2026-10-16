@@ -1,9 +1,3 @@
-/**
- * Shared OpenAI Responses message conversion and stream processing.
- *
- * Based on https://github.com/earendil-works/pi/blob/bc2d8dc1c46c50f2c6a0f3237e6a2453817e51a1/packages/ai/src/api/openai-responses-shared.ts
- * Synced with pi bc2d8dc1c.
- */
 import type OpenAI from "openai";
 import type {
   CustomTool,
@@ -57,10 +51,6 @@ import {
 } from "./constrained-sampling.ts";
 import { TokenCount } from "./token-count.ts";
 import { transformMessages } from "./transform-messages.ts";
-
-// =============================================================================
-// Utilities
-// =============================================================================
 
 function encodeTextSignatureV1(id: string, phase?: TextSignatureV1["phase"]): string {
   const payload: TextSignatureV1 = { v: 1, id };
@@ -122,7 +112,6 @@ function convertToolResultOutput<TApi extends Api>(
   return output;
 }
 
-/** `fast` is the API-neutral request; on the Responses APIs it is the priority tier, for streams and compaction alike. */
 export function withPriorityTier<
   O extends { fast?: boolean; serviceTier?: ResponseCreateParamsStreaming["service_tier"] },
 >(options: O | undefined): O | undefined {
@@ -162,10 +151,6 @@ export interface ConvertResponsesToolsOptions {
   supportsOpenAIGrammarTools?: boolean;
   deferLoading?: boolean;
 }
-
-// =============================================================================
-// Message conversion
-// =============================================================================
 
 const CheckpointItemsSchema = Type.Array(Type.Object({ type: Type.String() }));
 
@@ -463,10 +448,6 @@ export function convertResponsesMessages(
   return messages;
 }
 
-// =============================================================================
-// Tool conversion
-// =============================================================================
-
 export function convertResponsesTools(
   tools: readonly Tool[],
   options?: ConvertResponsesToolsOptions,
@@ -518,10 +499,6 @@ export function convertResponsesTools(
     return functionTool as OpenAITool;
   });
 }
-
-// =============================================================================
-// Stream processing
-// =============================================================================
 
 // Codex decodes its own wire frames, so terminal usage remains untrusted until
 // finalization rather than borrowing the SDK's unchecked numeric types.
@@ -736,7 +713,7 @@ export async function processResponsesStream<TApi extends Api>(
   // Azure OpenAI can omit reasoning.encrypted_content from response.output_item.done
   // and provide it only in response.completed.response.output. Backfill the
   // persisted reasoning signature from the terminal response to keep store:false
-  // multi-turn replay stateless. See https://github.com/earendil-works/pi/issues/6409.
+  // multi-turn replay stateless.
   const backfillReasoningSignatures = (responseOutput: ResponseOutputItem[]): void => {
     for (const item of responseOutput) {
       if (item.type !== "reasoning" || !item.encrypted_content) continue;
@@ -1038,7 +1015,6 @@ function mapStopReason(
     case "failed":
     case "cancelled":
       return { stopReason: "error" };
-    // These two are wonky ...
     case "in_progress":
     case "queued":
       return { stopReason: "stop" };

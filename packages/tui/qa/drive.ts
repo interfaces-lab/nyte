@@ -98,7 +98,6 @@ export async function resumeSession(terminal: Terminal, expectedCode: number): P
     deadline(),
   );
   assert.equal(await terminal.waitForExit(deadline()), expectedCode);
-  // A --show run shares the real stdin; the next open needs this renderer released.
   await terminal.close();
 
   const match = /(?:^|\n)To resume previous session\nnyte --session=([^\n]+)\n$/u.exec(
@@ -131,7 +130,6 @@ async function outcome(description: string, predicate: () => Promise<boolean>) {
 
   while (!(await predicate())) {
     assert.ok(performance.now() < until, `Timed out: ${description}`);
-    // Poll external process evidence, not elapsed time as a completion assertion.
     await setTimeout(20);
   }
 }
@@ -173,7 +171,6 @@ export async function heartbeat(workspace: Workspace, name: string) {
 
   return {
     name,
-    // Each invocation uses the unchanged public script with its own working directory.
     command: `cd ${name} && /bin/bash ../heartbeat.sh`,
     snapshot,
     release: () => writeFile(join(evidence, "release"), "release\n"),
@@ -191,15 +188,11 @@ export async function heartbeat(workspace: Workspace, name: string) {
       assert.notEqual((await snapshot()).process, "", `${name} process is still present`);
     },
     async stopped(cancelled: boolean) {
-      // Cancellation may use SIGKILL, which cannot run the script's EXIT trap.
-      // OS process disappearance proves termination without requiring a particular signal.
       await outcome(`${name} process disappears`, async () => (await snapshot()).process === "");
       const before = await snapshot();
       assert.equal(before.lifetime.includes("released\n"), !cancelled);
 
       if (!cancelled) assert.ok(before.lifetime.includes("exited\n"));
-      // Sample across several 100ms heartbeat periods as an extra check that a
-      // writer did not survive the original process. Time alone never proves exit.
       const until = performance.now() + 400;
 
       do {
@@ -215,7 +208,6 @@ export type Heartbeat = Awaited<ReturnType<typeof heartbeat>>;
 export type Session = {
   provider: ProviderController;
   workspace: Workspace;
-  /** Launches the binary in a PTY against this workspace and provider. */
   open: (args?: string[]) => Promise<Terminal>;
   tool: (name: string) => Promise<Heartbeat>;
 };
@@ -226,7 +218,6 @@ export async function session(
   options: {
     steps?: readonly ProviderStep[];
     plugin?: boolean;
-    /** Outbound requests the binary is known to make, which the loopback proxy refuses. */
     refused?: readonly string[];
   },
   run: (session: Session) => Promise<void>,
@@ -237,11 +228,9 @@ export async function session(
   let workspace: Workspace | undefined;
   let teardown: Promise<void> | undefined;
 
-  // Also runs when the person watching stops the run, so the fixture never outlives it.
   const finish = () =>
     (teardown ??= (async () => {
       try {
-        // Capture before cleanup releases tools, so cleanup cannot make cancellation pass.
         await writeFile(
           join(context.cwd, "provider.json"),
           JSON.stringify(

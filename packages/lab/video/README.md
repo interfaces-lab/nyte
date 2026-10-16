@@ -1,75 +1,40 @@
-# Video lab
+# Nyte Core introduction
 
-A launch film for Nyte, 57 seconds long. Remotion draws the type and interface, Blender renders the moon, and ElevenLabs reads the script and makes the score. The script lives in `script.ts`. The voice sets the timing: each line rounds up to whole bars of the 80 BPM score, so cuts land on downbeats. The score is made to those bar lengths afterwards.
+An 80-second scientific explainer at 1920×1080, 30 fps. A researcher and a worker avatar explain what Nyte Core owns, how work survives an execution process, and how developers compose their own agent applications.
 
-## Run
+The film uses original SVG characters, animated diagrams, Inter and an instrumental score. Headings carry the explanation. Every frame is drawn in 2D with Remotion.
+
+## Render
 
 ```sh
-pnpm --dir packages/lab video:research   # optional: fetch and transcribe the reference films
-pnpm --dir packages/lab video:moon       # Blender, headless, about 3 minutes
-ELEVENLABS_API_KEY=… pnpm --dir packages/lab video:voice    # narration; run before the score
-ELEVENLABS_API_KEY=… pnpm --dir packages/lab video:music    # score, cut to the narrated timings
-pnpm --dir packages/lab video:music --mix                   # re-level the kept takes, no API call
-pnpm --dir packages/lab video            # Remotion Studio
-pnpm --dir packages/lab video:render     # video/out/nyte.mp4
+pnpm --dir packages/lab video:render
+pnpm --dir packages/lab video:poster
 ```
 
-Without a recording, the film runs on estimated timings. A recording made from older wording is ignored line by line, so edit `script.ts` and run `video:voice` again, then `video:music`, because the bar counts change. Without `public/music/score.mp3` there's no music.
+The outputs are `out/nyte-introduction.mp4` and `out/nyte-introduction-poster.jpg`. The poster uses frame 165. `video` opens Remotion Studio for editing. The render checks that `public/music/introduction.mp3` exists before it starts.
 
-`ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL_ID` override the voice (Brian) and the model (`eleven_multilingual_v2`). Set `BLENDER` if Blender isn't in `/Applications`.
+`src/introduction.ts` holds the timing and copy. `src/film.tsx` stages the characters and chapters. `src/avatars.tsx` draws the characters, while `src/execution-scenes.tsx` and `src/composition-scenes.tsx` draw the mechanisms.
 
-## Voice, music and words
+## The explanation
 
-This follows the Notion film. The voice carries the film, and the music sits about 11 LU under it. Measured on Notion's soundtrack, the voice is -15 LUFS and the music -26.
+The opening names the runtime immediately. A message enters a session and returns an admission receipt. Execution calls a model and tools, while the session records its history. Immutable objects and an atomic ref batch explain how the runtime publishes state. An interrupted tool step introduces recovery and replay policy. Named heads then share a prefix and develop separate continuations.
 
-Every spoken word is on screen once, in one of two ways, never both:
+A tool's stored question connects the runtime to a person. Another SDK client answers it, the tool resumes, and the run completes. The final chapters show model providers, plugins, environments, custom renderers and host compositions. The closing argument is "Build agents that can continue."
 
-- **Subtitles** under the picture: short phrases, broken after punctuation or at six words, 64 px Inter 400, about 56 px from the bottom. Pictures sit above a 240 px band, so a subtitle never crosses an image.
-- **One word at a time on black**, as it's said, at 128 px Inter 600. This is for the thesis, "Speed got cheap. Care didn't."
+## Grounding
 
-A line whose words the picture already shows has no subtitle: the counters and the end card. Subtitles are white on `#0c1020` at night and `#16181d` on `#ececec` by day, both above 15:1. Labels in the picture are 24 px or larger. Inter loads with its optical-size axis, so large type uses the display cut.
+`core-proof.json` contains identities and content hashes from an actual Core, SDK and native SQLite run with a scripted model. The run created a question part, answered it through a second SDK connection, forked `alternative`, advanced both heads, then reopened the database through a new store and host. Both histories and the settled receipt survived. Reading that completed state required no new model requests. Store inspection reported no integrity issues.
 
-## Music
+The diagrams use those short IDs, hashes and seven-node branch topology. The atomic batch shows `heads/main`, `runs/<id>` and `inbox/main`, matching input admission. The code examples follow the public SDK and branded head-name API.
 
-`video:music` first asks the ElevenLabs Music API for one composed piece, with a section for each act in `score` held to that act's length. The Music API needs a paid plan. On a free plan the script falls back to the sound model: one take per act, looped where the music carries through a cut. The takes are kept in `public/music/takes`. Each one is levelled to its act's `level`, so Together is the loudest point and the turn drops away. Then the takes are joined at the cuts and run through a limiter.
+The recovery chapter is a conceptual explanation backed by Core's existing execution, lease and tool replay tests. The concrete proof reopens completed state. An unfinished safe tool step can be replayed after the previous execution lease expires. Parked question waits release their lease. Tool replay policy determines what recovery may do with an interrupted call.
 
-The sound model doesn't hold a tempo. Take lengths, and the cuts at section changes, are exact. Beats inside a take only roughly follow 80 BPM, so listen before publishing.
+The terminal, web and mobile panels illustrate renderers for the custom `film/direction` part. Clients supply those renderers. The question is an application interaction. Named heads share a workspace. Local, server and edge hosts are alternative compositions; the edge example is chat-only.
 
-To use a track from a library instead, save it as `public/music/score.mp3` and set `tempo` in `script.ts` to its BPM. Shazam identifies the Notion film's music as Brice Davoli, "Petit Trianon". The rajz track isn't recognised.
+Primary contracts live in `packages/core/src`, `packages/lab/sdk-shape.ts`, `packages/sdk/src` and `packages/schema/src`. Host and environment adapters live in `packages/host/src`. The terminal, app, desktop, mobile, canvas, lab and demo packages inform the client examples.
 
-## What the references taught
+## Media
 
-**Notion, "Think Together"** (Ivan Zhao, 125 s). The film argues instead of demoing.
+Keep ten generated media files: seven PNG plates in `public/plates`, the MP3 score, the final MP4 and its JPEG poster. Plates are review outputs, not inputs to the animation. Generated media stays out of Git and Vercel source uploads. Obsolete captures and renders are removed after the replacement is verified.
 
-- It opens on someone else's words: Apollo 11, "The Eagle has landed". Archive film, before any thesis.
-- The thesis arrives as one white word at a time on black, each word as it's said: "most", "meaningful", "things", "were", "never", "built", "alone". There's no subtitle while a word is up.
-- It names the opposing story (headlines, the solo founder behind a chat window, "humans are friction") before answering it.
-- The answer is concrete. Three real teams, each with a place and a size: a fintech in New York, healthcare in Australia, three founders in Lagos.
-- The voice is calm, about 2 words a second, over Brice Davoli's "Petit Trianon" about 11 LU below it. Every word is on screen, one way at a time: alone in white on black as it's said, about 130 px, or as a yellow subtitle about 64 px on the black below a letterboxed picture.
-- It ends quietly: a small logo and "Think together".
-
-**rajz** (29 s, music only, about 136 BPM). The craft vocabulary.
-
-- Cuts land on the beat, and type types itself.
-- Bracket corners frame a word or a value: `{ in one place }`.
-- A render-pass reveal: the heat pass resolves into the finished render.
-- Step lists that tick through ("Processing", "Generating", "Assemble") show work happening.
-
-## The film
-
-Notion's structure and restraint, with rajz's motion only where Nyte shows its work. Nyte's story is care. AI made building fast, so the scarce thing is someone taking the time to get it right. The name and the moon icon give that a setting: night, the time you sleep on a decision.
-
-| Line | Picture | Why it's there |
-| --- | --- | --- |
-| This year, anyone can ship an AI app in a weekend. | A chat box types itself, then becomes twenty identical ones. | The opposing story, stated fairly. |
-| Most of them feel the same. Close the window, and the work is gone. | The copies wink out; day goes to black. | The cost of speed, in the user's terms. |
-| Speed got cheap. Care didn't. | Each word alone on black as it's said, while the music drops to one note. | The thesis. |
-| Nyte took longer. | The moon's heat pass resolves into the render as the camera swings round. | The turn into night. |
-| Four hundred and sixty-seven commits. Fifty-eight of them in the core. | Counters in brackets over the real commit log, each landing as it's said. No subtitle: the counters are the words. | Proof from the repository, not adjectives. |
-| Every step is saved, like a commit. Close the app, and nothing is lost. | A session drawn as commits with a branch; the window closes and the commits stay. | The mechanism behind the care, from `docs/kernel/architecture`. |
-| Come back tomorrow. Or check in from your phone while it works. | A large 23:48 becomes 07:12 on the beat; a phone picks up the same steps while they are still running. | What that means for the user, from `docs/remote-access`. |
-| No army of agents. One person and one agent, thinking it through. | A field of flickering agents collapses to two squares taking turns. | Notion's ethos, said in Nyte's terms. |
-| Good work takes more than one night. | The Blender moon goes through its phases. | The idea, said once more in the setting. |
-| Nyte. Sleep on it. | The icon assembles, square by square. | The end card. |
-
-Every product claim is in the docs. The figures came from `git log` on 12 October 2026: 467 commits, and 58 commits touching `packages/core/src/kernel`. Recount before publishing. The film no longer says the home page was drawn five times, because the history doesn't show it.
+The score reuses the retained project soundtrack and runs for 78 seconds. The final two seconds hold in silence. The encoded score measures −18.0 LUFS integrated and −3.3 dB true peak.

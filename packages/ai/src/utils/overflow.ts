@@ -1,9 +1,6 @@
 /**
  * Context-window overflow as a function of the failure class, plus the length
  * stop a caller may recover from.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/overflow.ts
- * Synced with pi 7ebf9087e.
  */
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { classifyAssistantFailure } from "./failure.ts";

@@ -1,17 +1,13 @@
-/**
- * The offline catalog the e2e build opens the desktop with: one provider,
- * `e2e`, whose model answers from the last user text alone, so a seeded
- * baseline and a live run read the same replies without a network.
- */
 import { fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { Reply, Request } from "@nyte-ai/host/bench";
+import type { ToolResultMessage } from "@nyte-ai/schema/model";
+import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import type { ModelRef } from "@nyte-ai/schema";
 
 export const E2E_PROVIDER = "e2e";
 
 export const E2E_MODEL: ModelRef = { provider: E2E_PROVIDER, id: "scripted" };
 
-/** The reply to `/markdown`: one of each construct the transcript renders. */
 export const MARKDOWN_REPLY = `# Release notes
 
 A paragraph with **bold**, _italic_, ~~struck~~ text, \`inline code\` and a [link](https://example.test/docs).
@@ -67,12 +63,6 @@ function paragraphs(count: number): string {
   ).join("\n\n");
 }
 
-/**
- * Returns the reply for a user text: `/hold` streams one delta then holds
- * until Stop; `/error` fails the turn; `/think` streams thinking then text;
- * `/markdown` streams `MARKDOWN_REPLY`; `/long <n>` streams `n` paragraphs
- * token by token; anything else answers `Echo: <text>`.
- */
 export function scriptedReply(text: string): Reply {
   const [command = "", argument] = text.trim().split(/\s+/, 2);
 
@@ -90,6 +80,23 @@ export function scriptedReply(text: string): Reply {
       };
     case "/markdown":
       return { content: [{ type: "text", text: MARKDOWN_REPLY }], tokens: 24 };
+    case "/agents":
+      return {
+        content: [
+          {
+            type: "toolCall",
+            id: "agent-core",
+            name: "create",
+            arguments: { title: "Map the core" },
+          },
+          {
+            type: "toolCall",
+            id: "agent-app",
+            name: "create",
+            arguments: { title: "Map the app" },
+          },
+        ],
+      };
     case "/long": {
       const count = Number.parseInt(argument ?? "", 10);
 
@@ -98,18 +105,67 @@ export function scriptedReply(text: string): Reply {
         tokens: 48,
       };
     }
+
     default:
-      return { content: [{ type: "text", text: `Echo: ${text}` }] };
+      return text.startsWith("Child ")
+        ? { content: [{ type: "text", text: "An agent reported back." }] }
+        : { content: [{ type: "text", text: `Echo: ${text}` }] };
   }
 }
 
-/** Returns the offline catalog: provider `e2e` with the one model `E2E_MODEL`, answering every request with `scriptedReply` of its last user text. */
+function delegationStep(results: readonly ToolResultMessage[]): Reply {
+  const created = results.flatMap((result) => {
+    const text = result.content
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("");
+
+    const id = /^Created subagent (\S+)\.$/u.exec(text)?.[1];
+
+    return result.toolName === "create" && id !== undefined ? [id] : [];
+  });
+
+  if (created.length > 0)
+    return {
+      content: created.map((session, index) => ({
+        type: "toolCall",
+        id: `agent-send-${String(index)}`,
+        name: "send",
+        arguments: { session, prompt: `Trace part ${String(index + 1)}.` },
+      })),
+    };
+
+  return { content: [{ type: "text", text: "Both agents are working in the background." }] };
+}
+
+function titleRequest(request: Request): boolean {
+  const first = request.context.messages[0];
+
+  return first?.role === "system" && first.content === TITLE_PROMPT;
+}
+
 export function e2eModels() {
   return fakeModels({
     id: E2E_PROVIDER,
     name: "E2E",
     models: [testModel(E2E_MODEL.id, { name: "Scripted", provider: E2E_PROVIDER })],
-    fallback: (request) => scriptedReply(lastUserText(request)),
+    fallback: (request): Reply => {
+      const text = lastUserText(request);
+
+      const answered = request.context.messages.findLastIndex(
+        (message) => message.role !== "toolResult",
+      );
+
+      const results = request.context.messages
+        .slice(answered + 1)
+        .flatMap((message) => (message.role === "toolResult" ? [message] : []));
+
+      if (results.length > 0) return delegationStep(results);
+
+      if (!titleRequest(request)) return scriptedReply(text);
+      const title = (text.split("\n")[0] ?? "").replace(/^User: /u, "");
+
+      return { content: [{ type: "text", text: title }] };
+    },
   });
 }
 

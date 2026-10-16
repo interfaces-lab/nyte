@@ -1,4 +1,4 @@
-/** Account availability from Pi 71dca871, separate from the hosted model catalog. */
+/** Account availability, separate from the hosted model catalog. */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { GITHUB_COPILOT_DEFAULT_ORIGIN } from "../api/github-copilot-headers.ts";

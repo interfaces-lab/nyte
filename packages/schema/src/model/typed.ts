@@ -7,7 +7,6 @@ type Proof<S extends TSchema, T> = [Static<S>] extends [T]
     : never
   : never;
 
-/** A schema for `T` that compiles only while it describes exactly `T`. */
 export const typed =
   <T>() =>
   <S extends TSchema>(schema: Proof<S, T>): TUnsafe<T> =>

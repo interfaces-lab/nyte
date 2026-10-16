@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
  */
 const styles = create({
   override: { paddingInline: 10, color: "rgb(255, 0, 0)" },
-  xstyle: { fontWeight: 700 },
+  xstyle: { flexShrink: 1 },
 });
 
 export function run() {
@@ -36,13 +36,13 @@ export function run() {
     const actual = {
       className: [computed.paddingInlineStart, computed.color],
       style: computed.letterSpacing,
-      xstyle: computed.fontWeight,
+      xstyle: computed.flexShrink,
     };
 
     const expected = {
       className: ["10px", "rgb(255, 0, 0)"],
       style: "3px",
-      xstyle: "700",
+      xstyle: "1",
     };
 
     return JSON.stringify(actual) === JSON.stringify(expected) ? "passed" : JSON.stringify(actual);

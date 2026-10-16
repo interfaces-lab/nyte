@@ -1,8 +1,3 @@
-/**
- * A rubber stamp, drawn rather than bordered, then run through an ink filter:
- * the edge wanders with the paper fibre, pressure falls off across the face,
- * and the grain leaves pores where no ink took.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -29,7 +24,7 @@ function InkFilter({ id, seed }: { readonly id: string; readonly seed: number })
         result="edge"
       />
       <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves={2} seed={seed + 11} />
-      {/* DERIVED: fractal noise sits around 0.5, so most of the face takes full ink and the thinnest patch keeps about a third. */}
+      {}
       <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.8 0 0 0 0.1" result="pressure" />
       <feComposite in="edge" in2="pressure" operator="in" result="pressed" />
       <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves={1} seed={seed + 23} />
@@ -194,7 +189,7 @@ const styles = create({
   },
   stamp: {
     display: "flex",
-    /* DERIVED: on paper, ink a shade deeper than the accent so it reads as pigment rather than a link; on a dark page, sunk toward the page so it doesn't glow. */
+    // oxlint-disable-next-line nyte-design/no-light-dark-outside-tokens -- stamp artwork: pigment over the accent, not a UI colour role
     color: `light-dark(color-mix(in oklab, ${role.contentInteractivePrimary} 84%, #000), color-mix(in oklab, ${role.contentInteractivePrimary} 72%, ${role.bgElevated}))`,
     opacity: 0.9,
   },

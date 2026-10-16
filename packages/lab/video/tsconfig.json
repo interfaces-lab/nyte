@@ -8,5 +8,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src", "scripts", "script.ts", "moon.json"]
+  "include": ["src", "moon.json"]
 }

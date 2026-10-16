@@ -12,7 +12,6 @@ import { sessionHandle } from "./session.ts";
 import { executeNested } from "./tool-runner.ts";
 import type { Durable, ToolInvocation } from "./tools.ts";
 
-/** Returns what a tool's `execute` receives, bound to where the call runs. `session` and `sdk` act from the call: the context with participant authority only and `origin` set to `{ session, run, head, call, sequence }`, `sequence` a fresh counter for this execution so its acquisitions key `acq:<n>` the same way on every re-run; `workspace` is `sdk.workspace` of the session's workspace, gated as the connection is, so its capabilities, snapshots and jobs are the session's; `env` is the environment `executeCall` resolved through `kernel.env(session)`; `progress` publishes a `progress` patch on the tool part, dropped once the run is stopping; `tools.execute` is a nested `executeNested` keyed by the caller's key or call order, whose parking parks this step too; `tools.activate` and `tools.list` are `kernel.tools(runtime, run)`'s, the runtime of the call's request; `wait`, `memo` and `now` are the step's `durable`. Binds synchronously; no I/O. */
 export function createInvocation(
   kernel: Kernel,
   input: {

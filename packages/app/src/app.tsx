@@ -131,7 +131,6 @@ function useHostEvents(router: AppRouter): void {
   });
 }
 
-/** Mounts the client plugins and feeds them each run that ends in the directory. */
 function useClientPlugins(): void {
   useMountEffect(() => {
     mountClientPlugins(focusedSession);

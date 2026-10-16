@@ -29,25 +29,19 @@ import type {
 } from "../src/index.ts";
 import { configuration } from "./harness.ts";
 
-/** One in-memory disk every attachment of a fake provider shares: absolute paths to contents, explicit directories, and a gate that holds writes. */
 export interface Disk {
   readonly files: Map<
     string,
     { readonly contents: string | Uint8Array; readonly version: FileVersion }
   >;
   readonly directories: Set<string>;
-  /** Writes a file, creating its directories. */
   put(path: string, contents: string | Uint8Array): void;
-  /** Returns a file's text, or undefined. */
   text(path: string): string | undefined;
-  /** Holds every later write until the returned release runs; `held` counts writes waiting. */
   pause(): () => void;
   readonly held: number;
-  /** Resolves once writes may proceed. */
   wait(): Promise<void>;
 }
 
-/** One process a fake `exec` started: what it was asked to run and the controls a test drives it with. */
 export interface Process {
   readonly command: string | readonly string[];
   readonly pty: { readonly columns: number; readonly rows: number } | null;
@@ -59,29 +53,20 @@ export interface Process {
   exit(code: number | null, reason?: EndReason): void;
 }
 
-/** A scripted provider of one kind over a disk, with knobs a test turns. */
 export interface FakeProvider extends EnvironmentProvider {
   readonly disk: Disk;
   readonly processes: Process[];
-  /** Every `snapshots.patches` call's paths, in call order. */
   readonly patchReads: (readonly string[])[];
-  /** The most `patches` reads in flight at once. */
   peakReads: number;
   attaches: number;
-  /** When set, `inspect` answers it. */
   availability: Availability | null;
-  /** When set, `attach` throws it. */
   failure: string | null;
-  /** Called with every process `exec` starts; the default echoes `echo` arguments and exits 0. */
   script: (process: Process) => void;
-  /** When it returns a reason for a `snapshots.patches` read, that read throws it. */
   failPatches: ((paths: readonly string[]) => string | null) | null;
-  /** Pages the fake browser opened and closed, in order. */
   readonly opened: PageId[];
   readonly closed: PageId[];
 }
 
-/** Returns an empty disk. */
 export function createDisk(): Disk {
   let minted = 0;
   let gate: Promise<void> | null = null;
@@ -129,7 +114,6 @@ export function createDisk(): Disk {
   return disk;
 }
 
-/** Returns a provider of `kind` serving `disk`: identity `id:<path>`, available unless told otherwise, attaching an env rooted at the target's path (whose files reject absolute paths outside it when `confined`), with run snapshots, unless `git` is false a git capability, and with `browser` a browser. */
 export function fakeProvider(
   disk: Disk,
   options?: {
@@ -281,7 +265,6 @@ export function fakeProvider(
   return provider;
 }
 
-/** Returns a kernel over a memory store whose host plugins are the provider's plugin then `plugins`, the in-process host over it, and a registered workspace at `/work/project`. */
 export async function world(options?: {
   readonly plugins?: readonly Plugin<"core">[];
   readonly builtins?: readonly Plugin<"core">[];
@@ -306,7 +289,6 @@ export async function world(options?: {
   return { kernel, host, disk, provider, workspace: await addWorkspace(host) };
 }
 
-/** Returns a kernel over a store with the provider's plugin and `plugins` as host plugins, and `builtins` ahead of them. */
 export function kernelOver(
   store: Kernel["store"],
   provider: FakeProvider,
@@ -331,9 +313,8 @@ export function kernelOver(
   });
 }
 
-/** Registers `/work/project` and returns its id. */
 export async function addWorkspace(host: Omit<Host, "listen">, path = "/work/project") {
-  const added = await host.workspaces.add({ kind: "local", path });
+  const added = await host.workspaces.add({ kind: "local", path }, { projectResources: true });
 
   if (added.kind !== "added" && added.kind !== "exists")
     throw new Error(`Not added: ${added.kind}.`);
@@ -341,7 +322,6 @@ export async function addWorkspace(host: Omit<Host, "listen">, path = "/work/pro
   return added.workspace;
 }
 
-/** Collects every value an iterable yields. */
 export async function collect<T>(source: AsyncIterable<T>): Promise<readonly T[]> {
   const values: T[] = [];
 

@@ -1,4 +1,3 @@
-/** Returns a source with each value mapped; `return()` reaches the source at once, even while a pull waits, so a cancelled response stops a live stream. */
 export function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): AsyncIterable<U> {
   return {
     [Symbol.asyncIterator]() {
@@ -22,7 +21,6 @@ export function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): As
   };
 }
 
-/** Returns a source that ends when the signal aborts: the abort returns the source. */
 export function abortable<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {

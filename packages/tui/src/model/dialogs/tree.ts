@@ -1,8 +1,3 @@
-/**
- * Session tree state: the forest build, `describe`, `passes`,
- * `visibleForest`, `layoutTree`, `nearestRowIndex`; folds, filters and
- * search are fields here.
- */
 import type { CommitId, HeadName, TreeNode, TreeView } from "@nyte-ai/sdk";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 import { matchesTerms } from "./list.ts";
@@ -18,12 +13,10 @@ export interface TreeDialog {
     | { readonly kind: "failed"; readonly message: string };
   readonly filter: TreeFilter;
   readonly query: string;
-  /** The caret in the typed field (`dialogText`), a UTF-16 offset; absent at the end. */
   readonly caret?: number;
+  readonly anchor?: number;
   readonly folded: ReadonlySet<CommitId>;
-  /** The commit the cursor is on; null opens on the tip. A filtered-out pick falls back to its nearest visible ancestor. */
   readonly selected: CommitId | null;
-  /** Whether the composer was empty when the tree opened: landing on a user message needs it empty. */
   readonly composerEmpty: boolean;
 }
 
@@ -34,18 +27,14 @@ export interface TreeLoad {
 
 export type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
 
-/** One drawn row of the tree. */
 export interface TreeRow {
   readonly oid: CommitId;
   readonly node: TreeNode;
-  /** Gutters, connectors and the fold glyph, three cells per level. */
   readonly prefix: string;
-  /** The first row of a branch. */
   readonly connector: boolean;
   readonly foldable: boolean;
   readonly folded: boolean;
   readonly active: boolean;
-  /** Other heads whose tip is this commit. */
   readonly heads: readonly HeadName[];
   readonly role: TreeRole;
   readonly label: string;
@@ -174,12 +163,6 @@ interface Gutter {
   readonly show: boolean;
 }
 
-/**
- * Flatten with pi's indentation: a branch point indents its children, the
- * first generation after a branch indents once more for grouping, and a
- * single-child chain stays flat. A folded branch row keeps its glyph and
- * drops everything under it.
- */
 function layoutTree(
   load: TreeLoad,
   filter: TreeFilter,
@@ -283,14 +266,14 @@ function layoutTree(
   return rows;
 }
 
-/** The rows the tree draws now, for its filter, query and folds. */
-export function treeRows(dialog: TreeDialog): readonly TreeRow[] {
+export function treeRows(
+  dialog: Pick<TreeDialog, "tree" | "filter" | "query" | "folded">,
+): readonly TreeRow[] {
   if (dialog.tree.kind !== "ready") return [];
 
   return layoutTree(dialog.tree.load, dialog.filter, dialog.query, dialog.folded);
 }
 
-/** Index of the selected commit, else of its nearest ancestor with a row, else the last row. */
 export function selectedIndex(dialog: TreeDialog, rows: readonly TreeRow[]): number {
   if (dialog.tree.kind !== "ready") return 0;
   const parents = new Map(dialog.tree.load.view.nodes.map((node) => [node.id, node.parent]));
@@ -309,7 +292,6 @@ export function selectedIndex(dialog: TreeDialog, rows: readonly TreeRow[]): num
   return Math.max(0, rows.length - 1);
 }
 
-/** The tree once loaded: the cursor starts on the tip. */
 export function withTree(dialog: TreeDialog, load: TreeLoad): TreeDialog {
   return { ...dialog, tree: { kind: "ready", load }, selected: dialog.selected ?? load.tip };
 }
@@ -342,7 +324,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
   if (dialog.tree.kind !== "ready" || row === undefined) return unchanged(dialog);
   const { load } = dialog.tree;
 
-  if (row.oid === load.tip)
+  if (row.oid === load.tip && row.node.kind !== "user")
     return {
       dialog,
       intents: [{ kind: "refuse", reason: "Already at that point in the chat", tone: "info" }],
@@ -387,6 +369,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
             id: "none",
             label: "No summary",
             description: "Leave the branch as it is",
+            timing: null,
             status: null,
             mark: null,
           },
@@ -394,6 +377,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
             id: "summarize",
             label: "Summarize",
             description: "Keep what the branch was about",
+            timing: null,
             status: null,
             mark: null,
           },
@@ -420,14 +404,6 @@ function cycleFilter(dialog: TreeDialog, step: 1 | -1): TreeDialog {
   };
 }
 
-/**
- * Enter on a row:
- * - the tip → refuse "Already at that point in the chat"
- * - a user message with a non-empty composer → refuse "Clear the composer before editing a message"
- * - a descendant of the tip → intent move-to(commit, keep)
- * - otherwise → push the summary list (none | summarize | custom); its accept emits move-to
- * Ctrl+X copies the row text (intent copy-text).
- */
 export function reduceTree(dialog: TreeDialog, command: DialogCommand): DialogStep<TreeDialog> {
   if (command.kind === "close") return { dialog: null, intents: [], push: null };
 

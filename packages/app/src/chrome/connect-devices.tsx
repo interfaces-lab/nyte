@@ -1,13 +1,9 @@
-/**
- * The devices the Nyte account enrolled to reach this Mac, as a card of their
- * own under the Mac's row. Revoking one refuses it here at once and ends the
- * Nyte sign-in that enrolled it.
- */
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -25,8 +21,6 @@ const styles = create({
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -61,7 +55,7 @@ export function ConnectDevices({
 
   return (
     <section aria-label="Devices" {...props(settingsPatterns.group)}>
-      <div {...props(styles.header)}>
+      <div {...props(text.base, styles.header)}>
         {devices.length === 1 ? "1 device" : `${String(devices.length)} devices`}
       </div>
       {devices.map((device) => (

@@ -1,11 +1,4 @@
 import { threadStyles } from "./thread.stylex.ts";
-/**
- * The persistent desktop stage. Pane hosts are keyed only by PaneId, so a
- * pane's chrome, size and view-state owner survive a selection change. The
- * conversation inside is keyed by SessionId instead: the virtualized
- * transcript's rows only leave their scrollport when the surface holding
- * them is replaced, and the composer docks over that scrollport's bottom.
- */
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import {
@@ -23,6 +16,7 @@ import type {
   Delivery,
   Revision,
   SessionId,
+  SessionInfo,
   SessionView,
   UserContent,
 } from "@nyte-ai/sdk";
@@ -82,7 +76,7 @@ import { macPlatform } from "../platform.ts";
 import { connection } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../catalog.ts";
-import { conversationTurns, isToolMessage, toolStatus } from "../view-helpers.ts";
+import { conversationTurns } from "../view-helpers.ts";
 import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
@@ -90,7 +84,7 @@ import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider } from "../conversation/transcript.tsx";
-import { QuestionTray, useComposerAnswer } from "../conversation/tray/questions.tsx";
+import { QuestionTray } from "../conversation/tray/questions.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import { conversationMessages, transcriptRows } from "../conversation/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -108,13 +102,14 @@ import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
-import type { SubagentSession } from "../conversation/subagent-sessions.ts";
 import { clientActions, clientActionShortcut, clientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { pickerDefaults } from "../preference-projection.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 
 const EMPTY_TURNS: readonly ConversationTurn[] = [];
+
+const EMPTY_CHILDREN: readonly SessionInfo[] = [];
 
 const NO_CHANGES: SessionView["changes"] = [];
 
@@ -210,11 +205,6 @@ function PaneHeader({
   );
 }
 
-/**
- * Edits a sent message: the head stops its live run, moves to the message's
- * parent and admits the new content as one keyed command, with the chosen
- * model for that input. A refusal says why the conversation did not move.
- */
 async function applyMessageEdit({
   sessionId,
   message,
@@ -224,17 +214,19 @@ async function applyMessageEdit({
 }: {
   readonly sessionId: SessionId;
   readonly message: UserMessage;
-  /** The revision the edit was offered against; a head that moved since is not rewound. */
-  readonly revision: Revision | undefined;
+  readonly revision: Revision | null | undefined;
   readonly content: UserContent;
   readonly choice: BranchModelChoice;
 }): Promise<void> {
+  if (revision == null)
+    throw new Error("The conversation is updating. Try editing this message again.");
+
   const receipt = await connection()
     .session(sessionId)
     .send(content, {
       replace: message.id,
       running: "stop",
-      ...(revision === undefined ? {} : { expect: revision }),
+      expect: revision,
       ...(choice.model === undefined
         ? {}
         : {
@@ -244,6 +236,7 @@ async function applyMessageEdit({
             },
           }),
     });
+
   const landed = await receipt.landed();
 
   switch (landed.kind) {
@@ -320,10 +313,12 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
 
   const view = useSessionView(sessionId);
   const choice = useSessionChoice(sessionId);
+
   const turns = useMemo(
     () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
     [view],
   );
+
   const viewStore = usePaneViewStateStore();
   const messages = useMemo(() => conversationMessages(view), [view]);
   const activation = view?.activation;
@@ -331,7 +326,15 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
     if (activation !== undefined && presentation === "full") observeActivation(activation);
   }, [activation, presentation]);
   const parentRunning = messages.running;
-  const working = navigating || parentRunning || messages.submitted.length > 0;
+
+  const working =
+    navigating ||
+    parentRunning ||
+    messages.submitted.some(
+      (message) =>
+        !messages.held || (message.source.kind !== "child" && message.source.kind !== "job"),
+    );
+
   const cwd = host.data?.workspace?.path;
   // The scrollport arrives as state so everything below it re-runs on the
   // commit that creates the node, not one commit late.
@@ -363,7 +366,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   // A turn that ends in a step group already draws the run's indicator there.
   // One that ends in prose needs it below the prose, or the model looks idle while it
   // prepares its next step.
-  const answer = useComposerAnswer(sessionId);
 
   const settledWork = useMemo(
     () =>
@@ -380,11 +382,12 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
         failed: false,
         turns,
         landing: messages.submitted,
+        held: messages.held,
         retrying,
         working,
         running: messages.running,
       }),
-    [view, turns, messages.submitted, messages.running, retrying, working],
+    [view, turns, messages.submitted, messages.held, messages.running, retrying, working],
   );
 
   const title = session.data?.name ?? "New chat";
@@ -416,36 +419,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
     [sessionId, view?.revision],
   );
 
-  const childBySession = useMemo(() => {
-    const sessions = new Map<SessionId, SubagentSession>();
-
-    if (lastTurn !== undefined && parentRunning) {
-      for (const message of lastTurn.messages) {
-        if (!isToolMessage(message)) continue;
-        const toolClass = message.state.class;
-
-        if (
-          toolClass.kind !== "delegate" ||
-          toolClass.role !== "create" ||
-          toolClass.child === null ||
-          toolStatus(message).tone === "failure"
-        )
-          continue;
-        sessions.set(toolClass.child, {
-          kind: "provisional",
-          id: toolClass.child,
-          title: toolClass.title ?? "Subagent",
-          startedAt: message.at,
-        });
-      }
-    }
-
-    for (const child of children.data ?? []) sessions.set(child.id, child);
-
-    return sessions;
-  }, [children.data, lastTurn, parentRunning]);
-
-  const childSessions = useMemo(() => [...childBySession.values()], [childBySession]);
+  const childSessions = children.data ?? EMPTY_CHILDREN;
   const forwardSubagentTray = presentation === "tray" ? conversation.onOpenSubagentTray : undefined;
 
   // A card always opens the tray, whatever the child's state; the tray's own
@@ -464,8 +438,8 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   );
 
   const subagentSessions = useMemo(
-    () => ({ children: childBySession, open: openSubagentTray }),
-    [childBySession, openSubagentTray],
+    () => ({ children: childSessions, open: openSubagentTray }),
+    [childSessions, openSubagentTray],
   );
 
   const openChanges = useCallback(
@@ -572,15 +546,10 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                 <Composer
                   sessionId={sessionId}
                   floatingMount={conversation.floatingMount}
-                  answer={answer}
                   backgroundWork={{
                     content: (
                       <>
-                        <QuestionTray
-                          sessionId={sessionId}
-                          disabled={snapshotError || navigating}
-                          viewport={scroll}
-                        />
+                        <QuestionTray disabled={snapshotError || navigating} viewport={scroll} />
                         <SubagentTray
                           parentSessionId={sessionId}
                           agents={childSessions}
@@ -969,7 +938,6 @@ function DropPreview({
 const KEY_OWNERS =
   'input, textarea, select, [contenteditable], [role="textbox"], [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"]';
 
-/** A key owner outside every pane keeps focus: a file editor or terminal mid-edit, a dialog. */
 function keysOwnedOutsidePanes(): boolean {
   const host = document.activeElement;
   let active = host;

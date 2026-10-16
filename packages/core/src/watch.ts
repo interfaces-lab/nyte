@@ -20,43 +20,41 @@ import type {
 } from "@nyte-ai/schema";
 import type { FeedItem, HeadPair, SessionBus } from "./bus.ts";
 import { dev } from "./dev-log.ts";
-import { emptyFold, fold, project, seenOf, withPair } from "./fold.ts";
+import { SdkError } from "./error.ts";
+import { emptyFold, fold, project, readSeenCommit, withPair } from "./fold.ts";
 import type { FoldState } from "./fold.ts";
 import type { Kernel } from "./kernel.ts";
 import { settleAnswersFrom } from "./parts.ts";
 import { decodeRunRecord, decodeSeenRecord, isJsonObject } from "./records.ts";
 import type { SeenRecord } from "./records.ts";
-import { headOf, headRef, runRef, seenRef, sessionOf } from "./refs.ts";
+import { parseHeadRef, headRef, runRef, seenRef, parseSessionRef } from "./refs.ts";
 import {
   EMPTY_REVISION,
   STALE,
   START,
   attempt,
   commit,
-  expectOf,
+  readRefExpectation,
   load,
-  pathOf,
+  walkCommitPath,
   put,
-  tipOf,
+  readPositionCommit,
   withFold,
 } from "./session-state.ts";
 
-/** Holds one shared fold per session, whatever principal acquires it: built on first acquire, kept `FOLD_LINGER` ms after the last release so the next acquire reuses it, then dropped. */
 export interface FoldCache {
   acquire(
     session: SessionId,
     principal: PrincipalId,
   ): {
-    /** Resolves once the fold holds the session's log through its tail. */
     ready(): Promise<void>;
-    /** The shared fold, projecting for this hold's principal. */
+
     state(): FoldState;
     subscribe(listener: (state: FoldState) => void): Disposer;
     release(): void;
   };
 }
 
-/** One session this kernel's bus carries: how many feeds follow it, the seq the first read the log through, and the seq through which its log was published here. Dropped once no feed follows it and no publish is under way. */
 export interface Follow {
   feeds: number;
   from: Seq | null;
@@ -64,7 +62,6 @@ export interface Follow {
   publishing: number;
 }
 
-/** One live part's streamed state as this process published it: its run, its text so far (text and thinking parts) and its last tool progress. */
 export interface LiveStream {
   readonly run: RunId | null;
   readonly markdown: string | null;
@@ -88,14 +85,16 @@ type Feeds = Pick<
 
 const LOG_PAGE = 512;
 
-/** How long an unheld fold stays built, in ms. */
+const LIVE_PENDING_LIMIT = 1024;
+
+const LIVE_APPEND_LIMIT = 16 * 1024;
+
 const FOLD_LINGER = 30_000;
 
 const SEEN_DELAY = 16;
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a fold cache over the kernel's store and bus, fed by `sessionEvents`' feed. Each item is folded with its head pair in one step: a head's revision is the pair's when the pair's tip is the head's tip, else null. A hold's state is the shared state with the hold's principal, so seen marks and unread are that principal's. */
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<SessionId, Entry>();
 
@@ -110,7 +109,7 @@ export function createFoldCache(kernel: Feeds): FoldCache {
       listeners: new Set(),
     };
 
-    const feed = openFeed(kernel, session, asSeq(0), ({ event, head }) => {
+    const feed = openFoldFeed(kernel, session, asSeq(0), ({ event, head }) => {
       const folded = fold(entry.state, event);
       const name = movedHead(event);
 
@@ -187,16 +186,29 @@ export function createFoldCache(kernel: Feeds): FoldCache {
   };
 }
 
-/** Yields a session's feed items after `after`: its log, then the unlogged seq-0 seeds (activation, catalog, the background items of its jobs and held pages), then the items published meanwhile, then each live part's streamed state, then every item as it is published, a logged one at or below the last seq yielded dropped. What the fold cache and the server's `head.watch` consume; `return()` unsubscribes at once. */
 export function sessionEvents(
   kernel: Feeds,
   session: SessionId,
   after: Seq,
 ): AsyncIterable<FeedItem> {
   return closable<FeedItem>(() => {
-    const queue: FeedItem[] = [];
+    const pending = new Map<string, FeedItem>();
+
+    const patches = new Map<
+      string,
+      PatchEvent | { readonly kind: "stream"; readonly part: PartId }
+    >();
+
+    const follow = ensureSessionFollow(kernel.follows, session);
+    let cursor = after;
+    let through: number = after;
+    let page: readonly FeedItem[] = [];
+    let offset = 0;
+    let initialized = false;
+    let seeded = false;
+    let closed = false;
     let waiting: (() => void) | null = null;
-    let failure: { readonly error: unknown } | null = null;
+    let failure: SdkError | null = null;
 
     const wake = (): void => {
       const resolve = waiting;
@@ -204,38 +216,201 @@ export function sessionEvents(
       resolve?.();
     };
 
-    const feed = openFeed(kernel, session, after, (item) => {
-      queue.push(item);
+    const retainPatch = (event: PatchEvent): void => {
+      const key = `${"progress" in event ? "progress" : "text"}:${event.part}`;
+      const previous = patches.get(key);
+
+      const next =
+        "append" in event && previous?.kind === "stream"
+          ? previous
+          : "append" in event && previous !== undefined && "append" in previous
+            ? { ...event, append: previous.append + event.append }
+            : "append" in event && previous !== undefined && "markdown" in previous
+              ? { ...previous, markdown: previous.markdown + event.append }
+              : event;
+
+      patches.set(
+        key,
+        ("append" in next && next.append.length > LIVE_APPEND_LIMIT) ||
+          ("markdown" in next && next.markdown.length > LIVE_APPEND_LIMIT)
+          ? { kind: "stream", part: event.part }
+          : next,
+      );
+    };
+
+    const forgetPatch = (part: PartId): void => {
+      patches.delete(`text:${part}`);
+      patches.delete(`progress:${part}`);
+    };
+
+    const unsubscribe = kernel.bus.subscribe(session, (event, head) => {
+      if (event.kind === "patch") {
+        if (seeded) retainPatch(event);
+      } else if (event.seq !== 0) {
+        through = Math.max(through, event.seq);
+
+        if (
+          (event.kind === "part" && event.change !== "waiting" && event.change !== "answered") ||
+          (event.kind === "call" && event.change === "settled")
+        )
+          forgetPatch(event.part);
+        else if (event.kind === "commit" && event.body.kind === "part")
+          forgetPatch(event.body.part);
+      } else
+        pending.set(
+          event.kind === "background"
+            ? JSON.stringify([event.kind, event.head, event.item.kind, event.item.id])
+            : JSON.stringify([event.kind, event.head]),
+          { event, head },
+        );
+
+      if (pending.size + patches.size > LIVE_PENDING_LIMIT) {
+        failure = new SdkError("unavailable", "The session stream must resume from its cursor.");
+        close();
+      }
+
       wake();
     });
 
-    feed.ready.catch((error: unknown) => {
-      failure = { error };
+    follow.feeds += 1;
+
+    const close = (): void => {
+      if (closed) return;
+      closed = true;
+      unsubscribe();
+      follow.feeds -= 1;
+      unfollow(kernel.follows, session, follow);
+      page = [];
+      pending.clear();
+      patches.clear();
       wake();
-    });
+    };
 
     return {
       async pull() {
+        if (!initialized) {
+          const tail = await kernel.store.refs.tail(session);
+
+          if (closed) return DONE;
+          through = Math.max(through, tail);
+          follow.from ??= tail;
+          initialized = true;
+        }
+
         for (;;) {
-          const item = queue.shift();
+          if (failure !== null) throw failure;
 
-          if (item !== undefined) return { done: false, value: item };
+          if (closed) return DONE;
+          const item = page[offset];
 
-          if (failure !== null) throw failure.error;
+          if (item !== undefined) {
+            offset += 1;
+
+            if (item.event.kind !== "patch") cursor = item.event.seq;
+
+            return { done: false, value: item };
+          }
+
+          page = [];
+          offset = 0;
+
+          if (cursor < through) {
+            const events = await kernel.store.refs.log(
+              session,
+              cursor,
+              Math.min(LOG_PAGE, through - cursor),
+            );
+
+            if (closed) return DONE;
+
+            if (events.length === 0)
+              throw new SdkError("internal", "The session log is missing events after its cursor.");
+            page = await paired(kernel, session, events, null);
+
+            if (closed) return DONE;
+            continue;
+          }
+
+          if (!seeded) {
+            seeded = true;
+            const seed = { seq: asSeq(0), at: Date.now(), head: null };
+            pending.set(JSON.stringify(["activation", null]), {
+              event: { ...seed, kind: "activation", activation: kernel.activation(session) },
+              head: null,
+            });
+            pending.set(JSON.stringify(["catalog", null]), {
+              event: { ...seed, kind: "catalog", catalog: kernel.catalog(session) },
+              head: null,
+            });
+
+            for (const { head, item } of [
+              ...kernel.jobs.background(session),
+              ...kernel.pages.background(session),
+            ])
+              pending.set(JSON.stringify(["background", head, item.kind, item.id]), {
+                event: { ...seed, head, kind: "background", item },
+                head: null,
+              });
+
+            for (const [part, live] of kernel.streams.get(session) ?? []) {
+              if (live.markdown !== null)
+                retainPatch({ kind: "patch", part, markdown: live.markdown });
+
+              if (live.progress !== null)
+                retainPatch({ kind: "patch", part, progress: live.progress });
+            }
+
+            if (pending.size + patches.size > LIVE_PENDING_LIMIT) {
+              failure = new SdkError(
+                "unavailable",
+                "The session stream must resume from its cursor.",
+              );
+              close();
+              continue;
+            }
+          }
+
+          const next = pending.entries().next();
+
+          if (!next.done) {
+            pending.delete(next.value[0]);
+
+            return { done: false, value: next.value[1] };
+          }
+
+          const patch = patches.entries().next();
+
+          if (!patch.done) {
+            patches.delete(patch.value[0]);
+            const event = patch.value[1];
+
+            if (event.kind === "stream") {
+              const live = kernel.streams.get(session)?.get(event.part);
+
+              if (live?.markdown === null || live?.markdown === undefined) continue;
+
+              return {
+                done: false,
+                value: {
+                  event: { kind: "patch", part: event.part, markdown: live.markdown },
+                  head: null,
+                },
+              };
+            }
+
+            return { done: false, value: { event, head: null } };
+          }
+
           await new Promise<void>((resolve) => {
             waiting = resolve;
           });
         }
       },
-      close() {
-        feed.dispose();
-        wake();
-      },
+      close,
     };
   });
 }
 
-/** Publishes a successful set's events on the bus through `followLog`, each event that moved a head written in this set paired with the tip and revision the `SetOutcome` gave it. The outcome's seq is the set's last event's, so it marks and pairs only the session of the set's last event. A session's first mark is where the set's own events start, or where a feed following it finished reading the log, whichever is earlier. */
 export async function publishSet(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   updates: readonly RefUpdate[],
@@ -246,7 +421,7 @@ export async function publishSet(
   let last: SessionId | null = null;
 
   for (const update of updates) {
-    const session = update.event === undefined ? null : sessionOf(update.name);
+    const session = update.event === undefined ? null : parseSessionRef(update.name);
 
     if (session === null) continue;
     counts.set(session, (counts.get(session) ?? 0) + 1);
@@ -256,7 +431,7 @@ export async function publishSet(
   const written = new Map<HeadName, HeadPair>();
 
   for (const [index, update] of updates.entries()) {
-    const head = headOf(update.name);
+    const head = parseHeadRef(update.name);
     const revision = outcome.revisions[index];
 
     if (head === null || head.session !== last || revision === undefined) continue;
@@ -270,7 +445,7 @@ export async function publishSet(
   }
 
   for (const [session, count] of counts) {
-    const follow = followOf(kernel.follows, session);
+    const follow = ensureSessionFollow(kernel.follows, session);
     follow.publishing += 1;
 
     try {
@@ -293,14 +468,13 @@ export async function publishSet(
   }
 }
 
-/** Publishes on the bus what a session's log holds after this kernel's mark (`from` when it has none), each event once and in seq order, paired with its head ref: from `known` up to its seq, else read once per page after the log. */
 export async function followLog(
   kernel: Pick<Kernel, "store" | "bus" | "follows">,
   session: SessionId,
   from: Seq,
   known: { readonly through: Seq; readonly heads: ReadonlyMap<HeadName, HeadPair> } | null = null,
 ): Promise<void> {
-  const follow = followOf(kernel.follows, session);
+  const follow = ensureSessionFollow(kernel.follows, session);
   follow.publishing += 1;
 
   try {
@@ -322,7 +496,6 @@ export async function followLog(
   }
 }
 
-/** Moves a principal's seen mark for a head forward to a commit and publishes its `seen` event: written against the mark's revision, re-read when another write wins, and skipped when the mark already names the commit or is newer (the commit is behind a mark that is still on the head's path). */
 export async function advanceSeen(
   kernel: Kernel,
   input: {
@@ -347,8 +520,8 @@ export async function advanceSeen(
         const tip = state.heads.get(input.head)?.info.tip ?? START;
 
         return (
-          pathOf(state.commits, tipOf(tip)).includes(mark) &&
-          (input.commit === null || pathOf(state.commits, mark).includes(input.commit))
+          walkCommitPath(state.commits, readPositionCommit(tip)).includes(mark) &&
+          (input.commit === null || walkCommitPath(state.commits, mark).includes(input.commit))
         );
       }))
     )
@@ -358,7 +531,7 @@ export async function advanceSeen(
       {
         name,
         target: await put(kernel, "seen", record),
-        expect: expectOf(ref),
+        expect: readRefExpectation(ref),
         event: {
           head: input.head,
           kind: "seen",
@@ -372,7 +545,6 @@ export async function advanceSeen(
   });
 }
 
-/** Returns a principal's seen-mark writer for one head: `note` schedules `advanceSeen` to a tip one frame later, the newest tip winning; `flush` writes a pending tip at once and resolves when every write has finished. A failed write is a `dev` line, never an error. */
 export function seenWriter(
   kernel: Kernel,
   input: {
@@ -380,7 +552,7 @@ export function seenWriter(
     readonly principal: PrincipalId;
     readonly head: HeadName;
   },
-): { note(tip: CommitId | null): void; flush(): Promise<void> } {
+) {
   let pending: { readonly tip: CommitId | null } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let writing: Promise<void> = Promise.resolve();
@@ -396,14 +568,18 @@ export function seenWriter(
     writing = writing
       .then(() => advanceSeen(kernel, { ...input, commit: next.tip }))
       .catch((error: unknown) =>
-        dev("watch", "seen failed", { session: input.session, head: input.head, error: String(error) }),
+        dev("watch", "seen failed", {
+          session: input.session,
+          head: input.head,
+          error: String(error),
+        }),
       );
 
     return writing;
   };
 
   return {
-    note(tip) {
+    note(tip: CommitId | null) {
       pending = { tip };
       clearTimeout(timer);
       timer = setTimeout(() => void flush(), SEEN_DELAY);
@@ -412,7 +588,6 @@ export function seenWriter(
   };
 }
 
-/** Keeps `streams` current from what the bus carries: a part's text from its creation, durable updates and appends, its tool progress, dropped when it settles, fails or closes or its run ends. */
 export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveStream>> {
   const streams = new Map<SessionId, Map<PartId, LiveStream>>();
 
@@ -439,9 +614,17 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
       event.kind === "part" || event.kind === "call" ? parts.get(event.part) : undefined;
 
     if (event.kind === "part" && event.change === "created")
-      parts.set(event.part, { run: event.run, markdown: markdownOf(event.state), progress: null });
+      parts.set(event.part, {
+        run: event.run,
+        markdown: readStateMarkdown(event.state),
+        progress: null,
+      });
     else if (event.kind === "part" && event.change === "updated" && current !== undefined)
-      parts.set(event.part, { ...current, markdown: markdownOf(event.state), progress: null });
+      parts.set(event.part, {
+        ...current,
+        markdown: readStateMarkdown(event.state),
+        progress: null,
+      });
     else if (event.kind === "call" && event.change === "intent" && current !== undefined)
       parts.set(event.part, { ...current, markdown: null, progress: null });
     else if (
@@ -462,24 +645,20 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
   return streams;
 }
 
-/** Subscribes to a session's bus, then pushes its log after `after`, its seeds, the items buffered meanwhile, each live part's streamed state read in the same synchronous step that goes live, and every later item, each logged event once; `catchUp` pushes what the log holds past the last event pushed, to this feed alone. */
-function openFeed(
+function openFoldFeed(
   kernel: Feeds,
   session: SessionId,
   after: Seq,
   push: (item: FeedItem) => void,
-): {
-  readonly ready: Promise<void>;
-  readonly catchUp: () => Promise<void>;
-  readonly dispose: Disposer;
-} {
+) {
   const buffered: FeedItem[] = [];
-  const follow = followOf(kernel.follows, session);
+  const follow = ensureSessionFollow(kernel.follows, session);
   let building = true;
   let open = true;
   let through: number = after;
 
   const deliver = (item: FeedItem): void => {
+    if (!open) return;
     const event = item.event;
 
     if (event.kind !== "patch" && event.seq !== 0) {
@@ -506,8 +685,10 @@ function openFeed(
   };
 
   const catchUp = async (): Promise<void> => {
-    for (;;) {
+    while (open) {
       const events = await kernel.store.refs.log(session, asSeq(through), LOG_PAGE);
+
+      if (!open) return;
 
       for (const item of await paired(kernel, session, events, null)) deliver(item);
 
@@ -519,7 +700,9 @@ function openFeed(
     try {
       await catchUp();
 
-      if (open) follow.from ??= asSeq(through);
+      if (!open) return;
+
+      follow.from ??= asSeq(through);
 
       const seed = { seq: asSeq(0), at: Date.now() };
       const events: SessionEvent[] = [
@@ -534,14 +717,16 @@ function openFeed(
     } finally {
       building = false;
 
-      for (const item of buffered.splice(0)) deliver(item);
+      if (open) {
+        for (const item of buffered.splice(0)) deliver(item);
 
-      for (const [part, live] of kernel.streams.get(session) ?? []) {
-        if (live.markdown !== null)
-          push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
+        for (const [part, live] of kernel.streams.get(session) ?? []) {
+          if (live.markdown !== null)
+            push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
 
-        if (live.progress !== null)
-          push({ event: { kind: "patch", part, progress: live.progress }, head: null });
+          if (live.progress !== null)
+            push({ event: { kind: "patch", part, progress: live.progress }, head: null });
+        }
       }
     }
   })();
@@ -549,7 +734,6 @@ function openFeed(
   return { ready, catchUp, dispose };
 }
 
-/** Returns each event with the head pair a read of its head ref gives, read once per head after the log, or the known pair for an event up to the known seq. */
 async function paired(
   kernel: Pick<Kernel, "store">,
   session: SessionId,
@@ -571,7 +755,7 @@ async function paired(
     await Promise.all(
       [...unknown].map(
         async (head) =>
-          [head, pairOf(await kernel.store.refs.get(headRef(session, head)))] as const,
+          [head, readHeadPair(await kernel.store.refs.get(headRef(session, head)))] as const,
       ),
     ),
   );
@@ -586,13 +770,13 @@ async function paired(
   });
 }
 
-function pairOf(ref: Ref | null): HeadPair {
+function readHeadPair(ref: Ref | null): HeadPair {
   return ref === null || ref.target === null
     ? { tip: null, revision: EMPTY_REVISION }
     : { tip: asId<"commit">(ref.target), revision: ref.revision };
 }
 
-function markdownOf(state: Json): string | null {
+function readStateMarkdown(state: Json): string | null {
   return isJsonObject(state) && typeof state.markdown === "string" ? state.markdown : null;
 }
 
@@ -600,7 +784,7 @@ function movedHead(event: SessionEvent | PatchEvent): HeadName | null {
   return event.kind === "commit" || event.kind === "head" ? event.head : null;
 }
 
-function followOf(follows: Map<SessionId, Follow>, session: SessionId): Follow {
+function ensureSessionFollow(follows: Map<SessionId, Follow>, session: SessionId): Follow {
   const follow = follows.get(session) ?? { feeds: 0, from: null, published: null, publishing: 0 };
   follows.set(session, follow);
 
@@ -612,7 +796,6 @@ function unfollow(follows: Map<SessionId, Follow>, session: SessionId, follow: F
     follows.delete(session);
 }
 
-/** Yields `initial`, then the newest value pushed since the last pull; `return()` unsubscribes at once, even while a pull waits. */
 export function latest<T>(
   initial: T,
   subscribe: (push: (value: T) => void) => Disposer,
@@ -672,7 +855,6 @@ export function latest<T>(
   };
 }
 
-/** Returns an iterable over `open`'s pulls, opened on the first `next()`. `return()` closes at once: a pending pull settles done and `close` runs before `return()` awaits what it returns. */
 export function closable<T>(
   open: () => {
     pull(): Promise<IteratorResult<T>>;
@@ -728,7 +910,6 @@ export function closable<T>(
   };
 }
 
-/** Yields at most one value per frame from a source, newest wins, never more than one pending. `return()` settles a pending pull and stops the source at once. */
 export function coalesce<T>(source: AsyncIterable<T>, frameMs = 16): AsyncIterable<T> {
   return closable<T>(() => {
     const iterator = source[Symbol.asyncIterator]();
@@ -807,7 +988,6 @@ export function coalesce<T>(source: AsyncIterable<T>, frameMs = 16): AsyncIterab
   });
 }
 
-/** Yields the head's view on every change, coalesced; after each yield whose tip is not the principal's seen mark, moves the mark there through `seenWriter`, written by `return()` at the latest. `return()` releases the fold at once. */
 export function watchHead(
   kernel: Kernel,
   input: {
@@ -848,7 +1028,7 @@ export function watchHead(
           const head = state.heads.get(input.head);
           const tip = head?.info.tip.kind === "commit" ? head.info.tip.id : null;
 
-          if (head !== undefined && tip !== seenOf(state, input.head) && tip !== marked) {
+          if (head !== undefined && tip !== readSeenCommit(state, input.head) && tip !== marked) {
             marked = tip;
             seen.note(tip);
           }
@@ -867,7 +1047,6 @@ export function watchHead(
   });
 }
 
-/** Returns one snapshot of the head's view through the shared fold. Moves no seen mark. */
 export async function viewHead(
   kernel: Kernel,
   input: {
@@ -888,7 +1067,6 @@ export async function viewHead(
   }
 }
 
-/** Re-reads the store a kernel shares with other instances every `kernel.poll` ms, one pass at a time: the log of each session a feed follows here (`followLog`), the parked waits (`kernel.waits.settleFromStore`), the modal parts with a pending local `answer()` (`settleAnswersFrom`), then the stop fence of every run a turn drives here (`rereadFences`). A pass that throws is dropped and the next one tries again; without `poll` nothing runs. */
 export function pollStore(kernel: Kernel): Disposer {
   const every = kernel.poll;
 
@@ -924,7 +1102,6 @@ export function pollStore(kernel: Kernel): Disposer {
   };
 }
 
-/** Aborts each run a turn drives here whose stop fence another instance wrote: marks it stopping, aborts its signal and wakes its parked waits with `stopped`. */
 export async function rereadFences(kernel: Kernel): Promise<void> {
   for (const [run, session] of Array.from(kernel.driving)) {
     if (kernel.runs.isStopping(run)) continue;

@@ -2,13 +2,13 @@
  * Markdown as the transcript draws it: top-level blocks with the kit's
  * SyntaxStyle (normal or subtle), mermaid fences split out as their own
  * diagram blocks. Segments are keyed by position, so a streaming delta
- * updates one `<markdown>` in place instead of remounting it.
+ * updates one `<markdown>` in place instead of remounting it. A new
+ * SyntaxStyle does remount it: OpenTUI restyles a list in place but skips
+ * unchanged items, which would keep drawing with the destroyed old style.
  */
-import { CodeRenderable, MarkdownRenderable } from "@opentui/core";
-import type { MarkdownOptions, Renderable, RenderContext } from "@opentui/core";
-import { extend } from "@opentui/solid";
+import type { SyntaxStyle } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createMemo, Index, Match, Switch } from "solid-js";
+import { createMemo, Index, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { Mermaid } from "./mermaid.tsx";
@@ -33,61 +33,8 @@ function markdownOf(segment: Segment): MarkdownSegment | undefined {
   return segment.kind === "markdown" ? segment : undefined;
 }
 
-function drawPending(node: Renderable): void {
-  if (node instanceof CodeRenderable && !node.drawUnstyledText) node.drawUnstyledText = true;
-
-  for (const child of node.getChildren()) drawPending(child);
-}
-
-/**
- * OpenTUI seeds visible text only for streaming markdown; a settled block
- * reserves its rows but draws nothing until its highlight lands. This
- * subclass lets every code block draw its unstyled text meanwhile, after
- * each content, streaming or style change, so settled prose never flashes blank.
- */
-class PendingTextMarkdownRenderable extends MarkdownRenderable {
-  constructor(ctx: RenderContext, options: MarkdownOptions) {
-    super(ctx, options);
-    const pass = this.onLifecyclePass;
-
-    this.onLifecyclePass = () => {
-      pass?.();
-      drawPending(this);
-    };
-
-    drawPending(this);
-  }
-
-  override get content(): string {
-    return super.content;
-  }
-
-  override set content(value: string) {
-    super.content = value;
-    drawPending(this);
-  }
-
-  override get streaming(): boolean {
-    return super.streaming;
-  }
-
-  override set streaming(value: boolean) {
-    super.streaming = value;
-    drawPending(this);
-  }
-}
-
-extend({ transcript_markdown: PendingTextMarkdownRenderable });
-
-declare module "@opentui/solid" {
-  interface OpenTUIComponents {
-    transcript_markdown: typeof PendingTextMarkdownRenderable;
-  }
-}
-
 const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*(\S*)/u;
 
-/** Top-level ```mermaid fences become diagram segments; an unclosed fence stays markdown (it is still streaming). */
 export function splitMermaid(markdown: string): readonly Segment[] {
   const lines = markdown.split("\n");
   const segments: Segment[] = [];
@@ -151,6 +98,7 @@ export function Markdown(props: {
 }): JSX.Element {
   const { kit } = useApp();
   const segments = createMemo(() => splitMermaid(props.content));
+  const syntaxStyle = (): SyntaxStyle => (props.subtle ? kit.syntax().subtle : kit.syntax().normal);
 
   return (
     <box id={props.id} flexDirection="column" width="100%" gap={1}>
@@ -167,14 +115,18 @@ export function Markdown(props: {
             </Match>
             <Match when={markdownOf(segment())}>
               {(block: Accessor<MarkdownSegment>) => (
-                <transcript_markdown
-                  content={block().text}
-                  syntaxStyle={props.subtle ? kit.syntax().subtle : kit.syntax().normal}
-                  fg={props.subtle ? kit.theme().dim : kit.theme().foreground}
-                  streaming={props.streaming && index === segments().length - 1}
-                  internalBlockMode="top-level"
-                  tableOptions={{ selectable: true, cellPaddingX: 1 }}
-                />
+                <Show when={syntaxStyle()} keyed>
+                  {(style: SyntaxStyle) => (
+                    <markdown
+                      content={block().text}
+                      syntaxStyle={style}
+                      fg={props.subtle ? kit.theme().dim : kit.theme().foreground}
+                      streaming={props.streaming && index === segments().length - 1}
+                      internalBlockMode="top-level"
+                      tableOptions={{ selectable: true, cellPaddingX: 1 }}
+                    />
+                  )}
+                </Show>
               )}
             </Match>
           </Switch>

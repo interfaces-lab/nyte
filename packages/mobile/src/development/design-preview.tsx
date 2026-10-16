@@ -12,7 +12,6 @@ import { spacing, textStyles, tokens, useTheme } from "../theme.ts";
 
 const delegateNames = new Map<SessionId, string>();
 
-/** Returns a settled tool step for the preview. */
 function settledTool(id: string, toolClass: ToolClass, outcome: ToolOutcome): ActivityPart {
   return {
     kind: "tool",
@@ -30,7 +29,6 @@ function settledTool(id: string, toolClass: ToolClass, outcome: ToolOutcome): Ac
   };
 }
 
-/** Returns an ok outcome that said `text`. */
 function ok(text: string): ToolOutcome {
   return { kind: "ok", content: [{ kind: "text", text }], output: null, parts: [] };
 }

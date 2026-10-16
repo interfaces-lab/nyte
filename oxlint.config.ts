@@ -1,18 +1,13 @@
 import { defineConfig } from "oxlint";
 
-const rendererCoreMessage =
-  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.";
-
-const rendererCoreImports = {
-  paths: [{ name: "@nyte-ai/core", allowTypeImports: true, message: rendererCoreMessage }],
-  patterns: [
-    {
-      group: ["@nyte-ai/core/*", "!@nyte-ai/core/views", "!@nyte-ai/core/client"],
-      allowTypeImports: true,
-      message: rendererCoreMessage,
-    },
-  ],
-};
+const rendererCoreImports = [
+  {
+    name: "@nyte-ai/core",
+    allowTypeImports: true,
+    message:
+      "The renderer takes only types from @nyte-ai/core. Runtime values come from @nyte-ai/sdk and @nyte-ai/schema.",
+  },
+];
 
 const mountEffectImport = {
   name: "react",
@@ -49,11 +44,12 @@ const reflectGlobal = {
 export default defineConfig({
   // Generated brand assets and audit evidence, not source.
   ignorePatterns: ["output/**", ".agents/**"],
-  plugins: ["react", "eslint", "typescript", "unicorn", "import"],
+  plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
   jsPlugins: [
     "./packages/app/lint/design-scale.js",
     "./packages/app/lint/interactions.js",
+    "./packages/app/lint/restyle.js",
     "./scripts/oxlint/anti-slop/index.ts",
   ],
   categories: {
@@ -89,7 +85,6 @@ export default defineConfig({
     },
     {
       // Vendored from opencode v2 (dmmulroy/anti-slop); see scripts/oxlint/anti-slop/UPSTREAM.md.
-      // packages/ai is carved out of earendil-works/pi and tracks upstream.
       files: ["packages/**", "scripts/**"],
       excludeFiles: ["scripts/oxlint/**", "packages/ai/**"],
       rules: {
@@ -100,6 +95,7 @@ export default defineConfig({
         "anti-slop/no-known-value-widening": "warn",
         "anti-slop/no-module-mocking": "warn",
         "anti-slop/no-object-parameters": "warn",
+        "anti-slop/no-of-lookup-names": "warn",
         "anti-slop/no-reflect-apply": "warn",
         "anti-slop/no-reflect-get": "warn",
         "anti-slop/no-runtime-typeof": "warn",
@@ -111,6 +107,12 @@ export default defineConfig({
         "anti-slop/no-widen-then-assert": "warn",
         "anti-slop/require-readable-spacing": "warn",
         "anti-slop/require-safety-comment-for-type-assertion": "warn",
+      },
+    },
+    {
+      files: ["packages/core/src/**", "packages/sdk/src/**"],
+      rules: {
+        "anti-slop/no-of-lookup-names": "error",
       },
     },
     {
@@ -126,7 +128,7 @@ export default defineConfig({
     },
     {
       // Playwright hands each fixture a `use` callback; it is not React's hook.
-      files: ["packages/desktop/benchmark/**", "packages/app/e2e/**"],
+      files: ["packages/app/e2e/**"],
       rules: {
         "react/rules-of-hooks": "off",
       },
@@ -209,7 +211,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/schema/src/model.ts", "packages/schema/src/message.ts"],
+      files: ["packages/schema/src/model/model.ts"],
       rules: {
         "typescript/no-redundant-type-constituents": "off",
       },
@@ -217,9 +219,6 @@ export default defineConfig({
     {
       files: ["packages/app/src/**/*.{ts,tsx}", "packages/desktop/src/renderer/**/*.{ts,tsx}"],
       rules: {
-        "nyte-design/spacing-scale": "error",
-        "nyte-design/size-grid": "error",
-        "nyte-design/no-raw-colors": "error",
         "react/forbid-elements": [
           "error",
           { forbid: [{ element: "button", message: buttonLibraryMessage }] },
@@ -227,8 +226,8 @@ export default defineConfig({
         "eslint/no-restricted-imports": [
           "error",
           {
-            paths: [...rendererCoreImports.paths, mountEffectImport, ...runtimeLoadImports],
-            patterns: [...rendererCoreImports.patterns, ...uiLibraryImports],
+            paths: [...rendererCoreImports, mountEffectImport, ...runtimeLoadImports],
+            patterns: uiLibraryImports,
           },
         ],
       },
@@ -245,6 +244,29 @@ export default defineConfig({
       },
     },
     {
+      files: [
+        "packages/app/src/**/*.{ts,tsx}",
+        "packages/desktop/src/renderer/**/*.{ts,tsx}",
+        "packages/ui/src/**/*.{ts,tsx}",
+      ],
+      excludeFiles: ["packages/ui/src/styles/**"],
+      rules: {
+        "nyte-design/spacing-scale": "error",
+        "nyte-design/size-grid": "error",
+        "nyte-design/no-raw-colors": "error",
+        "nyte-design/no-raw-font-weight": "error",
+      },
+    },
+    {
+      files: [
+        "packages/app/src/**/*.{ts,tsx}",
+        "packages/ui/src/**/*.{ts,tsx}",
+        "packages/lab/src/**/*.{ts,tsx}",
+      ],
+      excludeFiles: ["packages/ui/src/styles/**"],
+      rules: { "nyte-design/no-light-dark-outside-tokens": "error" },
+    },
+    {
       files: ["packages/app/src/**/*.{ts,tsx}", "packages/ui/src/**/*.{ts,tsx}"],
       rules: {
         "nyte-interactions/no-clickable-non-control": "error",
@@ -254,6 +276,14 @@ export default defineConfig({
         "nyte-interactions/no-disabled-caption": "error",
         "nyte-interactions/title-case-control-label": "error",
       },
+    },
+    {
+      files: [
+        "packages/app/src/**/*.{ts,tsx}",
+        "packages/lab/src/**/*.{ts,tsx}",
+        "packages/canvas/src/**/*.{ts,tsx}",
+      ],
+      rules: { "nyte-restyle/no-restyle": "error" },
     },
     {
       files: [
@@ -316,44 +346,15 @@ export default defineConfig({
       },
     },
     {
-      // The pty driver loads lazily so a platform without its prebuilt binary
-      // still loads the host (Part 2 §41a). Node only; nothing bundles it.
       files: ["packages/host/src/local/jobs.ts"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
     },
     {
-      files: ["packages/core/src/plugins/builtin/**"],
-      rules: {
-        "eslint/no-restricted-imports": [
-          "error",
-          {
-            paths: runtimeLoadImports,
-            patterns: [
-              {
-                group: ["**/harness/**", "../../harness/*"],
-                message:
-                  "Built-in plugins use SessionApi only. If the API is missing something, add a primitive.",
-              },
-              ...uiLibraryImports,
-            ],
-          },
-        ],
-      },
-    },
-    {
-      // Both resolve a file path through createRequire and load nothing with it.
-      files: ["packages/plugin/src/codemode-runtime.ts", "packages/tui/src/plugin-loader.ts"],
+      files: ["packages/plugin/src/codemode-runtime.ts"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
-      },
-    },
-    {
-      // Bun reloads a user plugin by evicting its graph from require.cache.
-      files: ["packages/tui/src/plugin-loader.ts"],
-      rules: {
-        "eslint/no-restricted-globals": ["error", reflectGlobal],
       },
     },
   ],

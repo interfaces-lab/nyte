@@ -1,10 +1,8 @@
-/** Streaming markdown (`<markdown>` with the kit's SyntaxStyle); hidden while blank; a trailing bare `#` is held back. */
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
 import type { PartMessage } from "../../lib/view-helpers.ts";
 import { Markdown } from "./markdown.tsx";
 
-/** Hold a streamed heading marker until its text arrives. */
 export function hasIncompleteHeadingPrefix(text: string): boolean {
   const line = text.slice(text.lastIndexOf("\n") + 1);
 

@@ -32,7 +32,6 @@ const MAC_URL = `${ORIGIN}/r/${MAC.id}`;
 /** Broker and relay share one origin; only the path tells them apart. */
 const toBroker = (request: Seen) => request.url.startsWith(`${ORIGIN}/v1/`);
 
-/** What `sessions.list` answers a device the Mac accepts: an empty page. */
 const PAGE = { items: [], next: null };
 
 const nodeCrypto: DeviceCrypto = {
@@ -142,7 +141,6 @@ function enrollment(input: {
   readonly windowMs?: number;
   readonly verification?: { readonly kind: "verified" } | ConnectFailure;
 }) {
-  // Identity proof needs the Keychain and a signing host, so it is verified on device.
   const verification = input.verification ?? ({ kind: "verified" } as const);
 
   return connectEnvironment({

@@ -14,7 +14,6 @@ import {
   isPart,
   memoryStore,
   partRef,
-  partsPlugin,
   runStep,
   text,
   thinking,
@@ -189,7 +188,7 @@ describe("parts", () => {
     );
   });
 
-  it("registers the built-ins ownerless and ignores the identical definition contributed again", () => {
+  it("registers the built-ins ownerless and keeps the first definition of a kind", () => {
     const definitions = createPartDefinitions();
 
     expect(definitions.list().map((entry) => [entry.definition.kind, entry.owner])).toEqual([
@@ -199,14 +198,6 @@ describe("parts", () => {
       ["compaction", null],
       ["branchSummary", null],
     ]);
-    expect(partsPlugin.contribute?.parts).toEqual([
-      text,
-      thinking,
-      tool,
-      compaction,
-      branchSummary,
-    ]);
-
     definitions.register(text, "parts")();
 
     expect(definitions.get("text")).toEqual({ definition: text, owner: null });
@@ -223,15 +214,11 @@ describe("parts", () => {
       fallback: (_state, { id }) => `Replacement ${id}`,
     });
 
-    const disposeReplacement = definitions.register(replacement, "other");
+    definitions.register(replacement, "other")();
 
-    expect(definitions.get("test/picker")).toEqual({ definition: replacement, owner: "other" });
+    expect(definitions.get("test/picker")).toEqual({ definition: picker, owner: "plugin" });
 
     dispose();
-
-    expect(definitions.get("test/picker")).toEqual({ definition: replacement, owner: "other" });
-
-    disposeReplacement();
 
     expect(definitions.get("test/picker")).toBeUndefined();
   });
@@ -299,6 +286,12 @@ describe("parts", () => {
     });
     expect(isPart(message, thinking)).toBe(false);
     expect(view.parts).toEqual([]);
+    expect(await part.update({ markdown: "Changed.", signature: null })).toMatchObject({
+      kind: "invalid",
+      issues: [{ severity: "error", path: [], message: "text is a built-in part." }],
+    });
+    await expect(part.close()).rejects.toMatchObject({ code: "denied" });
+    expect((await session.view()).messages).toEqual(view.messages);
   });
 
   it("replays a create with the same id and state, and refuses another state or kind", async () => {
@@ -383,20 +376,15 @@ describe("parts", () => {
       "part:updated",
     ]);
 
-    const note = await session.parts.create(text, {
-      state: { markdown: "Hello.", signature: null },
-      placement: { kind: "status" },
-    });
-
-    expect(await session.part(note.id).update({ markdown: 1, signature: null })).toMatchObject({
+    expect(await session.part(part.id).update({ title: 1, choices: [] })).toMatchObject({
       kind: "invalid",
-      issues: [{ severity: "error", path: ["markdown"] }],
+      issues: [{ severity: "error", path: ["title"] }],
     });
     expect(await session.part(asId("nowhere")).update({})).toEqual({ kind: "missing" });
 
     await part.close();
 
-    expect(await part.update({ title: "Late.", choices: [] })).toEqual({ kind: "closed" });
+    expect(await part.update({ title: "Late.", choices: [] })).toEqual({ kind: "missing" });
   });
 
   it("settles an ownerless modal's answer with its first act", async () => {
@@ -438,7 +426,7 @@ describe("parts", () => {
     });
   });
 
-  it("answers a non-modal part only at close, with null", async () => {
+  it("answers a non-modal part with null immediately, before and after actions or close", async () => {
     const { host } = await setup();
     const session = await host.sessions.create();
 
@@ -447,15 +435,15 @@ describe("parts", () => {
       placement: { kind: "panel" },
     });
 
-    const answer = part.answer();
+    expect(await part.answer()).toBeNull();
 
     expect(await part.act("answer", { choice: "yes" })).toEqual({ kind: "ok", output: undefined });
     expect(await part.act("confirm", {})).toEqual({ kind: "ok", output: undefined });
-    expect(await Promise.race([answer, Promise.resolve("pending")])).toBe("pending");
+    expect(await part.answer()).toBeNull();
 
     await part.close();
 
-    expect(await answer).toBeNull();
+    expect(await part.answer()).toBeNull();
   });
 
   it("runs a contributed onAction: its output, rejected, unknown-action, invalid input and no-owner", async () => {
@@ -510,7 +498,7 @@ describe("parts", () => {
     expect(signal.aborted).toBe(true);
     expect(await answer).toBeNull();
     expect(await part.answer()).toBeNull();
-    expect(await part.act("pick", { choice: "blue" })).toEqual({ kind: "closed" });
+    await expect(part.act("pick", { choice: "blue" })).rejects.toMatchObject({ code: "unknown" });
     await expect(part.close()).resolves.toBeUndefined();
     expect(await partEvents(kernel, session.id)).toEqual(["part:created", "part:closed"]);
     expect((await session.view()).parts).toEqual([]);
@@ -596,13 +584,12 @@ describe("parts", () => {
     await settleAnswersFrom(first.kernel);
 
     expect(await part.answer()).toBeNull();
-    expect(first.kernel.partTable.answered.size).toBe(0);
   });
 
   it("publishes no answer while keeping it loses its write; it lands once the write wins (ADV B F6, §62 retry until won)", async () => {
     const shared = await memoryStore().open();
     const publishedWhileRefused: number[] = [];
-    let table: Kernel["partTable"] | null = null;
+    let published = 0;
 
     const store: StoreConnection = {
       ...shared,
@@ -614,10 +601,10 @@ describe("parts", () => {
           if (
             publishedWhileRefused.length < 2 &&
             updates.length === 1 &&
-            only?.event === undefined &&
-            only.name.includes("/parts/")
+            only?.event?.kind === "part" &&
+            only.event.change === "answered"
           ) {
-            publishedWhileRefused.push(table?.answered.size ?? -1);
+            publishedWhileRefused.push(published);
 
             return { kind: "stale", name: only.name, revision: null };
           }
@@ -627,8 +614,7 @@ describe("parts", () => {
       },
     };
 
-    const { kernel, host } = await setup({ store });
-    table = kernel.partTable;
+    const { host } = await setup({ store });
     const session = await host.sessions.create();
 
     const part = await session.parts.create(question, {
@@ -637,6 +623,7 @@ describe("parts", () => {
     });
 
     const answer = part.answer();
+    void answer.then(() => (published += 1));
 
     await part.act("answer", { choice: "yes" });
     expect(publishedWhileRefused).toEqual([0, 0]);

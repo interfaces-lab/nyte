@@ -22,17 +22,15 @@
  */
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { calculateCost, type MutableModels } from "@nyte-ai/ai";
-import { isThinkingLevel } from "@nyte-ai/core";
-import { branch, type Session } from "@nyte-ai/core/store";
-import { environmentId } from "@nyte-ai/host";
-import {
-  isTerminalPhase,
-  type Commit,
-  type HeadInfo,
-  type RunConfig,
-  type SessionId,
-} from "@nyte-ai/protocol";
+import { isPart, tool } from "@nyte-ai/core";
+import { asId, asSeq } from "@nyte-ai/schema";
+import type {
+  ConfigurationPatch,
+  HeadInfo,
+  Message,
+  SessionEvent,
+  SessionId,
+} from "@nyte-ai/schema";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -62,7 +60,7 @@ import {
 import type { CommitInfo, Repo } from "./git.ts";
 import { CACHE_DIR, type ReviewHost } from "./host.ts";
 import type { Author as AuthorRecord, Registry, ReviewRecord } from "./registry.ts";
-import { AUTHOR_PREFIX, REVIEWER_VERSION } from "./reviewer.ts";
+import { AUTHOR_AGENT, AUTHOR_PREFIX, REVIEW_AGENT, REVIEWER_VERSION } from "./reviewer.ts";
 
 /** Patches up to this size ride in the brief; larger ones are read with diff_file. */
 const INLINE_PATCH = 60_000;
@@ -133,61 +131,44 @@ interface UsageTotals {
   readonly fresh: number;
   readonly cached: number;
   readonly cost: number;
-  readonly uncachedCost: number;
 }
 
-/** Every model call on `commits`, and what it would have cost with no cache at all. */
-function usageOf(commits: readonly Commit[], models: MutableModels): UsageTotals {
-  return commits.reduce(
-    (total, commit) => {
-      if (commit.body.kind !== "message" || commit.body.message.role !== "assistant") return total;
-
-      const { usage, provider, model: id } = commit.body.message;
-      const model = models.getModel(provider, id);
-
-      const uncachedCost =
-        model === undefined
-          ? usage.cost.total
-          : calculateCost(model, {
-              input: usage.input + usage.cacheRead + usage.cacheWrite,
-              output: usage.output,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: usage.totalTokens,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-            }).total;
+function sumUsage(events: readonly SessionEvent[]): UsageTotals {
+  return events.reduce(
+    (total, event) => {
+      if (event.kind !== "request") return total;
+      const { usage } = event;
 
       return {
         calls: total.calls + 1,
         fresh: total.fresh + usage.input + usage.cacheWrite,
         cached: total.cached + usage.cacheRead,
         cost: total.cost + usage.cost.total,
-        uncachedCost: total.uncachedCost + uncachedCost,
       };
     },
-    { calls: 0, fresh: 0, cached: 0, cost: 0, uncachedCost: 0 },
+    { calls: 0, fresh: 0, cached: 0, cost: 0 },
   );
 }
 
 const tokens = (count: number): string =>
   count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
 
-function guideOf(commits: readonly Commit[], revision: Revision): Guide | undefined {
-  return commits
-    .flatMap((commit) => {
-      if (commit.body.kind !== "message") return [];
-
-      const message = commit.body.message;
-
-      if (message.role !== "toolResult" || message.toolName !== "publish_guide" || message.isError)
+function readGuide(messages: readonly Message[], revision: Revision): Guide | undefined {
+  return messages
+    .flatMap((message) => {
+      if (
+        !isPart(message, tool) ||
+        message.state.name !== "publish_guide" ||
+        message.state.phase !== "settled" ||
+        message.state.outcome.kind !== "ok"
+      )
         return [];
+      const output = message.state.outcome.output;
 
-      const details: unknown = message.details;
-
-      return Value.Check(GuideSchema, details) &&
-        details.head === revision.head &&
-        details.base === revision.base
-        ? [details]
+      return Value.Check(GuideSchema, output) &&
+        output.head === revision.head &&
+        output.base === revision.base
+        ? [output]
         : [];
     })
     .at(-1);
@@ -213,7 +194,7 @@ function memoized<T>(read: (base: string, head: string) => Promise<T>) {
 }
 
 /** A task's title: its first line, cut at a word near 72 characters. */
-function titleOf(task: string): string {
+function readTitle(task: string): string {
   const line = task.trim().split("\n")[0]?.trim() ?? "Task";
 
   if (line.length <= 72) return line;
@@ -259,7 +240,7 @@ export async function createReviews(deps: {
   const fullPatch = memoized((base, head) => repo.patch(base, head));
 
   /** Where the review's refs point now; a ref that no longer resolves keeps its last head. */
-  const revisionOf = async (record: ReviewRecord): Promise<Revision> => {
+  const resolveRevision = async (record: ReviewRecord): Promise<Revision> => {
     const last = record.revisions.at(-1);
     const head = await repo.resolve(record.headRef);
     const baseTip = await repo.resolve(record.baseRef);
@@ -281,7 +262,7 @@ export async function createReviews(deps: {
     return revision;
   };
 
-  const sessionOf = (record: ReviewRecord): Promise<SessionId> => {
+  const openSession = (record: ReviewRecord): Promise<SessionId> => {
     const known = sessions.get(record.id);
 
     if (known !== undefined) return known;
@@ -289,10 +270,13 @@ export async function createReviews(deps: {
     const name = `review ${record.id} · reviewer ${REVIEWER_VERSION}`;
 
     const opened = (async () => {
-      const page = await sdk.sessions.list({ search: name, limit: 20 });
-      const found = page.items.find((item) => item.name === name && !item.archived);
-
-      return found?.sessionId ?? (await sdk.sessions.create({ name })).sessionId;
+      return (
+        await sdk.sessions.create({
+          id: asId<"session">(`lab-review:${record.id}:${REVIEWER_VERSION}`),
+          name,
+          configuration: { ...host.config, agent: REVIEW_AGENT },
+        })
+      ).id;
     })();
 
     sessions.set(record.id, opened);
@@ -301,169 +285,179 @@ export async function createReviews(deps: {
     return opened;
   };
 
-  /** A head's status, its own commits after the fork point, and when it was cut. */
-  const readHead = async (store: Session, sessionId: SessionId, head: HeadInfo) => {
-    const base = head.stack?.base ?? null;
-    const entries = await branch(store.objects, head.tip);
-    const start = base === null ? 0 : entries.findIndex((entry) => entry.oid === base) + 1;
-    const own = entries.slice(start).map((entry) => entry.commit);
-    const phase = head.run?.phase;
-    const terminal = phase !== undefined && isTerminalPhase(phase);
+  const readHead = async (sessionId: SessionId, head: HeadInfo) => {
+    const handle = sdk.session(sessionId).head(head.name);
 
-    // A message waiting on the head is work the run has not started yet.
-    const queued =
-      phase === undefined || terminal
-        ? (await sdk.messages.pending({ sessionId, head: head.head })).length
-        : 0;
+    const [view, tree] = await Promise.all([
+      handle.view({ tail: Number.MAX_SAFE_INTEGER }),
+      handle.tree(),
+    ]);
 
-    const settled = terminal && queued === 0;
+    const base = head.stack?.base;
+    const baseId = base?.kind === "commit" ? base.id : undefined;
+
+    const forkedAt =
+      baseId === undefined ? null : (tree.nodes.find((node) => node.id === baseId)?.at ?? null);
+
+    const active = tree.nodes.filter((node) => node.active);
+    const start = baseId === undefined ? 0 : active.findIndex((node) => node.id === baseId) + 1;
+    const commits = new Set(active.slice(start).map((node) => node.id));
+
+    const own = view.messages.filter((message) => {
+      if (message.kind === "user" && message.status.kind === "landed")
+        return commits.has(message.status.commit);
+
+      if (message.kind === "part" && message.status.kind === "settled")
+        return commits.has(message.status.commit);
+
+      return message.at > (forkedAt ?? 0);
+    });
+
+    const queued = view.messages.some(
+      (message) => message.kind === "user" && message.status.kind === "pending",
+    );
+
+    const end = view.execution.kind === "idle" ? view.execution.lastRun?.end : undefined;
+    const settled = view.execution.kind === "idle" && end !== undefined && !queued;
 
     return {
       own,
       settled,
-      phase,
-      forkedAt: start === 0 ? null : (entries[start - 1]?.commit.at ?? null),
-      doneAt: settled ? own.at(-1)?.at : undefined,
+      end,
+      forkedAt,
+      doneAt:
+        settled && view.execution.kind === "idle" ? view.execution.lastRun?.endedAt : undefined,
     };
   };
 
-  const report = (name: string, from: string, own: readonly Commit[], status: string): void => {
-    const key = `${name}:${own.length}`;
+  const report = async (
+    sessionId: SessionId,
+    head: HeadInfo,
+    read: Awaited<ReturnType<typeof readHead>>,
+    status: string,
+  ): Promise<void> => {
+    const key = `${head.name}:${read.doneAt ?? 0}`;
 
-    if (reported.has(key)) return;
-
+    if (reported.has(key) || (read.doneAt ?? 0) < openedAt) return;
     reported.add(key);
+    const events: SessionEvent[] = [];
 
-    if ((own.at(-1)?.at ?? 0) < openedAt) return;
+    for await (const event of sdk.inspect(sessionId).events({ after: asSeq(0) })) {
+      if (event.head === head.name && event.at > (read.forkedAt ?? 0)) events.push(event);
+    }
 
-    const usage = usageOf(own, host.models);
+    const usage = sumUsage(events);
 
     log(
-      `${name} ${status} from ${from}: ${usage.calls} calls, ${tokens(usage.cached)} cached, ` +
-        `${tokens(usage.fresh)} new, $${usage.cost.toFixed(3)} ($${usage.uncachedCost.toFixed(3)} without the cache)`,
+      `${head.name} ${status} from ${head.stack?.parent ?? "the patch"}: ${usage.calls} calls, ${tokens(usage.cached)} cached, ${tokens(usage.fresh)} new, $${usage.cost.toFixed(3)}`,
     );
   };
 
-  /** Every brief and side chat thread the review session holds, read from core. */
   const coreState = async (record: ReviewRecord, sessionId: SessionId) => {
-    const store = await host.store.open(sessionId);
+    const { heads } = await sdk.session(sessionId).info();
+    const briefs: Brief[] = [];
+    const threads: Thread[] = [];
 
-    try {
-      const heads = await sdk.heads.list({ sessionId });
-      const briefs: Brief[] = [];
-      const threads: Thread[] = [];
+    for (const revision of record.revisions) {
+      const brief = heads.find((head) => head.name === briefName(revision.head));
 
-      for (const revision of record.revisions) {
-        const brief = heads.find((head) => head.head === briefName(revision.head));
+      if (brief !== undefined && !briefs.some((entry) => entry.head === revision.head)) {
+        const read = await readHead(sessionId, brief);
+        const guide = readGuide(read.own, revision);
+        const base = brief.stack?.base;
 
-        if (brief !== undefined && !briefs.some((entry) => entry.head === revision.head)) {
-          const read = await readHead(store, sessionId, brief);
-          const guide = guideOf(read.own, revision);
-          const parent = brief.stack?.base === null ? undefined : brief.stack?.parent;
+        const parent =
+          base?.kind === "commit"
+            ? heads.find(
+                (head) =>
+                  head.name !== brief.name && head.tip.kind === "commit" && head.tip.id === base.id,
+              )?.name
+            : undefined;
 
-          const from = record.revisions.find(
-            (entry) => parent !== undefined && briefName(entry.head) === parent,
-          )?.head;
+        const from = record.revisions.find(
+          (entry) => parent !== undefined && briefName(entry.head) === parent,
+        )?.head;
 
-          // A published guide passed publish_guide's checks; how the closing reply ended does not undo it.
-          const failure =
-            !read.settled || guide !== undefined
-              ? undefined
-              : read.phase?.kind === "failed"
-                ? read.phase.failure.message
-                : read.phase?.kind === "aborted"
-                  ? "Stopped"
-                  : "The reviewer finished without publishing a guide.";
+        const failure =
+          !read.settled || guide !== undefined
+            ? undefined
+            : read.end?.kind === "failed"
+              ? read.end.failure.message
+              : read.end?.kind === "stopped"
+                ? "Stopped"
+                : "The reviewer finished without publishing a guide.";
 
-          const entry: Brief = {
-            head: revision.head,
-            name: brief.head,
-            status: !read.settled ? "running" : failure === undefined ? "done" : "failed",
-            forkedAt: read.forkedAt,
-          };
+        const entry: Brief = {
+          head: revision.head,
+          name: brief.name,
+          status: !read.settled ? "running" : failure === undefined ? "done" : "failed",
+          forkedAt: read.forkedAt,
+        };
 
-          if (failure !== undefined) entry.failure = failure;
+        if (failure !== undefined) entry.failure = failure;
 
-          if (guide !== undefined) entry.guide = guide;
+        if (guide !== undefined) entry.guide = guide;
 
-          if (read.doneAt !== undefined) entry.doneAt = read.doneAt;
+        if (read.doneAt !== undefined) entry.doneAt = read.doneAt;
 
-          if (from !== undefined) entry.from = from;
+        if (from !== undefined) entry.from = from;
 
-          if (read.settled) report(brief.head, parent ?? "the patch", read.own, entry.status);
-
-          briefs.push(entry);
-        }
-
-        const prefix = threadPrefix(revision.head);
-
-        for (const side of heads.filter((head) => head.head.startsWith(prefix))) {
-          if (threads.some((entry) => entry.name === side.head)) continue;
-
-          const read = await readHead(store, sessionId, side);
-
-          threads.push({
-            head: revision.head,
-            thread: side.head.slice(prefix.length),
-            name: side.head,
-            status: read.settled ? (read.phase?.kind === "failed" ? "failed" : "done") : "running",
-            forkedAt: read.forkedAt,
-          });
-        }
+        if (read.settled) await report(sessionId, brief, read, entry.status);
+        briefs.push(entry);
       }
 
-      return { heads, briefs, threads };
-    } finally {
-      await store.close();
+      const prefix = threadPrefix(revision.head);
+
+      for (const side of heads.filter((head) => head.name.startsWith(prefix))) {
+        if (threads.some((entry) => entry.name === side.name)) continue;
+        const read = await readHead(sessionId, side);
+
+        threads.push({
+          head: revision.head,
+          thread: side.name.slice(prefix.length),
+          name: side.name,
+          status: read.settled ? (read.end?.kind === "failed" ? "failed" : "done") : "running",
+          forkedAt: read.forkedAt,
+        });
+      }
     }
+
+    return { heads, briefs, threads };
   };
 
-  /** What `head` last ran with: a fork pins it, because a cached prefix belongs to one model. */
-  const pinned = (heads: readonly HeadInfo[], name: string): RunConfig | undefined =>
-    heads.find((head) => head.head === name)?.run?.config;
+  const pinned = async (
+    sessionId: SessionId,
+    name: string,
+  ): Promise<ConfigurationPatch | undefined> =>
+    (await sdk.session(sessionId).head(asId<"head">(name)).view()).configuration.effective ??
+    undefined;
 
-  /**
-   * Cut `head` from `from`, pin the model and effort it must share a cache
-   * with, and send it one message. A repeat finds the head and the key, and
-   * changes nothing.
-   */
   const fork = async (input: {
     readonly sessionId: SessionId;
     readonly head: string;
     readonly from: string;
-    readonly config: RunConfig | undefined;
+    readonly config: ConfigurationPatch | undefined;
     readonly key: string;
     readonly content: string;
   }): Promise<void> => {
-    const created = await sdk.heads.create({
-      sessionId: input.sessionId,
-      head: input.head,
-      from: { head: input.from },
+    const session = sdk.session(input.sessionId);
+    const from = session.head(asId<"head">(input.from));
+
+    const created = await session.heads.create(asId<"head">(input.head), {
+      from: (await from.tree()).tip,
     });
 
-    if (created.kind === "unknown_parent") throw new BadRequest(`${input.from} is gone`);
+    if (created.kind === "missing-source") throw new BadRequest(`${input.from} is gone`);
+    const head = session.head(asId<"head">(input.head));
 
-    const model = input.config?.model;
-    const level = input.config?.thinkingLevel;
+    if (created.kind === "created") {
+      const configured = await head.configure({ ...input.config, agent: REVIEW_AGENT });
 
-    if (created.kind === "created" && model?.provider !== undefined) {
-      const configured = await sdk.sessions.configure({
-        sessionId: input.sessionId,
-        head: input.head,
-        model: { provider: model.provider, id: model.id },
-        thinkingLevel: level !== undefined && isThinkingLevel(level) ? level : undefined,
-      });
-
-      if (configured.kind !== "queued")
-        throw new BadRequest(`${model.provider}/${model.id} is not available: ${configured.kind}`);
+      if (configured.kind !== "configured")
+        throw new BadRequest(`The review model is not available: ${configured.kind}`);
     }
 
-    await sdk.messages.send({
-      sessionId: input.sessionId,
-      head: input.head,
-      key: input.key,
-      content: input.content,
-    });
+    await head.send(input.content, { id: asId<"receipt">(input.key) });
   };
 
   const briefPrompt = async (record: ReviewRecord, revision: Revision): Promise<string> => {
@@ -553,7 +547,7 @@ export async function createReviews(deps: {
     if (existing !== undefined && !(retry && existing.status === "failed")) return;
 
     if (existing !== undefined) {
-      const outcome = await sdk.heads.delete({ sessionId, head: name });
+      const outcome = await sdk.session(sessionId).heads.remove(asId<"head">(name));
 
       if (outcome.kind === "busy") throw new BadRequest(`${name} is still running`);
     }
@@ -584,7 +578,7 @@ export async function createReviews(deps: {
       head: name,
       // A fresh brief is cut from the unborn `main` so the runner lists it before its message lands.
       from: lender === undefined ? "main" : briefName(lender.head),
-      config: lender === undefined ? host.config : pinned(state.heads, briefName(lender.head)),
+      config: lender === undefined ? host.config : await pinned(sessionId, briefName(lender.head)),
       key: retry ? `${name}-retry-${Date.now()}` : name,
       content:
         lender === undefined
@@ -598,20 +592,27 @@ export async function createReviews(deps: {
     );
   };
 
-  const environment = await environmentId();
   const opening = new Map<string, Promise<AuthorRecord>>();
-  const worktreeOf = (id: string): string => join(CACHE_DIR, "worktrees", id);
+  const worktreePath = (id: string): string => join(CACHE_DIR, "worktrees", id);
 
-  const openAuthor = async (id: string, worktree: string) =>
-    (
+  const openAuthor = async (id: string, worktree: string): Promise<SessionId> => {
+    const workspace = await sdk.workspaces.add({ kind: "local", path: worktree });
+
+    if (workspace.kind !== "added" && workspace.kind !== "exists")
+      throw new BadRequest(`The worktree is unavailable: ${workspace.kind}`);
+
+    return (
       await sdk.sessions.create({
+        id: asId<"session">(`lab-author:${id}`),
         name: `${AUTHOR_PREFIX}${id}`,
-        workspace: { kind: "local", id: environment, cwd: worktree },
+        workspace: workspace.workspace,
+        configuration: { ...host.config, agent: AUTHOR_AGENT },
       })
-    ).sessionId;
+    ).id;
+  };
 
   /** Why Nyte cannot code on this review's branch, or undefined when it can. */
-  const blockedOf = async (record: ReviewRecord): Promise<string | undefined> => {
+  const checkAuthorBlock = async (record: ReviewRecord): Promise<string | undefined> => {
     if (record.author !== undefined) return undefined;
 
     if (!(await repo.isBranch(record.headRef)))
@@ -625,7 +626,7 @@ export async function createReviews(deps: {
   };
 
   /** Nyte's session on the branch, opened in a new worktree the first time it is asked for. */
-  const authorOf = (record: ReviewRecord): Promise<AuthorRecord> => {
+  const openReviewAuthor = (record: ReviewRecord): Promise<AuthorRecord> => {
     if (record.author !== undefined) return Promise.resolve(record.author);
 
     const known = opening.get(record.id);
@@ -633,11 +634,11 @@ export async function createReviews(deps: {
     if (known !== undefined) return known;
 
     const opened = (async () => {
-      const blocked = await blockedOf(record);
+      const blocked = await checkAuthorBlock(record);
 
       if (blocked !== undefined) throw new BadRequest(blocked);
 
-      const worktree = worktreeOf(record.id);
+      const worktree = worktreePath(record.id);
 
       if (!(await repo.worktrees()).some((tree) => tree.path === worktree))
         await repo.addWorktree(worktree, record.headRef);
@@ -657,21 +658,22 @@ export async function createReviews(deps: {
   };
 
   const authorState = async (author: AuthorRecord): Promise<Author> => {
-    const [run, queued] = await Promise.all([
-      sdk.runs.current({ sessionId: author.sessionId }),
-      sdk.messages.pending({ sessionId: author.sessionId }),
-    ]);
+    const view = await sdk.session(author.sessionId).view();
 
-    const phase = run?.phase;
-    const working = queued.length > 0 || (phase !== undefined && !isTerminalPhase(phase));
+    const queued = view.messages.some(
+      (message) => message.kind === "user" && message.status.kind === "pending",
+    );
+
+    const end = view.execution.kind === "idle" ? view.execution.lastRun?.end : undefined;
+    const working = queued || view.execution.kind !== "idle";
 
     const state: Author = {
       sessionId: author.sessionId,
       worktree: author.worktree,
-      status: working ? "working" : phase?.kind === "failed" ? "failed" : "idle",
+      status: working ? "working" : end?.kind === "failed" ? "failed" : "idle",
     };
 
-    if (!working && phase?.kind === "failed") state.failure = phase.failure.message;
+    if (!working && end?.kind === "failed") state.failure = end.failure.message;
 
     return state;
   };
@@ -686,9 +688,9 @@ export async function createReviews(deps: {
 
   /** Reading a review never calls the model: the guide is written when someone opens it. */
   const detail = async (id: string): Promise<ReviewDetail> => {
-    const revision = await revisionOf(find(id));
+    const revision = await resolveRevision(find(id));
     const record = find(id);
-    const sessionId = await sessionOf(record);
+    const sessionId = await openSession(record);
     const state = await coreState(record, sessionId);
 
     const [list, files] = await Promise.all([
@@ -716,7 +718,7 @@ export async function createReviews(deps: {
 
     if (record.author !== undefined) view.author = await authorState(record.author);
     else {
-      const blocked = await blockedOf(record);
+      const blocked = await checkAuthorBlock(record);
 
       if (blocked !== undefined) view.blocked = blocked;
     }
@@ -725,12 +727,12 @@ export async function createReviews(deps: {
   };
 
   const summary = async (record: ReviewRecord): Promise<ReviewSummary> => {
-    const revision = await revisionOf(record);
+    const revision = await resolveRevision(record);
 
     const [list, files, sessionId] = await Promise.all([
       commits(revision.base, revision.head),
       changes(revision.base, revision.head),
-      sessionOf(record),
+      openSession(record),
     ]);
 
     const state = await coreState(find(record.id), sessionId);
@@ -783,7 +785,7 @@ export async function createReviews(deps: {
       revision: { head: compared.head, base: compared.base, at: Date.now() },
     });
 
-    await sessionOf(record);
+    await openSession(record);
 
     return { id: record.id };
   };
@@ -794,12 +796,12 @@ export async function createReviews(deps: {
    */
   const writeGuide = async (id: string, head: string): Promise<void> => {
     const record = find(id);
-    const revision = await revisionOf(record);
+    const revision = await resolveRevision(record);
 
     if (revision.head !== head)
       throw new BadRequest(`The branch moved to ${revision.head.slice(0, 7)}; reload the review`);
 
-    const sessionId = await sessionOf(record);
+    const sessionId = await openSession(record);
 
     await ensureBrief(record, sessionId, revision, await coreState(record, sessionId), true);
   };
@@ -828,7 +830,7 @@ export async function createReviews(deps: {
 
   const ask = async (id: string, input: Ask): Promise<void> => {
     const record = find(id);
-    const sessionId = await sessionOf(record);
+    const sessionId = await openSession(record);
     const state = await coreState(record, sessionId);
     const brief = state.briefs.find((entry) => entry.head === input.head);
 
@@ -840,7 +842,7 @@ export async function createReviews(deps: {
       sessionId,
       head: `${threadPrefix(input.head)}${input.thread}`,
       from: brief.name,
-      config: pinned(state.heads, brief.name),
+      config: await pinned(sessionId, brief.name),
       key: input.key,
       content: input.text,
     });
@@ -853,9 +855,9 @@ export async function createReviews(deps: {
     if (baseTip === undefined) throw new BadRequest(`${input.base} is not a commit`);
 
     const id = randomUUID().slice(0, 8);
-    const title = titleOf(input.task);
+    const title = readTitle(input.task);
     const branch = `nyte/${slug(title)}-${id.slice(0, 4)}`;
-    const worktree = worktreeOf(id);
+    const worktree = worktreePath(id);
 
     await repo.addWorktree(worktree, branch, baseTip);
 
@@ -870,25 +872,21 @@ export async function createReviews(deps: {
       task: input.task,
       author: { sessionId: authorSession, worktree },
     });
-    await sdk.messages.send({ sessionId: authorSession, key: `task-${id}`, content: input.task });
+    await sdk.session(authorSession).send(input.task, { id: asId<"receipt">(`task-${id}`) });
     log(`${branch}: Nyte started "${title}" in ${worktree}`);
 
     return { id };
   };
 
   const change = async (id: string, input: Change): Promise<void> => {
-    const author = await authorOf(find(id));
+    const author = await openReviewAuthor(find(id));
 
-    await sdk.messages.send({
-      sessionId: author.sessionId,
-      key: input.key,
-      content: input.text,
-    });
+    await sdk.session(author.sessionId).send(input.text, { id: asId<"receipt">(input.key) });
   };
 
   /** Approve the head the branch is at; a later push leaves the approval behind. */
   const approve = async (id: string, head: string): Promise<void> => {
-    const revision = await revisionOf(find(id));
+    const revision = await resolveRevision(find(id));
 
     if (revision.head !== head)
       throw new BadRequest("The branch moved. Review the new head first.");
@@ -899,9 +897,9 @@ export async function createReviews(deps: {
     }));
   };
 
-  const sessionsOf = async (id: string): Promise<Sessions> => {
+  const readSessions = async (id: string): Promise<Sessions> => {
     const record = find(id);
-    const reply: Sessions = { sessionId: await sessionOf(record) };
+    const reply: Sessions = { sessionId: await openSession(record) };
 
     if (record.author !== undefined) reply.authorSessionId = record.author.sessionId;
 
@@ -951,7 +949,7 @@ export async function createReviews(deps: {
         case "GET /reviews/:id":
           return json(await detail(id));
         case "GET /reviews/:id/session":
-          return json(await sessionsOf(id));
+          return json(await readSessions(id));
         case "POST /tasks":
           return json(await startTask(await readBody(TaskSchema, request)));
         case "POST /reviews/:id/change":

@@ -1,10 +1,3 @@
-/**
- * The composer's states, each mountable alone or inside the thread it docks
- * in, run inside Electron by `composer-states.electron.test.ts`. A state is a
- * session view plus an optional draft, so both layers derive what they draw
- * from the same data the app reads. `run()` walks every state through every
- * layer and width; `studio()` shows a switcher for jumping between them by hand.
- */
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -13,10 +6,16 @@ import { useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Execution, Message, PartView, RunView, SessionView } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
+import type {
+  Execution,
+  Message,
+  ModelCatalogView,
+  PartView,
+  RunView,
+  SessionView,
+} from "@nyte-ai/sdk";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
-import type { DesktopCatalog } from "../catalog.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient, useSessionView } from "../queries.ts";
@@ -30,7 +29,6 @@ import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { COMPLETED, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 import { Composer } from "./composer.tsx";
 import { conversationMessages } from "./transcript-rows.ts";
-import { useComposerAnswer } from "./tray/questions.tsx";
 
 const liveRun: RunView = {
   id: asId<"run">("run"),
@@ -110,6 +108,7 @@ function view(
 
   return {
     revision: asId<"revision">("r1"),
+    seq: asSeq(1),
     activation: { kind: "active" },
     messages: [prompt, reply, ...extra],
     parts,
@@ -144,16 +143,33 @@ const question: PartView = {
   partKind: "ask/question",
   placement: { kind: "modal" },
   state: {
-    prompt: "Keep the old export?",
-    options: ["Yes, for one release", "No, remove it"],
-    answer: null,
+    questions: [
+      {
+        header: "Exports",
+        question: "Keep the old export?",
+        options: [
+          { label: "Yes, for one release", description: "Keep callers working during migration." },
+          { label: "No, remove it", description: "Migrate every caller now." },
+        ],
+      },
+      {
+        header: "Clients",
+        question: "Which clients should change?",
+        options: [
+          { label: "Desktop", description: "Update the Electron question dock." },
+          { label: "Web", description: "Use the same flow in the browser." },
+          { label: "Mobile", description: "Keep native answer controls." },
+        ],
+        multiple: true,
+      },
+    ],
+    answers: null,
   },
   version: 1,
   status: { kind: "live", run: liveRun.id },
   owner: "question",
 };
 
-/** What one mounted composer exposes to a state's check. */
 interface Probe {
   readonly region: HTMLElement;
   readonly editor: HTMLElement;
@@ -165,10 +181,8 @@ const inert = (button: HTMLButtonElement | null): boolean =>
 
 interface ComposerState {
   readonly name: string;
-  /** Absent while the session's first view has not arrived. */
   readonly view: SessionView | undefined;
   readonly draft?: string;
-  /** Returns what the user would read wrong; empty when the state draws as meant. */
   readonly check: (probe: Probe) => readonly string[];
 }
 
@@ -273,7 +287,6 @@ const STATES: readonly ComposerState[] = [
   },
 ];
 
-/** How much of the app surrounds the composer, from none to its whole thread. */
 const LAYERS = ["composer", "thread"] as const;
 
 type Layer = (typeof LAYERS)[number];
@@ -304,15 +317,14 @@ function seedQueries(): void {
     workspace: undefined,
     platform: "linux",
   } satisfies HostState);
-  queryClient.setQueryData(keys.catalog("initial"), {
+  queryClient.setQueryData(keys.modelCatalog("initial"), {
+    generation: asId<"catalog-generation">("initial"),
     providers: [],
-    models: [],
-    defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off" },
-  } satisfies DesktopCatalog);
+    default: { provider: "test", id: "test" },
+  } satisfies ModelCatalogView);
   queryClient.setQueryData(keys.mentionFiles, []);
 }
 
-/** The composer as the thread wires it, with nothing around it. */
 function LoneComposer({ state }: { readonly state: ComposerState }): ReactElement {
   const sessionId = sessionOf(state);
   const sessionView = useSessionView(sessionId);
@@ -325,7 +337,6 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
       pending={messages.queued}
       unsent={messages.unsent}
       disabled={sessionView === undefined}
-      answer={useComposerAnswer(sessionId)}
     />
   );
 }
@@ -345,7 +356,6 @@ function Stage({
     }),
   );
 
-  // Each mount gets its own pane store, so a draft typed in one never seeds the next.
   const [workspaceKey] = useState(() => `composer-states-${String((mounts += 1))}`);
 
   return (
@@ -395,7 +405,6 @@ function painted(): Promise<void> {
   );
 }
 
-/** Mounts `state` in `layer` at `width` inside `host`, types its draft, and returns the probe once it has painted. */
 async function show(host: HTMLElement, state: ComposerState, layer: Layer, width: Width) {
   const stage = document.createElement("div");
   stage.style.cssText = stageStyle(layer, width);
@@ -420,7 +429,6 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
     "the editor",
   );
 
-  // A thread whose view arrived renders its transcript; wait for it so both layers settle on the same data.
   if (state.view !== undefined)
     await until(
       () =>
@@ -448,7 +456,6 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
   return { stage, root, probe };
 }
 
-/** Failures every state shares: the input fits its column and nothing spills past the stage. */
 function layoutFailures(stage: HTMLElement, region: HTMLElement): string[] {
   const bounds = stage.getBoundingClientRect();
   const frame = region.querySelector("[data-composer-frame]");
@@ -585,7 +592,6 @@ function Controls({
   );
 }
 
-/** Shows the switcher above a stage for jumping between states by hand. */
 export function studio(): void {
   document.title = "Composer studio";
   document.body.style.cssText =

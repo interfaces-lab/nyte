@@ -1,8 +1,3 @@
-/**
- * The run's indicator below the transcript: while the head works and the
- * last drawn turn does not already end in a step group, a working line holds
- * the place its next step will take. Live parts are the turn's own messages.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";

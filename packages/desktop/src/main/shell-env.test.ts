@@ -1,11 +1,14 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runGitHubCommand } from "@nyte-ai/host";
 import { createShellEnvironmentRepair } from "./shell-env.ts";
 
 const directories: string[] = [];
+
+const execute = promisify(execFile);
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -138,13 +141,11 @@ printf 'goodbye\\n'
     vi.stubEnv("PATH", "/missing-inherited-tools");
     await createShellEnvironmentRepair()();
     expect(
-      await runGitHubCommand({
-        command: "gh",
-        args: ["--version"],
+      await execute("gh", ["--version"], {
         cwd: local.directory,
-        timeoutMs: 1_000,
+        timeout: 1_000,
       }),
-    ).toEqual({ kind: "completed", code: 0, stdout: "fixture-gh", stderr: "" });
+    ).toEqual({ stdout: "fixture-gh", stderr: "" });
   });
 });
 

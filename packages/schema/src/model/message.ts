@@ -1,15 +1,3 @@
-/**
- * The neutral message model. Every provider adapter translates into and out
- * of these types; the loop, the harness, storage, hooks, and clients never see
- * a provider's own wire. Provider-specific data that must round-trip (an
- * Anthropic thinking signature, an OpenAI reasoning item, a Google thought
- * signature) rides in the opaque `*Signature` fields and is replayed only to
- * the same provider and model.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
- * Synced with pi 7ebf9087e.
- */
-
 export type JsonValue =
   | string
   | number
@@ -40,28 +28,19 @@ export const TextSignatureV1Schema = typed<TextSignatureV1>()(
 export interface TextContent {
   type: "text";
   text: string;
-  /** Provider message metadata for replay, e.g. an OpenAI message id as TextSignatureV1 JSON. */
   textSignature?: string;
 }
 
 export interface ThinkingContent {
   type: "thinking";
   thinking: string;
-  /** Provider-specific opaque or serialized reasoning replay data. */
   thinkingSignature?: string;
-  /**
-   * When true, the thinking content was redacted by safety filters. The opaque
-   * encrypted payload is stored in `thinkingSignature` so it can be passed back
-   * to the API for multi-turn continuity.
-   */
   redacted?: boolean;
 }
 
 export interface ImageContent {
   type: "image";
-  /** Base64 encoded image data. */
   data: string;
-  /** e.g. "image/jpeg", "image/png". */
   mimeType: string;
 }
 
@@ -69,11 +48,8 @@ export interface ToolCall {
   type: "toolCall";
   id: string;
   name: string;
-  // oxlint-disable-next-line no-explicit-any -- arguments are schema-validated per tool; typed by each tool's TSchema
   arguments: Record<string, any>;
-  /** Google-specific: opaque signature for reusing thought context. */
   thoughtSignature?: string;
-  /** OpenAI Responses namespace for calls to dynamically loaded or namespaced tools. */
   namespace?: string;
 }
 
@@ -82,13 +58,7 @@ export interface Usage {
   output: number;
   cacheRead: number;
   cacheWrite: number;
-  /** Subset of `cacheWrite` written with 1h retention. Only Anthropic reports this split. */
   cacheWrite1h?: number;
-  /**
-   * Reasoning/thinking tokens, when the provider reports them. A subset of
-   * `output`: `output` already includes these tokens. Set by providers that
-   * expose a reasoning breakdown; left undefined by providers that do not.
-   */
   reasoning?: number;
   totalTokens: number;
   cost: {
@@ -113,11 +83,9 @@ export interface DeferredHandle {
   provider: string;
   modelId: string;
   api: string;
-  /** Provider token, such as a response id or batch id plus row id. */
   id: string;
   expiresAt?: number;
   pollAfterMs?: number;
-  /** Provider conversion data required to reconstruct the final assistant message. */
   data?: JsonValue;
 }
 
@@ -128,7 +96,6 @@ export interface DiagnosticErrorInfo {
   code?: string | number;
 }
 
-/** One redacted diagnostic entry. Shape from pi's utils/diagnostics.ts. */
 export interface AssistantMessageDiagnostic {
   type: string;
   timestamp: number;
@@ -136,39 +103,18 @@ export interface AssistantMessageDiagnostic {
   details?: Record<string, unknown>;
 }
 
-/**
- * System instructions and tool declarations at one point in the transcript.
- *
- * The leading system message is the system prompt. Later system messages change it:
- * `content` adds instructions from that point on, `sections` replace or remove named
- * prompt sections, and `toolsAdded`/`toolsRemoved` change the tool set. Replaying
- * every system message in order yields the current prompt and tools. Providers that
- * accept system messages mid-conversation send each one in place; other providers
- * rebuild the leading system message from the replayed state.
- */
 export interface SystemMessage {
   role: "system";
-  /** Instruction text. On the leading message this is the base prompt; later, additional instructions. */
   content: string | TextContent[];
-  /**
-   * Named, ordered prompt sections rendered verbatim after `content`. The leading message
-   * declares them; later messages replace sections by name, and `null` removes one. Keep
-   * each section self-delimiting (a tag, a heading) so the model can relate an update to
-   * the original. Avoid integer-like names; JSON objects reorder those.
-   */
   sections?: Record<string, string | null>;
-  /** Complete definitions of tools that become available at this point. */
   toolsAdded?: Tool[];
-  /** Tools that stop being available at this point. */
   toolsRemoved?: ToolReference[];
-  /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
 
 export interface UserMessage {
   role: "user";
   content: string | (TextContent | ImageContent)[];
-  /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
 
@@ -178,28 +124,18 @@ export interface AssistantMessage {
   api: Api;
   provider: ProviderId;
   model: string;
-  /** Concrete response model when different from the requested `model`. */
   responseModel?: string;
-  /** Provider-specific response/message identifier when the upstream API exposes one. */
   responseId?: string;
-  /** Redacted provider/runtime diagnostics for failures and recoveries. */
   diagnostics?: AssistantMessageDiagnostic[];
   usage: Usage;
   stopReason: StopReason;
   deferred?: DeferredHandle;
   errorMessage?: string;
   rawStopReason?: string;
-  /** Provider indication of whether the model explicitly ended its turn. Debugging only. */
   endTurn?: boolean;
-  /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
 
-/**
- * Why an assistant call failed, decided once from the provider's answer.
- * `runner` is a failure of the run itself (a tool batch, a step ceiling), not
- * of the provider.
- */
 export type FailureClass =
   | "rate_limit"
   | "auth"
@@ -214,11 +150,9 @@ export type FailureClass =
 export type Failure = {
   readonly class: FailureClass;
   readonly message: string;
-  /** A delay the provider asked for before the next attempt. */
   readonly retryAfterMs?: number;
 };
 
-// oxlint-disable-next-line no-explicit-any -- pi shape; details are tool-defined and typed by each tool
 export interface ToolResultMessage<TDetails = any> {
   role: "toolResult";
   toolCallId: string;
@@ -226,34 +160,15 @@ export interface ToolResultMessage<TDetails = any> {
   content: (TextContent | ImageContent)[];
   details?: TDetails;
   structuredContent?: JsonValue;
-  /** Heading the tool chose for this call. Clients fall back to the tool name. */
   title?: string;
-  /** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
   usage?: Usage;
-  /**
-   * Names from `Context.tools` that became available after this result.
-   * Providers with native deferred tool loading use this as the load point;
-   * other providers ignore it and use `Context.tools` normally.
-   */
   addedToolNames?: string[];
   isError: boolean;
-  /** Unix timestamp in milliseconds. */
   timestamp: number;
 }
 
 export type Message = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage;
 
-/**
- * Event protocol for an assistant message stream.
- *
- * Streams emit `start` before partial updates, then terminate with either
- * `done` carrying the final successful AssistantMessage, or `error` carrying
- * the final AssistantMessage with stopReason "error" or "aborted" and an
- * errorMessage. A `*_delta.delta` is incremental and must be appended once;
- * `*_end.content` is authoritative and replaces the accumulated preview.
- * `partial` is one mutable AssistantMessage shared by every event, so clients
- * must not diff successive `partial` references to recover deltas.
- */
 export type AssistantMessageEvent =
   | { type: "start"; partial: AssistantMessage }
   | { type: "text_start"; contentIndex: number; partial: AssistantMessage }

@@ -6,7 +6,7 @@ import type { ReactElement, ReactNode, Ref } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -19,7 +19,7 @@ export const trayParts = create({
     display: { default: "block", ":empty": "none" },
   },
   presence: { display: "contents" },
-  pills: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  pills: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: space.s1_5 },
   pillCount: { fontVariantNumeric: "tabular-nums" },
   pillIndicator: {
     display: "grid",
@@ -27,7 +27,6 @@ export const trayParts = create({
     flexShrink: 0,
     width: glyph.box,
     height: glyph.box,
-    lineHeight: 0,
   },
   listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   row: {
@@ -35,8 +34,8 @@ export const trayParts = create({
     "--_row-padding-inline": tray.rowInset,
   },
   notice: {
-    paddingBlock: 8,
-    paddingInline: 12,
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },

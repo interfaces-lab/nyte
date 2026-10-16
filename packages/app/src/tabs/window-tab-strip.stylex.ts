@@ -1,12 +1,12 @@
-import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const stripStyles = create({
   strip: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     flex: 1,
     minWidth: 0,
     height: "100%",
@@ -15,7 +15,7 @@ export const stripStyles = create({
   list: {
     display: "flex",
     alignItems: "center",
-    gap: 2,
+    gap: space.s0_5,
     flex: "0 1 auto",
     minWidth: 0,
     height: "100%",
@@ -47,7 +47,7 @@ export const stripStyles = create({
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
     },
   },
-  tabClosable: { paddingInlineEnd: 4 },
+  tabClosable: { paddingInlineEnd: space.s1 },
   /** The main area is a card set into the chrome; the active tab wears the card. */
   tabActive: {
     backgroundColor: {
@@ -61,24 +61,24 @@ export const stripStyles = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: 6,
+    gap: space.s1_5,
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
     height: "100%",
     paddingBlock: 0,
-    paddingInlineStart: 10,
-    paddingInlineEnd: 6,
+    paddingInlineStart: space.s2_5,
+    paddingInlineEnd: space.s1_5,
     borderRadius: button.radiusMd,
-    backgroundColor: "transparent",
-    color: "inherit",
+    fontFamily: type.fontSans,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
+    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
   /** Without a close button the label keeps the same distance from both edges. */
-  tabButtonUnclosable: { paddingInlineEnd: 10 },
+  tabButtonUnclosable: { paddingInlineEnd: space.s2_5 },
   glyph: {
     display: { default: "grid", ":empty": "none" },
     placeItems: "center",
@@ -104,11 +104,6 @@ export const stripStyles = create({
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
-  shortcut: { display: "inline-flex", alignItems: "center", gap: 8 },
-  keys: { display: "inline-flex", gap: 2 },
-  key: {
-    transitionProperty: "background-color, color",
-    transitionDuration: motion.durationInstant,
-  },
-  held: { backgroundColor: role.bgInteractivePrimaryTranslucent, color: role.contentPrimary },
+  shortcut: { display: "inline-flex", alignItems: "center", gap: space.s2 },
+  keys: { display: "inline-flex", gap: space.s0_5 },
 });

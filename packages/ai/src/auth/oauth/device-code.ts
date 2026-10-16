@@ -2,9 +2,6 @@
  * RFC 8628 device-code polling shared by OAuth flows: immediate first poll,
  * interval back-off on `slow_down`, deadline handling, and cancellation via
  * the login signal.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/device-code.ts
- * Synced with pi 7ebf9087e.
  */
 import { sleep } from "../../utils/abort.ts";
 

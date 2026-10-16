@@ -10,33 +10,26 @@ import { operations } from "@nyte-ai/protocol";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 
-/** The listener token every test host accepts. */
 export const TOKEN_SECRET = "a-token-of-at-least-16";
 
-/** The URL every test connects to; the listener's `fetch` answers it in process. */
 export const BASE = "http://host.test";
 
-/** Rewrites one request on its way to the listener; `next` forwards it. */
 export type Intercept = (
   request: Request,
   next: (request: Request) => Promise<Response>,
 ) => Promise<Response>;
 
-/** One composed host served by `listenFetch` with no socket, and a `fetch` that reaches it. */
 export interface Served {
   readonly fake: FakeModels;
   readonly host: Awaited<ReturnType<typeof composeHost>>;
   readonly listener: Listener;
   readonly fetch: typeof fetch;
   readonly root: string | null;
-  /** Routes every later request through `next`, or straight to the listener when null. */
   intercept(next: Intercept | null): void;
-  /** The host's own view of a head for the token principal: what a client's fold must equal. */
   view(session: SessionId, head?: HeadName): Promise<SessionView>;
   close(): Promise<void>;
 }
 
-/** Composes a host over a memory store with a scripted provider, on the chat-only workspace or, with `local`, a git repository in a temp folder, and serves it under token auth, with an identity signer when asked. */
 export async function served(options?: {
   readonly local?: boolean;
   readonly identity?: boolean;
@@ -106,7 +99,6 @@ export async function served(options?: {
   };
 }
 
-/** Rejects with the signal's reason when it aborts, as `fetch` does for a request still waiting on its answer. */
 function aborted(signal: AbortSignal): Promise<never> {
   return new Promise((_, reject) => {
     if (signal.aborted) reject(signal.reason);
@@ -114,12 +106,10 @@ function aborted(signal: AbortSignal): Promise<never> {
   });
 }
 
-/** Returns the operation a request names: its path without the leading slash. */
 export function operationOf(request: Request): string {
   return new URL(request.url).pathname.slice(1);
 }
 
-/** Returns the first value a stream yields that `done` accepts, failing after `ms`. */
 export async function until<T>(
   source: AsyncIterable<T>,
   done: (value: T) => boolean | Promise<boolean>,
@@ -155,7 +145,6 @@ function tokenConnection(kernel: Kernel): Connection {
   });
 }
 
-/** Returns a temp folder holding `home/` and `workspace/`, the latter a git repository with one commit of `a.txt`. */
 async function repository(): Promise<string> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-sdk-")));
   const workspace = join(root, "workspace");

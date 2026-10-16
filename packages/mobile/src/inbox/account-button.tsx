@@ -9,7 +9,7 @@ import { controls } from "../theme.ts";
 
 export function AccountButton() {
   const account = useAccount();
-  const { saved, edit } = useHost();
+  const { saved } = useHost();
   const [open, setOpen] = useState(false);
   const profile = account?.status.kind === "signedIn" ? account.status : undefined;
 
@@ -46,14 +46,10 @@ export function AccountButton() {
       </Stack.Toolbar>
       {account === undefined ? null : (
         <ConnectSheet
-          open={open}
+          page={open ? "overview" : undefined}
           onClose={() => setOpen(false)}
           account={account}
           current={{ saved, reconnect: false }}
-          onManual={() => {
-            setOpen(false);
-            edit();
-          }}
         />
       )}
     </>

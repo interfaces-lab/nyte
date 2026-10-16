@@ -1,9 +1,3 @@
-/**
- * The ports that stay on this machine: local shells, files (paste
- * classification, directory listing, file bodies, the external editor),
- * settings files, the clock, and the attach-only handles the Composer and
- * Transcript fill while mounted.
- */
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join, relative, resolve } from "node:path";
@@ -19,7 +13,6 @@ import type { ShellProcess } from "../services/local-shell.ts";
 import { FileSettingsStore } from "../services/settings.ts";
 import type { Clock, FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
 
-/** A paste this tall stops being text you are editing and becomes an attachment. */
 const PASTE_COLLAPSE_LINES = 8;
 
 const MAX_ATTACHMENT_BYTES = 256_000;
@@ -123,7 +116,6 @@ export function settingsPort(): SettingsPort {
   };
 }
 
-/** Classifies a paste once: image bytes, a pasted path to a file or image, long text, or text to insert. */
 export async function resolvePaste(
   text: string,
   bytes: Uint8Array | null,
@@ -208,7 +200,6 @@ function pastedPath(value: string, cwd: string): string | null {
   return resolve(cwd, process.platform === "win32" ? raw : raw.replace(/\\(.)/g, "$1"));
 }
 
-/** A typed path resolved directly; a folder keeps a trailing `/`, anything but a file or folder is null. */
 export async function resolveMention(query: string, cwd: string): Promise<MentionFile | null> {
   const path = resolve(cwd, query.startsWith("~") ? join(homedir(), query.slice(2)) : query);
   const info = await stat(path).catch(() => undefined);
@@ -226,7 +217,6 @@ export async function resolveMention(query: string, cwd: string): Promise<Mentio
   return info.isFile() ? { path, display, label: basename(path) } : null;
 }
 
-/** Only text bodies inline; folders, binaries, and oversized files fall back to a mention. */
 async function readAttachmentText(path: string): Promise<string | null> {
   const info = await stat(path).catch(() => undefined);
 

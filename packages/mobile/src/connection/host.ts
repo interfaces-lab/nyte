@@ -14,7 +14,6 @@ import { releaseReplaced } from "../account/revocation.ts";
 
 const STORAGE_KEY = "nyte.host";
 
-/** A host that hangs on resume is reported as silent rather than left spinning. */
 const RESUME_TIMEOUT_MS = 10_000;
 
 export const connectionStore = createConnectionStore(
@@ -30,27 +29,16 @@ const pins = createPinStore({ read: getItemAsync, write: setItemAsync }, deviceC
 
 const journals = createMMKV({ id: "nyte.journal" });
 
-/**
- * Returns the fetch a host's requests go through: Expo's, which streams
- * bodies on Hermes. An account connection shares its origin with the broker,
- * so it sends no cookies; an address-and-token connection keeps the platform
- * default.
- */
 function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
   return saved.kind === "managed"
     ? (input, init) => fetch(input, { ...init, credentials: "omit" })
     : (input, init) => fetch(input, init);
 }
 
-/** What a verification admitted. Screens mount only under one of these. */
 export interface VerifiedHost {
-  /** The sdk connection the screens use; closed when another check replaces it. */
   readonly connection: HostConnection;
-  /** The connection to save: the device token a pairing yielded in place of its code. */
   readonly saved: SavedConnection;
-  /** The host and principal stored state belongs to. Never holds a bearer. */
   readonly scope: string;
-  /** New on every adoption, so a new credential or host remounts the connected tree. */
   readonly key: string;
 }
 
@@ -58,26 +46,16 @@ export type HostVerification =
   | { readonly kind: "verified"; readonly host: VerifiedHost }
   | ConnectFailure;
 
-/** Verified results by the saved object they were proven for, so a save adopts without asking twice. */
 const verified = new WeakMap<SavedConnection, VerifiedHost>();
 
 let adoptions = 0;
 
-/** Returns the saved connection with the device token the sdk kept, or as it was when the token did not change. */
 function withCredential(saved: SavedConnection, credential: CredentialSource): SavedConnection {
   if (credential.kind !== "token" || credential.token === saved.connection.token) return saved;
 
   return { ...saved, connection: { ...saved.connection, token: credential.token } };
 }
 
-/**
- * `sdk.connect` to the saved address with `credentials` (the saved token, or
- * a pairing code on the way in), then the route's pinned host id, all under
- * `signal`. `expect` stays off: its signature check needs WebCrypto Ed25519,
- * which Hermes lacks, so the pin is the id the host answers with. A first
- * id, or an explicit `repair`, is pinned before the result is returned.
- * This is the only place a connect error is read.
- */
 export async function verifyHost(input: {
   readonly saved: SavedConnection;
   readonly credentials?: CredentialSource;
@@ -153,15 +131,8 @@ export async function verifyHost(input: {
   return { kind: "verified", host };
 }
 
-/** How one attempt ended. Only `connected` may open a session. */
 export type ConnectResult = { readonly kind: "connected" } | ConnectFailure;
 
-/**
- * Pair with the address and the code the user entered, then save the device
- * token the host returned in the Keychain, all under `signal`. The token
- * already saved, left as it was in the form, is that device token and is
- * sent as one.
- */
 export async function connectHost(input: {
   readonly connection: Connection;
   readonly repair: boolean;
@@ -193,7 +164,6 @@ export async function connectHost(input: {
   return { kind: "connected" };
 }
 
-/** Where the saved connection stands. Screens mount only on `verified`. */
 export type HostCheck =
   | { readonly kind: "idle" }
   | { readonly kind: "verifying"; readonly saved: SavedConnection }
@@ -204,12 +174,6 @@ export type HostCheck =
       readonly failure: Exclude<ConnectFailure, { kind: "cancelled" }>;
     };
 
-/**
- * Verifies whatever the store holds, at launch and after every change. A
- * newer connection, a removal, or a retry aborts the verification before it,
- * whose answer is then dropped. A connection proven on its way in is adopted
- * without asking again.
- */
 function createHostVerifier() {
   let check: HostCheck = { kind: "idle" };
   let running: AbortController | undefined;
@@ -257,7 +221,6 @@ function createHostVerifier() {
         }
 
         running = undefined;
-        // Only the timer aborts the current attempt, so an abort here is silence.
         const timedOut = controller.signal.aborted || result.kind === "cancelled";
 
         if (timedOut && result.kind === "verified") void result.host.connection.close();
@@ -302,7 +265,6 @@ function createHostVerifier() {
 
       return () => listeners.delete(listener);
     },
-    /** Ask the saved host again; `repair` replaces its pin with the id it answers. */
     retry: (repair: boolean) => {
       if (check.kind === "failed") start(check.saved, repair);
     },

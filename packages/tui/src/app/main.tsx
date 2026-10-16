@@ -1,18 +1,8 @@
-/**
- * `runTui`: the interactive entry `index.ts` calls after `invocation.handoff()`.
- * Creates the renderer (parsers registered first, an app-owned
- * `NativeSession`, `exitOnCtrlC: false`, `openConsoleOnError: false`), the
- * crash log and process hooks, then mounts the app: store, runner, sinks,
- * kit, keymap and `<Root/>`. The host opens after the first paint, so the
- * loading line shows before any host work; local effects (the composer,
- * quitting) work meanwhile. Once the renderer has closed it prints the exit
- * output: failures, then "To resume previous session\nnyte --session=<id>\n".
- */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { asId } from "@nyte-ai/schema";
-import type { Host, SessionId } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
 import {
   CliRenderEvents,
   MouseButton,
@@ -38,7 +28,8 @@ import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
 import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
-import { openTerminalHost } from "../host.ts";
+import { connectLocalService, watchRemote } from "../service.ts";
+import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import { resolveThemeMode } from "../lib/theme.ts";
 import type { PartMessage } from "../lib/view-helpers.ts";
@@ -59,7 +50,6 @@ export type TuiExit =
   | { readonly kind: "quit" }
   | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
 
-/** What `settings.read` replaces once boot has read the files. */
 const STARTUP_SETTINGS: ResolvedSettings = {
   autoUpdate: false,
   theme: "auto",
@@ -73,25 +63,18 @@ export interface AppOptions {
   readonly ports: Ports;
   readonly cwd: string;
   readonly drawPart: (message: PartMessage) => Renderable | null;
-  /** Wraps the kit components draw with (tests make drawing throw through it). */
   readonly kit?: (kit: Kit) => Kit;
 }
 
 export interface MountedApp {
   readonly store: Store;
-  /** Resolves with the exit code once something asked to close: `/quit`, Ctrl+C, the error screen's Q, a failed boot. */
   readonly closing: Promise<number>;
-  /** The one error sink: crash log entry plus a `failure` fact. */
   readonly report: ReturnType<typeof createReporter>;
-  /** Starts boot; call once `ports.host` is reachable. */
   boot(options: BootOptions): void;
-  /** The failure that ended boot, once it failed. */
   startupError(): string | null;
-  /** Stops every effect, resets the terminal outputs and unbinds keys. The renderer stays the caller's. */
   close(): Promise<void>;
 }
 
-/** Mounts the app on `renderer`; the binary and the app tests share it. */
 export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const { renderer, ports } = options;
   const controller = new AbortController();
@@ -184,7 +167,6 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   renderer.on(CliRenderEvents.THEME_MODE, syncTerminal);
   renderer.on(CliRenderEvents.SELECTION, onSelection);
 
-  // Without copy-on-select, a right-click copies the highlight and keeps it.
   renderer.root.onMouseDown = (event) => {
     if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
       return;
@@ -201,7 +183,6 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   };
 
   renderer.once(CliRenderEvents.DESTROY, () => {
-    // A signal can destroy the renderer before `close`; the native session takes writes until this returns.
     root.sinks.dispose();
     renderer.off(CliRenderEvents.RESIZE, syncTerminal);
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
@@ -270,8 +251,6 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     }
   };
 
-  // Grammars are registered before the first renderer so the tree-sitter
-  // worker knows them the moment it starts.
   registerSyntaxParsers();
   const native = new NativeSession(process.stdout);
 
@@ -289,7 +268,6 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   const terminal = terminalPort(renderer, { write: (text) => native.write(encoder.encode(text)) });
 
   let opened: {
-    readonly host: Host;
     readonly port: HostPort;
     readonly plugins: Awaited<ReturnType<typeof pluginsPort>>;
   } | null = null;
@@ -325,21 +303,28 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   });
 
   const unhook = installProcessHooks(app.report);
-  // Owned from the moment it opens, so a startup cancelled meanwhile still closes it.
-  let host: Host | null = null;
+  let host: ServiceSession | null = null;
   let closed = false;
+  const remote = new AbortController();
 
   const opening = (async (): Promise<void> => {
     await terminal.painted();
-    host = await openTerminalHost();
+    host = await connectLocalService();
+    const { connection, registration } = host;
 
-    const plugins = await pluginsPort(host, {
+    void watchRemote(registration, remote.signal, (facts) =>
+      app.store.dispatch({ kind: "remote", remote: facts }),
+    ).catch((error: unknown) => {
+      if (!remote.signal.aborted) log.write("watch", error);
+    });
+
+    const plugins = await pluginsPort(connection, {
       notify: (title, body, sound) => terminal.notify(title, body, sound),
       report: (plugin, message) =>
         app.store.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
     });
 
-    opened = { host, port: hostPort(host), plugins };
+    opened = { port: hostPort(connection, cwd), plugins };
 
     if (!closed) app.boot({ home, cwd, target: bootTarget(flags), ...flagSelection(flags) });
   })().catch((cause: unknown) => {
@@ -353,7 +338,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   ]);
 
   closed = true;
-  // Startup can still be opening the host; settle it so nothing reports after the recovery command.
+  remote.abort();
   await opening;
   const session = app.store.state().facts.session?.id ?? null;
   await cleanup("TUI", () => app.close());
@@ -368,12 +353,11 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     renderer.destroy();
     await renderer.closed;
   });
-  await cleanup("Host", () => host?.close());
+  await cleanup("Host", () => host?.connection.close());
   unhook();
   process.off("SIGINT", onSigint);
   process.off("SIGTERM", onSigterm);
 
-  // Restoration ends in escape bytes, not a newline; the text starts on a line of its own.
   process.stdout.write(exitText({ session, failures, crashes: app.store.state().local.failures }));
 
   if ((code !== 0 || failures.length > 0) && exit.kind === "quit") process.exit(1);
@@ -381,11 +365,6 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   return exit;
 }
 
-/**
- * What the terminal shows after the app closed: every crash report and
- * failure on its own line, then the command that resumes the session. The
- * two resume lines stay plain and last, even in raw PTY captures.
- */
 export function exitText(input: {
   readonly session: SessionId | null;
   readonly failures: readonly string[];
@@ -402,7 +381,6 @@ export function exitText(input: {
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
 }
 
-/** What the renderer reports about the terminal, as the `terminal` fact carries it. */
 function terminalFacts(renderer: CliRenderer): TerminalFacts {
   const selection = renderer.getSelection();
 
@@ -421,7 +399,6 @@ function bootTarget(flags: RunFlags): BootOptions["target"] {
     : flags.resume;
 }
 
-/** `--provider`/`--model` (or `NYTE_MODEL`) as one `provider/id` or bare id, and `--effort`. */
 function flagSelection(flags: RunFlags): Pick<BootOptions, "model" | "effort"> {
   const requested = flags.model ?? process.env["NYTE_MODEL"] ?? null;
 

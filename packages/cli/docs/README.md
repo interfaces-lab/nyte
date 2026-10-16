@@ -4,7 +4,6 @@ This guide and its source examples ship with the Nyte release you installed.
 The npm package records its version in `package.json`; a native archive records
 it in `VERSION` beside the executable.
 
-- [Run a conversation or one prompt](usage.md)
 - [Source examples](examples/README.md)
 
 For npm installs, this guide is inside `nyte-ai/docs`. For native installs it is

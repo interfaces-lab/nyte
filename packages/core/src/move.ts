@@ -11,54 +11,49 @@ import type {
   UserContent,
 } from "@nyte-ai/schema";
 import { guard } from "./admission.ts";
-import { summarize, summaryUpdates } from "./branch-summary.ts";
+import { holdSummary, summarizedMove, summaryHeld } from "./branch-summary.ts";
 import { objectId } from "./content.ts";
+import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
-import { isMoveOutcome, known, reserve, typedReceipt } from "./receipt-handles.ts";
-import { settleReceipt } from "./receipts.ts";
+import { known, reserve, settleReceipt, typedReceipt } from "./receipt-handles.ts";
 import type { CommitRecord } from "./records.ts";
 import { headRef, inboxRef, receiptRef } from "./refs.ts";
-import { abortHere, fence, stopRun } from "./runs.ts";
+import { abortHere, fence } from "./runs.ts";
 import {
   EMPTY_REVISION,
   STALE,
   attempt,
   commit,
-  expectOf,
-  objectOf,
-  pathOf,
-  positionOf,
+  readRefExpectation,
+  toCommitObjectId,
+  walkCommitPath,
+  createPosition,
   put,
   readReceipt,
   readTip,
   requireSession,
-  staleHead,
   withFold,
 } from "./session-state.ts";
 import type { MoveFailure, Tip } from "./session-state.ts";
 
-/** Returns where a move lands, what it hands back, and the commits it leaves behind. */
 interface Plan {
   readonly landing: CommitId | null;
   readonly handback: UserContent | null;
   readonly abandoned: readonly CommitId[];
 }
 
-/** Returns what a move decided: a guard failure, a branch summary still to write, a move written with its receipt, or the receipt another request with the same id wrote first. */
 type Decided =
   | { readonly kind: "failed"; readonly outcome: MoveFailure }
   | {
       readonly kind: "summarize";
       readonly tip: Tip;
       readonly plan: Plan;
-      readonly run: RunId | null;
       readonly instructions: string | null;
     }
   | { readonly kind: "moved"; readonly outcome: MoveOutcome; readonly stopped: RunId | null }
   | { readonly kind: "replayed" };
 
-/** Moves a head to a position as a durable command and returns its receipt. The guards, the stop fence, the head move and the pending receipt land in one set guarded by what the guard read, so a duplicate request with the same id replays the receipt and moves nothing, settling one its crashed first request left pending; only a branch summary settles later. */
 export async function move(
   kernel: Kernel,
   session: SessionId,
@@ -77,7 +72,11 @@ export async function move(
     expect: options?.expect ?? null,
   });
 
-  const receipt = typedReceipt(kernel, session, id, isMoveOutcome);
+  const receipt = typedReceipt(kernel, session, id, (record) => {
+    if (record.kind !== "move") throw new SdkError("internal", `Receipt ${id} is not a move.`);
+
+    return record.outcome;
+  });
 
   if (await known(kernel, session, id, "move", digest)) {
     await recover(kernel, session, id);
@@ -103,28 +102,75 @@ export async function move(
         kernel.wakes.notify(session, head);
       }
 
-      await settleReceipt(kernel, session, id, decided.outcome);
+      await settleReceipt(kernel, session, id, { kind: "move", outcome: decided.outcome });
 
       return receipt;
 
-    case "summarize":
+    case "summarize": {
+      const release = holdSummary(kernel, session, id);
+
       if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: null }))) {
+        release();
         await known(kernel, session, id, "move", digest);
 
         return receipt;
       }
 
-      if (decided.run !== null) await stopRun(kernel, session, decided.run);
+      void summarizedMove(kernel, {
+        session,
+        head,
+        receipt: id,
+        tip: decided.tip,
+        landing: decided.plan.landing,
+        instructions: decided.instructions,
+        running: options?.running ?? "refuse",
+        updates: async ({ inbox, receipt: pending, commit }) => [
+          {
+            name: inboxRef(session, head),
+            target: inbox.ref?.target ?? null,
+            expect: readRefExpectation(inbox.ref),
+          },
+          {
+            name: pending.ref.name,
+            target: await put(kernel, "receipt", {
+              ...pending.record,
+              move: { head, position: { kind: "commit", id: commit } },
+            }),
+            expect: pending.ref.revision,
+          },
+        ],
+      })
+        .then(async (summarized): Promise<MoveOutcome | null> => {
+          if (summarized.kind !== "moved")
+            return summarized.kind === "failed" ? summarized.outcome : null;
 
-      void summarized(kernel, session, head, decided)
+          if (summarized.stopped !== null) {
+            abortHere(kernel, summarized.stopped);
+            kernel.wakes.notify(session, head);
+          }
+
+          return {
+            kind: "moved",
+            revision: summarized.revision,
+            position: { kind: "commit", id: summarized.commit },
+            summary: asId<"message">(summarized.part),
+            handback: decided.plan.handback,
+          };
+        })
         .catch((error: unknown): MoveOutcome => ({
           kind: "summary-failed",
           reason: error instanceof Error ? error.message : String(error),
         }))
-        .then((outcome) => settleReceipt(kernel, session, id, outcome))
-        .catch(() => undefined);
+        .then((outcome) =>
+          outcome === null
+            ? undefined
+            : settleReceipt(kernel, session, id, { kind: "move", outcome }),
+        )
+        .catch(() => undefined)
+        .finally(release);
 
       return receipt;
+    }
   }
 }
 
@@ -143,7 +189,7 @@ async function decide(
     if ("kind" in checked) return { kind: "failed", outcome: checked };
 
     const plan = await withFold(kernel, session, (state) =>
-      planOf(state.commits, checked.tip.id, position),
+      planHistoryMove(state.commits, checked.tip.id, position),
     );
 
     if (plan === null) return { kind: "failed", outcome: { kind: "missing-target" } };
@@ -154,7 +200,6 @@ async function decide(
         kind: "summarize",
         tip: checked.tip,
         plan,
-        run: checked.run,
         instructions: abandoned.summarize.instructions ?? null,
       };
 
@@ -165,7 +210,7 @@ async function decide(
       {
         name: inboxRef(session, head),
         target: checked.inbox.ref?.target ?? null,
-        expect: expectOf(checked.inbox.ref),
+        expect: readRefExpectation(checked.inbox.ref),
       },
       {
         name: receiptRef(session, id),
@@ -180,8 +225,8 @@ async function decide(
       },
       {
         name: headRef(session, head),
-        target: plan.landing === null ? null : objectOf(plan.landing),
-        expect: expectOf(checked.tip.ref),
+        target: plan.landing === null ? null : toCommitObjectId(plan.landing),
+        expect: readRefExpectation(checked.tip.ref),
         event: { head, kind: "head", from: checked.tip.id, to: plan.landing, reason: "moved" },
       },
     ]);
@@ -199,7 +244,7 @@ async function decide(
         kind: "moved",
         revision:
           plan.landing === null ? EMPTY_REVISION : (outcome.revisions.at(-1) ?? EMPTY_REVISION),
-        position: positionOf(plan.landing),
+        position: createPosition(plan.landing),
         summary: null,
         handback: plan.handback,
       },
@@ -207,15 +252,19 @@ async function decide(
   });
 }
 
-function planOf(
+function planHistoryMove(
   commits: ReadonlyMap<CommitId, CommitRecord>,
   tip: CommitId | null,
   position: Position,
 ): Plan | null {
   const plan = (landing: CommitId | null, handback: UserContent | null): Plan => {
-    const kept = new Set(pathOf(commits, landing));
+    const kept = new Set(walkCommitPath(commits, landing));
 
-    return { landing, handback, abandoned: pathOf(commits, tip).filter((id) => !kept.has(id)) };
+    return {
+      landing,
+      handback,
+      abandoned: walkCommitPath(commits, tip).filter((id) => !kept.has(id)),
+    };
   };
 
   if (position.kind === "start") return plan(null, null);
@@ -228,88 +277,50 @@ function planOf(
     : plan(position.id, null);
 }
 
-async function summarized(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  pending: Extract<Decided, { readonly kind: "summarize" }>,
-): Promise<MoveOutcome> {
-  const { tip, plan } = pending;
-
-  const summary = await summarize(kernel, {
-    session,
-    head,
-    commits: plan.abandoned,
-    instructions: pending.instructions,
-    signal: new AbortController().signal,
-  });
-
-  if (summary.kind === "failed") return { kind: "summary-failed", reason: summary.reason };
-
-  const written = await summaryUpdates(kernel, {
-    session,
-    head,
-    tip,
-    landing: plan.landing,
-    abandoned: plan.abandoned,
-    markdown: summary.markdown,
-  });
-
-  return attempt<MoveOutcome>(`Moving ${head}`, async () => {
-    const checked = await guard(kernel, session, head, undefined, "stop");
-
-    if ("kind" in checked) return checked;
-    const inbox = inboxRef(session, head);
-
-    const outcome = await commit(kernel, [
-      {
-        name: inbox,
-        target: checked.inbox.ref?.target ?? null,
-        expect: expectOf(checked.inbox.ref),
-      },
-      ...written.updates,
-    ]);
-
-    if (outcome.kind === "stale")
-      return outcome.name === inbox ? STALE : staleHead(kernel, session, head);
-
-    return {
-      kind: "moved",
-      revision: outcome.revisions.at(-1) ?? EMPTY_REVISION,
-      position: { kind: "commit", id: written.commit },
-      summary: asId<"message">(written.part),
-      handback: plan.handback,
-    };
-  });
-}
-
-/** Settles each move of a session whose set landed but whose settlement was lost with its process, as `repair` runs it after a restart. */
 export async function recoverMoves(kernel: Kernel, session: SessionId): Promise<void> {
   const prefix = receiptRef(session, asId<"receipt">(""));
 
-  for (const ref of await kernel.store.refs.list(prefix))
+  for (const ref of await kernel.store.sessions.pending({ kind: "receipt", sessions: [session] }))
     await recover(kernel, session, asId<"receipt">(ref.name.slice(prefix.length)));
 }
 
-/** Settles a move whose set landed but whose settlement was lost with its process: its pending record names the head and position, so it settles `moved` with the head's revision now, though later writes moved the head on. */
 async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promise<void> {
   const found = await readReceipt(kernel, session, id);
-  const moved = found?.record.outcome === null ? found.record.move : undefined;
 
-  if (moved === undefined) return;
+  if (found === null || found.record.outcome !== null || summaryHeld(kernel, session, id)) return;
+  const moved = found.record.kind === "move" ? found.record.move : undefined;
+
+  if (moved === undefined) {
+    const interrupted =
+      found.record.kind === "move" ||
+      (found.record.kind === "send" &&
+        found.record.id === id &&
+        !(await withFold(kernel, session, (state) => state.inputs.has(asId<"message">(id)))));
+
+    if (interrupted && (found.record.kind === "send" || found.record.kind === "move"))
+      await settleReceipt(kernel, session, id, {
+        kind: found.record.kind,
+        outcome: { kind: "summary-failed", reason: "The summary was interrupted." },
+      });
+
+    return;
+  }
   const tip = await readTip(kernel, session, moved.head);
 
   const plan = await withFold(kernel, session, (state) =>
-    planOf(state.commits, tip.id, moved.position),
+    planHistoryMove(state.commits, tip.id, moved.position),
   );
 
   if (plan === null) return;
 
   await settleReceipt(kernel, session, id, {
-    kind: "moved",
-    revision: tip.ref?.revision ?? EMPTY_REVISION,
-    position: positionOf(plan.landing),
-    summary: null,
-    handback: plan.handback,
+    kind: "move",
+    outcome: {
+      kind: "moved",
+      revision: tip.ref?.revision ?? EMPTY_REVISION,
+      position: createPosition(plan.landing),
+      summary: null,
+      handback: plan.handback,
+    },
   });
 }

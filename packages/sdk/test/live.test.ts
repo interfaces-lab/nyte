@@ -18,11 +18,11 @@ import {
   publishSet,
 } from "@nyte-ai/core";
 import type { Connection, Kernel, PartRecord } from "@nyte-ai/core";
-import { createTransport } from "@nyte-ai/protocol";
+import { createTransport, decodeInput } from "@nyte-ai/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "../src/client.ts";
 import { connect } from "../src/connect.ts";
-import { memoryJournal } from "../src/journal.ts";
+import { createSendJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -42,7 +42,7 @@ async function open(): Promise<{ readonly host: Served; readonly connection: Con
     url: BASE,
     credentials: { kind: "token", token: TOKEN_SECRET },
     fetch: host.fetch,
-    journal: memoryJournal(),
+    journal: createSendJournal(),
   });
 
   cleanups.push(() => connection.close());
@@ -174,6 +174,41 @@ function markdown(view: SessionView, part: PartId): string | null {
 }
 
 describe("live parts across a reconnect", () => {
+  it("replays evicted histories while recent inactive heads resume and retain their messages", async () => {
+    const { host, connection } = await open();
+    const sessions = [];
+    const requests: { readonly session: SessionId; readonly after: number | null }[] = [];
+
+    host.intercept(async (request, next) => {
+      if (operationOf(request) === "head.watch") {
+        const input = decodeInput("head.watch", await request.clone().json());
+        requests.push({ session: input.session, after: input.after ?? null });
+      }
+
+      return next(request);
+    });
+
+    for (let index = 0; index < 20; index += 1) {
+      const session = await connection.sessions.create();
+      sessions.push(session);
+      await land(host.host.kernel, session.id, index === 0 ? "Oldest chat." : "Recent chat.");
+      await until(session.watch(), (view) => view.messages.length === 1);
+    }
+
+    const first = sessions[0];
+    const recent = sessions.at(-1);
+
+    if (first === undefined || recent === undefined) throw new Error("No sessions were created.");
+    const restored = await until(first.watch(), (view) => view.messages.length === 1);
+    expect(restored.messages[0]).toMatchObject({ kind: "user", content: "Oldest chat." });
+    expect(requests.at(-1)).toEqual({ session: first.id, after: null });
+
+    const resumed = await until(recent.watch(), (view) => view.messages.length === 1);
+    expect(resumed.messages[0]).toMatchObject({ kind: "user", content: "Recent chat." });
+    expect(requests.at(-1)?.session).toBe(recent.id);
+    expect(requests.at(-1)?.after).toBeGreaterThan(0);
+  });
+
   it("resumes a head.watch with the text a part streamed while the link was down, from any publisher (ADV F P4, §54b)", async () => {
     const host = await served();
     cleanups.push(() => host.close());
@@ -182,7 +217,7 @@ describe("live parts across a reconnect", () => {
       url: BASE,
       credentials: { kind: "token", token: TOKEN_SECRET },
       fetch: host.fetch,
-      journal: memoryJournal(),
+      journal: createSendJournal(),
     });
 
     cleanups.push(() => connection.close());
@@ -365,7 +400,7 @@ describe("live parts across a reconnect", () => {
         hostId: kernel.hostId,
         principal: TOKEN,
         credential: { kind: "token", token: TOKEN_SECRET },
-        journal: memoryJournal(),
+        journal: createSendJournal(),
         journaled: [],
       },
     );

@@ -1,18 +1,7 @@
-/**
- * Tailscale address discovery for the iOS share. Binding the share listener to
- * the tailnet address, rather than every interface, is what keeps it off the
- * local network: only devices in the same tailnet can route to 100.64.0.0/10,
- * and Tailscale has already authenticated them.
- *
- * `tailscale ip` answers from cached state even while the daemon is stopped,
- * and binding an address whose interface is down fails. Only `BackendState`
- * proves the address is live, so discovery always reads the full status.
- */
 import { execFile } from "node:child_process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-/** The paths a macOS or Linux install puts the CLI in, in the order to try them. */
 const CLI_PATHS = [
   "/usr/local/bin/tailscale",
   "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
@@ -32,15 +21,12 @@ const statusSchema = Type.Object(
 );
 
 export interface TailnetAddress {
-  /** This machine's IPv4 address on the tailnet, the one the listener binds. */
   readonly ip: string;
-  /** The MagicDNS name without its trailing dot, shown instead of the raw address. */
   readonly name: string | undefined;
 }
 
 export type TailnetLookup =
   | { readonly kind: "ready"; readonly address: TailnetAddress }
-  /** Installed but not usable yet: the daemon is stopped, or the machine is logged out. */
   | { readonly kind: "unavailable"; readonly state: string }
   | { readonly kind: "missing" };
 
@@ -58,7 +44,6 @@ function runFile(executable: string, arguments_: readonly string[]): Promise<str
   });
 }
 
-/** The 100.64.0.0/10 shared address space Tailscale assigns, checked numerically. */
 function isTailnetIpv4(value: string): boolean {
   const octets = value.split(".").map(Number);
 
@@ -89,11 +74,6 @@ function parseStatus(output: string): TailnetLookup {
   };
 }
 
-/**
- * Find this machine's tailnet address, or say why there isn't one. A missing
- * CLI and a stopped daemon are different answers because the user can fix the
- * second one without installing anything.
- */
 export async function findTailnetAddress(platform: NodeJS.Platform): Promise<TailnetLookup> {
   if (platform === "win32") return { kind: "missing" };
 

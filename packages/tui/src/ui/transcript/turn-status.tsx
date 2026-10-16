@@ -1,9 +1,3 @@
-/**
- * The status row: spinner + "Working · <activity>" / "Thinking…" /
- * "Retrying in 4s (attempt 2) · <cause>", counting down each second,
- * "• Waiting for your answer", or settled "Worked for 12s" (from the turn's
- * own startedAt/endedAt) / the failure notice / "! Stopped".
- */
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -82,7 +76,6 @@ export function TurnStatusRow(props: {
   const { kit } = useApp();
   const [now, setNow] = createSignal(kit.now());
 
-  /** The countdown ticks only while the run is retrying; the ticker is released when the effect re-runs. */
   createEffect(() => {
     if (props.status.kind !== "retrying") return;
     const tick = kit.ticker(CLOCK_INTERVAL_MS);

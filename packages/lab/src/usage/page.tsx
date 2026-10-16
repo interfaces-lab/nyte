@@ -1,13 +1,3 @@
-/**
- * Settings › Usage drafted as a terminal: one dense surface of figures the
- * reader scans and compares, no sentences explaining them. Cost, Tokens and
- * Limits share a ticker strip, a chart and a table; the table ranks by cost and
- * carries the running share, so the few rows that make most of the spend stand
- * out without a chart of their own. Fixture data only; see `fixtures.ts`.
- *
- * Keys: C, T, L switch views; Ctrl or Cmd + Shift + 1-4 pick the period;
- * Escape clears the row filter.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
@@ -67,7 +57,6 @@ const SCHEMES = [
 
 type Scheme = (typeof SCHEMES)[number][0];
 
-/** Where cumulative cost crosses this, the rest of the table is the tail. */
 const PARETO_CUT = 0.8;
 
 const asOf = new Intl.DateTimeFormat("en-US", {
@@ -85,7 +74,6 @@ export function UsagePage(): ReactElement {
   const [period, setPeriod] = useState<Period>(PERIODS[1]);
   const [selected, setSelected] = useState<string | null>(null);
 
-  // On the document, so portalled tooltips follow the scheme too.
   useEffect(() => {
     document.documentElement.style.colorScheme =
       SCHEMES.find(([name]) => name === scheme)?.[2] ?? "light dark";
@@ -225,7 +213,6 @@ function Cell({
   );
 }
 
-/** Rising cost reads bad, rising cache hits read good; flat reads neutral. */
 function toneOf(sign: -1 | 0 | 1, upIsGood: boolean): Tone {
   if (sign === 0) return "neutral";
 
@@ -290,7 +277,7 @@ function SpendView({
             </button>
           )}
           <span {...props(styles.grow)} />
-          {/* Keys sit edge to edge and pad themselves, so the pointer never falls between two. */}
+          {}
           <span role="group" aria-label="Kinds" {...props(styles.keys)}>
             {TOKEN_KINDS.toReversed().map((kind) => (
               <span
@@ -524,7 +511,6 @@ const SORTABLE: Partial<Record<ColumnKey, SortKey>> = {
   turns: "turns",
 };
 
-/** The width a cumulative bar is drawn in, beside its figure. */
 const CUM_BAR = 56;
 
 function Breakdown({
@@ -642,7 +628,6 @@ function Breakdown({
     trend: "Trend",
   };
 
-  // Every column but the name shrinks to its widest cell, header included; the name takes the rest.
   const widths =
     family === null
       ? null
@@ -1151,7 +1136,6 @@ const styles = create({
     borderCollapse: "collapse",
     tableLayout: "fixed",
     fontFamily: type.fontMono,
-    // DATA_SIZE: StyleX needs the literal, and Pretext sizes the columns at it.
     fontSize: 11,
     lineHeight: "16px",
     fontVariantNumeric: "tabular-nums",
@@ -1221,7 +1205,6 @@ const styles = create({
   },
   cumFill: { blockSize: "100%", backgroundColor: role.bgInteractiveStrong },
   cumTail: { opacity: 0.35 },
-  // The cut at 80% of the track.
   cumCut: {
     position: "absolute",
     insetBlock: 0,

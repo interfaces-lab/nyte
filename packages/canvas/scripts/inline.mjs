@@ -1,15 +1,8 @@
-/**
- * Folds `dist/shell` into one HTML string for the iOS WebView, which loads
- * the shell from memory: the module script and the stylesheet are inlined,
- * the bundled fonts are dropped (the phone sends system font stacks), and a
- * CSP meta tag allows exactly that script by hash plus the blob module
- * import. Writes `dist/shell-inline.js` and its declaration.
- */
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CANVAS_RUNTIME } from "@nyte-ai/plugin/canvas-protocol";
+import { CANVAS_RUNTIME } from "@nyte-ai/plugin/canvas/protocol";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 

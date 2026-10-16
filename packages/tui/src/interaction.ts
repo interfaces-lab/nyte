@@ -1,6 +1,7 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
+import open from "open";
 import type { LoginDriver } from "./services/auth.ts";
 import { ansiEnabled, bold, cyan, dim } from "./cli-style.ts";
 
@@ -54,11 +55,10 @@ async function ask(
     rl.close();
     hidden?.destroy();
 
-    if (secret) process.stderr.write("\n");
+    if (secret || signal.aborted) process.stderr.write("\n");
   }
 }
 
-/** CLI driver for a host login: prompts over readline, steps to stderr. */
 export function cliLoginDriver(signal: AbortSignal, onInterrupt?: () => void): LoginDriver {
   const interactive = (): void => {
     signal.throwIfAborted();
@@ -74,18 +74,19 @@ export function cliLoginDriver(signal: AbortSignal, onInterrupt?: () => void): L
     open(url, code) {
       const color = ansiEnabled(process.stderr);
 
+      void open(url).catch(() => undefined);
       console.error(
         code === undefined
-          ? `\nOpen this URL to continue:\n\n  ${cyan(url, color)}\n`
-          : `\nVisit ${url} and enter code: ${bold(code, color)}\n`,
+          ? `\nOpening your browser. If it doesn't open, visit:\n\n  ${cyan(url, color)}\n`
+          : `\nVisit ${cyan(url, color)} and enter code: ${bold(code, color)}\n`,
       );
     },
-    async paste(message, secret) {
+    async paste(message, secret, superseded) {
       interactive();
 
-      return ask(`${message} `, signal, secret, onInterrupt);
+      return ask(`${message} `, AbortSignal.any([signal, superseded]), secret, onInterrupt);
     },
-    async choose(message, options) {
+    async choose(message, options, superseded) {
       interactive();
 
       if (options.length === 0) throw new Error("No authentication choices available.");
@@ -95,7 +96,13 @@ export function cliLoginDriver(signal: AbortSignal, onInterrupt?: () => void): L
           `  ${dim(`${String(index + 1)}.`, ansiEnabled(process.stderr))} ${option.label}`,
         );
 
-      const answer = await ask(`${message} [1] `, signal, false, onInterrupt);
+      const answer = await ask(
+        `${message} [1] `,
+        AbortSignal.any([signal, superseded]),
+        false,
+        onInterrupt,
+      );
+
       const choice = options[Number(answer.trim() || "1") - 1];
 
       if (choice === undefined) throw new Error(`Invalid choice: ${answer}`);

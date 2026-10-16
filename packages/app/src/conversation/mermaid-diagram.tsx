@@ -1,6 +1,7 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -16,7 +17,7 @@ const styles = create({
   figure: {
     boxSizing: "border-box",
     width: "100%",
-    marginBlock: 10,
+    marginBlock: space.s2_5,
     marginInline: 0,
     overflow: "clip",
     borderRadius: radius.control,
@@ -26,13 +27,13 @@ const styles = create({
   toolbar: {
     display: "flex",
     alignItems: "center",
-    paddingInline: 8,
+    paddingInline: space.s2,
   },
   viewport: {
     boxSizing: "border-box",
     width: "100%",
     maxHeight: 420,
-    padding: 12,
+    padding: space.s3,
     overflow: "auto",
   },
   pending: {
@@ -41,8 +42,6 @@ const styles = create({
     minHeight: 96,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   diagram: {
     display: "flex",
@@ -138,7 +137,7 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
       ) : (
         <div data-nyte-scrollport {...props(styles.viewport)}>
           {rendered.kind === "pending" ? (
-            <div role="status" {...props(styles.pending)}>
+            <div role="status" {...props(text.sm, styles.pending)}>
               Rendering diagram…
             </div>
           ) : (

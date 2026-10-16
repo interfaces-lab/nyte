@@ -1,15 +1,14 @@
 import type { Message } from "@nyte-ai/sdk";
 import { isPart, text, thinking } from "@nyte-ai/plugin/client";
+import type { PartState } from "@nyte-ai/plugin/client";
 import { isToolMessage } from "../view-helpers.ts";
 import type { PartMessage, ToolMessage } from "../view-helpers.ts";
 import { messageParts } from "./message-references.ts";
 
-/** A text part: the model's prose. */
-export type TextMessage = PartMessage & { readonly state: { readonly markdown: string } };
+export type TextMessage = PartMessage & { readonly state: PartState<typeof text> };
 
-/** A thinking part: the model's reasoning, adjacent thoughts already one part. */
 export type ThinkingMessage = PartMessage & {
-  readonly state: { readonly markdown: string; readonly merged: number };
+  readonly state: PartState<typeof thinking>;
 };
 
 export type StepMessage = ThinkingMessage | ToolMessage;
@@ -17,38 +16,34 @@ export type StepMessage = ThinkingMessage | ToolMessage;
 type TranscriptDisplayPart =
   | { readonly kind: "part"; readonly message: Message }
   | { readonly kind: "step"; readonly messages: readonly StepMessage[] }
+  | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
   | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
-/** Narrows a message to a text part. */
 export function isTextMessage(message: Message): message is TextMessage {
   return isPart(message, text);
 }
 
-/** Narrows a message to a thinking part. */
 export function isThinkingMessage(message: Message): message is ThinkingMessage {
   return isPart(message, thinking);
 }
 
 function isStepMessage(message: Message): message is StepMessage {
-  if (isToolMessage(message))
-    return message.state.class.kind !== "delegate" || message.state.class.role !== "create";
-
-  return isThinkingMessage(message);
+  return isToolMessage(message) || isThinkingMessage(message);
 }
 
-/**
- * Reasoning and tool calls form one work episode. A subagent's create stands
- * on its own row instead, splitting the episode around it: it is a delegation
- * with its own session and status, not a step inside someone else's work.
- *
- * Assistant text is never part of an episode. Placement follows the part's
- * kind alone, which never changes, so a part drawn as prose stays prose.
- * Text closes the open episode; work that follows opens the next one.
- */
 export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
   let step: StepMessage[] = [];
   let response: TextMessage[] = [];
+  let agents: ToolMessage[] = [];
+
+  const flushAgents = (): void => {
+    const [only] = agents;
+
+    if (only !== undefined && agents.length === 1) display.push({ kind: "part", message: only });
+    else if (only !== undefined) display.push({ kind: "agents", messages: agents });
+    agents = [];
+  };
 
   const flushStep = (): void => {
     if (step.length > 0) display.push({ kind: "step", messages: step });
@@ -61,6 +56,21 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   };
 
   for (const message of messages) {
+    if (isToolMessage(message) && message.state.class.kind === "delegate") {
+      const { role } = message.state.class;
+
+      if (role === "await") continue;
+
+      if (role === "task" || role === "create") {
+        flushStep();
+        flushResponse();
+        agents.push(message);
+        continue;
+      }
+    }
+
+    flushAgents();
+
     if (isTextMessage(message)) {
       if (message.state.markdown.trim() === "") continue;
       flushStep();
@@ -79,6 +89,7 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
     display.push({ kind: "part", message });
   }
 
+  flushAgents();
   flushStep();
   flushResponse();
 

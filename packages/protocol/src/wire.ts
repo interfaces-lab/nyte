@@ -294,7 +294,6 @@ export function withInputHeader(
   };
 }
 
-/** Returns whether bytes sit on a plain `ArrayBuffer`, the only backing the DOM's `BodyInit` takes; a view over a `SharedArrayBuffer` is copied first. */
 function ownsBuffer(bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> {
   return bytes.buffer instanceof ArrayBuffer;
 }

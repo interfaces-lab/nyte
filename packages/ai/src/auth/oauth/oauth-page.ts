@@ -1,13 +1,9 @@
 /**
  * Self-contained HTML pages served by the localhost OAuth callback servers
  * (success and failure), rendered as plain strings with escaped content.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/oauth-page.ts
- * Synced with pi 7ebf9087e.
  */
 
-// Nyte divergence: pi's page is a dark, centered layout with the pi logo. This
-// one follows the Nyte landing language (paper/ink, hairline rules with corner
+// The page follows the Nyte landing language (paper/ink, hairline rules with corner
 // ticks, square corners), picks light or dark from the OS, and carries the
 // provider name in the heading. No mark yet, one system font, no JS, no
 // network: the page has to work offline and load from nothing but this string.

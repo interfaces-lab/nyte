@@ -14,18 +14,13 @@ import { IconTile } from "../ui/icon-tile.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { toast } from "../ui/toast.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
+import { ConnectionForm } from "../connection/connection-form.tsx";
 import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import { brokerCopy, connectEndingCopy, releaseCopy, type AccountCopy } from "./account-copy.ts";
 import type { Account, SignInEnding, SignOutEnding } from "./account-provider.tsx";
 
-/** The saved connection a panel sits over. `reconnect` lets its own computer be picked again. */
 type Current = { readonly saved: SavedConnection; readonly reconnect: boolean };
 
-/**
- * Nyte Connect: the account, its computers, and the address-and-token way in, as
- * one panel. The connect screen shows it inline; Settings opens it in a sheet
- * from the connection row. Clerk's hosted page is only the sign-in step.
- */
 export function ConnectPanel({
   account,
   current,
@@ -34,7 +29,7 @@ export function ConnectPanel({
 }: {
   account: Account;
   current: Current | undefined;
-  manual?: { readonly onPress: () => void; readonly expanded: boolean | undefined };
+  manual?: { readonly onPress: () => void; readonly label: string };
   welcome?: boolean;
 }) {
   const theme = useTheme();
@@ -136,17 +131,9 @@ export function ConnectPanel({
           <Group>
             <GroupRow onClick={manual.onPress}>
               <IconTile name="network" />
-              <html.span style={[textStyles.body, styles.grow]}>
-                Tailscale or local network
-              </html.span>
+              <html.span style={[textStyles.body, styles.grow]}>{manual.label}</html.span>
               <SymbolView
-                name={
-                  manual.expanded === undefined
-                    ? "chevron.right"
-                    : manual.expanded
-                      ? "chevron.up"
-                      : "chevron.down"
-                }
+                name="chevron.right"
                 size={controls.iconXs}
                 weight="semibold"
                 tintColor={theme.interactiveTertiary}
@@ -214,7 +201,6 @@ function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
       action: "retry",
     };
 
-  // Letting go of the host usually closes this panel, so its outcome is a toast.
   if (ending.released !== undefined)
     toast.show("Signed out", releaseCopy(ending.released.name, ending.released.report));
   else if (ending.kind === "signedOut") toast.show("Signed out");
@@ -252,7 +238,6 @@ function MacGroup({
     account.queryClient,
   );
   const [connecting, setConnecting] = useState<string>();
-  // The environment travels with its problem, so Pair as New Host re-pairs the one that changed.
   const [problem, setProblem] = useState<{ copy: AccountCopy; environment: EnvironmentSummary }>();
   const attempt = useRef<AbortController>(undefined);
   useMountEffect(() => () => {
@@ -445,33 +430,59 @@ function Notice({
   );
 }
 
-/**
- * The panel over a live connection, opened from Settings. A native page
- * sheet, not a route: the stack stays where it was.
- */
+export type ConnectionSheetPage = "overview" | "manual";
+
 export function ConnectSheet({
-  open,
+  page,
   onClose,
   account,
   current,
-  onManual,
 }: {
-  open: boolean;
+  page: ConnectionSheetPage | undefined;
   onClose: () => void;
-  account: Account;
+  account: Account | undefined;
   current: Current;
-  onManual: () => void;
 }) {
+  const [view, setView] = useState<ConnectionSheetPage>(page ?? "overview");
+  const [seenPage, setSeenPage] = useState(page);
+
+  if (seenPage !== page) {
+    setSeenPage(page);
+    if (page !== undefined) setView(page);
+  }
+
   return (
     <Modal
-      visible={open}
+      visible={page !== undefined}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaProvider>
-        <SheetBody onClose={onClose} account={account} current={current} onManual={onManual} />
-      </SafeAreaProvider>
+      {page === undefined ? null : (
+        <SafeAreaProvider>
+          {view === "manual" ? (
+            <ConnectionForm
+              mode={
+                current.saved.kind === "manual"
+                  ? { kind: "edit", connection: current.saved.connection }
+                  : { kind: "connect", method: "direct", initial: undefined }
+              }
+              onCancel={() => {
+                if (page === "overview") setView("overview");
+                else onClose();
+              }}
+              onSaved={onClose}
+            />
+          ) : (
+            <SheetBody
+              onClose={onClose}
+              account={account}
+              current={current}
+              onManual={() => setView("manual")}
+            />
+          )}
+        </SafeAreaProvider>
+      )}
     </Modal>
   );
 }
@@ -481,7 +492,7 @@ function SheetBody({
   account,
   current,
   onManual,
-}: Omit<Parameters<typeof ConnectSheet>[0], "open">) {
+}: Omit<Parameters<typeof ConnectSheet>[0], "page"> & { onManual: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { connection } = current.saved;
@@ -508,11 +519,25 @@ function SheetBody({
           </GroupRow>
         </Group>
         <html.div style={styles.gap} />
-        <ConnectPanel
-          account={account}
-          current={current}
-          manual={{ onPress: onManual, expanded: undefined }}
-        />
+        {account === undefined ? (
+          <Group>
+            <GroupRow onClick={onManual}>
+              <IconTile name="pencil" />
+              <html.span style={textStyles.body}>
+                {current.saved.kind === "manual" ? "Edit connection" : "Connect directly"}
+              </html.span>
+            </GroupRow>
+          </Group>
+        ) : (
+          <ConnectPanel
+            account={account}
+            current={current}
+            manual={{
+              onPress: onManual,
+              label: current.saved.kind === "manual" ? "Edit connection" : "Connect directly",
+            }}
+          />
+        )}
       </ScrollView>
     </html.div>
   );

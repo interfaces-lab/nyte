@@ -1,14 +1,3 @@
-/**
- * The Review page's line to the lab's review core (`server/review.ts`) and to
- * real core itself, all through React Query: no effects, no timers.
- *
- * What changes on its own (a brief landing, an answer arriving) comes from one
- * Nyte watch on the review's core session, read through `@nyte-ai/sdk` as
- * a streamed query that counts the views that matter. That count is part of
- * every dependent query's key, so each event refetches exactly what it can
- * change. A branch that gained commits shows up when the window regains focus,
- * because that is when you come back from committing.
- */
 import { conversationTurns, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { asId } from "@nyte-ai/schema";
 import { sdk, type Connection, type SessionView } from "@nyte-ai/sdk";
@@ -234,17 +223,9 @@ interface Seen {
   readonly count: number;
 }
 
-/** What can change a head, its run, or its queue; text and progress cannot. */
 const reviewMark = (view: SessionView): string =>
   JSON.stringify([view.seq, view.execution.kind, view.heads]);
 
-/**
- * How many views that change the review core has sent on `session` while
- * this page watched it. The watch is the query: it streams for as long as
- * something observes it, unmounting aborts it, and a dropped stream is
- * retried with the library's backoff. Appending keeps the count rising across
- * reconnects, so no dependent key ever falls back to an older value.
- */
 export function useCoreEvents(session: string | undefined): number {
   const { data } = useQuery({
     queryKey: keys.events(session ?? ""),

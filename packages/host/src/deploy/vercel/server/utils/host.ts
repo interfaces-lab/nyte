@@ -13,7 +13,6 @@ import manifest from "../../../../../package.json" with { type: "json" };
 import { driveHead } from "../workflows/drive.ts";
 import { answerRepair } from "./repair.ts";
 
-/** Returns what one instance serves: the composed host and its listener. */
 type Served = {
   readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
   readonly listener: Listener;
@@ -21,14 +20,12 @@ type Served = {
 
 const PAGE = 100;
 
-/** Boots or joins the sandbox a `{ kind: "sandbox", locator }` target names: supply a boot over your sandbox SDK, answering a `SandboxHandle` (§43i: the template carries none). Until then it rejects `SdkError("unavailable")`, so the workspace's sessions answer `unavailable` while the rest of the host serves. */
 const boot: Parameters<typeof sandboxProvider>[0]["boot"] = async () => {
   throw new SdkError("unavailable", "Supply a boot over your sandbox SDK in server/utils/host.ts.");
 };
 
 let building: Promise<Served> | null = null;
 
-/** Returns this instance's composed host and its listener, built on the first call and shared by every request and workflow step the instance serves (a failed build is forgotten, so the next call builds again): `composeHost` with `postgresStore({ connectionString: process.env.DATABASE_URL })` (unset, `SdkError("unavailable")`), the plugin `{ id: "sandbox", environment: sandboxProvider({ boot }) }` with the `boot` the deployer supplies (§43i) and workspace `{ kind: "sandbox", locator: { name: process.env.NYTE_SANDBOX ?? "nyte" } }`, `execution: { kind: "dispatch", async dispatch({ session, head }) { await start(driveHead, [{ session, head }]); } }` with `workflow/api`'s `start` (awaited, its `Run` handle dropped) (§42p, §42s: after each commit the kernel dispatches every head a wake makes owed a step, one pending dispatch per head here, so admitted inputs are `covered` and activation attaches the sandbox here), `poll: 1000` so this instance reads what other instances wrote (§42h), `home: null`, protocol's `operations()`, description `{ name: "nyte-host", platform: "vercel", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the same Postgres store, so model logins persist across instances (§42e, §43j). Drives start only from that dispatch and the repair route; nothing subscribes to the bus or to `kernel.wakes`. Jobs stay in the instance that started them: `job.output` for a job another instance started answers `unavailable`, its output reaching a client only through its exit report (§42h, §42w). `listenFetch` serves with `auth: { kind: "token", token: process.env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, `identity: seedSigner(host.hostId, seed)` when `NYTE_IDENTITY_KEY` (a base64 32-byte Ed25519 seed, §50a) is set (without it `/.nyte/identity` answers `unknown`), and a `before` that answers `GET /.nyte/repair` (the cron) through `answerRepair` with `process.env.CRON_SECRET`: it pages `host.execution.repair` (100 a page), which on this `dispatch` kernel dispatches every runnable head again (§42s). */
 export function vercelHost(): Promise<Served> {
   const built = (building ??= build());
 
@@ -94,15 +91,6 @@ async function build(): Promise<Served> {
   return { host, listener };
 }
 
-/**
- * Returns the secrets source this instance composes with, from the base64
- * `NYTE_SECRET_KEY` environment variable (decision 10, §43j).
- *
- * Without it, `key()` rejects `SdkError("unavailable")`: `secrets.set` and
- * model logins answer `unavailable`, stored logins read as absent while
- * provider keys from the environment still work. The identity has its own
- * variable (§50a).
- */
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
   if (key === undefined || key === "")
     return {

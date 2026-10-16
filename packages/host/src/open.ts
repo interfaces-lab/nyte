@@ -3,7 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import type { Models } from "@nyte-ai/ai";
+import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
@@ -16,22 +16,36 @@ import type {
   ValidationIssue,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { composeHost, dev } from "@nyte-ai/core";
+import { composeHost, dev, readModelSelection } from "@nyte-ai/core";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
-import claudeSdk, { claudeSdkProvider } from "@nyte-ai/plugin/claude-sdk";
+import bashDescription from "@nyte-ai/plugin/core/bash-description";
+import browserTools from "@nyte-ai/plugin/core/browser-tools";
+import canvas from "@nyte-ai/plugin/core/canvas";
+import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
+import codemode from "@nyte-ai/plugin/core/codemode";
+import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
+import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
+import question from "@nyte-ai/plugin/core/question";
+import rename from "@nyte-ai/plugin/core/rename";
+import telemetry from "@nyte-ai/plugin/core/telemetry";
+import webSearch from "@nyte-ai/plugin/core/web-search";
 import { operations } from "@nyte-ai/protocol";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
 import { codeOf } from "./local/tree.ts";
 import { localProvider } from "./local/provider.ts";
+import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
+import { createMcpHub } from "./mcp/hub.ts";
 import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
 import { sqliteStore } from "./sqlite.ts";
 
 const RELOAD_DEBOUNCE_MS = 250;
+
+const STORE_POLL_MS = 500;
 
 /**
  * Describes what `openHost` takes: `OpenOptions` with `store`, `workspace`,
@@ -46,7 +60,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly workspace?: WorkspaceTarget;
   /** The `@nyte-ai/ai` catalog; absent, `nyteModels` over this host's encrypted credential store (§42e). */
   readonly models?: Models;
-  /** Core plugins loaded after the built-ins and before the plugin files; default none. A `local` environment provider among them replaces the default one. */
+  /** Core plugins loaded after the first-party built-ins and before the plugin files; default none. One with a built-in's id replaces that built-in, as a bundled client's `codemode` runtime does, and a `local` environment provider among them replaces the default one. */
   readonly plugins?: readonly Plugin<"core">[];
   /** The directory whose `.nyte` holds the store, settings, plugins, secrets key and identity key; default `os.homedir()`. */
   readonly home?: string;
@@ -54,11 +68,14 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
 
 /**
  * Opens the Node host the sdk's Node `open` calls: `composeHost` with
- * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`),
+ * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`,
+ * re-read every 500 ms so a second process on the file sees the first one's
+ * runs live),
  * `workspace` (default the local folder `process.cwd()`), `secrets` (default
  * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
- * unless a plugin provides the `local` environment, then `plugins` and
- * `filePlugins`' files, `settingsSeed`'s seed, protocol's `operations()` and
+ * unless a plugin provides the `local` environment, every first-party plugin
+ * of `@nyte-ai/plugin` that `plugins` does not replace by id, then `plugins`
+ * and `filePlugins`' files, `settingsSeed`'s seed, protocol's `operations()` and
  * `hostDescription()`; each file that did not load becomes a
  * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
  * the plugin directories (§47l), which `watchPlugins` watches for hot reload
@@ -83,14 +100,12 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
   }
 }
 
-/** Returns the store a host opens when given none: `sqliteStore` at `<home>/.nyte/nyte.db`, the directory made 0700 first (§51c). */
 async function defaultStore(home: string): Promise<Store> {
   await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
 
   return sqliteStore({ path: join(home, ".nyte", "nyte.db") });
 }
 
-/** Composes the host over a resolved home, workspace and store, and returns it with `listen` and `close` bound; `owned` is the store `close` closes last, null when the caller owns it. */
 async function composeOpen(
   options: OpenHostOptions,
   input: {
@@ -104,23 +119,45 @@ async function composeOpen(
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
   const given = options.plugins ?? [];
+  const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
+
+  if (usesLocalProvider) await migrateLocalWorkspaceIdentities(await store.open());
+  const claudeCode = claudeCodeSdk();
+
+  const models =
+    options.models ??
+    (await nyteModels({ store, secrets, home, providers: [claudeCode.provider] }));
+
+  const builtins = [
+    question,
+    rename,
+    bashDescription,
+    webSearch,
+    codemode,
+    openaiCompaction(models),
+    openaiAstraContext,
+    telemetry,
+    canvas,
+    browserTools,
+    claudeCode.plugin,
+  ];
 
   const plugins = [
-    ...(given.some((plugin) => plugin.environment?.kind === "local")
-      ? []
-      : [{ id: "local", environment: localProvider({ home }) }]),
-    ...(given.some((plugin) => plugin.id === claudeSdk.id) ? [] : [claudeSdk]),
+    ...(usesLocalProvider ? [{ id: "local", environment: localProvider({ home }) }] : []),
+    ...builtins.filter((builtin) => !given.some((plugin) => plugin.id === builtin.id)),
     ...given,
   ];
 
-  const [files, settings] = await Promise.all([filePlugins(home, workspace), settingsSeed(home)]);
+  const [files, settings] = await Promise.all([filePlugins(home), settingsSeed(home)]);
+  let projectDirs: () => Promise<readonly string[]> = async () => [];
 
   const host = await composeHost({
     ...options,
     store,
     workspace,
-    loadPlugins: pluginLoader(files.dirs),
-    models: options.models ?? (await nyteModels({ store, secrets, home })),
+    loadPlugins: async (paths) => pluginLoader([...files.dirs, ...(await projectDirs())])(paths),
+    models,
+    mcp: options.mcp ?? createMcpHub({ home }),
     plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,
@@ -128,7 +165,15 @@ async function composeOpen(
     operations: operations(),
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
+    ...(owned === null ? {} : { poll: STORE_POLL_MS }),
   });
+
+  projectDirs = async () =>
+    (await host.workspaces.list()).flatMap((entry) =>
+      entry.trusted === true && "path" in entry.target
+        ? [join(entry.target.path, ".nyte", "plugins")]
+        : [],
+    );
 
   for (const row of files.failed) host.kernel.host.report(row);
 
@@ -155,7 +200,7 @@ async function composeOpen(
   );
 
   const reload = async (): Promise<void> => {
-    const next = await filePlugins(home, workspace);
+    const next = await filePlugins(home);
 
     for (const [plugin, source] of next.sources) files.sources.set(plugin, source);
     const report = await host.plugins.replace([...plugins, ...next.plugins]);
@@ -212,18 +257,12 @@ async function composeOpen(
   return { ...host, listen: attach, close, [Symbol.asyncDispose]: close };
 }
 
-/**
- * Returns the catalog a host gets when `OpenHostOptions.models` is absent:
- * `createModels` over `credentialStore(store, secrets)` (§42e), a
- * `FileModelsStore` at `<home>/.nyte/models-store.json` and ai's
- * `nyteProviders()`, with `catalog.url` from `NYTE_MODELS_URL`. Each provider
- * the credential listing names gets its saved catalog restored, with no network
- * and no secrets key; a credential is decrypted only by a provider request (§55).
- */
 async function nyteModels(input: {
   readonly store: Store;
   readonly secrets: SecretsSource;
   readonly home: string;
+  /** Providers beside Nyte's catalog, each refreshed offline at open. */
+  readonly providers: readonly Provider[];
 }): Promise<Models> {
   const credentials = credentialStore(input.store, input.secrets);
 
@@ -234,13 +273,18 @@ async function nyteModels(input: {
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
-  for (const provider of nyteProviders()) models.setProvider(provider);
-  const claude = claudeSdkProvider();
-  models.setProvider(claude);
+  for (const provider of [...nyteProviders(), ...input.providers]) models.setProvider(provider);
   const stored = await credentials.list();
+  const selected = await readModelSelection(await input.store.open());
 
   const restored = await models.refresh({
-    providers: [...stored.map((row) => row.providerId), claude.id],
+    providers: [
+      ...new Set([
+        ...stored.map((row) => row.providerId),
+        ...input.providers.map((provider) => provider.id),
+        ...(selected === null ? [] : [selected.provider]),
+      ]),
+    ],
     allowNetwork: false,
   });
 
@@ -252,20 +296,7 @@ async function nyteModels(input: {
   return models;
 }
 
-/**
- * Loads the plugin files a host serves, file by file through
- * `loadPluginDirectory` (§41j): `<home>/.nyte/plugins` as `user`, then, for a
- * `{ kind: "local", path }` workspace, `<path>/.nyte/plugins` as `project`.
- *
- * It answers the plugins in that order with the `pluginSources` map naming
- * each one's scope and path (§41e), the directories it read (what
- * `pluginLoader` accepts), and one report row per file that did not load,
- * `{ id: <its path>, source, path, issues }` (§43g).
- */
-async function filePlugins(
-  home: string,
-  workspace: WorkspaceTarget,
-): Promise<{
+async function filePlugins(home: string): Promise<{
   readonly plugins: readonly Plugin<"core">[];
   readonly sources: Map<
     Plugin<"core">,
@@ -274,12 +305,7 @@ async function filePlugins(
   readonly dirs: readonly string[];
   readonly failed: readonly HostView["plugins"][number][];
 }> {
-  const scopes = [
-    { source: "user" as const, dir: join(home, ".nyte", "plugins") },
-    ...(workspace.kind === "local" && "path" in workspace
-      ? [{ source: "project" as const, dir: join(workspace.path, ".nyte", "plugins") }]
-      : []),
-  ];
+  const scopes = [{ source: "user" as const, dir: join(home, ".nyte", "plugins") }];
 
   const plugins: Plugin<"core">[] = [];
   const sources = new Map<Plugin<"core">, { source: "user" | "project"; path: string }>();
@@ -300,12 +326,6 @@ async function filePlugins(
   return { plugins, sources, dirs: scopes.map((scope) => scope.dir), failed };
 }
 
-/**
- * Returns the report rows for the plugin files a replace did not activate:
- * `{ id: <its path>, source, path, issues }` per `rejected` or
- * `kept-previous` outcome whose plugin `files` loaded from a file, as
- * `composeHost` reports a file it drops at open.
- */
 function refused(
   files: Awaited<ReturnType<typeof filePlugins>>,
   report: PluginReplacementReport,
@@ -320,13 +340,6 @@ function refused(
   });
 }
 
-/**
- * Calls `reload` 250 ms after the last change under any of `dirs` (§49a), one
- * reload at a time, through a recursive, non-persistent `fs.watch` per
- * directory; a directory that does not exist at open is not watched. A failed
- * reload is logged and the next change tries again. The returned stop closes
- * the watchers, drops a pending reload and waits for a running one.
- */
 function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () => Promise<void> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = Promise.resolve();
@@ -372,19 +385,6 @@ function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () 
   };
 }
 
-/**
- * Reads `<home>/.nyte/settings.json` once per open, never watching or writing
- * it, into the seed `composeHost` applies (decision 12, §43c): the file's
- * settings, `{ [settingId]: Json }`, and its path, which the `settings` report
- * row carries (§43j).
- *
- * `composeHost` applies a file value only when no value is stored for that id,
- * so a value changed over the wire survives restarts (§43j), and reports
- * unknown or invalid ids as warnings under owner `settings`. A missing file is
- * no seed; a file that cannot be read or is not a JSON object is no seed and
- * one `warning`, which `openHost` reports on the `settings` row after the
- * compose.
- */
 async function settingsSeed(home: string): Promise<{
   readonly seed: {
     readonly settings: Readonly<Record<string, Json>>;
@@ -393,6 +393,7 @@ async function settingsSeed(home: string): Promise<{
   readonly issue: ValidationIssue | null;
 }> {
   const path = settingsPath(home);
+
   const text = await readFile(path, "utf8").catch((error: unknown) =>
     codeOf(error) === "ENOENT" ? null : error instanceof Error ? error : new Error(String(error)),
   );
@@ -425,11 +426,6 @@ async function settingsSeed(home: string): Promise<{
   return { seed: { settings, path }, issue: null };
 }
 
-/**
- * Returns what this machine says about its host, `{ name: os.hostname(),
- * platform: process.platform, version }` with this package's version:
- * `composeHost`'s `description` and the listener's `describe`.
- */
 function hostDescription(): HostDescription {
   return { name: hostname(), platform: process.platform, version: manifest.version };
 }

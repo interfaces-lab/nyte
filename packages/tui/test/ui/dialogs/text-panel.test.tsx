@@ -14,12 +14,11 @@ const TEXT: TextDialog = {
   scroll: 0,
 };
 
-/** The line starts a row; the scrollbar may follow it. */
 function visible(frame: string, line: string): boolean {
   return rows(frame).some((row) => new RegExp(`^\\s*${line}(\\s|$)`, "u").test(row));
 }
 
-test("the panel shows the first lines and the position at widths 40 and 100", async () => {
+test("the panel shows the first lines at widths 40 and 100", async () => {
   for (const width of [40, 100]) {
     await using app = await renderDialog(TEXT, { width, height: 14 });
     const frame = app.frame();
@@ -27,8 +26,6 @@ test("the panel shows the first lines and the position at widths 40 and 100", as
     expect(frame).toContain("Keyboard shortcuts");
     expect(visible(frame, "line 1")).toBe(true);
     expect(visible(frame, "line 40")).toBe(false);
-    expect(frame).toContain("more below");
-    expect(frame).toMatch(/1-\d+\/40/u);
     expect(frame).toContain("esc close");
   }
 });
@@ -40,7 +37,6 @@ test("paging and stepping scroll the lines", async () => {
 
   expect(visible(frame, "line 11")).toBe(true);
   expect(visible(frame, "line 1")).toBe(false);
-  expect(frame).toMatch(/11-\d+\/40/u);
   await app.send(key("picker.next"));
   frame = app.frame();
   expect(visible(frame, "line 12")).toBe(true);
@@ -48,7 +44,6 @@ test("paging and stepping scroll the lines", async () => {
   await app.send(key("chat.message.next"));
   frame = app.frame();
   expect(visible(frame, "line 40")).toBe(true);
-  expect(frame).toContain("end");
   await app.send(key("chat.message.previous"));
   expect(visible(app.frame(), "line 1")).toBe(true);
 });

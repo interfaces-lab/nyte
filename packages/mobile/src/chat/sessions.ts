@@ -5,7 +5,6 @@ import { useWatch } from "../connection/use-watch.ts";
 import type { Theme } from "../theme.ts";
 import { hasRun, sessionMark, type SessionMark } from "../view-helpers.ts";
 
-/** How many roots the directory watch carries at first, and how many more each Show More adds. */
 const PAGE = 50;
 
 type SessionListState =
@@ -14,7 +13,6 @@ type SessionListState =
   | {
       kind: "ready";
       sessions: readonly SessionInfo[];
-      /** Present when the watch is full, so more roots may exist past it. */
       next: number | undefined;
     };
 
@@ -36,7 +34,6 @@ export function needsAttention(session: SessionInfo): boolean {
   return needsInput(session) || hasFailed(session);
 }
 
-/** A question the user has to answer. */
 export function needsInput(session: SessionInfo): boolean {
   return sessionMark(session) === "waiting";
 }
@@ -103,12 +100,6 @@ export function markTone(mark: SessionMark, theme: Theme) {
   }
 }
 
-/**
- * The root list, watched: rows move from Working to Finished as the host
- * pushes them. Search matches names on the phone, over what the watch
- * carries. `refresh` reopens the watch for a pull and blanks the rows;
- * `more` widens it and keeps them up until the wider list lands.
- */
 export function useSessionList(client: Connection, search = "") {
   const [limit, setLimit] = useState(PAGE);
 

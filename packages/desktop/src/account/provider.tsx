@@ -253,7 +253,9 @@ function AccountDialog({
       }}
     >
       <Dialog.Popup>
-        <Dialog.Title xstyle={srOnly}>Sign In to Nyte</Dialog.Title>
+        <div {...props(srOnly)}>
+          <Dialog.Title>Sign In to Nyte</Dialog.Title>
+        </div>
         {children}
         <Dialog.Close
           render={

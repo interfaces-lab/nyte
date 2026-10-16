@@ -1,9 +1,3 @@
-/**
- * The reducer's decisions, asserted as effects: queue operations re-check the
- * row (withdraw only while pending), sends snapshot and clear the draft at
- * once, commands route through the registry, history recalls parts, and
- * outcomes are reported honestly.
- */
 import { asId } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
@@ -37,7 +31,7 @@ const idle = viewOf((v) =>
   v
     .turn("t1", (t) => t.user("first prompt").text("ok").ended("completed"))
     .turn("t2", (t) =>
-      t.report({ child: "s9" }, "Child s9 completed:\nreport").text("noted").ended("completed"),
+      t.report({ child: "s9" }, "report").text("noted").ended("completed"),
     )
     .turn("t3", (t) => t.action("Fix lint", "long hidden prompt").text("done").ended("completed"))
     .turn("t4", (t) =>
@@ -157,11 +151,13 @@ describe("queue operations", () => {
 
   test("an action row cannot be edited", () => {
     const view = viewOf((v) =>
-      v.pending(
-        "prompt",
-        { schedule: { kind: "next-turn", reason: "idle" } },
-        { id: "m1", source: { kind: "action", label: "Fix lint" } },
-      ),
+      v
+        .pending(
+          "prompt",
+          { schedule: { kind: "next-turn", reason: "run-ended" } },
+          { id: "m1", source: { kind: "action", label: "Fix lint" } },
+        )
+        .live("run-1"),
     );
 
     expect(
@@ -296,7 +292,10 @@ describe("send", () => {
     const asking = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
-        .question("Pick", ["A"], { id: "q1" })
+        .question(
+          [{ question: "Pick", header: "Question", options: [{ label: "A", description: "" }] }],
+          { id: "q1" },
+        )
         .waiting("q1"),
     );
 
@@ -304,7 +303,7 @@ describe("send", () => {
       kind: "answer",
       session: S1,
       part: asId("q1"),
-      choice: "Green",
+      value: "Green",
       typed: true,
     });
 
@@ -314,16 +313,16 @@ describe("send", () => {
         kind: "answer",
         session: S1,
         part: asId("q1"),
-        choice: "Green",
-        typed: { text: "Green", parts: new Map() },
+        answers: [["Green"]],
+        typed: { session: S1, draft: { text: "Green", parts: new Map() } },
       },
     ]);
 
     const refused = play(step.state, {
       kind: "answered",
-      part: asId("q1"),
-      ok: false,
-      typed: { text: "Green", parts: new Map() },
+      request: { session: S1, part: asId("q1") },
+      result: { kind: "gone" },
+      typed: { session: S1, draft: { text: "Green", parts: new Map() } },
     });
 
     expect(refused.state.local.notice?.text).toBe("That question is no longer waiting");
@@ -903,7 +902,7 @@ describe("session and view intents", () => {
     const many = viewOf((v) => {
       let built = v;
 
-      for (let index = 0; index < 60; index += 1)
+      for (let index = 0; index < 30; index += 1)
         built = built.turn(`t${String(index)}`, (t) => t.user("q").text("a").ended("completed"));
 
       return built;
@@ -913,7 +912,7 @@ describe("session and view intents", () => {
 
     expect(away.state.local.transcript).toMatchObject({
       following: false,
-      window: { kind: "from", index: 20 },
+      window: { kind: "from", index: 10 },
     });
 
     const revealed = play(away.state, { kind: "reveal-earlier" });

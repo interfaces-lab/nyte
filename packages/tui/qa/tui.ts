@@ -19,14 +19,11 @@ import {
   FIXTURE_CHILD_MODEL,
   FIXTURE_MODEL,
   FIXTURE_PROVIDER,
+  FIXTURE_SECONDARY_KEY,
   PLUGIN_EVIDENCE,
 } from "./workspace.ts";
 import type { Scenario, Screen } from "./types.ts";
 
-/**
- * A bash card asks GitHub for the bash grammar (src/syntax-parsers.ts). The loopback proxy
- * refuses it, so nothing is downloaded and the card stays plain.
- */
 const GRAMMAR_FETCHES = [
   "Blocked CONNECT github.com:443",
   "Blocked CONNECT raw.githubusercontent.com:443",
@@ -36,7 +33,6 @@ const idle = (screen: Screen) => screen.text.includes("enter send");
 
 const emptyComposer = (screen: Screen) => composer(screen, "Plan, search, build anything");
 
-/** Footer rows: the composer's bottom border names the model. */
 const footers = (screen: Screen) =>
   screen.lines.filter((line) => line.includes("╰") && line.includes("nyte-qa")).length;
 
@@ -45,21 +41,25 @@ const longList = Array.from(
   (_, index) => `list-row-${String(index).padStart(3, "0")}`,
 ).join("\n");
 
-/** The screen row that shows a list entry, or -1. */
 const rowOf = (screen: Screen, entry: string) =>
   screen.lines.findIndex((line) => line.includes(entry));
 
-/** A tool result in the request carries `text`. */
+const belowComposer = (screen: Screen, text: string) =>
+  rowOf(screen, text) > screen.lines.findIndex((line) => line.includes("╰"));
+
 const toolResult = (request: { readonly payload: ProviderPayload }, text: string) =>
   request.payload.messages.some(
     (message) => message.role === "tool" && JSON.stringify(message.content).includes(text),
   );
 
-/** User messages the request carries. */
+const pendingRow = (screen: Screen, text: string) =>
+  screen.lines.find((line) =>
+    ["↑", "↓", "…"].some((glyph) => line.trimStart().startsWith(`${glyph} ${text}`)),
+  );
+
 const users = (request: { readonly payload: ProviderPayload }) =>
   request.payload.messages.filter((message) => message.role === "user").length;
 
-/** The subagent id the create call's result names. */
 const createdChild = (payload: ProviderPayload): string => {
   const text = payload.messages
     .map((message) =>
@@ -131,6 +131,122 @@ export const tui: Scenario = {
           );
           assert.ok((await pluginSetups()) > 0, "The project plugin activated");
         });
+
+        await context.beat("/usage opens under the composer before the first message", async () => {
+          const requests = provider.requests.length;
+
+          const shown = await command(
+            terminal,
+            "usage",
+            (screen) => belowComposer(screen, "Usage") && screen.text.includes("No usage recorded"),
+          );
+
+          assert.ok(!shown.text.includes("more below"));
+          assert.equal(provider.requests.length, requests);
+          await press(terminal, "picker.close", (screen) => ready(screen) && emptyComposer(screen));
+        });
+
+        await context.beat("/accounts chooses the login used by the next request", async () => {
+          const requests = provider.requests.length;
+          await command(
+            terminal,
+            "accounts",
+            (screen) =>
+              belowComposer(screen, "Accounts") &&
+              screen.text.includes("Primary") &&
+              screen.text.includes("Secondary"),
+          );
+          await press(terminal, "picker.next", (screen) =>
+            screen.lines.some((line) => /❯.*Secondary/u.test(line)),
+          );
+          await press(
+            terminal,
+            "picker.accept",
+            (screen) => ready(screen) && screen.text.includes("Using Secondary."),
+          );
+          assert.equal(provider.requests.length, requests);
+        });
+
+        await context.beat(
+          "login fields paste, select all, delete and accept a replacement key",
+          async () => {
+            const label = "Replacement account";
+            await command(terminal, `login ${FIXTURE_PROVIDER}`, (screen) =>
+              belowComposer(screen, "Label for this"),
+            );
+            const pastedName = terminal.raw(
+              "\x1b[200~Old account name\x1b[201~",
+              "auth.paste.name",
+            );
+            await terminal.waitForScreen(
+              (screen) => screen.text.includes("Old account name"),
+              deadline(),
+              pastedName,
+            );
+            const clearedName = terminal.raw("\x1b[97;9u\x7f", "auth.select.all.delete.name");
+            await terminal.waitForScreen(
+              (screen) => !screen.text.includes("Old account name"),
+              deadline(),
+              clearedName,
+            );
+            const replacementName = terminal.raw(`\x1b[200~${label}\x1b[201~`, "auth.repaste.name");
+            await terminal.waitForScreen(
+              (screen) => screen.text.includes(label),
+              deadline(),
+              replacementName,
+            );
+            await press(
+              terminal,
+              "auth.submit",
+              (screen) =>
+                belowComposer(screen, "API key") && !screen.text.includes("Label for this"),
+            );
+            const oldKey = "old-invalid-qa-key";
+            const pastedKey = terminal.raw(`\x1b[200~${oldKey}\x1b[201~`, "auth.paste.key");
+            const masked = await terminal.waitForScreen(
+              (screen) => screen.text.includes("•".repeat(oldKey.length)),
+              deadline(),
+              pastedKey,
+            );
+            assert.ok(!masked.text.includes(oldKey));
+            const clearedKey = terminal.raw("\x01\x7f", "auth.select.all.delete.key");
+            await terminal.waitForScreen(
+              (screen) => !screen.text.includes("••"),
+              deadline(),
+              clearedKey,
+            );
+            const replacementKey = terminal.raw(
+              `\x1b[200~${FIXTURE_SECONDARY_KEY}\x1b[201~`,
+              "auth.repaste.key",
+            );
+            const repasted = await terminal.waitForScreen(
+              (screen) => screen.text.includes("•".repeat(FIXTURE_SECONDARY_KEY.length)),
+              deadline(),
+              replacementKey,
+            );
+            assert.ok(!repasted.text.includes(FIXTURE_SECONDARY_KEY));
+            const clearedByCommand = terminal.raw("\x1b[127;9u", "auth.command.backspace");
+            await terminal.waitForScreen(
+              (screen) => !screen.text.includes("••"),
+              deadline(),
+              clearedByCommand,
+            );
+            const finalKey = terminal.raw(
+              `\x1b[200~${FIXTURE_SECONDARY_KEY}\x1b[201~`,
+              "auth.repaste.after.command.backspace",
+            );
+            await terminal.waitForScreen(
+              (screen) => screen.text.includes("•".repeat(FIXTURE_SECONDARY_KEY.length)),
+              deadline(),
+              finalKey,
+            );
+            await press(
+              terminal,
+              "auth.submit",
+              (screen) => ready(screen) && screen.text.includes("Signed in"),
+            );
+          },
+        );
 
         await context.beat(
           "Cmd+Backspace deletes to the line start; undo and other deletion keys still work",
@@ -208,6 +324,80 @@ export const tui: Scenario = {
             );
             assert.equal(request.prompt, "hi nyte");
             assert.equal(request.model, FIXTURE_MODEL);
+            assert.equal(request.account, "secondary");
+          },
+        );
+
+        await context.beat(
+          "/usage shows the completed request's tokens; Ctrl+C closes it",
+          async () => {
+            const requests = provider.requests.length;
+
+            const shown = await command(
+              terminal,
+              "usage",
+              (screen) =>
+                belowComposer(screen, "Usage") && screen.text.includes("this chat · 28 tokens"),
+            );
+
+            assert.ok(shown.text.includes("Hello from the loopback provider."));
+            assert.ok(shown.text.includes("input 20 · output 8"));
+            assert.equal(provider.requests.length, requests);
+            await press(terminal, "chat.quit", (screen) => ready(screen) && emptyComposer(screen));
+          },
+        );
+
+        await context.beat(
+          "slash menus stay under the composer and close without sending",
+          async () => {
+            const requests = provider.requests.length;
+
+            for (const [name, title] of [
+              ["help", "Commands"],
+              ["settings", "Settings"],
+              ["model", "Models"],
+              ["effort", "Thinking level"],
+              ["theme", "Theme"],
+              ["follow-up", "Follow-up behavior"],
+              ["resume", "Resume chat"],
+              ["tasks", "Tasks"],
+              ["tree", "Session Tree"],
+              ["edit", "Session Tree"],
+              ["plugins", "Plugins"],
+              ["accounts", "Accounts"],
+              ["login", "Sign in to a provider"],
+              ["logout", "Remove a stored credential"],
+            ] as const) {
+              const shown = await command(
+                terminal,
+                name,
+                (screen) => emptyComposer(screen) && belowComposer(screen, title),
+              );
+              assert.ok(shown.text.includes("Hello from the loopback provider."));
+              await press(
+                terminal,
+                "picker.close",
+                (screen) => ready(screen) && !belowComposer(screen, title),
+              );
+            }
+
+            await command(terminal, "help", (screen) => belowComposer(screen, "Commands"));
+            await press(
+              terminal,
+              "picker.accept",
+              (screen) =>
+                belowComposer(screen, "Keyboard shortcuts") && !belowComposer(screen, "Commands"),
+            );
+            await press(
+              terminal,
+              "picker.close",
+              (screen) => ready(screen) && !belowComposer(screen, "Keyboard shortcuts"),
+            );
+            await command(terminal, `login ${FIXTURE_PROVIDER}`, (screen) =>
+              belowComposer(screen, "Label for this"),
+            );
+            await press(terminal, "auth.cancel", ready);
+            assert.equal(provider.requests.length, requests);
           },
         );
 
@@ -446,7 +636,27 @@ export const tui: Scenario = {
                 action: {
                   kind: "tool",
                   name: "question",
-                  arguments: { prompt: "Choose a QA answer", options: ["First", "Second"] },
+                  arguments: {
+                    questions: [
+                      {
+                        question: "Choose a QA answer",
+                        header: "Question",
+                        options: [
+                          { label: "First", description: "" },
+                          { label: "Second", description: "" },
+                        ],
+                      },
+                      {
+                        question: "Pick QA features",
+                        header: "Features",
+                        multiple: true,
+                        options: [
+                          { label: "Docs", description: "Readme changes" },
+                          { label: "Tests", description: "Regression checks" },
+                        ],
+                      },
+                    ],
+                  },
                 },
               },
               {
@@ -456,7 +666,18 @@ export const tui: Scenario = {
                 action: {
                   kind: "tool",
                   name: "question",
-                  arguments: { prompt: "Name a QA colour", options: ["Red", "Blue"] },
+                  arguments: {
+                    questions: [
+                      {
+                        question: "Name a QA colour",
+                        header: "Question",
+                        options: [
+                          { label: "Red", description: "" },
+                          { label: "Blue", description: "" },
+                        ],
+                      },
+                    ],
+                  },
                 },
               },
               {
@@ -478,7 +699,18 @@ export const tui: Scenario = {
                 action: {
                   kind: "tool",
                   name: "question",
-                  arguments: { prompt: "Stop me before I answer", options: ["Keep", "Drop"] },
+                  arguments: {
+                    questions: [
+                      {
+                        question: "Stop me before I answer",
+                        header: "Stop question",
+                        options: [
+                          { label: "Keep", description: "" },
+                          { label: "Drop", description: "" },
+                        ],
+                      },
+                    ],
+                  },
                 },
               },
               {
@@ -504,6 +736,35 @@ export const tui: Scenario = {
               terminal,
               "picker.accept",
               (screen) =>
+                screen.text.includes("2/2 · Pick QA features") &&
+                screen.text.includes("Readme changes"),
+            );
+            await press(terminal, "picker.accept", (screen) => /✓.*Docs/u.test(screen.text));
+            await press(terminal, "picker.next", (screen) => /❯.*Tests/u.test(screen.text));
+            await press(terminal, "picker.accept", (screen) => /✓.*Tests/u.test(screen.text));
+            await press(terminal, "picker.next", (screen) =>
+              /❯.*Type an answer/u.test(screen.text),
+            );
+            await press(terminal, "picker.next", (screen) => /❯.*Submit/u.test(screen.text));
+            await press(terminal, "picker.next", (screen) => /❯.*Back/u.test(screen.text));
+            await press(terminal, "picker.accept", (screen) =>
+              screen.text.includes("1/2 · Choose a QA answer"),
+            );
+            await press(terminal, "picker.next", (screen) => /❯.*Second/u.test(screen.text));
+            await press(
+              terminal,
+              "picker.accept",
+              (screen) => /✓.*Docs/u.test(screen.text) && /✓.*Tests/u.test(screen.text),
+            );
+            await press(terminal, "picker.next", (screen) => /❯.*Tests/u.test(screen.text));
+            await press(terminal, "picker.next", (screen) =>
+              /❯.*Type an answer/u.test(screen.text),
+            );
+            await press(terminal, "picker.next", (screen) => /❯.*Submit/u.test(screen.text));
+            await press(
+              terminal,
+              "picker.accept",
+              (screen) =>
                 screen.text.includes("Name a QA colour") && screen.text.includes("esc later"),
             );
             await press(
@@ -521,12 +782,18 @@ export const tui: Scenario = {
             );
 
             const asked = await provider.waitForRequest((item) => item.script === "question");
+
             const second = await provider.waitForRequest(
               (item) => item.script === "second question",
             );
+
             const answered = await provider.waitForRequest((item) => item.script === "answered");
 
             assert.ok(toolResult(second, "Second"), "The picked answer reaches the model");
+            assert.ok(
+              toolResult(second, "Docs, Tests"),
+              "The grouped multi-select answer reaches the model",
+            );
             assert.ok(
               toolResult(answered, "Green"),
               "An answer in the user's words reaches the model",
@@ -560,9 +827,7 @@ export const tui: Scenario = {
               terminal,
               "chat.interrupt",
               (screen) =>
-                screen.lines.some(
-                  (line) => line.includes("✗") && line.includes("Stop me before I answer"),
-                ) &&
+                screen.lines.some((line) => line.includes("✗") && line.includes("Stop question")) &&
                 emptyComposer(screen) &&
                 idle(screen),
             );
@@ -756,6 +1021,21 @@ export const tui: Scenario = {
           );
         });
 
+        await context.beat(
+          "/tree opens under the composer; Enter on the latest message says so; Esc closes it",
+          async () => {
+            await command(terminal, "tree", (screen) => belowComposer(screen, "Session Tree"));
+            await press(terminal, "picker.accept", (screen) =>
+              belowComposer(screen, "Already at that point in the chat"),
+            );
+            await press(
+              terminal,
+              "tree.close",
+              (screen) => !screen.text.includes("Session Tree") && emptyComposer(screen),
+            );
+          },
+        );
+
         let sessionId = "";
 
         await context.beat(
@@ -784,6 +1064,7 @@ export const tui: Scenario = {
 
             assert.equal(request.model, FIXTURE_CHILD_MODEL);
             assert.equal(request.payload.reasoning_effort, "medium");
+            assert.equal(request.account, "secondary", "The selected account survives restart");
             assert.ok(JSON.stringify(request.payload.messages).includes("hi nyte"));
             assert.equal(chat().length, before + 1, "Resuming replays no earlier request");
           },
@@ -795,7 +1076,7 @@ export const tui: Scenario = {
         });
 
         await context.beat(
-          "a new session's first message uses the /effort level chosen before it",
+          "a new session's first message shows in the transcript at once and uses the /effort level chosen before it",
           async () => {
             provider.enqueue({
               name: "first message",
@@ -812,10 +1093,18 @@ export const tui: Scenario = {
               footer(screen, FIXTURE_CHILD_MODEL, "low"),
             );
             await type(terminal, "first message of a new session");
-            await press(
-              terminal,
-              "chat.submit",
-              (screen) => screen.text.includes("A new session answered.") && idle(screen),
+            const queued = new Set<string>();
+            await press(terminal, "chat.submit", (screen) => {
+              const row = pendingRow(screen, "first message of a new session");
+
+              if (row !== undefined) queued.add(row.trim());
+
+              return screen.text.includes("A new session answered.") && idle(screen);
+            });
+            assert.deepEqual(
+              [...queued],
+              [],
+              "The first message lands in the transcript, never as a pending row first",
             );
 
             const request = await provider.waitForRequest(

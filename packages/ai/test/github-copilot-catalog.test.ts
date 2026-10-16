@@ -134,7 +134,8 @@ describe("GitHub Copilot provider", () => {
         ["gpt-5.5", "openai-responses"],
       ],
     );
-    const stored = await setup.credentials.read("github-copilot");
+    const accounts = await setup.credentials.read("github-copilot");
+    const stored = accounts?.accounts.find((account) => account.id === accounts.active)?.credential;
     assert.equal(stored?.type, "oauth");
     if (stored?.type !== "oauth") throw new Error("Expected OAuth credential");
     assert.equal(stored.access, SESSION_TOKEN);
@@ -165,8 +166,16 @@ describe("GitHub Copilot provider", () => {
   test("malformed stored account IDs do not expose subscription models", async () => {
     const setup = copilotModels({});
     await signIn(setup.models);
-    await setup.credentials.modify("github-copilot", async (credential) =>
-      credential?.type === "oauth" ? { ...credential, availableModelIds: [42] } : undefined,
+    await setup.credentials.modify("github-copilot", async (stored) =>
+      stored
+        ? {
+            ...stored,
+            accounts: stored.accounts.map((account) => ({
+              ...account,
+              credential: { ...account.credential, availableModelIds: [42] },
+            })),
+          }
+        : undefined,
     );
     assert.deepEqual(await setup.models.getAvailable("github-copilot"), []);
   });
@@ -189,8 +198,17 @@ describe("GitHub Copilot provider", () => {
       ["claude-sonnet-4.6"],
     );
     await setup.models.logout("github-copilot");
-    assert.equal(await setup.credentials.read("github-copilot"), undefined);
+    const remaining = await setup.models.listAccounts("github-copilot");
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0]?.active, false);
     assert.deepEqual(await setup.models.getAvailable("github-copilot"), []);
+    const first = remaining[0];
+    if (!first) throw new Error("Expected the first account to remain");
+    await setup.models.selectAccount("github-copilot", first.id);
+    assert.deepEqual(
+      (await setup.models.getAvailable("github-copilot")).map((model) => model.id),
+      ["gemini-3.8-flash"],
+    );
   });
 
   test("concurrent requests refresh once under the credential lock and replace account availability", async () => {
@@ -203,7 +221,19 @@ describe("GitHub Copilot provider", () => {
     });
     await signIn(setup.models);
     await setup.credentials.modify("github-copilot", async (stored) =>
-      stored?.type === "oauth" ? { ...stored, expires: Date.now() + 60_000 } : undefined,
+      stored
+        ? {
+            ...stored,
+            accounts: stored.accounts.map((account) =>
+              account.credential.type === "oauth"
+                ? {
+                    ...account,
+                    credential: { ...account.credential, expires: Date.now() + 60_000 },
+                  }
+                : account,
+            ),
+          }
+        : undefined,
     );
     const resolved = await Promise.all([
       setup.models.getAuth("github-copilot"),
@@ -262,7 +292,19 @@ describe("GitHub Copilot provider", () => {
     });
     await signIn(setup.models);
     await setup.credentials.modify("github-copilot", async (stored) =>
-      stored?.type === "oauth" ? { ...stored, expires: 0 } : undefined,
+      stored
+        ? {
+            ...stored,
+            accounts: stored.accounts.map((account) =>
+              account.credential.type === "oauth"
+                ? {
+                    ...account,
+                    credential: { ...account.credential, expires: 0 },
+                  }
+                : account,
+            ),
+          }
+        : undefined,
     );
     const before = await setup.credentials.read("github-copilot");
     vi.stubEnv("COPILOT_GITHUB_TOKEN", "ambient-token");

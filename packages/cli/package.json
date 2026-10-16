@@ -2,7 +2,7 @@
   "name": "nyte-ai",
   "version": "0.0.18",
   "private": false,
-  "description": "Headless agent runner and terminal client for Nyte",
+  "description": "Installs the nyte command: downloads, verifies and runs the native Nyte terminal client",
   "keywords": [
     "agent",
     "ai",
@@ -32,17 +32,9 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo dist",
     "package": "pnpm pack --pack-destination dist",
-    "test": "vitest --run",
-    "typecheck": "tsgo --noEmit"
-  },
-  "dependencies": {
-    "@nyte-ai/host": "workspace:*",
-    "@nyte-ai/plugin": "workspace:*",
-    "@nyte-ai/sdk": "workspace:*"
+    "test": "vitest --run"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "typescript": "6.0.3",
     "vitest": "^5.0.4"
   },
   "engines": {

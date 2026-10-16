@@ -103,8 +103,8 @@ if (target === undefined) {
 }
 
 const publishedExport = (source) => ({
-  types: source.replace("./", "./dist/").replace(/\.ts$/, ".d.ts"),
-  import: source.replace("./", "./dist/").replace(/\.ts$/, ".js"),
+  types: source.replace("./", "./dist/").replace(/\.tsx?$/, ".d.ts"),
+  import: source.replace("./", "./dist/").replace(/\.tsx?$/, ".js"),
 });
 
 const paths = {};
@@ -158,7 +158,12 @@ if (command === "check") {
             outDir: dist,
             paths: ownPaths,
           },
-          include: [join(cwd, "src/**/*.ts"), join(cwd, "examples/**/*.ts")],
+          include: [
+            join(cwd, "src/**/*.ts"),
+            join(cwd, "src/**/*.tsx"),
+            join(cwd, "examples/**/*.ts"),
+            join(cwd, "examples/**/*.tsx"),
+          ],
           exclude: [join(cwd, "node_modules"), dist, join(cwd, "test")],
         },
         null,
@@ -176,10 +181,13 @@ if (command === "check") {
     }
 
     const result = await build({
-      entrypoints: globSync(["src/**/*.ts", "examples/**/*.ts"], {
-        cwd,
-        exclude: ["**/*.d.ts"],
-      }).map((file) => join(cwd, file)),
+      entrypoints: globSync(
+        ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx"],
+        {
+          cwd,
+          exclude: ["**/*.d.ts"],
+        },
+      ).map((file) => join(cwd, file)),
       root: cwd,
       outdir: dist,
       target: "node",

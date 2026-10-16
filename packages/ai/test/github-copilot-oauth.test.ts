@@ -1,8 +1,3 @@
-/**
- * The "GitHub Copilot OAuth device flow" cases are based on
- * https://github.com/earendil-works/pi/blob/dev/packages/ai/test/github-copilot-oauth.test.ts
- * Synced with pi a276dabe5.
- */
 import assert from "node:assert/strict";
 import { afterEach, describe, test, vi } from "vitest";
 import { githubCopilotOAuth } from "@nyte-ai/ai/auth/oauth/github-copilot";

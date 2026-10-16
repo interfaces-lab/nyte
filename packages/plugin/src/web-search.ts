@@ -4,7 +4,7 @@ import { standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { Plugin, PluginApi } from "./core.ts";
+import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
 
 /**
  * Names a search provider the `web_search` tool can route to.
@@ -123,12 +123,12 @@ export const adapters: {
       : [];
   },
   async exa({ query, key, fetch, signal }) {
-    const url = new URL("https://mcp.exa.ai/mcp");
+    const endpoint = new URL("https://mcp.exa.ai/mcp");
 
-    if (key !== undefined) url.searchParams.set("exaApiKey", key);
+    if (key !== undefined) endpoint.searchParams.set("exaApiKey", key);
     const result = await callTool(
       fetch,
-      url,
+      endpoint,
       undefined,
       "web_search_exa",
       { query, numResults: 8 },
@@ -194,7 +194,6 @@ export const adapters: {
   },
 };
 
-/** Posts one JSON-RPC `tools/call` to a public MCP route and returns its `result`, from a JSON body or the first SSE frame that carries one. */
 async function callTool(
   fetch: typeof globalThis.fetch,
   url: URL,
@@ -235,7 +234,6 @@ async function callTool(
   return undefined;
 }
 
-/** Returns a response's body text, throwing with its status when the provider refused. */
 async function answered(response: Response): Promise<string> {
   const body = await response.text();
 
@@ -245,7 +243,6 @@ async function answered(response: Response): Promise<string> {
   return body;
 }
 
-/** Returns parsed JSON, or undefined for text that is not JSON. */
 function parse(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -254,7 +251,6 @@ function parse(text: string): unknown {
   }
 }
 
-/** Returns a `Name: value` line's value from an Exa block, or null when absent or `N/A`. */
 function field(block: string, name: string): string | null {
   const value = block.match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1]?.trim();
 
@@ -265,7 +261,6 @@ const parameters = standard(
   Type.Object({ query: Type.String({ minLength: 1, description: "What to search the web for." }) }),
 );
 
-/** Returns the `web_search` tool over the plugin's provider setting and its secret keys. */
 function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
   return {
     name: "web_search",
@@ -310,7 +305,6 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
   };
 }
 
-/** Stores or removes a provider's key in the plugin's secrets. */
 const keyCommand: Command<{ provider: SearchProvider; key: string }> = {
   name: "key",
   title: "Set a web search key",

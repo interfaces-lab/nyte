@@ -1,11 +1,8 @@
-/**
- * Effects that stay on this machine: local `!` shells, the native composer
- * and scrollbox handles, dialog loads, pastes and the clipboard, the external
- * editor, settings writes, the self-update, notifications and exit.
- */
+import type { McpServerView, WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import { usageCard, usageLines } from "../lib/usage.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
+import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
 import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
 import type { Effect } from "../model/effect.ts";
@@ -130,7 +127,6 @@ export async function scroll(effect: Of<"scroll">, context: HandlerContext): Pro
   }
 }
 
-/** Async dialog data, addressed by dialog id; a dialog that closed meanwhile never receives it. */
 export async function load(effect: Of<"load">, context: HandlerContext): Promise<void> {
   const { dispatch } = context;
 
@@ -152,7 +148,9 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
 
   switch (request.kind) {
     case "sessions":
-      return { kind: "sessions", sessions: await ports.host.rootSessions() };
+      return { kind: "sessions", sessions: await Array.fromAsync(ports.host.rootSessions()) };
+    case "accounts":
+      return { kind: "accounts", accounts: await ports.host.accounts(request.provider) };
     case "tree": {
       const view = await ports.host.session(request.session).tree();
 
@@ -188,13 +186,14 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
     }
 
     case "usage": {
+      const providers = await ports.host.usage();
       const state = read();
       const view = state.facts.session?.view ?? null;
 
       if (view === null) throw new Error("No chat is open");
       return {
         kind: "text",
-        lines: usageLines(usageCard(view, state.facts.catalog.catalog ?? undefined)),
+        lines: usageLines(usageCard(view, providers)),
       };
     }
 
@@ -209,6 +208,7 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
             id: path,
             label: path,
             description: "",
+            timing: null,
             status: null,
             mark: null,
           })),
@@ -237,12 +237,48 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
       return { kind: "text", lines: lines.length === 0 ? ["No plugins"] : lines };
     }
 
+    case "mcp-servers":
+      return {
+        kind: "list",
+        choices: {
+          kind: "ready",
+          items: mcpServerChoices(await ports.host.mcp(request.workspace)),
+        },
+      };
+
+    case "mcp-server":
+      return {
+        kind: "list",
+        choices: {
+          kind: "ready",
+          items: mcpActionChoices(await mcpServer(ports, request.workspace, request.server)),
+        },
+      };
+
+    case "mcp-details":
+      return {
+        kind: "text",
+        lines: mcpDetailLines(await mcpServer(ports, request.workspace, request.server)),
+      };
+
     default: {
       const _exhaustive: never = request;
 
       return _exhaustive;
     }
   }
+}
+
+async function mcpServer(
+  ports: HandlerContext["ports"],
+  workspace: WorkspaceId,
+  name: string,
+): Promise<McpServerView> {
+  const found = (await ports.host.mcp(workspace)).servers.find((server) => server.name === name);
+
+  if (found === undefined) throw new Error(`No MCP server is named ${name}.`);
+
+  return found;
 }
 
 export async function listDirectory(
@@ -316,6 +352,19 @@ export async function readClipboard(
     },
     context,
   );
+}
+
+export async function readDialogClipboard(
+  effect: Of<"read-dialog-clipboard">,
+  context: HandlerContext,
+): Promise<void> {
+  const content = await context.ports.terminal.readClipboard();
+  context.dispatch({
+    kind: "dialog-pasted",
+    dialog: effect.dialog,
+    promptVersion: effect.promptVersion,
+    text: content.kind === "text" ? content.text : null,
+  });
 }
 
 export async function copy(effect: Of<"copy">, context: HandlerContext): Promise<void> {

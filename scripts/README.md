@@ -43,7 +43,6 @@ nyte
 VERSION
 docs/
   README.md
-  usage.md
   examples/
     README.md
     ask.sh

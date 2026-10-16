@@ -1,4 +1,3 @@
-/** Number formats for the usage lab. Every figure on the page goes through here. */
 import type { Account } from "./fixtures";
 
 const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -37,7 +36,6 @@ const hourLabel = new Intl.DateTimeFormat("en-US", {
 export const usd = (value: number): string =>
   Math.abs(value) >= 10_000 ? usdCompact.format(value) : usd2.format(value);
 
-/** Axis ticks: no cents, compact past a thousand. */
 export const usdTick = (value: number): string =>
   value >= 1000 ? usdCompact.format(value) : `$${whole.format(value)}`;
 
@@ -53,7 +51,6 @@ function direction(change: number): -1 | 0 | 1 {
   return change > 0 ? 1 : -1;
 }
 
-/** Signed change against the previous period, or an em dash when there is nothing to compare. */
 export function delta(current: number, previous: number) {
   const change = previous === 0 ? 0 : (current - previous) / previous;
 
@@ -83,10 +80,6 @@ export const bucketLabel = (start: number, unit: "hour" | "day"): string =>
 export const bucketTitle = (start: number, unit: "hour" | "day"): string =>
   unit === "hour" ? `${dayLong.format(start)} ${hourLabel.format(start)}` : dayLong.format(start);
 
-/**
- * Where a window ends if the last two steps' pace holds: the percent at reset,
- * and the minutes until it fills, or null when it ends with room to spare.
- */
 export function project(account: Account) {
   const now = account.samples.length - 1;
   const used = account.samples.at(-1) ?? 0;

@@ -188,13 +188,6 @@ export async function countLiveEnvironments(db: D1Database, ownerId: string): Pr
   return row?.count ?? 0;
 }
 
-/**
- * Who may claim an environment, as one SQL predicate used by every statement
- * of a claim: an owner the broker has not heard is disabled or deleted, and a
- * session the broker has not denied. `owner` and `session` are bound
- * parameters or columns qualified with their outer table, never bare names,
- * since the subqueries have columns of those names themselves.
- */
 const standing = (owner: string, session: string, now: string) => `
   NOT EXISTS (SELECT 1 FROM owners WHERE user_id = ${owner} AND status != 'active')
   AND NOT EXISTS (SELECT 1 FROM denied_sessions
@@ -203,11 +196,6 @@ const standing = (owner: string, session: string, now: string) => `
 const CLAIM_INSERT = `INSERT INTO environments
   (id, owner_id, thumbprint, public_key, name, state, generation, policy, created_at)`;
 
-/**
- * What a claim asks for. A `session` claim is the signed-in browser's own
- * link; a `transaction` claim derives owner, session, key and name from the
- * approved transaction it names, never from the host.
- */
 export type ClaimInput =
   | {
       readonly kind: "session";
@@ -227,31 +215,18 @@ export type ClaimInput =
 
 export type ClaimOutcome =
   | { readonly kind: "linked"; readonly environment: Environment; readonly fresh: boolean }
-  /** The key belongs to another owner's environment. */
   | { readonly kind: "conflict" }
-  /** The key's environment was unlinked; the key is never reused. */
   | { readonly kind: "revoked" }
   | { readonly kind: "limit" }
   | { readonly kind: "owner_disabled" }
   | { readonly kind: "session_revoked" }
-  /** A transaction claim: the transaction is not approved. */
   | { readonly kind: "transaction"; readonly state: Exclude<LinkTransactionState, "consumed"> }
-  /** A transaction claim whose transaction was consumed earlier by this same key: the receipt comes back. */
   | {
       readonly kind: "recovered";
       readonly environment: Environment;
       readonly transaction: LinkTransaction;
     };
 
-/**
- * The one way an environment is created or resumed. One batch: insert a new
- * active environment within the owner's limit, or rename the owner's active
- * one for this key; for a transaction, consume it only when that exact
- * active environment exists; then read what stands. Every statement carries
- * the same eligibility, so a revoked owner, denied session, lapsed approval
- * or cancelled transaction changes nothing. The answer is read after the
- * batch, never before it.
- */
 export async function claimEnvironment(db: D1Database, input: ClaimInput): Promise<ClaimOutcome> {
   const id = crypto.randomUUID();
 
@@ -293,7 +268,6 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
 
       if (environment.owner_id !== input.ownerId) return { kind: "conflict" };
 
-      // The owner's active key, yet neither statement touched it: eligibility refused the write.
       if (!wrote)
         return refusedClaim(db, {
           ownerId: input.ownerId,
@@ -307,7 +281,6 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
     return refusedClaim(db, { ownerId: input.ownerId, sessionId: input.sessionId, now: input.now });
   }
 
-  // A transaction's owner, session, key and name are its own columns: `t` throughout.
   const approved = `t.id = ?1 AND t.thumbprint = ?2 AND t.state = 'approved'
     AND t.authorization_expires_at > ?3 AND ${standing("t.owner_id", "t.session_id", "?3")}`;
   const [, , consumed, environmentRow, transactionRow] = await db.batch([
@@ -380,7 +353,6 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
   });
 }
 
-/** Why a claim that changed nothing was refused: standing first, then the limit. */
 async function refusedClaim(
   db: D1Database,
   input: { readonly ownerId: string; readonly sessionId: string; readonly now: number },
@@ -873,26 +845,15 @@ export async function deferSessionRevocation(
     .run();
 }
 
-// ---------------------------------------------------------------------------
-// Link transactions
-// ---------------------------------------------------------------------------
 
-/** Pending transactions one key may hold; a retried open resumes rather than adds. */
 export const LINK_TRANSACTION_PENDING_LIMIT = 3;
 
 export type OpenTransactionOutcome =
   | { readonly kind: "opened"; readonly transaction: LinkTransaction }
-  /** The same key and operation id with a different name or key material. */
   | { readonly kind: "conflict" }
-  /** Another pending transaction already holds this code. */
   | { readonly kind: "code_taken" }
   | { readonly kind: "limit" };
 
-/**
- * Open a transaction, or find the one this key already opened under the same
- * operation id. Insert-or-read, so a retried open after a lost answer gets
- * the same row; its immutable name, key and code are compared.
- */
 export async function openLinkTransaction(
   db: D1Database,
   input: {
@@ -937,7 +898,6 @@ export async function openLinkTransaction(
           ),
       );
     } catch {
-      // The partial unique index on pending codes is the only other constraint that can fail.
       return { kind: "code_taken" };
     }
 
@@ -990,7 +950,6 @@ export async function findLinkTransaction(
   );
 }
 
-/** The pending, unexpired transaction a code names. Expired ones are invisible before the sweep marks them. */
 export async function findPendingLinkTransaction(
   db: D1Database,
   input: { readonly codeHash: string; readonly now: number },
@@ -1006,7 +965,6 @@ export async function findPendingLinkTransaction(
   );
 }
 
-/** Bind the owner to a pending, unexpired transaction, once. False when it is no longer pending. */
 export async function approveLinkTransaction(
   db: D1Database,
   input: {
@@ -1037,7 +995,6 @@ export async function approveLinkTransaction(
   );
 }
 
-/** The owner refuses a pending transaction. False when it is no longer pending. */
 export async function denyLinkTransaction(
   db: D1Database,
   input: { readonly id: string; readonly now: number },
@@ -1054,11 +1011,6 @@ export async function denyLinkTransaction(
 const UNBIND = `owner_id = NULL, session_id = NULL, owner_label = NULL,
   approved_at = NULL, authorization_expires_at = NULL`;
 
-/**
- * The host gives up: an unfinished transaction ends cancelled with its
- * binding dropped. A consumed one is left as it is; the row read back says
- * which happened.
- */
 export async function cancelLinkTransaction(
   db: D1Database,
   input: { readonly id: string; readonly thumbprint: string },
@@ -1078,14 +1030,6 @@ export async function cancelLinkTransaction(
   return one(LinkTransactionRow, row?.results[0]);
 }
 
-/**
- * Lapse what the owner never approved and what the host never completed.
- * Terminal rows are kept: a consumed row is the only way a key that lost the
- * answer finds its environment again, and a cancelled or lapsed row is what
- * keeps the same signed open from reopening under a new id. Nothing in a
- * terminal row is a secret: the code hash only ever matched while pending,
- * and the binding is dropped with the state.
- */
 export async function expireLinkTransactions(db: D1Database, now: number): Promise<void> {
   await db.batch([
     db

@@ -1,9 +1,3 @@
-/**
- * Facts the terminal draws that `SessionView` does not carry, written over the
- * view: the turn buckets, the queue and the reports waiting beside it, a tool
- * call's status word, the session's spend so far, and the composer's
- * completion token.
- */
 import { isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
 import type { PartState } from "@nyte-ai/plugin/client";
 import type {
@@ -16,45 +10,59 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 
-/** A user input as the view carries it. */
 export type UserMessage = Extract<Message, { readonly kind: "user" }>;
 
-/** A report a subagent or a background job sent the session: an input, but nobody typed it. */
 export type ReportMessage = UserMessage & {
   readonly source: Extract<MessageSource, { readonly kind: "child" | "job" }>;
 };
 
-/** Returns true when an input is a subagent's or a job's report rather than the user's. */
 export function isReport(message: UserMessage): message is ReportMessage {
   return message.source.kind === "child" || message.source.kind === "job";
 }
 
-/** Returns what a user input shows: an action's label, never its prompt, else what was sent. */
 export function shownContent(message: UserMessage): UserContent {
   return message.source.kind === "action" ? message.source.label : message.content;
 }
 
-/** A part as the view carries it in the transcript. */
 export type PartMessage = Extract<Message, { readonly kind: "part" }>;
 
-/** A tool part, its state narrowed to `ToolPartState`. */
 export type ToolMessage = PartMessage & { readonly state: ToolPartState };
 
-/** Returns true when a part message is a tool call. */
 export function isToolMessage(message: Message): message is ToolMessage {
   return isPart(message, tool);
 }
 
-/** Returns the user's messages not yet placed: this client's unsent sends, then the host's pending inputs. Reports are not the user's to edit or send, so they wait apart. */
+function isLanding(message: UserMessage, view: SessionView): boolean {
+  if (view.execution.kind !== "idle") return false;
+
+  return (
+    message.status.kind === "pending" ||
+    (message.status.kind === "unsent" && message.status.retrying === null)
+  );
+}
+
 export function queuedMessages(view: SessionView): readonly UserMessage[] {
   return view.messages.flatMap((message) =>
-    message.kind === "user" && message.status.kind !== "landed" && !isReport(message)
+    message.kind === "user" &&
+    message.status.kind !== "landed" &&
+    !isReport(message) &&
+    !isLanding(message, view)
       ? [message]
       : [],
   );
 }
 
-/** Returns the reports not yet placed, which ride with the next turn. */
+export function landingMessages(view: SessionView): readonly UserMessage[] {
+  return view.messages.flatMap((message) =>
+    message.kind === "user" &&
+    message.status.kind !== "landed" &&
+    !isReport(message) &&
+    isLanding(message, view)
+      ? [message]
+      : [],
+  );
+}
+
 export function pendingReports(view: SessionView): readonly ReportMessage[] {
   return view.messages.flatMap((message) =>
     message.kind === "user" && message.status.kind !== "landed" && isReport(message)
@@ -63,7 +71,6 @@ export function pendingReports(view: SessionView): readonly ReportMessage[] {
   );
 }
 
-/** Returns the token counts and cost of every completed run this view holds. */
 export function sessionUsage(view: SessionView): Usage {
   const empty: Usage = {
     input: 0,
@@ -97,13 +104,10 @@ export function sessionUsage(view: SessionView): Usage {
   }, empty);
 }
 
-/** Whether a heading asserts a verb: present while open, past once done on its own, none otherwise. */
 export type ToolTense = "running" | "past" | "none";
 
-/** The colour role a call's state takes. */
 export type ToolTone = "running" | "attention" | "success" | "failure" | "stopped";
 
-/** A tool call's state in words: tense, tone and the word a card shows after its subject. */
 export interface ToolStatus {
   readonly tense: ToolTense;
   readonly tone: ToolTone;
@@ -112,11 +116,6 @@ export interface ToolStatus {
 
 const RUNNING: ToolStatus = { tense: "running", tone: "running", word: undefined };
 
-/**
- * Returns the one reading of a tool call every surface draws, from its phase,
- * its outcome and the part's status. A verb appears only when it is true; a
- * call parked on the user's answer needs input.
- */
 export function toolStatus(state: ToolPartState, status: PartStatus): ToolStatus {
   if (status.kind === "failed")
     return status.failure.class === "aborted"
@@ -149,7 +148,6 @@ export function toolStatus(state: ToolPartState, status: PartStatus): ToolStatus
   }
 }
 
-/** Returns what a settled call said in text, or a failed call's reason; empty while it runs. */
 export function toolOutput(state: ToolPartState): string {
   if (state.phase !== "settled") return "";
 
@@ -173,20 +171,13 @@ export function toolOutput(state: ToolPartState): string {
   }
 }
 
-/** The inline composer token being completed: `@` for a file, `/` for a command. */
 export interface CompletionTrigger {
   readonly kind: "@" | "/";
-  /** Full token span; accepting a result replaces this range. */
   readonly start: number;
   readonly end: number;
-  /** Text between the trigger and the caret. */
   readonly query: string;
 }
 
-/**
- * Returns the `@` or `/` token under the caret. A trigger character inside a
- * word is text; the replacement range runs through the token's whole tail.
- */
 export function completionTrigger(
   value: string,
   cursor = value.length,
@@ -205,11 +196,6 @@ export function completionTrigger(
   return { kind, start, end, query: value.slice(start + 1, caret) };
 }
 
-/**
- * Reads a watch until the returned disposer runs: each value goes to `next`,
- * a failure to `fail`. The terminal's one wrapper over `watch()`; the
- * disposer returns the iterator, which closes the stream.
- */
 export function follow<T>(
   stream: AsyncIterable<T>,
   next: (value: T) => void,
@@ -238,14 +224,12 @@ export function follow<T>(
   };
 }
 
-/** Returns true when a message is the model's prose, narrowing its state. */
 export function isTextMessage(
   message: Message,
 ): message is PartMessage & { readonly state: PartState<typeof text> } {
   return isPart(message, text);
 }
 
-/** Returns true when a message is a thought, narrowing its state. */
 export function isThinkingMessage(
   message: Message,
 ): message is PartMessage & { readonly state: PartState<typeof thinking> } {

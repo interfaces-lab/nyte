@@ -164,10 +164,6 @@ export class SessionActions {
     }
   }
 
-  /**
-   * A message to an archived chat brings it back. No notification: the message
-   * is the reason, and undoing the restore would hide the reply.
-   */
   restore(sessionId: SessionId): void {
     if (this.#find(sessionId)?.archived !== true) return;
     this.#archiveNotifications.get(sessionId)?.();
@@ -275,7 +271,6 @@ export class SessionActions {
     return work;
   }
 
-  /** The directory watch carries the change; a row read on its own is patched here. */
   #commit({ sessionId, change }: PendingChange): void {
     if (change.kind === "delete") {
       this.#client.removeQueries({ queryKey: keys.session(sessionId), exact: true });

@@ -20,6 +20,8 @@ import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -41,12 +43,12 @@ const styles = create({
   headerRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     boxSizing: "border-box",
     width: "100%",
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
-    paddingInlineEnd: 8,
+    paddingInlineEnd: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -69,11 +71,9 @@ const styles = create({
     textAlign: "left",
   },
   notice: {
-    padding: 10,
+    padding: space.s2_5,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
 });
@@ -126,11 +126,6 @@ export function ChangesStack({
   readonly onRevertPath?: (path: string) => void;
   readonly onScrollTop: (scrollTop: number) => void;
   readonly onActivePath: (path: string) => void;
-  /**
-   * An expanded header CodeView renders asks for its file's patch until it
-   * unmounts. CodeView renders headers only inside its window and overscan,
-   * so this is the stack's viewport demand.
-   */
   readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
   const theme = useSetting(preferences.theme);
@@ -252,7 +247,7 @@ export function ChangesStack({
         }}
         renderCustomHeader={renderHeader}
         renderAnnotation={(annotation) => (
-          <div {...props(styles.notice)}>{annotation.metadata}</div>
+          <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
         )}
         onScroll={(top, instance) => {
           const report = scrollReport.current;
@@ -323,10 +318,7 @@ function StackHeader({
         <span {...props(diffStyles.stackHeaderGlyph, diffStyles.stackHeaderIcon)}>
           <FileTypeIcon path={path} />
         </span>
-        <Collapsible.Chevron
-          size={12}
-          xstyle={[diffStyles.stackHeaderGlyph, diffStyles.stackHeaderChevron]}
-        />
+        <Collapsible.Chevron size={12} xstyle={diffStyles.stackHeaderChevron} />
         <span {...props(diffStyles.stackPath, styles.path)}>{path}</span>
         {(added > 0 || removed > 0) && (
           <span
@@ -347,13 +339,12 @@ function StackHeader({
         )}
       </Collapsible.Trigger>
       {children}
-      {/* A collapsed file shows no body, so it asks for none. */}
+      {}
       {!collapsed && demand !== undefined && <PatchDemand key={path} path={path} demand={demand} />}
     </Collapsible.Root>
   );
 }
 
-/** Asks for one file's patch for as long as its expanded header is rendered. */
 function PatchDemand({
   path,
   demand,

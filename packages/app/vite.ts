@@ -29,13 +29,11 @@ export function dropInlinedGhosttyWasm(): Plugin {
   };
 }
 
-/** The built runtime shell, `pnpm --dir packages/canvas build`. */
 const SHELL_DIRECTORY = fileURLToPath(new URL("../canvas/dist/shell/", import.meta.url));
 
 const SHELL_MISSING =
   "packages/canvas/dist/shell is missing. Run `pnpm --dir packages/canvas build` first.";
 
-/** The header every shell response carries; `public/vercel.json` repeats it for the deployed site. */
 const SHELL_POLICY =
   "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
@@ -47,11 +45,6 @@ const SHELL_TYPES = new Map([
   [".map", "application/json"],
 ]);
 
-/**
- * The canvas shell at `/canvas/`: served from the canvas package's build in
- * development, copied into `dist/canvas/` on build. The iframe loads it with
- * `sandbox="allow-scripts"`, so it runs in an opaque origin either way.
- */
 export function canvasShell(): Plugin {
   let outDir = "dist";
 
@@ -111,7 +104,6 @@ export function canvasShell(): Plugin {
   };
 }
 
-/** Rows the console keeps in memory; older ones live only in the JSONL file. */
 const CONSOLE_ROWS = 20_000;
 
 const CONSOLE_PAGE = fileURLToPath(new URL("./dev-console.html", import.meta.url));
@@ -124,7 +116,6 @@ const ROW = Type.Object({
   data: Type.String(),
 });
 
-/** Returns the rows a POST body carries; a malformed body or row is dropped. */
 function rowsOf(body: string): readonly DevRow[] {
   try {
     return Value.Parse(Type.Array(Type.Unknown()), JSON.parse(body)).filter((item) =>
@@ -135,13 +126,6 @@ function rowsOf(body: string): readonly DevRow[] {
   }
 }
 
-/**
- * The dev console at `/__dev/` (§46; goes with `dev`): a table of every DEV
- * line, console error and uncaught exception the running processes post to
- * `/__dev/log`. Node processes forward with `NYTE_DEV_LOG=http://localhost:5179/__dev/log`;
- * the app in this server forwards on its own. Rows stream to open pages over
- * `/__dev/stream` and append to `.nyte/dev-log.jsonl`, truncated on start.
- */
 export function devConsole(): Plugin {
   return {
     name: "nyte:dev-console",

@@ -28,6 +28,7 @@ import {
 } from "../queries.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import type { ConversationTurn } from "../view-helpers.ts";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   branchReadout,
@@ -54,14 +55,12 @@ import type { ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
 
-/** A file Git reports: from status in a working scope, from the manifest for a commit. */
 interface VcsChangeRow {
   readonly source: "working" | "commit";
   readonly path: string;
   readonly status: FileStatus;
 }
 
-/** A file one turn's run changed, as its recorded snapshots say. */
 interface RecordedChangeRow {
   readonly source: "recorded";
   readonly path: string;
@@ -79,10 +78,6 @@ const EMPTY_RECORDED: readonly RecordedChangeRow[] = [];
 
 const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 
-/**
- * Each set of a turn's recorded rows is one state of that turn's patches, so a
- * live turn's next answer reads as a new state rather than as the same one.
- */
 const recordedVersions = new WeakMap<readonly RecordedChangeRow[], number>();
 
 let nextRecordedVersion = 0;
@@ -97,7 +92,6 @@ function recordedVersion(rows: readonly RecordedChangeRow[]): number {
   return nextRecordedVersion;
 }
 
-/** What a review mark records for an entry; an unreadable patch has nothing to record. */
 function viewedDigest(entry: PatchEntry): string | undefined {
   switch (entry.kind) {
     case "ready":
@@ -150,8 +144,8 @@ const styles = create({
   },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   unmarked: {
-    paddingBlock: 6,
-    paddingInline: 12,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s3,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     textWrap: "pretty",
@@ -162,7 +156,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     minHeight: 0,
-    padding: 20,
+    padding: space.s5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     textAlign: "center",
@@ -260,7 +254,6 @@ interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly turns: readonly ConversationTurn[];
   readonly turnsError: Error | null;
   readonly liveRun: RunId | undefined;
-  /** The workspace the session's runs recorded their snapshots in. */
   readonly workspace: WorkspaceId | undefined;
 }
 
@@ -353,7 +346,6 @@ function ChangesPanelView({
 
   const vcsRequest = vcsRequestForScope(activeScope);
 
-  // The manifest names a commit's files and counts every file's lines, without a patch.
   const manifest = useVcsChanges(
     repository === undefined ? undefined : vcsRequest,
     options.ignoreWhitespace,
@@ -417,9 +409,6 @@ function ChangesPanelView({
 
   const activePath = stackOrder.includes(selectedPath ?? "") ? selectedPath : stackOrder[0];
 
-  // Every expanded file is read while the stack shows, nearest the file in
-  // view first, alternating below and above it, so whichever way the reader
-  // scrolls the next files are already read.
   const preparedPaths = useMemo((): readonly string[] => {
     if (!visible) return [];
     const collapsed = new Set(collapsedPaths);
@@ -438,9 +427,6 @@ function ChangesPanelView({
     return nearest.filter((path) => !collapsed.has(path));
   }, [visible, collapsedPaths, stackOrder, activePath]);
 
-  // Patches are read for every expanded file, rendered headers first, under a
-  // key that names the comparison and its state. A turn's patches are already
-  // in hand; they take the same path so parsing stays off the main thread.
   const selectedTurnId = selectedTurn?.scope.turnId;
   const { ignoreWhitespace } = options;
 
@@ -505,10 +491,8 @@ function ChangesPanelView({
     patches.prepare(preparedPaths);
   }, [patches, preparedPaths]);
 
-  // Leaving the panel drops every patch it read and any read still in flight.
   useMountEffect(() => () => patches.release());
 
-  /** The entry a row shows, and whether it was read under the current key. */
   const patchFor = useCallback(
     (path: string): { readonly entry: PatchEntry; readonly fresh: boolean } | undefined => {
       const current = patchSource !== undefined && patchSnapshot.key === patchSource.key;
@@ -546,8 +530,6 @@ function ChangesPanelView({
     [rows, patchFor, statByPath],
   );
 
-  // A review mark records the patch that was read, so only an entry read under
-  // the current key has a digest; anything else leaves a mark unchecked.
   const digestByPath = useMemo(() => {
     const digests = new Map<string, string>();
 
@@ -624,10 +606,6 @@ function ChangesPanelView({
 
   const [markNotice, setMarkNotice] = useState({ scope: "", text: "" });
 
-  // Marking reads every named patch first, in the loader's bounded batches, so
-  // a mark always records a patch. A file whose patch cannot be read stays
-  // unmarked and is reported, never certified; so is a request the changes
-  // outran before every patch was read.
   const setViewed = useCallback(
     (paths: readonly string[], viewed: boolean): void => {
       if (!viewed) {
@@ -710,7 +688,6 @@ function ChangesPanelView({
     [sections, rowByPath, viewedState],
   );
 
-  // A total over files whose counts are unknown would understate the change.
   const scopeStats = sections.reduce<{ added: number; removed: number } | undefined>(
     (total, section) =>
       total === undefined || section.stat.kind === "unknown"
@@ -725,7 +702,6 @@ function ChangesPanelView({
   );
 
   const filterFiles = (): void => {
-    // The rail mounts on toggle; focus lands the frame after it shows.
     if (!fileTreeVisible) onToggleFileTree();
     requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };

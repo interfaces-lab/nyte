@@ -984,7 +984,19 @@ test("Codex subscription windows still come from wham/usage", async () => {
   assert.equal(server.requests[0].path, "/wham/usage");
   assert.equal(limits.plan, "plus");
   assert.deepEqual(limits.windows, [
-    { id: "five_hour", usedPercent: 28, windowMinutes: 300, resetsAt: 2_000_000_000_000 },
-    { id: "seven_day", usedPercent: 56, windowMinutes: 10_080, resetsAt: 2_000_100_000_000 },
+    {
+      id: "five_hour",
+      label: "5-hour",
+      usedPercent: 28,
+      windowMinutes: 300,
+      resetsAt: 2_000_000_000_000,
+    },
+    {
+      id: "seven_day",
+      label: "Weekly",
+      usedPercent: 56,
+      windowMinutes: 10_080,
+      resetsAt: 2_000_100_000_000,
+    },
   ]);
 });

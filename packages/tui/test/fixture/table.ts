@@ -1,7 +1,3 @@
-/**
- * Builds a `TableInput` from a terse spec so table tests read like the
- * header table: `tableInput({ run: "working", draft: "fix it", followUp: "queue" })`.
- */
 import { asId } from "@nyte-ai/schema";
 import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
 import type { CompletionModel } from "../../src/model/completion.ts";
@@ -16,7 +12,6 @@ import type { Draft } from "../../src/model/state.ts";
 export interface TableSpec {
   readonly run?: "idle" | "working" | "waiting" | "retrying";
   readonly draft?: string;
-  /** Appends a file marker (and its part) to the draft, so it is a message with parts. */
   readonly attachment?: boolean;
   readonly question?: "head" | "child";
   readonly editing?: "steer" | "queue";
@@ -148,8 +143,25 @@ export function tableInput(spec: TableSpec): TableInput {
         : {
             session: asId(spec.question === "head" ? "s1" : "s9"),
             part: asId("q1"),
-            prompt: "Pick one",
-            options: ["A", "B"],
+            questions: [
+              {
+                question: "Pick one",
+                header: "Pick",
+                options: [
+                  { label: "A", description: "" },
+                  { label: "B", description: "" },
+                ],
+              },
+            ],
+            field: {
+              question: "Pick one",
+              header: "Pick",
+              options: [
+                { label: "A", description: "" },
+                { label: "B", description: "" },
+              ],
+            },
+            index: 0,
             owner: spec.question === "head" ? { kind: "head" } : { kind: "child", short: "s9" },
             panel: false,
           },

@@ -3,6 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Task } from "../../../src/lib/tasks.ts";
 import type { InspectorDialog } from "../../../src/model/dialogs/tasks.ts";
 import { InspectorView } from "../../../src/ui/dialogs/inspector.tsx";
+import { frameShowing } from "../../fixture/render.tsx";
 import { stateOf } from "../../fixture/state.ts";
 import { followed, viewOf } from "../../fixture/view.ts";
 import { DialogHost } from "../../../src/ui/dialogs/dialog-host.tsx";
@@ -33,7 +34,7 @@ const JOB: Task = {
   },
 };
 
-test("the host draws the inspector as a screen with the task id until the task is known", async () => {
+test("the host draws a loading inspector inline until the task is known", async () => {
   await using app = await renderDialog(DIALOG);
   const frame = app.frame();
 
@@ -125,5 +126,5 @@ test("an agent's inspector draws the child's transcript", async () => {
     () => <DialogHost />,
   );
 
-  expect(app.captureCharFrame()).toContain("child reply");
+  expect(await frameShowing(app, "child reply")).toContain("child reply");
 });

@@ -1,4 +1,3 @@
-/** The browser panel's shortcuts, for keys pressed in its controls and keys its focused page forwards. */
 export type BrowserShortcut =
   | "back"
   | "forward"
@@ -24,7 +23,6 @@ interface ShortcutKey {
   readonly metaKey: boolean;
 }
 
-/** Under the primary modifier: ⌘ on macOS, Ctrl elsewhere. Punctuation goes by physical key. */
 const PRIMARY = new Map<string, BrowserShortcut>([
   ["BracketLeft", "back"],
   ["BracketRight", "forward"],
@@ -48,11 +46,6 @@ const PRIMARY_SHIFT = new Map<string, BrowserShortcut>([
   ["Minus", "zoom-out"],
 ]);
 
-/**
- * The letter or digit a chord names: the typed one, so ⌘R is R on Dvorak too, or the
- * physical key's when the layout types another script there, as on Cyrillic. Main
- * matches menu accelerators by the same rule.
- */
 export function shortcutCharacter(event: Pick<ShortcutKey, "key" | "code">): string | undefined {
   const typed = event.key.toLowerCase();
 
@@ -61,7 +54,6 @@ export function shortcutCharacter(event: Pick<ShortcutKey, "key" | "code">): str
   return /^(?:Key|Digit)([A-Z0-9])$/.exec(event.code)?.[1]?.toLowerCase();
 }
 
-/** Letters and digits follow the layout; other keys go by position. */
 function keyName(event: ShortcutKey): string {
   const character = shortcutCharacter(event);
 
@@ -80,16 +72,10 @@ const HELD = new Set<BrowserShortcut>([
   "zoom-reset",
 ]);
 
-/** Whether a held key repeats the shortcut; toggles and one-shot commands run once per press. */
 export function repeatsWhenHeld(shortcut: BrowserShortcut): boolean {
   return HELD.has(shortcut);
 }
 
-/**
- * `source` is where the key was pressed. ⌘← and ⌘→ go back and forward only from the
- * page, which forwards them when nothing editable has focus; in the panel's fields
- * they move the caret.
- */
 export function resolveBrowserShortcut(
   event: ShortcutKey,
   mac: boolean,

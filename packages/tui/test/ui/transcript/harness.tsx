@@ -1,9 +1,3 @@
-/**
- * Renders transcript components under a static `App`: the screen is derived
- * from a `State` signal the test can replace, dispatches are recorded, the
- * kit is the real one (`createKit`) over the test renderer, and the tickers
- * run on a manual schedule the test advances.
- */
 import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testing";
 import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -22,9 +16,7 @@ import { render } from "../../fixture/render.tsx";
 
 export interface ManualSchedule {
   readonly schedule: (callback: () => void, intervalMs: number) => () => void;
-  /** Fires every live interval once. */
   advance(): void;
-  /** Intervals scheduled and not yet cleared. */
   active(): number;
 }
 

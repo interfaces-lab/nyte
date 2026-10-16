@@ -27,6 +27,7 @@ function session(execution: Execution = completed, unread = true, id = "chat"): 
     id: asId<"session">(id),
     name: "A thread",
     parent: null,
+    call: null,
     workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,

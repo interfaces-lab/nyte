@@ -1,8 +1,3 @@
-/**
- * A scripted `Connection` for tests: sessions yield the views a test gives
- * them, the directory yields its rows, and every operation a test does not
- * script rejects `unavailable`. A test reads what was sent from `sent`.
- */
 import { SdkError } from "@nyte-ai/sdk";
 import type {
   Connection,
@@ -20,36 +15,27 @@ import type {
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 
-/** What a scripted connection answers. */
 export interface ConnectionScript {
-  /** Each session's views: the ones its watch yields in order, or a stream a test pushes to. */
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
-  /** The directory rows `sessions.watch` and `session(id).info()` answer from. */
   readonly sessions?: readonly SessionInfo[];
   readonly workspaces?: readonly WorkspaceInfo[];
-  /** Overrides on one session's handle, by id. */
   readonly session?: (id: SessionId) => Partial<Session>;
-  /** The host view `watch()` yields. */
   readonly host?: ViewStream<HostView>;
-  /** Overrides on `models`. */
   readonly models?: Partial<ModelsApi>;
 }
 
-/** A send a scripted session received. */
 export interface ScriptedSend {
   readonly session: SessionId;
   readonly content: UserContent;
   readonly options: Json | undefined;
 }
 
-/** Values a test pushes while a screen watches; the newest one is what a read answers. */
 export interface ViewStream<T = SessionView> {
   readonly latest: () => T | undefined;
   readonly push: (value: T) => void;
   readonly watch: () => AsyncIterable<T>;
 }
 
-/** Returns a stream that starts at `first` and yields every value pushed after it. */
 export function viewStream<T = SessionView>(first: T): ViewStream<T> {
   let latest = first;
   const waiting = new Set<(view: T) => void>();
@@ -99,7 +85,6 @@ async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
   await new Promise<never>(() => undefined);
 }
 
-/** Returns a connection over `script`, and the sends it received. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
   readonly sent: readonly ScriptedSend[];
@@ -158,6 +143,15 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     id,
     info: refuse,
     watch: refused,
+    mcp: {
+      watch: refused,
+      reconnect: refuse,
+      setEnabled: refuse,
+      login: () => ({ steps: refused, answer: refuse }),
+      logout: refuse,
+      add: refuse,
+      remove: refuse,
+    },
     update: refuse,
     reload: refuse,
     jobs: { start: refuse, recover: refuse, list: refuse, watch: refused },
@@ -201,6 +195,9 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     blob: refuse,
     models: {
       list: refuse,
+      accounts: refuse,
+      selectAccount: refuse,
+      usage: refuse,
       refresh: refuse,
       setDefault: refuse,
       verify: refuse,

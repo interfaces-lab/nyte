@@ -18,7 +18,6 @@ import { JsonType, cyclicWithJson, withJson } from "./json.ts";
 import { UsageType } from "./models.ts";
 import { nullable } from "./nullable.ts";
 
-/** The TypeBox schema of a `RunView`. */
 export const RunViewType = Type.Object({
   id: idSchema<"run">(),
   head: idSchema<"head">(),
@@ -31,7 +30,6 @@ export const RunViewType = Type.Object({
   ]),
 });
 
-/** The TypeBox schema of a `RunEnd`. */
 export const RunEndType = Type.Union([
   Type.Object({ kind: Type.Literal("completed"), usage: UsageType }),
   Type.Object({ kind: Type.Literal("stopped") }),
@@ -40,7 +38,6 @@ export const RunEndType = Type.Union([
 
 const DEADLINE = { deadline: Type.Optional(Type.Number()) };
 
-/** The TypeBox schema of a `WaitTarget`. */
 export const WaitTargetType = Type.Union([
   Type.Object({
     ...DEADLINE,
@@ -53,7 +50,6 @@ export const WaitTargetType = Type.Union([
   Type.Object({ ...DEADLINE, kind: Type.Literal("timer"), until: Type.Number() }),
 ]);
 
-/** The TypeBox schema of an `Execution`. */
 export const ExecutionType = Type.Union([
   Type.Object({
     kind: Type.Literal("idle"),
@@ -76,7 +72,6 @@ export const ExecutionType = Type.Union([
   }),
 ]);
 
-/** The TypeBox schema of a `BackgroundItem`. */
 export const BackgroundItemType = Type.Object({
   kind: Type.Enum(["child", "job", "page"]),
   id: Type.String(),
@@ -85,7 +80,6 @@ export const BackgroundItemType = Type.Object({
   startedBy: nullable(idSchema<"call">()),
 });
 
-/** The TypeBox schema of a `WaitOutcome`; `all` refers to `WaitOutcome` by name, so it resolves beneath a root that defines it, as `WaitOutcomeSchema` does. */
 export const WaitOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("run"),
@@ -106,7 +100,6 @@ export const WaitOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("stopped") }),
 ]);
 
-/** Returns the schema of a `StopOutcome` whose settled outcome is `outcome`. */
 export function stopOutcomeSchema<T extends TSchema>(outcome: T) {
   return standard(
     withJson(
@@ -119,22 +112,16 @@ export function stopOutcomeSchema<T extends TSchema>(outcome: T) {
   );
 }
 
-/** Validates a `RunView`. */
 export const RunViewSchema: Schema<RunView> = standard(withJson(RunViewType));
 
-/** Validates a `RunEnd`. */
 export const RunEndSchema: Schema<RunEnd> = standard(RunEndType);
 
-/** Validates a `WaitTarget`. */
 export const WaitTargetSchema: Schema<WaitTarget> = standard(WaitTargetType);
 
-/** Validates an `Execution`. */
 export const ExecutionSchema: Schema<Execution> = standard(withJson(ExecutionType));
 
-/** Validates a `BackgroundItem`. */
 export const BackgroundItemSchema: Schema<BackgroundItem> = standard(BackgroundItemType);
 
-/** Validates a `WaitOutcome`. */
 export const WaitOutcomeSchema: Schema<WaitOutcome> = standard(
   cyclicWithJson({ WaitOutcome: WaitOutcomeType }, "WaitOutcome"),
 );

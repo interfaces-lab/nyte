@@ -122,8 +122,8 @@ These don't depend on tabs and can ship first.
   tabs, built on `@dnd-kit/core`.
 - **Queued messages don't reorder.** You edit, cancel or steer them, as today.
 - **Steer is the default** for a message sent during a run, on every client.
-  Core sets it: `messages.send` without a `delivery` steers while the head
-  has a live run and uses `next` otherwise. Desktop and web default to steer
+  Core sets it: `head.send` without a `delivery` steers while the head
+  has a live run and starts one when idle. Desktop and web default to steer
   (anyone who chose Queue in Settings keeps it). The terminal client already
   steered. Mobile steers by default; holding Send during a run offers Queue
   Message, also available to VoiceOver as a "Queue message" action.

@@ -1,4 +1,4 @@
-import { radius, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -17,7 +17,7 @@ import {
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { workbench } from "../theme/schema.stylex.ts";
-import { intent } from "@nyte-ai/ui/surface-theme";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
@@ -56,12 +56,12 @@ const styles = create({
   search: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     boxSizing: "border-box",
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -72,27 +72,20 @@ const styles = create({
   overviewTitle: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minHeight: target.min,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    fontWeight: 590,
+    fontWeight: type.weightSemibold,
   },
-  overviewLabel: { flex: 1, minWidth: 0, overflow: "clip", whiteSpace: "nowrap" },
-  checkbox: { marginInlineStart: 4 },
-  checkboxChanged: {
-    borderColor: role.contentInteractiveTertiary,
-    color: role.contentInteractiveTertiary,
-    "::after": {
-      content: "''",
-      width: 6,
-      height: 6,
-      borderRadius: radius.pill,
-      backgroundColor: "currentColor",
-    },
+  overviewLabel: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "clip",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
   },
+  checkbox: { marginInlineStart: space.s1 },
   tree: {
     display: "block",
     flex: 1,
@@ -103,7 +96,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
+    padding: space.s5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     textAlign: "center",
@@ -111,10 +104,6 @@ const styles = create({
   },
 });
 
-/**
- * `"changed"` is a viewed mark the patch has outrun: a check would claim too much.
- * `"unknown"` is a mark not yet checked against an unread patch, which no check claims either.
- */
 export type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "unknown" | "mixed";
 
 export function ReviewCheckbox({
@@ -133,11 +122,8 @@ export function ReviewCheckbox({
       aria-label={label}
       title={label}
       data-viewed-state={state}
-      xstyle={[
-        styles.checkbox,
-        state === "changed" && intent.warning,
-        state === "changed" && styles.checkboxChanged,
-      ]}
+      attention={state === "changed"}
+      xstyle={styles.checkbox}
       onClick={(event) => event.stopPropagation()}
       onCheckedChange={onChange}
     />
@@ -345,7 +331,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
           </MenuContent>
         </Menu>
       </div>
-      <div {...props(styles.overviewTitle)}>
+      <div {...props(text.sm, styles.overviewTitle)}>
         <span {...props(styles.overviewLabel)}>
           {sidebarCountLabel(files.length, shownPaths.length, filtering)}
         </span>

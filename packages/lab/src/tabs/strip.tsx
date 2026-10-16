@@ -1,10 +1,3 @@
-/**
- * A window tab strip after Dia and Arc. Pinned places sit first as bare icons,
- * folders next, then the chats opened this session; a hairline divides the
- * groups. The active tab can wear the card below it and curve into it, the
- * close button can stand beside the active tab instead of hiding inside every
- * tab, and crowded tabs collapse to their icon before anything scrolls.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactElement, type RefObject } from "react";
@@ -41,26 +34,21 @@ export interface StripDesign {
   readonly status: StatusPlacement;
 }
 
-/** Which top corners of the card square off because the active tab sits flush there. */
 export interface CardCorners {
   readonly left: boolean;
   readonly right: boolean;
 }
 
-/** Mirrors `--nyte-shape-card`; a path cannot read a custom property. */
 const CORNER = 12;
 
-/** Below this a chat tab shows only its icon, as Dia does when the strip fills. */
 const COLLAPSED = "@container (max-width: 72px)";
 
-/** Air between a tab and the bar's edges; the card sits this far below a floating tab too. */
 const GAP = 4;
 
 const CURVE_LEFT = `M${CORNER} 0V${CORNER}H0A${CORNER} ${CORNER} 0 0 0 ${CORNER} 0Z`;
 
 const CURVE_RIGHT = `M0 0V${CORNER}H${CORNER}A${CORNER} ${CORNER} 0 0 1 0 0Z`;
 
-/** The card squares a corner when the active tab's wall lines up with its edge. */
 export function useCardCorners(
   stripRef: RefObject<HTMLElement | null>,
   cardRef: RefObject<HTMLElement | null>,
@@ -135,7 +123,6 @@ function markTone(tab: ShellTab) {
   }
 }
 
-/** The place's icon, or its status standing in for it, or both with the status pinned to a corner. */
 function Glyph({
   tab,
   placement,
@@ -214,7 +201,6 @@ function Tab({
       onMouseDown={(event) => {
         if (event.button === 0) onActivate();
 
-        // Middle-click closes; stop the browser's autoscroll from starting first.
         if (event.button === 1) event.preventDefault();
       }}
       onAuxClick={(event) => {
@@ -405,7 +391,6 @@ const pulse = keyframes({
 });
 
 const styles = create({
-  // Tabs stretch to the content box, so the gap is the one number above.
   strip: {
     display: "flex",
     alignItems: "stretch",
@@ -418,15 +403,12 @@ const styles = create({
     overflowY: "hidden",
     scrollbarWidth: "none",
   },
-  // Opens the bottom and runs a pixel past the bar, so the active tab overlaps the card's hairline.
   stripConnected: {
     height: "calc(100% + 1px)",
     marginBottom: -1,
     paddingBottom: 0,
   },
-  // What is not the active tab keeps the gap above the card in Connected mode.
   lift: { marginBottom: GAP + 1 },
-  // No box of its own: every tab is a flex item of the strip, so only chat tabs give way.
   group: { display: "contents" },
   slot: {
     position: "relative",
@@ -437,7 +419,6 @@ const styles = create({
   },
   slotShrink: { flexShrink: 1, flexBasis: 176, minWidth: button.heightMd },
   slotActive: { zIndex: 1 },
-  // Room for the title the active tab keeps, plus the close button after it.
   slotBeside: { minWidth: `calc(96px + ${button.heightXs} + 2px)` },
   tab: {
     position: "relative",
@@ -460,7 +441,6 @@ const styles = create({
     transitionDuration: motionTokens.durationNormal,
     transitionTimingFunction: motionTokens.easeOut,
   },
-  // A size container, so the label can leave once the tab is squeezed to its icon.
   tabShrink: {
     containerType: "inline-size",
     justifyContent: { default: "flex-start", [COLLAPSED]: "center" },
@@ -477,7 +457,6 @@ const styles = create({
   ghost: {
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
   },
-  // The card's own colour, top corners only; the feet below finish the join.
   activeConnected: {
     paddingBottom: 1,
     borderRadius: 0,
@@ -515,7 +494,6 @@ const styles = create({
     height: glyph.box,
   },
   badgeHost: { position: "relative", display: "grid", placeItems: "center" },
-  // The ring is the tab's own fill, so the dot reads as sitting on the icon and not under it.
   badgeRing: {
     position: "absolute",
     insetInlineEnd: -4,
@@ -570,7 +548,6 @@ const styles = create({
     transitionProperty: "opacity",
     transitionDuration: motionTokens.durationNormal,
   },
-  // Dia's close: one button after the active tab, so no tab needs to hide one inside.
   beside: { display: "inline-flex", alignItems: "center", marginInlineStart: 2 },
   add: { display: "inline-flex", alignItems: "center", flexShrink: 0, marginInlineStart: 2 },
   divider: {

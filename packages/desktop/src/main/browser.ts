@@ -64,7 +64,6 @@ interface GuestSession {
   readonly session: Session;
   readonly plainHosts: Set<string>;
   readonly upgrades: Map<number, string>;
-  /** Local hosts whose bad certificate the user chose to proceed past, for this run. */
   readonly trustedCertificateHosts: Set<string>;
 }
 
@@ -103,7 +102,6 @@ function release(state: HolderState, holder: BrowserHolder): boolean {
   return state.holders.size === 0;
 }
 
-/** How the renderer names a cookie jar: the workspace path, or null for home. */
 function ownerPath(owner: BrowserOwner): string | null {
   return owner.kind === "home" ? null : owner.path;
 }
@@ -163,17 +161,13 @@ export interface BrowserSurfaces {
   warm(): Promise<void>;
   /** The window closed: its panels let go, and pages the agent still holds move elsewhere. */
   releaseWindow(window: HostWindow): void;
-  /** Settings changed: every page republishes, so a shield badge never shows a stale state. */
   settingsChanged(): void;
   /** The BrowserAgent implementation for the tools plugin. */
   agent: BrowserAgent;
 }
 
-/** Keyboard focus across pages and their panels; the window shell routes menu commands by it. */
 export interface BrowserFocus {
-  /** A panel's controls took or gave up keyboard focus in this window. */
   setFocus(message: BrowserFocusMessage, window: HostWindow): void;
-  /** The surface holding keyboard focus: its page, the page's DevTools, or its panel's controls in this window. */
   focused(window: HostWindow | undefined): string | undefined;
 }
 
@@ -189,15 +183,11 @@ export interface BrowserSurfacesDependencies {
     DesktopSettings,
     "blockAds" | "adblockAllowedHosts" | "upgradeToHttps"
   >;
-  /** Visits of pages a panel holds, per cookie jar. */
   readonly history: BrowserHistoryStore;
-  /** The guest preload that forwards keys a page or its DevTools leaves unhandled. */
   readonly pagePreload: string;
-  /** A key the focused page left unhandled, for the window whose panel shows it. */
   readonly forwardKey: (input: {
     readonly surface: string;
     readonly window: HostWindow;
-    /** The page or its DevTools, where the key was pressed. */
     readonly contents: WebContents;
     readonly key: BrowserKey;
   }) => void;
@@ -224,35 +214,21 @@ interface Surface {
   blocked: number;
   error: BrowserSurfaceState["error"];
   owner: BrowserOwner;
-  /** The page is in HTML fullscreen and covers the window; bounds reports are ignored. */
   fullscreen: boolean;
-  /** Set when entering fullscreen also took the window fullscreen, so leaving restores it. */
   windowWasWindowed: boolean;
-  /** Follows the window while fullscreen so the page always fills it. */
   onWindowResize: (() => void) | undefined;
-  /** The request id of the find in flight; `found-in-page` answers it. */
   find:
     | { readonly request: number; readonly resolve: (result: BrowserFindResult) => void }
     | undefined;
-  /** The text of the open find session; the same text again moves within it. */
   findText: string;
-  /** Permissions refused since the page started loading, so the panel can say why. */
   readonly deniedPermissions: Set<string>;
-  /** Answers the open HTTP auth challenge; no arguments cancels it. */
   login: ((username?: string, password?: string) => void) | undefined;
-  /** A local host whose certificate failed on the current load. */
   untrustedHost: string | undefined;
-  /** When the renderer died recently, so reloads back off and then stop. */
   readonly crashes: number[];
-  /** The popup this page opened; one at a time, closed with the page. */
   popup: BrowserWindow | undefined;
-  /** The URL this page last added to history, so an in-page jump to an anchor adds nothing. */
   visited: string | undefined;
-  /** DevTools paused the page's JavaScript, preload included, so main forwards its keys. */
   paused: boolean;
-  /** The panel handed the keyboard back while an overlay still hid the page. */
   focusWhenShown: boolean;
-  /** The user's keydowns the page has yet to forward; agent input never adds one. */
   readonly pressed: BrowserKey[];
 }
 
@@ -277,7 +253,6 @@ export function createBrowserSurfaces(
 ): BrowserSurfaces & BrowserFocus {
   const surfaces = new Map<string, Surface>();
   const byWebContents = new Map<number, Surface>();
-  /** Downloads still running, by id, so the panel can cancel one. */
   const downloads = new Map<string, DownloadItem>();
   let blocker: Blocker | undefined;
   let blockerReady: Promise<void> | undefined;
@@ -286,7 +261,6 @@ export function createBrowserSurfaces(
   /** Per-owner guest sessions, keyed by partition name. */
   const guestSessions = new Map<string, GuestSession>();
 
-  /** The panel whose controls hold each window's keyboard focus. */
   const chromeFocus = new Map<HostWindow, string>();
 
   const isWindowShown = (surface: Surface): boolean => {
@@ -331,7 +305,6 @@ export function createBrowserSurfaces(
 
     guest.setUserAgent(guestUserAgent());
     guest.setSpellCheckerEnabled(false);
-    // Registered on the session rather than the view, so the page's DevTools runs it too.
     guest.registerPreloadScript({ type: "frame", filePath: dependencies.pagePreload });
 
     guest.setPermissionRequestHandler((contents, permission, callback) => {
@@ -353,8 +326,6 @@ export function createBrowserSurfaces(
     guest.on("will-download", (event, item, contents) => {
       const surface = byWebContents.get(contents.id);
 
-      // Only a page the user alone drives may write to disk. A page an agent holds is
-      // refused even while a panel shows it: revealing a tab is not consent to download.
       if (
         surface === undefined ||
         !hasViewHolder(surface.holderState) ||
@@ -509,10 +480,6 @@ export function createBrowserSurfaces(
     dependencies.emit({ kind: "browser_history_changed", owner, entries }),
   );
 
-  /**
-   * History holds what a person saw: a page a panel holds, never one an agent
-   * drives on its own, so a crawl cannot bury or retitle the user's own visits.
-   */
   const remembers = (surface: Surface): boolean =>
     !surface.destroyed && hasViewHolder(surface.holderState);
 
@@ -608,7 +575,6 @@ export function createBrowserSurfaces(
       const held = hasViewHolder(surface.holderState);
       const wantsTab = disposition === "foreground-tab" || disposition === "background-tab";
 
-      // A tab-opening gesture on a page someone is looking at becomes a tab.
       if (wantsTab && held) {
         dependencies.emit({
           kind: "browser_open_tab",
@@ -620,9 +586,6 @@ export function createBrowserSurfaces(
         return { action: "deny" };
       }
 
-      // A sized `window.open` is a popup flow, typically sign-in: it needs a real
-      // window with `window.opener` so it can report back. One at a time, only for
-      // a page someone is looking at, and never nested.
       if (disposition === "new-window" && held && surface.popup === undefined) {
         const parent = surface.attachedTo;
 
@@ -644,7 +607,6 @@ export function createBrowserSurfaces(
         };
       }
 
-      // Anything else follows the link in place, so an agent-only page still lands somewhere.
       load(surface, target);
 
       return { action: "deny" };
@@ -662,7 +624,6 @@ export function createBrowserSurfaces(
       });
     });
     contents.on("login", (event, _details, authInfo, callback) => {
-      // Proxy challenges and pages nobody is looking at get Chromium's default: cancel.
       if (authInfo.isProxy || !hasViewHolder(surface.holderState)) return;
       event.preventDefault();
       surface.login?.();
@@ -692,7 +653,6 @@ export function createBrowserSurfaces(
         return;
       }
 
-      // Only a dev server on this machine may be trusted past a bad certificate.
       if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
       callback(false);
     });
@@ -716,7 +676,6 @@ export function createBrowserSurfaces(
       BROWSER_PAGE_KEY_CHANNEL,
       forwardFrom(contents, (key) => takePressedKey(surface.pressed, key)),
     );
-    // DevTools runs the session's preload too; no agent drives it.
     contents.on("devtools-opened", () => {
       const devtools = contents.devToolsWebContents;
 
@@ -741,7 +700,6 @@ export function createBrowserSurfaces(
     contents.debugger.on("detach", () => {
       surface.paused = false;
     });
-    // A hidden, crashed, or paused page runs no preload, so its command keys are forwarded from here.
     contents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown") return;
 
@@ -1094,7 +1052,6 @@ export function createBrowserSurfaces(
 
         apply(surface);
 
-        // Tell the renderer so the workspace's Browser tab follows this page.
         dependencies.emit({
           kind: "browser_agent_opened",
           owner: input.owner.kind === "project" ? input.owner.path : null,
@@ -1146,7 +1103,6 @@ export function createBrowserSurfaces(
       const surface = surfaceForSession(input.session);
 
       if (surface === undefined) return CLOSED;
-      // A keydown the page kept must not let the agent's same chord through later.
       surface.pressed.splice(0);
 
       return operate(surface, (contents) =>
@@ -1353,7 +1309,6 @@ export function createBrowserSurfaces(
     },
     async perform({ surface: id, action, owner: path }, window) {
       const surface = surfaces.get(id);
-      // A new tab has no page in main yet, so the panel names its cookie jar.
       const owner = surface?.owner ?? ownerOf(path);
 
       if (action === "clear-history") {
@@ -1362,7 +1317,6 @@ export function createBrowserSurfaces(
         for (const other of surfaces.values()) {
           const contents = other.view.webContents;
 
-          // History is per cookie jar, so only the requesting panel's jar is cleared.
           if (ownerPath(other.owner) !== ownerPath(owner) || contents.isDestroyed()) continue;
           contents.navigationHistory.clear();
           other.visited = undefined;
@@ -1508,7 +1462,6 @@ export function createBrowserSurfaces(
       if (taken !== undefined) taken.focusWhenShown = false;
       const host = dependencies.window(window);
 
-      // A shortcut pressed in the page can move focus to the address bar; typing must follow it.
       if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused())
         host.webContents.focus();
     },
@@ -1548,11 +1501,6 @@ export function createBrowserSurfaces(
   };
 }
 
-/**
- * DevTools pausing the page also pauses its preload, so main listens for the pause.
- * Only an enabled debugger session hears it; with its own breakpoints off, this one
- * never pauses the page itself, and disabling it when DevTools closes resumes the page.
- */
 async function watchPauses(contents: WebContents): Promise<void> {
   if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
   await contents.debugger.sendCommand("Debugger.enable");

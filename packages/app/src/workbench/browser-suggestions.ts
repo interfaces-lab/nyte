@@ -4,20 +4,16 @@ import { parseWebUrl, resolveBrowserAddress, searchAddress } from "./browser-add
 export interface BrowserSuggestion {
   readonly kind: "go" | "search" | "history" | "bookmark";
   readonly url: string;
-  /** The text for go and search rows; the page title, possibly empty, for the rest. */
   readonly label: string;
 }
 
 export interface BrowserCompletion {
-  /** The whole address the field shows: the typed text and the visited rest. */
   readonly text: string;
-  /** The page it opens, exactly as visited, which the text alone may not name. */
   readonly url: string;
 }
 
 export interface BrowserSuggestions {
   readonly rows: readonly BrowserSuggestion[];
-  /** Follows the typed text in the field, selected, so typing on replaces it. */
   readonly completion: BrowserCompletion | undefined;
 }
 
@@ -30,7 +26,6 @@ const LIMIT = 8;
 
 const DAY = 86_400_000;
 
-/** Recent visits outweigh old ones; within an age, more visits rank higher. */
 function frecency(entry: BrowserHistoryEntry, now: number): number {
   const age = now - entry.visitedAt;
   const weight = age < 4 * DAY ? 100 : age < 14 * DAY ? 70 : age < 31 * DAY ? 50 : 30;
@@ -38,7 +33,6 @@ function frecency(entry: BrowserHistoryEntry, now: number): number {
   return entry.visits * weight;
 }
 
-/** What a person types for a page: no scheme, no `www.`, no slash after a bare host. */
 function typedForms(url: URL): readonly string[] {
   const rest = `${url.pathname === "/" ? "" : url.pathname}${url.search}${url.hash}`;
   const bare = `${url.host}${rest}`;
@@ -47,10 +41,6 @@ function typedForms(url: URL): readonly string[] {
   return url.host.startsWith("www.") ? [`${url.host.slice(4)}${rest}`, ...forms] : forms;
 }
 
-/**
- * 0 for the address itself, 1 for one that starts with the text at its host,
- * 2 for one that contains it, 3 for a title. A trailing slash names the same page.
- */
 function matchTier(row: BrowserSuggestion, query: string): number | undefined {
   let url: URL;
 
@@ -76,7 +66,6 @@ function matchTier(row: BrowserSuggestion, query: string): number | undefined {
   return row.label.toLowerCase().includes(query) ? 3 : undefined;
 }
 
-/** The top match's address, when the text is how that address starts. */
 function inlineCompletion(text: string, url: string): BrowserCompletion | undefined {
   if (text === "" || /\s/.test(text)) return undefined;
   const typed = text.toLowerCase();
@@ -90,15 +79,6 @@ function inlineCompletion(text: string, url: string): BrowserCompletion | undefi
     : { text: `${text}${form.slice(text.length)}`, url };
 }
 
-/**
- * Address bar rows. With nothing typed, the most recent pages other than this
- * one. Otherwise the literal destination first, going to it ahead of searching
- * when the text reads as an address, then history and bookmarks that match:
- * the typed address itself, then addresses it starts at the host, then other
- * address matches, then titles, each by frecency. `complete` allows filling
- * in the top match's address, which a deletion must not bring straight back.
- * While the text still reads as the `accepted` completion, it opens that page.
- */
 export function browserSuggestions(input: {
   readonly text: string;
   readonly complete: boolean;

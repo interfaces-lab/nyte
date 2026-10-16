@@ -1,27 +1,3 @@
-/**
- * Account remote access: this Mac linked to the user's Nyte account, reached
- * through the broker's relay over a WebSocket this Mac opens, by the phones
- * the user enrolls through the same account.
- *
- * Who may use the listener is decided here on every request. A device needs
- * both its token's digest on disk here and its id in the current lease: a
- * broker-signed, unexpired list of active devices, asked for every 20 seconds
- * with a proof from the machine key and kept only in memory. No lease since
- * start or wake, an expired one, or a broker that says the owner is disabled
- * refuses every device and closes their streams; the listener and the relay
- * stay up so access returns with the next lease. Leases are ordered by
- * `policy` and bound to the proof that asked for them, so an older or
- * replayed answer never restores a device a newer one dropped.
- *
- * Starts, stops, links, unlinks, and unlink retries run one at a time.
- * Anything that takes access away does so synchronously before it queues, and
- * advances an epoch that every later async completion checks, so nothing
- * still in flight can grant access again.
- *
- * Clerk session JWTs come from the sign-in dialog only for `link`, are sent
- * once to the broker, and are never kept. Everything after that, the lease
- * heartbeat and the relay's proof included, signs with the machine key.
- */
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { scheduler } from "node:timers/promises";
@@ -139,12 +115,6 @@ export interface ConnectTiming {
   readonly relay?: Partial<RelayTiming>;
 }
 
-/**
- * How long after recording a device a request may still find it missing from
- * the held lease for no worse reason than timing: the broker activates it
- * after the receipt, and the phone retries for `ENROLLMENT_READINESS_SECONDS`
- * after it hears back.
- */
 const READINESS_WINDOW_MS = (ENROLLMENT_LIFETIME_SECONDS + ENROLLMENT_READINESS_SECONDS) * 1_000;
 
 const DEFAULT_TIMING: ConnectTiming = {
@@ -198,7 +168,6 @@ export interface ConnectRuntimeOptions {
 interface HeldLease {
   readonly devices: ReadonlySet<string>;
   readonly expiresAt: number;
-  /** When the request that brought it was sent, by this Mac's clock. */
   readonly sentAt: number;
 }
 
@@ -206,22 +175,18 @@ interface Serving {
   readonly epoch: number;
   readonly environmentId: string;
   readonly controller: AbortController;
-  /** The bound loopback port; undefined until the share answers. */
   port: number | undefined;
-  /** The relay and the loopback listener as one: drops reach both, and the relay closes first. */
   listener: ConnectListener | undefined;
   relay: RelayConnection | undefined;
   stopping: boolean;
   lease: HeldLease | undefined;
   lapse: "offline" | "owner_disabled" | undefined;
-  /** Leases asked for before this are discarded: start and wake. */
   resetAt: number;
   beatTimer: ReturnType<typeof setTimeout> | undefined;
   expiryTimer: ReturnType<typeof setTimeout> | undefined;
   readonly refreshes: Map<string, Refresh>;
 }
 
-/** A readiness lease for one device: shared while pending, throttled once it came back. */
 interface Refresh {
   readonly at: number;
   state: "pending" | "renewed" | "failed";
@@ -261,7 +226,6 @@ function originChanged(): ConnectError {
   );
 }
 
-/** The owner, the clock or this host ended the transaction before it was completed. */
 class LinkStopped extends Error {
   readonly state: "pending" | "approved" | "denied" | "expired" | "cancelled";
 
@@ -274,13 +238,10 @@ class LinkStopped extends Error {
 
 type TransactionLinkKey = Extract<LinkKey, { kind: "transaction" }>;
 
-/** One `link()` run, from its first broker call to its last word on disk. */
 interface LinkAttempt {
   readonly controller: AbortController;
   done: Promise<void>;
-  /** The user gave the link up; a transaction then ends at the broker too. Closing alone keeps it. */
   cancelled: boolean;
-  /** The environment this attempt put on disk as the link, once it has. */
   persisted: string | undefined;
 }
 
@@ -290,7 +251,6 @@ function refusedCode(cause: unknown): string | undefined {
     : undefined;
 }
 
-/** Resolve when `promise` does or `ms` passes, whichever is first. */
 function within(promise: Promise<void>, ms: number): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
@@ -303,7 +263,6 @@ function within(promise: Promise<void>, ms: number): Promise<void> {
 
 const SessionClaims = Type.Object({ sub: Type.String({ minLength: 1, maxLength: 128 }) });
 
-/** The `sub` of a session JWT, read without verifying it: bookkeeping, never authority. */
 function sessionSubject(token: string): string | null {
   try {
     const payload: unknown = JSON.parse(
@@ -357,17 +316,14 @@ export class ConnectRuntime {
   private readonly timing: ConnectTiming;
   private readonly store: ConnectStore;
   private readonly broker: DesktopBroker | undefined;
-  /** Aborts background broker calls when Nyte quits. */
   private readonly lifetime = new AbortController();
   private queue: Promise<unknown> = Promise.resolve();
-  /** Advanced by everything that takes access away; a serving from an older epoch grants nothing. */
   private epoch = 0;
   private serving: Serving | undefined;
   private linking: ConnectLinking = { kind: "idle" };
   private linkAttempt: LinkAttempt | undefined;
   private readonly accountOpens = new Set<AbortController>();
   private notice: ConnectNotice = { kind: "none" };
-  /** Refused here before the store has caught up. */
   private readonly denied = new Set<string>();
   private highWater: HighWater | undefined;
   private keysReadAt = Number.NEGATIVE_INFINITY;
@@ -377,7 +333,6 @@ export class ConnectRuntime {
   private unlinking: Promise<void> | undefined;
   private unlinkTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
-  /** The one teardown every `close()` caller waits on. */
   private closing: Promise<void> | undefined;
 
   constructor(options: ConnectRuntimeOptions) {
@@ -464,7 +419,6 @@ export class ConnectRuntime {
       return this.view();
     }
 
-    // Every link may become a pending unlink; none of those is ever dropped.
     if ((await this.readyFile()).unlinks.length >= UNLINK_LIMIT) await this.retryUnlinks();
 
     if ((await this.readyFile()).unlinks.length >= UNLINK_LIMIT) {
@@ -535,6 +489,25 @@ export class ConnectRuntime {
     return this.view();
   }
 
+  async serve(share: ConnectShare): Promise<ConnectView> {
+    await this.requireUsable();
+    await this.serial(async () => {
+      if (this.closed) throw closed();
+      await this.startServing(share);
+    });
+    this.changed();
+
+    return this.view();
+  }
+
+  async stop(): Promise<ConnectView> {
+    this.denyAll();
+    await this.serial(() => this.stopServing());
+    this.changed();
+
+    return this.view();
+  }
+
   /**
    * Serve if the user left it on, after the first window prepared its target.
    * A target that is not trusted, or anything else in the way, leaves it off
@@ -566,11 +539,6 @@ export class ConnectRuntime {
     await this.retryUnlinks();
   }
 
-  /**
-   * Refuse every account device, stop serving, and move the link (`expected`
-   * when given, whichever is on disk otherwise) into the unlink queue, keeping
-   * its key for the broker call.
-   */
   private async queueUnlink(expected: string | undefined): Promise<void> {
     this.denyAll();
     await this.serial(async () => {
@@ -586,7 +554,6 @@ export class ConnectRuntime {
               ...current,
               enabled: false,
               link: null,
-              // Linking waits while the queue is full, so this never drops a key a cleanup needs.
               unlinks: [
                 ...current.unlinks.filter(
                   (pending) => pending.environmentId !== link.environment.id,
@@ -648,7 +615,6 @@ export class ConnectRuntime {
     const { account } = this;
 
     if (account === undefined) throw unavailable();
-    // A link waiting on this session would otherwise finish under the signed-out account.
     await this.cancel();
     await account.signOut();
     this.changed();
@@ -698,30 +664,15 @@ export class ConnectRuntime {
 
     for (const controller of this.accountOpens) controller.abort();
     clearTimeout(this.unlinkTimer);
-    // The attempt's last word on disk lands before anything it depends on goes.
     await attempt?.done;
     this.lifetime.abort();
     await this.serial(() => this.stopServing());
-    // Broker calls are aborted; acknowledgements already being written still land.
     await Promise.allSettled([this.unlinking, this.revoking]);
     await this.store.idle();
     await this.account?.close();
   }
 
-  // -------------------------------------------------------------------------
-  // Linking
-  // -------------------------------------------------------------------------
 
-  /**
-   * One attempt. How it ends decides what the pending intent becomes: a
-   * tombstoned key is dropped; the user's cancellation abandons an open
-   * transaction at the broker; a transaction the broker ended is cleared so
-   * the next attempt opens a new one on the same key; anything else, a lost
-   * answer or a close, leaves the intent exactly as it is for the next attempt
-   * to settle. A cancel that arrives while the link is being written is still
-   * the user's answer: the link goes into the unlink queue before the attempt
-   * resolves.
-   */
   private async runLink(attempt: LinkAttempt): Promise<void> {
     const { authorizer } = this.options;
     const broker = this.broker;
@@ -753,7 +704,6 @@ export class ConnectRuntime {
     }
   }
 
-  /** The broker ended the transaction: its id is gone from the intent, the key stays for the next one. */
   private async clearEndedTransaction(): Promise<void> {
     await this.change((current) =>
       current.linkKey?.kind === "transaction"
@@ -765,7 +715,6 @@ export class ConnectRuntime {
     ).catch(() => undefined);
   }
 
-  /** A new operation on the same key, after the broker ended the last one; it carries the name the host has now. */
   private nextOperation(ended: TransactionLinkKey): TransactionLinkKey {
     return {
       ...ended,
@@ -776,7 +725,6 @@ export class ConnectRuntime {
     };
   }
 
-  /** A fresh operation id and code; the broker knows this pair only once an open is answered. */
   private mintOperation(): { readonly operationId: string; readonly userCode: string } {
     return {
       operationId: randomId(),
@@ -784,7 +732,6 @@ export class ConnectRuntime {
     };
   }
 
-  /** The desktop's link: one fresh session JWT, sent once with the key's proof. */
   private async linkWithSession(
     account: AccountSession,
     broker: DesktopBroker,
@@ -804,8 +751,6 @@ export class ConnectRuntime {
       const owner = sessionSubject(sessionToken);
       const pending = file.linkKey;
 
-      // A key the broker may already hold resumes that link instead of leaving it orphaned,
-      // unless another account or another broker began it.
       const resumable =
         pending !== null &&
         pending.kind === "session" &&
@@ -827,20 +772,11 @@ export class ConnectRuntime {
         signal: controller.signal,
       });
 
-      // An answer that lands after cancel links nothing; the kept key resumes it next time.
       if (controller.signal.aborted || this.closed) throw new AccountCancelled();
       await this.persistLink(linked, key, broker.origin, attempt);
     });
   }
 
-  /**
-   * A headless host's link: the key, operation id and code are on disk before
-   * the broker hears of them, the transaction's answer lands beside them, and
-   * the owner approves from a browser elsewhere while this host polls with
-   * fresh proofs. A transaction left from an earlier run is asked about first:
-   * one the owner already approved and this host completed is recovered, not
-   * reopened.
-   */
   private async linkWithTransaction(
     authorizer: Extract<LinkAuthorizer, { kind: "transaction" }>,
     broker: DesktopBroker,
@@ -858,8 +794,6 @@ export class ConnectRuntime {
 
       if (pending !== null && pending.origin !== broker.origin) throw originChanged();
 
-      // An exact replay may answer a transaction that already ended or was approved;
-      // it is settled like any other before a new one opens. A fresh open is pending.
       for (;;) {
         let intent: TransactionLinkKey;
 
@@ -890,7 +824,6 @@ export class ConnectRuntime {
           }
         }
 
-        // The immutable open is on disk before the broker hears it; a lost answer replays this exact input.
         if (intent !== pending) await this.change((current) => ({ ...current, linkKey: intent }));
         const { kept, state } = await this.open(intent, broker, signal);
 
@@ -958,10 +891,6 @@ export class ConnectRuntime {
     });
   }
 
-  /**
-   * Send the intent's open exactly as it is on disk and keep the answer beside
-   * it. The broker answers an operation it already holds as it stands now.
-   */
   private async open(
     intent: TransactionLinkKey,
     broker: DesktopBroker,
@@ -993,7 +922,6 @@ export class ConnectRuntime {
     return { kept, state: opened.state };
   }
 
-  /** A new intent on `key`: operation id, code and the name the broker will be told, nothing opened yet. */
   private freshTransaction(origin: string, key: PrivateJwk): TransactionLinkKey {
     return {
       kind: "transaction",
@@ -1006,17 +934,6 @@ export class ConnectRuntime {
     };
   }
 
-  /**
-   * What a transaction left on disk is now. `opening`: the broker never
-   * answered the open, so the same input is sent again. Consumed means an
-   * earlier run completed it and lost the answer, or the owner approved while
-   * this host was away: the same key gets the same link back. One this host
-   * meant to cancel is cancelled now, its id first learned by replaying the
-   * exact open if that answer was lost; if completion had won, its environment
-   * is queued for unlinking and the key goes with it (`retired`), never
-   * silently kept. `open` means keep waiting on it; `ended` means the broker
-   * closed it and the key may open another.
-   */
   private async settleTransaction(
     pending: TransactionLinkKey,
     broker: DesktopBroker,
@@ -1068,12 +985,6 @@ export class ConnectRuntime {
     }
   }
 
-  /**
-   * This host gives its intent up: that is on disk first, whether or not the
-   * broker ever answered the open, so a cancel the broker never hears of is
-   * settled before any new link. If completion won meanwhile, the environment
-   * is recovered and queued for unlinking, since the user wanted no link.
-   */
   private async abandonTransaction(broker: DesktopBroker | undefined): Promise<void> {
     if (broker === undefined) return;
     const read = this.store.snapshot();
@@ -1093,15 +1004,9 @@ export class ConnectRuntime {
       );
       await this.settleTransaction(abandoned, broker, this.lifetime.signal, undefined);
     } catch {
-      // The intent stays on disk; the next link settles it first.
     }
   }
 
-  /**
-   * Cancel at the broker. `cancelled` leaves the key free; `unlinked` means
-   * completion had won, the environment it made is queued for unlinking and
-   * the key is retired with it, since the broker tombstones it on removal.
-   */
   private async cancelTransaction(
     pending: TransactionLinkKey,
     broker: DesktopBroker,
@@ -1148,7 +1053,6 @@ export class ConnectRuntime {
     return "cancelled";
   }
 
-  /** The link is on disk before anyone hears of it; the pending key becomes the link's. */
   private async persistLink(
     linked: LinkResponse,
     key: PrivateJwk,
@@ -1185,11 +1089,7 @@ export class ConnectRuntime {
     this.changed();
   }
 
-  // -------------------------------------------------------------------------
-  // Serving
-  // -------------------------------------------------------------------------
 
-  /** Runs in the queue. Binds the share, then starts the heartbeat and the relay. */
   private async startServing(share: ConnectShare): Promise<void> {
     if (this.closed) throw closed();
 
@@ -1230,7 +1130,6 @@ export class ConnectRuntime {
       }),
     });
 
-    // Turned off, unlinked, or quitting while binding: let go without serving.
     if (epoch !== this.epoch || this.closed) {
       await local.close();
 
@@ -1252,7 +1151,6 @@ export class ConnectRuntime {
       },
       dial: this.options.dial,
       onChange: () => this.changed(),
-      // Only a lease answer may forget the link.
       onRevoked: () => {
         if (this.isLive(serving)) void this.beat(serving);
       },
@@ -1278,7 +1176,6 @@ export class ConnectRuntime {
     relay.start();
   }
 
-  /** Runs in the queue. The relay closes before the port is released. */
   private async stopServing(): Promise<void> {
     const serving = this.serving;
 
@@ -1289,7 +1186,6 @@ export class ConnectRuntime {
     this.changed();
   }
 
-  /** Refuse everyone now and end every stream; the queued stop releases the rest. */
   private denyAll(dropAfterMs = 0): void {
     this.epoch += 1;
     const serving = this.serving;
@@ -1327,16 +1223,12 @@ export class ConnectRuntime {
       : undefined;
   }
 
-  // -------------------------------------------------------------------------
-  // Leases
-  // -------------------------------------------------------------------------
 
   private scheduleBeat(serving: Serving, delay: number): void {
     clearTimeout(serving.beatTimer);
     serving.beatTimer = setTimeout(() => void this.beat(serving), delay);
   }
 
-  /** Ask for a lease now. Never rejects; the next beat is scheduled when it settles. */
   private async beat(serving: Serving): Promise<"renewed" | "lapsed" | "failed"> {
     const outcome = await this.renew(serving);
 
@@ -1451,7 +1343,6 @@ export class ConnectRuntime {
     serving.expiryTimer = setTimeout(() => this.expire(serving, lease), expiresAt - now);
     const dropped = previous !== undefined && [...previous.devices].some((id) => !devices.has(id));
 
-    // A stream outlives the check that opened it.
     if (dropped) serving.listener?.disconnectClients();
 
     if (previous === undefined || dropped || [...devices].some((id) => !previous.devices.has(id)))
@@ -1464,11 +1355,6 @@ export class ConnectRuntime {
     return true;
   }
 
-  /**
-   * Forget recorded devices the broker no longer has active: absent from a
-   * verified lease that was asked for after their enrollment grant could
-   * still have been activated. Fresh and pending devices stay.
-   */
   private pruneInactive(serving: Serving, lease: HeldLease): void {
     const link = this.currentLink(serving.environmentId);
     const settled = lease.sentAt - (ENROLLMENT_LIFETIME_SECONDS + CLOCK_TOLERANCE_SECONDS) * 1_000;
@@ -1539,7 +1425,6 @@ export class ConnectRuntime {
       : { kind: "lapsed", reason: "offline" };
   }
 
-  /** A token naming a key this Mac does not hold: read the published set, at most every `keysMs`. */
   private async readBrokerKeys(
     environmentId: string,
     token: string,
@@ -1567,9 +1452,6 @@ export class ConnectRuntime {
     return key;
   }
 
-  // -------------------------------------------------------------------------
-  // Devices
-  // -------------------------------------------------------------------------
 
   private async authorize(serving: Serving, request: AuthorizingRequest): Promise<DeviceDecision> {
     const token = bearerToken(request);
@@ -1595,7 +1477,6 @@ export class ConnectRuntime {
       : { kind: "deny", reason: "forbidden" };
   }
 
-  /** The recorded device a token digest names, compared against every digest. */
   private deviceFor(serving: Serving, digest: Buffer): StoredDevice | undefined {
     if (!this.isLive(serving)) return undefined;
     const link = this.currentLink(serving.environmentId);
@@ -1612,12 +1493,6 @@ export class ConnectRuntime {
     return match === undefined || this.denied.has(match.id) ? undefined : match;
   }
 
-  /**
-   * A device the held lease does not list may have been activated at the
-   * broker since: it was recorded after that lease was asked for, or so
-   * recently that the broker may have activated it after answering. The
-   * phone's first requests should not be refused for that.
-   */
   private awaitsLease(serving: Serving, device: StoredDevice): boolean {
     const lease = serving.lease;
     const now = Date.now();
@@ -1630,13 +1505,6 @@ export class ConnectRuntime {
     );
   }
 
-  /**
-   * A lease asked for after this request arrived, so after the broker
-   * activated the device if it ever will. Requests from one device share it
-   * while it is out. Once a lease came back the device waits
-   * `readinessThrottleMs` for another; a refresh that failed or timed out may
-   * be tried again after `readinessRetryMs`, inside the phone's own retry window.
-   */
   private refreshFor(serving: Serving, device: StoredDevice): Promise<void> {
     const now = Date.now();
     const previous = serving.refreshes.get(device.id);
@@ -1666,11 +1534,6 @@ export class ConnectRuntime {
     return refresh.done;
   }
 
-  /**
-   * `POST /_nyte/connect/enroll`: a broker-signed enrollment. The device is on
-   * disk before the receipt is signed, and the enrollment id is kept until it
-   * expires so a replay records nothing.
-   */
   private async enroll(serving: Serving, authorization: string): Promise<RouteAnswer> {
     const config = this.options.config;
 
@@ -1723,7 +1586,6 @@ export class ConnectRuntime {
 
         const existing = current.devices.find((device) => device.id === claims.deviceId);
 
-        // The broker retrying an answered enrollment gets the same receipt; nothing is recorded.
         if (consumed.some((entry) => entry.jti === claims.jti))
           return {
             file,
@@ -1736,10 +1598,8 @@ export class ConnectRuntime {
           current.devices.some((device) => device.digest === claims.digest)
         )
           return { file, result: "conflict" };
-        // The broker revoked the earlier install of this phone.
         const kept = current.devices.filter((device) => device.clientId !== claims.clientId);
 
-        // Every recorded device may become a queued revoke, and none of those is ever dropped.
         if (
           kept.length >= DEVICE_LIMIT ||
           kept.length + current.revocations.length >= REVOCATION_LIMIT ||
@@ -1820,7 +1680,6 @@ export class ConnectRuntime {
     };
   }
 
-  /** `DELETE /_nyte/connect/device`: the presenting device, and only it. */
   private async forgetPresented(serving: Serving, digest: Buffer): Promise<RouteAnswer> {
     const device = this.deviceFor(serving, digest);
 
@@ -1835,14 +1694,6 @@ export class ConnectRuntime {
     return { kind: "empty" };
   }
 
-  /**
-   * Refuse the device now, end every stream, record the removal, and queue
-   * the broker call. A device dropping its own token is a `release`, which
-   * leaves its Clerk session signed in; its streams drop and the broker hears
-   * of it only `dropDelayMs` after the removal is on disk, so the release's
-   * own answer leaves first. This Mac's user removing it is a `revoke`, which
-   * drops every stream at once and also replaces a release still queued for it.
-   */
   private async forgetDevice(deviceId: string, kind: "release" | "revoke"): Promise<void> {
     const listener = this.serving?.listener;
     this.denied.add(deviceId);
@@ -1868,7 +1719,6 @@ export class ConnectRuntime {
     if (kind === "revoke") void this.sendRevocations(true);
   }
 
-  /** Take the device off the link and queue its broker call, durably. */
   private async recordRemoval(deviceId: string, kind: "release" | "revoke"): Promise<void> {
     const read = await this.store.read();
 
@@ -1890,7 +1740,6 @@ export class ConnectRuntime {
         link: {
           ...link,
           devices: link.devices.filter((device) => device.id !== deviceId),
-          // Moving a device into the queue never grows devices plus queue, which enrollment bounds.
           revocations: [
             ...link.revocations.filter((entry) => entry.deviceId !== deviceId),
             { deviceId, kind: queued?.kind === "revoke" ? "revoke" : kind, at: Date.now() },
@@ -1909,7 +1758,6 @@ export class ConnectRuntime {
     else listener.disconnectClients();
   }
 
-  /** Tell the broker about removed devices, one pass at a time; a request during a pass runs another. */
   private sendRevocations(now: boolean): Promise<void> {
     if (!now && Date.now() < this.revocationsSentAt + 60_000) return Promise.resolve();
 
@@ -1933,7 +1781,6 @@ export class ConnectRuntime {
     return this.revoking;
   }
 
-  /** Each queued removal the broker confirms leaves the queue. */
   private async sendRevocationsOnce(): Promise<void> {
     const broker = this.broker;
 
@@ -1941,7 +1788,6 @@ export class ConnectRuntime {
     this.revocationsSentAt = Date.now();
     const read = this.store.snapshot();
     const stored = read?.kind === "ready" ? read.file.link : null;
-    // Only this broker's link signs for this broker; another origin's queue waits for its build.
     const link = stored === null ? undefined : this.currentLink(stored.environment.id);
 
     if (link === undefined || link.revocations.length === 0) return;
@@ -1975,7 +1821,6 @@ export class ConnectRuntime {
               ...file,
               link: {
                 ...file.link,
-                // Only the entry sent: a revoke queued meanwhile still goes out.
                 revocations: file.link.revocations.filter(
                   (entry) =>
                     entry.deviceId !== sent.deviceId ||
@@ -1989,11 +1834,7 @@ export class ConnectRuntime {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Lifecycle
-  // -------------------------------------------------------------------------
 
-  /** The broker removed this environment: forget it and stop. Nothing is retried at the broker. */
   private environmentRevoked(environmentId: string): Promise<void> {
     if (this.serving?.environmentId === environmentId) this.denyAll();
 
@@ -2013,7 +1854,6 @@ export class ConnectRuntime {
     }).catch(() => undefined);
   }
 
-  /** Send every pending unlink once; whatever fails is tried again later. */
   private retryUnlinks(): Promise<void> {
     this.unlinking ??= this.sendUnlinks().finally(() => {
       this.unlinking = undefined;
@@ -2032,7 +1872,6 @@ export class ConnectRuntime {
     let remaining = 0;
 
     for (const pending of read.file.unlinks) {
-      // Another broker's cleanup waits for a build that names that broker.
       if (pending.origin !== broker.origin) continue;
       let sent: boolean;
 
@@ -2071,11 +1910,6 @@ export class ConnectRuntime {
     this.denied.clear();
   }
 
-  /**
-   * The store failed: nothing is authorized again this run. `defer` lets a
-   * route's own answer leave before its connection is dropped; no request is
-   * authorized in between.
-   */
   private failClosed(defer = false): void {
     this.denyAll(defer ? this.timing.dropDelayMs : 0);
     const stop = (): void => void this.serial(() => this.stopServing()).catch(() => undefined);
@@ -2085,9 +1919,6 @@ export class ConnectRuntime {
     this.changed();
   }
 
-  // -------------------------------------------------------------------------
-  // Plumbing
-  // -------------------------------------------------------------------------
 
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation, operation);
@@ -2147,7 +1978,6 @@ export class ConnectRuntime {
       : undefined;
   }
 
-  /** Persist a change; a store that cannot be written refuses everything from then on. */
   private async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
     try {
       await this.store.update((file) => ({ file: change(file), result: undefined }));

@@ -24,7 +24,7 @@ import type {
   ViewOptions,
 } from "@nyte-ai/schema";
 import { send } from "./admission.ts";
-import { contributionsOf } from "./models.ts";
+import { collectContributions } from "./models.ts";
 import { SdkError } from "./error.ts";
 import type { FoldState } from "./fold.ts";
 import { historyHead } from "./history.ts";
@@ -42,21 +42,22 @@ import {
   START,
   attempt,
   commit,
-  expectOf,
+  readRefExpectation,
   liveRun,
-  objectOf,
-  pathOf,
-  positionOf,
+  toCommitObjectId,
+  walkCommitPath,
+  createPosition,
   put,
   readCommit,
   readTip,
   requireSession,
   sameRevision,
   sessionEvent,
-  textOf,
-  tipOf,
+  extractUserText,
+  readPositionCommit,
   withFold,
 } from "./session-state.ts";
+import { settingsConfigured } from "./settings.ts";
 import { viewHead, watchHead } from "./watch.ts";
 
 const PREVIEW = 80;
@@ -64,16 +65,24 @@ const PREVIEW = 80;
 export interface Head {
   readonly sessionId: SessionId;
   readonly name: HeadName;
+
   send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
+
   configure(patch: ConfigurationPatch): Promise<ConfigureOutcome>;
+
   view(options?: ViewOptions): Promise<SessionView>;
+
   watch(options?: ViewOptions): AsyncIterable<SessionView>;
+
   history(input: {
     readonly before: MessageId;
     readonly limit: number;
   }): Promise<readonly Message[]>;
+
   tree(): Promise<TreeView>;
+
   move(position: Position, options?: MoveOptions): Promise<Receipt<MoveOutcome>>;
+
   compact(input?: {
     readonly instructions?: string;
   }): Promise<
@@ -83,13 +92,11 @@ export interface Head {
   >;
 }
 
-/** Returns one commit with its id, as a tree row is built from it. */
 interface Commit {
   readonly id: CommitId;
   readonly record: CommitRecord;
 }
 
-/** Returns a handle on one head of a session for a connection, its `send` admitting through `admit`: `send`, or `sendNow` for the api an activation constructs. Binds synchronously; no I/O. */
 export function headHandle(
   kernel: Kernel,
   context: ConnectionContext,
@@ -120,7 +127,6 @@ export function headHandle(
   };
 }
 
-/** Creates a head at a position, default main's tip, and publishes `head created` with the updated session record. */
 export async function createHead(
   kernel: Kernel,
   session: SessionId,
@@ -132,8 +138,8 @@ export async function createHead(
 
     if (found.record.heads.some((entry) => entry.name === head)) return { kind: "exists" };
     const main = await readTip(kernel, session, MAIN);
-    const from = input?.from ?? positionOf(main.id);
-    const source = tipOf(from);
+    const from = input?.from ?? createPosition(main.id);
+    const source = readPositionCommit(from);
 
     if (source !== null && (await readCommit(kernel, source)) === null)
       return { kind: "missing-source" };
@@ -160,7 +166,7 @@ export async function createHead(
         : [
             {
               name: headRef(session, head),
-              target: objectOf(source),
+              target: toCommitObjectId(source),
               expect: "absent",
               event: { head, kind: "head", from: null, to: source, reason: "created" },
             },
@@ -180,7 +186,6 @@ export async function createHead(
   });
 }
 
-/** Fast-forwards a head's stack parent to its tip and publishes `head merged` with the updated session record. */
 export async function mergeHead(
   kernel: Kernel,
   session: SessionId,
@@ -195,16 +200,19 @@ export async function mergeHead(
 
   if (head === MAIN || stack === null) return { kind: "is-main" };
 
-  const [own, parent] = await Promise.all([
+  const [own, parent, running] = await Promise.all([
     readTip(kernel, session, head),
     readTip(kernel, session, stack.parent),
+    liveRun(kernel, session, stack.parent),
   ]);
 
   if (options?.expect !== undefined && !sameRevision(options.expect, own.ref))
     return { kind: "stale", revision: own.ref?.revision ?? EMPTY_REVISION };
 
-  if (parent.id !== tipOf(stack.base)) return { kind: "diverged", base: stack.base };
-  const tip = positionOf(own.id);
+  if (running !== null) return { kind: "busy", run: running.record.view.id };
+
+  if (parent.id !== readPositionCommit(stack.base)) return { kind: "diverged", base: stack.base };
+  const tip = createPosition(own.id);
 
   const record: SessionRecord = {
     ...found.record,
@@ -219,7 +227,7 @@ export async function mergeHead(
     {
       name: headRef(session, stack.parent),
       target: own.ref?.target ?? null,
-      expect: expectOf(parent.ref),
+      expect: readRefExpectation(parent.ref),
       event: {
         head: stack.parent,
         kind: "head",
@@ -245,7 +253,6 @@ export async function mergeHead(
   return { kind: "merged", revision: own.ref === null ? EMPTY_REVISION : outcome.revisions[0] };
 }
 
-/** Deletes a head's ref and publishes `head removed` with the updated session record; its commits stay reachable from the others. */
 export async function removeHead(
   kernel: Kernel,
   session: SessionId,
@@ -297,30 +304,31 @@ export async function removeHead(
   });
 }
 
-/** Returns the session's commit DAG as rows for a head: every commit on every branch, parents first, siblings in creation order, the head's path active; tip and revision from the one folded head, the revision null when no pair names that tip. */
 export async function tree(kernel: Kernel, session: SessionId, head: HeadName): Promise<TreeView> {
   return withFold(kernel, session, (state) => rows(state, head));
 }
 
-async function configure(
+export async function configure(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   patch: ConfigurationPatch,
+  activation = false,
 ): Promise<ConfigureOutcome> {
   const found = await requireSession(kernel, session);
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
   const runtime = kernel.pluginsFor(session);
-  await runtime.ready;
+
+  if (!activation) await runtime.ready;
 
   const selected = await kernel.resolveConfiguration({
     session,
     head,
     selected: entry.selected,
     patch,
-    contributions: contributionsOf(runtime),
+    contributions: collectContributions(runtime),
   });
 
   if (selected.kind !== "exact") return selected;
@@ -347,6 +355,8 @@ async function configure(
     return outcome.kind === "set" ? true : STALE;
   });
 
+  if (patch.settings !== undefined)
+    await settingsConfigured(kernel, session, Object.keys(patch.settings));
   const ref = await kernel.store.refs.get(headRef(session, head));
 
   return { kind: "configured", selected, revision: ref?.revision ?? EMPTY_REVISION };
@@ -356,7 +366,7 @@ function rows(state: FoldState, head: HeadName): TreeView {
   const tips = new Map<CommitId, HeadName[]>();
 
   for (const [name, folded] of state.heads) {
-    const tip = tipOf(folded.info.tip);
+    const tip = readPositionCommit(folded.info.tip);
 
     if (tip !== null) tips.set(tip, [...(tips.get(tip) ?? []), name]);
   }
@@ -377,7 +387,7 @@ function rows(state: FoldState, head: HeadName): TreeView {
 
   const folded = state.heads.get(head);
   const tip = folded?.info.tip ?? START;
-  const active = new Set(pathOf(state.commits, tipOf(tip)));
+  const active = new Set(walkCommitPath(state.commits, readPositionCommit(tip)));
   const nodes: TreeNode[] = [];
 
   const pending: { readonly commit: Commit; readonly depth: number; readonly branch: boolean }[] =
@@ -406,7 +416,7 @@ function rows(state: FoldState, head: HeadName): TreeView {
       partKind: body.kind === "part" ? (part?.partKind ?? null) : null,
       preview:
         body.kind === "user"
-          ? textOf(body.content).replace(/\s+/g, " ").trim().slice(0, PREVIEW)
+          ? extractUserText(body.content).replace(/\s+/g, " ").trim().slice(0, PREVIEW)
           : partPreview(part),
       at: record.at,
       run: record.run,

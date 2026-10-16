@@ -2,9 +2,6 @@
  * Unit tests for the shared provider error-body normalizer: one synthesized
  * error object per SDK shape, the non-Error fallback, truncation, the empty
  * parsed-body edge case, and the formatProviderError compose helper.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/error-body.test.ts
- * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";

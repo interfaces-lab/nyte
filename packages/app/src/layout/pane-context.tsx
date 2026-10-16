@@ -115,7 +115,6 @@ function activePath(layout: PaneLayout): string {
 
 export interface PaneActions {
   syncRoute(selection: PaneSelection): void;
-  /** `workspacePath` names the folder whose web controller gets the chat; `null` is no folder. */
   newChat(workspacePath?: string | null): void;
   openSession(sessionId: SessionId): void;
   openSessionInPane(paneId: PaneId, sessionId: SessionId): void;

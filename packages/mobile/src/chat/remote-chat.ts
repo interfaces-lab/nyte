@@ -1,4 +1,5 @@
 import { SdkError } from "@nyte-ai/sdk";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type {
   ActOutcome,
   Configuration,
@@ -16,12 +17,6 @@ import { describeHostError } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
-/**
- * Returns one head of a session as the chat draws it: the `SessionView` its
- * watch yields, the directory row for the name and pin, and the writes a
- * screen makes on it. Sends go through the sdk's journal, so a message the
- * phone could not deliver shows unsent and is resent on the next connect.
- */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
   const session = useMemo(() => client.session(sessionId), [client, sessionId]);
 
@@ -109,11 +104,10 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     [head, modelSelection],
   );
 
-  /** Answers the open question with a choice; undefined when the host could not be asked. */
   const reply = useCallback(
-    async (part: PartId, choice: string): Promise<ActOutcome<unknown> | undefined> => {
+    async (part: PartId, answers: QuestionAnswers): Promise<ActOutcome<unknown> | undefined> => {
       try {
-        return await session.part(part).act("answer", { choice });
+        return await session.part(part).act("answer", { answers });
       } catch {
         return undefined;
       }
@@ -121,7 +115,6 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     [session],
   );
 
-  /** Records a canvas failure on its part; a host that cannot be told is left alone. */
   const report = useCallback(
     (part: PartId, message: string): void => {
       void session

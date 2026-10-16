@@ -1,5 +1,6 @@
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
@@ -11,7 +12,7 @@ const styles = create({
     flexDirection: "column",
     alignItems: "center",
     height: "100%",
-    padding: 24,
+    padding: space.s6,
     overflowY: "auto",
     backgroundColor: role.bgBase,
     color: role.contentPrimary,
@@ -19,32 +20,34 @@ const styles = create({
   column: {
     display: "flex",
     flexDirection: "column",
-    gap: 24,
+    gap: space.s6,
     width: "100%",
     maxWidth: 360,
     marginBlock: "auto",
-    paddingBlock: 32,
+    paddingBlock: space.s8,
     overflowWrap: "break-word",
   },
   header: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     textAlign: "center",
   },
-  mark: { alignSelf: "center", width: 40, height: 40, marginBottom: -8, borderRadius: radius.card },
+  mark: {
+    alignSelf: "center",
+    width: 40,
+    height: 40,
+    marginBottom: `calc(${space.s2} * -1)`,
+    borderRadius: radius.card,
+  },
   title: {
     margin: 0,
-    fontSize: type.fontLg,
-    fontWeight: 600,
-    lineHeight: type.leadingLg,
+    fontWeight: type.weightSemibold,
   },
   description: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textWrap: "pretty",
   },
   footer: {
@@ -52,10 +55,8 @@ const styles = create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: space.s1,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
 });
 
@@ -81,12 +82,14 @@ export function WebPage({
           <img src="/icon.svg" alt="" width={40} height={40} {...props(styles.mark)} />
           {title !== undefined && (
             <header {...props(styles.header)}>
-              <h1 {...props(styles.title)}>{title}</h1>
-              {description !== undefined && <p {...props(styles.description)}>{description}</p>}
+              <h1 {...props(text.lg, styles.title)}>{title}</h1>
+              {description !== undefined && (
+                <p {...props(text.base, styles.description)}>{description}</p>
+              )}
             </header>
           )}
           {children}
-          {footer !== undefined && <footer {...props(styles.footer)}>{footer}</footer>}
+          {footer !== undefined && <footer {...props(text.sm, styles.footer)}>{footer}</footer>}
         </div>
       </main>
       <p role="status" {...props(srOnly)}>

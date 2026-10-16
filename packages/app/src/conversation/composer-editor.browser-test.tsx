@@ -150,6 +150,19 @@ export async function run(): Promise<string> {
     flushSync(() => handle.insertReference({ kind: "file", file }));
     await paint();
     check(references.length === 1, "insertion reports new reference");
+    flushSync(() => handle.replaceText(0, 0, ""));
+
+    for (const [key, keyCode, offset] of [
+      ["ArrowRight", 39, `@${file.url}`.length],
+      ["ArrowLeft", 37, 0],
+    ] as const) {
+      area.dispatchEvent(new KeyboardEvent("keydown", { key, keyCode, bubbles: true }));
+      const stepped = handle.readDocument();
+      check(
+        stepped.selectionStart === offset && stepped.selectionEnd === offset,
+        "arrows step the caret over a chip as one unit in both directions",
+      );
+    }
 
     const outside = document.createElement("button");
     document.body.append(outside);

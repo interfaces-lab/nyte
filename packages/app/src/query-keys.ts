@@ -5,9 +5,8 @@ export const keys = {
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
-  /** The catalog at one generation; a new generation is a new read. */
-  catalog: (generation: string) => ["catalog", "picker", generation] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
+  accountLimits: (generation: string) => ["account-limits", generation] as const,
   // Usage reads everything once. A read walks every stored commit whatever
   // window it is asked for, so the window buys nothing on the way in and costs
   // a full re-read on every range press. The day is the key, so the page reads

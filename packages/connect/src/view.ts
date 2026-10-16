@@ -1,121 +1,112 @@
-/**
- * Account remote access as a settings surface shows it: no machine key, no
- * session JWT, no device token. Owned by the Connect lifecycle, below any UI;
- * the desktop bridge and a headless status command read the same shape.
- */
-/** Why account remote access cannot run in this build or on this Mac. */
-export type ConnectUnavailable =
-  /** The build carries no usable broker origin or Clerk keys. */
-  | "not_configured"
-  /** `~/.nyte/connect.json` cannot be used; nothing is accepted. */
-  | "store_failed"
-  /** The stored link was made with another broker than this build names; it is neither served nor reinterpreted. */
-  | "origin_changed";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 
-/** The Clerk session on this desktop. Display only; never a credential. */
-export type ConnectAccount =
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "signed_out" }
-  | { readonly kind: "signed_in"; readonly label: string };
+export const ConnectUnavailableSchema = Type.Union([
+  Type.Literal("not_configured"),
+  Type.Literal("store_failed"),
+  Type.Literal("origin_changed"),
+]);
 
-export type ConnectLinkFailure =
-  | "cancelled"
-  | "network"
-  | "limit"
-  | "owner_disabled"
-  | "session_revoked"
-  /** The owner refused the transaction, or let it lapse. */
-  | "denied"
-  | "expired"
-  | "refused";
+export type ConnectUnavailable = Static<typeof ConnectUnavailableSchema>;
 
-export type ConnectLinking =
-  | { readonly kind: "idle" }
-  /** The sign-in dialog is open and the user has not finished signing in. */
-  | { readonly kind: "waiting_for_account" }
-  /**
-   * A headless host's transaction is open: the owner signs in at `verifyUrl`
-   * on another device, enters `userCode`, and compares `fingerprint` with
-   * what the host shows before approving.
-   */
-  | {
-      readonly kind: "awaiting_approval";
-      readonly verifyUrl: string;
-      readonly userCode: string;
-      readonly fingerprint: string;
-      readonly expiresAt: number;
-    }
-  /** The broker is registering this Mac. */
-  | { readonly kind: "linking" }
-  | { readonly kind: "failed"; readonly reason: ConnectLinkFailure };
+export const ConnectAccountSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("unavailable") }),
+  Type.Object({ kind: Type.Literal("signed_out") }),
+  Type.Object({ kind: Type.Literal("signed_in"), label: Type.String() }),
+]);
 
-/**
- * Whether account devices may use the listener right now. Only `current`
- * admits them; every other state refuses them and has closed their streams.
- */
-export type ConnectLease =
-  | { readonly kind: "stopped" }
-  /** Serving, and no lease verified since start or wake. */
-  | { readonly kind: "pending" }
-  | { readonly kind: "current"; readonly expiresAt: number }
-  | { readonly kind: "lapsed"; readonly reason: "offline" | "owner_disabled" };
+export type ConnectAccount = Static<typeof ConnectAccountSchema>;
 
-/**
- * This Mac's WebSocket to the broker's relay. Only `connected` carries phone
- * requests; it means the relay accepted this Mac's signed proof.
- */
-export type ConnectRelay =
-  | { readonly kind: "stopped" }
-  | { readonly kind: "connecting" }
-  | { readonly kind: "connected" }
-  /** The socket closed or was refused; the next attempt waits a jittered backoff. */
-  | { readonly kind: "retrying"; readonly attempt: number }
-  /** Another Nyte instance took over this Mac's link. Nothing reconnects until the user turns it on again. */
-  | { readonly kind: "failed"; readonly reason: "replaced" };
+export const ConnectLinkFailureSchema = Type.Union([
+  Type.Literal("cancelled"),
+  Type.Literal("network"),
+  Type.Literal("limit"),
+  Type.Literal("owner_disabled"),
+  Type.Literal("session_revoked"),
+  Type.Literal("denied"),
+  Type.Literal("expired"),
+  Type.Literal("refused"),
+]);
 
-/** A phone enrolled through the account. Only a digest of its token is kept. */
-export interface ConnectDevice {
-  readonly id: string;
-  readonly name: string;
-  readonly createdAt: number;
-  /** Listed by the current lease. */
-  readonly authorized: boolean;
-}
+export type ConnectLinkFailure = Static<typeof ConnectLinkFailureSchema>;
 
-/** Why the Mac is unlinked, when that was not the user's own doing just now. */
-export type ConnectNotice =
-  | { readonly kind: "none" }
-  /** The broker reported the environment removed, from a phone or by the operator. */
-  | { readonly kind: "revoked" }
-  /** Unlinked here; the broker has not confirmed yet and is retried. */
-  | { readonly kind: "unlink_pending" };
+export const ConnectLinkingSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("idle") }),
+  Type.Object({ kind: Type.Literal("waiting_for_account") }),
+  Type.Object({
+    kind: Type.Literal("awaiting_approval"),
+    verifyUrl: Type.String(),
+    userCode: Type.String(),
+    fingerprint: Type.String(),
+    expiresAt: Type.Number(),
+  }),
+  Type.Object({ kind: Type.Literal("linking") }),
+  Type.Object({ kind: Type.Literal("failed"), reason: ConnectLinkFailureSchema }),
+]);
 
-/**
- * Account remote access as Settings shows it: no machine key, session JWT, or
- * device token. Changes arrive as `remote_access_changed`.
- */
-export type ConnectView =
-  | { readonly kind: "unavailable"; readonly reason: ConnectUnavailable }
-  | {
-      readonly kind: "unlinked";
-      readonly account: ConnectAccount;
-      readonly linking: ConnectLinking;
-      readonly notice: ConnectNotice;
-    }
-  | {
-      readonly kind: "linked";
-      readonly account: ConnectAccount;
-      /** The Clerk user the link belongs to, which may differ from the signed-in one. */
-      readonly owner: { readonly id: string; readonly label: string };
-      readonly environment: {
-        readonly id: string;
-        readonly name: string;
-        /** `<origin>/r/<id>`, where phones reach this Mac through the relay. */
-        readonly address: string;
-      };
-      /** Persisted; off by default. On means serve whenever Nyte runs, after a lease verifies. */
-      readonly enabled: boolean;
-      readonly connection: ConnectRelay;
-      readonly lease: ConnectLease;
-      readonly devices: readonly ConnectDevice[];
-    };
+export type ConnectLinking = Static<typeof ConnectLinkingSchema>;
+
+export const ConnectLeaseSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("stopped") }),
+  Type.Object({ kind: Type.Literal("pending") }),
+  Type.Object({ kind: Type.Literal("current"), expiresAt: Type.Number() }),
+  Type.Object({
+    kind: Type.Literal("lapsed"),
+    reason: Type.Union([Type.Literal("offline"), Type.Literal("owner_disabled")]),
+  }),
+]);
+
+export type ConnectLease = Static<typeof ConnectLeaseSchema>;
+
+export const ConnectRelaySchema = Type.Union([
+  Type.Object({ kind: Type.Literal("stopped") }),
+  Type.Object({ kind: Type.Literal("connecting") }),
+  Type.Object({ kind: Type.Literal("connected") }),
+  Type.Object({ kind: Type.Literal("retrying"), attempt: Type.Number() }),
+  Type.Object({ kind: Type.Literal("failed"), reason: Type.Literal("replaced") }),
+]);
+
+export type ConnectRelay = Static<typeof ConnectRelaySchema>;
+
+export const ConnectDeviceSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  createdAt: Type.Number(),
+  authorized: Type.Boolean(),
+});
+
+export type ConnectDevice = Static<typeof ConnectDeviceSchema>;
+
+export const ConnectNoticeSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("none") }),
+  Type.Object({ kind: Type.Literal("revoked") }),
+  Type.Object({ kind: Type.Literal("unlink_pending") }),
+]);
+
+export type ConnectNotice = Static<typeof ConnectNoticeSchema>;
+
+export const ConnectViewSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("unavailable"), reason: ConnectUnavailableSchema }),
+  Type.Object({
+    kind: Type.Literal("unlinked"),
+    account: ConnectAccountSchema,
+    linking: ConnectLinkingSchema,
+    notice: ConnectNoticeSchema,
+  }),
+  Type.Object({
+    kind: Type.Literal("linked"),
+    account: ConnectAccountSchema,
+    owner: Type.Object({ id: Type.String(), label: Type.String() }),
+    environment: Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      address: Type.String(),
+    }),
+    enabled: Type.Boolean(),
+    connection: ConnectRelaySchema,
+    lease: ConnectLeaseSchema,
+    devices: Type.Array(ConnectDeviceSchema),
+  }),
+]);
+
+export type ConnectView = Static<typeof ConnectViewSchema>;

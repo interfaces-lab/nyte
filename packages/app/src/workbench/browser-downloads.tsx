@@ -4,7 +4,7 @@ import type { BrowserDownload } from "../bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
@@ -24,9 +24,9 @@ const styles = create({
   item: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    paddingBlock: 4,
-    paddingInline: 10,
+    gap: space.s2,
+    paddingBlock: space.s1,
+    paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },

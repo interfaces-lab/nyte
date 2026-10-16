@@ -12,11 +12,6 @@ import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
 
-/**
- * Run a fixture's exported run() in an isolated, styled Electron renderer.
- * With `studio`, the window shows and calls the fixture's studio() instead;
- * closing the window passes.
- */
 export async function testRenderer(
   entry: URL,
   setup = "",

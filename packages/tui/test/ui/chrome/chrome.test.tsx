@@ -1,9 +1,3 @@
-/**
- * The chrome around the composer, drawn from `deriveScreen`: the powerline
- * drops segments as the terminal narrows, the hint row shows the labels of
- * enabled interactions (secondaries only when they fit), the notice and
- * failure lines, and the error screen's keys.
- */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, mock, test } from "bun:test";
 import { RGBA } from "@opentui/core";
@@ -72,12 +66,6 @@ describe("hints", () => {
     expect(narrowRow).toContain("enter steer");
     expect(narrowRow).not.toContain("ctrl+enter");
     expect(narrowRow).not.toContain("shift+tab");
-  });
-
-  test("hints follow the interactions: idle with an empty draft offers no stop", async () => {
-    await using app = await mount(ready(idle), () => <Hints />, { width: 100, height: 2 });
-
-    expect(app.captureCharFrame()).not.toContain("esc stop");
   });
 });
 

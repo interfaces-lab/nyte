@@ -14,6 +14,7 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
  */
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DragEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
@@ -86,7 +87,7 @@ import { workbenchController, workbenchViewKey } from "../workbench/controller.t
 import { subagentActivity } from "./subagent-status.ts";
 import { composerStyles, markerStyles } from "./styles.stylex.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
-import type { ComposerAnswer } from "./tray/questions.tsx";
+import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
@@ -101,10 +102,6 @@ type ComposerSurface = "new-chat" | "follow-up";
 
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
-/**
- * Session-bound chip: shows the selected inputs for the next message, even
- * while an older run is still executing.
- */
 const SessionModelChip = memo(function SessionModelChip({
   sessionId,
 }: {
@@ -273,7 +270,7 @@ export function ComposerFrame({
   const [submitting, setSubmitting] = useState(false);
 
   const commandsEnabled =
-    surface === "follow-up" && editing === undefined && attachments.length === 0;
+    !answering && surface === "follow-up" && editing === undefined && attachments.length === 0;
 
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,
@@ -336,7 +333,7 @@ export function ComposerFrame({
       : editing?.kind === "message"
         ? "Send Edited Message (Enter)"
         : answering
-          ? `Send Answer (Enter) · ${runningMessagePreference === "queue" ? "Steer" : "Queue"} (${modifier}Enter)`
+          ? "Send answer (Enter)"
           : busy
             ? runningMessagePreference === "queue"
               ? `Queue (Enter) · Steer (${modifier}Enter)`
@@ -468,6 +465,7 @@ export function ComposerFrame({
       <div
         role="alert"
         {...props(
+          text.sm,
           intent.danger,
           composerStyles.attachmentError,
           composerStyles.attachmentErrorInset,
@@ -605,7 +603,7 @@ export function ComposerFrame({
                 ).className
               }
               files={suggestionMenu.files}
-              combobox={suggestionMenu.combobox}
+              combobox={answering ? undefined : suggestionMenu.combobox}
               placeholder={dragging === "files" ? DROP_PLACEHOLDER : placeholder}
               document={document}
               disabled={disabled}
@@ -613,12 +611,12 @@ export function ComposerFrame({
               onDocumentChange={(next, completion) => {
                 onDocumentChange(next);
                 resize(next.text);
-                suggestionMenu.onCompletionChange(completion);
+                suggestionMenu.onCompletionChange(answering ? undefined : completion);
               }}
               onFilesSelected={onFilesSelected}
               onFocusChange={onFocusChange}
               onKeyDown={(event) => {
-                if (suggestionMenu.onKeyDown(event)) return;
+                if (!answering && suggestionMenu.onKeyDown(event)) return;
                 const enter = composerEnterAction(event);
 
                 if (enter === "submit" || enter === "submit-alternate") {
@@ -666,7 +664,7 @@ export function ComposerFrame({
               }}
             />
           </div>
-          {suggestionMenu.menu}
+          {!answering && suggestionMenu.menu}
           <div
             {...props(
               composerStyles.controls,
@@ -683,7 +681,7 @@ export function ComposerFrame({
                     icon="plus"
                     aria-label="Add to message"
                     variant="outline"
-                    disabled={disabled}
+                    disabled={disabled || answering}
                     xstyle={[composerStyles.pillButton, compact && composerStyles.addButtonCompact]}
                   />
                 }
@@ -787,13 +785,11 @@ type PendingRowAction =
   | { readonly kind: "sending" }
   | { readonly kind: "failed"; readonly message: string };
 
-/** A queued or unsent message being edited in the composer; sending replaces it in place. */
 interface PendingEdit {
   readonly message: UserMessage;
   readonly delivery: Delivery;
 }
 
-/** The receipt a message stands for: the same id, minted before the network. */
 function messageReceipt(sessionId: SessionId, message: UserMessage) {
   return connection().session(sessionId).receipt(asId<"receipt">(message.id));
 }
@@ -815,15 +811,11 @@ export function Composer({
   inputRef,
   fileDropRoot,
   backgroundWork,
-  answer,
   floatingMount = null,
 }: {
   sessionId: SessionId;
-  /** The head's run phase as the view carries it; Stop names its run and follows its fence. */
   execution: Execution | undefined;
-  /** Admitted messages waiting for the next turn behind a live run. */
   pending: readonly UserMessage[];
-  /** Messages in this client's journal the strip shows: retrying, or held behind a live run. */
   unsent: readonly UserMessage[];
   disabled?: boolean;
   /**
@@ -835,9 +827,10 @@ export function Composer({
   onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   fileDropRoot?: HTMLElement | null;
-  backgroundWork?: { readonly content: ReactNode; readonly onEscape: () => boolean };
-  /** A waiting question the composer's words answer. */
-  answer?: ComposerAnswer;
+  backgroundWork?: {
+    readonly content: ReactNode;
+    readonly onEscape: () => boolean;
+  };
   floatingMount?: HTMLDivElement | null;
 }): ReactElement {
   const runningMessagePreference = useSetting(preferences.runningMessage);
@@ -857,6 +850,9 @@ export function Composer({
   const host = useHostState();
   const queueRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
+
+  const questions = useQuestionDock(sessionId);
+
   const pluginCatalog = usePluginCatalog(sessionId);
   const sessionCommands = useSessionCommands(sessionId);
   const sessionActions = useSessionActions();
@@ -1079,6 +1075,7 @@ export function Composer({
             messageFiles(edit.message.content),
           ),
         );
+
         await connection().session(sessionId).send(content, { replace: edit.message.id, delivery });
         setPendingEdit(undefined);
 
@@ -1166,23 +1163,6 @@ export function Composer({
       }
     }
 
-    // A waiting question takes Enter's words as its answer, as the terminal's does.
-    if (
-      answer !== undefined &&
-      sentAttachments.length === 0 &&
-      delivery === roles[runningMessagePreference]
-    ) {
-      try {
-        await answer.send(submission.text);
-
-        return true;
-      } catch (cause: unknown) {
-        refuse(`Couldn't send your answer: ${errorMessage(cause)}`, sent);
-
-        return false;
-      }
-    }
-
     try {
       await sendComposerMessage(sessionId, plan);
 
@@ -1218,7 +1198,6 @@ export function Composer({
       .catch(() => undefined);
   };
 
-  /** Withdraws a queued or unsent message: its receipt's stop, before it lands. */
   const cancelPending = async (item: UserMessage): Promise<void> => {
     setRowAction(item.id, { kind: "cancelling" });
 
@@ -1229,7 +1208,6 @@ export function Composer({
     }
   };
 
-  /** Moves a queued message into the live run: the same message replaced with steer delivery. */
   const sendPendingNow = async (item: UserMessage): Promise<void> => {
     setRowAction(item.id, { kind: "sending" });
 
@@ -1258,19 +1236,21 @@ export function Composer({
   };
 
   const emptyEnterSteers =
+    questions === undefined &&
     !disabled &&
     currentViewState.draft === "" &&
     attachments.length === 0 &&
     nextIdleQueued !== undefined;
 
   const canBeginEdit =
+    questions === undefined &&
     currentViewState.draft === "" &&
     attachments.length === 0 &&
     pendingEdit === undefined &&
     !disabled;
 
   const queuedEditReason =
-    canBeginEdit || disabled
+    canBeginEdit || disabled || questions !== undefined
       ? undefined
       : pendingEdit !== undefined
         ? "Finish editing the queued message first."
@@ -1453,12 +1433,13 @@ export function Composer({
                     content={item.source.kind === "action" ? item.source.label : item.content}
                   />
                   {action?.kind === "cancelling" && (
-                    <span {...props(composerStyles.queuedState)}>Cancelling…</span>
+                    <span {...props(text.xs, composerStyles.queuedState)}>Cancelling…</span>
                   )}
                   {action?.kind === "failed" && (
                     <span
                       role="alert"
                       {...props(
+                        text.xs,
                         intent.danger,
                         composerStyles.queuedState,
                         composerStyles.queuedError,
@@ -1531,6 +1512,7 @@ export function Composer({
                     <span
                       role="alert"
                       {...props(
+                        text.xs,
                         intent.danger,
                         composerStyles.queuedState,
                         composerStyles.queuedError,
@@ -1615,11 +1597,11 @@ export function Composer({
               {queuedMessages}
             </div>
             <div {...props(composerStyles.preComposerPills)}>
-              {backgroundWork?.content}
+              <QuestionDockContext value={questions}>{backgroundWork?.content}</QuestionDockContext>
               {floating ? (
                 <>
                   {liveRun !== undefined && (
-                    <span {...props(composerStyles.floatingStatus)}>
+                    <span {...props(text.base, composerStyles.floatingStatus)}>
                       <StatusDot mark="working" />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
                         {activity ?? "Working"}
@@ -1644,12 +1626,20 @@ export function Composer({
           </div>
           <ComposerFrame
             surface="follow-up"
-            document={{
-              text: currentViewState.draft,
-              selectionStart: currentViewState.selectionStart,
-              selectionEnd: currentViewState.selectionEnd,
-            }}
+            document={
+              questions?.document ?? {
+                text: currentViewState.draft,
+                selectionStart: currentViewState.selectionStart,
+                selectionEnd: currentViewState.selectionEnd,
+              }
+            }
             onDocumentChange={(document) => {
+              if (questions !== undefined) {
+                questions.changeDocument(document);
+
+                return;
+              }
+
               if (document.text !== latestViewState.current.draft) {
                 setFeedback((current) => (current?.kind === "error" ? current : undefined));
               }
@@ -1661,24 +1651,50 @@ export function Composer({
                 selectionEnd: document.selectionEnd,
               }));
             }}
-            onSubmit={send}
-            placeholder={answer?.placeholder ?? FOLLOW_UP_PLACEHOLDER}
+            onSubmit={
+              questions === undefined
+                ? send
+                : async (_submission, _delivery, document) => {
+                    try {
+                      await questions.advance(document);
+
+                      return true;
+                    } catch {
+                      return false;
+                    }
+                  }
+            }
+            placeholder={
+              questions === undefined ? FOLLOW_UP_PLACEHOLDER : "Answer in your own words"
+            }
             floating={floating}
-            disabled={disabled}
+            disabled={disabled || questions?.pending === true || questions?.settled === true}
             busy={liveRun !== undefined}
             runningMessagePreference={runningMessagePreference}
-            answering={answer !== undefined}
+            answering={questions !== undefined}
             stopping={stopping}
             onAbort={abort}
-            onDismissTray={backgroundWork?.onEscape}
-            onEmptySubmit={sendNextQueued}
-            suggestionCatalog={suggestionCatalog}
-            mentionFiles={mentionFiles}
+            onDismissTray={
+              questions === undefined
+                ? backgroundWork?.onEscape
+                : () => {
+                    void questions.dismiss().catch(() => undefined);
+
+                    return true;
+                  }
+            }
+            onEmptySubmit={questions === undefined ? sendNextQueued : undefined}
+            suggestionCatalog={
+              questions === undefined
+                ? suggestionCatalog
+                : { status: "ready", data: { commands: [], skills: [] } }
+            }
+            mentionFiles={questions === undefined ? mentionFiles : { status: "ready", data: [] }}
             hasConversationContext
-            attachments={attachments}
-            attachmentBusy={attachmentReads !== 0}
-            attachmentError={attachmentError}
-            onFilesSelected={(files) => void addFiles(files)}
+            attachments={questions === undefined ? attachments : []}
+            attachmentBusy={questions === undefined && attachmentReads !== 0}
+            attachmentError={questions === undefined ? attachmentError : undefined}
+            onFilesSelected={questions === undefined ? (files) => void addFiles(files) : undefined}
             onAttachmentRemove={(id) => {
               updateViewState((current) => ({
                 ...current,
@@ -1686,11 +1702,15 @@ export function Composer({
               }));
               setAttachmentError(undefined);
             }}
-            model={disabled ? undefined : <SessionModelChip sessionId={sessionId} />}
+            model={
+              disabled || questions !== undefined ? undefined : (
+                <SessionModelChip sessionId={sessionId} />
+              )
+            }
             inputRef={attachInput}
             onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}
             editing={
-              pendingEdit === undefined
+              questions !== undefined || pendingEdit === undefined
                 ? undefined
                 : { kind: "queued", delivery: pendingEdit.delivery, onCancel: cancelEdit }
             }

@@ -27,15 +27,12 @@ import { callRef } from "./refs.ts";
 import { commit, readCall } from "./session-state.ts";
 import type { Durable } from "./tools.ts";
 
-/** Names the core hooks of one phase. */
 export type CoreHook<Phase extends HookTable[keyof HookTable]["phase"]> = {
   [N in HookName<"core">]: HookTable[N & keyof HookTable]["phase"] extends Phase ? N : never;
 }[HookName<"core">];
 
-/** What a core hook receives. */
 export type HookEvent<N extends HookName<"core">> = HookTable[N & keyof HookTable]["event"];
 
-/** Where an operation dispatches a hook and the principal acting; handlers see the session, head and run. */
 export interface HookContext {
   readonly session: SessionId;
   readonly head: HeadName | null;
@@ -43,7 +40,6 @@ export interface HookContext {
   readonly principal: PrincipalId;
 }
 
-/** The durable step a decide dispatch runs as, its call keyed by what it gates (`hook:before_tool:<call>`, `hook:before_send:<message>`). */
 export interface HookStep {
   readonly call: CallId;
   readonly run: RunId | null;
@@ -52,28 +48,27 @@ export interface HookStep {
   readonly signal: AbortSignal;
 }
 
-/** Holds one session's hook handlers and dispatches them by phase. */
 export interface HookDispatch {
-  /** Adds a plugin's handler, run with the api it registered through; the disposer removes it. */
   register<N extends HookName<"core">>(
     plugin: string,
     api: PluginApi<"core">,
     name: N,
     entry: HookEntry<"core", N>,
   ): Disposer;
-  /** Runs every handler in order; never rejects: a throw or an exceeded budget is reported against the handler's plugin. */
+
   observe<N extends CoreHook<"observe">>(
     name: N,
     event: HookEvent<N>,
     context: HookContext,
   ): Promise<void>;
-  /** Chains the value through every handler in order; a throw or an exceeded budget rejects `internal` naming the plugin. */
+
   transform<N extends CoreHook<"transform">>(
     name: N,
     value: HookEvent<N>,
     context: HookContext,
+    signal?: AbortSignal,
   ): Promise<HookEvent<N>>;
-  /** Runs the handlers as one replay-safe durable step of kind `hook` at `step.call`, each acting from the step, and resolves the recorded decision or `parked`. With no handler and no step recorded it resolves `continue` and writes nothing. */
+
   decide<N extends CoreHook<"decide">>(
     name: N,
     value: HookEvent<N>,
@@ -98,7 +93,6 @@ interface Handler<N extends HookName<"core">> {
   readonly run: HookHandler<"core", N>;
 }
 
-/** How one decide hook is called, recorded and read back. */
 interface Decider<N extends CoreHook<"decide">> {
   invoke(
     run: HookHandler<"core", N>,
@@ -118,7 +112,6 @@ const submissions = compile(withJson(decisionType(SubmissionType)));
 
 const toolCalls = compile(withJson(decisionType(ToolCallType)));
 
-/** One caller per hook, so a call indexed by a generic hook name is typed by that hook. */
 type Observers = {
   readonly [N in CoreHook<"observe">]: (
     run: HookHandler<"core", N>,
@@ -169,7 +162,6 @@ const deciders: Deciders = {
   },
 };
 
-/** Returns a session's empty hook dispatch. Handlers run by ascending `order` (default 0), then registration sequence, each with the api it registered through and a signal that fires at its budget (5 s; `before_compaction` 300 s) or when its plugin deactivates. */
 export function createHookDispatch(kernel: Kernel, session: SessionId): HookDispatch {
   const handlers = emptyHandlers();
   let sequence = 0;
@@ -226,7 +218,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
         }
       }
     },
-    async transform(name, value, context) {
+    async transform(name, value, context, stopped = NEVER) {
       dev("hooks", name, { session, handlers: handlers[name].length });
       let current = value;
 
@@ -234,8 +226,11 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
         const { api } = handler;
 
         try {
-          current = await budgeted(name, api.signal, (signal) =>
-            transformers[name](handler.run, current, base(api, signal, context)),
+          current = await budgeted(
+            name,
+            api.signal,
+            (signal) => transformers[name](handler.run, current, base(api, signal, context)),
+            stopped,
           );
         } catch (error) {
           throw new SdkError("internal", failure(handler.plugin, name, error));
@@ -272,11 +267,18 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
             let decision: Decision<HookEvent<typeof name>>;
 
             try {
-              decision = await budgeted(name, api.signal, (signal) =>
-                decider.invoke(handler.run, current, { ...base(api, signal, context), ...durable }),
+              decision = await budgeted(
+                name,
+                api.signal,
+                (signal) =>
+                  decider.invoke(handler.run, current, {
+                    ...base(api, signal, context),
+                    ...durable,
+                  }),
+                step.signal,
               );
             } catch (error) {
-              if (isParked(error)) throw error;
+              if (isParked(error) || step.signal.aborted) throw error;
 
               return { action: "error", message: failure(handler.plugin, name, error) };
             }
@@ -303,7 +305,6 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
   };
 }
 
-/** Returns whether a name is a core hook. */
 export function isCoreHook(name: string): name is HookName<"core"> {
   return (
     Object.hasOwn(observers, name) ||
@@ -312,7 +313,6 @@ export function isCoreHook(name: string): name is HookName<"core"> {
   );
 }
 
-/** Dispatches `before_send` as the durable step `hook:before_send:<message>` and waits in process while it is parked, running it again on each wake: what the kernel's `admit` runs. A revision of a pending message first forgets the decision its earlier version recorded. */
 export async function gateSubmission(
   kernel: Kernel,
   submission: Submission,
@@ -330,8 +330,11 @@ export async function gateSubmission(
       ]);
   }
 
+  const { signal } = context;
   let woken = Promise.withResolvers<void>();
   const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
+  const abort = (): void => woken.resolve();
+  signal.addEventListener("abort", abort, { once: true });
 
   try {
     for (;;) {
@@ -343,20 +346,24 @@ export async function gateSubmission(
           "before_send",
           submission,
           { session, head: context.head, run: context.run, principal: context.principal },
-          { call, run: null, head: null, part: null, signal: NEVER },
+          { call, run: null, head: null, part: null, signal },
         );
 
       if (outcome.kind === "done") return outcome.value;
 
       if (outcome.kind === "interrupted") return CONTINUE;
-      await woken.promise;
+
+      if (!signal.aborted) await woken.promise;
+
+      if (signal.aborted)
+        return { action: "error", message: "The kernel closed before before_send decided." };
     }
   } finally {
+    signal.removeEventListener("abort", abort);
     dispose();
   }
 }
 
-/** Returns `CORE_CONTEXT` acting from a decide step, with a fresh acquisition counter for one execution. */
 function stepContext(session: SessionId, step: HookStep): ConnectionContext {
   const { run, head, call } = step;
   let acquisitions = 0;
@@ -379,11 +386,11 @@ function stepContext(session: SessionId, step: HookStep): ConnectionContext {
   };
 }
 
-/** Runs one handler under its budget and its plugin's deactivation, rejecting at either. */
 async function budgeted<T>(
   name: HookName<"core">,
   deactivated: AbortSignal,
   run: (signal: AbortSignal) => Awaitable<T>,
+  stopped: AbortSignal = NEVER,
 ): Promise<T> {
   const seconds = name === "before_compaction" ? 300 : 5;
   const budget = new AbortController();
@@ -395,16 +402,21 @@ async function budgeted<T>(
   }, seconds * 1000);
 
   const deactivate = (): void => ended.reject(new Error("was deactivated"));
+  const stop = (): void => ended.reject(new Error("was stopped"));
   deactivated.addEventListener("abort", deactivate, { once: true });
+  stopped.addEventListener("abort", stop, { once: true });
+
+  if (stopped.aborted) stop();
 
   try {
     return await Promise.race([
-      Promise.resolve().then(() => run(AbortSignal.any([budget.signal, deactivated]))),
+      Promise.resolve().then(() => run(AbortSignal.any([budget.signal, deactivated, stopped]))),
       ended.promise,
     ]);
   } finally {
     clearTimeout(timer);
     deactivated.removeEventListener("abort", deactivate);
+    stopped.removeEventListener("abort", stop);
   }
 }
 
@@ -430,7 +442,6 @@ function emptyHandlers(): Handlers {
   };
 }
 
-/** The TypeBox schema of a `Decision` over a value schema. */
 function decisionType<T extends TSchema>(value: T) {
   return Type.Union([
     Type.Object({ action: Type.Literal("continue") }),

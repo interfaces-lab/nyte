@@ -1,10 +1,3 @@
-/**
- * Login and logout as one dialog driven by the host's login steps (open,
- * paste, choose, waiting, done, failed). The runner forwards each step as a
- * `loaded` outcome; answers go back through the `login-answer` effect.
- * The secret is held as code points and dropped when the dialog closes or
- * answers; it is never part of a notice, a log line or a crash report.
- */
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 
 export interface AuthDialog {
@@ -12,10 +5,17 @@ export interface AuthDialog {
   readonly id: DialogId;
   readonly mode: "login" | "logout";
   readonly provider: string;
+  readonly name: string;
+  readonly link: AuthLink | null;
   readonly step: AuthStep;
+  readonly promptVersion?: number;
 }
 
-/** A login step as the runner forwards it, before the dialog adds its local state. */
+export interface AuthLink {
+  readonly url: string;
+  readonly code: string | null;
+}
+
 export type AuthPrompt =
   | { readonly kind: "link"; readonly url: string; readonly code: string | null }
   | { readonly kind: "secret"; readonly prompt: string; readonly masked: boolean }
@@ -34,8 +34,8 @@ export type AuthStep =
       readonly prompt: string;
       readonly masked: boolean;
       readonly codePoints: readonly number[];
-      /** The caret, a UTF-16 offset into the secret's text; absent at the end. */
       readonly caret?: number;
+      readonly anchor?: number;
     }
   | {
       readonly kind: "choose";
@@ -47,15 +47,18 @@ export type AuthStep =
 
 const WAITING: AuthStep = { kind: "waiting", message: "Waiting for the provider…" };
 
-/** The dialog showing a step the runner forwarded. */
 export function withPrompt(dialog: AuthDialog, prompt: AuthPrompt): AuthDialog {
+  const next = { ...dialog, promptVersion: (dialog.promptVersion ?? 0) + 1 };
+
   switch (prompt.kind) {
     case "secret":
-      return { ...dialog, step: { ...prompt, codePoints: [] } };
+      return { ...next, step: { ...prompt, codePoints: [] } };
     case "choose":
-      return { ...dialog, step: { ...prompt, highlighted: 0 } };
+      return { ...next, step: { ...prompt, highlighted: 0 } };
+    case "link":
+      return { ...next, link: { url: prompt.url, code: prompt.code }, step: prompt };
     default:
-      return { ...dialog, step: prompt };
+      return { ...next, step: prompt };
   }
 }
 
@@ -71,7 +74,6 @@ function answer(dialog: AuthDialog, text: string): DialogStep<AuthDialog> {
   };
 }
 
-/** Link step: Enter/O open the browser, C copies the code or URL. Esc/Ctrl+C cancel and say "Authentication cancelled." */
 export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogStep<AuthDialog> {
   const cancel: DialogStep<AuthDialog> = { dialog, intents: [{ kind: "cancel-auth" }], push: null };
 
@@ -119,7 +121,6 @@ export function reduceAuth(dialog: AuthDialog, command: DialogCommand): DialogSt
 
       return unchanged(dialog);
     case "secret":
-      // An empty answer is an answer: an optional prompt is skipped this way.
       if (!submit) return unchanged(dialog);
 
       return answer(dialog, String.fromCodePoint(...step.codePoints));

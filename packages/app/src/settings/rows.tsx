@@ -66,7 +66,11 @@ export function SettingsRow({
   return (
     <div
       {...ROW_MARK}
-      {...props(settingsPatterns.row, detail !== undefined && settingsPatterns.rowDetailed)}
+      {...props(
+        settingsPatterns.rowRule,
+        settingsPatterns.row,
+        detail !== undefined && settingsPatterns.rowDetailed,
+      )}
     >
       <span {...props(settingsPatterns.rowCopy)}>
         <span {...props(settingsPatterns.rowTitle)}>{title}</span>
@@ -91,7 +95,11 @@ export function SettingsSwitchRow({
   title,
   ...rest
 }: Omit<SwitchFieldProps, "label" | "xstyle"> & { readonly title: string }): ReactElement {
-  return <SwitchField {...rest} {...ROW_MARK} label={title} xstyle={settingsPatterns.row} />;
+  return (
+    <div {...ROW_MARK} {...props(settingsPatterns.rowRule)}>
+      <SwitchField {...rest} label={title} xstyle={settingsPatterns.row} />
+    </div>
+  );
 }
 
 interface Copy {
@@ -251,7 +259,6 @@ export function StepsRow<T extends string>(
   );
 }
 
-/** Free text, saved on blur. Empty saves null: the built-in choice. */
 export function TextRow(
   input: Bound<string | null> & {
     readonly placeholder: string;
@@ -265,7 +272,6 @@ export function TextRow(
   return (
     <SettingsRow title={input.title} description={input.description} controlWidth="wide">
       <Input
-        // Keyed by the value, so a change from another window replaces the draft.
         key={value ?? ""}
         type={input.type ?? "text"}
         aria-label={input.title}

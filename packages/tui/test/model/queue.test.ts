@@ -1,12 +1,6 @@
-/**
- * Rows come from `status.schedule`: a steer core moved to the next turn
- * reads "next turn · new model", not "steer"; reports never appear; action
- * messages show their label and are not editable; unsent rows are not
- * withdrawable through a receipt.
- */
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
-import { placeLabel, queuedCount, queueRows, reportRows } from "../../src/model/queue.ts";
+import { placeLabel, queuedCount, queueRows } from "../../src/model/queue.ts";
 import type { ScheduleSpec } from "../fixture/view.ts";
 import { followed, viewOf } from "../fixture/view.ts";
 
@@ -53,7 +47,10 @@ describe("labels follow the schedule, never the delivery", () => {
 
   test("an unsent message is sending, or retrying with its reason", () => {
     const view = viewOf((v) =>
-      v.unsent("a").unsent("b", { retrying: { at: 9_000, reason: "offline" } }),
+      v
+        .unsent("a")
+        .unsent("b", { retrying: { at: 9_000, reason: "offline" } })
+        .live("run-1"),
     );
 
     const rows = queueRows(followed(view), null);
@@ -64,29 +61,27 @@ describe("labels follow the schedule, never the delivery", () => {
 });
 
 describe("rows", () => {
-  test("reports wait apart and are never the user's rows", () => {
+  test("reports are never the user's rows", () => {
     const view = viewOf((v) =>
       v
         .turn("t1", (t) => t.user("go").ended("completed"))
         .pending("mine", { schedule: { kind: "next-turn", reason: "idle" } })
-        .report({ child: "s9" }, "Child s9 completed:\nall done"),
+        .report({ child: "s9" }, "all done")
+        .live("run-2"),
     );
 
-    const session = followed(view);
-
-    expect(queueRows(session, null).map((row) => row.text)).toEqual(["mine"]);
-    expect(reportRows(session, [])).toMatchObject([
-      { title: "subagent completed", body: "all done", tone: "ok" },
-    ]);
+    expect(queueRows(followed(view), null).map((row) => row.text)).toEqual(["mine"]);
   });
 
   test("an action shows its label and is not editable", () => {
     const view = viewOf((v) =>
-      v.pending(
-        "a long prebuilt prompt",
-        { schedule: { kind: "next-turn", reason: "idle" } },
-        { source: { kind: "action", label: "Fix lint" } },
-      ),
+      v
+        .pending(
+          "a long prebuilt prompt",
+          { schedule: { kind: "next-turn", reason: "idle" } },
+          { source: { kind: "action", label: "Fix lint" } },
+        )
+        .live("run-1"),
     );
 
     const [row] = queueRows(followed(view), null);
@@ -98,7 +93,8 @@ describe("rows", () => {
     const view = viewOf((v) =>
       v
         .pending("one", { schedule: { kind: "next-turn", reason: "run-ended" } }, { id: "m1" })
-        .pending("two", { schedule: { kind: "joined", run: "run-1" } }, { id: "m2" }),
+        .pending("two", { schedule: { kind: "joined", run: "run-1" } }, { id: "m2" })
+        .live("run-1"),
     );
 
     const rows = queueRows(followed(view), {
@@ -128,9 +124,11 @@ describe("rows", () => {
 
   test("a file block in a queued message shows as its marker", () => {
     const view = viewOf((v) =>
-      v.pending('look <file src="file:///w/a.ts">\nbody\n</file>', {
-        schedule: { kind: "next-turn", reason: "idle" },
-      }),
+      v
+        .pending('look <file src="file:///w/a.ts">\nbody\n</file>', {
+          schedule: { kind: "next-turn", reason: "idle" },
+        })
+        .live("run-1"),
     );
 
     expect(queueRows(followed(view), null)[0]?.text).toBe("look [File a.ts]");

@@ -3,7 +3,6 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
 import { keys } from "./query-keys.ts";
 
-/** Share session existence reads between route preloads and the navigation they precede; null when the host has no such session. */
 export function readRouteSession({
   client,
   sessionId,
@@ -20,7 +19,6 @@ export function readRouteSession({
   });
 }
 
-/** A read the host answered `unknown` as null: the session is gone. */
 export function missingAsNull(cause: unknown): null {
   if (cause instanceof SdkError && cause.code === "unknown") return null;
   throw cause;

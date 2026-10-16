@@ -1,8 +1,13 @@
 // One-shot provider calls. Each loads its client on first use so importing the
 // package root does not bundle every SDK.
 import { providerRequest } from "../model-variants.ts";
-import type { AccountLimits, Context, Model } from "../types.ts";
-import type { AnthropicOptions } from "./anthropic-messages.ts";
+import type {
+  AccountLimits,
+  AccountLimitsFetchOptions,
+  AccountLimitsTarget,
+  Context,
+  Model,
+} from "../types.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
 import type {
   OpenAICodexCompactResult,
@@ -11,8 +16,8 @@ import type {
 import type { OpenAIResponsesOptions } from "./openai-responses.ts";
 
 export async function fetchAnthropicAccountLimits(
-  model: Model<"anthropic-messages">,
-  options?: AnthropicOptions,
+  model: AccountLimitsTarget,
+  options?: AccountLimitsFetchOptions,
 ): Promise<AccountLimits> {
   const api = await import("./anthropic-messages.ts");
 
@@ -20,8 +25,8 @@ export async function fetchAnthropicAccountLimits(
 }
 
 export async function fetchOpenAICodexAccountLimits(
-  model: Model<"openai-codex-responses">,
-  options?: OpenAICodexResponsesOptions,
+  model: AccountLimitsTarget,
+  options?: AccountLimitsFetchOptions,
 ): Promise<AccountLimits> {
   const api = await import("./openai-codex-responses.ts");
 

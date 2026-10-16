@@ -1,9 +1,3 @@
-/**
- * One command registry for slash input, the palette (Ctrl+K) and help:
- * built-ins, then setting rows, then plugin commands, then skills; first
- * claim wins (`availableSlashCommands`). Running a command is producing an
- * Intent, so the palette and `/name` execute the same way.
- */
 import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
 import {
   availableSlashCommands,
@@ -22,9 +16,7 @@ export interface CommandEntry {
   readonly aliases: readonly string[];
   readonly description: string;
   readonly source: "builtin" | "setting" | "plugin" | "skill";
-  /** Typed as `/name …`, the draft goes out as the message (skills, client-side commands); the palette prefills it. */
   readonly prompt: boolean;
-  /** Null when the command needs an argument it was not given (e.g. `/cd`), so the palette prefills instead. */
   readonly run: (argument: string) => Intent | null;
 }
 
@@ -73,6 +65,14 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
         kind: "open",
         dialog: { kind: "text", content: "usage" },
       });
+    case "accounts":
+      return {
+        kind: "open",
+        dialog: {
+          kind: "list",
+          purpose: { kind: "accounts", provider: argument === "" ? null : argument, accounts: [] },
+        },
+      };
     case "tasks":
       return noArgument(name, argument, {
         kind: "open",
@@ -93,6 +93,10 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
         kind: "open",
         dialog: { kind: "text", content: "plugins" },
       });
+    case "trust":
+      return noArgument(name, argument, { kind: "review-trust" });
+    case "mcp":
+      return noArgument(name, argument, { kind: "open", dialog: { kind: "mcp" } });
     case "reload":
       return noArgument(name, argument, { kind: "reload" });
     case "update":
@@ -141,7 +145,6 @@ export function pluginCommands(state: State): readonly CommandInfo[] {
   return state.facts.session?.view?.catalog.commands ?? [];
 }
 
-/** The slash namespace in claim order, for completion. */
 export function slashNamespace(state: State): readonly SlashCommand[] {
   return availableSlashCommands(
     new Map(
@@ -199,7 +202,6 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
   });
 }
 
-/** A typed `/name`: a built-in or its alias, a setting, a core plugin command, a skill; null sends the text as a message. */
 export function resolveCommand(state: State, name: string): CommandEntry | null {
   return (
     commandRegistry(state).find((entry) => entry.name === name || entry.aliases.includes(name)) ??
@@ -207,11 +209,6 @@ export function resolveCommand(state: State, name: string): CommandEntry | null 
   );
 }
 
-/**
- * The command a `/name args` draft runs here, with its argument; null when
- * the draft goes out as a prompt (a skill, a client-side plugin command, an
- * unknown name, or any draft that names a skill inline, `/cd` excepted).
- */
 export function runnableCommand(
   state: State,
   text: string,

@@ -12,6 +12,7 @@ function session(id: SessionId): SessionInfo {
     id,
     name: id,
     parent: null,
+    call: null,
     workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,

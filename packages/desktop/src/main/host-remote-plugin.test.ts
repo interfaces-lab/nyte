@@ -210,7 +210,6 @@ async function pids(setup: Fixture): Promise<readonly number[]> {
   return (await readFile(path, "utf8")).trim().split("\n").map(Number);
 }
 
-/** One authenticated read on the tunnel's listener: its status and, for a refusal, the wire error's code. */
 async function info(
   setup: Fixture,
   headers: Record<string, string> = {},

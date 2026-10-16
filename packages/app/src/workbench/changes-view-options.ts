@@ -18,7 +18,6 @@ const changesViewOptionsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** Only what the repository picked; the rest follows the Settings defaults. */
 const scopedOptionsSchema = Type.Object(
   {
     options: Type.Partial(changesViewOptionsSchema, { additionalProperties: false }),
@@ -146,7 +145,6 @@ function browserStorage(): OptionsStorage | undefined {
 
 export const changesViewOptions = new ChangesViewOptionsStore({ storage: browserStorage() });
 
-/** What a repository shows: its own picks over the Settings defaults. */
 export function useChangesViewOptions(scopeId: string): ChangesViewOptions {
   const stored = useSyncExternalStore(
     changesViewOptions.subscribe,

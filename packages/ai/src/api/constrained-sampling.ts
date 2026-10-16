@@ -1,8 +1,5 @@
 /**
  * Constrained sampling helpers for provider tool schemas.
- *
- * Based on https://github.com/earendil-works/pi/blob/295cc72b03058ee4df1936046b1e1ec67978af4d/packages/ai/src/api/constrained-sampling.ts
- * Synced with pi 295cc72b0.
  */
 import { Type } from "typebox";
 import {

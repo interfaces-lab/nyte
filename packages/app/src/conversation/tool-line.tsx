@@ -6,7 +6,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
@@ -37,7 +37,7 @@ export const toolLineStyles = create({
     appearance: "none",
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     width: "100%",
     minWidth: 0,
     margin: 0,
@@ -46,10 +46,6 @@ export const toolLineStyles = create({
     backgroundColor: "transparent",
     color: "inherit",
     textDecoration: "none",
-    fontFamily: "inherit",
-    fontSize: type.fontLg,
-    lineHeight: type.leadingLg,
-    letterSpacing: type.letterLg,
     textAlign: "start",
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -84,7 +80,6 @@ export const toolLineStyles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    lineHeight: 0,
     color: "var(--_action)",
     ...COLOR_TRANSITION,
   },
@@ -112,35 +107,36 @@ export const toolLineStyles = create({
   output: {
     boxSizing: "border-box",
     maxHeight: 280,
-    marginBlock: 2,
-    paddingBlock: 4,
-    paddingInline: 8,
+    marginBlock: space.s0_5,
+    paddingBlock: space.s1,
+    paddingInline: space.s2,
     overflowY: "auto",
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
-    lineHeight: 1.4,
+    lineHeight: type.leadingSm,
+    letterSpacing: "normal",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
     userSelect: "text",
   },
   card: {
-    boxSizing: "border-box",
     width: 360,
     maxWidth: "var(--available-width)",
     maxHeight: 280,
-    padding: 4,
+    padding: space.s1,
     overflowY: "auto",
   },
   cardText: {
     paddingBlock: 0,
-    paddingInline: 4,
+    paddingInline: space.s1,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
-    lineHeight: 1.4,
+    lineHeight: type.leadingSm,
+    letterSpacing: "normal",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
   },

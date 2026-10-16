@@ -1,14 +1,8 @@
-/**
- * The app's client plugins: the notifications plugin, the React renderers
- * from `@nyte-ai/plugin` and the app's own canvas renderer, mounted once per
- * app. Renderers draw the part kinds the app has no view of its own for; a declared `run_ended_anywhere` fires
- * when a session's main head goes idle after a run, as the directory watch
- * shows. Hooks a plugin registers from `activate` are not run.
- */
 import { isValidElement } from "react";
 import type { ReactNode } from "react";
-import notifications from "@nyte-ai/plugin/notifications";
-import renderers from "@nyte-ai/plugin/renderers/react";
+import notifications from "@nyte-ai/plugin/client/notifications";
+import renderers from "@nyte-ai/plugin/client/transcript";
+import questions from "@nyte-ai/plugin/client/questions";
 import type {
   HookEntry,
   HookHandler,
@@ -39,7 +33,6 @@ type Derive<T> = (draft: RegistryDraft<T>, siblings: ClientRegistries) => void;
 
 type RunEnded = Parameters<HookHandler<"run_ended_anywhere">>[0];
 
-/** A registry over static items and derivations; `list` runs the derivations over a fresh draft. */
 function registry<T>(
   key: (item: T) => string,
   isItem: (entry: T | Derive<T>) => entry is T,
@@ -88,7 +81,6 @@ function registry<T>(
   };
 }
 
-/** A plugin's settings registry; values live in memory for this app. */
 function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["settings"] {
   const base = registry<SettingDefinition>(
     (item) => item.id,
@@ -130,11 +122,9 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
   };
 }
 
-/** A plugin's storage, in memory for this app. */
 function memoryStorage(): PluginStorage {
   const values = new Map<string, Json>();
 
-  /** A stored value is `Json`, returned as the `T` its writer stored, as core's storage does (§35g). */
   function get<T extends Json>(key: string): Promise<T | undefined>;
   async function get(key: string): Promise<Json | undefined> {
     return values.get(key);
@@ -158,7 +148,7 @@ function memoryStorage(): PluginStorage {
   return storage;
 }
 
-const plugins: readonly Plugin[] = [notifications, renderers, canvasRenderers];
+const plugins: readonly Plugin[] = [notifications, renderers, questions, canvasRenderers];
 
 const runEnded: { readonly run: HookHandler<"run_ended_anywhere">; readonly api: PluginApi }[] = [];
 
@@ -166,7 +156,6 @@ const drawers = new Map<string, Renderer>();
 
 let mounted = false;
 
-/** Mounts the client plugins once: declared contributions and hooks, then each `activate`. */
 export function mountClientPlugins(session: () => SessionId | undefined): void {
   if (mounted) return;
   mounted = true;
@@ -235,7 +224,6 @@ export function mountClientPlugins(session: () => SessionId | undefined): void {
   }
 }
 
-/** Fires `run_ended_anywhere` for each root's main head that went idle after a run since the last rows. */
 export function observeRunEnds(
   previous: readonly SessionInfo[],
   next: readonly SessionInfo[],
@@ -264,7 +252,6 @@ export function observeRunEnds(
   }
 }
 
-/** What a mounted renderer draws for a part, or null when none draws its kind. */
 export function drawPart(
   sessionId: SessionId,
   message: PartMessage,

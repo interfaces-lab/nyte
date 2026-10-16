@@ -15,15 +15,24 @@ import type {
   RunId,
   SessionId,
   SnapshotId,
+  ValidationIssue,
   WorkspaceId,
   WorkspaceInfo,
   WorkspaceInspection,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
 import type { BrowserApi, PageHolder } from "./browser.ts";
-import { UnavailableError, availabilityOf, readWorkspace } from "./environment.ts";
+import { objectId } from "./content.ts";
+import {
+  UnavailableError,
+  inspectWorkspaceAvailability,
+  readWorkspace,
+  workspaceRecords,
+} from "./environment.ts";
 import type { Resources, SnapshotsApi } from "./environment.ts";
 import { SdkError } from "./error.ts";
+import { mcpApi } from "./mcp.ts";
+import type { McpApi } from "./mcp.ts";
 import type { FilesApi, HeldBatch } from "./files.ts";
 import type { GitApi } from "./git.ts";
 import { createJobs, jobHandle } from "./jobs.ts";
@@ -31,17 +40,20 @@ import type { Job, Jobs } from "./jobs.ts";
 import type { Kernel } from "./kernel.ts";
 import { sessionPlugins } from "./plugin-runtime.ts";
 import type { PluginRuntime } from "./plugin-runtime.ts";
+import type { Plugin } from "./plugin.ts";
 import type { ConnectionContext } from "./principals.ts";
-import { decodeRunRecord, decodeSessionRecord, decodeWorkspaceRecord } from "./records.ts";
+import { decodeRunRecord, decodeWorkspaceRecord } from "./records.ts";
 import type { WorkspaceRecord } from "./records.ts";
 import { runRef, workspaceRef } from "./refs.ts";
-import { invalidateResources } from "./resources.ts";
+import { invalidateResources, projectTrust, readTrustResolver } from "./resources.ts";
+import type { TrustResolver } from "./resources.ts";
 import {
   MAIN,
   STALE,
   isCovered,
   attempt,
   commit,
+  listSessionRecords,
   liveRuns,
   load,
   put,
@@ -52,54 +64,74 @@ import { closable, coalesce, latest } from "./watch.ts";
 
 export interface Workspaces {
   list(): Promise<readonly WorkspaceInfo[]>;
+
   inspect(target: WorkspaceTarget): Promise<WorkspaceInspection>;
+
   add(
     target: WorkspaceTarget,
     options?: {
+      /** Trusts (`true`) or declines (`false`) the folder's project files; by default it inherits the nearest registered parent folder's decision. */
       readonly projectResources?: boolean;
       readonly expect?: { readonly identity: EnvironmentIdentity };
     },
   ): Promise<AddOutcome>;
+
   forget(id: WorkspaceId): Promise<ForgetOutcome>;
 }
 
 export interface Workspace {
   readonly id: WorkspaceId;
+
   info(): Promise<WorkspaceInfo>;
+
   watch(): AsyncIterable<WorkspaceInfo>;
+
+  /** The workspace's MCP servers; see {@link McpApi}. */
+  readonly mcp: McpApi;
+
+  /**
+   * Records the user's trust decision for the folder's project files: `true`
+   * loads them, `false` skips them, `null` forgets the decision so the host's
+   * `workspaceTrust` mode applies. Live sessions reload with the change.
+   */
   update(patch: {
-    readonly projectResources?: boolean;
+    readonly projectResources?: boolean | null;
   }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
+
   reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
   readonly jobs: Jobs;
+
   job(id: JobId): Job;
+
   changes(run: RunId): Promise<ChangeSet>;
+
   patches(run: RunId, paths: readonly string[], options?: DiffOptions): AsyncIterable<PatchSet>;
+
   files(): Promise<Capability<FilesApi>>;
+
   git(): Promise<Capability<GitApi>>;
+
   browser(): Promise<Capability<BrowserApi>>;
 }
 
-/** Returns one path's patch: `fresh` false while it is the previous revision's. */
 type HeldEntry = PatchEntry & { readonly fresh: boolean };
 
-/** Returns one path's read at a revision; `value` null when the revision does not report the path. */
 type PatchSlot = {
   done: boolean;
   value: HeldEntry | null;
   readonly read: Promise<HeldEntry | null>;
 };
 
-/** Returns the patch cache of one run under one set of diff options. */
 type PatchCache = { readonly revision: SnapshotId; readonly slots: Map<string, PatchSlot> };
 
 const PATCH_READ_MAX = 32;
 
 const PATCH_READS = 4;
 
+const PATCH_CACHES = 16;
+
 const staleEntries = new WeakMap<HeldEntry, HeldEntry>();
 
-/** Holds a kernel's workspace-side memory: `Workspace.watch` listeners, patch reads, session scans, the home's files and file batches. */
 export interface WorkspaceState {
   readonly listeners: Set<(id: WorkspaceId) => void>;
   readonly patches: Map<string, PatchCache>;
@@ -112,7 +144,6 @@ export interface WorkspaceState {
   readonly held: Map<ReceiptId, HeldBatch>;
 }
 
-/** Returns an empty workspace state, what `createKernel` puts on `kernel.workspaceState`. */
 export function createWorkspaceState(): WorkspaceState {
   return {
     listeners: new Set(),
@@ -128,7 +159,6 @@ const ACTIVE: Activation = { kind: "active" };
 
 const INACTIVE: Activation = { kind: "inactive" };
 
-/** Returns the workspaces registered on this host; `add` records `context.principal` as `addedBy`. */
 export function createWorkspaces(
   kernel: Kernel,
   context: Pick<ConnectionContext, "principal">,
@@ -136,7 +166,10 @@ export function createWorkspaces(
   return {
     async list() {
       const records = await workspaceRecords(kernel);
-      const infos = await Promise.all(records.map((record) => workspaceInfo(kernel, record.id)));
+      const trust = await readTrustResolver(kernel);
+      const infos = await Promise.all(
+        records.map((record) => workspaceInfo(kernel, record.id, trust)),
+      );
 
       return infos.flatMap((info) => (info === null ? [] : [info]));
     },
@@ -146,7 +179,11 @@ export function createWorkspaces(
       if (provider === undefined)
         throw new SdkError("unavailable", `No environment provider serves ${target.kind}.`);
       const inspected = await provider.inspect(target);
-      const registered = await byIdentity(kernel, inspected.identity);
+
+      const registered = await byIdentity(kernel, {
+        kind: target.kind,
+        identity: inspected.identity,
+      });
 
       return {
         target,
@@ -169,33 +206,37 @@ export function createWorkspaces(
 
       if (options?.expect !== undefined && options.expect.identity !== inspected.identity)
         return { kind: "stale", identity: inspected.identity };
-      const existing = await byIdentity(kernel, inspected.identity);
+      const identity = { kind: target.kind, identity: inspected.identity };
+      const id = asId<"workspace">(await objectId(identity));
 
-      if (existing !== null) return { kind: "exists", workspace: existing.id };
-      const id = asId<"workspace">(crypto.randomUUID());
+      return attempt<AddOutcome>(`Registering ${target.kind} workspace`, async () => {
+        const existing = await byIdentity(kernel, identity);
 
-      const record: WorkspaceRecord = {
-        id,
-        target,
-        identity: inspected.identity,
-        projectResources: options?.projectResources ?? true,
-        projectSources: inspected.projectSources,
-        addedBy: context.principal,
-        createdAt: Date.now(),
-      };
+        if (existing !== null) return { kind: "exists", workspace: existing.id };
 
-      const outcome = await commit(kernel, [
-        {
-          name: workspaceRef(id),
-          target: await put(kernel, "workspace", record),
-          expect: "absent",
-        },
-      ]);
+        const record: WorkspaceRecord = {
+          id,
+          target,
+          identity: inspected.identity,
+          projectResources: options?.projectResources ?? null,
+          projectSources: inspected.projectSources,
+          addedBy: context.principal,
+          createdAt: Date.now(),
+        };
 
-      if (outcome.kind === "stale") throw new SdkError("stale", `Workspace ${id} already exists.`);
-      changed(kernel, id);
+        const outcome = await commit(kernel, [
+          {
+            name: workspaceRef(id),
+            target: await put(kernel, "workspace", record),
+            expect: "absent",
+          },
+        ]);
 
-      return { kind: "added", workspace: id };
+        if (outcome.kind === "stale") return STALE;
+        changed(kernel, id);
+
+        return { kind: "added", workspace: id };
+      });
     },
     async forget(id) {
       return attempt<ForgetOutcome>(`Forgetting ${id}`, async () => {
@@ -221,11 +262,11 @@ export function createWorkspaces(
   };
 }
 
-/** Returns a handle on a workspace; binds synchronously. An origin in a session on this workspace views it through the session's environment, and pages opened through `browser()` are held by the origin's head. */
 export function workspaceHandle(
   kernel: Kernel,
   context: Pick<ConnectionContext, "origin">,
   id: WorkspaceId,
+  client: object | null = null,
 ): Workspace {
   const viewing = async (): Promise<SessionId | null> => {
     const origin = context.origin;
@@ -254,13 +295,20 @@ export function workspaceHandle(
   const origin = context.origin;
 
   const holder: PageHolder | null =
-    origin === null
+    origin === null && client === null
       ? null
       : {
-          session: origin.session,
-          head: origin.head ?? MAIN,
-          call: origin.call,
-          sequence: origin.sequence,
+          client: origin === null ? client : null,
+          origin:
+            origin === null
+              ? null
+              : {
+                  session: origin.session,
+                  head: origin.head ?? MAIN,
+                  run: origin.run,
+                  call: origin.call,
+                  sequence: origin.sequence,
+                },
         };
 
   const capabilities = async () => {
@@ -301,6 +349,7 @@ export function workspaceHandle(
 
       return info;
     },
+    mcp: mcpApi(kernel, id),
     watch() {
       return closable<WorkspaceInfo>(() => {
         let changes = 0;
@@ -356,13 +405,12 @@ export function workspaceHandle(
     async update(patch) {
       const outcome = await rewrite(`Updating ${id}`, (record) => ({
         ...record,
-        projectResources: patch.projectResources ?? record.projectResources,
+        projectResources:
+          patch.projectResources === undefined ? record.projectResources : patch.projectResources,
       }));
 
-      if (outcome.kind === "updated") {
-        invalidateResources(kernel, id);
-        changed(kernel, id);
-      }
+      if (outcome.kind === "updated" && patch.projectResources !== undefined)
+        await trustChanged(kernel);
 
       return outcome;
     },
@@ -373,7 +421,13 @@ export function workspaceHandle(
 
       for (const session of await sessionsOn(kernel, id)) {
         if (kernel.activation(session).kind !== "active") await kernel.environments.detach(session);
-        await Promise.allSettled([kernel.reloadPlugins(session)]);
+
+        if (
+          kernel.runtimes().has(session) ||
+          kernel.follows.has(session) ||
+          kernel.activation(session).kind !== "inactive"
+        )
+          await kernel.reloadPlugins(session).catch(() => undefined);
       }
 
       changed(kernel, id);
@@ -389,7 +443,7 @@ export function workspaceHandle(
       return found.diff(from, await found.after(run));
     },
     patches(run, paths, options) {
-      return patchesOf(kernel, { workspace: id, run, paths, options, snapshots });
+      return streamWorkspacePatches(kernel, { workspace: id, run, paths, options, snapshots });
     },
     files: async () => (await capabilities()).files,
     git: async () => (await capabilities()).git,
@@ -397,7 +451,6 @@ export function workspaceHandle(
   };
 }
 
-/** Runs a session's activation over its new runtime: what `ready` settles with; an unknown session rejects `unknown`. The environment attaches once and the activation is derived from that one settled attach, which the plugins share (E7). */
 export async function activateSession(
   kernel: Kernel,
   session: SessionId,
@@ -408,14 +461,16 @@ export async function activateSession(
   const attached = (await isCovered(kernel, session))
     ? kernel.env(session).then(
         () => ACTIVE,
-        (error: unknown) => activationOf(workspace, error),
+        (error: unknown) => classifyActivationFailure(workspace, error),
       )
     : INACTIVE;
 
+  const project = runtime.assigned() === null ? await projectPlugins(kernel, workspace) : [];
+
   try {
-    await runtime.load(sessionPlugins(kernel, runtime));
+    await runtime.load([...sessionPlugins(kernel, runtime), ...project]);
   } catch (error) {
-    settle(kernel, session, workspace, activationOf(workspace, error));
+    settle(kernel, session, workspace, classifyActivationFailure(workspace, error));
 
     throw error;
   }
@@ -423,17 +478,65 @@ export async function activateSession(
   settle(kernel, session, workspace, await attached);
 }
 
-/** Returns a registered workspace's record with its live fields, or null. */
+async function projectPlugins(
+  kernel: Kernel,
+  workspace: WorkspaceId,
+): Promise<readonly Plugin<"core">[]> {
+  const record = await readWorkspace(kernel, workspace);
+
+  if (
+    record === null ||
+    !("path" in record.target) ||
+    (await projectTrust(kernel, record)) !== true
+  )
+    return [];
+  const root = record.target.path.replace(/\/+$/u, "");
+  const provider = kernel.environments.provider(record.target.kind);
+  const sources = (await provider?.inspect(record.target))?.projectSources ?? [];
+  const paths = sources
+    .filter((source) => source.startsWith(".nyte/plugins/"))
+    .map((source) => `${root}/${source}`);
+  const path = `${root}/.nyte/plugins`;
+  const report = (issues: readonly ValidationIssue[]): void => {
+    if (issues.length > 0 || kernel.host.current().plugins.some((row) => row.id === path))
+      kernel.host.report({ id: path, source: "project", path, issues });
+  };
+
+  if (paths.length === 0) {
+    report([]);
+
+    return [];
+  }
+
+  try {
+    const loaded = await kernel.loadPlugins(paths);
+    report([]);
+
+    return loaded;
+  } catch (error) {
+    report([
+      {
+        severity: "error",
+        path: [],
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ]);
+
+    return [];
+  }
+}
+
 export async function workspaceInfo(
   kernel: Kernel,
   id: WorkspaceId,
+  trust?: TrustResolver,
 ): Promise<WorkspaceInfo | null> {
   const record = await readWorkspace(kernel, id);
 
   if (record === null) return null;
 
   const [availability, sessions] = await Promise.all([
-    availabilityOf(kernel, record.target),
+    inspectWorkspaceAvailability(kernel, record),
     sessionsOn(kernel, id),
   ]);
 
@@ -445,6 +548,7 @@ export async function workspaceInfo(
     identity: record.identity,
     availability,
     projectResources: record.projectResources,
+    trusted: (trust ?? (await readTrustResolver(kernel)))(record),
     projectSources: record.projectSources,
     addedBy: record.addedBy,
     sessions: sessions.length,
@@ -452,27 +556,15 @@ export async function workspaceInfo(
   };
 }
 
-/** Returns the sessions whose records name a workspace. */
 export async function sessionsOn(
   kernel: Kernel,
   workspace: WorkspaceId,
 ): Promise<readonly SessionId[]> {
-  const refs = await kernel.store.refs.list("sessions/");
-
-  const records = await Promise.all(
-    refs.map(async (ref) =>
-      ref.name.split("/").length !== 2 || ref.target === null
-        ? null
-        : decodeSessionRecord(await kernel.store.objects.get(ref.target)),
-    ),
-  );
-
-  return records.flatMap((record) =>
-    record !== null && record.workspace === workspace ? [record.id] : [],
+  return (await listSessionRecords(kernel)).flatMap((record) =>
+    record.workspace === workspace ? [record.id] : [],
   );
 }
 
-/** Sets a session's activation when it changed and announces it on the workspace bus. */
 function settle(
   kernel: Kernel,
   session: SessionId,
@@ -484,14 +576,13 @@ function settle(
   changed(kernel, workspace);
 }
 
-function activationOf(workspace: WorkspaceId, error: unknown): Activation {
+function classifyActivationFailure(workspace: WorkspaceId, error: unknown): Activation {
   return error instanceof UnavailableError
     ? { kind: "unavailable", workspace, reason: error.reason }
     : { kind: "failed", message: error instanceof Error ? error.message : String(error) };
 }
 
-/** Yields a run's patches for `paths` as full `PatchSet`s over one revision, read in batches of at most 32, 4 in flight, and cached by workspace, run, options, revision and path; a failed batch yields its paths as `failed` and stays uncached, and the previous revision's entries are held `fresh: false` until their fresh reads land. */
-async function* patchesOf(
+async function* streamWorkspacePatches(
   kernel: Kernel,
   input: {
     readonly workspace: WorkspaceId;
@@ -507,15 +598,6 @@ async function* patchesOf(
   const to = await snapshots.after(run);
   let statuses: Promise<ReadonlyMap<string, FileStatus> | null> | null = null;
 
-  const statusesOf = (): Promise<ReadonlyMap<string, FileStatus> | null> => {
-    statuses ??= snapshots.diff(from, to).then(
-      (changes) => new Map(changes.files.map((file) => [file.path, file.status])),
-      () => null,
-    );
-
-    return statuses;
-  };
-
   const caches = kernel.workspaceState.patches;
   const key = JSON.stringify([input.workspace, run, options?.ignoreWhitespace === true]);
   const previous = caches.get(key);
@@ -523,7 +605,14 @@ async function* patchesOf(
   const current: PatchCache =
     previous?.revision === to ? previous : { revision: to, slots: new Map() };
 
+  caches.delete(key);
   caches.set(key, current);
+
+  for (const oldest of caches.keys()) {
+    if (caches.size <= PATCH_CACHES) break;
+    caches.delete(oldest);
+  }
+
   const held = previous === current ? null : (previous ?? null);
   const paths = [...new Set(input.paths)];
   const unread = paths.filter((path) => !current.slots.has(path));
@@ -548,7 +637,11 @@ async function* patchesOf(
           },
           async (error: unknown) => {
             if (current.slots.get(path) === slot) current.slots.delete(path);
-            const known = await statusesOf();
+            statuses ??= snapshots.diff(from, to).then(
+              (changes) => new Map(changes.files.map((file) => [file.path, file.status])),
+              () => null,
+            );
+            const known = await statuses;
             const status = known === null ? "modified" : known.get(path);
 
             slot.value =
@@ -593,7 +686,7 @@ async function* patchesOf(
 
       const old = held?.slots.get(path);
 
-      if (old?.done === true && old.value !== null) entries.set(path, staleOf(old.value));
+      if (old?.done === true && old.value !== null) entries.set(path, markPatchStale(old.value));
     }
 
     return { revision: to, entries };
@@ -613,8 +706,7 @@ async function* patchesOf(
   }
 }
 
-/** Returns a held entry marked `fresh: false`, the same object for the same entry. */
-function staleOf(entry: HeldEntry): HeldEntry {
+function markPatchStale(entry: HeldEntry): HeldEntry {
   const known = staleEntries.get(entry);
 
   if (known !== undefined) return known;
@@ -624,7 +716,6 @@ function staleOf(entry: HeldEntry): HeldEntry {
   return stale;
 }
 
-/** Returns a runner that starts at most `size` pieces of work at once. */
 function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
   let active = 0;
   const queue: (() => void)[] = [];
@@ -647,7 +738,6 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
     });
 }
 
-/** Returns the snapshot a live run on the workspace took before its first write (`RunRecord.snapshot`), or null. */
 async function runStart(
   kernel: Kernel,
   workspace: WorkspaceId,
@@ -666,23 +756,33 @@ async function runStart(
   return null;
 }
 
-/** Returns every registered workspace's record. */
-async function workspaceRecords(kernel: Kernel): Promise<readonly WorkspaceRecord[]> {
-  const refs = await kernel.store.refs.list("workspaces/");
-  const found = await Promise.all(refs.map((ref) => load(kernel, ref, decodeWorkspaceRecord)));
-
-  return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
-}
-
-/** Returns the registered workspace whose identity is `identity`, or null. */
 async function byIdentity(
   kernel: Kernel,
-  identity: WorkspaceRecord["identity"],
+  input: { readonly kind: string; readonly identity: EnvironmentIdentity },
 ): Promise<WorkspaceRecord | null> {
-  return (await workspaceRecords(kernel)).find((record) => record.identity === identity) ?? null;
+  return (
+    (await workspaceRecords(kernel)).find(
+      (record) => record.target.kind === input.kind && record.identity === input.identity,
+    ) ?? null
+  );
 }
 
-/** Announces a workspace change to this kernel's `Workspace.watch` listeners. */
+/**
+ * Applies a change to project trust everywhere it is read: a decision passes
+ * to folders below and the `workspaceTrust` mode reaches every folder, so
+ * every workspace's cached scan is dropped, its watchers hear the change,
+ * and every live session reloads its plugins.
+ */
+export async function trustChanged(kernel: Kernel): Promise<void> {
+  kernel.workspaceState.scans.clear();
+
+  for (const record of await workspaceRecords(kernel)) changed(kernel, record.id);
+
+  await Promise.allSettled(
+    [...kernel.runtimes().keys()].map((session) => kernel.reloadPlugins(session)),
+  );
+}
+
 function changed(kernel: Kernel, id: WorkspaceId): void {
   for (const listener of kernel.workspaceState.listeners) listener(id);
 }

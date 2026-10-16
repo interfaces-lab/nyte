@@ -1,7 +1,3 @@
-/**
- * Security print: two families of sine waves, one a half-phase behind the
- * other, so where they cross the page shows the moiré a forger can't copy.
- */
 import type { ReactElement } from "react";
 
 const WIDTH = 400;
@@ -10,7 +6,6 @@ const HEIGHT = 320;
 
 const ROWS = 34;
 
-/* DERIVED: a row pitch just under the swing of the waves, so neighbours braid instead of stacking. */
 const PITCH = HEIGHT / ROWS;
 
 function wave(row: number, phase: number): string {

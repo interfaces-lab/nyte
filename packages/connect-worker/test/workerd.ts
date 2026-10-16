@@ -381,11 +381,6 @@ export interface WorkerdBroker {
   close(): Promise<void>;
 }
 
-/**
- * `origin` replaces `WORKERD_ORIGIN` as `CONNECT_ORIGIN`, for a caller that
- * fronts the local Worker at a real address of its own, such as an HTTPS
- * proxy a compiled binary reaches over the network.
- */
 export async function startWorkerdBroker(
   options: { readonly origin?: string } = {},
 ): Promise<WorkerdBroker> {

@@ -38,7 +38,6 @@ export function checkedFrontendApiHost(config: {
 export function rendererContentSecurityPolicy(input: {
   readonly frontendApiHost: string | undefined;
   readonly developmentOrigin: string | undefined;
-  /** Where the canvas shell loads from, so the renderer may frame it. */
   readonly canvasOrigin: string;
 }): string {
   const api = input.frontendApiHost === undefined ? "" : ` https://${input.frontendApiHost}`;
@@ -68,12 +67,6 @@ export function rendererContentSecurityPolicy(input: {
   ].join("; ");
 }
 
-/**
- * The canvas shell's policy, as the inline-render contract specifies: its
- * own assets plus the `blob:` module import, nothing else. `'self'` cannot
- * name the ancestor here, since the shell and the renderer are different
- * hosts on the scheme, so the renderer's origin is passed in.
- */
 export function shellContentSecurityPolicy(input: { readonly frameAncestor: string }): string {
   return [
     "default-src 'none'",
@@ -97,11 +90,6 @@ export type RendererFile =
     }
   | { readonly kind: "refused"; readonly status: 400 | 403 | 404 };
 
-/**
- * Both hosts serve one page at their root and hashed files under `assets/`.
- * The renderer root is absent in development, where the dev server serves
- * the page; the shell is a static build in both.
- */
 export function resolveRendererFile(
   roots: { readonly account: string | undefined; readonly canvas: string },
   requestUrl: string,

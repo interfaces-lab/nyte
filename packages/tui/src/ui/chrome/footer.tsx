@@ -1,8 +1,3 @@
-/**
- * The composer frame's lower rule, carrying the powerline from
- * `screen().footer`. Segments drop as the rule narrows (usage, workspace,
- * queue, effort); the model always stays.
- */
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { useApp } from "../../app/context.tsx";
@@ -24,6 +19,10 @@ function segmentColor(theme: CliTheme, segment: PowerlineSegment): string {
       return theme.thinking;
     case "queue":
       return theme.warning;
+    case "remote":
+      if (segment.remote === "shared") return theme.ok;
+
+      return segment.remote === "interrupted" ? theme.warning : theme.dim;
     case "usage":
       if (segment.level === "error") return theme.error;
 
@@ -36,7 +35,6 @@ function segmentColor(theme: CliTheme, segment: PowerlineSegment): string {
   }
 }
 
-/** `╰─ seg │ seg ───╯` across `width` cells, each segment coloured by its role. */
 export function powerlineChunks(
   powerline: Partial<PowerlineState>,
   width: number,

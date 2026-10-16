@@ -66,7 +66,6 @@ export interface PageInfo {
   /** What the page holds beyond its title, as lowercase substrings, for the nav search. */
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
-  /** Controls beside the page title, for a page whose every figure they change. */
   readonly Actions?: ComponentType;
 }
 

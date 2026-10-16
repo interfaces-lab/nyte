@@ -18,8 +18,6 @@ import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SiteLandingRouteImport } from './routes/_site/_landing'
 import { Route as SiteLegalRouteImport } from './routes/_site/_legal'
-import { Route as SiteDesignRouteImport } from './routes/_site/design'
-import { Route as SiteDocsRouteImport } from './routes/_site/docs'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
 import { Route as LlmsDotmdxSplatRouteImport } from './routes/llms[.]mdx/$'
 import { Route as OgSplatRouteImport } from './routes/og/$'
@@ -76,16 +74,6 @@ const SiteLegalRoute = SiteLegalRouteImport.update({
   id: '/_legal',
   getParentRoute: () => SiteRoute,
 } as any)
-const SiteDesignRoute = SiteDesignRouteImport.update({
-  id: '/design',
-  path: '/design',
-  getParentRoute: () => SiteRoute,
-} as any)
-const SiteDocsRoute = SiteDocsRouteImport.update({
-  id: '/docs',
-  path: '/docs',
-  getParentRoute: () => SiteRoute,
-} as any)
 const ApiSearchRoute = ApiSearchRouteImport.update({
   id: '/api/search',
   path: '/api/search',
@@ -137,9 +125,9 @@ const SiteLegalTermsRoute = SiteLegalTermsRouteImport.update({
   getParentRoute: () => SiteLegalRoute,
 } as any)
 const SiteDesignSplatRoute = SiteDesignSplatRouteImport.update({
-  id: '/$',
-  path: '/$',
-  getParentRoute: () => SiteDesignRoute,
+  id: '/design/$',
+  path: '/design/$',
+  getParentRoute: () => SiteRoute,
 } as any)
 const SiteDesktopSignedInRoute = SiteDesktopSignedInRouteImport.update({
   id: '/desktop/signed-in',
@@ -147,9 +135,9 @@ const SiteDesktopSignedInRoute = SiteDesktopSignedInRouteImport.update({
   getParentRoute: () => SiteRoute,
 } as any)
 const SiteDocsSplatRoute = SiteDocsSplatRouteImport.update({
-  id: '/$',
-  path: '/$',
-  getParentRoute: () => SiteDocsRoute,
+  id: '/docs/$',
+  path: '/docs/$',
+  getParentRoute: () => SiteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -160,8 +148,6 @@ export interface FileRoutesByFullPath {
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/design': typeof SiteDesignRouteWithChildren
-  '/docs': typeof SiteDocsRouteWithChildren
   '/api/search': typeof ApiSearchRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
@@ -183,8 +169,6 @@ export interface FileRoutesByTo {
   '/opengraph-image.png': typeof OpengraphImageDotpngRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/design': typeof SiteDesignRouteWithChildren
-  '/docs': typeof SiteDocsRouteWithChildren
   '/api/search': typeof ApiSearchRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
@@ -209,8 +193,6 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/_site/_landing': typeof SiteLandingRouteWithChildren
   '/_site/_legal': typeof SiteLegalRouteWithChildren
-  '/_site/design': typeof SiteDesignRouteWithChildren
-  '/_site/docs': typeof SiteDocsRouteWithChildren
   '/api/search': typeof ApiSearchRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
@@ -235,8 +217,6 @@ export interface FileRouteTypes {
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
-    | '/design'
-    | '/docs'
     | '/api/search'
     | '/llms.mdx/$'
     | '/og/$'
@@ -258,8 +238,6 @@ export interface FileRouteTypes {
     | '/opengraph-image.png'
     | '/robots.txt'
     | '/sitemap.xml'
-    | '/design'
-    | '/docs'
     | '/api/search'
     | '/llms.mdx/$'
     | '/og/$'
@@ -283,8 +261,6 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/_site/_landing'
     | '/_site/_legal'
-    | '/_site/design'
-    | '/_site/docs'
     | '/api/search'
     | '/llms.mdx/$'
     | '/og/$'
@@ -378,20 +354,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteLegalRouteImport
       parentRoute: typeof SiteRoute
     }
-    '/_site/design': {
-      id: '/_site/design'
-      path: '/design'
-      fullPath: '/design'
-      preLoaderRoute: typeof SiteDesignRouteImport
-      parentRoute: typeof SiteRoute
-    }
-    '/_site/docs': {
-      id: '/_site/docs'
-      path: '/docs'
-      fullPath: '/docs'
-      preLoaderRoute: typeof SiteDocsRouteImport
-      parentRoute: typeof SiteRoute
-    }
     '/api/search': {
       id: '/api/search'
       path: '/api/search'
@@ -464,10 +426,10 @@ declare module '@tanstack/react-router' {
     }
     '/_site/design/$': {
       id: '/_site/design/$'
-      path: '/$'
+      path: '/design/$'
       fullPath: '/design/$'
       preLoaderRoute: typeof SiteDesignSplatRouteImport
-      parentRoute: typeof SiteDesignRoute
+      parentRoute: typeof SiteRoute
     }
     '/_site/desktop/signed-in': {
       id: '/_site/desktop/signed-in'
@@ -478,10 +440,10 @@ declare module '@tanstack/react-router' {
     }
     '/_site/docs/$': {
       id: '/_site/docs/$'
-      path: '/$'
+      path: '/docs/$'
       fullPath: '/docs/$'
       preLoaderRoute: typeof SiteDocsSplatRouteImport
-      parentRoute: typeof SiteDocsRoute
+      parentRoute: typeof SiteRoute
     }
   }
 }
@@ -520,44 +482,20 @@ const SiteLegalRouteWithChildren = SiteLegalRoute._addFileChildren(
   SiteLegalRouteChildren,
 )
 
-interface SiteDesignRouteChildren {
-  SiteDesignSplatRoute: typeof SiteDesignSplatRoute
-}
-
-const SiteDesignRouteChildren: SiteDesignRouteChildren = {
-  SiteDesignSplatRoute: SiteDesignSplatRoute,
-}
-
-const SiteDesignRouteWithChildren = SiteDesignRoute._addFileChildren(
-  SiteDesignRouteChildren,
-)
-
-interface SiteDocsRouteChildren {
-  SiteDocsSplatRoute: typeof SiteDocsSplatRoute
-}
-
-const SiteDocsRouteChildren: SiteDocsRouteChildren = {
-  SiteDocsSplatRoute: SiteDocsSplatRoute,
-}
-
-const SiteDocsRouteWithChildren = SiteDocsRoute._addFileChildren(
-  SiteDocsRouteChildren,
-)
-
 interface SiteRouteChildren {
   SiteLandingRoute: typeof SiteLandingRouteWithChildren
   SiteLegalRoute: typeof SiteLegalRouteWithChildren
-  SiteDesignRoute: typeof SiteDesignRouteWithChildren
-  SiteDocsRoute: typeof SiteDocsRouteWithChildren
+  SiteDesignSplatRoute: typeof SiteDesignSplatRoute
   SiteDesktopSignedInRoute: typeof SiteDesktopSignedInRoute
+  SiteDocsSplatRoute: typeof SiteDocsSplatRoute
 }
 
 const SiteRouteChildren: SiteRouteChildren = {
   SiteLandingRoute: SiteLandingRouteWithChildren,
   SiteLegalRoute: SiteLegalRouteWithChildren,
-  SiteDesignRoute: SiteDesignRouteWithChildren,
-  SiteDocsRoute: SiteDocsRouteWithChildren,
+  SiteDesignSplatRoute: SiteDesignSplatRoute,
   SiteDesktopSignedInRoute: SiteDesktopSignedInRoute,
+  SiteDocsSplatRoute: SiteDocsSplatRoute,
 }
 
 const SiteRouteWithChildren = SiteRoute._addFileChildren(SiteRouteChildren)

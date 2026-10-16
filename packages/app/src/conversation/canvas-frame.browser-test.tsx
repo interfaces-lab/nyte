@@ -1,8 +1,8 @@
 import "../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import type { CanvasState } from "@nyte-ai/plugin/canvas";
-import { sizeChangedNotification } from "@nyte-ai/plugin/canvas-protocol";
+import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
+import { sizeChangedNotification } from "@nyte-ai/plugin/canvas/protocol";
 import { preferences } from "../preferences/index.ts";
 import "../theme/tokens.stylex.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
@@ -56,7 +56,6 @@ export async function run(): Promise<string> {
 
     if (frame()?.style.colorScheme !== "light") return "The frame should take the light scheme";
 
-    // Another window's message must not reach the frame's handling.
     window.postMessage(sizeChangedNotification(900), "*");
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
 

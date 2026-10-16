@@ -4,14 +4,8 @@ import { SdkError, dev } from "@nyte-ai/core";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";
-import { backoff, delayOf, isLinkLoss } from "./rows.ts";
+import { backoff, retryDelay, isLinkLoss } from "./rows.ts";
 
-/**
- * Drives this connection's journal: each send is a row posted under its own id with the content it was
- * journaled with, after the rows before it on its head, and shown `unsent` until a fold contains the
- * message its answer named (§49c). A `replace` is its own row behind its target (ADV C 2), shown in its
- * target's place (ADV C N1); `replay` holds every row before the first is delivered (ADV C 4).
- */
 export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
@@ -29,8 +23,7 @@ type Held = {
   answered: Message["id"] | null;
 };
 
-/** Returns the default request journal: entries in memory, in the order they were first written, gone with the process. Enough for a cli or a script; a client that must survive its own restart passes a persistent one. */
-export function memoryJournal(): RequestJournal {
+export function createSendJournal(): RequestJournal {
   const entries = new Map<string, JournalEntry>();
 
   return {
@@ -44,7 +37,6 @@ export function memoryJournal(): RequestJournal {
   };
 }
 
-/** Returns an empty retry loop over `journal`. A send failing for a reason it does not retry on is removed from the journal (§47j); one cut by `close()` stays for the next connect. */
 export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   const held = new Map<string, Held>();
   const tails = new Map<string, Promise<void>>();
@@ -77,7 +69,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
         }
 
         current.attempts += 1;
-        const delay = delayOf(current.attempts);
+        const delay = retryDelay(current.attempts);
         dev("sdk", "send retrying", { receipt: id, attempts: current.attempts, delay });
         current.retrying = { at: Date.now() + delay, reason: error.message };
         changed();
@@ -86,7 +78,6 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
     }
   };
 
-  /** Points the later rows replacing what `current` replaced at the message its answer named (an edit's fresh id); none of them has left yet. */
   const retarget = async (current: Held, message: Message["id"]): Promise<void> => {
     const target = current.entry.options.replace ?? current.entry.id;
 
@@ -188,12 +179,10 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   };
 }
 
-/** Returns whether a send is posted again under its id: the link failed, or the host lost the inbox write to a concurrent one (`stale`, ADV A N5); the id keeps it one message. */
 function retried(error: unknown): error is SdkError {
   return isLinkLoss(error) || (error instanceof SdkError && error.code === "stale");
 }
 
-/** Returns a journaled send as the user message a view shows under `id` before the host has it: status `unsent`, its pending turn, no siblings. */
 function unsentMessage(id: Message["id"], { entry, attempts, retrying }: Held): Message {
   return {
     id,

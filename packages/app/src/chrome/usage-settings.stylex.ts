@@ -1,87 +1,78 @@
-/**
- * Settings › Usage. Two cards over one table: what the window cost and its
- * shape, how much of each plan is left, then the rows that make up the cost.
- * Every figure uses tabular digits so a column lines up on its decimal.
- */
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
 
-/** Below this the table drops its secondary columns rather than squeezing names. */
 const NARROW = "@container (max-width: 560px)";
 
 const figure = { fontVariantNumeric: "tabular-nums" } as const;
 
 export const usageStyles = create({
   page: { display: "flex", flexDirection: "column", gap: settings.sectionGap, minWidth: 0 },
-  overview: { display: "flex", flexWrap: "wrap", gap: 8 },
+  overview: { display: "flex", flexWrap: "wrap", gap: space.s2 },
   card: {
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    padding: 16,
+    padding: space.s4,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  spend: { flex: "1 1 320px", gap: 16 },
-  limits: { flex: "0 0 248px", gap: 12 },
+  spend: { flex: "1 1 320px", gap: space.s4 },
+  limits: { flex: "0 0 248px", gap: space.s3 },
 
   spendHead: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
+    gap: space.s3,
   },
-  spendTitle: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  spendTitle: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   spendFacts: {
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
-    gap: 4,
-    paddingTop: 2,
+    gap: space.s1,
+    paddingTop: space.s0_5,
     textAlign: "end",
   },
   caption: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   amount: {
     ...figure,
     color: role.contentPrimary,
     fontSize: `calc(${type.fontBase} * 28 / 13)`,
-    fontWeight: 590,
+    fontWeight: type.weightSemibold,
     lineHeight: `calc(${type.fontBase} * 34 / 13)`,
     letterSpacing: "-0.02em",
   },
   fact: {
     ...figure,
     color: role.contentTertiary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
-  /** A change in spend: the hue scope it sits in says which way. */
   change: { color: role.contentInteractivePrimary },
-  quiet: { color: role.contentTertiary, fontSize: type.fontXs, lineHeight: type.leadingXs },
+  quiet: { ...figure, color: role.contentTertiary },
 
   limitsHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  meterHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 },
-  meterValue: { color: role.contentPrimary, fontSize: type.fontBase, lineHeight: type.leadingBase },
-  meterLabel: { fontSize: type.fontBase, lineHeight: type.leadingBase },
+  meterHead: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: space.s2,
+  },
+  meterValue: { ...figure, color: role.contentPrimary },
   meterHot: { color: role.contentInteractivePrimary },
-  meterTrack: { backgroundColor: role.bgInteractiveSecondaryTranslucent },
-  meterCalm: { backgroundColor: role.contentPrimary },
 
-  breakdown: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 },
+  breakdown: { display: "flex", flexDirection: "column", gap: space.s2, minWidth: 0 },
   breakdownHead: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    gap: 8,
-    paddingInline: 8,
+    gap: space.s2,
+    paddingInline: space.s2,
   },
   table: {
     display: "flex",
@@ -93,23 +84,21 @@ export const usageStyles = create({
   row: {
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: space.s4,
     minHeight: 48,
-    paddingBlock: 6,
-    paddingInline: 12,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s3,
     borderBottomWidth: { default: 1, ":last-child": 0 },
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  headRow: { minHeight: 0, paddingBlock: 10 },
+  headRow: { minHeight: 0, paddingBlock: space.s2_5 },
   head: {
     color: role.contentTertiary,
-    fontSize: type.fontSm,
-    fontWeight: 400,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightRegular,
   },
   headStrong: { color: role.contentPrimary },
-  nameCell: { display: "flex", alignItems: "center", gap: 8, flex: "1 1 0", minWidth: 0 },
+  nameCell: { display: "flex", alignItems: "center", gap: space.s2, flex: "1 1 0", minWidth: 0 },
   dot: {
     flexShrink: 0,
     width: 8,
@@ -121,31 +110,21 @@ export const usageStyles = create({
   name: { display: "flex", flexDirection: "column", minWidth: 0 },
   rowLabel: {
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     overflowWrap: "anywhere",
   },
   rowMeta: {
     color: role.contentTertiary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     overflowWrap: "anywhere",
   },
   number: {
     ...figure,
     flexShrink: 0,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textAlign: "end",
     whiteSpace: "nowrap",
   },
-  turns: { width: 64 },
-  perTurn: {
-    width: 80,
-    color: role.contentSecondary,
-    display: { default: "block", [NARROW]: "none" },
-  },
+  cache: { display: "flex", flexDirection: "column", alignItems: "flex-end", width: 104 },
+  cacheLow: { color: role.contentInteractivePrimary },
   trend: {
     display: { default: "flex", [NARROW]: "none" },
     justifyContent: "flex-end",
@@ -156,17 +135,15 @@ export const usageStyles = create({
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-end",
-    gap: 4,
+    gap: space.s1,
     flexShrink: 0,
     width: 132,
   },
   costHead: { display: "flex", justifyContent: "flex-end", flexShrink: 0, width: 132 },
-  costLine: { display: "flex", alignItems: "baseline", gap: 6 },
+  costLine: { display: "flex", alignItems: "baseline", gap: space.s1_5 },
   share: {
     ...figure,
     color: role.contentTertiary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
   },
   absent: { color: role.contentDisabled },
   shareTrack: {
@@ -180,11 +157,9 @@ export const usageStyles = create({
   shareFill: { height: "100%", backgroundColor: role.bgInteractiveStrong },
   more: {
     margin: 0,
-    paddingBlock: 10,
-    paddingInline: 12,
+    paddingBlock: space.s2_5,
+    paddingInline: space.s3,
     color: role.contentTertiary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
 
   /** A read that failed or found nothing, said once, where its numbers would be. */
@@ -193,47 +168,41 @@ export const usageStyles = create({
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: space.s1_5,
     minHeight: 148,
     textAlign: "center",
   },
   emptyTitle: {
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textWrap: "balance",
   },
   emptyBody: {
     maxWidth: 340,
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
-  emptyActions: { display: "flex", alignItems: "center", gap: 6, marginTop: 4 },
+  emptyActions: { display: "flex", alignItems: "center", gap: space.s1_5, marginTop: space.s1 },
   notice: {
     display: "flex",
     alignItems: "flex-start",
-    gap: 8,
+    gap: space.s2,
     margin: 0,
-    paddingBlock: 6,
-    paddingInline: 10,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2_5,
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   noticeIcon: {
     flexShrink: 0,
     // 14px glyph on 16px type: one pixel down sits on the first line's cap.
-    marginBlockStart: 1,
+    marginBlockStart: space.px,
     color: role.contentTertiary,
   },
   noticeIconAlert: { color: role.contentInteractiveTertiary },
-  noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: 1 },
+  noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: space.px },
 });
 
 const bonePulse = keyframes({

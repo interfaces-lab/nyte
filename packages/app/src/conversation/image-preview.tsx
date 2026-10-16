@@ -1,6 +1,7 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { AttachmentTrigger } from "@nyte-ai/ui/attachment";
 import type { ReactElement } from "react";
@@ -38,18 +39,17 @@ const styles = create({
     display: "block",
     width: "max-content",
     maxWidth: "calc(100vw - 48px)",
-    padding: 8,
+    padding: 0,
     overflowY: "visible",
     borderStyle: "none",
-    backgroundColor: role.bgElevated,
-    backdropFilter: "none",
   },
+  sheet: { padding: space.s2, borderRadius: "inherit", backgroundColor: role.bgElevated },
   toolbar: {
     display: "flex",
     alignItems: "center",
-    gap: 16,
+    gap: space.s4,
     minHeight: 40,
-    paddingInlineStart: 8,
+    paddingInlineStart: space.s2,
     color: role.contentSecondary,
   },
   title: {
@@ -60,9 +60,7 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    fontWeight: 500,
-    lineHeight: type.leadingBase,
+    fontWeight: type.weightMedium,
   },
   close: {
     display: "inline-flex",
@@ -125,13 +123,15 @@ export function ImagePreview({
         <TooltipContent>{name}</TooltipContent>
       </Tooltip>
       <Dialog.Popup xstyle={styles.popup}>
-        <div {...props(styles.toolbar)}>
-          <Dialog.Title xstyle={styles.title}>{name}</Dialog.Title>
-          <Dialog.Close aria-label="Close image preview" xstyle={[styles.close, focus.ring]}>
-            <Icon name="x" size={16} />
-          </Dialog.Close>
+        <div {...props(styles.sheet)}>
+          <div {...props(styles.toolbar)}>
+            <Dialog.Title xstyle={[text.base, styles.title]}>{name}</Dialog.Title>
+            <Dialog.Close aria-label="Close image preview" xstyle={[styles.close, focus.ring]}>
+              <Icon name="x" size={16} />
+            </Dialog.Close>
+          </div>
+          <img src={src} alt={name} {...props(styles.image)} />
         </div>
-        <img src={src} alt={name} {...props(styles.image)} />
       </Dialog.Popup>
     </Dialog.Root>
   );

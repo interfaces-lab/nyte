@@ -1,7 +1,3 @@
-/**
- * States for reducer tests: a ready app following `s1` with a given view,
- * and a fold over messages that keeps every effect emitted on the way.
- */
 import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, ModelInfo, SessionView } from "@nyte-ai/sdk";
 import type { Msg } from "../../src/model/msg.ts";
@@ -60,7 +56,6 @@ export function blank(): State {
   });
 }
 
-/** Folds messages over a state, collecting every effect. */
 export function play(state: State, ...msgs: readonly Msg[]): Step {
   let current = state;
   const effects: Step["effects"][number][] = [];
@@ -74,7 +69,6 @@ export function play(state: State, ...msgs: readonly Msg[]): Step {
   return { state: current, effects };
 }
 
-/** Ready, following `s1`, with `view` as its first frame and the catalog loaded. */
 export function ready(view: SessionView): State {
   const session = followed(view);
 
@@ -92,7 +86,6 @@ export function ready(view: SessionView): State {
   ).state;
 }
 
-/** The textarea reporting what it now holds, cursor at the end. */
 export function typed(text: string): Msg {
   return {
     kind: "draft-changed",

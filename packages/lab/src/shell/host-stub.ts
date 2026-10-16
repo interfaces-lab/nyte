@@ -2,13 +2,6 @@ import { asId } from "@nyte-ai/schema";
 import type { HostState, NyteBridge, SelectedWorkspace } from "@nyte-ai/app/bridge.ts";
 import { installBridge } from "@nyte-ai/app/nyte.ts";
 
-/*
- * `theme/boot.ts` reads the bridge while its module evaluates, so the fixture
- * has to be installed before anything that imports it loads. Import this
- * first.
- *
- * Host reads with a fixture answer; every other call rejects.
- */
 export const workspace = {
   id: asId<"workspace">("lab"),
   path: "/Users/lab/nyte",

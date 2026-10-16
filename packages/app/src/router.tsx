@@ -36,7 +36,7 @@ import { preferences } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell } from "./theme/schema.stylex.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
@@ -93,7 +93,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flex: 1,
-    gap: 12,
+    gap: space.s3,
     color: role.contentPrimary,
   },
   loadErrorText: {
@@ -433,8 +433,6 @@ const threadRoute = createRoute({
     if (session === null) throw redirect({ to: indexRoute.to, replace: true });
   },
   errorComponent: RouteError,
-  // Route intent starts this before navigation. Direct navigation keeps the
-  // current screen until the complete thread frame is ready.
   loader: ({ params }) => warmSession(params.sessionId),
 });
 

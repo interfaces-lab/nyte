@@ -56,8 +56,7 @@ export interface UsageTotals {
   readonly reasoning: number;
   readonly tokens: number;
   readonly cost: number;
-  /** Usage-bearing commits, including compaction and tools, not user turns. */
-  readonly turns: number;
+  readonly cacheSavings: number;
 }
 
 /** What a usage entry was spent on: a model, tools, or compaction. */
@@ -119,6 +118,7 @@ export interface UsageSummary {
   readonly compaction: Usage;
   readonly tools: Usage;
   readonly total: Usage;
+  readonly cacheSavings: number;
 }
 
 /** Another tool's own history on the serving machine, kept apart from Nyte's entries. */

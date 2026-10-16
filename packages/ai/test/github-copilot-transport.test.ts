@@ -1,8 +1,3 @@
-/**
- * The Copilot identity and beta-header assertions in "a catalog Messages model" are based on
- * https://github.com/earendil-works/pi/blob/dev/packages/ai/test/github-copilot-anthropic.test.ts
- * Synced with pi a276dabe5.
- */
 import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";

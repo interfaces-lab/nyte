@@ -12,12 +12,14 @@ import type {
   JournalEntry,
   Json,
   LoginMethod,
+  ModelAccount,
   ModelCatalogView,
   ModelRef,
   PluginCheckReport,
   PluginReplacementReport,
   PrincipalId,
   PrincipalView,
+  ProviderUsage,
   ReceiptId,
   SessionId,
   SettingOutcome,
@@ -27,6 +29,7 @@ import type {
 import { SdkError } from "./error.ts";
 import { advance, cover, repair } from "./execution.ts";
 import type { Head } from "./head.ts";
+import type { McpHubFactory } from "./mcp.ts";
 import type { Host } from "./host.ts";
 import { watchHost } from "./host.ts";
 import { inspect } from "./inspect.ts";
@@ -53,6 +56,8 @@ export interface OpenOptions {
         dispatch(target: { readonly session: SessionId; readonly head: HeadName }): Promise<void>;
       };
   readonly secrets?: { key(): Promise<Uint8Array> };
+  /** Serves MCP servers to this host's sessions and clients; see {@link McpHub}. */
+  readonly mcp?: McpHubFactory;
 }
 
 export interface ConnectOptions {
@@ -65,19 +70,27 @@ export interface ConnectOptions {
 
 export interface RequestJournal {
   load(): Promise<readonly JournalEntry[]>;
+
   put(entry: JournalEntry): Promise<void>;
+
   remove(id: ReceiptId): Promise<void>;
 }
 
 export interface PluginStorage {
-  get<T extends Json>(key: string): Promise<T | undefined>;
+  get(key: string): Promise<Json | undefined>;
+
   set(key: string, value: Json): Promise<void>;
+
   delete(key: string): Promise<void>;
+
   keys(): Promise<readonly string[]>;
+
   at(scope: "host" | "workspace" | "session"): PluginStorage;
   readonly secrets: {
     get(key: string): Promise<string | undefined>;
+
     set(key: string, value: string): Promise<void>;
+
     delete(key: string): Promise<void>;
   };
 }
@@ -88,22 +101,41 @@ export interface Connection {
   readonly credential: CredentialSource;
   readonly sessions: Sessions;
   readonly workspaces: Workspaces;
+
   session(id: SessionId): Session;
+
   workspace(id: WorkspaceId): Workspace;
+
   watch(): AsyncIterable<HostView>;
+
   blob(id: BlobId): Promise<ByteReader>;
   readonly models: ModelsApi;
   readonly settings: SettingsApi;
   readonly plugins: PluginsApi<PluginFile>;
   readonly principals: PrincipalsApi;
+
   close(): Promise<void>;
+
   [Symbol.asyncDispose](): Promise<void>;
 }
 
 export interface ModelsApi {
+  /** Reads saved models, selection and last-known credentials without awaiting external checks; fresh availability arrives through HostView.catalog. */
   list(): Promise<ModelCatalogView>;
+
+  /** Lists saved logins for one provider or all providers. Requires owner authority. */
+  accounts(provider?: string): Promise<readonly ModelAccount[]>;
+
+  /** Activates a saved login for subsequent requests. Requires owner authority. */
+  selectAccount(provider: string, account: string): Promise<void>;
+
+  /** Loads cached provider usage, refreshing expired entries. Requires owner authority. */
+  usage(): Promise<readonly ProviderUsage[]>;
+
   refresh(provider?: string): Promise<void>;
+
   setDefault(ref: ModelRef): Promise<{ readonly kind: "set" } | { readonly kind: "unknown-model" }>;
+
   verify(
     provider: string,
   ): Promise<
@@ -111,7 +143,15 @@ export interface ModelsApi {
     | { readonly kind: "unverified" }
     | { readonly kind: "failed"; readonly reason: string }
   >;
-  login(input: { readonly provider: string; readonly method: LoginMethod }): Login;
+
+  login(input: {
+    readonly provider: string;
+    readonly method: LoginMethod;
+    readonly label?: string;
+    readonly browser?: "host" | "elsewhere";
+  }): Login;
+
+  /** Removes the provider's active saved login while keeping its other accounts. */
   logout(provider: string): Promise<void>;
 }
 
@@ -128,6 +168,7 @@ export interface Login {
     | { readonly kind: "done" }
     | { readonly kind: "failed"; readonly reason: string }
   >;
+
   answer(code: string): Promise<void>;
 }
 
@@ -138,15 +179,18 @@ export interface PluginsApi<Entry> {
     plugins: readonly Entry[],
     scope?: { readonly session: SessionId },
   ): Promise<PluginReplacementReport>;
+
   check(plugins: readonly Entry[]): Promise<PluginCheckReport>;
 }
 
 export interface PrincipalsApi {
   list(): Promise<readonly PrincipalView[]>;
+
   pair(input: {
     readonly authority: ReadonlySet<Authority>;
     readonly label?: string;
   }): Promise<{ readonly code: string; readonly expiresAt: number }>;
+
   revoke(id: PrincipalId): Promise<void>;
 }
 
@@ -154,7 +198,6 @@ export interface SettingsApi {
   apply(id: string, value: Json): Promise<SettingOutcome>;
 }
 
-/** Returns a connection bound to the kernel's host as one principal; each member a row needs more than participant for is `gated` by the context's authority. */
 export function createConnection(kernel: Kernel, context: ConnectionContext): Connection {
   const { authority } = context;
   const streams = new Set<() => void>();
@@ -172,11 +215,16 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
 
       return {
         async next() {
-          const result = await iterator.next();
+          let done = true;
 
-          if (result.done === true) streams.delete(stop);
+          try {
+            const result = await iterator.next();
+            done = result.done === true;
 
-          return result;
+            return result;
+          } finally {
+            if (done) streams.delete(stop);
+          }
         },
         async return() {
           streams.delete(stop);
@@ -210,10 +258,23 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
       : provided;
   };
 
+  const client = {};
+
   const workspace = (id: WorkspaceId): Workspace => {
-    const handle = workspaceHandle(kernel, context, id);
+    const handle = workspaceHandle(kernel, context, id, client);
 
     return gated("workspace", handle, authority, {
+      mcp: gated("mcp", handle.mcp, authority, {
+        async *watch() {
+          gate(authority, "mcp.watch");
+          yield* handle.mcp.watch();
+        },
+        login(server) {
+          gate(authority, "mcp.login");
+
+          return handle.mcp.login(server);
+        },
+      }),
       files: () => capability("files", () => handle.files()),
       git: () => capability("git", () => handle.git()),
       browser: () => capability("browser", () => handle.browser()),
@@ -223,6 +284,7 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
   const close = async (): Promise<void> => {
     for (const stop of streams) stop();
     streams.clear();
+    await kernel.pages.release({ client });
   };
 
   return {
@@ -258,8 +320,9 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
       "plugins",
       {
         replace: async (plugins, scope) =>
-          kernel.plugins.replace(await kernel.loadPlugins(pathsOf(plugins)), scope),
-        check: async (plugins) => kernel.plugins.check(await kernel.loadPlugins(pathsOf(plugins))),
+          kernel.plugins.replace(await kernel.loadPlugins(listPluginPaths(plugins)), scope),
+        check: async (plugins) =>
+          kernel.plugins.check(await kernel.loadPlugins(listPluginPaths(plugins))),
       },
       authority,
     ),
@@ -269,7 +332,6 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
   };
 }
 
-/** Returns the in-process host: a connection as `LOCAL` with every authority, its `plugins` taking plugin objects and files alike, plus inspect and execution. */
 export function createHost(
   kernel: Kernel,
   input: { readonly credential: CredentialSource },
@@ -297,11 +359,10 @@ export function createHost(
   };
 }
 
-function pathsOf(files: readonly PluginFile[]): readonly string[] {
+function listPluginPaths(files: readonly PluginFile[]): readonly string[] {
   return files.map((file) => file.path);
 }
 
-/** Returns plugin objects and files as the kernel takes them, in order, each file loaded through `kernel.loadPlugins`. */
 async function loaded(
   kernel: Kernel,
   plugins: readonly (Plugin<"core"> | PluginFile)[],
@@ -315,7 +376,6 @@ async function loaded(
   return each.flat();
 }
 
-/** Returns whether an entry names a file: a plugin has an `id` and no `path`. */
 function isPluginFile(plugin: Plugin<"core"> | PluginFile): plugin is PluginFile {
   return "path" in plugin && !("id" in plugin);
 }

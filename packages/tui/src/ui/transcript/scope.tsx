@@ -1,8 +1,3 @@
-/**
- * What every block of one transcript reads: that transcript's model (the
- * main one, or the inspector's own) and the session's tasks. Provided by
- * `Transcript`, so a second instance shares nothing with the first.
- */
 import type { JSX } from "@opentui/solid";
 import { createContext, useContext } from "solid-js";
 import type { Accessor } from "solid-js";

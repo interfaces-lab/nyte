@@ -21,7 +21,6 @@ import type { InputRecord, Terminal, TerminalOptions } from "./types.ts";
 // eslint-disable-next-line no-control-regex
 const SYNCHRONIZED_UPDATE = /\x1b\[\?2026([hl])/gu;
 
-/** Visible playback only: the gap before each scripted input, so a person can follow typing. */
 const SHOW_INPUT_GAP_MS = 40;
 
 function dimensions(width: number, height: number) {
@@ -63,8 +62,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     height: options.height,
     exitOnCtrlC: false,
     exitSignals: [],
-    // Scripted mouse input goes straight to the embedded terminal; the person watching
-    // a --show run must not move Nyte's mouse state.
     useMouse: false,
     targetFps: 60,
     maxFps: Infinity,
@@ -74,8 +71,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     ? await createCliRenderer(config)
     : (await createTestRenderer(config)).renderer;
 
-  // Visible playback names the step and the latest input above the child's screen.
-  // Explicit colors: OpenTUI's default white text vanishes on a light terminal background.
   const caption = options.show
     ? new TextRenderable(renderer, {
         id: "qa-caption",
@@ -91,7 +86,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
 
   if (caption) renderer.root.add(caption);
 
-  // Keys from the person watching never reach Nyte: Enter advances --step, Ctrl+C stops the run.
   const watcherKey = (key: KeyEvent) => {
     key.preventDefault();
     key.stopPropagation();
@@ -109,8 +103,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   let controlTail = "";
   let synchronizedUpdateOpen = false;
   let completedUpdates = 0;
-  // The emulator applies written bytes only when it composes a frame, so a screen
-  // is judged by the updates it had composed, not by the bytes that had arrived.
   let composedUpdateOpen = false;
   let composedUpdates = 0;
   let pty: Bun.Terminal | undefined;
@@ -136,7 +128,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     height: options.height,
     cols: options.width,
     rows: options.height,
-    // Host selection would compete with the same mouse gesture inside Nyte.
     selectable: false,
     onData: forward,
     onTerminalResize: (cols, rows) => pty?.resize(cols, rows),
@@ -154,7 +145,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   let prepared = false;
   const binaryExit = Promise.withResolvers<number>();
   const exited = binaryExit.promise;
-  // A startup failure may arrive before the caller starts awaiting exited.
   void exited.catch(() => {});
   let closing: Promise<void> | undefined;
 
@@ -171,13 +161,10 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
       {
         cwd: options.cwd,
         env: { ...options.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
-        // Bun 1.4.2 does not assign a controlling terminal when given an existing
-        // Bun.Terminal. Inline creation gives the group SIGWINCH on PTY resize.
         terminal: {
           cols: options.width,
           rows: options.height,
           data(transport, data) {
-            // Query replies can arrive before spawn returns.
             pty = transport;
             connected = true;
 
@@ -194,7 +181,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
               if (mode === "l") completedUpdates += 1;
             }
 
-            // Up to seven bytes of "\x1b[?2026" may still await their final h or l.
             controlTail = controls.slice(-7);
             terminal.write(data);
           },
@@ -229,8 +215,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
 
           supervisorError ??= new Error("Invalid QA supervisor message.");
           binaryExit.reject(supervisorError);
-          // Disconnect asks the still-live owner to clean up. Never signal its
-          // remembered group from here, including on unexpected supervisor exit.
           supervisor.disconnect();
         },
       },
@@ -277,8 +261,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     cleanupSignal = "SIGTERM";
   };
 
-  // Main closes active terminals on user signals. Capture the original signal
-  // before its handler runs, rather than turning every shutdown into SIGTERM.
   process.prependListener("SIGINT", interrupt);
   process.prependListener("SIGTERM", terminate);
 
@@ -454,7 +436,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     close() {
       closing ??= (async () => {
         try {
-          // Cleanup can clear the alternate screen. Keep the scenario's last observation.
           finalScreen = terminal.screen();
 
           try {

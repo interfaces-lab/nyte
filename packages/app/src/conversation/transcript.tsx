@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
@@ -36,16 +37,10 @@ const OVERSCAN = 4;
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
-/** The scrollport's height before it has one, for the first window. */
 const VIEWPORT_GUESS = 800;
 
-/** Far enough above the end for the scroll-to-bottom button to show. */
 const SCROLL_EDGE_THRESHOLD = 60;
 
-/**
- * What Reading holds still: an element and its distance below the
- * scrollport's top, or the row `key` names when there is no element yet.
- */
 interface Anchor {
   readonly key: string;
   readonly element: Element | undefined;
@@ -60,7 +55,6 @@ interface TranscriptControls {
 interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
-  /** Receives the scrollport, which the composer's trays and file drops use. */
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
 }
 
@@ -88,7 +82,6 @@ export function useTranscriptDock(): (dock: HTMLDivElement | null) => void {
   return useContext(TranscriptContext)?.setDock ?? ignore;
 }
 
-/** Hold an element where it is on screen, or go to the end and follow it. */
 export function useTranscriptControls(): TranscriptControls {
   const controlsRef = useContext(TranscriptContext)?.controlsRef;
 
@@ -98,7 +91,6 @@ export function useTranscriptControls(): TranscriptControls {
   };
 }
 
-/** The session the enclosing transcript draws and the pane view-state slot it saves into. */
 export function useTranscriptScope():
   | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore">
   | undefined {
@@ -161,7 +153,6 @@ export const TranscriptContent = memo(function TranscriptContent({
   );
 
   const heldRef = useRef(held);
-  /** Reopening at the end chases it while the first rows measure, until it gets there. */
   const opening = useRef(initialPosition.kind === "end");
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
@@ -180,7 +171,6 @@ export const TranscriptContent = memo(function TranscriptContent({
     [items],
   );
 
-  /** The hold's drift after TanStack laid rows out; its row stands in for a lost element. */
   const correct = (instance: TranscriptVirtualizer): void => {
     const anchor = heldRef.current;
     const scroll = instance.scrollElement;
@@ -199,7 +189,6 @@ export const TranscriptContent = memo(function TranscriptContent({
     if (Math.abs(drift) > 0.5) instance.scrollToOffset(scroll.scrollTop + drift);
   };
 
-  /** Whether the view was at the end the last time it settled; rows changing keep it there. */
   const atEnd = useRef(initialPosition.kind === "end");
 
   const present = (instance: TranscriptVirtualizer, left = instance.getDistanceFromEnd()): void => {
@@ -240,7 +229,6 @@ export const TranscriptContent = memo(function TranscriptContent({
     heldRef.current = held;
   }, [held]);
 
-  /** Rule 10: rows above the fold are compensated, even while the reader scrolls up. */
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
       const fold = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
@@ -284,7 +272,6 @@ export const TranscriptContent = memo(function TranscriptContent({
     virtualizer.scrollToEnd();
   };
 
-  /** Rules 1 and 20: reopen at the end, or jump to the saved row for `correct` to place. */
   useLayoutEffect(() => {
     if (!ready) return;
     const anchor = heldRef.current;
@@ -294,13 +281,8 @@ export const TranscriptContent = memo(function TranscriptContent({
     } else if (anchor.element === undefined && indexOf(anchor.key) >= 0) {
       virtualizer.scrollToIndex(indexOf(anchor.key), { align: "start" });
     }
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- once the thread's rows exist
   }, [ready]);
 
-  /**
-   * Rules 2 and 15: rows joining (the live sentinel stays last, so TanStack
-   * sees no append) and a composer changing height keep Following at the end.
-   */
   useLayoutEffect(() => {
     if (atEnd.current) virtualizer.scrollToEnd();
   }, [dockHeight, items, virtualizer]);
@@ -432,7 +414,6 @@ export const TranscriptContent = memo(function TranscriptContent({
       resize.disconnect();
       controlsRef.current = null;
     };
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- the handlers read live state through refs
   }, [controlsRef, dock, viewport, virtualizer]);
 
   return (
@@ -450,7 +431,7 @@ export const TranscriptContent = memo(function TranscriptContent({
           virtualizer.containerRef(element);
         }}
         role="log"
-        {...props(messageScrollerStyles.content)}
+        {...props(text.lg, messageScrollerStyles.content)}
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const item = items[virtualItem.index];

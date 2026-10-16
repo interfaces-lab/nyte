@@ -9,11 +9,10 @@ import {
   environmentPlugin,
   executeCall,
   receiptRef,
-  startRun,
 } from "../src/index.ts";
 import type { ConnectionContext, FilesApi, Kernel } from "../src/index.ts";
 import { collect, world } from "./fake-env.ts";
-import { configuration, main, until } from "./harness.ts";
+import { configuration, main, startRun, until } from "./harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -22,12 +21,10 @@ const caller: ConnectionContext = {
   origin: null,
 };
 
-/** Returns a byte stream of one chunk. */
 async function* streamOf(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
   yield bytes;
 }
 
-/** Returns a session on the fake world and its environment's wrapped files. */
 async function sessionFiles(options?: Parameters<typeof world>[0]) {
   const built = await world(options);
   const session = await built.host.sessions.create({ workspace: built.workspace });
@@ -36,7 +33,6 @@ async function sessionFiles(options?: Parameters<typeof world>[0]) {
   return { ...built, session, files };
 }
 
-/** Returns a function running one tool call in a fresh live run on main. */
 async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
   const run = await startRun(
     kernel,
@@ -69,7 +65,6 @@ async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
   };
 }
 
-/** Returns the text of an `ok` outcome's text items. */
 function textOf(outcome: ToolOutcome): string {
   assert(outcome.kind === "ok");
 
@@ -179,7 +174,7 @@ describe("file batches", () => {
 
     const receipt = await files
       .batch()
-      .put({ path: "image.bin", contents: blob })
+      .put({ path: "image.bin", contents: { blob } })
       .put({ path: "note.txt", contents: "hi\n" })
       .apply();
 

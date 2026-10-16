@@ -1,6 +1,5 @@
 import type { ClientApi, Connection, PluginApi, PluginStorage, Setting } from "@nyte-ai/core";
 
-/** A plugin storage that keeps nothing. */
 const storage: PluginStorage = {
   get: async () => undefined,
   set: async () => undefined,
@@ -14,7 +13,6 @@ const storage: PluginStorage = {
   },
 };
 
-/** Returns a client plugin api over `sdk` whose notifications land in `notified` and whose registries hold nothing. */
 export function clientApi(
   sdk: Connection,
   notified: Parameters<ClientApi["ui"]["notify"]>[0][],

@@ -22,7 +22,7 @@ import type {
   ProviderCheckpointMaterial,
   Tool,
 } from "@nyte-ai/schema/model";
-import { jsonSchemaOf } from "./registry.ts";
+import { convertJsonSchema } from "./json-schema.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
@@ -37,16 +37,14 @@ import { runRef, sessionRef } from "./refs.ts";
 import { STALE, attempt, commit, load, put, requireSession } from "./session-state.ts";
 import type { ToolSource } from "./tool-runner.ts";
 
-/** Returns a sent request's answer, its usage and its model's info; a failed attempt was charged by `complete`. */
 interface Completed {
   readonly message: AssistantMessage;
   readonly usage: Usage;
   readonly info: ModelInfo;
-  /** Why the request failed after its retries, or null. */
+
   readonly failure: Failure | null;
 }
 
-/** The provider retry policy every request core sends follows. */
 export const RETRY_POLICY: RetryPolicy = {
   enabled: true,
   maxRetries: 3,
@@ -64,8 +62,7 @@ export const ZERO_USAGE: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** Returns the usage a provider message reports: counts as reported, `cost` the adapter's priced cost when above zero, else priced at `info.cost` per million. */
-export function usageOf(message: AssistantMessage, info: ModelInfo): Usage {
+export function calculateUsage(message: AssistantMessage, info: ModelInfo): Usage {
   const reported = message.usage;
   const { input, output, cacheRead, cacheWrite } = reported;
   const rates = info.cost;
@@ -122,7 +119,6 @@ export function addUsage(left: Usage, right: Usage): Usage {
   };
 }
 
-/** Returns a run record charged one request's usage, its `requests` bumped when the request publishes a `request` event. */
 export function charge(record: RunRecord, usage: Usage | null, requested: boolean): RunRecord {
   return {
     ...record,
@@ -131,7 +127,6 @@ export function charge(record: RunRecord, usage: Usage | null, requested: boolea
   };
 }
 
-/** Returns the `request` event one charged request publishes on `head` (null for every head), with the context it leaves against the model's window. */
 export function requestEvent(
   head: HeadName | null,
   step: Extract<DurableEvent, { readonly kind: "request" }>["step"],
@@ -151,7 +146,6 @@ export function requestEvent(
   };
 }
 
-/** Publishes an event riding a ref at its current target; nothing when the ref is gone or moves twice. */
 export async function rideRef(kernel: Kernel, name: string, event: DurableEvent): Promise<void> {
   for (let tries = 0; tries < 2; tries += 1) {
     const ref = await kernel.store.refs.get(name);
@@ -166,7 +160,6 @@ export async function rideRef(kernel: Kernel, name: string, event: DurableEvent)
   }
 }
 
-/** Sends one model request outside a turn: each attempt through `withLimits` under `RETRY_POLICY`, observed on `runtime` with `after_request` and, when it failed, charged here; the caller charges the answer. Null when the catalog lacks the model. */
 export async function complete(
   kernel: Kernel,
   models: Models,
@@ -206,7 +199,7 @@ export async function complete(
       ),
     );
 
-    const usage = usageOf(message, info);
+    const usage = calculateUsage(message, info);
     dev("request", "end", {
       session: where.session,
       stop: message.stopReason,
@@ -225,7 +218,7 @@ export async function complete(
       where,
     );
 
-    if (failedOf(message))
+    if (isFailedResponse(message))
       await chargeFailed(kernel, where, requestEvent(where.head, input.step, usage, info), usage);
 
     return message;
@@ -237,17 +230,16 @@ export async function complete(
 
   return {
     message,
-    usage: usageOf(message, info),
+    usage: calculateUsage(message, info),
     info,
-    failure: failedOf(message) ? classifyAssistantFailure(message) : null,
+    failure: isFailedResponse(message) ? classifyAssistantFailure(message) : null,
   };
 }
 
-function failedOf(message: AssistantMessage): boolean {
+function isFailedResponse(message: AssistantMessage): boolean {
   return message.stopReason === "error" || message.stopReason === "aborted";
 }
 
-/** Charges one failed attempt where it was sent: its run record with the `request` event, else the event riding the session ref. */
 async function chargeFailed(
   kernel: Kernel,
   where: HookContext,
@@ -282,13 +274,7 @@ async function chargeFailed(
 
 const REFUSALS = ["refusal", "content_filter", "SAFETY"] as const;
 
-/**
- * Returns `PluginApi.request`: one `completeSimple` under `RETRY_POLICY`, charged as a `request`
- * event with step `plugin`. A provider refusal is `refused`; with `output` the system prompt
- * asks for JSON matching the schema and the answer is parsed and validated.
- */
 export function createRequest(kernel: Kernel, models: Models): Kernel["request"] {
-  /** Without `output`, `T` is the default `string`: the one unchecked widening of a request. */
   function request<T>(
     session: SessionId,
     input: ModelRequestInput<T>,
@@ -306,7 +292,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
         ? input.system
         : [
             input.system,
-            `Answer with one JSON value and nothing else. It must match this JSON Schema:\n${JSON.stringify(jsonSchemaOf(output, "input"))}`,
+            `Answer with one JSON value and nothing else. It must match this JSON Schema:\n${JSON.stringify(convertJsonSchema(output, "input"))}`,
           ]
             .filter((part) => part !== undefined && part !== "")
             .join("\n\n");
@@ -365,7 +351,6 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
   return request;
 }
 
-/** Returns the JSON a text holds, a surrounding code fence dropped, or null when it is not JSON. */
 function parseJson(text: string): { readonly value: unknown } | null {
   const trimmed = text.trim();
   const fenced = /^```[\w-]*\s*\n([\s\S]*?)\n?```$/.exec(trimmed);
@@ -379,11 +364,6 @@ function parseJson(text: string): { readonly value: unknown } | null {
   }
 }
 
-/**
- * Lowers a transcript to ai's request `Context`: the tools ride the leading system message as
- * `toolsAdded`, each with its JSON Schema and, when its definition has a `grammar`, constrained
- * sampling; `checkpoint` is set when given.
- */
 export function providerContext(
   transcript: Transcript,
   source: ToolSource,

@@ -15,7 +15,6 @@ import type { OperationOutput } from "@nyte-ai/protocol";
 import type { JournalLoop } from "./journal.ts";
 import type { Rows } from "./rows.ts";
 
-/** Receives the values a pushed stream yields: the newest wins, then its end or its failure. */
 export type Sink<T> = {
   next(value: T): void;
   end(): void;
@@ -24,47 +23,50 @@ export type Sink<T> = {
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Holds one head's client fold while a watcher needs it: its state once the feed is live (null before), and its changes, end and failure. */
+const PARKED_FOLDS = 16;
+
+const PARKED_LINGER = 30_000;
+
 export interface FoldHold {
   state(): FoldState | null;
   subscribe(sink: Sink<FoldState>): Disposer;
 }
 
-/** Returns a connection's folds: one per `(session, head)`, shared by its watchers. */
 export interface Folds {
   acquire(session: SessionId, head: HeadName): FoldHold;
 }
 
-/**
- * Returns a connection's shared folds (§47f): the first watcher of a
- * `(session, head)` opens its `head.watch` and folds it on the client with
- * core's fold (remote carries deltas, never views); later watchers join it,
- * and the last one leaving closes the request and parks the fold. The next
- * watcher of a parked fold resumes its `head.watch` after the last folded
- * seq, so returning to a session never replays its log.
- *
- * A head-moving event is offered only with the pair frame that follows it
- * (§40s, §54a); a logged event at or
- * below the last folded seq is dropped, so a resumed watch neither misses
- * nor repeats. The state is offered once the feed is live (the first seq-0
- * seed or patch), so history arrives as one view.
- */
 export function createFolds(rows: Rows, principal: PrincipalId): Folds {
   const open = new Map<string, FoldHold>();
-  const parked = new Map<string, FoldState>();
+
+  const parked = new Map<
+    string,
+    { readonly state: FoldState; readonly timer: ReturnType<typeof setTimeout> }
+  >();
+
+  rows.link.signal.addEventListener(
+    "abort",
+    () => {
+      for (const entry of parked.values()) clearTimeout(entry.timer);
+      parked.clear();
+    },
+    { once: true },
+  );
 
   const start = (session: SessionId, head: HeadName, key: string): FoldHold => {
     const sinks = new Set<Sink<FoldState>>();
     const resumed = parked.get(key);
+    clearTimeout(resumed?.timer);
     parked.delete(key);
-    let state = resumed ?? emptyFold({ session, principal });
+    let state = resumed?.state ?? emptyFold({ session, principal });
     let live = false;
     let unpaired = false;
+    let closed = false;
 
     const frames = rows
       .watch(
         "head.watch",
-        resumed === undefined ? { session, head } : { session, head, after: resumed.seq },
+        resumed === undefined ? { session, head } : { session, head, after: resumed.state.seq },
       )
       [Symbol.asyncIterator]();
 
@@ -79,7 +81,7 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
         for (;;) {
           const next = await frames.next();
 
-          if (next.done === true) break;
+          if (next.done === true || closed) break;
           const frame = next.value;
           state = applied(state, frame);
 
@@ -104,11 +106,23 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
           sinks.delete(sink);
 
           if (sinks.size > 0) return;
+          closed = true;
 
           if (open.get(key) === hold) {
             open.delete(key);
 
-            if (live) parked.set(key, state);
+            if (live && !rows.link.signal.aborted) {
+              const timer = setTimeout(() => parked.delete(key), PARKED_LINGER);
+
+              if (typeof timer === "object") timer.unref();
+              parked.set(key, { state, timer });
+
+              for (const [oldest, entry] of parked) {
+                if (parked.size <= PARKED_FOLDS) break;
+                clearTimeout(entry.timer);
+                parked.delete(oldest);
+              }
+            }
           }
 
           void frames.return?.();
@@ -133,12 +147,6 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
   };
 }
 
-/**
- * Yields a head's view on every change from the connection's shared fold
- * for it, projected with this watcher's options. The journal first drops the
- * sends the fold contains, then its unsent sends for the head are merged as
- * `unsent` user messages, coalesced to one view per 16 ms frame; `return()` leaves the fold.
- */
 export function watchHead(
   folds: Folds,
   journal: JournalLoop,
@@ -189,14 +197,6 @@ export function watchHead(
   );
 }
 
-/**
- * Yields the host view whenever it changes, over `connection.watch` across
- * link loss: `authority` rebuilt as a `Set`, and `link` the client's own
- * state (the host's frame carries none), yielded again whenever it moves.
- *
- * A closed link yields its last view once more, then ends. Coalesced to one
- * view per 16 ms frame.
- */
 export function watchHost(rows: Rows): AsyncIterable<HostView> {
   return coalesce(
     pushed<HostView>((sink) => {
@@ -236,7 +236,6 @@ export function watchHost(rows: Rows): AsyncIterable<HostView> {
   );
 }
 
-/** Returns a view with each unsent message in place of the one it shares an id with (an edit over its target, ADV C N1), the others the fold does not know placed before its first pending user message, or the same view when there are none. */
 export function withUnsent(
   view: SessionView,
   unsent: readonly Message[],
@@ -260,7 +259,6 @@ export function withUnsent(
   };
 }
 
-/** Returns the fold state after one `head.watch` frame: a revision frame applies its head's pair, a logged event already folded is dropped, anything else is folded. */
 function applied(state: FoldState, frame: OperationOutput<"head.watch">): FoldState {
   if (frame.kind === "revision") return withPair(state, frame.head, frame);
 
@@ -284,7 +282,6 @@ function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
   };
 }
 
-/** Returns a stream fed by `start` through a sink, opened on the first pull: the newest value pushed since the last pull wins, then the end or the failure. `return()` runs the disposer `start` returned. */
 function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
   return closable<T>(() => {
     let slot: { readonly value: T } | null = null;

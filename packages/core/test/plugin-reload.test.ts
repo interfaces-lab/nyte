@@ -17,7 +17,6 @@ import { configuration, env, main, script, setup, until, workspace } from "./har
 
 const nothing = standard(Type.Object({}));
 
-/** Returns a tool that answers at once, so a request lists it by name. */
 function tool(name: string, execute?: () => Promise<void>): ToolDefinition<Infer<typeof nothing>> {
   return {
     name,
@@ -42,7 +41,6 @@ const empty: Resources = {
   prompts: [],
 };
 
-/** Returns a kernel whose environment and resources the test controls, with a host over it. */
 async function controlled(input: {
   attach(): Promise<typeof env>;
   resources(): Promise<Resources>;

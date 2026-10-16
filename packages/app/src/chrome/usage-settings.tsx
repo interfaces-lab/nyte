@@ -1,13 +1,3 @@
-/**
- * Settings › Usage: what Nyte cost over a window and the shape of it, how much
- * of each plan is left, and one table that splits the cost along whichever axis
- * the reader picks. The chart stacks along the same axis, in the same colours,
- * so the table is the chart's legend.
- *
- * The page reads local history once per visit and the providers' limit windows
- * once per visit. A range press is arithmetic over the report already in hand.
- * Range and axis live in the URL, so the title row can hold the range picker.
- */
 import { BarChart, Sparkline, type ChartSeries } from "@nyte-ai/ui/chart";
 import { Meter } from "@nyte-ai/ui/meter";
 import { Tabs } from "@nyte-ai/ui/tabs";
@@ -16,12 +6,13 @@ import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import {
   costChange,
   deriveAccount,
@@ -63,7 +54,6 @@ function limitTier(used: number): LimitTier {
   return "calm";
 }
 
-/** The URL's order puts the default first. */
 const RANGE_OPTIONS = ["30d", "7d", "90d", "all"] as const satisfies readonly UsageRange[];
 
 const AXES = ["models", "folders", "chats", "tools"] as const;
@@ -77,10 +67,8 @@ const AXIS_LABELS: Readonly<Record<Axis, { tab: string; column: string; noun: st
   tools: { tab: "Tools", column: "Tool", noun: "tool" },
 };
 
-/** One hue per rank, shared by a chart layer and the row that names it. */
 const RANK_TINTS = ["blue", "purple", "teal", "pink", "orange"] as const satisfies readonly Tint[];
 
-/** Unranked rows and the chart's remainder paint in the scope's gray. */
 function rowTint(row: UsageRow, rank: number): Tint | undefined {
   return row.share > 0 ? RANK_TINTS[rank] : undefined;
 }
@@ -103,7 +91,6 @@ function Bone({
   return <span aria-hidden="true" {...props(bone.bone)} style={{ width, height }} />;
 }
 
-/** The title row's control: which window every figure on the page covers. */
 export function UsageRangePicker(): ReactElement {
   const [range, setRange] = useUsageRange();
 
@@ -136,7 +123,7 @@ function Notice({
   readonly action?: ReactNode;
 }): ReactElement {
   return (
-    <p role={alert === true ? "alert" : "status"} {...props(styles.notice)}>
+    <p role={alert === true ? "alert" : "status"} {...props(text.sm, styles.notice)}>
       <Icon
         name="warning"
         size={14}
@@ -163,17 +150,13 @@ function Empty({
 }): ReactElement {
   return (
     <div {...props(styles.empty)}>
-      <span {...props(styles.emptyTitle)}>{title}</span>
-      <p {...props(styles.emptyBody)}>{body}</p>
+      <span {...props(text.base, styles.emptyTitle)}>{title}</span>
+      <p {...props(text.sm, styles.emptyBody)}>{body}</p>
       <span {...props(styles.emptyActions)}>{action}</span>
     </div>
   );
 }
 
-/**
- * The chart's layers for an axis: its top rows in their table colours, then
- * the rest as one gray remainder so every bar still sums to the window.
- */
 function chartLayers(usage: UsageDerived, rows: readonly UsageRow[]) {
   const ranked = rows.flatMap((row, rank) => {
     const tint = rowTint(row, rank);
@@ -236,7 +219,7 @@ function SpendCard({
     <section aria-label="Spend" {...props(styles.card, styles.spend)}>
       <div {...props(styles.spendHead)}>
         <span {...props(styles.spendTitle)}>
-          <span {...props(styles.caption)}>
+          <span {...props(text.sm, styles.caption)}>
             {usage.measure === "cost" ? "Spent" : "Used"} · {spanLabel(usage.from, usage.to)}
           </span>
           <span {...props(styles.amount)}>
@@ -249,6 +232,7 @@ function SpendCard({
           {change !== undefined && (
             <span
               {...props(
+                text.sm,
                 change.direction === "up" && intent.warning,
                 change.direction === "down" && intent.success,
                 styles.fact,
@@ -258,7 +242,7 @@ function SpendCard({
               {change.label}
             </span>
           )}
-          <span {...props(styles.fact)}>{describeTotals(usage.totals)}</span>
+          <span {...props(text.sm, styles.fact)}>{describeTotals(usage.totals)}</span>
         </span>
       </div>
       <BarChart
@@ -271,31 +255,51 @@ function SpendCard({
   );
 }
 
-function LimitsCard(): ReactElement | null {
-  const limits = useAccountLimits();
-  const plans = useMemo(() => limits.data?.map(deriveAccount), [limits.data]);
+function LimitsCard({
+  limits,
+}: {
+  readonly limits: ReturnType<typeof useAccountLimits>;
+}): ReactElement | null {
+  const plans = useMemo(
+    () => limits.data?.map(deriveAccount).filter((plan) => plan !== null),
+    [limits.data],
+  );
 
   if (plans !== undefined && plans.length === 0 && limits.error === null) return null;
 
   return (
     <section aria-label="Limits" {...props(styles.card, styles.limits)}>
       <div {...props(styles.limitsHead)}>
-        <span {...props(styles.caption)}>Limits</span>
-        <span {...props(styles.quiet)}>Live</span>
+        <span {...props(text.sm, styles.caption)}>Limits</span>
+        <Button
+          variant="text"
+          iconOnly
+          icon="refresh"
+          aria-label="Refresh account limits"
+          loading={limits.isFetching}
+          onClick={() => void limits.refetch({ cancelRefetch: false })}
+        />
       </div>
-      {limits.error !== null ? (
-        <p role="alert" {...props(styles.quiet)}>
+      {limits.error !== null && (
+        <p role="alert" {...props(text.xs, styles.quiet)}>
           Couldn&apos;t read plan limits. {limits.error.message}
         </p>
-      ) : plans === undefined ? (
-        <span aria-busy="true" {...props(styles.spendTitle)}>
-          <Bone width="70%" height={10} />
-          <Bone width="100%" height={4} />
-        </span>
-      ) : (
-        plans.flatMap((plan) =>
-          plan.message === undefined
-            ? plan.meters.map((meter) => {
+      )}
+      {plans === undefined
+        ? limits.error === null && (
+            <span aria-busy="true" {...props(styles.spendTitle)}>
+              <Bone width="70%" height={10} />
+              <Bone width="100%" height={4} />
+            </span>
+          )
+        : plans.map((plan) => (
+            <Fragment key={plan.title}>
+              {plan.message !== undefined && (
+                <p role={plan.failed ? "alert" : undefined} {...props(text.xs, styles.quiet)}>
+                  {plan.message}
+                </p>
+              )}
+              {plan.meters.map((meter) => {
                 const tier = limitTier(meter.used);
                 const label = `${plan.title} · ${meter.label}`;
 
@@ -306,9 +310,10 @@ function LimitsCard(): ReactElement | null {
                     getAriaValueText={() => `${String(meter.used)}% used`}
                   >
                     <span {...props(styles.meterHead)}>
-                      <Meter.Label xstyle={styles.meterLabel}>{label}</Meter.Label>
+                      <Meter.Label xstyle={text.base}>{label}</Meter.Label>
                       <span
                         {...props(
+                          text.base,
                           tier === "warm" && intent.warning,
                           tier === "hot" && intent.danger,
                           styles.meterValue,
@@ -318,32 +323,23 @@ function LimitsCard(): ReactElement | null {
                         {String(meter.used)}%
                       </span>
                     </span>
-                    <Meter.Track xstyle={styles.meterTrack}>
+                    <Meter.Track xstyle={surfaceTheme.gray}>
                       <Meter.Indicator
                         xstyle={
                           tier === "calm"
-                            ? [surfaceTheme.gray, styles.meterCalm]
+                            ? undefined
                             : tier === "warm"
                               ? intent.warning
                               : intent.danger
                         }
                       />
                     </Meter.Track>
-                    <span {...props(styles.quiet)}>{meter.reset}</span>
+                    <span {...props(text.xs, styles.quiet)}>{meter.reset}</span>
                   </Meter.Root>
                 );
-              })
-            : [
-                <p
-                  key={plan.title}
-                  role={plan.failed ? "alert" : undefined}
-                  {...props(styles.quiet)}
-                >
-                  {plan.message}
-                </p>,
-              ],
-        )
-      )}
+              })}
+            </Fragment>
+          ))}
     </section>
   );
 }
@@ -361,19 +357,19 @@ function BreakdownTable({
   return (
     <div role="table" aria-label={`Spend by ${AXIS_LABELS[axis].noun}`} {...props(styles.table)}>
       <div role="row" {...props(styles.row, styles.headRow)}>
-        <span role="columnheader" {...props(styles.head, styles.nameCell)}>
+        <span role="columnheader" {...props(text.sm, styles.head, styles.nameCell)}>
           {AXIS_LABELS[axis].column}
         </span>
-        <span role="columnheader" {...props(styles.number, styles.turns, styles.head)}>
-          Turns
+        <span role="columnheader" {...props(text.sm, styles.number, styles.cache, styles.head)}>
+          Cache hit
         </span>
-        <span role="columnheader" {...props(styles.number, styles.perTurn, styles.head)}>
-          $ / turn
-        </span>
-        <span role="columnheader" {...props(styles.head, styles.trend)}>
+        <span role="columnheader" {...props(text.sm, styles.head, styles.trend)}>
           Trend
         </span>
-        <span role="columnheader" {...props(styles.head, styles.headStrong, styles.costHead)}>
+        <span
+          role="columnheader"
+          {...props(text.sm, styles.head, styles.headStrong, styles.costHead)}
+        >
           Cost
         </span>
       </div>
@@ -392,19 +388,28 @@ function BreakdownTable({
                 )}
               />
               <span {...props(styles.name)}>
-                <span {...props(styles.rowLabel)}>{row.label}</span>
-                <span {...props(styles.rowMeta)}>{row.meta}</span>
+                <span {...props(text.base, styles.rowLabel)}>{row.label}</span>
+                <span {...props(text.xs, styles.rowMeta)}>{row.meta}</span>
               </span>
             </span>
-            <span role="cell" {...props(styles.number, styles.turns)}>
-              {row.turns}
-            </span>
-            <span role="cell" {...props(styles.number, styles.perTurn)}>
-              {row.perTurn}
+            <span role="cell" {...props(styles.number, styles.cache)}>
+              <span
+                {...props(
+                  text.base,
+                  row.cache.tone === "low" && intent.warning,
+                  row.cache.tone === "low" && styles.cacheLow,
+                  row.cache.tone === "absent" && styles.absent,
+                )}
+              >
+                {row.cache.hit}
+              </span>
+              {row.cache.saved !== undefined && (
+                <span {...props(text.xs, styles.rowMeta)}>{row.cache.saved}</span>
+              )}
             </span>
             <span role="cell" {...props(styles.trend)}>
               {row.trend === undefined ? (
-                <span {...props(styles.number, styles.absent)}>—</span>
+                <span {...props(text.base, styles.number, styles.absent)}>—</span>
               ) : (
                 <Sparkline values={row.trend} />
               )}
@@ -412,9 +417,9 @@ function BreakdownTable({
             <span role="cell" {...props(styles.cost)}>
               <span {...props(styles.costLine)}>
                 {!row.value.absent && (
-                  <span {...props(styles.share)}>{formatPercent(row.share)}</span>
+                  <span {...props(text.xs, styles.share)}>{formatPercent(row.share)}</span>
                 )}
-                <span {...props(styles.number, row.value.absent && styles.absent)}>
+                <span {...props(text.base, styles.number, row.value.absent && styles.absent)}>
                   {row.value.text}
                 </span>
               </span>
@@ -432,7 +437,7 @@ function BreakdownTable({
           </div>
         );
       })}
-      {hidden > 0 && <p {...props(styles.more)}>+{String(hidden)} more</p>}
+      {hidden > 0 && <p {...props(text.sm, styles.more)}>+{String(hidden)} more</p>}
     </div>
   );
 }
@@ -444,7 +449,13 @@ export function UsageSettings(): ReactElement {
   const [axis, setAxis] = useChromeTab("usage", AXES);
   const view = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
 
-  const { report, error, isFetching, refresh } = useUsageReport(view.untilDay);
+  const { report, error, isFetching, refresh: refreshHistory } = useUsageReport(view.untilDay);
+  const limits = useAccountLimits();
+
+  const refresh = () => {
+    refreshHistory();
+    void limits.refetch({ cancelRefetch: false });
+  };
 
   const usage = useMemo(
     () => (report === undefined ? undefined : deriveUsage(report, view)),
@@ -454,15 +465,18 @@ export function UsageSettings(): ReactElement {
   const tools = useMemo(() => (report === undefined ? undefined : deriveTools(report)), [report]);
 
   const refreshButton = (
-    <Button variant="outline" loading={isFetching} onClick={refresh}>
+    <Button variant="outline" loading={isFetching || limits.isFetching} onClick={refresh}>
       Refresh Usage
     </Button>
   );
 
   if (report === undefined && error !== null) {
     return (
-      <div role="alert" {...props(styles.card)}>
-        <Empty title="Couldn't read usage" body={error.message} action={refreshButton} />
+      <div {...props(styles.page)}>
+        <div role="alert" {...props(styles.card)}>
+          <Empty title="Couldn't read usage" body={error.message} action={refreshButton} />
+        </div>
+        <LimitsCard limits={limits} />
       </div>
     );
   }
@@ -477,7 +491,6 @@ export function UsageSettings(): ReactElement {
 
   const rows = rowsFor(axis);
 
-  // Tools are all time and have no days, so the chart shows Nyte's own share of them.
   const chartRows =
     axis === "tools" && usage !== undefined && rows !== undefined
       ? rows.map((row) =>
@@ -543,7 +556,7 @@ export function UsageSettings(): ReactElement {
             )
           }
         />
-        <LimitsCard />
+        <LimitsCard limits={limits} />
       </div>
 
       {empty === undefined && (
@@ -563,7 +576,7 @@ export function UsageSettings(): ReactElement {
                 </Tabs.Tab>
               ))}
             </Tabs.List>
-            {hint !== undefined && <span {...props(styles.fact)}>{hint}</span>}
+            {hint !== undefined && <span {...props(text.sm, styles.fact)}>{hint}</span>}
           </div>
           {AXES.map((option) => {
             const optionRows = rowsFor(option);

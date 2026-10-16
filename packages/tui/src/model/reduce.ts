@@ -1,16 +1,9 @@
-/**
- * The only writer of `State`. Pure: (state, msg, now) → new state plus the
- * effects to run. A thrown error here is a bug; the store reports it and
- * keeps the previous state.
- *
- * Domains own their messages; the root switch only routes. The switch is
- * exhaustive over `Msg["kind"]`, so a new message without a handler fails
- * the build.
- */
 import type { Delivery, MessageId, MoveOptions, SessionId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
+import { GLYPHS } from "../lib/constants.ts";
 import { shortId } from "../lib/format.ts";
 import { canStopTask } from "../lib/tasks.ts";
+import { landingMessages } from "../lib/view-helpers.ts";
 import {
   initialHighlight,
   listTitle,
@@ -30,7 +23,7 @@ import {
 } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
-import { reduceDialog } from "./dialogs/dialog.ts";
+import { dialogText, reduceDialog } from "./dialogs/dialog.ts";
 import { withPrompt } from "./dialogs/auth.ts";
 import type { AuthDialog } from "./dialogs/auth.ts";
 import { typedLabel } from "./dialogs/list.ts";
@@ -51,6 +44,15 @@ import {
 } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
 import type { Effect } from "./effect.ts";
+import type { QuestionModel } from "./question.ts";
+import {
+  collectQuestionAnswers,
+  createQuestionDraft,
+  readQuestionDraft,
+  sameQuestion,
+  selectQuestionAnswer,
+  storeQuestionDraft,
+} from "./question.ts";
 import { promptEntries } from "./history.ts";
 import { chatCommands, interactionsFor } from "./interactions.ts";
 import type { Intent, Msg, Outcome } from "./msg.ts";
@@ -59,7 +61,7 @@ import { keyboardDialog, runModel, tableInputFor } from "./screen.ts";
 import { completionLookup, facts, stageHandback } from "./session.ts";
 import { settingRows, applyChoice } from "./settings.ts";
 import { followedShells } from "./state.ts";
-import type { Notice, PendingOp, Selection, State } from "./state.ts";
+import type { Notice, PendingOp, QuestionTypedDraft, Selection, State } from "./state.ts";
 import {
   andThen,
   clearDraft,
@@ -81,7 +83,6 @@ export interface Step {
   readonly effects: readonly Effect[];
 }
 
-/** Double-press window for Esc → tree. */
 const ESCAPE_WINDOW_MS = 500;
 
 export function reduce(state: State, msg: Msg, now: number): Step {
@@ -123,6 +124,10 @@ export function reduce(state: State, msg: Msg, now: number): Step {
     case "configure":
     case "write-settings":
     case "apply-setting":
+    case "review-trust":
+    case "set-trust":
+    case "mcp-action":
+    case "mcp-login":
     case "cycle-thinking":
     case "cycle-model":
     case "quit":
@@ -158,6 +163,7 @@ export function reduce(state: State, msg: Msg, now: number): Step {
     case "workspace":
     case "shell-job":
     case "terminal":
+    case "remote":
     case "draft-changed":
     case "scrolled":
     case "failure":
@@ -173,10 +179,12 @@ export function reduce(state: State, msg: Msg, now: number): Step {
     case "loaded":
     case "load-failed":
     case "paste-resolved":
+    case "dialog-pasted":
     case "editor-closed":
     case "op-finished":
     case "effect-failed":
     case "inform":
+    case "trust-loaded":
     case "directory-listed":
     case "mention-resolved":
     case "command-unknown":
@@ -190,7 +198,6 @@ export function reduce(state: State, msg: Msg, now: number): Step {
   }
 }
 
-/** Reduces several intents in order, as one step. */
 function all(state: State, intents: readonly Intent[], now: number): Step {
   return intents.reduce<Step>(
     (step, intent) => andThen(step, (current) => reduce(current, intent, now)),
@@ -213,18 +220,6 @@ function completionNow(state: State): CompletionModel | null {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Composer
-// ---------------------------------------------------------------------------
-
-/**
- * `send` with the composer's current draft. A known `/command` clears the
- * draft and runs; anything else is a prompt: a submission snapshots the
- * draft, the composer clears at once, and the runner prepares parts, runs
- * plugin `beforeSubmit`, reserves a configurator slot and sends. A refusal
- * comes back as `send-refused` with the snapshot, which lands in the
- * composer again.
- */
 export function composer(
   state: State,
   msg: Extract<
@@ -296,9 +291,27 @@ export function composer(
     case "history":
       return history(state, msg.direction);
     case "paste": {
+      const dialog = keyboardDialog(state);
+
+      if (dialog !== null) {
+        if (dialogText(dialog) === null) return stay(state);
+
+        return msg.source.kind === "clipboard"
+          ? {
+              state,
+              effects: [
+                {
+                  kind: "read-dialog-clipboard",
+                  dialog: dialog.id,
+                  promptVersion: dialog.kind === "auth" ? (dialog.promptVersion ?? 0) : null,
+                },
+              ],
+            }
+          : dialogCommand(state, { kind: "paste", text: msg.source.text }, now);
+      }
+
       const generation = state.local.pasteGeneration;
 
-      // A paste is input like a key: it takes the notice back.
       const next = withLocal(state, {
         history: null,
         notice: null,
@@ -401,7 +414,6 @@ function send(state: State, delivery: Delivery, warning: string | null, now: num
   );
 }
 
-/** Sends a snapshot as a new message and follows the tail; the runner answers `sent` or `send-refused`. */
 function submitSnapshot(
   state: State,
   to: SessionId,
@@ -422,7 +434,6 @@ function submitSnapshot(
   };
 }
 
-/** Back at the transcript's tail, following new output: what Ctrl+End and every send do. */
 function following(state: State): State {
   return withLocal(state, {
     transcript: { ...state.local.transcript, following: true, window: { kind: "tail" } },
@@ -521,7 +532,6 @@ function completion(
   }
 }
 
-/** Re-derives the completion after an edit the reducer made, asking for a `/cd` listing when needed. */
 function recomplete(current: State): Step {
   return completionLookup(
     current.local.completion,
@@ -597,22 +607,6 @@ function acceptCompletion(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Queue
-// ---------------------------------------------------------------------------
-
-/**
- * Queue operations. Each re-checks the row against the current view here and
- * the runner re-checks again before the SDK call, so an operation aimed at a
- * row that just landed never becomes an edit that stops the run.
- *
- * withdraw(id):  row pending? effect withdraw(session, id) : notice
- * promote(id):   row pending && not joined? effect revise(id, content, delivery steer, position null)
- * reorder(id,to): earlier → before the previous pending row (one inbox order, any delivery);
- *                 later → before the row after next, or last; effect revise(id, content, row.delivery, position)
- * edit-queued(id): row editable? local.editing = { id, delivery, saved: snapshot(draft) };
- *                 composer set(draftFromContent(message.content))
- */
 export function queue(
   state: State,
   msg: Extract<Intent, { readonly kind: "edit-queued" | "promote" | "withdraw" | "reorder" }>,
@@ -717,7 +711,6 @@ export function queue(
   }
 }
 
-/** The message to move before (null = last), or undefined when the move changes nothing. */
 function reorderTarget(
   ids: readonly MessageId[],
   index: number,
@@ -734,18 +727,6 @@ function reorderTarget(
   return ids.includes(to.before) ? to.before : null;
 }
 
-// ---------------------------------------------------------------------------
-// Run
-// ---------------------------------------------------------------------------
-
-/**
- * stop-run:      run working|waiting|retrying → effect stop-run(run.id)
- * answer:        effect answer(session, part, choice, typed ? snapshot(draft) : null); typed → composer clear
- * open-question: local.question.dismissed = null
- * escape-tree:   a second Esc within 500 ms opens the tree (refused while busy), else arms
- * move-to:       effect move(commit, running refuse, abandoned, expect)
- * stop-task:     the task's own stop, refused when it already finished
- */
 export function run(
   state: State,
   msg: Extract<
@@ -776,37 +757,50 @@ export function run(
     }
 
     case "answer": {
-      const dismissed = withLocal(state, {
-        question: { ...state.local.question, dismissed: msg.part },
+      const question = tableInputFor(state, null).question;
+
+      if (question === null || question.part !== msg.part || question.session !== msg.session)
+        return stay(state);
+
+      const group =
+        readQuestionDraft(state.local.question, question) ??
+        createQuestionDraft(question.questions);
+
+      if (group.phase !== "editing") return stay(state);
+
+      const value = msg.value.trim();
+
+      const field = group.fields[question.index];
+
+      if (value === "" || field === undefined) return stay(state);
+
+      const selected = selectQuestionAnswer(field, value, msg.typed);
+
+      const next = withLocal(state, {
+        question: storeQuestionDraft(state.local.question, question, {
+          ...group,
+          fields: group.fields.map((current, index) =>
+            index === question.index ? selected : current,
+          ),
+        }),
       });
 
-      if (!msg.typed)
-        return {
-          state: dismissed,
-          effects: [
-            {
-              kind: "answer",
-              session: msg.session,
-              part: msg.part,
-              choice: msg.choice,
-              typed: null,
-            },
-          ],
-        };
-      const typed = snapshot(state.local.draft);
+      if (!msg.typed && selected.kind === "multiple") return stay(next);
 
-      return andThen(clearDraft(dismissed), (current) => ({
-        state: current,
-        effects: [
-          { kind: "answer", session: msg.session, part: msg.part, choice: msg.choice, typed },
-        ],
-      }));
+      const typed =
+        msg.typed && followed !== null
+          ? { session: followed.id, draft: snapshot(state.local.draft) }
+          : null;
+
+      return msg.typed
+        ? andThen(clearDraft(next), (current) => advanceQuestion(current, question, typed))
+        : advanceQuestion(next, question, null);
     }
 
     case "open-question":
       return stay(
         withLocal(state, {
-          question: { dismissed: null, highlighted: 0, query: "", answering: null },
+          question: { ...state.local.question, dismissed: null, highlighted: 0 },
         }),
       );
     case "escape-tree": {
@@ -917,10 +911,6 @@ export function run(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Session
-// ---------------------------------------------------------------------------
-
 function nextThinkingLevel<Level extends string>(
   current: Level,
   supported: readonly Level[],
@@ -930,12 +920,6 @@ function nextThinkingLevel<Level extends string>(
   return supported[(supported.indexOf(current) + 1) % supported.length];
 }
 
-/**
- * retry-watch: facts.session.watch failed → watch live; effect follow(session.id, announce false), which
- *   re-opens every watch of the followed session; ignored while live.
- * configure: the configurator's selection moves at once (the footer and the next Shift+Tab read it);
- *   the runner's `selection` fact confirms or corrects it.
- */
 export function session(
   state: State,
   msg: Extract<
@@ -951,6 +935,10 @@ export function session(
         | "configure"
         | "write-settings"
         | "apply-setting"
+        | "review-trust"
+        | "set-trust"
+        | "mcp-action"
+        | "mcp-login"
         | "cycle-thinking"
         | "cycle-model"
         | "quit"
@@ -1018,7 +1006,10 @@ export function session(
       if (busy(state))
         return refuse(state, "Wait for the current run before changing directories", now);
 
-      if (queueRows(followed, null).length > 0)
+      if (
+        queueRows(followed, null).length > 0 ||
+        (followed.view !== null && landingMessages(followed.view).length > 0)
+      )
         return refuse(
           state,
           "error: Wait for queued messages before changing directories.",
@@ -1086,6 +1077,48 @@ export function session(
         effects: [{ kind: "write-settings", patch: msg.patch }],
       };
     }
+    case "review-trust":
+      if (followed === null) return refuse(state, "Wait for the session to open", now);
+
+      return {
+        state,
+        effects: [{ kind: "check-trust", workspace: followed.info.workspace, ask: "always" }],
+      };
+    case "mcp-action":
+      return {
+        state,
+        effects: [
+          { kind: "mcp-action", workspace: msg.workspace, server: msg.server, action: msg.action },
+        ],
+      };
+    case "mcp-login": {
+      if (state.local.pending.some((op) => op.kind === "auth"))
+        return refuse(state, "An authentication command is already running.", now);
+      const minted = mint(state, "dialog");
+      const { id } = minted;
+      const provider = `mcp:${msg.server}`;
+
+      return push(
+        withLocal(minted.state, {
+          pending: [...minted.state.local.pending, { kind: "auth", provider, link: null }],
+        }),
+        {
+          kind: "auth",
+          id,
+          mode: "login",
+          provider,
+          name: msg.server,
+          link: null,
+          step: { kind: "starting" },
+        },
+        [{ kind: "mcp-login", dialog: id, workspace: msg.workspace, server: msg.server }],
+      );
+    }
+    case "set-trust":
+      return {
+        state,
+        effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value }],
+      };
     case "apply-setting":
       if (followed === null) return stay(state);
 
@@ -1204,10 +1237,6 @@ function configure(state: State, selection: Partial<Selection>, now: number): St
   return { state: told, effects: [{ kind: "configure", session: followed.id, selection }] };
 }
 
-// ---------------------------------------------------------------------------
-// Transcript
-// ---------------------------------------------------------------------------
-
 export function transcript(
   state: State,
   msg: Extract<
@@ -1257,11 +1286,7 @@ export function transcript(
 
       if (model.window.start === 0) return stay(state);
 
-      const window = revealEarlier(
-        model.rows,
-        (row) => rowWeight(row, model.turns, local),
-        model.window,
-      );
+      const window = revealEarlier(model.rows, (row) => rowWeight(row, model.turns), model.window);
 
       return {
         state: withLocal(state, { transcript: { ...local, following: false, window } }),
@@ -1306,10 +1331,6 @@ export function transcript(
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Dialogs
-// ---------------------------------------------------------------------------
 
 export function dialogs(
   state: State,
@@ -1409,7 +1430,35 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
         dialog,
         purpose.kind === "resume"
           ? [{ kind: "load", dialog: id, request: { kind: "sessions" } }]
-          : [],
+          : purpose.kind === "mcp"
+            ? [
+                {
+                  kind: "load",
+                  dialog: id,
+                  request: { kind: "mcp-servers", workspace: purpose.workspace },
+                },
+              ]
+            : purpose.kind === "mcp-server"
+              ? [
+                  {
+                    kind: "load",
+                    dialog: id,
+                    request: {
+                      kind: "mcp-server",
+                      workspace: purpose.workspace,
+                      server: purpose.server,
+                    },
+                  },
+                ]
+              : purpose.kind === "accounts"
+                ? [
+                    {
+                      kind: "load",
+                      dialog: id,
+                      request: { kind: "accounts", provider: purpose.provider },
+                    },
+                  ]
+                : [],
       );
     }
 
@@ -1493,6 +1542,28 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
       ]);
     }
 
+    case "mcp":
+      if (followed === null) return refuse(state, "Wait for the session to open", now);
+
+      return openDialog(
+        state,
+        { kind: "list", purpose: { kind: "mcp", workspace: followed.info.workspace } },
+        now,
+      );
+
+    case "mcp-details":
+      return push(
+        minted.state,
+        { kind: "text", id, title: request.server, body: { kind: "loading" }, scroll: 0 },
+        [
+          {
+            kind: "load",
+            dialog: id,
+            request: { kind: "mcp-details", workspace: request.workspace, server: request.server },
+          },
+        ],
+      );
+
     case "auth": {
       if (state.local.pending.some((op) => op.kind === "auth"))
         return refuse(state, "An authentication command is already running.", now);
@@ -1519,6 +1590,11 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
           id,
           mode: request.mode,
           provider: request.provider,
+          name:
+            state.facts.catalog.catalog?.providers.find(
+              (provider) => provider.id === request.provider,
+            )?.name ?? request.provider,
+          link: null,
           step: { kind: "starting" },
         },
         [{ kind: "login", provider: request.provider, dialog: id }],
@@ -1533,34 +1609,111 @@ function openDialog(state: State, request: DialogRequest, now: number): Step {
   }
 }
 
-/** Forwards a key or typed text to the dialog that owns the keyboard, then reduces what it asked for. */
+function advanceQuestion(
+  state: State,
+  question: QuestionModel,
+  typed: QuestionTypedDraft | null,
+): Step {
+  const local = state.local.question;
+
+  const group = readQuestionDraft(local, question) ?? createQuestionDraft(question.questions);
+
+  if (group.phase !== "editing") return stay(state);
+
+  if (group.active < question.questions.length - 1)
+    return stay(
+      withLocal(state, {
+        question: {
+          ...storeQuestionDraft(local, question, { ...group, active: group.active + 1 }),
+          dismissed: null,
+          highlighted: 0,
+        },
+      }),
+    );
+
+  return {
+    state: withLocal(state, {
+      question: {
+        ...storeQuestionDraft(local, question, { ...group, phase: "submitting" }),
+        dismissed: { session: question.session, part: question.part },
+      },
+    }),
+    effects: [
+      {
+        kind: "answer",
+        session: question.session,
+        part: question.part,
+        answers: collectQuestionAnswers(group),
+        typed,
+      },
+    ],
+  };
+}
+
 function dialogCommand(state: State, input: DialogInput, now: number): Step {
   const dialog = keyboardDialog(state);
 
   if (dialog === null) return stay(state);
+
+  if (dialog.kind === "list" && dialog.purpose.kind === "question") {
+    const text =
+      input.kind === "query" || input.kind === "paste"
+        ? input.text
+        : input.kind === "edit" && input.edit.kind === "insert"
+          ? input.edit.text
+          : "";
+
+    if (text !== "" && !dialog.busy) {
+      const next = withLocal(state, {
+        question: {
+          ...state.local.question,
+          dismissed: { session: dialog.purpose.session, part: dialog.purpose.part },
+        },
+      });
+
+      return andThen(insertText(next, text, "cursor"), (current) => ({
+        state: current,
+        effects: [{ kind: "composer", op: { kind: "focus" } }],
+      }));
+    }
+  }
+
   const result = reduceDialog(dialog, input);
+
   const onStack = state.local.dialogs.at(-1)?.id === dialog.id;
+
   let next: State;
 
   if (onStack) {
     const below = state.local.dialogs.slice(0, -1);
+
     const kept = result.dialog === null ? below : [...below, result.dialog];
 
     next = withLocal(state, { dialogs: result.push === null ? kept : [...kept, result.push] });
   } else if (dialog.kind === "list" && dialog.purpose.kind === "question") {
     const { purpose } = dialog;
+
     const after = result.dialog;
 
     next = withLocal(state, {
       question:
         after === null || after.kind !== "list"
-          ? { dismissed: purpose.part, highlighted: 0, query: "", answering: null }
+          ? {
+              ...state.local.question,
+              dismissed: { session: purpose.session, part: purpose.part },
+              highlighted: 0,
+            }
           : {
               ...state.local.question,
               highlighted: after.highlighted,
-              query: after.query,
-              answering: after.answering,
-              caret: after.caret,
+              detailScroll:
+                after.detailScroll === undefined
+                  ? undefined
+                  : {
+                      part: purpose.part,
+                      index: readQuestionDraft(state.local.question, purpose)?.active ?? 0,
+                      request: after.detailScroll,
+                    },
             },
     });
   } else next = state;
@@ -1581,7 +1734,6 @@ function withoutDialog(state: State, id: string): State {
   return withLocal(state, { dialogs: state.local.dialogs.filter((dialog) => dialog.id !== id) });
 }
 
-/** What accepting a list row means, one entry per purpose. */
 function choose(state: State, msg: Extract<Intent, { kind: "choose" }>, now: number): Step {
   const dialog = findDialog(state, msg.dialog);
 
@@ -1591,18 +1743,86 @@ function choose(state: State, msg: Extract<Intent, { kind: "choose" }>, now: num
   const choice = msg.choice;
 
   switch (purpose.kind) {
-    case "question":
-      return reduce(
-        state,
-        {
-          kind: "answer",
-          session: purpose.session,
-          part: purpose.part,
-          choice: msg.typed ?? choice ?? "",
-          typed: false,
-        },
-        now,
-      );
+    case "question": {
+      const question = tableInputFor(state, null).question;
+
+      if (question === null || !sameQuestion(question, purpose)) return stay(state);
+
+      const group =
+        readQuestionDraft(state.local.question, question) ??
+        createQuestionDraft(question.questions);
+
+      if (group.phase !== "editing") return stay(state);
+
+      if (choice === "next") return advanceQuestion(state, question, null);
+
+      if (choice === "back")
+        return group.active === 0
+          ? stay(state)
+          : stay(
+              withLocal(state, {
+                question: {
+                  ...storeQuestionDraft(state.local.question, question, {
+                    ...group,
+                    active: group.active - 1,
+                  }),
+                  highlighted: 0,
+                },
+              }),
+            );
+
+      if (choice === "custom") {
+        const field = group.fields[question.index];
+
+        if (field === undefined) return stay(state);
+
+        const deselect = field.kind === "multiple" && field.customSelected;
+
+        const selected =
+          field.kind === "multiple"
+            ? { ...field, customSelected: !deselect }
+            : { ...field, selection: { kind: "custom" as const } };
+
+        const local = storeQuestionDraft(state.local.question, question, {
+          ...group,
+          fields: group.fields.map((current, index) =>
+            index === question.index ? selected : current,
+          ),
+        });
+
+        if (deselect) return stay(withLocal(state, { question: local }));
+
+        const next = withLocal(state, {
+          question: { ...local, dismissed: { session: question.session, part: question.part } },
+        });
+
+        const step =
+          field.customText === ""
+            ? stay(next)
+            : setDraft(next, { text: field.customText, parts: NO_PARTS });
+
+        return andThen(step, (current) => ({
+          state: current,
+          effects: [{ kind: "composer", op: { kind: "focus" } }],
+        }));
+      }
+
+      const option = question.field.options.find((_, index) => `option:${index}` === choice);
+
+      return option === undefined
+        ? stay(state)
+        : reduce(
+            state,
+            {
+              kind: "answer",
+              session: purpose.session,
+              part: purpose.part,
+              value: option.label,
+              typed: false,
+            },
+            now,
+          );
+    }
     case "resume": {
       if (choice === null) return stay(state);
 
@@ -1677,6 +1897,59 @@ function choose(state: State, msg: Extract<Intent, { kind: "choose" }>, now: num
       return openDialog(state, { kind: "list", purpose: { kind: "setting", key: row.id } }, now);
     }
 
+    case "mcp":
+      return choice === null || !choice.startsWith("server:")
+        ? stay(state)
+        : openDialog(
+            state,
+            {
+              kind: "list",
+              purpose: {
+                kind: "mcp-server",
+                workspace: purpose.workspace,
+                server: choice.slice("server:".length),
+              },
+            },
+            now,
+          );
+
+    case "mcp-server": {
+      const { workspace, server } = purpose;
+      const parent = closed.local.dialogs.at(-1);
+
+      const done =
+        parent?.kind === "list" && parent.purpose.kind === "mcp"
+          ? withoutDialog(closed, parent.id)
+          : closed;
+
+      switch (choice) {
+        case "login":
+          return reduce(done, { kind: "mcp-login", workspace, server }, now);
+        case "details":
+          return openDialog(state, { kind: "mcp-details", workspace, server }, now);
+        case "reconnect":
+        case "enable":
+        case "disable":
+        case "logout":
+          return reduce(done, { kind: "mcp-action", workspace, server, action: choice }, now);
+        default:
+          return stay(closed);
+      }
+    }
+
+    case "trust":
+      return choice === null
+        ? stay(closed)
+        : reduce(
+            closed,
+            {
+              kind: "set-trust",
+              workspace: purpose.workspace,
+              value: choice === "trust" ? true : choice === "decline" ? false : null,
+            },
+            now,
+          );
+
     case "setting": {
       const row = settingRows(state).find((candidate) => candidate.id === purpose.key);
       const option = row?.choices.find((candidate) => candidate.id === choice);
@@ -1729,6 +2002,33 @@ function choose(state: State, msg: Extract<Intent, { kind: "choose" }>, now: num
       if (choice === null) return stay(closed);
 
       return openDialog(closed, { kind: "auth", mode: purpose.mode, provider: choice }, now);
+    case "accounts": {
+      const account = purpose.accounts.find(
+        (candidate) => JSON.stringify([candidate.provider, candidate.id]) === choice,
+      );
+
+      if (account === undefined) return stay(state);
+
+      if (account.active) return stay(closed);
+
+      return {
+        state: withLocal(closed, {
+          pending: [
+            ...closed.local.pending,
+            { kind: "auth", provider: account.provider, link: null },
+          ],
+        }),
+        effects: [
+          {
+            kind: "select-account",
+            provider: account.provider,
+            account: account.id,
+            label: account.label,
+          },
+        ],
+      };
+    }
+
     default: {
       const _exhaustive: never = purpose;
 
@@ -1737,10 +2037,6 @@ function choose(state: State, msg: Extract<Intent, { kind: "choose" }>, now: num
   }
 }
 
-// ---------------------------------------------------------------------------
-// Outcomes
-// ---------------------------------------------------------------------------
-
 const MOVE_REFUSALS = {
   busy: "Wait for the current run",
   "pending-input": "Send or remove the queued messages first",
@@ -1748,15 +2044,6 @@ const MOVE_REFUSALS = {
   "missing-target": "Commit not found",
 } as const;
 
-/**
- * send-refused:  stage the snapshot as a handback (a plugin reject keeps the draft) and say why
- * withdrawn:     landed-first → "Already sent"; gone → "No longer queued"; withdrawn → "Removed from the queue"
- * answered:      !ok → "That question is no longer waiting"; a typed answer comes back to the composer
- * moved:         notice per outcome; a handed-back message lands in the composer
- * loaded:        routed to the dialog with that id; dropped when no such dialog is open (stale)
- * paste-resolved: generation matches the local paste generation? composer insert : drop
- * effect-failed: notice the error (the failure is already in the crash log) and release what it held
- */
 export function outcomes(state: State, msg: Outcome, now: number): Step {
   const followed = state.facts.session;
 
@@ -1815,18 +2102,51 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
         ? refuse(state, "Already sent", now)
         : refuse(state, "No longer queued", now, "info");
     case "answered": {
-      const next = msg.ok
-        ? state
-        : withNotice(state, "That question is no longer waiting", "warning", now);
+      const local = state.local.question;
 
-      if (msg.ok || msg.typed === null || followed === null) return stay(next);
+      const group = readQuestionDraft(local, msg.request);
 
-      return stageHandback(
-        next,
-        followed.id,
-        { draft: msg.typed, notice: null, unlessLanded: null },
+      if (group?.phase !== "submitting") return stay(state);
+
+      const accepted = msg.result.kind === "accepted";
+
+      const active = tableInputFor(state, null).question;
+
+      const settled = withLocal(state, {
+        question: {
+          ...storeQuestionDraft(local, msg.request, {
+            ...group,
+            phase: accepted ? "answered" : "editing",
+          }),
+          highlighted: accepted && sameQuestion(active, msg.request) ? 0 : local.highlighted,
+          dismissed:
+            !accepted && sameQuestion(local.dismissed, msg.request) ? null : local.dismissed,
+        },
+      });
+
+      if (accepted) return stay(settled);
+
+      const next = withNotice(
+        settled,
+        msg.result.kind === "failed"
+          ? `Couldn't send your answers: ${msg.result.message}`
+          : "That question is no longer waiting",
+        "warning",
         now,
       );
+
+      return msg.typed === null
+        ? stay(next)
+        : stageHandback(
+            next,
+            msg.typed.session,
+            {
+              draft: msg.typed.draft,
+              notice: null,
+              unlessLanded: null,
+            },
+            now,
+          );
     }
 
     case "moved":
@@ -1861,6 +2181,20 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
       );
     case "paste-resolved":
       return pasted(state, msg, now);
+    case "dialog-pasted": {
+      const dialog = keyboardDialog(state);
+
+      if (
+        dialog?.id !== msg.dialog ||
+        dialogText(dialog) === null ||
+        (dialog.kind === "auth" ? (dialog.promptVersion ?? 0) : null) !== msg.promptVersion
+      )
+        return stay(state);
+
+      return msg.text === null
+        ? stay(state)
+        : dialogCommand(state, { kind: "paste", text: msg.text }, now);
+    }
     case "editor-closed": {
       const next = withLocal(state, {
         pending: state.local.pending.filter((op) => op.kind !== "editor"),
@@ -1887,6 +2221,34 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
       return stay(withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now));
     case "inform":
       return stay(withNotice(state, msg.text, msg.tone, now));
+    case "trust-loaded": {
+      if (msg.home)
+        return msg.ask === "always"
+          ? stay(
+              withNotice(
+                state,
+                "Your home folder's files load as your own, so it needs no trust",
+                "info",
+                now,
+              ),
+            )
+          : stay(state);
+
+      if (
+        msg.ask === "if-needed" &&
+        (msg.trusted !== null ||
+          msg.sources.length === 0 ||
+          state.facts.session?.info.workspace !== msg.workspace)
+      )
+        return stay(state);
+      const { workspace, path, decision, sources } = msg;
+
+      return openDialog(
+        state,
+        { kind: "list", purpose: { kind: "trust", workspace, path, decision, sources } },
+        now,
+      );
+    }
     case "preview-loaded": {
       const { draft } = state.local;
       const part = draft.parts.get(msg.marker);
@@ -1943,7 +2305,6 @@ export function outcomes(state: State, msg: Outcome, now: number): Step {
   }
 }
 
-/** A failed effect releases the pending op it held, so the composer never stays blocked. */
 function released(state: State, effect: string): State {
   const holds = new Map<string, PendingOp["kind"]>([
     ["follow", "switch"],
@@ -2022,6 +2383,27 @@ function loaded(state: State, msg: Extract<Outcome, { kind: "loaded" }>, now: nu
   const update = (dialog: Dialog): Dialog => {
     if (dialog.kind === "list" && data.kind === "list") return { ...dialog, choices: data.choices };
 
+    if (dialog.kind === "list" && dialog.purpose.kind === "accounts" && data.kind === "accounts") {
+      const items = data.accounts.map((account) => ({
+        id: JSON.stringify([account.provider, account.id]),
+        label: account.label,
+        description: `${account.provider} · ${account.method.kind === "oauth" ? "OAuth" : "API key"}`,
+        timing: null,
+        status: account.active ? { text: "active", tone: "ok" as const } : null,
+        mark: account.active ? { glyph: GLYPHS.check, tone: "ok" as const } : null,
+      }));
+
+      return {
+        ...dialog,
+        purpose: { ...dialog.purpose, accounts: data.accounts },
+        choices: { kind: "ready", items },
+        highlighted: Math.max(
+          0,
+          data.accounts.findIndex((account) => account.active),
+        ),
+      };
+    }
+
     if (dialog.kind === "list" && data.kind === "sessions") {
       const items = resumeChoices(state, data.sessions);
 
@@ -2078,7 +2460,6 @@ function linkNotice(step: { readonly url: string; readonly code: string | null }
     : `Visit ${step.url} and enter the code ${step.code}`;
 }
 
-/** A paste landed: insert it, then send what Enter held once no paste is left (a refused one cancels it). */
 function pasted(
   state: State,
   msg: Extract<Outcome, { kind: "paste-resolved" }>,
@@ -2112,7 +2493,6 @@ function insertPaste(
   if (insert.kind === "refused") return refuse(state, insert.reason, now);
 
   if (insert.kind === "text") {
-    // Pasting a collapsed paste again, right after its marker (and its space), expands it.
     const before = liveMarkers(draft).find(
       (span) => span.to === draft.cursor || span.to + 1 === draft.cursor,
     );
@@ -2134,7 +2514,6 @@ function insertPaste(
 
   const added = addPart(draft.parts, insert.part);
 
-  // The same image pasted again is already in the draft once.
   if (insert.part.kind === "image" && draft.text.includes(added.marker)) return stay(state);
 
   return insertText(

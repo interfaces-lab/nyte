@@ -7,11 +7,6 @@ const request = Type.Object({ id: Type.Number(), patch: Type.String(), cacheKey:
 
 export type PatchParseRequest = Static<typeof request>;
 
-/**
- * The worker's whole answer, shared with the page that started it. `files` is
- * Pierre's own parse, structured-cloned; `null` means Pierre could not read the
- * patch, and the stack shows its raw text instead.
- */
 export interface PatchParseReply {
   readonly id: number;
   readonly files: readonly FileDiffMetadata[] | null;

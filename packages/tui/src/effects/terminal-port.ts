@@ -1,8 +1,3 @@
-/**
- * The renderer as a port: title, OSC 7501 through the app's NativeSession,
- * notifications, the clipboard, suspend/resume around an external program,
- * opening links, and "painted" for boot.
- */
 import process from "node:process";
 import {
   createClipboard,

@@ -1,8 +1,3 @@
-/**
- * The interface's handle on its shell. The shell installs its bridge before
- * the first screen renders: its surface and the host namespace. Sessions,
- * files and git go through the connection in `sdk.tsx`.
- */
 import type { NyteBridge } from "./bridge.ts";
 
 let installed: NyteBridge | undefined;

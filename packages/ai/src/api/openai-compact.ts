@@ -72,7 +72,6 @@ export async function readOpenAICompactResponse(
   };
 
   calculateCost(model, usage);
-  // The endpoint reports the tier it ran at; the request's stands in when it says nothing.
   applyServiceTierPricing(usage, decoded.service_tier ?? requestedServiceTier, model);
 
   return { data, usage };

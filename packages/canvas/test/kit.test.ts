@@ -1,8 +1,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import React from "react";
 import jsxRuntime from "react/jsx-runtime";
-import { compileCanvas } from "@nyte-ai/plugin/canvas";
-import { JSX_RUNTIME_EXPORTS, KIT_EXPORTS, REACT_EXPORTS } from "@nyte-ai/plugin/canvas-protocol";
+import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
+import { JSX_RUNTIME_EXPORTS, KIT_EXPORTS, REACT_EXPORTS } from "@nyte-ai/plugin/canvas/protocol";
 import { expect, it } from "vitest";
 import { kit } from "../src/kit/index.ts";
 

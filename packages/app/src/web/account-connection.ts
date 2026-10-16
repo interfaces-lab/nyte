@@ -23,7 +23,6 @@ import { webBridge } from "./install.ts";
 import { connectPinned } from "./pins.ts";
 import type { PinRoute } from "./pins.ts";
 
-/** The pin an account environment's host proves: by broker, owner and environment, never by device. */
 export function accountRoute(
   device: Pick<AccountDevice, "origin" | "ownerId" | "environmentId">,
 ): PinRoute {
@@ -35,14 +34,6 @@ export function accountRoute(
   };
 }
 
-/**
- * Enroll this browser with the environment and connect through the relay.
- * `role: "owner"` asks for folder administration; the host honors it only
- * when its operator started it with `--device-admin`. The host must prove the
- * identity pinned for this environment, or on first pairing or `repair` the
- * identity it announces. A host that cannot rejects with `SdkError` `stale`
- * and enrolls nothing lasting: the device is released and the pin stays.
- */
 export async function connectAccountEnvironment(input: {
   readonly broker: BrokerClient;
   readonly config: AccountConfig;

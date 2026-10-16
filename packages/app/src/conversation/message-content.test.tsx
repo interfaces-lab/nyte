@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "read-only messages share Lexical chips, preserve selection, and open links",
+  "read-only messages share composer chips, preserve selection, and open links",
   { timeout: 60_000 },
   async () => {
     expect(

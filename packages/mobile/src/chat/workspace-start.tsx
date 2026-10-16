@@ -41,7 +41,6 @@ export type RegistryFolders =
       refresh: () => void;
     };
 
-/** This phone's folder among the host's registered workspaces. */
 export function useRegistryFolders(): RegistryFolders {
   const { client, scope } = useHost();
   const [chosenId, setChosenId] = useMMKVString(selectionKey(scope), workspaceStorage);
@@ -69,7 +68,6 @@ export function useRegistryFolders(): RegistryFolders {
   };
 }
 
-/** The start waiting on this host, if any; it re-renders as the record changes. */
 export function usePendingStart(): PendingStart | undefined {
   const { scope } = useHost();
   const [text] = useMMKVString(startKey(scope), workspaceStorage);
@@ -77,14 +75,8 @@ export function usePendingStart(): PendingStart | undefined {
   return parsePendingStart(text);
 }
 
-/** Starts this process already re-asked about after a launch or reconnect. */
 const replayed = new Set<string>();
 
-/**
- * Sends recorded starts for the screen that calls it. The answer always lands
- * in this host's record; only a screen still mounted and in front opens the
- * accepted chat, and anything else leaves it on the record to open later.
- */
 export function useStartSender() {
   const { client, scope } = useHost();
   const navigation = useNavigation();
@@ -100,7 +92,6 @@ export function useStartSender() {
     router.push(`/chat/${sessionId}`);
   };
 
-  /** Resolves to a message for the composer when the host did not answer. */
   const send = async (input: StartInput, waiting: boolean): Promise<string | undefined> => {
     replayed.add(JSON.stringify([scope, input.requestId]));
     const outcome = await askStart({ client, storage: workspaceStorage, scope, input });
@@ -128,11 +119,6 @@ export function useStartSender() {
   return { send, open, scope };
 }
 
-/**
- * The new-chat message this host has not finished with: unanswered, refused,
- * or started and not yet opened. Retry sends the same record; Edit gives an
- * unstarted message back to the composer.
- */
 export function PendingStartStrip({
   pending,
   onEdit,

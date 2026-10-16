@@ -1,12 +1,3 @@
-/**
- * The layout, top to bottom: loading line, the transcript (or a `screen`
- * dialog in its place, or an `overlay` dialog over it), then the live column:
- * reports, queue rows, tasks line, composer with its powerline rule, the
- * slot (completion, a `slot` dialog, or the notice line), hints. Heights come
- * from Yoga; nothing here measures in a frame callback. The transcript and
- * the composer stay mounted behind a screen dialog, so the scroll position
- * and the draft survive it.
- */
 import { useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { Match, Show, Switch } from "solid-js";
@@ -35,7 +26,14 @@ export function Screen(): JSX.Element {
   const where = () => {
     const dialog = screen().dialog;
 
-    return dialog === null ? null : placement(dialog);
+    if (dialog === null) return null;
+
+    const task =
+      dialog.kind === "inspector"
+        ? (screen().tasks.find((candidate) => candidate.id === dialog.task) ?? null)
+        : null;
+
+    return placement(dialog, task);
   };
 
   return (
@@ -77,13 +75,8 @@ export function Screen(): JSX.Element {
             app.dispatch({ kind: "paste", source: pasteMessage(event) });
           }}
         />
-        <Show when={screen().welcome}>
-          <Welcome />
-        </Show>
-        <Show when={where() === "overlay"}>
-          <box id="overlay" position="absolute" top={0} right={0} bottom={0} left={0}>
-            <DialogHost />
-          </box>
+        <Show when={screen().welcome || screen().opening}>
+          <Welcome opening={screen().opening} />
         </Show>
       </box>
       <box
@@ -94,7 +87,7 @@ export function Screen(): JSX.Element {
         visible={where() !== "screen"}
         backgroundColor={app.kit.theme().background}
       >
-        <Show when={!tiny()}>
+        <Show when={!tiny() && screen().dialog === null}>
           <QueueRows />
           <TasksLine />
           <Show when={screen().preview}>
@@ -105,7 +98,8 @@ export function Screen(): JSX.Element {
         </Show>
         <Composer markers={screen().markers} />
         <Show when={!tiny()}>
-          <Switch fallback={<NoticeLine />}>
+          <NoticeLine />
+          <Switch>
             <Match when={screen().completion}>
               {(model: Accessor<CompletionModel>) => <CompletionMenu model={model()} />}
             </Match>
@@ -115,7 +109,7 @@ export function Screen(): JSX.Element {
           </Switch>
         </Show>
       </box>
-      <Show when={!tiny()}>
+      <Show when={!tiny() && screen().dialog === null}>
         <Hints />
       </Show>
     </box>

@@ -34,9 +34,10 @@ import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
 import { useVcsLog } from "../queries.ts";
-import { menu, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
 import {
@@ -126,11 +127,11 @@ const styles = create({
   },
   scopeStats: {
     display: "inline-flex",
-    gap: 6,
+    gap: space.s1_5,
     flexShrink: 0,
     color: role.contentSecondary,
     fontSize: type.fontSm,
-    fontWeight: 590,
+    fontWeight: type.weightSemibold,
     fontVariantNumeric: "tabular-nums",
   },
   scopeAdded: { color: role.contentSecondary },
@@ -155,12 +156,10 @@ const styles = create({
   branch: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minWidth: 0,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   branchLabel: {
     minWidth: 0,
@@ -170,11 +169,9 @@ const styles = create({
   },
   branchTag: {
     flexShrink: 0,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
   },
   branchCount: { flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1, minWidth: 0 },
@@ -351,11 +348,11 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   const description = branchDescription(branch);
 
   return (
-    <span aria-label={description} title={description} {...props(styles.branch)}>
+    <span aria-label={description} title={description} {...props(text.sm, styles.branch)}>
       <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
       <span {...props(styles.branchLabel)}>{branch.label}</span>
-      {branch.kind === "detached" && <span {...props(styles.branchTag)}>detached</span>}
-      {branch.kind === "unborn" && <span {...props(styles.branchTag)}>no commits</span>}
+      {branch.kind === "detached" && <span {...props(text.xs, styles.branchTag)}>detached</span>}
+      {branch.kind === "unborn" && <span {...props(text.xs, styles.branchTag)}>no commits</span>}
       {branch.kind === "attached" && branch.ahead > 0 && (
         <span aria-hidden="true" {...props(styles.branchCount)}>
           ↑{String(branch.ahead)}
@@ -374,7 +371,6 @@ export interface ChangesToolbarProps {
   /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;
-  /** Counts and file total for the scope on screen; working-tree rows in the menu show Git status file counts only. */
   readonly scopeStats: ChangeScopeStats | undefined;
   readonly scopeFileCount: number | undefined;
   readonly snapshot: GitStatus | undefined;

@@ -34,14 +34,12 @@ export type WorkerEnv = {
   readonly NYTE_IDENTITY_KEY?: string;
 };
 
-/** Returns how much one alarm pass may do: at most `heads` advances, none started once `ms` has elapsed, and whether it also pages `repair` (§42i: 32 heads, 10 s, repair on a cold start and every 60th pass). */
 export type PassBudget = {
   readonly heads: number;
   readonly ms: number;
   readonly repair: boolean;
 };
 
-/** Returns the host `pass` drives: what it advances and repairs through, and the wait registry it fires timers on. The composed host is one. */
 export type PassHost = Pick<Host, "execution"> & {
   readonly kernel: { readonly waits: Pick<WaitRegistry, "tick"> };
 };
@@ -54,7 +52,6 @@ const RETRY_MS = 30_000;
 
 const PAGE = 100;
 
-/** Returns when the object's alarm should next fire for a head after one advance: `now` for `continue`; `until` for `waiting` with a timer, `retry` and `busy`; null for `idle`, `fenced` and `waiting` with no timer, whose wake schedules it. */
 export function scheduleFrom(report: AdvanceReport, now: number): number | null {
   switch (report.kind) {
     case "continue":
@@ -70,7 +67,6 @@ export function scheduleFrom(report: AdvanceReport, now: number): number | null 
   }
 }
 
-/** Runs one alarm pass over a composed host and the object's `nyte_schedule(session, head, at)` table in `storage` (§42f, §42i), and returns when the alarm should fire next. It fires the due timers and deadlines (`kernel.waits.tick(now)`), when `budget.repair` pages `host.execution.repair` (100 a page, until `next` is null), whose wakes write each runnable head's row, then takes the heads whose row is due, earliest first, each once; it advances up to `budget.heads` of them concurrently, starting none once `budget.ms` has passed since the pass began, and writes each head it left at `now`, so the remainder runs on the next alarm at once. Leases are claimed lazily, per advanced head: `advance` claims a head's lease on its first step, owned by the object's lifetime cover, and releases it when the head reports `idle`, `waiting` or `retry` (a `continue` keeps it for the next pass), so a lease is held only while a turn runs and the heads a pass leaves untouched cost no writes (§42t, §42y). The pass waits for every turn it started, so one long turn delays the object's other heads, and a turn past the 15 min alarm limit is cut short (§42w, for the owner). Each report sets its head's row to `scheduleFrom(report, now)` or deletes it on null, unless a wake rewrote the row during that step; an advance that throws is logged with `console.error` and its row set 30 s later, so one failing head never blocks the rest. Answers the earliest `at` left in the table, or null when it is empty. */
 export async function pass(
   host: PassHost,
   storage: Pick<DurableObjectSql, "sql">,
@@ -121,7 +117,6 @@ export class NyteHost {
   #served: Promise<Served> | null = null;
   #passes = 0;
 
-  /** Composes the host once inside `blockConcurrencyWhile`: `composeHost` with `durableObjectStore(state.storage)`, the plugin `{ id: "chat-only", environment: chatOnlyProvider() }` and workspace `{ kind: "chat-only", locator: null }`, `execution: { kind: "admit-only" }`, no `poll` (one instance, §42h), `home: null` (decision 9: no `Resources.user`), protocol's `operations()`, description `{ name: "nyte-host", platform: "cloudflare", version }`, `secrets` from `secretsFrom(NYTE_SECRET_KEY)`, and `createModels({ credentials: credentialStore(store, secrets) })` from `@nyte-ai/ai/models` over the object's own store, so its model logins persist (§42e, §43j); then takes `host.execution.cover({ kind: "all" })` for the object's life (§42i), which claims no lease (each is claimed when a pass advances its head, §42t), parks the store's waits and counts every session as covered (§42a), so admission wakes heads and activation attaches the workspace; serves `listenFetch` with `auth: { kind: "token", token: env.NYTE_TOKEN }`, `execution: { kind: "admit-only" }`, `describe` answering that description, and, when `NYTE_IDENTITY_KEY` is set (a base64 32-byte Ed25519 seed, §50a), `identity: seedSigner(host.hostId, seed)` (without it `/.nyte/identity` answers `unknown`); creates `nyte_schedule(session TEXT, head TEXT, at INTEGER, PRIMARY KEY (session, head))` beside the store's tables; subscribes to `kernel.wakes`, each wake writing its head's row at now and setting the alarm now; and sets the alarm now whatever alarm is pending (§42y: the schedule table keeps the timers, so the first pass repairs what a lost wake left and re-arms the rest). `options.models` replaces that catalog, for a deployment that configures its providers itself and for tests. TypeBox acceleration is off for the whole module, because workerd refuses code generation inside a request. */
   constructor(state: WorkerState, env: WorkerEnv, options?: { readonly models?: Models }) {
     this.#state = state;
     this.#env = env;
@@ -152,7 +147,6 @@ export class NyteHost {
     return served.listener.fetch(request);
   }
 
-  /** Runs `pass(host, state.storage, { heads: 32, ms: 10_000, repair })` with `repair` true on this object's first pass since it was constructed (a cold start) and on every 60th pass after it, counted in memory (§42i), each advanced head claiming its lease lazily (§42t); then sets the alarm to the time the pass answers, or deletes it on null. A pass that throws leaves the alarm to Cloudflare's retry. */
   async alarm(): Promise<void> {
     const served = await this.#serve();
     const repair = this.#passes % REPAIR_EVERY === 0;
@@ -163,7 +157,6 @@ export class NyteHost {
     else await this.#state.storage.setAlarm(next);
   }
 
-  /** Returns the composed host and its listener, composing them on first call; a failed composition is forgotten, so the next call composes again. */
   #serve(): Promise<Served> {
     const served = (this.#served ??= compose(this.#state, this.#env, this.#models));
 
@@ -182,14 +175,12 @@ export default {
   },
 };
 
-/** Returns what a composed object holds: its host, listener, and the coverage it drives under. */
 type Served = {
   readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
   readonly listener: Listener;
   readonly coverage: Owned;
 };
 
-/** Composes the object's host as `NyteHost`'s constructor describes. */
 async function compose(
   state: WorkerState,
   env: WorkerEnv,
@@ -244,15 +235,6 @@ async function compose(
   }
 }
 
-/**
- * Returns the secrets source the object composes with, from its base64
- * `NYTE_SECRET_KEY` binding (decision 10, §43j).
- *
- * Without the binding, `key()` rejects `SdkError("unavailable")`: `secrets.set`
- * and model logins answer `unavailable`, stored logins read as absent while
- * provider keys from the environment still work. The identity has its own
- * binding (§50a).
- */
 function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"]> {
   if (key === undefined || key === "")
     return {
@@ -265,7 +247,6 @@ function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"
   return { key: async () => bytes };
 }
 
-/** Returns the object's `nyte_schedule` table, created if absent: the heads it owes a step and when. */
 function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
   const rows = (query: string, ...bindings: SqlValue[]): Record<string, SqlValue>[] =>
     storage.sql.exec(query, ...bindings).toArray();

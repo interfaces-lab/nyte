@@ -173,7 +173,6 @@ export function parseConnectionPayload(text: string): Connection {
   return parseConnection({ name: link.searchParams.get("name") ?? "My Mac", url, token });
 }
 
-/** Returns what a failed host request means for the user, by the sdk's error code. */
 export function describeHostError(cause: unknown): string {
   if (!(cause instanceof SdkError)) return "Couldn't reach the host. Check that Nyte is running.";
 

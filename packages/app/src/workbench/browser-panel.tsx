@@ -1,4 +1,4 @@
-import { button, row } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
@@ -12,6 +12,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
 import { macPlatform } from "../platform.ts";
@@ -47,20 +48,20 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  toolbar: { gap: 8 },
+  toolbar: { gap: space.s2 },
   bookmarks: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     flexShrink: 0,
     minHeight: button.heightMd,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  bookmark: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, maxWidth: 220 },
+  bookmark: { display: "flex", alignItems: "center", gap: space.s2, flexShrink: 0, maxWidth: 220 },
   bookmarkButton: { flex: 1, minWidth: 0 },
   bookmarkLabel: {
     display: "block",
@@ -79,47 +80,45 @@ const styles = create({
     minHeight: 0,
     alignItems: "center",
     justifyContent: "center",
-    padding: 24,
+    padding: space.s6,
   },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  history: { flex: 1, minHeight: 0, overflowY: "auto", padding: 4 },
+  history: { flex: 1, minHeight: 0, overflowY: "auto", padding: space.s1 },
   historyHeading: {
     margin: 0,
-    paddingBlock: 6,
-    paddingInline: 6,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    fontWeight: 400,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightRegular,
   },
   historyEntry: {
     minHeight: row.heightLg,
-    paddingBlock: 6,
+    paddingBlock: space.s1_5,
     color: { default: role.contentSecondary, "[data-selected]": role.contentPrimary },
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   historyAddress: { fontSize: type.fontXs },
   message: {
     display: "flex",
     maxWidth: 360,
     flexDirection: "column",
-    gap: 8,
+    gap: space.s2,
     textAlign: "center",
   },
-  messageTitle: { color: role.contentPrimary, fontSize: type.fontBase, fontWeight: 600 },
+  messageTitle: {
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    fontWeight: type.weightSemibold,
+  },
   messageDetail: {
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   notice: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     flexShrink: 0,
-    paddingBlock: 6,
-    paddingInline: 10,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2_5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -137,9 +136,9 @@ const styles = create({
   agentBadge: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     flexShrink: 0,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },
@@ -347,7 +346,6 @@ export function BrowserPanel({
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const stateUrl = state?.url;
-  // A new tab has no web address yet, so it opens nothing until the user enters one.
   const blank = parseWebUrl(url) === undefined;
   const currentUrl = stateUrl ?? (blank ? "" : url);
   const hasPage = state !== undefined && state.url !== "";
@@ -414,14 +412,12 @@ export function BrowserPanel({
     };
   }, [surface, url, stateUrl, workspacePath]);
 
-  // Focus inside the panel decides where menu commands go, so a panel that hides gives it up.
   useEffect(() => {
     if (!visible) return;
 
     return () => browserBridge().setFocus({ surface, focused: false });
   }, [surface, visible]);
 
-  // A key the focused page did not use is this panel's keydown: a browser shortcut, or an app one.
   useEffect(
     () =>
       onBrowserKey(surface, (key) => {
@@ -432,7 +428,6 @@ export function BrowserPanel({
     [surface],
   );
 
-  // Deferred a frame: the address bar's focus handler flushes a render, which an effect may not.
   useEffect(() => {
     if (!visible || !blank) return;
     const frame = requestAnimationFrame(() => addressRef.current?.focus());
@@ -446,10 +441,8 @@ export function BrowserPanel({
       .catch(() => undefined);
   };
 
-  /** Typing follows: main moves native focus off the page when it holds it. */
   const focusControls = (): void => browserBridge().setFocus({ surface, focused: true });
 
-  /** Dismissing the address bar or find hands the keyboard back to the page. */
   const focusPage = (): void => {
     void browserBridge()
       .focusPage({ surface })
@@ -568,7 +561,6 @@ export function BrowserPanel({
       onKeyDown={(event) => {
         if (event.defaultPrevented || event.nativeEvent.isComposing) return;
 
-        // A forwarded page key is dispatched on the panel itself, which never takes focus.
         const shortcut = resolveBrowserShortcut(
           event,
           macPlatform(undefined),
@@ -738,7 +730,7 @@ export function BrowserPanel({
           {state?.error !== undefined && state.error.untrustedHost === undefined && (
             <div role="alert" {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>This page did not load</span>
-              <span {...props(styles.messageDetail)}>
+              <span {...props(text.sm, styles.messageDetail)}>
                 {state.error.description} ({String(state.error.code)})
               </span>
               <Button variant="outline" onClick={() => navigate("reload")}>
@@ -749,7 +741,7 @@ export function BrowserPanel({
           {state?.error?.untrustedHost !== undefined && (
             <div role="alert" {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>This connection isn’t private</span>
-              <span {...props(styles.messageDetail)}>
+              <span {...props(text.sm, styles.messageDetail)}>
                 {state.error.untrustedHost} uses a certificate this computer doesn’t trust, which is
                 usual for a dev server. Continue only if you run it.
               </span>
@@ -762,16 +754,16 @@ export function BrowserPanel({
         {historyVisible && (
           <WorkbenchRail>
             <nav aria-label="Visit history" data-nyte-scrollport {...props(styles.history)}>
-              <h2 {...props(styles.historyHeading)}>Visit History</h2>
+              <h2 {...props(text.sm, styles.historyHeading)}>Visit History</h2>
               {history.length === 0 ? (
-                <p {...props(styles.historyHeading)}>No pages visited yet</p>
+                <p {...props(text.sm, styles.historyHeading)}>No pages visited yet</p>
               ) : (
                 history.map((entry) => (
                   <Row
                     key={entry.url}
                     interactive
                     selected={entry.url === currentUrl}
-                    xstyle={styles.historyEntry}
+                    xstyle={[text.sm, styles.historyEntry]}
                   >
                     <Row.Primary
                       render={<a href={entry.url} />}

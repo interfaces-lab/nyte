@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, row, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -28,12 +28,11 @@ export const workbenchStyles = create({
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  /** One hairline on the chat edge, whatever the workbench shows. */
   edge: {
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
@@ -59,8 +58,8 @@ export const workbenchStyles = create({
     gap: workbench.railGap,
     width: "100%",
     minWidth: 0,
-    paddingBlock: 4,
-    paddingInline: 8,
+    paddingBlock: space.s1,
+    paddingInline: space.s2,
     color: role.contentSecondary,
   },
   railSection: {
@@ -85,23 +84,20 @@ export const workbenchStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  chevronLayout: { marginInlineEnd: -4 },
+  chevronLayout: { marginInlineEnd: `calc(${space.s1} * -1)` },
   doubleChevron: { display: "inline-flex", alignItems: "center" },
   doubleChevronBack: { transform: "scaleX(-1)" },
-  doubleChevronTrail: { display: "inline-flex", marginInlineStart: -4 },
+  doubleChevronTrail: { display: "inline-flex", marginInlineStart: `calc(${space.s1} * -1)` },
   railRow: {
     minHeight: row.heightMd,
     gap: workbench.rowGap,
     "--_row-padding-inline": workbench.rowPaddingInline,
-    paddingBlock: 2,
+    paddingBlock: space.s0_5,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
   // The stats follow the label rather than the row's end.
   railLabel: { flex: "0 1 auto" },
   railValue: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums" },
-  // The detail gives way before the label it qualifies.
   railDetail: {
     flex: "0 1000 auto",
     minWidth: 0,
@@ -117,13 +113,13 @@ export const workbenchStyles = create({
     flexDirection: "column",
     alignItems: "center",
     gap: target.gap,
-    paddingBlock: 4,
+    paddingBlock: space.s1,
     color: role.contentSecondary,
   },
   iconRailDivider: {
     alignSelf: "stretch",
     height: 1,
-    marginInline: 6,
+    marginInline: space.s1_5,
     backgroundColor: role.borderSecondaryTranslucent,
   },
   panelSlot: {
@@ -138,23 +134,32 @@ export const workbenchStyles = create({
     display: "grid",
     gridTemplateColumns: `repeat(2, ${workbench.launcherCardSize})`,
     gridAutoRows: workbench.launcherCardSize,
-    gap: 8,
+    gap: space.s2,
     placeContent: "center",
     flex: 1,
     minHeight: 0,
-    padding: 16,
+    padding: space.s4,
   },
-  launcherCard: {
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 8,
-    paddingBlock: 12,
-    paddingInline: 12,
+  launcherFrame: {
+    display: "flex",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.card,
-    backgroundImage: { default: "none", ":active": role.layerPressed },
+    overflow: "clip",
+  },
+  launcherCard: {
+    "--_row-fill": {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":active": role.bgPressed,
+    },
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: space.s2,
+    paddingBlock: space.s3,
+    "--_row-padding-inline": space.s3,
+    borderRadius: 0,
     color: {
       default: role.contentSecondary,
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
@@ -162,8 +167,6 @@ export const workbenchStyles = create({
     },
     textAlign: "center",
   },
-  // Centered on the panel's edge rather than laid over the chat, so the
-  // chat's scrollbar and send button stay reachable.
   sash: {
     position: "absolute",
     zIndex: layer.sash,
@@ -181,7 +184,6 @@ export const workbenchStyles = create({
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
       ":focus-visible": role.borderStrongTranslucent,
     },
-    // A pass across the edge doesn't light the rule; resting on it does.
     "--_sash-delay": { default: "0s", ":hover": "300ms" },
     "::after": {
       content: "''",
@@ -217,6 +219,7 @@ export const workbenchStyles = create({
     "--trees-font-family-override": type.fontSans,
     "--trees-font-size-override": type.fontSm,
     "--trees-status-ignored-override": role.contentDisabled,
+    fontVariantNumeric: "tabular-nums",
   },
   treeStatus: (added: string, modified: string, deleted: string) => ({
     "--trees-status-added-override": added,

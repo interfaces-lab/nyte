@@ -11,6 +11,7 @@ export * from "./host.ts";
 export * from "./ids.ts";
 export * from "./jobs.ts";
 export * from "./json.ts";
+export * from "./mcp.ts";
 export * from "./messages.ts";
 export * from "./models.ts";
 export * from "./operations.ts";

@@ -7,6 +7,7 @@ import { preferences, useSetting } from "../preferences/index.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
+import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { TurnView, UserMessageView } from "./turn-view.tsx";
@@ -86,7 +87,16 @@ export function Timeline({
             />
           );
 
-        case "landing":
+        case "landing": {
+          const { source } = row.message;
+
+          if (source.kind === "child" || source.kind === "job")
+            return (
+              <div {...props(liveTurnStyles.root)}>
+                <SubagentReportLine source={source} content={row.message.content} held={row.held} />
+              </div>
+            );
+
           return (
             <div
               title={row.pending ? "Lands at the next response" : undefined}
@@ -101,6 +111,8 @@ export function Timeline({
               />
             </div>
           );
+        }
+
         case "retry":
           return (
             <StatusMarker role="status" variant="retrying" title={row.message}>

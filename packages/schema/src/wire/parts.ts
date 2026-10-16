@@ -10,17 +10,14 @@ import { nullable } from "./nullable.ts";
 import { WaitTargetType } from "./runs.ts";
 import { ToolClassType, ToolOutcomeType, ToolProgressType } from "./tools.ts";
 
-/** The TypeBox schema of a text or thinking part's `signature`: opaque provider continuity data, or null. */
 export const SignatureType = nullable(JsonType);
 
-/** The TypeBox schema of a `Placement`. */
 export const PlacementType = Type.Union([
   Type.Object({ kind: Type.Literal("transcript"), role: Type.Enum(["step", "answer", "note"]) }),
   Type.Object({ kind: Type.Literal("modal") }),
   Type.Object({ kind: Type.String() }, { additionalProperties: JsonType }),
 ]);
 
-/** The TypeBox schema of a `PartStatus`. */
 export const PartStatusType = Type.Union([
   Type.Object({
     kind: Type.Literal("live"),
@@ -41,7 +38,6 @@ export const PartStatusType = Type.Union([
   }),
 ]);
 
-/** The TypeBox schema of a `PartView`. */
 export const PartViewType = Type.Object({
   id: idSchema<"part">(),
   partKind: Type.String(),
@@ -59,7 +55,6 @@ const TOOL_CALL = {
   class: ToolClassType,
 };
 
-/** The TypeBox schema of a `ToolPartState`. */
 export const ToolPartStateType = Type.Union([
   Type.Object({ ...TOOL_CALL, phase: Type.Literal("calling") }),
   Type.Object({
@@ -81,7 +76,6 @@ export const ToolPartStateType = Type.Union([
   }),
 ]);
 
-/** Returns the schema of an `ActOutcome` whose `ok` output is `output`. */
 export function actOutcomeSchema<T extends TSchema>(output: T) {
   return standard(
     withJson(
@@ -97,14 +91,10 @@ export function actOutcomeSchema<T extends TSchema>(output: T) {
   );
 }
 
-/** Validates a `Placement`. */
 export const PlacementSchema: Schema<Placement> = standard(withJson(PlacementType));
 
-/** Validates a `PartStatus`. */
 export const PartStatusSchema: Schema<PartStatus> = standard(withJson(PartStatusType));
 
-/** Validates a `PartView`. */
 export const PartViewSchema: Schema<PartView> = standard(withJson(PartViewType));
 
-/** Validates a `ToolPartState`. */
 export const ToolPartStateSchema: Schema<ToolPartState> = standard(withJson(ToolPartStateType));

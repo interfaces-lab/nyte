@@ -1,12 +1,6 @@
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
-/**
- * A stand-in for the runtime shell, speaking the contract's messages: it
- * initializes, renders what it is told (the "module" is JSON naming the
- * height to report and an error to raise) and echoes a theme change back
- * as an error so the host's handling of it shows in the DOM.
- */
 const FAKE_SHELL = `<!doctype html><meta charset="utf-8"><script>
 const post = (message) => parent.postMessage(message, "*");
 const error = (message) => post({ jsonrpc: "2.0", method: "notifications/message", params: { level: "error", logger: "nyte-canvas", data: { phase: "render", message } } });

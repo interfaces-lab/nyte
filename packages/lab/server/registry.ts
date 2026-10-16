@@ -7,14 +7,14 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { schemas } from "@nyte-ai/protocol";
+import { idSchema } from "@nyte-ai/schema";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { RevisionSchema, type Revision } from "../src/review/wire.ts";
 
 const AuthorSchema = Type.Object({
   /** The core session Nyte codes in. */
-  sessionId: schemas.SessionId,
+  sessionId: idSchema<"session">(),
   /** Where it codes: a worktree with the review's branch checked out. */
   worktree: Type.String(),
 });

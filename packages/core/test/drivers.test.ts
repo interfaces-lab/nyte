@@ -21,14 +21,12 @@ import {
   pollStore,
   runStep,
   sessionEvents,
-  startRun,
 } from "../src/index.ts";
 import type { Durable, Kernel, StoreConnection } from "../src/index.ts";
 import { isCovered } from "../src/session-state.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { completed, configuration, main, setup, until } from "./harness.ts";
+import { completed, configuration, main, setup, startRun, until } from "./harness.ts";
 
-/** Returns a store connection that records every prefix `refs.list` reads and every ref name `refs.set` writes. */
 function counting(store: StoreConnection): {
   readonly store: StoreConnection;
   readonly lists: string[];
@@ -59,7 +57,6 @@ function counting(store: StoreConnection): {
   };
 }
 
-/** Parks a durable step on main of a session waiting on `target`, as a tool waiting on a child does; inside `run` when given, which then waits too. */
 function park(
   kernel: Kernel,
   session: SessionId,
@@ -83,7 +80,6 @@ function park(
   });
 }
 
-/** Returns a promise and the functions that settle it. */
 function deferred(): {
   readonly promise: Promise<void>;
   resolve(): void;
@@ -219,7 +215,7 @@ describe("coverage (§42a, §42t)", () => {
     recorded.sets.length = 0;
     const owned = await host.execution.cover({ kind: "sessions", sessions: [covered.id] });
 
-    expect(recorded.lists).toEqual([`sessions/${covered.id}/calls/`]);
+    expect(recorded.lists).toEqual([]);
     expect(recorded.sets).toEqual([]);
     await owned.close();
   });
@@ -414,7 +410,7 @@ describe("dispatch (§42p, §42s)", () => {
     gates[1]?.resolve();
   });
 
-  it("leaves the head of a rejected dispatch owed, and repair dispatches it again", async () => {
+  it("retries a rejected dispatch, and repair still finds its head owed", async () => {
     let attempts = 0;
 
     const { host } = await setup({
@@ -430,14 +426,13 @@ describe("dispatch (§42p, §42s)", () => {
 
     const session = await host.sessions.create();
     await session.send("Go.");
-    await until(() => (attempts === 1 ? true : undefined));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await until(() => (attempts === 2 ? true : undefined));
 
     expect(await host.execution.repair({ limit: 10 })).toEqual({
       runnable: [{ session: session.id, head: main }],
       next: null,
     });
-    await until(() => (attempts === 2 ? true : undefined));
+    await until(() => (attempts === 3 ? true : undefined));
   });
 
   it("counts every session as covered on a dispatch kernel, before any dispatch resolves (§42p)", async () => {

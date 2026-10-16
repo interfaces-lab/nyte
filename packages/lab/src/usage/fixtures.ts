@@ -1,22 +1,14 @@
-/**
- * Invented history for the usage lab. Daily spend is synthesised from a trend,
- * a weekly rhythm and seeded noise, then split across models, sources and
- * projects, so every range has a previous period of the same length beside it.
- * Nothing here reads a real session.
- */
 
 const HOUR = 3_600_000;
 
 const DAY = 24 * HOUR;
 
-/** Midnight UTC after the last full day; "now" sits 16 hours into it. */
 const TODAY = Date.UTC(2026, 2, 16);
 
 const NOW = TODAY + 16 * HOUR;
 
 const HISTORY_DAYS = 180;
 
-/** Deterministic noise in [-0.5, 0.5), so every reload draws the same history. */
 function noise(seed: number): number {
   const value = Math.sin(seed * 12.9898) * 43_758.5453;
 
@@ -39,13 +31,9 @@ type PerKind = Readonly<Record<TokenKind, number>>;
 export interface Model {
   readonly id: string;
   readonly provider: string;
-  /** Share of spend over the history; each day wobbles around it. */
   readonly share: number;
-  /** USD per million tokens. */
   readonly rate: PerKind;
-  /** Fraction of the model's tokens of each kind. */
   readonly mix: PerKind;
-  /** Average spend per turn, to count turns from cost. */
   readonly perTurn: number;
 }
 
@@ -147,11 +135,9 @@ export const PROJECTS: readonly Group[] = [
   { id: "scratch", detail: "~/scratch", share: 0.04 },
 ];
 
-/** Cost and tokens of each kind, the unit every bucket, row and total is made of. */
 export interface Tally {
   readonly cost: PerKind;
   readonly tokens: PerKind;
-  /** What the cache reads would have cost at the input rate, minus what they did cost. */
   readonly saved: number;
   readonly turns: number;
 }
@@ -193,10 +179,6 @@ export function scale(tally: Tally, by: number): Tally {
 export const sumOf = (values: PerKind): number =>
   values.input + values.output + values.cacheRead + values.cacheWrite;
 
-/**
- * One model's spend turned into tokens of each kind at its rates. The cache
- * share drifts by bucket, as it does when sessions start cold.
- */
 function priced(model: Model, cost: number, seed: number): Tally {
   const drift = perKind(
     (kind) => model.mix[kind] * (kind === "cacheRead" ? 1 + 0.08 * noise(seed) : 1),
@@ -214,7 +196,6 @@ function priced(model: Model, cost: number, seed: number): Tally {
   };
 }
 
-/** Weights around each share, wobbling by bucket, normalised so a bucket's parts sum to it. */
 function split(shares: readonly number[], seed: number): number[] {
   const raw = shares.map((share, index) => share * (1 + 0.6 * noise(seed * 31 + index * 7)));
   const total = raw.reduce((sum, value) => sum + value, 0);
@@ -229,14 +210,12 @@ function daySpend(day: number): number {
   return 9 * (1 + day * 0.006) * rhythm * (1 + 0.7 * noise(day));
 }
 
-/** Hours of a working day, light overnight and heaviest mid-afternoon. */
 function hourWeight(hour: number): number {
   return 0.08 + Math.exp(-((hour - 14) ** 2) / 18);
 }
 
 export interface Bucket {
   readonly start: number;
-  /** Per model, in `MODELS` order. */
   readonly models: readonly Tally[];
 }
 
@@ -258,7 +237,6 @@ const DAILY: readonly Bucket[] = Array.from({ length: HISTORY_DAYS }, (_slot, da
   bucket(TODAY - (HISTORY_DAYS - day) * DAY, daySpend(day), day),
 );
 
-/** Forty-eight hours, so the last day has a previous day beside it. */
 const HOURLY: readonly Bucket[] = Array.from({ length: 48 }, (_slot, index) => {
   const start = NOW - (48 - index) * HOUR;
   const hour = new Date(start).getUTCHours();
@@ -300,7 +278,6 @@ export type Grouping = (typeof GROUPINGS)[number]["key"];
 export interface Row {
   readonly id: string;
   readonly detail: string;
-  /** Per bucket, aligned with the period's buckets. */
   readonly series: readonly Tally[];
 }
 
@@ -340,9 +317,7 @@ export interface Account {
   readonly provider: string;
   readonly plan: string;
   readonly window: "5h" | "week" | "month";
-  /** Percent used at even steps from the window's start; the last sample is now. */
   readonly samples: readonly number[];
-  /** Steps in the whole window, so `samples.length - 1` of them have passed. */
   readonly steps: number;
   readonly stepMinutes: number;
 }

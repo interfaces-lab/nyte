@@ -13,31 +13,21 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 
-/** A user message of a view: content, source, delivery and where it stands. */
 export type UserMessage = Extract<Message, { readonly kind: "user" }>;
 
-/** A part message of a view: text, thinking, a tool call, a plugin's part. */
 export type PartMessage = Extract<Message, { readonly kind: "part" }>;
 
-/** A tool part message with its state narrowed by `isPart(message, tool)`. */
 export type ToolMessage = PartMessage & { readonly state: ToolPartState };
 
-/** One turn of a view with its messages, in view order. */
 export interface ConversationTurn {
   readonly info: TurnInfo;
   readonly messages: readonly Message[];
 }
 
-/** Narrows a message to a tool call. */
 export function isToolMessage(message: Message): message is ToolMessage {
   return isPart(message, tool);
 }
 
-/**
- * Groups a view's messages under its turns in one pass, the build the
- * baseline describes; messages whose turn the view does not list yet (unsent,
- * pending) are returned apart, in order.
- */
 export function conversationTurns(view: SessionView): {
   readonly turns: readonly ConversationTurn[];
   readonly loose: readonly Message[];
@@ -60,16 +50,12 @@ export function conversationTurns(view: SessionView): {
   return { turns, loose: [...byTurn.values()].flat() };
 }
 
-/** Whether a call's verb reads as running, finished, or not at all. */
 export type ToolTense = "running" | "past" | "none";
 
-/** The color a call's line takes. */
 export type ToolTone = "running" | "attention" | "success" | "failure" | "stopped";
 
-/** The word after a call that did not simply succeed. */
 export type ToolWord = "Needs input" | "Failed" | "Blocked" | "Stopped" | "Interrupted";
 
-/** How one call reads on every surface: the verb's tense, its tone, and a word when it did not succeed. */
 export interface ToolStatus {
   readonly tense: ToolTense;
   readonly tone: ToolTone;
@@ -78,11 +64,6 @@ export interface ToolStatus {
 
 const RUNNING: ToolStatus = { tense: "running", tone: "running", word: undefined };
 
-/**
- * Reads a tool message's phase, outcome and part status as one status. A
- * verb appears only when it is true: present while open, past once the call
- * returned, none when the word says what happened instead.
- */
 export function toolStatus(message: Pick<ToolMessage, "state" | "status">): ToolStatus {
   const { state, status } = message;
 
@@ -114,7 +95,6 @@ export function toolStatus(message: Pick<ToolMessage, "state" | "status">): Tool
   }
 }
 
-/** The text a settled call returned to the model, joined; empty when it returned none. */
 export function toolOutput(state: ToolPartState): string {
   if (state.phase !== "settled") return "";
 
@@ -139,7 +119,6 @@ export function toolOutput(state: ToolPartState): string {
   }
 }
 
-/** A measured span as a duration: tenths under ten seconds, then whole units. */
 export function formatToolDuration(ms: number): string {
   const seconds = Math.max(0, ms) / 1000;
 
@@ -153,10 +132,8 @@ export function formatToolDuration(ms: number): string {
   return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
 }
 
-/** The mark a session row draws for its main head. */
 export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
 
-/** The mark one head's execution draws in a list. */
 export function executionMark(execution: Execution): SessionMark {
   switch (execution.kind) {
     case "idle":
@@ -175,24 +152,20 @@ export function executionMark(execution: Execution): SessionMark {
   }
 }
 
-/** The session's mark: its main head's, which is what the row stands for. */
 export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
   const head: HeadInfo | undefined = session.heads[0];
 
   return head === undefined ? "idle" : executionMark(head.execution);
 }
 
-/** Whether a head's execution is still in flight. */
 export function isBusy(execution: Execution): boolean {
   return execution.kind !== "idle";
 }
 
-/** The session's display name: its own, else the given fallback. */
 export function sessionTitle(session: Pick<SessionInfo, "name">, fallback = "New chat"): string {
   return session.name ?? fallback;
 }
 
-/** The text of user content, references as their paths and files as their names. */
 export function userContentText(content: UserContent): string {
   if (typeof content === "string") return content;
 
@@ -216,14 +189,12 @@ export function userContentText(content: UserContent): string {
     .join("\n");
 }
 
-/** A local workspace's absolute path; null for one another provider serves. */
 export function workspacePath(workspace: Pick<WorkspaceInfo, "target">): string | null {
   const { target } = workspace;
 
   return target.kind === "local" && "path" in target ? target.path : null;
 }
 
-/** What a picker shows for a workspace: its folder's basename, else the provider's kind. */
 export function workspaceName(workspace: Pick<WorkspaceInfo, "target">): string {
   const path = workspacePath(workspace);
 
@@ -232,20 +203,13 @@ export function workspaceName(workspace: Pick<WorkspaceInfo, "target">): string 
     : (path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path);
 }
 
-/** The inline composer token being completed: `@` for a file, `/` for a command. */
 export interface CompletionTrigger {
   readonly kind: "@" | "/";
-  /** Full token span. Accepting a result replaces this range. */
   readonly start: number;
   readonly end: number;
-  /** Text between the trigger and caret, used to filter results. */
   readonly query: string;
 }
 
-/**
- * Finds the `@` or `/` token under the caret. Mid-word trigger characters are
- * text, while the replacement range extends through the token's whole tail.
- */
 export function completionTrigger(
   value: string,
   cursor = value.length,
@@ -264,7 +228,6 @@ export function completionTrigger(
   return { kind, start, end, query: value.slice(start + 1, caret) };
 }
 
-/** One path the working tree changes, with its most telling status. */
 export interface WorktreeFile {
   readonly path: string;
   readonly kind: FileStatus;
@@ -279,11 +242,6 @@ const WORKTREE_ORDER: readonly FileStatus[] = [
   "modified",
 ];
 
-/**
- * The working tree against HEAD: the index, worktree, untracked and
- * conflicted lists folded by path. A path in several keeps the more telling
- * status, so a file added and then edited reads as added.
- */
 export function worktreeFiles(
   status: Extract<GitStatus, { readonly kind: "repository" }>,
 ): readonly WorktreeFile[] {

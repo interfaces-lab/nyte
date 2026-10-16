@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 /** Settings navigation in the persistent sidebar and route-owned page content. */
 import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
@@ -23,19 +23,18 @@ export const settingsStyles = create({
   },
   stepsSlider: {
     width: "100%",
-    paddingBlock: 8,
+    paddingBlock: space.s2,
   },
   /** A read-only value beside a row's action, like a count. */
   rowValue: {
-    marginInlineEnd: 12,
+    marginInlineEnd: space.s3,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    fontVariantNumeric: "tabular-nums",
   },
   stepsLabels: {
     display: "flex",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: space.s1,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
@@ -48,22 +47,15 @@ export const settingsStyles = create({
     minHeight: 0,
     flex: 1,
     paddingInline: sidebar.gutter,
-    paddingBlock: "6px 12px",
+    paddingBlock: `${space.s1_5} ${space.s3}`,
   },
   back: { marginBlockEnd: sidebar.sectionGap },
   // The field is one row tall on the rail's grid, and its glyph and placeholder
   // sit on the icon and label edges the rows below it use.
   search: {
-    height: sidebar.rowHeight,
     gap: sidebar.rowGap,
-    marginBlockEnd: 16,
+    marginBlockEnd: space.s4,
     paddingInline: sidebar.rowPaddingInline,
-    borderWidth: 0,
-    borderRadius: radius.control,
-    boxShadow: {
-      default: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-      ":focus-within": `inset 0 0 0 1px ${role.borderPrimaryTranslucent}`,
-    },
     flexShrink: 0,
   },
   searchIcon: {
@@ -78,7 +70,7 @@ export const settingsStyles = create({
   navGroups: {
     display: "flex",
     flexDirection: "column",
-    gap: 16,
+    gap: space.s4,
     minHeight: 0,
     overflowY: "auto",
   },
@@ -86,10 +78,8 @@ export const settingsStyles = create({
   /** The arrow keys' cursor while searching; the open section keeps its fill. */
   navItemHighlighted: { "--_row-fill": role.bgHover, color: role.contentPrimary },
   emptyNavigation: {
-    padding: "6px 4px",
+    padding: `${space.s1_5} ${space.s1}`,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   content: {
     flex: 1,
@@ -106,15 +96,15 @@ export const settingsStyles = create({
     width: `min(${settings.contentWidth}, calc(100% - 2 * ${settings.contentGutter}))`,
     minHeight: "100%",
     marginInline: "auto",
-    paddingBlock: "48px 80px",
+    paddingBlock: settings.pagePaddingBlock,
   },
   titleRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    gap: 8,
-    paddingInline: 4,
+    gap: space.s2,
+    paddingInline: space.s1,
   },
   panel: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
 });

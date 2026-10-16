@@ -39,7 +39,6 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm --dir packages/tui verify:targets
-      # TUI QA runs the binary offline; without ripgrep on PATH Nyte would try to download it.
       - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: pnpm exec turbo test
 

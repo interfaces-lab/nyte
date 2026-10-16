@@ -1,17 +1,24 @@
 import { expect, test } from "bun:test";
 import { usageLines } from "../../src/lib/usage.ts";
-import type { AccountLimits } from "../../src/lib/usage.ts";
+import type { ProviderUsage } from "@nyte-ai/sdk";
 
-function account(...used: readonly number[]): AccountLimits {
+function account(...used: readonly number[]): ProviderUsage {
   return {
     provider: "test",
     name: "Test",
-    limits: used.map((share, index) => ({
-      label: `w${String(index)}`,
-      used: share,
-      limit: 100,
-      resetsAt: null,
-    })),
+    account: null,
+    state: {
+      kind: "ready",
+      observedAt: 1_000,
+      stale: false,
+      error: null,
+      limits: used.map((share, index) => ({
+        label: `w${String(index)}`,
+        used: share,
+        limit: 100,
+        resetsAt: null,
+      })),
+    },
   };
 }
 
@@ -22,8 +29,6 @@ test("usage lines show each window's share with a bar, then this chat's spend", 
   });
 
   expect(lines).toEqual([
-    "Recorded usage · API cost estimates, not subscription charges",
-    "",
     [{ text: "Test · account limits", bold: true }],
     "w0 · 45% used · 55% left · reset unknown",
     [
@@ -36,11 +41,7 @@ test("usage lines show each window's share with a bar, then this chat's spend", 
   ]);
   expect(
     usageLines({ accounts: [], chat: { kind: "message", message: "No usage recorded" } }),
-  ).toEqual([
-    "Recorded usage · API cost estimates, not subscription charges",
-    "",
-    [{ text: "this chat · No usage recorded", bold: true }],
-  ]);
+  ).toEqual([[{ text: "this chat · No usage recorded", bold: true }]]);
 });
 
 test("a window's bar turns warning at 85% and error at 95%", () => {

@@ -1,10 +1,3 @@
-/**
- * The terminal's own preferences, global and project: theme, keys, editor and
- * updates. Project values override global values. Model and compaction are
- * the host's; the thinking level kept here only seeds sessions the TUI creates.
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/settings-manager.ts
- */
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -49,17 +42,13 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
     followUp: project.followUp ?? global.followUp ?? "steer",
   };
 
-  const editor = project.externalEditor ?? global.externalEditor;
+  const editor = global.externalEditor;
   const thinkingLevel = project.thinkingLevel ?? global.thinkingLevel;
   const withEditor = editor === undefined ? resolved : { ...resolved, externalEditor: editor };
 
   return thinkingLevel === undefined ? withEditor : { ...withEditor, thinkingLevel };
 }
 
-/**
- * Merges the patch into the file as stored, so keys this UI doesn't parse
- * survive, and replaces the file whole through a temporary sibling.
- */
 async function writeSettingsPatch(path: string, patch: SettingsPatch): Promise<void> {
   const text = existsSync(path) ? await readFile(path, "utf8") : "{}";
   const current = toJson(JSON.parse(text));
@@ -70,7 +59,6 @@ async function writeSettingsPatch(path: string, patch: SettingsPatch): Promise<v
   await rename(temporary, path);
 }
 
-/** Reads trusted project settings over user settings and serializes global updates. */
 export class FileSettingsStore {
   private readonly globalPath: string;
   private writes = Promise.resolve();
@@ -92,7 +80,6 @@ export class FileSettingsStore {
 
   updateGlobal(patch: SettingsPatch): Promise<void> {
     const next = this.writes.then(async () => {
-      // Parse first so a broken file still fails loudly instead of being written around.
       await readSettings(this.globalPath);
       await writeSettingsPatch(this.globalPath, patch);
     });

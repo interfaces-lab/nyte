@@ -3,13 +3,11 @@ import {
   clampCanvasHeight,
   readShellMessage,
   renderNotification,
-} from "@nyte-ai/plugin/canvas-protocol";
-import type { CanvasHostContext, JsonRpcId } from "@nyte-ai/plugin/canvas-protocol";
+} from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, JsonRpcId } from "@nyte-ai/plugin/canvas/protocol";
 
-/** A message bound for the shell, as the protocol builders return it. */
 export type ShellBound = ReturnType<typeof renderNotification>;
 
-/** What the frame does with one message the shell posted. */
 export type CanvasEffect =
   | { readonly kind: "initialize"; readonly id: JsonRpcId }
   | { readonly kind: "ready" }
@@ -17,12 +15,10 @@ export type CanvasEffect =
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
   | { readonly kind: "error"; readonly message: string };
 
-/** Returns the script that delivers one host message to the shell: a `message` event on its window, as the contract's iOS transport defines it. */
 export function shellScript(message: ShellBound): string {
   return `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(message)} })); true;`;
 }
 
-/** Returns what the frame does with the text the shell posted, or undefined for anything that is not a shell message. */
 export function shellEffect(data: string): CanvasEffect | undefined {
   let posted: unknown;
 
@@ -59,7 +55,6 @@ export function shellEffect(data: string): CanvasEffect | undefined {
   }
 }
 
-/** Returns what this app tells the shell about where it runs: the scheme, the system faces, touch without hover. */
 export function mobileHostContext(theme: "light" | "dark"): CanvasHostContext {
   return {
     theme,

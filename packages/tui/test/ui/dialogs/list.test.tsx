@@ -11,7 +11,7 @@ function choice(
   status: Choice["status"] = null,
   mark: Choice["mark"] = null,
 ): Choice {
-  return { id, label: id, description, status, mark };
+  return { id, label: id, description, timing: null, status, mark };
 }
 
 function list(overrides: Partial<ListDialog> & Pick<ListDialog, "purpose">): ListDialog {
@@ -29,10 +29,9 @@ function list(overrides: Partial<ListDialog> & Pick<ListDialog, "purpose">): Lis
 }
 
 const QUESTION = list({
-  purpose: { kind: "question", session: asId("s1"), part: asId("p1"), typed: true },
+  purpose: { kind: "question", session: asId("s1"), part: asId("p1") },
   title: "Which approach?",
-  choices: { kind: "ready", items: [choice("First"), choice("Second")] },
-  answering: "",
+  choices: { kind: "ready", items: [choice("First"), choice("Second"), choice("Type an answer")] },
 });
 
 const RESUME = list({
@@ -99,16 +98,22 @@ test("the detail column shows the description and status when wide and drops whe
 });
 
 test("the typed row takes the highlight past the last option and shows what was typed", async () => {
-  await using app = await renderDialog(QUESTION);
+  await using app = await renderDialog({
+    ...QUESTION,
+    purpose: { kind: "summary", target: asId("c1"), revision: null, typed: true },
+    choices: { kind: "ready", items: [choice("First"), choice("Second")] },
+    answering: "",
+  });
+
   await app.send(key("picker.previous"));
-  const lit = rows(app.frame()).find((row) => row.includes("Type an answer"));
+  const lit = rows(app.frame()).find((row) => row.includes("Summarize with custom prompt"));
 
   expect(lit).toBeDefined();
   expect(lit?.trimStart().startsWith("❯")).toBe(true);
   expect(app.frame()).toContain("  First");
   await app.send(query("use the second one"));
   expect(app.frame()).toContain("❯ use the second one");
-  expect(app.frame()).not.toContain("Type an answer");
+  expect(app.frame()).not.toContain("Summarize with custom prompt");
 });
 
 test("clicking a row dispatches pick for it", async () => {
@@ -205,7 +210,13 @@ test("the search line draws the caret where the model put it", async () => {
 });
 
 test("clicking the typed-answer row activates it; only Enter submits", async () => {
-  await using app = await renderDialog({ ...QUESTION, answering: "my own" });
+  await using app = await renderDialog({
+    ...QUESTION,
+    purpose: { kind: "summary", target: asId("c1"), revision: null, typed: true },
+    choices: { kind: "ready", items: [choice("First"), choice("Second")] },
+    answering: "my own",
+  });
+
   const row = rows(app.frame()).findIndex((line) => line.includes("my own"));
 
   await app.mockMouse.click(6, row);

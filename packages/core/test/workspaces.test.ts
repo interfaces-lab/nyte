@@ -8,11 +8,14 @@ import {
   envelope,
   hostPrincipalsRef,
   createConnection,
+  createFoldCache,
   createHost,
   createInvocation,
   driveInProcess,
   environmentPlugin,
+  project,
   redeemPairing,
+  resourcesPlugin,
   runStep,
   viewHead,
   workspaceHandle,
@@ -40,7 +43,6 @@ function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
 
 const run: RunId = asId("r1");
 
-/** Returns the last set a patches stream yields and every set before it. */
 async function patches(source: AsyncIterable<PatchSet>) {
   const sets = await collect(source);
   const last = sets.at(-1);
@@ -97,6 +99,7 @@ describe("workspaces", () => {
           identity: "id:/work/other",
           availability: { kind: "available" },
           projectResources: false,
+          trusted: false,
           projectSources: [".nyte/plugins/x.ts"],
           addedBy: LOCAL,
           sessions: 0,
@@ -437,6 +440,41 @@ describe("workspaces", () => {
     expect(last.entries.size).toBe(150);
     expect(provider.patchReads.map((read) => read.length)).toEqual([32, 32, 32, 32, 22]);
     expect(provider.peakReads).toBe(4);
+  });
+
+  it("asks about a new folder, applies the nearest parent's decision, and follows workspaceTrust", async () => {
+    const { host, disk } = await world({ plugins: [resourcesPlugin] });
+
+    const add = async (path: string) => {
+      disk.directories.add(path);
+      const added = await host.workspaces.add({ kind: "local", path });
+
+      assert(added.kind === "added");
+
+      return host.workspace(added.workspace);
+    };
+
+    const trust = async (handle: Awaited<ReturnType<typeof add>>) => {
+      const { projectResources, trusted } = await handle.info();
+
+      return { projectResources, trusted };
+    };
+
+    const fresh = await add("/elsewhere");
+    const child = await add("/work/project/packages/app");
+    const sibling = await add("/work/project-x");
+
+    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: null });
+    expect(await trust(child)).toEqual({ projectResources: null, trusted: true });
+    expect(await trust(sibling)).toEqual({ projectResources: null, trusted: null });
+
+    expect(await host.settings.apply("workspaceTrust", "never")).toMatchObject({ kind: "applied" });
+    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: false });
+    expect(await trust(child)).toEqual({ projectResources: null, trusted: true });
+    expect(await fresh.update({ projectResources: true })).toEqual({ kind: "updated" });
+    expect(await trust(fresh)).toEqual({ projectResources: true, trusted: true });
+    expect(await fresh.update({ projectResources: null })).toEqual({ kind: "updated" });
+    expect(await trust(fresh)).toEqual({ projectResources: null, trusted: false });
   });
 
   it("updates projectResources and yields the record as it changes", async () => {
@@ -885,10 +923,18 @@ describe("browser pages (§37i)", () => {
     expect(kernel.pages.holders(first.id)).toBe(2);
 
     const item = { kind: "page", id: first.id, title: "http://localhost:5173", startedBy: call };
-    const other = { session: session.id, head: main, principal: asId<"principal">("other") };
+    const observer = { session: session.id, head: main, principal: asId<"principal">("other") };
+    const side = asId<"head">("side");
+    await session.heads.create(side);
 
     expect((await session.view()).background).toEqual([{ ...item, state: "working" }]);
-    expect((await viewHead(kernel, other)).background).toEqual([{ ...item, state: "working" }]);
+    expect((await viewHead(kernel, observer)).background).toEqual([{ ...item, state: "working" }]);
+    expect((await session.head(side).view()).background).toEqual([]);
+
+    const cold = createFoldCache(kernel).acquire(session.id, LOCAL);
+    await cold.ready();
+    expect(project(cold.state(), main).background).toEqual([{ ...item, state: "working" }]);
+    cold.release();
 
     const client = await host.workspace(workspace).browser();
     assert(client.kind === "available");
@@ -903,7 +949,8 @@ describe("browser pages (§37i)", () => {
 
     expect(provider.closed).toEqual([first.id]);
     expect((await session.view()).background).toEqual([{ ...item, state: "done" }]);
-    expect((await viewHead(kernel, other)).background).toEqual([]);
+    expect((await viewHead(kernel, observer)).background).toEqual([{ ...item, state: "done" }]);
+    expect((await session.head(side).view()).background).toEqual([]);
     live.release();
     expect(
       (await kernel.store.refs.log(session.id, asSeq(0), 1000)).some(

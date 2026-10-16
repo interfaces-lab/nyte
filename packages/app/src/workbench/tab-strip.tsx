@@ -22,7 +22,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
 import { useSession } from "../queries.ts";
-import { button, glyph, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -55,14 +55,14 @@ const styles = create({
   root: {
     display: "flex",
     alignItems: "center",
-    gap: 1,
+    gap: space.px,
     flex: 1,
     minWidth: 0,
     WebkitAppRegion: "drag",
   },
   control: { WebkitAppRegion: "no-drag" },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
-  list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
+  list: { display: "flex", alignItems: "center", gap: space.px, minWidth: 0 },
   slot: { display: "flex", flexShrink: 0 },
   item: {
     "--_tab-close-opacity": {
@@ -99,28 +99,29 @@ const styles = create({
     color: role.contentInteractiveSecondary,
   },
   active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
-  /** The chat tab has no close button, so its label keeps its end. */
   chatItem: { "--_tab-content-mask": "none" },
   tab: {
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     flexShrink: 1,
     minWidth: 0,
     height: "100%",
-    paddingInlineStart: 4,
-    paddingInlineEnd: 6,
-    borderStyle: "none",
+    paddingBlock: space.s0_5,
+    paddingInlineStart: space.s1,
+    paddingInlineEnd: space.s1_5,
     borderRadius: radius.control,
-    backgroundColor: "transparent",
-    color: "inherit",
+    fontFamily: type.fontSans,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     cursor: appearance.cursorInteractive,
     whiteSpace: "nowrap",
   },
   content: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     minWidth: 0,
     WebkitMaskImage: "var(--_tab-content-mask)",
     maskImage: "var(--_tab-content-mask)",
@@ -152,7 +153,7 @@ const styles = create({
   close: {
     position: "absolute",
     insetBlock: 0,
-    insetInlineEnd: 4,
+    insetInlineEnd: space.s1,
     zIndex: 1,
     display: "flex",
     alignItems: "center",
@@ -213,7 +214,6 @@ export function WorkbenchTabStrip({
   readonly scope: WorkbenchScope;
   readonly capabilities: ClientCapabilities;
   readonly workspacePath: string | null;
-  /** The open chat, which names the chat tab while the workbench is maximized. */
   readonly sessionId?: SessionId;
 }): ReactElement {
   const terminals = useTerminalRuntime();
@@ -316,6 +316,7 @@ export function WorkbenchTabStrip({
               {...props(styles.item, styles.chatItem, chatShowing && styles.active)}
             >
               <Tabs.Tab
+                variant="bare"
                 id={`${viewKey}-tab-${WORKBENCH_CHAT_TAB}`}
                 value={WORKBENCH_CHAT_TAB}
                 aria-controls={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
@@ -379,6 +380,7 @@ export function WorkbenchTabStrip({
                   }}
                 >
                   <Tabs.Tab
+                    variant="bare"
                     id={`${viewKey}-tab-${tab.id}`}
                     value={tab.id}
                     title={

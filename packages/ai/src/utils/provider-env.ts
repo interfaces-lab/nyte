@@ -1,8 +1,5 @@
 /**
  * Provider-scoped environment lookup: request-scoped overrides first, then process.env, then the Bun sandbox fallback.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/provider-env.ts
- * Synced with pi 7ebf9087e.
  */
 import type { ProviderEnv } from "../types.ts";
 

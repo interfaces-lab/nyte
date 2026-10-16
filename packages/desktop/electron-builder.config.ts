@@ -32,21 +32,18 @@ export default {
     name: productName,
     schemes: [updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production],
   },
-  // The update test serves its own release from scripts/update-test.mjs.
   publish: updateTest
     ? { provider: "generic", url: "http://localhost:8917" }
     : { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
   directories: { output: "dist", buildResources: "build" },
   files: ["out/**/*", "package.json"],
-  asarUnpack: ["node_modules/@lydell/**/*"],
+  asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
   extraResources: [
     { from: "resources/adblock.bin", to: "adblock.bin" },
     // The web app Remote access serves beside the API; scripts/build.mjs builds it first.
     { from: "../app/dist", to: "app" },
-    // The canvas runtime shell, served on the renderer scheme's `canvas` host.
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
-  // Squirrel.Mac installs only an update signed by the running app's Developer ID.
   mac: updateTest ? { ...mac, notarize: false } : mac,
   linux: {
     target: ["AppImage"],

@@ -1,7 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/provider-retry.test.ts
- * Synced with pi 7ebf9087e.
- */
 import assert from "node:assert/strict";
 import { afterEach, describe, vi, test } from "vitest";
 import { retryProviderRequest } from "../src/utils/provider-retry.ts";

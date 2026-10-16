@@ -21,9 +21,7 @@ import { blobId, objectId } from "./content.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Receipt } from "./receipt.ts";
-import { typedReceipt } from "./receipt-handles.ts";
-import { settleReceipt } from "./receipts.ts";
-import { isJsonObject } from "./records.ts";
+import { settleReceipt, typedReceipt } from "./receipt-handles.ts";
 import { readReceipt, writeReceipt } from "./session-state.ts";
 import { waitFor } from "./waits.ts";
 
@@ -60,43 +58,34 @@ export interface FilesApi {
 export interface FileBatch {
   put(input: {
     readonly path: string;
-    readonly contents: string | Uint8Array | BlobId;
+    readonly contents: string | Uint8Array | { readonly blob: BlobId };
     readonly expect?: FileVersion | "absent";
   }): FileBatch;
   remove(input: { readonly path: string; readonly expect?: FileVersion }): FileBatch;
   apply(): Promise<Receipt<BatchOutcome>>;
 }
 
-/** Names where a batch receipt lives: a session's store, or this host's memory for a workspace reached outside a session. */
 export type FileScope = { readonly session: SessionId } | { readonly workspace: WorkspaceId };
 
-/** Returns one planned write or removal. */
 export type BatchEntry =
   | {
       readonly kind: "put";
       readonly path: string;
-      readonly contents: string | Uint8Array | BlobId;
+      readonly contents: string | Uint8Array | { readonly blob: BlobId };
       readonly expect?: FileVersion | "absent";
     }
   | { readonly kind: "remove"; readonly path: string; readonly expect?: FileVersion };
 
-/** The snapshot an applied batch reports when the environment takes none. */
 export const EMPTY_SNAPSHOT: SnapshotId = asId<"snapshot">("");
-
-const BLOB_ID = /^[0-9a-f]{64}$/;
-
-const BATCH_OUTCOMES: ReadonlySet<string> = new Set(["applied", "stale", "partial", "stopped"]);
 
 const HELD_RECEIPTS = 256;
 
-/** Returns a workspace-scope batch receipt held in memory with what a replay by its id must match. */
 export type HeldBatch = {
   readonly receipt: Receipt<BatchOutcome>;
   readonly workspace: WorkspaceId;
   readonly digest: string;
 };
 
-/** Returns a provider's files with core's `upload` (a stored blob) and `batch()` (immutable plans whose `apply` settles a receipt in `scope`) laid over them. */
 export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi {
   const plan = (entries: readonly BatchEntry[]): FileBatch => ({
     put: (input) => plan([...entries, { kind: "put", ...input }]),
@@ -120,12 +109,10 @@ export function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): Fi
   };
 }
 
-/** Returns a workspace-scope batch receipt this process holds; the latest 256 are held. */
 export function heldReceipt(kernel: Kernel, id: ReceiptId): Receipt<BatchOutcome> | undefined {
   return kernel.workspaceState.held.get(id)?.receipt;
 }
 
-/** Stops a batch this process is applying before its next entry; returns whether one was running. */
 export function stopBatch(kernel: Kernel, id: ReceiptId): boolean {
   const controller = kernel.workspaceState.batches.get(id);
   controller?.abort();
@@ -133,12 +120,6 @@ export function stopBatch(kernel: Kernel, id: ReceiptId): boolean {
   return controller !== undefined;
 }
 
-/** Returns whether a stored outcome is a batch's. */
-export function isBatchOutcome(value: Json): value is BatchOutcome {
-  return isJsonObject(value) && typeof value.kind === "string" && BATCH_OUTCOMES.has(value.kind);
-}
-
-/** Applies a plan over a scope's files and returns its receipt at once; a replayed `id` answers that receipt when the plan's digest matches and throws `invalid` otherwise. Every `expect` is checked before anything is written (`stale`), then entries apply in order until one fails (`partial`) or `stop()` (`stopped`). */
 export async function applyBatch(
   kernel: Kernel,
   scope: FileScope,
@@ -150,27 +131,32 @@ export async function applyBatch(
   const controller = new AbortController();
   const table = kernel.workspaceState.batches;
 
-  const digest = await digestOf(entries);
+  const digest = await hashFileBatch(entries);
 
   if ("session" in scope) {
     const { session } = scope;
+    const receipt = typedReceipt(kernel, session, id, (record) => {
+      if (record.kind !== "batch") throw new SdkError("internal", `Receipt ${id} is not a batch.`);
+
+      return record.outcome;
+    });
     const known = await readReceipt(kernel, session, id);
 
     if (known !== null) {
       if (known.record.kind !== "batch" || known.record.digest !== digest)
         throw new SdkError("invalid", `Receipt ${id} was used for another command.`);
 
-      return typedReceipt(kernel, session, id, isBatchOutcome);
+      return receipt;
     }
 
     await writeReceipt(kernel, session, { id, kind: "batch", digest, outcome: null });
     table.set(id, controller);
 
     void execute(kernel, scope, files, entries, id, controller.signal)
-      .then((outcome) => settleReceipt(kernel, session, id, outcome))
+      .then((outcome) => settleReceipt(kernel, session, id, { kind: "batch", outcome }))
       .finally(() => table.delete(id));
 
-    return typedReceipt(kernel, session, id, isBatchOutcome);
+    return receipt;
   }
 
   const receipts = kernel.workspaceState.held;
@@ -263,7 +249,7 @@ async function execute(
       outcome =
         entry.kind === "remove"
           ? await files.remove(entry.path, { expect: entry.expect })
-          : await files.write(entry.path, await contentsOf(kernel, entry.contents), {
+          : await files.write(entry.path, await resolveFileContents(kernel, entry.contents), {
               expect: entry.expect,
               parents: true,
             });
@@ -289,11 +275,18 @@ async function execute(
     applied.push(entry.path);
   }
 
-  return { kind: "applied", snapshot: await snapshotOf(kernel, scope, id), paths: applied };
+  return {
+    kind: "applied",
+    snapshot: await captureFileSnapshot(kernel, scope, id),
+    paths: applied,
+  };
 }
 
-/** Returns the snapshot after a batch, keyed by its receipt id, or `EMPTY_SNAPSHOT`. */
-async function snapshotOf(kernel: Kernel, scope: FileScope, id: ReceiptId): Promise<SnapshotId> {
+async function captureFileSnapshot(
+  kernel: Kernel,
+  scope: FileScope,
+  id: ReceiptId,
+): Promise<SnapshotId> {
   try {
     const snapshots =
       "session" in scope
@@ -306,15 +299,14 @@ async function snapshotOf(kernel: Kernel, scope: FileScope, id: ReceiptId): Prom
   }
 }
 
-/** Returns what a put writes: the bytes of a stored blob a string names, else the contents as given. */
-async function contentsOf(
+async function resolveFileContents(
   kernel: Kernel,
-  contents: string | Uint8Array | BlobId,
+  contents: string | Uint8Array | { readonly blob: BlobId },
 ): Promise<string | Uint8Array> {
-  if (typeof contents !== "string" || !BLOB_ID.test(contents)) return contents;
-  const reader = await kernel.store.objects.blob(asId<"blob">(contents));
+  if (typeof contents === "string" || contents instanceof Uint8Array) return contents;
+  const reader = await kernel.store.objects.blob(contents.blob);
 
-  if (reader === null) return contents;
+  if (reader === null) throw new SdkError("unknown", `No blob has the id ${contents.blob}.`);
 
   try {
     const chunks: Uint8Array[] = [];
@@ -334,8 +326,7 @@ async function contentsOf(
   }
 }
 
-/** Returns a plan's content hash, bytes by their blob id. */
-async function digestOf(entries: readonly BatchEntry[]): Promise<string> {
+async function hashFileBatch(entries: readonly BatchEntry[]): Promise<string> {
   const described = await Promise.all(
     entries.map(async (entry): Promise<Json> => ({
       kind: entry.kind,
@@ -346,7 +337,7 @@ async function digestOf(entries: readonly BatchEntry[]): Promise<string> {
           ? null
           : typeof entry.contents === "string"
             ? entry.contents
-            : `bytes:${await blobId(entry.contents)}`,
+            : `bytes:${entry.contents instanceof Uint8Array ? await blobId(entry.contents) : entry.contents.blob}`,
     })),
   );
 

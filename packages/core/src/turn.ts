@@ -1,6 +1,7 @@
 import type { Models } from "@nyte-ai/ai";
 import { asId, isJson } from "@nyte-ai/schema";
 import type {
+  CallId,
   Disposer,
   DurableEvent,
   HeadName,
@@ -20,10 +21,11 @@ import type {
   FailedResponse,
   LoopConfig,
   LoopEvent,
+  ModelToolCall,
   Prepared,
   PreparedRequest,
 } from "./agent-loop.ts";
-import { checkpointOf, compact } from "./compaction.ts";
+import { readProviderCheckpoint, compact, failLeftoverCompactions } from "./compaction.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { HookContext } from "./hooks.ts";
@@ -41,22 +43,29 @@ import {
   charge,
   providerContext,
   requestEvent,
-  usageOf,
+  calculateUsage,
 } from "./request.ts";
 import { abortHere, publishPatch, unfenced } from "./runs.ts";
-import { STALE, attempt, commit, expectOf, load, put, readTip, withFold } from "./session-state.ts";
+import {
+  STALE,
+  attempt,
+  commit,
+  readRefExpectation,
+  load,
+  put,
+  readTip,
+  withFold,
+} from "./session-state.ts";
 import type { Found } from "./session-state.ts";
 import { executeCall } from "./tool-runner.ts";
 import { failedParts, requestBody, settling, tokenEstimate } from "./transcript.ts";
 
-/** Returns one merged thought's share of a thinking part's `signature`. */
 type ThoughtSignature = {
   readonly length: number;
   readonly signature: string | null;
   readonly redacted: boolean;
 };
 
-/** Returns one text or thinking part a request has open, live until the request's stream is done. */
 interface OpenPart {
   readonly part: PartId;
   readonly kind: "text" | "thinking";
@@ -66,16 +75,15 @@ interface OpenPart {
   readonly thoughts: ThoughtSignature[];
 }
 
-/** Returns what one attempt of a run holds in memory while its requests stream. */
 interface AttemptState {
   readonly run: RunView;
   readonly attempt: number;
-  /** The index of the attempt's next text or thinking part, `${run}:${attempt}:${index}`. */
+
   index: number;
   readonly opened: OpenPart[];
-  /** The parts still streaming, by the provider's content index. */
+
   readonly parts: Map<number, OpenPart>;
-  /** Where each thought still streaming starts in its part's markdown, by content index. */
+
   readonly starts: Map<number, number>;
   merging: OpenPart | null;
 }
@@ -87,16 +95,14 @@ interface Turn {
   readonly head: HeadName;
   readonly signal: AbortSignal;
   readonly where: HookContext;
-  /** The runtimes the turn's requests hold, the latest last: each from its preparation until a later request streams, the turn's signal aborts or the turn ends. */
+
   readonly holds: { readonly runtime: PluginRuntime; readonly release: Disposer }[];
 }
 
-/** Returns a prepared request with the runtime it was built on, which observes its `after_request`. */
 interface TurnRequest extends PreparedRequest {
   readonly runtime: PluginRuntime;
 }
 
-/** Returns a run record change: the record, its events on the run ref, and updates landing in the same set. */
 interface RunChange {
   readonly record: RunRecord;
   readonly events: readonly DurableEvent[];
@@ -125,11 +131,6 @@ const ORPHANED: Failure = {
   message: "The host stopped while this response streamed.",
 };
 
-/**
- * Returns the turn driver `advance` runs a run's turn with, the adapter between the kernel and
- * `agentLoop`. `done` ends `completed` with the run record's usage, `parked` leaves the run
- * live for `advance`; `stopped` fails the open parts with `aborted` when the run is stopping.
- */
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   return {
     async run(input) {
@@ -168,7 +169,6 @@ export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
   };
 }
 
-/** Runs one turn: resumes the attempt, runs `agentLoop` from it over the kernel's config, and lands its events. */
 async function turn(
   context: Turn,
   given: RunView,
@@ -179,11 +179,12 @@ async function turn(
   const configuration = given.configuration;
   let state = await resumed(context, given);
   let charged = { total: ZERO_USAGE, requests: 0 };
+  let callIds = new Map<ModelToolCall, CallId>();
 
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
-    /** Builds one request on the session's runtime, held from here, once it is ready, in the baseline's hook order, any failure failing the request rather than the loop. */
+
     async prepareRequest(asked) {
       const runtime = kernel.pluginsFor(session);
       context.holds.push({ runtime, release: runtime.hold() });
@@ -223,8 +224,6 @@ async function turn(
         if (tokenEstimate(built.transcript) > configured.compactAt) {
           const compacted = await compacting(built, "threshold");
 
-          if (compacted.kind === "failed") return compacted;
-
           if (compacted.kind === "compacted") built = await body();
         }
 
@@ -238,6 +237,7 @@ async function turn(
             options: { sampling: {}, headers: {} },
           },
           context.where,
+          signal,
         );
 
         const model = models.getModel(request.model.provider, request.model.id);
@@ -256,17 +256,17 @@ async function turn(
           context: providerContext(
             built.transcript,
             built.source,
-            await checkpointOf(kernel, session, head, model),
+            await readProviderCheckpoint(kernel, session, head, model),
           ),
           at: Date.now(),
-          usage: (message) => usageOf(message, info),
+          usage: (message) => calculateUsage(message, info),
           runtime,
         };
       } catch (error) {
         return failedRequest(error instanceof Error ? error.message : String(error));
       }
     },
-    /** Releases the runtimes earlier requests hold, their responses observed and their calls done, sets `run phase responding` and sends the request; settled once `withLimits` saw its result. */
+
     async stream(prepared) {
       for (const held of context.holds.splice(0, context.holds.length - 1)) held.release();
 
@@ -298,28 +298,40 @@ async function turn(
       };
     },
     tools: {
-      /** Runs the call through the durable `executeCall` on its response's runtime, its id `${run}:${requests}:${providerCallId}`. */
       execute: (call, called) =>
         executeCall(kernel, {
           runtime: context.holds.at(-1)?.runtime ?? kernel.pluginsFor(session),
           session,
           head,
           run,
-          call: asId<"call">(`${run}:${charged.requests}:${call.id}`),
+          call: callIds.get(call) ?? asId<"call">(`${run}:${charged.requests}:${call.id}`),
           name: call.name,
           args: isJson(call.arguments) ? call.arguments : {},
           context: CALLER,
           signal: called,
         }),
     },
-    /** Observes `after_request` on the request's runtime, charges the response with its `request` event, and sets `run phase executing` when it has calls. */
-    async finishTurn({ calls, usage, prepared }) {
+
+    async finishTurn({ message, calls, usage, prepared }) {
       observe(context, prepared, usage);
 
       await changeRun(context, run, async (record) => {
         const next = charge(record, usage, true);
         const executing = calls.length > 0 && record.phase !== "executing";
         charged = { total: next.usage ?? usage, requests: next.requests };
+        const seen = new Set<string>();
+
+        callIds = new Map(
+          calls.map((call) => {
+            const index = message.content.indexOf(call);
+            let id = call.id;
+
+            while (id === "" || seen.has(id)) id = `${id === "" ? "call" : id}_${index}`;
+            seen.add(id);
+
+            return [call, asId<"call">(`${run}:${next.requests}:${id}`)];
+          }),
+        );
 
         return {
           record: executing ? { ...next, phase: "executing" } : next,
@@ -366,19 +378,22 @@ async function turn(
       return { kind: "completed", usage: charged.total };
     case "parked":
       return { kind: "parked" };
-    case "stopped":
-      if (kernel.runs.isStopping(run) || end.response !== null)
-        await failOpen(context, state, ABORTED, end.response);
+    case "stopped": {
+      const stopping = kernel.runs.isStopping(run);
+
+      if (stopping || end.response !== null)
+        await failOpen(context, run, stopping ? state.opened : [], ABORTED, end.response);
 
       return STOPPED;
+    }
+
     case "failed":
-      await failOpen(context, state, end.failure, end.response);
+      await failOpen(context, run, state.opened, end.failure, end.response);
 
       return { kind: "failed", failure: end.failure };
   }
 }
 
-/** Lands `message_start`: text opens a `text` part, a thought opens a `thinking` part or merges into the one before it, a tool call ends the merge. */
 async function opened(
   context: Turn,
   state: AttemptState,
@@ -415,7 +430,6 @@ async function opened(
   state.starts.set(index, merging.markdown.length);
 }
 
-/** Lands `message_update`: a delta is an `append` patch on its part, a block's end sets the part's final markdown and signature. Once the run is stopping nothing more lands, so a stopped part keeps the text it streamed. */
 async function updated(
   context: Turn,
   state: AttemptState,
@@ -471,7 +485,6 @@ async function updated(
   }
 }
 
-/** Lands `message_end`: closes the thoughts still streaming and settles every part the response opened in one set. */
 async function settled(context: Turn, state: AttemptState): Promise<void> {
   for (const [index, pending] of state.parts) {
     const start = state.starts.get(index);
@@ -500,7 +513,6 @@ function append(context: Turn, state: AttemptState, target: OpenPart, delta: str
   });
 }
 
-/** Observes `after_request` for one response on the runtime its request was built on. */
 function observe(context: Turn, prepared: TurnRequest, usage: Usage): void {
   const { request } = prepared;
 
@@ -521,9 +533,9 @@ function failedRequest(message: string): Prepared<TurnRequest> {
   return { kind: "failed", failure: { class: "runner", message } };
 }
 
-/** Returns the attempt a drive resumes: the run's, or the next one when the run still has live text or thinking parts (the host died mid-stream), failed with `run retrying`. */
 async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
-  const { kernel, session } = context;
+  const { kernel, session, head } = context;
+  await failLeftoverCompactions(kernel, session, head);
 
   const orphans = await withFold(kernel, session, (state) =>
     [...state.parts.values()].flatMap((part) =>
@@ -542,7 +554,7 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
       ? current
       : await retry(context, current, ORPHANED, Date.now(), null, orphans);
 
-  const prefix = `${run.id}:${state.attempt}:`;
+  const prefix = `${run.id}:a${state.attempt}:`;
 
   state.index = await withFold(
     kernel,
@@ -553,12 +565,10 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
   return state;
 }
 
-/** Opens a text or thinking part for the attempt's next index, live in the run, and adds it to the request's `opened`. */
-/** Opens a text or thinking part for the attempt's next index, live in the run, in one set with the run ref as read (`unfenced`), and adds it to the request's `opened`. A run fenced first gets no part and is aborted here, so the loop ends stopped. */
 async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]): Promise<OpenPart> {
   const { kernel, session, head } = context;
   const run = state.run.id;
-  const part = asId<"part">(`${run}:${state.attempt}:${state.index}`);
+  const part = asId<"part">(`${run}:a${state.attempt}:${state.index}`);
   state.index += 1;
   const placement = kind === "text" ? ANSWER : STEP;
 
@@ -622,7 +632,6 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** Settles the parts a request opened in one set, each with its `part updated`, `part settled` and commit; a part its run's fence failed keeps what it streamed instead. */
 async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): Promise<void> {
   const { kernel, session, head } = context;
 
@@ -647,7 +656,7 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
         continue;
       }
 
-      const state = stateOf(entry);
+      const state = buildPartState(entry);
       const version = part.record.version + 1;
 
       const landed = await settling(kernel, {
@@ -655,7 +664,7 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
         head,
         run,
         parent,
-        expect: parent === tip.id ? expectOf(tip.ref) : undefined,
+        expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
         record: { ...part.record, state, version },
         body: { kind: "part", part: entry.part },
         at,
@@ -679,8 +688,7 @@ async function settle(context: Turn, run: RunId, opened: readonly OpenPart[]): P
   });
 }
 
-/** Returns the state an open part settles or fails with: its markdown as streamed, with its signatures. */
-function stateOf(entry: OpenPart): Json {
+function buildPartState(entry: OpenPart): Json {
   if (entry.kind === "text") return { markdown: entry.markdown, signature: entry.textSignature };
 
   return {
@@ -692,14 +700,12 @@ function stateOf(entry: OpenPart): Json {
   };
 }
 
-/** Reads an open part's record. */
 async function readPart(context: Turn, entry: OpenPart): Promise<Found<PartRecord> | null> {
   const { kernel, session } = context;
 
   return load(kernel, await kernel.store.refs.get(partRef(session, entry.part)), decodePartRecord);
 }
 
-/** Returns the updates keeping what an open part streamed on its unsettled record: `part updated` with its streamed state, then `part failed` with `failure` while it is still live. */
 async function keep(
   context: Turn,
   entry: OpenPart,
@@ -710,7 +716,7 @@ async function keep(
   const { record } = found;
   const name = partRef(session, entry.part);
   const part = entry.part;
-  const state = stateOf(entry);
+  const state = buildPartState(entry);
   const version = record.version + 1;
   const live = record.status.kind === "live" || record.status.kind === "waiting";
   const status = live ? { kind: "failed", run: record.run, failure } : record.status;
@@ -729,7 +735,24 @@ async function keep(
   ];
 }
 
-/** Lands `turn_retry` and a resumed run's orphans in one set: the parts failed as read, `run retrying` and the failed request's charge. Once the run is stopping only the charge lands; the stop fails the parts. */
+async function keepOpen(
+  context: Turn,
+  opened: readonly OpenPart[],
+  failure: Failure,
+): Promise<readonly RefUpdate[]> {
+  const kept = await Promise.all(
+    opened.map(async (entry) => {
+      const found = await readPart(context, entry);
+
+      return found === null || found.record.status.kind === "settled"
+        ? []
+        : keep(context, entry, found, failure);
+    }),
+  );
+
+  return kept.flat();
+}
+
 async function retry(
   context: Turn,
   state: AttemptState,
@@ -766,36 +789,26 @@ async function retry(
         { head, kind: "run", run, change: "retrying", attempt: next, until, reason },
         ...request,
       ],
-      updates: await failedParts(kernel, session, head, [...openParts(state), ...extra], failure),
+      updates: [
+        ...(await keepOpen(context, state.opened, failure)),
+        ...(await failedParts(kernel, session, head, extra, failure)),
+      ],
     };
   });
 
   return retried === null ? state : fresh(retried, 0);
 }
 
-/** Lands `loop_end failed`, and `stopped` of a stopping run, in one set: the parts the request left open failed with what they streamed, and the response the loop failed on charged and observed on its request's runtime. */
 async function failOpen(
   context: Turn,
-  state: AttemptState,
+  run: RunId,
+  opened: readonly OpenPart[],
   failure: Failure,
   response: FailedResponse<TurnRequest> | null,
 ): Promise<void> {
   const { kernel, head } = context;
-  const run = state.run.id;
 
-  const updates = async () => {
-    const failed = await Promise.all(
-      state.opened.map(async (entry) => {
-        const found = await readPart(context, entry);
-
-        return found === null || found.record.status.kind === "settled"
-          ? []
-          : keep(context, entry, found, failure);
-      }),
-    );
-
-    return failed.flat();
-  };
+  const updates = () => keepOpen(context, opened, failure);
 
   if (response === null)
     return attempt(`Failing the parts of run ${run}`, async () => {
@@ -815,7 +828,6 @@ async function failOpen(
   }));
 }
 
-/** Writes the run record through `change`, compare-and-set on the run ref; a null change writes nothing. */
 async function changeRun(
   context: Turn,
   run: RunId,
@@ -857,8 +869,4 @@ function fresh(run: RunView, index: number): AttemptState {
     starts: new Map(),
     merging: null,
   };
-}
-
-function openParts(state: AttemptState): readonly PartId[] {
-  return state.opened.map((entry) => entry.part);
 }

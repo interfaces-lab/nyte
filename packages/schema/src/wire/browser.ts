@@ -4,7 +4,6 @@ import { standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
 import { idSchema } from "./ids.ts";
 
-/** The TypeBox schema of a `PageInfo`. */
 export const PageInfoType = Type.Object({
   id: idSchema<"page">(),
   url: Type.String(),
@@ -12,7 +11,6 @@ export const PageInfoType = Type.Object({
   holders: Type.Number(),
 });
 
-/** The TypeBox schema of a `PageView`. */
 export const PageViewType = Type.Object({
   id: idSchema<"page">(),
   url: Type.String(),
@@ -23,7 +21,6 @@ export const PageViewType = Type.Object({
   canGoForward: Type.Boolean(),
 });
 
-/** The TypeBox schema of a `PageSnapshot`. */
 export const PageSnapshotType = Type.Object({
   revision: idSchema<"document-revision">(),
   nodes: Type.Array(
@@ -37,14 +34,12 @@ export const PageSnapshotType = Type.Object({
   ),
 });
 
-/** The TypeBox schema of a `ConsoleEntry`. */
 export const ConsoleEntryType = Type.Object({
   level: Type.Enum(["log", "info", "warn", "error"]),
   text: Type.String(),
   at: Type.Number(),
 });
 
-/** The TypeBox schema of a `PageOutcome`. */
 export const PageOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("applied"), snapshot: PageSnapshotType }),
   Type.Object({ kind: Type.Literal("stale"), revision: idSchema<"document-revision">() }),
@@ -58,17 +53,12 @@ export const PageOutcomeType = Type.Union([
   }),
 ]);
 
-/** Validates a `PageInfo`. */
 export const PageInfoSchema: Schema<PageInfo> = standard(PageInfoType);
 
-/** Validates a `PageView`. */
 export const PageViewSchema: Schema<PageView> = standard(PageViewType);
 
-/** Validates a `PageSnapshot`. */
 export const PageSnapshotSchema: Schema<PageSnapshot> = standard(PageSnapshotType);
 
-/** Validates a `ConsoleEntry`. */
 export const ConsoleEntrySchema: Schema<ConsoleEntry> = standard(ConsoleEntryType);
 
-/** Validates a `PageOutcome`. */
 export const PageOutcomeSchema: Schema<PageOutcome> = standard(PageOutcomeType);

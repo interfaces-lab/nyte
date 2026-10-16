@@ -1,6 +1,7 @@
 import { MODEL_THINKING_LEVELS, ModelSchema, normalizeContext } from "@nyte-ai/schema/model";
 import { Value } from "typebox/value";
 import { lazyStream } from "./api/lazy.ts";
+import { AccountLimitsCache } from "./account-limits-cache.ts";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
 import {
@@ -18,13 +19,17 @@ import type {
   AuthType,
   AuthVerification,
   Credential,
+  CredentialAccounts,
+  CredentialInfo,
   CredentialStore,
+  ModelAuth,
   ProviderAuth,
 } from "./auth/types.ts";
 import { InMemoryModelsStore, type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
 import { baseModel, providerRequest, withFastVariants } from "./model-variants.ts";
 import type {
   AccountLimits,
+  AccountLimitsResult,
   Api,
   ApiStreamOptions,
   AssistantMessage,
@@ -47,6 +52,7 @@ import type {
 } from "./types.ts";
 import { operationSignal, raceWithAbortSignal } from "./utils/abort.ts";
 import { mergeProviderHeaders } from "./utils/headers.ts";
+import { uuidv7 } from "./utils/uuid.ts";
 
 export { ModelsError, type ModelsErrorCode } from "./auth/resolve.ts";
 
@@ -134,6 +140,13 @@ export interface Provider<TApi extends Api = Api> {
    * `Models.getAuth()` returns undefined when the provider is unconfigured.
    */
   readonly auth: ProviderAuth;
+
+  /** Fetch subscription windows without generating model output. */
+  fetchAccountLimits?(input: {
+    readonly auth: ModelAuth;
+    readonly credential?: Credential;
+    readonly signal: AbortSignal;
+  }): Promise<AccountLimits | undefined>;
 
   /**
    * Current catalog, sync. Returns the list restored by the last `refreshModels()`
@@ -232,7 +245,26 @@ export interface Models {
    * as current as the last turn, though it may omit windows only a usage
    * endpoint lists.
    */
-  getAccountLimits(providerId: string): AccountLimits | undefined;
+  getAccountLimits(providerId: string, accountId?: string | null): AccountLimits | undefined;
+
+  /** Read cached subscription windows, joining a bounded fetch when they are stale. */
+  fetchAccountLimits(
+    providerId: string,
+    options?: AuthOperationOptions,
+  ): Promise<AccountLimitsResult>;
+
+  /** List stored accounts without reading secrets or resolving auth. */
+  listAccounts(
+    providerId?: string,
+    options?: AuthOperationOptions,
+  ): Promise<readonly CredentialInfo[]>;
+
+  /** Select the account used by new requests; already-started requests retain their account. */
+  selectAccount(
+    providerId: string,
+    accountId: string,
+    options?: AuthOperationOptions,
+  ): Promise<void>;
 
   /** Return models whose providers have complete auth configuration. */
   getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]>;
@@ -249,10 +281,14 @@ export interface Models {
   getAuth(providerId: string, overrides?: AuthResolutionOverrides): Promise<AuthResult | undefined>;
   getAuth(model: Model<Api>, overrides?: AuthResolutionOverrides): Promise<AuthResult | undefined>;
 
-  /** Run a provider-owned login flow and persist its returned credential. */
-  login(providerId: string, type: AuthType, interaction: AuthInteraction): Promise<Credential>;
+  login(
+    providerId: string,
+    type: AuthType,
+    interaction: AuthInteraction,
+    label?: string,
+  ): Promise<Credential>;
 
-  /** Remove the stored credential for a provider. */
+  /** Remove the active account, keeping other accounts without selecting a replacement. */
   logout(providerId: string, options?: AuthOperationOptions): Promise<void>;
 
   stream<TApi extends Api>(
@@ -316,15 +352,19 @@ class ModelsImpl implements MutableModels {
   private modelsStore: ModelsStore;
   private authContext: AuthContext;
   private catalog: RefreshModelsContext["catalog"];
-  /** Shared with `withProvider` registries the way the stores are: one account per provider. */
-  private accountLimits: Map<string, AccountLimits>;
+  private accountLimits: AccountLimitsCache;
+  private activeAccounts: Map<string, string | null>;
   private refreshGenerations = new Map<string, number>();
   private refreshControllers = new Map<string, AbortController>();
   /** Settles once the running refresh for a provider has restored its cached catalog. */
   private restorations = new Map<string, Promise<void>>();
   private publicationChains = new Map<string, Promise<unknown>>();
 
-  constructor(options?: CreateModelsOptions, accountLimits = new Map<string, AccountLimits>()) {
+  constructor(
+    options?: CreateModelsOptions,
+    accountLimits = new AccountLimitsCache(),
+    activeAccounts = new Map<string, string | null>(),
+  ) {
     this.credentials = options?.credentials ?? new InMemoryCredentialStore();
     this.modelsStore = options?.modelsStore ?? new InMemoryModelsStore();
     this.authContext = options?.authContext ?? defaultAuthContext();
@@ -333,6 +373,7 @@ class ModelsImpl implements MutableModels {
       fetch: options?.catalog?.fetch ?? globalThis.fetch,
     };
     this.accountLimits = accountLimits;
+    this.activeAccounts = activeAccounts;
   }
 
   withProvider(provider: Provider): Models {
@@ -344,6 +385,7 @@ class ModelsImpl implements MutableModels {
         catalog: this.catalog,
       },
       this.accountLimits,
+      this.activeAccounts,
     );
 
     for (const entry of this.providers.values()) models.setProvider(entry);
@@ -517,12 +559,12 @@ class ModelsImpl implements MutableModels {
         this.restorations.set(provider.id, restored.promise);
 
         const operation = (async () => {
-          let storedCredential: Credential | undefined;
+          let storedAccounts: CredentialAccounts | undefined;
           let credentialError: unknown;
 
           try {
-            storedCredential = allowNetwork
-              ? await this.readCredential(provider.id, signal)
+            storedAccounts = allowNetwork
+              ? await this.readAccounts(provider.id, signal)
               : undefined;
           } catch (error) {
             credentialError = error;
@@ -531,7 +573,8 @@ class ModelsImpl implements MutableModels {
           // Restore cached provider state before auth resolution or network access.
           await this.runProviderRefreshPhase(
             provider,
-            storedCredential,
+            storedAccounts?.accounts.find((account) => account.id === storedAccounts.active)
+              ?.credential,
             false,
             undefined,
             generation,
@@ -544,11 +587,7 @@ class ModelsImpl implements MutableModels {
 
           if (!allowNetwork || signal.aborted) return;
 
-          const credential = await this.resolveRefreshCredential(
-            provider,
-            storedCredential,
-            signal,
-          );
+          const credential = await this.resolveRefreshCredential(provider, storedAccounts, signal);
 
           await this.runProviderRefreshPhase(
             provider,
@@ -598,51 +637,79 @@ class ModelsImpl implements MutableModels {
 
   private async resolveRefreshCredential(
     provider: Provider,
-    stored: Credential | undefined,
+    stored: CredentialAccounts | undefined,
     signal: AbortSignal,
   ): Promise<Credential | undefined> {
-    if (stored?.type === "oauth") {
+    const account = stored?.accounts.find((entry) => entry.id === stored.active);
+
+    if (stored && !account) return undefined;
+    const credential = account?.credential;
+
+    if (credential?.type === "oauth") {
       const oauth = provider.auth.oauth;
 
       if (!oauth) return undefined;
 
-      if (Date.now() < stored.expires) return stored;
+      if (Date.now() < credential.expires) return credential;
 
       if (signal.aborted) return undefined;
 
+      let refreshed: { readonly token: string; readonly credential: Credential } | undefined;
       const post = await this.credentials.modify(
         provider.id,
         async (current) => {
-          if (current?.type !== "oauth" || Date.now() < current.expires) return undefined;
+          const selected = current?.accounts.find((entry) => entry.id === account?.id);
+
+          if (!current || selected?.credential.type !== "oauth") return undefined;
+          const previous = selected.credential;
+
+          if (Date.now() < previous.expires) return undefined;
 
           // Same cap as request-path refresh: this runs while the credential
           // lock is held, so a hung request would block every other client.
-          return oauth.refresh(
-            current,
-            AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS)]),
-          );
+          if (refreshed?.token !== previous.refresh) {
+            const next = await oauth.refresh(
+              previous,
+              AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS)]),
+            );
+            refreshed = { token: previous.refresh, credential: next };
+          }
+
+          const next = refreshed.credential;
+
+          return {
+            ...current,
+            accounts: current.accounts.map((entry) =>
+              entry.id === account?.id ? { ...entry, credential: next } : entry,
+            ),
+          };
         },
         { signal },
       );
 
-      return post?.type === "oauth" ? post : undefined;
+      const updated = post?.accounts.find((entry) => entry.id === account?.id)?.credential;
+
+      return updated?.type === "oauth" ? updated : undefined;
     }
 
     const apiKey = provider.auth.apiKey;
 
     if (!apiKey) return undefined;
-    const credential = stored?.type === "api_key" ? stored : undefined;
-    const result = await apiKey.resolve({ ctx: this.authContext, credential, signal });
+    const result = await apiKey.resolve({
+      ctx: this.authContext,
+      credential: credential?.type === "api_key" ? credential : undefined,
+      signal,
+    });
 
     if (!result) return undefined;
 
     return { type: "api_key", key: result.auth.apiKey, env: result.env };
   }
 
-  private async readCredential(
+  private async readAccounts(
     providerId: string,
     signal: AbortSignal,
-  ): Promise<Credential | undefined> {
+  ): Promise<CredentialAccounts | undefined> {
     try {
       return await this.credentials.read(providerId, { signal });
     } catch (error) {
@@ -652,17 +719,19 @@ class ModelsImpl implements MutableModels {
     }
   }
 
-  /** The stored credential's type from the store's listing, which reads no secret. */
-  private async storedType(
-    providerId: string,
+  private async checkOAuthAuth(
+    provider: Provider,
     signal: AbortSignal,
-  ): Promise<Credential["type"] | undefined> {
-    try {
-      const rows = await this.credentials.list({ signal });
+  ): Promise<AuthCheck | undefined> {
+    const oauth = provider.auth.oauth;
 
-      return rows.find((row) => row.providerId === providerId)?.type;
+    if (!oauth) return undefined;
+    if (!oauth.check) return { source: "OAuth", type: "oauth" };
+
+    try {
+      return await oauth.check({ ctx: this.authContext, signal });
     } catch (error) {
-      throw new ModelsError("auth", `Credential store list failed for ${providerId}`, {
+      throw new ModelsError("auth", `OAuth auth check failed for provider ${provider.id}`, {
         cause: error,
       });
     }
@@ -673,9 +742,7 @@ class ModelsImpl implements MutableModels {
     credential: Credential | undefined,
     signal: AbortSignal,
   ): Promise<AuthCheck | undefined> {
-    if (credential?.type === "oauth") {
-      return provider.auth.oauth ? { source: "OAuth", type: "oauth" } : undefined;
-    }
+    if (credential?.type === "oauth") return this.checkOAuthAuth(provider, signal);
 
     const apiKey = provider.auth.apiKey;
 
@@ -695,15 +762,127 @@ class ModelsImpl implements MutableModels {
       }
     }
 
-    const resolution = await resolveProviderAuth(provider, this.credentials, this.authContext, {
-      signal,
-    });
+    try {
+      const resolution = await apiKey.resolve({ ctx: this.authContext, credential, signal });
 
-    return resolution ? { source: resolution.source, type: "api_key" } : undefined;
+      return resolution ? { source: resolution.source, type: "api_key" } : undefined;
+    } catch (error) {
+      throw new ModelsError("auth", `API key auth check failed for provider ${provider.id}`, {
+        cause: error,
+      });
+    }
   }
 
-  getAccountLimits(providerId: string): AccountLimits | undefined {
-    return this.accountLimits.get(providerId);
+  getAccountLimits(providerId: string, accountId?: string | null): AccountLimits | undefined {
+    return this.accountLimits.get(
+      providerId,
+      accountId === undefined ? this.activeAccounts.get(providerId) : accountId,
+    );
+  }
+
+  async fetchAccountLimits(
+    providerId: string,
+    options?: AuthOperationOptions,
+  ): Promise<AccountLimitsResult> {
+    const signal = operationSignal(options?.signal);
+    signal.throwIfAborted();
+    const provider = this.providers.get(providerId);
+    const scope = this.accountLimits.scope(providerId);
+    const fetchLimits = provider?.fetchAccountLimits;
+
+    if (!fetchLimits)
+      return scope.fetch(this.activeAccounts.get(providerId) ?? undefined, async () => undefined, {
+        signal,
+      });
+
+    const accounts = await this.listAccounts(providerId, { signal });
+    const account = accounts.find((entry) => entry.active);
+
+    if (
+      (accounts.length > 0 && !account) ||
+      (!account && (await this.checkAuth(providerId, { signal })) === undefined)
+    )
+      return {
+        kind: "unavailable",
+        reason: "unconfigured",
+        message: "Sign in to view account usage.",
+      };
+
+    return scope.fetch(
+      account?.id,
+      async (fetchSignal) => {
+        const resolution = await this.getAuth(providerId, { signal: fetchSignal });
+
+        if (!resolution || resolution.accountId !== account?.id) {
+          this.accountLimits.invalidate(providerId);
+
+          return undefined;
+        }
+
+        return fetchLimits({ auth: resolution.auth, signal: fetchSignal });
+      },
+      { signal },
+    );
+  }
+
+  async listAccounts(
+    providerId?: string,
+    options?: AuthOperationOptions,
+  ): Promise<readonly CredentialInfo[]> {
+    try {
+      const rows = await this.credentials.list(options);
+      const selected =
+        providerId === undefined ? rows : rows.filter((row) => row.providerId === providerId);
+      const providers = providerId === undefined ? this.providers.keys() : [providerId];
+
+      for (const provider of providers)
+        this.activeAccounts.set(
+          provider,
+          selected.find((row) => row.providerId === provider && row.active)?.id ?? null,
+        );
+
+      return selected;
+    } catch (error) {
+      throw new ModelsError(
+        "auth",
+        `Credential store list failed${providerId ? ` for ${providerId}` : ""}`,
+        { cause: error },
+      );
+    }
+  }
+
+  async selectAccount(
+    providerId: string,
+    accountId: string,
+    options?: AuthOperationOptions,
+  ): Promise<void> {
+    const signal = operationSignal(options?.signal);
+    signal.throwIfAborted();
+
+    if (!this.providers.has(providerId))
+      throw new ModelsError("provider", `Unknown provider: ${providerId}`);
+    let changed = false;
+
+    await this.credentials.modify(
+      providerId,
+      async (current) => {
+        if (!current?.accounts.some((account) => account.id === accountId))
+          throw new ModelsError("auth", `Unknown account for ${providerId}: ${accountId}`);
+
+        if (current.active === accountId) return undefined;
+        changed = true;
+
+        return { ...current, active: accountId };
+      },
+      { signal },
+    );
+
+    this.activeAccounts.set(providerId, accountId);
+
+    if (!changed) return;
+
+    this.accountLimits.invalidate(providerId);
+    this.supersedeProviderRefresh(providerId);
   }
 
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
@@ -714,17 +893,22 @@ class ModelsImpl implements MutableModels {
       const provider = this.providers.get(providerId);
 
       if (!provider) return undefined;
-      const stored = await this.storedType(providerId, signal);
+      const accounts = await this.listAccounts(providerId, { signal });
+      const stored = accounts.find((account) => account.active);
 
-      if (stored === "oauth")
-        return provider.auth.oauth ? { source: "OAuth", type: "oauth" } : undefined;
+      if (accounts.length > 0 && stored === undefined) return undefined;
 
-      if (stored === "api_key" && provider.auth.apiKey?.check === undefined)
+      if (stored?.type === "oauth") return this.checkOAuthAuth(provider, signal);
+
+      if (stored?.type === "api_key" && provider.auth.apiKey?.check === undefined)
         return provider.auth.apiKey ? { source: "stored credential", type: "api_key" } : undefined;
+
+      const current =
+        stored === undefined ? undefined : await this.readAccounts(providerId, signal);
 
       return this.checkProviderAuth(
         provider,
-        stored === undefined ? undefined : await this.readCredential(providerId, signal),
+        current?.accounts.find((account) => account.id === stored?.id)?.credential,
         signal,
       );
     })();
@@ -793,12 +977,18 @@ class ModelsImpl implements MutableModels {
 
       const checks = await Promise.all(
         providers.map(async (provider) => {
-          const credential = await this.readCredential(provider.id, signal);
+          const stored = await this.readAccounts(provider.id, signal);
+          const credential = stored?.accounts.find(
+            (account) => account.id === stored.active,
+          )?.credential;
 
           return {
             provider,
             credential,
-            auth: await this.checkProviderAuth(provider, credential, signal),
+            auth:
+              stored && !credential
+                ? undefined
+                : await this.checkProviderAuth(provider, credential, signal),
           };
         }),
       );
@@ -849,6 +1039,7 @@ class ModelsImpl implements MutableModels {
     providerId: string,
     type: AuthType,
     interaction: AuthInteraction,
+    label?: string,
   ): Promise<Credential> {
     const signal = operationSignal(interaction.signal);
     signal.throwIfAborted();
@@ -861,22 +1052,37 @@ class ModelsImpl implements MutableModels {
       throw new ModelsError("auth", `${provider.name} does not support ${type} login`);
     }
 
+    const accounts = await this.listAccounts(providerId, { signal });
+    const name = label?.trim() || `Account ${accounts.length + 1}`;
+
     const loginOperation: Promise<Credential> = method.login({ ...interaction, signal });
     const credential = await raceWithAbortSignal(loginOperation, signal);
+
+    if (
+      credential.type === "api_key" &&
+      credential.key !== undefined &&
+      credential.key.trim() === ""
+    )
+      throw new ModelsError("auth", "Enter an API key.");
+
     let mutationStarted = false;
     let markMutationStarted: (() => void) | undefined;
 
     const started = new Promise<void>((resolve) => {
       markMutationStarted = resolve;
     });
+    const id = uuidv7();
 
     const mutation = this.credentials.modify(
       providerId,
-      async () => {
+      async (current) => {
         mutationStarted = true;
         markMutationStarted?.();
 
-        return credential;
+        return {
+          active: id,
+          accounts: [...(current?.accounts ?? []), { id, label: name, credential }],
+        };
       },
       { signal },
     );
@@ -906,6 +1112,8 @@ class ModelsImpl implements MutableModels {
 
     // Discovery started for the previous credential must not publish over the new one.
     this.supersedeProviderRefresh(providerId);
+    this.activeAccounts.set(providerId, id);
+    this.accountLimits.invalidate(providerId);
 
     return credential;
   }
@@ -915,7 +1123,24 @@ class ModelsImpl implements MutableModels {
     signal.throwIfAborted();
 
     try {
-      await this.credentials.delete(providerId, { signal });
+      const stored = await this.readAccounts(providerId, signal);
+      const id = stored?.active;
+
+      if (id === undefined || id === null) return;
+
+      const post = await this.credentials.modify(
+        providerId,
+        async (current) => {
+          if (!current?.accounts.some((account) => account.id === id)) return undefined;
+
+          return {
+            active: current.active === id ? null : current.active,
+            accounts: current.accounts.filter((account) => account.id !== id),
+          };
+        },
+        { signal },
+      );
+      this.activeAccounts.set(providerId, post?.active ?? null);
     } catch (error) {
       signal.throwIfAborted();
       throw new ModelsError("auth", `Credential store delete failed for ${providerId}`, {
@@ -924,6 +1149,7 @@ class ModelsImpl implements MutableModels {
     }
 
     this.supersedeProviderRefresh(providerId);
+    this.accountLimits.invalidate(providerId);
   }
 
   private requireProvider(model: Model<Api>): Provider {
@@ -940,8 +1166,8 @@ class ModelsImpl implements MutableModels {
     TModel extends Model<Api>,
     TOptions extends ProviderRequestOptions & ModelsRequestTransforms,
   >(selected: TModel, selectedOptions: TOptions | undefined) {
-    // The one place a request leaves this package: a fast sibling goes as its base.
     const { model, options } = providerRequest(selected, selectedOptions);
+    const scope = this.accountLimits.scope(model.provider);
 
     const resolution = await this.getAuth(model, {
       apiKey: options?.apiKey,
@@ -976,7 +1202,7 @@ class ModelsImpl implements MutableModels {
       limits,
       requested,
     ) => {
-      this.accountLimits.set(limits.providerId, limits);
+      scope.observe(resolution.accountId, limits);
       await options?.onAccountLimits?.(limits, requested);
     };
 
@@ -1085,6 +1311,7 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
   promptCache?: PromptCachePolicy;
   /** Required — every provider has auth semantics, even ambient/keyless ones. */
   auth: ProviderAuth;
+  fetchAccountLimits?: Provider<TApi>["fetchAccountLimits"];
   filterModels?: (
     models: readonly Model<TApi>[],
     credential: Credential | undefined,
@@ -1147,6 +1374,7 @@ export function createProvider<TApi extends Api = Api>(
     headers: input.headers,
     promptCache: input.promptCache,
     auth: input.auth,
+    fetchAccountLimits: input.fetchAccountLimits,
     getModels: () => catalogModels,
     refreshModels: async (context) => {
       if (context.stored) {

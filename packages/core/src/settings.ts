@@ -2,15 +2,16 @@ import { isJson } from "@nyte-ai/schema";
 import type { Json, SessionId, SettingInfo } from "@nyte-ai/schema";
 import type { SettingsApi } from "./connection.ts";
 import { SdkError } from "./error.ts";
-import { headHandle } from "./head.ts";
-import { check } from "./json-schema.ts";
+import { configure } from "./head.ts";
+import { check, convertJsonSchema } from "./json-schema.ts";
 import type { Kernel } from "./kernel.ts";
-import { pluginRuntimes, pluginState, readKv } from "./plugin-runtime.ts";
+import { readKv } from "./plugin-runtime.ts";
 import type { Setting, SettingDefinition } from "./plugin.ts";
-import { CORE_CONTEXT } from "./principals.ts";
 import { kvRef } from "./refs.ts";
-import { jsonSchemaOf, publishCatalog } from "./registry.ts";
+import { publishCatalog } from "./registry.ts";
 import { MAIN, commit, put, readSession } from "./session-state.ts";
+import { SKILL_PATHS, WORKSPACE_TRUST } from "./resources.ts";
+import { trustChanged } from "./workspaces.ts";
 
 interface Defined {
   readonly definition: SettingDefinition;
@@ -22,11 +23,10 @@ interface Layer {
   readonly from: "host" | "session";
 }
 
-/** Returns the host's settings api: `apply` finds the definition, validates the value and stores it at `kvRef("host", "settings", id)`, then republishes every live session's catalog and `HostView.settings`. A session-scope setting's host value is what its sessions inherit until they configure their own. */
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
     async apply(id, value) {
-      const found = definitionOf(kernel, id);
+      const found = findSettingDefinition(kernel, id);
 
       if (found === undefined) return { kind: "unknown" };
       const checked = await check(found.definition.schema, value);
@@ -39,7 +39,6 @@ export function createSettingsApi(kernel: Kernel): SettingsApi {
   };
 }
 
-/** Returns a plugin's handle on its own setting. `get` resolves the session layer (the main head configuration's `settings[id]`), else the host value, else the default, skipping a stored value the schema no longer accepts; a session-scope `set` configures the main head. `watch` yields the value, then each change, until `signal` aborts. */
 export function settingHandle<T>(
   kernel: Kernel,
   definition: SettingDefinition<T>,
@@ -53,7 +52,7 @@ export function settingHandle<T>(
   const { id } = definition;
 
   const get = async (): Promise<T> => {
-    for (const layer of await layersOf(kernel, definition, session)) {
+    for (const layer of await readSettingLayers(kernel, definition, session)) {
       const checked = await check(definition.schema, layer.value);
 
       if (checked.kind === "valid") return checked.value;
@@ -79,23 +78,18 @@ export function settingHandle<T>(
         return;
       }
 
-      const outcome = await headHandle(kernel, CORE_CONTEXT, session, MAIN).configure({
-        settings: { [id]: value },
-      });
+      const outcome = await configure(kernel, session, MAIN, { settings: { [id]: value } }, true);
 
       if (outcome.kind !== "configured")
         throw new SdkError("invalid", `Setting ${id} could not be configured: ${outcome.kind}.`, {
           issues: outcome.kind === "invalid" ? outcome.issues : [],
         });
-
-      changed(kernel, id, session);
-      await publishCatalog(kernel, session);
     },
     watch: () => ({
       async *[Symbol.asyncIterator]() {
         let changed = Promise.withResolvers<void>();
 
-        const { settings } = pluginState(kernel);
+        const { settings } = kernel.pluginState;
 
         const listener = (setting: string, scope: SessionId | null): void => {
           if (setting === id && (scope === null || scope === session)) changed.resolve();
@@ -129,17 +123,19 @@ export function settingHandle<T>(
   };
 }
 
-/** Returns every setting with its owner, JSON Schema, choices, value and the layer that set it, leaving out one without JSON Schema. With a session: its plugins' settings (`SessionCatalogView.settings`); with null: the host-scope settings, first owner per id (`HostView.settings`). */
 export async function settingInfos(
   kernel: Kernel,
   session: SessionId | null,
 ): Promise<readonly SettingInfo[]> {
+  const runtime = session === null ? null : kernel.runtimes().get(session);
+
+  if (runtime === undefined) return [];
+
   const defined =
-    session === null
+    runtime === null
       ? hostDefinitions(kernel)
-      : kernel
-          .pluginsFor(session)
-          .registries.settings.entries()
+      : runtime.registries.settings
+          .entries()
           .map((entry) => ({ definition: entry.item, owner: entry.owner }));
 
   const infos = await Promise.all(
@@ -147,12 +143,12 @@ export async function settingInfos(
       let schema: SettingInfo["schema"];
 
       try {
-        schema = jsonSchemaOf(definition.schema, "output");
+        schema = convertJsonSchema(definition.schema, "output");
       } catch {
         return null;
       }
 
-      const [layer] = await layersOf(kernel, definition, session);
+      const [layer] = await readSettingLayers(kernel, definition, session);
 
       return {
         id: definition.id,
@@ -175,17 +171,24 @@ export async function settingInfos(
   return infos.flatMap((info) => (info === null ? [] : [info]));
 }
 
-/** Republishes `HostView.settings`. */
 export async function publishSettings(kernel: Kernel): Promise<void> {
   kernel.host.update({ settings: await settingInfos(kernel, null) });
 }
 
-/** Stores a setting's host value, announces it, and republishes every live session's catalog and `HostView.settings`. */
 async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<void> {
   await commit(kernel, [
     { name: kvRef("host", "settings", id), target: await put(kernel, "kv", value) },
   ]);
   changed(kernel, id, null);
+
+  if (id === WORKSPACE_TRUST) void trustChanged(kernel).catch(() => undefined);
+
+  if (id === SKILL_PATHS) {
+    kernel.workspaceState.scans.clear();
+
+    for (const session of kernel.runtimes().keys())
+      void kernel.reloadPlugins(session).catch(() => undefined);
+  }
 
   await Promise.all([
     ...[...kernel.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
@@ -193,8 +196,7 @@ async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<
   ]);
 }
 
-/** Returns the values stored for a setting, most specific first. */
-async function layersOf(
+async function readSettingLayers(
   kernel: Kernel,
   definition: Pick<SettingDefinition, "id" | "scope">,
   session: SessionId | null,
@@ -212,7 +214,6 @@ async function layersOf(
   ];
 }
 
-/** Returns a session's own value for a setting from its main head configuration. */
 async function sessionValue(
   kernel: Kernel,
   session: SessionId,
@@ -224,24 +225,22 @@ async function sessionValue(
   return settings !== undefined && Object.hasOwn(settings, id) ? settings[id] : undefined;
 }
 
-/** Returns a setting's definition and owner: a host plugin's static host-scope entry first, then a live session's. */
-function definitionOf(kernel: Kernel, id: string): Defined | undefined {
+function findSettingDefinition(kernel: Kernel, id: string): Defined | undefined {
   return (
     staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
-    pluginRuntimes(kernel)
+    [...kernel.runtimes().values()]
       .flatMap((runtime) => runtime.registries.settings.entries())
       .map((entry) => ({ definition: entry.item, owner: entry.owner }))
       .find((entry) => entry.definition.id === id)
   );
 }
 
-/** Returns the host-scope settings, first owner per id: the static ones, then the live sessions'. */
 function hostDefinitions(kernel: Kernel): readonly Defined[] {
   const seen = new Set<string>();
 
   return [
     ...staticHostDefinitions(kernel),
-    ...pluginRuntimes(kernel).flatMap((runtime) =>
+    ...[...kernel.runtimes().values()].flatMap((runtime) =>
       runtime.registries.settings
         .entries()
         .flatMap((entry) =>
@@ -256,7 +255,6 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
   });
 }
 
-/** Returns the static host-scope settings of `kernel.builtins` then `kernel.hostPlugins`. */
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   return [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
     (plugin.contribute?.settings ?? []).flatMap((definition) =>
@@ -265,7 +263,15 @@ function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
   );
 }
 
-/** Announces a setting change to its watchers; a null session is the host layer. */
+export async function settingsConfigured(
+  kernel: Kernel,
+  session: SessionId,
+  ids: readonly string[],
+): Promise<void> {
+  for (const id of ids) changed(kernel, id, session);
+  await publishCatalog(kernel, session);
+}
+
 function changed(kernel: Kernel, id: string, session: SessionId | null): void {
-  for (const listener of pluginState(kernel).settings) listener(id, session);
+  for (const listener of kernel.pluginState.settings) listener(id, session);
 }

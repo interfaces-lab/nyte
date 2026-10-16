@@ -1,12 +1,8 @@
-/**
- * Pure formatting helpers shared by the TUI and print mode. Nothing here
- * touches a renderer.
- */
 import type { Thinking, UserContent } from "@nyte-ai/sdk";
+import type { RemoteFacts } from "../model/state.ts";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
-/** How long an operation took, read as a duration rather than a clock. */
 export function formatDuration(ms: number): string {
   const seconds = ms / 1000;
 
@@ -20,7 +16,15 @@ export function formatDuration(ms: number): string {
   return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
 }
 
-/** What a finished tool produced, for the dim tail of its heading. */
+export interface Timing {
+  readonly startedAt: number;
+  readonly endedAt: number | null;
+}
+
+export function formatTiming(timing: Timing, now: number): string {
+  return formatDuration(Math.max(0, (timing.endedAt ?? now) - timing.startedAt));
+}
+
 export function resultSummary(text: string): string | undefined {
   const trimmed = text.replace(/\n+$/, "");
 
@@ -32,7 +36,6 @@ export function resultSummary(text: string): string | undefined {
 
 interface Preview {
   readonly text: string;
-  /** Lines the cut dropped. Head cuts leave labelling to the caller; the others embed theirs. */
   readonly omitted: number;
 }
 
@@ -41,10 +44,6 @@ export type PreviewCut =
   | { readonly kind: "head-tail"; readonly head: number; readonly tail: number }
   | { readonly kind: "tail"; readonly max: number };
 
-/**
- * A capped view of `text`: its first lines, its first and last lines with the
- * middle dropped and labelled, or its last lines with the label above them.
- */
 export function previewLines(text: string, cut: PreviewCut): Preview {
   const trimmed = text.replace(/\n+$/, "");
 
@@ -88,7 +87,6 @@ export function unchangedLinesLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
-/** Flatten user content parts to display text; a file becomes a marker and a reference its `@path`. */
 export function userText(content: UserContent): string {
   if (typeof content === "string") return content;
 
@@ -111,14 +109,12 @@ export function userText(content: UserContent): string {
     .join("");
 }
 
-/** One display line from possibly multi-line text, for compact rows. */
 export function oneLine(text: string): string {
   return text.replaceAll("\r", "").replaceAll("\n", "⏎").trim();
 }
 
 const MAX_RETRY_CAUSE_CHARS = 80;
 
-/** A provider error trimmed to one transcript line and punctuated. */
 export function retryCause(errorMessage: string): string {
   const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
 
@@ -132,7 +128,6 @@ export function retryCause(errorMessage: string): string {
   return /[.!?…]$/u.test(bounded) ? bounded : `${bounded}.`;
 }
 
-/** Composer metadata. */
 export interface PowerlineState {
   readonly workspace: string;
   readonly branch?: string;
@@ -140,27 +135,23 @@ export interface PowerlineState {
   readonly provider: string;
   readonly model: string;
   readonly effort?: Thinking;
-  /** Status badges from plugin settings (e.g. "fast"), beside the thinking level. */
-  /** Badges from plugin settings and the plugin status items, in that order. */
   readonly statuses: readonly string[];
   readonly queued: number;
-  /** What the next request would send, as the view estimates it; 0 until known. */
   readonly tokens: number;
-  /** The model's context window; 0 until the model is known. */
   readonly window: number;
-  /** Whole percent of the window `tokens` fills. Meaningful only when `window > 0`. */
   readonly pct: number;
+  readonly remote: RemoteFacts;
 }
 
-type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
+type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage" | "remote";
 
 type UsageLevel = "ok" | "warning" | "error";
 
 export type PowerlineSegment =
-  | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage"> }
-  | { readonly text: string; readonly tone: "usage"; readonly level: UsageLevel };
+  | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage" | "remote"> }
+  | { readonly text: string; readonly tone: "usage"; readonly level: UsageLevel }
+  | { readonly text: string; readonly tone: "remote"; readonly remote: RemoteFacts["kind"] };
 
-/** Strict thresholds: past 70 % warns, past 90 % alarms. */
 function usageLevel(pct: number): UsageLevel {
   if (pct > 90) return "error";
 
@@ -168,7 +159,6 @@ function usageLevel(pct: number): UsageLevel {
 
   return "ok";
 }
-/** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
 export function clockDuration(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
 
@@ -194,7 +184,6 @@ export function shortId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) : id;
 }
 
-/** `12340` → `12.3k`; whole counts below a thousand stay bare. */
 export function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens);
 
@@ -205,17 +194,17 @@ export function formatTokens(tokens: number): string {
 
 export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegment[] {
   const branch =
-    state.dirty === undefined
-      ? " · git loading"
-      : state.branch === undefined
-        ? ""
-        : ` ${state.branch}${state.dirty ? "*" : ""}`;
+    state.dirty === undefined || state.branch === undefined
+      ? ""
+      : ` ${state.branch}${state.dirty ? "*" : ""}`;
 
   const badges = [...(state.effort === undefined ? [] : [state.effort]), ...(state.statuses ?? [])];
 
   const segments: PowerlineSegment[] = [
-    { text: `${state.workspace ?? "workspace loading"}${branch}`, tone: "workspace" },
-    { text: state.model ?? "model loading", tone: "model" },
+    ...(state.workspace === undefined
+      ? []
+      : [{ text: `${state.workspace}${branch}`, tone: "workspace" as const }]),
+    ...(state.model === undefined ? [] : [{ text: state.model, tone: "model" as const }]),
   ];
 
   if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
@@ -237,21 +226,44 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
 
   if (state.queued !== undefined && state.queued > 0)
     segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
+  const remote = state.remote === undefined ? undefined : remoteText(state.remote);
+
+  if (remote !== undefined && state.remote !== undefined)
+    segments.push({ text: remote, tone: "remote", remote: state.remote.kind });
 
   return segments;
+}
+
+function remoteText(remote: RemoteFacts): string | undefined {
+  switch (remote.kind) {
+    case "off":
+      return undefined;
+    case "connecting":
+      return "sharing…";
+    case "shared":
+      return remote.devices === 0
+        ? "shared"
+        : `shared · ${String(remote.devices)} ${remote.devices === 1 ? "device" : "devices"}`;
+    case "interrupted":
+      return "sharing paused";
+    default: {
+      const _exhaustive: never = remote;
+
+      return _exhaustive;
+    }
+  }
 }
 
 function joinSegments(segments: readonly PowerlineSegment[]): string {
   return ` ${segments.map((segment) => segment.text).join(` ${GLYPHS.separator} `)}`;
 }
 
-/** Drop low-priority metadata as the terminal narrows. Model survives. */
 export function fitPowerlineSegments(
   segments: readonly PowerlineSegment[],
   maxWidth: number,
 ): PowerlineSegment[] {
   let kept = [...segments];
-  const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort"];
+  const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort", "remote"];
 
   for (const tone of droppable) {
     if (displayWidth(joinSegments(kept)) <= maxWidth) break;
@@ -265,15 +277,12 @@ export const TERMINAL_TITLE_BASE = "nyte";
 
 const TERMINAL_TITLE_MAX_CHARS = 72;
 
-/** C0 and C1, which is where the OSC terminator and the bell live. */
 const CONTROL_CHARACTERS = /\p{Cc}/gu;
 
-/** One line of display text: control characters become spaces, whitespace collapses. */
 export function singleLine(text: string): string {
   return text.replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
 }
 
-/** `nyte` until the chat has a name, then `nyte - <name>`, with control characters stripped. */
 export function terminalTitle(name: string | undefined): string {
   const clean = singleLine(name ?? "");
 

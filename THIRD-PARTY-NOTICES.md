@@ -45,14 +45,45 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## pi-claude-code (`earendil-works/pi-claude-code`)
+
+- Repository: https://github.com/earendil-works/pi-claude-code
+- What: the Claude Code CLI provider, single-turn relay, transcript replay,
+  process reuse, and billing guards in `packages/plugin/examples/claude-code`
+  are adapted from commit `70abb65186592ca788b29b3db22c3160d629c41f`.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2026 Armin Ronacher
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## pi (`earendil-works/pi`)
 
 - Repository: https://github.com/earendil-works/pi
 - What: the agent loop, provider adapters, auth and OAuth flows, schema types,
   and assorted runtime utilities across `packages/ai`, `packages/core`,
-  `packages/schema`, `packages/tui`, and `packages/plugin` are ported from pi
-  and tracked against it. This is the
-  large majority of the `Based on` headers in this repository.
+  `packages/schema`, `packages/tui`, and `packages/plugin` are ported from pi.
 - Packages: `@earendil-works/pi-mcp` 1.0.0 and
   `@earendil-works/pi-codemode` 1.0.0 supply the MCP client and QuickJS
   executor. Tool discovery and code-mode integration are adapted from commit
@@ -366,6 +397,9 @@ SOFTWARE.
 ## T3 Code (`pingdotgg/t3code`)
 
 - Repository: https://github.com/pingdotgg/t3code
+- The SQLite reader and checkpoint workers, large-parameter statement cache
+  bypass, and connection tuning in `packages/host/src/sqlite*.ts` are adapted
+  from `bf8ffe81a63c82d3de5fbaa9991fd5f30034a452`.
 - Homepage: https://t3.codes
 - What: the demo desktop app (`packages/demo/desktop`) follows T3 Code's
   control-surface shape — agents in a sidebar, a conversation workspace, a
@@ -407,8 +441,7 @@ SOFTWARE.
   (`packages/tui/src/ui/composer/completion.tsx`,
   `packages/tui/src/model/dialogs/list.ts`, `packages/tui/src/ui/dialogs/list.tsx`)
   and the slash command model (`packages/tui/src/lib/slash.ts`) port
-  `xai-grok-pager`. The demo CLI
-  (`packages/demo/cli/src/tui.ts`) uses a reduced dark palette.
+  `xai-grok-pager`.
 - All of the above are adaptations rather than copies: they are rewritten in
   TypeScript against OpenTUI, and the semantic roles, detection order, and
   fallbacks differ from upstream where Nyte's structure differs.
