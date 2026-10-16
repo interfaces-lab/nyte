@@ -86,7 +86,7 @@ export function settingHandle<T>(
       async *[Symbol.asyncIterator]() {
         let changed = Promise.withResolvers<void>();
 
-        const { settings } = kernel.pluginState;
+        const { settings } = kernel.plugins.state;
 
         const listener = (setting: string, scope: SessionId | null): void => {
           if (setting === id && (scope === null || scope === session)) changed.resolve();
@@ -135,12 +135,12 @@ async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<
   if (id === SKILL_PATHS) {
     dropScans(kernel);
 
-    for (const session of kernel.runtimes().keys())
-      void kernel.reloadPlugins(session).catch(() => undefined);
+    for (const session of kernel.plugins.runtimes().keys())
+      void kernel.plugins.reload(session).catch(() => undefined);
   }
 
   await Promise.all([
-    ...[...kernel.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
+    ...[...kernel.plugins.runtimes().keys()].map((session) => publishCatalog(kernel, session)),
     publishSettings(kernel),
   ]);
 }
@@ -155,7 +155,7 @@ async function settingsConfigured(
 }
 
 function changed(kernel: Kernel, id: string, session: SessionId | null): void {
-  for (const listener of kernel.pluginState.settings) listener(id, session);
+  for (const listener of kernel.plugins.state.settings) listener(id, session);
 }
 
 export async function configure(
@@ -169,7 +169,7 @@ export async function configure(
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
-  const runtime = kernel.pluginsFor(session);
+  const runtime = kernel.plugins.runtime(session);
 
   if (!activation) await runtime.ready;
 

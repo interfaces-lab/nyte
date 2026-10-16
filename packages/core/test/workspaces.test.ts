@@ -133,7 +133,7 @@ describe("workspaces", () => {
 
     const invocation = createInvocation(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -232,7 +232,9 @@ describe("workspaces", () => {
 
     provider.failure = "The sandbox did not boot.";
     const session = await host.sessions.create({ workspace });
-    await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The sandbox did not boot.");
+    await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow(
+      "The sandbox did not boot.",
+    );
 
     expect(kernel.sessions.activation(session.id)).toEqual({
       kind: "failed",
@@ -241,9 +243,9 @@ describe("workspaces", () => {
     expect(seen).toEqual([]);
 
     provider.failure = null;
-    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
+    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
     const failed = attempts;
-    await kernel.pluginsFor(session.id).ready;
+    await kernel.plugins.runtime(session.id).ready;
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(seen).toEqual(["/work/project"]);
     expect(attempts).toBe(failed + 1);
@@ -252,7 +254,7 @@ describe("workspaces", () => {
   it("rejects an unknown session's activation instead of resolving it (E6, P4)", async () => {
     const { kernel } = await world();
 
-    await expect(kernel.pluginsFor(asId("nobody")).ready).rejects.toMatchObject({
+    await expect(kernel.plugins.runtime(asId("nobody")).ready).rejects.toMatchObject({
       code: "unknown",
     });
   });
@@ -615,7 +617,7 @@ describe("activation (§37j–m)", () => {
     const second = kernelOver(kernel.store, provider, { plugins: [gate] });
     const fresh = createHost(second, credential);
 
-    expect(second.runtimes().has(session.id)).toBe(false);
+    expect(second.plugins.runtimes().has(session.id)).toBe(false);
     await expect(fresh.session(session.id).send("Hello.")).rejects.toMatchObject({
       code: "invalid",
       message: "Closed.",
@@ -668,8 +670,8 @@ describe("activation (§37j–m)", () => {
     expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/other");
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .registries.prompt.list()
         .find((section) => section.id === "cwd")?.text,
     ).toContain("/work/other");
@@ -697,7 +699,7 @@ describe("activation (§37j–m)", () => {
 
     const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
     const session = await host.sessions.create({ workspace });
-    const first = kernel.pluginsFor(session.id);
+    const first = kernel.plugins.runtime(session.id);
 
     expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
 
@@ -706,8 +708,8 @@ describe("activation (§37j–m)", () => {
 
     expect(first.plugins()).toEqual([]);
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["builtin", "fake-environment", "flaky"]);
@@ -715,7 +717,7 @@ describe("activation (§37j–m)", () => {
     const own: Plugin<"core"> = { id: "own" };
     await host.plugins.replace([own], { session: session.id });
     await host.workspace(workspace).reload();
-    const runtime = kernel.pluginsFor(session.id);
+    const runtime = kernel.plugins.runtime(session.id);
 
     expect(runtime.assigned()).toEqual([own]);
     expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);
@@ -746,8 +748,8 @@ describe("activation (§37j–m)", () => {
     const session = await host.sessions.create({ workspace });
 
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toContain("probe");

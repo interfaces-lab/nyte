@@ -629,7 +629,7 @@ describe("client", () => {
       .toEqual([]);
   });
 
-  it("binds plugins and principals: a participant is denied, maintenance pairs and lists, a file loads through kernel.loadPlugins over the wire and in process", async () => {
+  it("binds plugins and principals: a participant is denied, maintenance pairs and lists, a file loads through kernel.plugins.load over the wire and in process", async () => {
     const loaded: string[] = [];
 
     const host = await open({

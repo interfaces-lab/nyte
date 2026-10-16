@@ -106,7 +106,6 @@ export interface Kernel {
 
   readonly driving: Map<RunId, SessionId>;
   readonly executionState: ExecutionState;
-  readonly pluginState: PluginState;
   readonly workspaceState: WorkspaceState;
 
   readonly receipts: Map<string, Set<() => void>>;
@@ -174,39 +173,52 @@ export interface Kernel {
 
   readonly mcp: McpHub | null;
 
-  readonly builtins: readonly Plugin<"core">[];
-
-  hostPlugins: readonly Plugin<"core">[];
-
-  readonly pluginSources: ReadonlyMap<
-    Plugin<"core">,
-    { readonly source: "user" | "project"; readonly path: string }
-  >;
-
-  pluginsFor(session: SessionId): PluginRuntime;
-
-  reloadPlugins(session: SessionId): Promise<void>;
-
-  runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
-
-  closePlugins(session: SessionId): Promise<void>;
-
-  pluginApi(owner: string, session: SessionId): PluginApi<"core">;
-
-  readonly plugins: {
-    replace(
-      plugins: readonly Plugin<"core">[],
-      scope?: { readonly session: SessionId },
-    ): ReturnType<Host["plugins"]["replace"]>;
-    check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
-  };
-
-  loadPlugins(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
+  readonly plugins: PluginHost;
 
   readonly principals: Host["principals"];
 
   /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
   readonly handles: Handles;
+}
+
+/** The host's plugins and the per-session runtimes that load them. */
+export interface PluginHost {
+  /** The first-party plugins every session loads first. */
+  readonly builtins: readonly Plugin<"core">[];
+
+  /** The host's own plugins, after the built-ins; `replace` swaps them. */
+  host: readonly Plugin<"core">[];
+
+  /** Where each plugin loaded from a file came from. */
+  readonly sources: ReadonlyMap<
+    Plugin<"core">,
+    { readonly source: "user" | "project"; readonly path: string }
+  >;
+
+  readonly state: PluginState;
+
+  /** The session's runtime, installed on first use. */
+  runtime(session: SessionId): PluginRuntime;
+
+  /** Installs a fresh runtime for the session over the one it has, and waits for it. */
+  reload(session: SessionId): Promise<void>;
+
+  runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
+
+  close(session: SessionId): Promise<void>;
+
+  /** The api a plugin owns in a session's runtime. */
+  api(owner: string, session: SessionId): PluginApi<"core">;
+
+  replace(
+    plugins: readonly Plugin<"core">[],
+    scope?: { readonly session: SessionId },
+  ): ReturnType<Host["plugins"]["replace"]>;
+
+  check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
+
+  /** Imports the plugins in `paths`, through the host's plugin loader. */
+  load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
 }
 
 /** This process's activation and catalog of each session, each change published on the session's bus. */

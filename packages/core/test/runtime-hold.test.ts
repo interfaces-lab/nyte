@@ -91,7 +91,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
       const session = await host.sessions.create();
       const receipt = await session.send("Go.");
       await until(() => (fake.requests.length === 1 ? true : undefined));
-      void host.kernel.reloadPlugins(session.id);
+      void host.kernel.plugins.reload(session.id);
       await until(() => (held.activations() === 2 ? true : undefined));
       streaming.resolve();
       await until(() => (seen.length > 0 ? true : undefined));
@@ -138,13 +138,13 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     const session = await host.sessions.create();
     const receipt = await session.send("Go.");
     await until(() => (fake.requests.length === 1 ? true : undefined));
-    void host.kernel.reloadPlugins(session.id);
+    void host.kernel.plugins.reload(session.id);
     await until(() => (held.activations() === 2 ? true : undefined));
     streaming.resolve();
     expect((await receipt.settled()).kind).toBe("completed");
     await until(() => (seen.includes("runtime1:run_ended:completed") ? true : undefined));
     activation.resolve();
-    await host.kernel.pluginsFor(session.id).ready;
+    await host.kernel.plugins.runtime(session.id).ready;
 
     expect(seen).toEqual(["runtime1:assistant", "runtime1:run_ended:completed"]);
   });
@@ -159,7 +159,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     const session = await host.sessions.create();
     const receipt = await session.send("Go.");
     await until(() => (fake.requests.length === 1 ? true : undefined));
-    await host.kernel.reloadPlugins(session.id);
+    await host.kernel.plugins.reload(session.id);
     await sleep(20);
     streaming.resolve();
     expect((await receipt.settled()).kind).toBe("completed");
@@ -182,10 +182,10 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     });
 
     const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
-    const old = fixture.kernel.pluginsFor(session.id);
+    const old = fixture.kernel.plugins.runtime(session.id);
     await old.ready;
     const release = old.hold();
-    await fixture.kernel.reloadPlugins(session.id);
+    await fixture.kernel.plugins.reload(session.id);
     await sleep(20);
 
     const result = await old.hooks.transform(
@@ -245,7 +245,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     });
 
     provider.failure = null;
-    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
+    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
     const receipt = await session.send("Go.");
 
     expect(receipt.message).toBeDefined();

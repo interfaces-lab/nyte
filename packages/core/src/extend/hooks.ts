@@ -293,8 +293,8 @@ export async function gateSubmission(
     for (;;) {
       woken = Promise.withResolvers<void>();
 
-      const outcome = await kernel
-        .pluginsFor(session)
+      const outcome = await kernel.plugins
+        .runtime(session)
         .hooks.decide(
           "before_send",
           submission,

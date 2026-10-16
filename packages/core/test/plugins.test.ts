@@ -134,10 +134,10 @@ function provider(kind: string): EnvironmentProvider {
 
 async function loaded(plugins: readonly Plugin<"core">[], options?: Parameters<typeof setup>[0]) {
   const built = await setup(options);
-  built.kernel.hostPlugins = plugins;
+  built.kernel.plugins.host = plugins;
   const session = await built.host.sessions.create();
 
-  return { ...built, session, runtime: built.kernel.pluginsFor(session.id) };
+  return { ...built, session, runtime: built.kernel.plugins.runtime(session.id) };
 }
 
 async function readCall(kernel: Kernel, session: SessionId, id: string): Promise<CallRecord> {
@@ -213,7 +213,7 @@ describe("plugin runtime", () => {
     expect(runtime.api("broken")).toBeUndefined();
     expect(
       kernel
-        .tools(kernel.pluginsFor(session.id))
+        .tools(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["echo"]);
@@ -328,7 +328,7 @@ describe("plugin runtime", () => {
     const later = await host.sessions.create();
 
     expect(await later.command("hello")).toEqual({ kind: "ran", output: "v2" });
-    expect(kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["greeter"]);
+    expect(kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["greeter"]);
   });
 
   it("checks without loading: outcomes and the collisions between plugins", async () => {
@@ -369,7 +369,7 @@ describe("plugin runtime", () => {
         source: { plugin: "c" },
       },
     ]);
-    expect(kernel.runtimes().size).toBe(0);
+    expect(kernel.plugins.runtimes().size).toBe(0);
     expect(kernel.host.current().plugins).toEqual([]);
   });
 
@@ -401,7 +401,7 @@ describe("plugin runtime", () => {
 
     expect(await session.remove()).toEqual({ kind: "removed" });
     expect(signal?.aborted).toBe(true);
-    expect(kernel.runtimes().has(session.id)).toBe(false);
+    expect(kernel.plugins.runtimes().has(session.id)).toBe(false);
   });
 });
 
@@ -585,7 +585,7 @@ describe("hooks", () => {
     const call = () =>
       executeCall(kernel, {
         session: session.id,
-        runtime: kernel.pluginsFor(session.id),
+        runtime: kernel.plugins.runtime(session.id),
         head: main,
         run,
         call: asId("g1"),
@@ -739,7 +739,7 @@ describe("hooks", () => {
     const call = (id: string, args: Json) =>
       executeCall(kernel, {
         session: session.id,
-        runtime: kernel.pluginsFor(session.id),
+        runtime: kernel.plugins.runtime(session.id),
         head: main,
         run,
         call: asId(id),
@@ -920,7 +920,7 @@ describe("plugin api", () => {
     expect(passes).toBe(before + 1);
     expect(
       kernel
-        .tools(kernel.pluginsFor(session.id))
+        .tools(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
@@ -935,7 +935,7 @@ describe("plugin api", () => {
       if (event.kind === "catalog") events.push(event.catalog);
     });
 
-    kernel.hostPlugins = [
+    kernel.plugins.host = [
       {
         id: "greeter",
         contribute: {
@@ -1062,7 +1062,7 @@ describe("commands", () => {
 describe("settings", () => {
   it("applies a host setting before any session, refuses an invalid value and an unknown id", async () => {
     const { kernel, host } = await setup();
-    kernel.hostPlugins = [{ id: "looks", contribute: { settings: [theme] } }];
+    kernel.plugins.host = [{ id: "looks", contribute: { settings: [theme] } }];
 
     expect(await host.settings.apply("theme", "dark")).toEqual({ kind: "applied" });
     expect(await host.settings.apply("theme", "blue")).toMatchObject({

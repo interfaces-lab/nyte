@@ -151,7 +151,7 @@ describe("resources", () => {
     });
 
     const session = await host.sessions.create({ workspace });
-    await kernel.pluginsFor(session.id).ready;
+    await kernel.plugins.runtime(session.id).ready;
     const names = (): readonly string[] =>
       kernel.sessions.catalog(session.id).skills.map((skill) => skill.name);
 
@@ -213,7 +213,7 @@ describe("resources", () => {
     const added = await host.workspaces.add({ kind: "chat-only", locator: null });
     assert(added.kind === "added");
     const session = await host.sessions.create({ workspace: added.workspace });
-    await kernel.pluginsFor(session.id).ready;
+    await kernel.plugins.runtime(session.id).ready;
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(await scanResources(kernel, session.id)).toMatchObject({
@@ -306,7 +306,7 @@ describe("resources", () => {
     });
 
     const session = await host.sessions.create({ workspace });
-    const { registries } = kernel.pluginsFor(session.id);
+    const { registries } = kernel.plugins.runtime(session.id);
     const sections = registries.prompt.list();
     const context = sections.find((section) => section.id === "project-context");
     const skills = sections.find((section) => section.id === "skills");

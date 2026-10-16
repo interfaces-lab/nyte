@@ -76,7 +76,7 @@ describe("ADV A-3", () => {
 
     const outcome = await executeCall(a.kernel, {
       session: session.id,
-      runtime: a.kernel.pluginsFor(session.id),
+      runtime: a.kernel.plugins.runtime(session.id),
       head: main,
       run: run.id,
       call: asId("c1"),
@@ -257,7 +257,7 @@ describe("ADV A-3", () => {
       const session = await host.sessions.create();
 
       reload = () => {
-        void host.kernel.reloadPlugins(session.id);
+        void host.kernel.plugins.reload(session.id);
         setTimeout(() => gate.resolve(), 200);
       };
 

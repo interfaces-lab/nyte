@@ -30,6 +30,7 @@ import { CORE_CONTEXT } from "./contract/host.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
 import type {
   Kernel,
+  PluginHost,
   PluginRuntime,
   RunTable,
   SessionDirectory,
@@ -95,7 +96,7 @@ export type ComposeOptions = OpenOptions & {
 
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
 
-  readonly loadPlugins?: Kernel["loadPlugins"];
+  readonly loadPlugins?: PluginHost["load"];
 };
 
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
@@ -244,7 +245,7 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
   let applied = 0;
 
   const sessionScoped = new Set(
-    [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
+    [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
       (plugin.contribute?.settings ?? []).flatMap((setting) =>
         setting.scope === "session" ? [setting.id] : [],
       ),
@@ -330,12 +331,12 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
       | "request"
       | "home"
       | "secrets"
-      | "builtins"
-      | "hostPlugins"
-      | "pluginSources"
-      | "loadPlugins"
     >
   > & {
+    readonly builtins?: PluginHost["builtins"];
+    readonly hostPlugins?: PluginHost["host"];
+    readonly pluginSources?: PluginHost["sources"];
+    readonly loadPlugins?: PluginHost["load"];
     readonly poll?: number;
     /** Backs the model ports (turn, summarize, compact, configuration, request and the models API) unless a port is given. */
     readonly models?: Models;
@@ -402,7 +403,6 @@ export function createKernel(input: KernelOptions): Kernel {
     streams,
     driving: new Map(),
     executionState: createExecutionState(),
-    pluginState: createPluginState(),
     workspaceState: createWorkspaceState(),
     receipts: new Map(),
     calls: new Map(),
@@ -496,35 +496,37 @@ export function createKernel(input: KernelOptions): Kernel {
 
       return mcp;
     },
-    get builtins() {
-      const hub = kernel.mcp;
-
-      return (builtins ??=
-        hub === null
-          ? (input.builtins ?? [])
-          : [...(input.builtins ?? []), mcpPlugin(hub, (id) => readMcpWorkspace(kernel, id))]);
-    },
-    hostPlugins: input.hostPlugins ?? [],
-    pluginSources: input.pluginSources ?? new Map(),
-    pluginsFor: (session) => runtimes.get(session) ?? install(session, null),
-    reloadPlugins: (session) => install(session, runtimes.get(session) ?? null).ready,
-    runtimes: () => runtimes,
-    async closePlugins(session) {
-      const runtime = runtimes.get(session);
-
-      if (runtime === undefined) return;
-      runtimes.delete(session);
-      await runtime.close();
-    },
-    pluginApi: (owner, session) =>
-      kernel.pluginsFor(session).api(owner) ?? unavailable(`plugin ${owner} in session ${session}`),
     plugins: {
+      get builtins() {
+        const hub = kernel.mcp;
+
+        return (builtins ??=
+          hub === null
+            ? (input.builtins ?? [])
+            : [...(input.builtins ?? []), mcpPlugin(hub, (id) => readMcpWorkspace(kernel, id))]);
+      },
+      host: input.hostPlugins ?? [],
+      sources: input.pluginSources ?? new Map(),
+      state: createPluginState(),
+      runtime: (session) => runtimes.get(session) ?? install(session, null),
+      reload: (session) => install(session, runtimes.get(session) ?? null).ready,
+      runtimes: () => runtimes,
+      async close(session) {
+        const runtime = runtimes.get(session);
+
+        if (runtime === undefined) return;
+        runtimes.delete(session);
+        await runtime.close();
+      },
+      api: (owner, session) =>
+        kernel.plugins.runtime(session).api(owner) ??
+        unavailable(`plugin ${owner} in session ${session}`),
       replace: (plugins, scope) => replacePlugins(kernel, plugins, scope),
       check: async (plugins) => checkPlugins(plugins),
+      load:
+        input.loadPlugins ??
+        (async () => unavailable("plugin files: this host has no plugin loader")),
     },
-    loadPlugins:
-      input.loadPlugins ??
-      (async () => unavailable("plugin files: this host has no plugin loader")),
     get principals() {
       return (principals ??= createPrincipals(kernel));
     },
@@ -547,7 +549,7 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await kernel.modelState.close();
   await kernel.mcp?.close();
   await driver?.close();
-  const sessions = [...kernel.runtimes().keys()];
+  const sessions = [...kernel.plugins.runtimes().keys()];
 
   const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>
     asId<"workspace">(ref.name.slice("workspaces/".length)),
@@ -561,7 +563,7 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
     ),
   );
 
-  for (const session of sessions) await kernel.closePlugins(session);
+  for (const session of sessions) await kernel.plugins.close(session);
   dropScans(kernel);
 
   for (const session of sessions) await kernel.environments.detach(session);

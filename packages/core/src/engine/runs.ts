@@ -82,7 +82,7 @@ export async function newRun(
 
 export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
   kernel.runs.start(session, view.id);
-  void kernel.runtimes().get(session)?.hooks.observe("run_started", view, {
+  void kernel.plugins.runtimes().get(session)?.hooks.observe("run_started", view, {
     session,
     head: view.head,
     run: view.id,
@@ -194,7 +194,7 @@ export async function endRun(
 
   if (ended === null) return;
 
-  void kernel
+  void kernel.plugins
     .runtimes()
     .get(session)
     ?.hooks.observe("run_ended", ended.end, { session, head: ended.head, run, principal: LOCAL });

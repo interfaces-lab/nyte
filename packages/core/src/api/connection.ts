@@ -135,9 +135,9 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
       "plugins",
       {
         replace: async (plugins, scope) =>
-          kernel.plugins.replace(await kernel.loadPlugins(listPluginPaths(plugins)), scope),
+          kernel.plugins.replace(await kernel.plugins.load(listPluginPaths(plugins)), scope),
         check: async (plugins) =>
-          kernel.plugins.check(await kernel.loadPlugins(listPluginPaths(plugins))),
+          kernel.plugins.check(await kernel.plugins.load(listPluginPaths(plugins))),
       },
       authority,
     ),
@@ -184,7 +184,7 @@ async function loaded(
 ): Promise<readonly Plugin<"core">[]> {
   const each = await Promise.all(
     plugins.map(async (plugin) =>
-      isPluginFile(plugin) ? kernel.loadPlugins([plugin.path]) : [plugin],
+      isPluginFile(plugin) ? kernel.plugins.load([plugin.path]) : [plugin],
     ),
   );
 

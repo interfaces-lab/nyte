@@ -68,7 +68,7 @@ async function projectPlugins(
   }
 
   try {
-    const loaded = await kernel.loadPlugins(paths);
+    const loaded = await kernel.plugins.load(paths);
     report([]);
 
     return loaded;
@@ -92,5 +92,5 @@ function classifyActivationFailure(workspace: WorkspaceId, error: unknown): Acti
 }
 
 function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
-  return [...kernel.builtins, ...(runtime.assigned() ?? kernel.hostPlugins)];
+  return [...kernel.plugins.builtins, ...(runtime.assigned() ?? kernel.plugins.host)];
 }

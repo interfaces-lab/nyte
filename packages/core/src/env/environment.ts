@@ -56,9 +56,9 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     const byKind = new Map<string, EnvironmentProvider>();
 
     const plugins = [
-      ...kernel.hostPlugins,
-      ...kernel.builtins,
-      ...[...kernel.runtimes().values()].flatMap((runtime) => runtime.plugins()),
+      ...kernel.plugins.host,
+      ...kernel.plugins.builtins,
+      ...[...kernel.plugins.runtimes().values()].flatMap((runtime) => runtime.plugins()),
     ];
 
     for (const plugin of plugins) {

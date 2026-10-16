@@ -293,7 +293,7 @@ async function sessionCatalog(
   kernel: Kernel,
   session: SessionId,
 ): Promise<SessionCatalogView | null> {
-  const runtime = kernel.runtimes().get(session);
+  const runtime = kernel.plugins.runtimes().get(session);
 
   if (runtime === undefined) return null;
   const { registries } = runtime;
@@ -336,7 +336,7 @@ async function sessionCatalog(
 }
 
 export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void> {
-  const queues = kernel.pluginState.publishing;
+  const queues = kernel.plugins.state.publishing;
 
   const next = (queues.get(session) ?? Promise.resolve())
     .catch(() => undefined)
@@ -418,7 +418,7 @@ export async function runCommand(
   name: string,
   args: Json | undefined,
 ): Promise<CommandOutcome> {
-  const runtime = kernel.pluginsFor(session);
+  const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
 
   try {

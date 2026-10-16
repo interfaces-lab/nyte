@@ -270,7 +270,7 @@ describe("waits as store facts", () => {
     expect(
       await executeCall(holder.kernel, {
         session: session.id,
-        runtime: holder.kernel.pluginsFor(session.id),
+        runtime: holder.kernel.plugins.runtime(session.id),
         head: main,
         run,
         call: asId("w1"),
@@ -320,7 +320,7 @@ describe("waits as store facts", () => {
 
     await executeCall(holder.kernel, {
       session: session.id,
-      runtime: holder.kernel.pluginsFor(session.id),
+      runtime: holder.kernel.plugins.runtime(session.id),
       head: main,
       run,
       call: asId("w1"),
@@ -360,7 +360,7 @@ describe("waits as store facts", () => {
 
     await executeCall(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: turn.input.run.id,
       call: asId("w1"),

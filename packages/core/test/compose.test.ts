@@ -182,8 +182,8 @@ describe("composeHost", () => {
     const session = await host.sessions.create();
 
     expect(
-      host.kernel
-        .pluginsFor(session.id)
+      host.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["system-prompt", "environment", "resources", "delegation", "chat-only", "extra"]);
@@ -272,7 +272,7 @@ describe("composeHost", () => {
     await host.close();
 
     expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(0);
-    expect(host.kernel.runtimes().size).toBe(0);
+    expect(host.kernel.plugins.runtimes().size).toBe(0);
     await host.close();
   });
 
@@ -473,7 +473,7 @@ describe("composeHost", () => {
     );
     const rows = host.kernel.host.current().plugins;
 
-    expect(host.kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
+    expect(host.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
     expect(rows.find((row) => row.id === "good")).toMatchObject({
       source: "user",
       path: "/home/.nyte/plugins/good.ts",

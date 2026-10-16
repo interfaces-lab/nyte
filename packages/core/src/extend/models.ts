@@ -394,7 +394,7 @@ function projectModel(
 function staticPolicies(kernel: Kernel): ReadonlyMap<string, ModelContextPolicy> {
   const policies = new Map<string, ModelContextPolicy>();
 
-  for (const plugin of [...kernel.builtins, ...kernel.hostPlugins])
+  for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host])
     for (const policy of plugin.contribute?.modelContext ?? [])
       policies.set(formatModelKey(policy.model), policy);
 

@@ -334,7 +334,7 @@ describe("turn", () => {
 
     await using host = await open(fake, { plugins: [counted] });
     const session = await host.sessions.create();
-    reload = () => host.kernel.reloadPlugins(session.id);
+    reload = () => host.kernel.plugins.reload(session.id);
 
     expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
     expect(seen).toEqual([1, 2]);
@@ -1380,7 +1380,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     const session = await host.sessions.create();
 
     reload = () => {
-      void host.kernel.reloadPlugins(session.id);
+      void host.kernel.plugins.reload(session.id);
       setTimeout(() => gate.resolve(), 20);
     };
 
@@ -1407,7 +1407,7 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     await using host = await open(fake);
     const session = await host.sessions.create();
-    await host.kernel.pluginsFor(session.id).ready;
+    await host.kernel.plugins.runtime(session.id).ready;
     const given = createPluginRuntime(host.kernel, session.id, null);
     await given.ready;
     await given.load([{ id: "marker", contribute: { tools: [marker] } }]);
@@ -1422,7 +1422,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     expect(transcript.tools.map((info) => info.name)).toContain("marker");
     expect(
       host.kernel
-        .tools(host.kernel.pluginsFor(session.id))
+        .tools(host.kernel.plugins.runtime(session.id))
         .list()
         .map((info) => info.name),
     ).not.toContain("marker");

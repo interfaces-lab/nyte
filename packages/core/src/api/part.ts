@@ -547,7 +547,7 @@ async function perform(
           part: partHandle(kernel, context, session, record.id),
           session,
           get api() {
-            return kernel.pluginApi(registered.owner ?? "core", session);
+            return kernel.plugins.api(registered.owner ?? "core", session);
           },
           principal: context.principal,
           signal: controller.signal,

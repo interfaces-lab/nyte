@@ -103,7 +103,7 @@ describe("models", () => {
       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     });
     const session = await host.sessions.create();
-    const runtime = host.kernel.pluginsFor(session.id);
+    const runtime = host.kernel.plugins.runtime(session.id);
     await runtime.ready;
 
     expect(modelInfo(fake.models, { provider: "test", id: "smart-fast" }, runtime)).toMatchObject({
@@ -192,7 +192,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
-        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -514,11 +514,11 @@ describe("resolveConfiguration", () => {
         head: main,
         selected,
         patch,
-        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
       });
 
     const version = await settingsVersion(
-      collectContributions(host.kernel.pluginsFor(session.id)).settings,
+      collectContributions(host.kernel.plugins.runtime(session.id)).settings,
     );
 
     const base = await resolve(null);

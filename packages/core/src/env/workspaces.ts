@@ -333,11 +333,11 @@ export function workspaceHandle(
           await kernel.environments.detach(session);
 
         if (
-          kernel.runtimes().has(session) ||
+          kernel.plugins.runtimes().has(session) ||
           kernel.folds.folding(session) ||
           kernel.sessions.activation(session).kind !== "inactive"
         )
-          await kernel.reloadPlugins(session).catch(() => undefined);
+          await kernel.plugins.reload(session).catch(() => undefined);
       }
 
       changed(kernel, id);
@@ -605,7 +605,7 @@ export async function trustChanged(kernel: Kernel): Promise<void> {
   for (const record of await workspaceRecords(kernel.store)) changed(kernel, record.id);
 
   await Promise.allSettled(
-    [...kernel.runtimes().keys()].map((session) => kernel.reloadPlugins(session)),
+    [...kernel.plugins.runtimes().keys()].map((session) => kernel.plugins.reload(session)),
   );
 }
 

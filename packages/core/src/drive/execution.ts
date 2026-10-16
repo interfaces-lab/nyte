@@ -108,11 +108,11 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
 
     const covered = records === null ? null : new Set(records.map((record) => record.id));
 
-    const unresolved = [...kernel.runtimes()].flatMap(([session, runtime]) =>
+    const unresolved = [...kernel.plugins.runtimes()].flatMap(([session, runtime]) =>
       runtime.resolvedUncovered() && (covered === null || covered.has(session)) ? [session] : [],
     );
 
-    await Promise.allSettled(unresolved.map((session) => kernel.reloadPlugins(session)));
+    await Promise.allSettled(unresolved.map((session) => kernel.plugins.reload(session)));
 
     if (records !== null && kernel.execution.kind === "run")
       for (const record of records)
@@ -146,7 +146,7 @@ export async function advance(
 
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
-    await kernel.pluginsFor(session).ready;
+    await kernel.plugins.runtime(session).ready;
     const refused = await claim(kernel, session, head);
 
     if (refused !== null) return refused;
@@ -575,7 +575,7 @@ async function resume(
 ): Promise<Refused | null> {
   const renewal = holdHead(kernel, session, head);
   const signal = AbortSignal.any([kernel.runs.start(session, run).signal, renewal.lease.signal]);
-  const runtime = kernel.pluginsFor(session);
+  const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
 
   try {

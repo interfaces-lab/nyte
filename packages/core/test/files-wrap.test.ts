@@ -46,7 +46,7 @@ async function tools(kernel: Kernel, session: SessionId) {
 
     const outcome = await executeCall(kernel, {
       session,
-      runtime: kernel.pluginsFor(session),
+      runtime: kernel.plugins.runtime(session),
       head: main,
       run: run.id,
       call: asId(`call-${calls}`),
@@ -307,7 +307,7 @@ describe("environment tools", () => {
   it("names the workspace root in the cwd prompt section", async () => {
     const { kernel, session } = await sessionFiles({ plugins: [environmentPlugin] });
 
-    expect(kernel.pluginsFor(session.id).registries.prompt.list()).toEqual(
+    expect(kernel.plugins.runtime(session.id).registries.prompt.list()).toEqual(
       expect.arrayContaining([
         {
           id: "cwd",

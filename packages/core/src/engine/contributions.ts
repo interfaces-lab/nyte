@@ -28,7 +28,7 @@ export function collectContributions(runtime: PluginRuntime): Contributions {
 }
 
 export function staticContributions(kernel: Kernel): Contributions {
-  const plugins = [...kernel.builtins, ...kernel.hostPlugins];
+  const plugins = [...kernel.plugins.builtins, ...kernel.plugins.host];
 
   return {
     agents: plugins.flatMap((plugin) => plugin.contribute?.agents ?? []),

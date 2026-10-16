@@ -21,7 +21,7 @@ export async function settingInfos(
   kernel: Kernel,
   session: SessionId | null,
 ): Promise<readonly SettingInfo[]> {
-  const runtime = session === null ? null : kernel.runtimes().get(session);
+  const runtime = session === null ? null : kernel.plugins.runtimes().get(session);
 
   if (runtime === undefined) return [];
 
@@ -97,7 +97,7 @@ async function sessionValue(
 export function findSettingDefinition(kernel: Kernel, id: string): Defined | undefined {
   return (
     staticHostDefinitions(kernel).find((entry) => entry.definition.id === id) ??
-    [...kernel.runtimes().values()]
+    [...kernel.plugins.runtimes().values()]
       .flatMap((runtime) => runtime.registries.settings.entries())
       .map((entry) => ({ definition: entry.item, owner: entry.owner }))
       .find((entry) => entry.definition.id === id)
@@ -109,7 +109,7 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
 
   return [
     ...staticHostDefinitions(kernel),
-    ...[...kernel.runtimes().values()].flatMap((runtime) =>
+    ...[...kernel.plugins.runtimes().values()].flatMap((runtime) =>
       runtime.registries.settings
         .entries()
         .flatMap((entry) =>
@@ -125,7 +125,7 @@ function hostDefinitions(kernel: Kernel): readonly Defined[] {
 }
 
 function staticHostDefinitions(kernel: Kernel): readonly Defined[] {
-  return [...kernel.builtins, ...kernel.hostPlugins].flatMap((plugin) =>
+  return [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
     (plugin.contribute?.settings ?? []).flatMap((definition) =>
       definition.scope === "host" ? [{ definition, owner: plugin.id }] : [],
     ),

@@ -220,7 +220,7 @@ function loadSecretCipherKey(kernel: Kernel): Promise<CryptoKey> | null {
   const source = kernel.secrets;
 
   if (source === null) return null;
-  const state = kernel.pluginState;
+  const state = kernel.plugins.state;
 
   state.secretKey ??= source.key().then((bytes) => {
     if (bytes.length !== 32)

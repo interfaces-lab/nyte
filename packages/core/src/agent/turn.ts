@@ -183,7 +183,7 @@ async function turn(
     retry: RETRY_POLICY,
 
     async prepareRequest(asked) {
-      const runtime = kernel.pluginsFor(session);
+      const runtime = kernel.plugins.runtime(session);
       context.holds.push({ runtime, release: runtime.hold() });
 
       try {
@@ -308,7 +308,7 @@ async function turn(
           throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
 
         return executeCall(kernel, {
-          runtime: context.holds.at(-1)?.runtime ?? kernel.pluginsFor(session),
+          runtime: context.holds.at(-1)?.runtime ?? kernel.plugins.runtime(session),
           session,
           head,
           run,

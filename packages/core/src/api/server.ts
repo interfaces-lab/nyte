@@ -30,7 +30,7 @@ export function createServerHost(kernel: Kernel): ServerHost {
     onWake: (listener) => kernel.wakes.subscribe(listener),
     report: (row) => kernel.host.report(row),
     pluginRows: () => kernel.host.current().plugins,
-    loaded: (plugin) => kernel.hostPlugins.includes(plugin),
+    loaded: (plugin) => kernel.plugins.host.includes(plugin),
     wire: {
       move: (session, head, position, options) => move(kernel, session, head, position, options),
       batch: (workspace, files, entries, id) =>
@@ -42,7 +42,7 @@ export function createServerHost(kernel: Kernel): ServerHost {
       openPage: (request) => kernel.pages.open(request),
       job: (id) => kernel.jobs.get(id)?.view,
       async partDefinition(session, kind) {
-        await kernel.pluginsFor(session).ready;
+        await kernel.plugins.runtime(session).ready;
 
         return kernel.partDefinitions.get(kind)?.definition;
       },

@@ -260,7 +260,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
             .filter((part) => part !== undefined && part !== "")
             .join("\n\n");
 
-    const sent = await complete(kernel, models, kernel.pluginsFor(session), {
+    const sent = await complete(kernel, models, kernel.plugins.runtime(session), {
       where: { session, head: null, run: null, principal: LOCAL },
       step: "plugin",
       request: { model: input.model, thinking, options: { sampling: {}, headers: {} } },

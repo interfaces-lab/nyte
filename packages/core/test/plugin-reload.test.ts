@@ -109,7 +109,7 @@ describe("plugin reload (D4)", () => {
 
     await using host = await open(fake, { plugins: [v1] });
     const session = await host.sessions.create();
-    const before = host.kernel.pluginsFor(session.id).ready;
+    const before = host.kernel.plugins.runtime(session.id).ready;
 
     replace = async () => {
       const report = await host.plugins.replace([chatOnly, v2], { session: session.id });
@@ -121,7 +121,7 @@ describe("plugin reload (D4)", () => {
     };
 
     expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
-    expect(host.kernel.pluginsFor(session.id).ready).not.toBe(before);
+    expect(host.kernel.plugins.runtime(session.id).ready).not.toBe(before);
     expect(seen).toHaveLength(1);
 
     const system = fake.requests[1].context.messages[0];
@@ -136,7 +136,7 @@ describe("plugin reload (D4)", () => {
 
     const { kernel, host } = await setup();
 
-    kernel.hostPlugins = [
+    kernel.plugins.host = [
       {
         id: "stamp",
         activate(api) {
@@ -153,8 +153,8 @@ describe("plugin reload (D4)", () => {
     ];
 
     const session = await host.sessions.create();
-    const old = kernel.pluginsFor(session.id);
-    const reloaded = kernel.reloadPlugins(session.id);
+    const old = kernel.plugins.runtime(session.id);
+    const reloaded = kernel.plugins.reload(session.id);
 
     const outcome = await old.hooks.transform(
       "after_tool",
@@ -173,19 +173,19 @@ describe("plugin reload (D4)", () => {
     const session = await first.host.sessions.create();
     const other = await setup({ store: first.kernel.store });
 
-    expect(other.kernel.runtimes().size).toBe(0);
+    expect(other.kernel.plugins.runtimes().size).toBe(0);
 
     const report = await other.host.plugins.replace([{ id: "extra" }], { session: session.id });
 
     expect(report.plugins).toEqual([{ kind: "activated", id: "extra", issues: [] }]);
-    await other.kernel.pluginsFor(session.id).ready;
+    await other.kernel.plugins.runtime(session.id).ready;
     expect(other.kernel.host.current().plugins).toEqual([
       { id: "test-environment", source: "inline", path: null, issues: [] },
       { id: "extra", source: "inline", path: null, issues: [] },
     ]);
     expect(
-      other.kernel
-        .pluginsFor(session.id)
+      other.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["test-environment", "extra"]);
@@ -194,9 +194,9 @@ describe("plugin reload (D4)", () => {
   it("3.5 / E E6 + D D13: an activation whose resources cannot be read rejects ready, fails the activation and drops the runtime; the next use activates again", async () => {
     const { kernel, host } = await controlled(async () => env);
 
-    kernel.hostPlugins = [{ id: "kept" }];
+    kernel.plugins.host = [{ id: "kept" }];
     const session = await host.sessions.create();
-    await kernel.pluginsFor(session.id).ready;
+    await kernel.plugins.runtime(session.id).ready;
     const unreadable = Promise.reject(new Error("The scan failed."));
     unreadable.catch(() => undefined);
     kernel.workspaceState.scans.set(session.id, {
@@ -205,15 +205,15 @@ describe("plugin reload (D4)", () => {
       stop: () => undefined,
     });
 
-    await expect(kernel.reloadPlugins(session.id)).rejects.toThrow("The scan failed.");
+    await expect(kernel.plugins.reload(session.id)).rejects.toThrow("The scan failed.");
     expect(kernel.sessions.activation(session.id)).toEqual({
       kind: "failed",
       message: "The scan failed.",
     });
-    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
+    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
 
     kernel.workspaceState.scans.delete(session.id);
-    const again = kernel.pluginsFor(session.id);
+    const again = kernel.plugins.runtime(session.id);
     await again.ready;
 
     expect(again.plugins().map((plugin) => plugin.id)).toEqual(["local", "kept"]);
@@ -229,7 +229,7 @@ describe("plugin reload (D4)", () => {
     const report = await first.host.plugins.replace([{ id: "next" }]);
 
     expect(report.plugins).toEqual([{ kind: "activated", id: "next", issues: [] }]);
-    expect(first.kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["next"]);
+    expect(first.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["next"]);
   });
 
   it("E E7 (runtime side) + D D13: a failed attach rejects ready with its own error and shows failed; no plugin activates on a null env", async () => {
@@ -239,11 +239,11 @@ describe("plugin reload (D4)", () => {
       throw new Error("The disk is gone.");
     });
 
-    kernel.hostPlugins = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
+    kernel.plugins.host = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
 
     const session = await host.sessions.create();
 
-    await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The disk is gone.");
+    await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow("The disk is gone.");
     expect((await session.info()).activation).toEqual({
       kind: "failed",
       message: "The disk is gone.",
@@ -256,9 +256,9 @@ describe("plugin reload (D4)", () => {
     const ids = Array.from({ length: 50 }, () => asId<"session">(crypto.randomUUID()));
 
     for (const id of ids)
-      await expect(kernel.pluginsFor(id).ready).rejects.toMatchObject({ code: "unknown" });
+      await expect(kernel.plugins.runtime(id).ready).rejects.toMatchObject({ code: "unknown" });
 
-    await until(() => (kernel.runtimes().size === 0 ? true : undefined));
+    await until(() => (kernel.plugins.runtimes().size === 0 ? true : undefined));
   });
 
   it("audit 1 (D-3-old-runtime-after-reload): a caller holding the old runtime after the reload settled still runs its handlers", async () => {
@@ -274,8 +274,8 @@ describe("plugin reload (D4)", () => {
     });
 
     const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
-    const old = fixture.kernel.pluginsFor(session.id);
-    await fixture.kernel.reloadPlugins(session.id);
+    const old = fixture.kernel.plugins.runtime(session.id);
+    await fixture.kernel.plugins.reload(session.id);
 
     const result = await old.hooks.transform(
       "after_tool",
@@ -310,7 +310,7 @@ describe("plugin reload (D4)", () => {
     });
 
     const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
-    const old = fixture.kernel.pluginsFor(session.id);
+    const old = fixture.kernel.plugins.runtime(session.id);
 
     const running = old.hooks.transform(
       "after_tool",
@@ -319,7 +319,7 @@ describe("plugin reload (D4)", () => {
     );
 
     await entered.promise;
-    await fixture.kernel.reloadPlugins(session.id);
+    await fixture.kernel.plugins.reload(session.id);
 
     expect(signal?.aborted).toBe(false);
     gate.resolve();
@@ -345,8 +345,8 @@ describe("plugin reload (D4)", () => {
       "kept-previous",
     ]);
     expect(
-      fixture.kernel
-        .pluginsFor(session.id)
+      fixture.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toContain("same");
@@ -383,7 +383,7 @@ describe("plugin reload (D4)", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(counts).toEqual(["activate", "session_activated"]);
 
-    const runtime = fixture.kernel.pluginsFor(session.id);
+    const runtime = fixture.kernel.plugins.runtime(session.id);
 
     expect(runtime.plugins()).toContain(previous);
     expect(

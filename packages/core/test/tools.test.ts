@@ -95,7 +95,7 @@ function call(
 ) {
   return executeCall(kernel, {
     session: input.session,
-    runtime: kernel.pluginsFor(input.session),
+    runtime: kernel.plugins.runtime(input.session),
     head: main,
     run: input.run,
     call: asId(input.call),
@@ -931,7 +931,7 @@ describe("tool calls", () => {
       }),
       executeCall(b.kernel, {
         session: session.id,
-        runtime: b.kernel.pluginsFor(session.id),
+        runtime: b.kernel.plugins.runtime(session.id),
         head: side,
         run: second.id,
         call: asId("e2"),

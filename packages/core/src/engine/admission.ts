@@ -89,7 +89,7 @@ interface Keyed {
 }
 
 export async function send(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
-  await kernel.pluginsFor(input.session).ready;
+  await kernel.plugins.runtime(input.session).ready;
 
   return sendNow(kernel, input);
 }
@@ -678,7 +678,7 @@ async function resolve(
     head: sending.head,
     selected: found.record.heads.find((entry) => entry.name === sending.head)?.selected ?? null,
     patch,
-    contributions: collectContributions(sending.kernel.pluginsFor(sending.session)),
+    contributions: collectContributions(sending.kernel.plugins.runtime(sending.session)),
   });
 
   if (result.kind === "exact") return result;

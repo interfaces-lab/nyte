@@ -128,7 +128,7 @@ describe("connection gate (§52 rule 5)", () => {
 
     const invocation = createInvocation(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -201,7 +201,7 @@ describe("connection gate (§52 rule 5)", () => {
 
   it("answers unavailable to a wire plugins.replace([]) on a host with no loader (ADV E E8)", async () => {
     const { kernel } = await setup();
-    const before = kernel.hostPlugins;
+    const before = kernel.plugins.host;
 
     await expect(connectionAs(kernel, ALL_AUTHORITY).plugins.replace([])).rejects.toMatchObject({
       code: "unavailable",
@@ -209,7 +209,7 @@ describe("connection gate (§52 rule 5)", () => {
     await expect(connectionAs(kernel, ALL_AUTHORITY).plugins.check([])).rejects.toMatchObject({
       code: "unavailable",
     });
-    expect(kernel.hostPlugins).toBe(before);
+    expect(kernel.plugins.host).toBe(before);
   });
 });
 

@@ -47,7 +47,7 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   const moved = (): void => {
     if (table.get(session) !== entry) return;
     dropScans(kernel, (key) => key === session);
-    void kernel.reloadPlugins(session).catch(() => undefined);
+    void kernel.plugins.reload(session).catch(() => undefined);
   };
 
   entry.resources.then(
@@ -270,7 +270,7 @@ async function scan(
   };
 
   scanIssues.set(resources, issues);
-  const api = kernel.runtimes().get(session)?.api("resources");
+  const api = kernel.plugins.runtimes().get(session)?.api("resources");
 
   for (const issue of issues) api?.report(issue);
 

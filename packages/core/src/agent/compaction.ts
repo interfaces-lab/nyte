@@ -138,7 +138,7 @@ async function latestCompaction(
 
 export function createCompactor(kernel: Kernel, models: Models): Compactor {
   return async ({ session, head, instructions }) => {
-    const runtime = kernel.pluginsFor(session);
+    const runtime = kernel.plugins.runtime(session);
     const configuration = await resolveHeadConfiguration(kernel, runtime, session, head);
     const { model } = configuration;
     const info = modelInfo(models, model, runtime);
@@ -230,7 +230,7 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
     if (commits.length === 0) return { kind: "ok", markdown: "", usage: ZERO_USAGE };
 
     try {
-      const runtime = kernel.pluginsFor(session);
+      const runtime = kernel.plugins.runtime(session);
       const configuration = await resolveHeadConfiguration(kernel, runtime, session, head);
 
       const lines = await withFold(kernel, session, (state) =>

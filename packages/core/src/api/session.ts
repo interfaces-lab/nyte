@@ -93,13 +93,13 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     remove: () => remove(kernel, context, id),
     stop: () => stop(kernel, id),
     async command(name, args) {
-      await kernel.pluginsFor(id).ready;
+      await kernel.plugins.runtime(id).ready;
 
       return kernel.command(context, id, name, args);
     },
     parts: {
       async create(kind, input) {
-        await kernel.pluginsFor(id).ready;
+        await kernel.plugins.runtime(id).ready;
 
         return kernel.parts.create(context, id, kind, input);
       },
@@ -116,12 +116,12 @@ function activated(
   return {
     ...part,
     async update(next, options) {
-      await kernel.pluginsFor(session).ready;
+      await kernel.plugins.runtime(session).ready;
 
       return part.update(next, options);
     },
     async act(action, input) {
-      await kernel.pluginsFor(session).ready;
+      await kernel.plugins.runtime(session).ready;
 
       return part.act(action, input);
     },
@@ -394,7 +394,7 @@ async function create(
     ...configured,
   ]);
 
-  if (outcome.kind === "set") await Promise.allSettled([kernel.pluginsFor(id).ready]);
+  if (outcome.kind === "set") await Promise.allSettled([kernel.plugins.runtime(id).ready]);
 
   return id;
 }
@@ -489,7 +489,7 @@ async function update(
 
   if (moved) {
     await kernel.environments.detach(session);
-    await Promise.allSettled([kernel.reloadPlugins(session)]);
+    await Promise.allSettled([kernel.plugins.reload(session)]);
   }
 
   return outcome;
@@ -525,9 +525,9 @@ async function remove(
     ]);
 
     if (outcome.kind === "stale") return STALE;
-    kernel.pluginState.assigned.delete(session);
+    kernel.plugins.state.assigned.delete(session);
     dropScans(kernel, (key) => key === session);
-    await kernel.closePlugins(session);
+    await kernel.plugins.close(session);
     kernel.sessions.forget(session);
     releaseParts(kernel.partTable, session);
 

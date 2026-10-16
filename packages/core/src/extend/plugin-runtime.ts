@@ -385,7 +385,7 @@ export function createPluginRuntime(
     },
     plugins: () => [...active.values()].map((entry) => entry.instance.plugin),
     instance: (id) => active.get(id)?.instance,
-    assigned: () => kernel.pluginState.assigned.get(session) ?? null,
+    assigned: () => kernel.plugins.state.assigned.get(session) ?? null,
     close: () =>
       serial(async () => {
         while (holds > 0) await (idle ??= Promise.withResolvers()).promise;
@@ -419,9 +419,9 @@ export function createPluginRuntime(
   ready.catch(async () => {
     await retired.catch(() => undefined);
 
-    if (kernel.runtimes().get(session) !== runtime) return;
+    if (kernel.plugins.runtimes().get(session) !== runtime) return;
     void kernel.environments.detach(session);
-    void kernel.closePlugins(session);
+    void kernel.plugins.close(session);
   });
 
   return runtime;
@@ -443,8 +443,8 @@ export async function replacePlugins(
   plugins: readonly Plugin<"core">[],
   scope?: { readonly session: SessionId },
 ): Promise<PluginReplacementReport> {
-  const { assigned } = kernel.pluginState;
-  const builtins = kernel.builtins.length;
+  const { assigned } = kernel.plugins.state;
+  const builtins = kernel.plugins.builtins.length;
 
   if (scope !== undefined) {
     await requireSession(kernel.store, scope.session);
@@ -454,12 +454,12 @@ export async function replacePlugins(
     return { generation: bumpGeneration(kernel), plugins: outcomes.slice(builtins) };
   }
 
-  const before = kernel.hostPlugins;
+  const before = kernel.plugins.host;
   const checked = preflight(plugins, []);
-  kernel.hostPlugins = plugins;
+  kernel.plugins.host = plugins;
 
   const sessions = await Promise.all(
-    [...kernel.runtimes().keys()].map(async (session): Promise<SessionLoad> => {
+    [...kernel.plugins.runtimes().keys()].map(async (session): Promise<SessionLoad> => {
       assigned.delete(session);
 
       try {
@@ -499,7 +499,7 @@ export async function replacePlugins(
 
   const seen = new Set<string>();
 
-  kernel.hostPlugins = checked.flatMap(({ plugin }, index) => {
+  kernel.plugins.host = checked.flatMap(({ plugin }, index) => {
     if (seen.has(plugin.id)) return [];
     seen.add(plugin.id);
     const outcome = outcomes[index];
@@ -542,10 +542,10 @@ function formatErrorMessage(error: unknown): string {
 export function hostPluginRows(kernel: Kernel): readonly HostView["plugins"][number][] {
   const rows = new Map<string, HostView["plugins"][number]>();
 
-  for (const plugin of [...kernel.builtins, ...kernel.hostPlugins]) {
+  for (const plugin of [...kernel.plugins.builtins, ...kernel.plugins.host]) {
     if (rows.has(plugin.id)) continue;
     const builtin = BUILT_IN.has(plugin.id);
-    const loaded = builtin ? undefined : kernel.pluginSources.get(plugin);
+    const loaded = builtin ? undefined : kernel.plugins.sources.get(plugin);
 
     rows.set(plugin.id, {
       id: plugin.id,
@@ -562,8 +562,8 @@ async function reloadSession(
   kernel: Kernel,
   session: SessionId,
 ): Promise<readonly PluginLoadOutcome[]> {
-  const ready = kernel.reloadPlugins(session);
-  const runtime = kernel.pluginsFor(session);
+  const ready = kernel.plugins.reload(session);
+  const runtime = kernel.plugins.runtime(session);
   await ready;
 
   return runtime.outcomes();
@@ -572,7 +572,7 @@ async function reloadSession(
 function publishPlugins(kernel: Kernel): void {
   const merged = new Map(hostPluginRows(kernel).map((row) => [row.id, row]));
 
-  for (const runtime of kernel.runtimes().values()) {
+  for (const runtime of kernel.plugins.runtimes().values()) {
     for (const row of runtime.issues()) {
       const known = merged.get(row.id);
       merged.set(
@@ -758,7 +758,7 @@ function installHook<N extends HookName<"core">>(
 }
 
 function holdPart(kernel: Kernel, definition: PartDefinition, owner: string): Disposer {
-  const { holds } = kernel.pluginState;
+  const { holds } = kernel.plugins.state;
 
   const held = holds.get(definition) ?? {
     count: 0,
