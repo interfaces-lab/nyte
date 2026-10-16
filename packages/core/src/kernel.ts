@@ -308,6 +308,9 @@ export interface PartProvider {
   ): Promise<Part<K>>;
 
   part(context: ConnectionContext, session: SessionId, id: PartId): Part<PartDefinition>;
+
+  /** Runs a parked part action again once its wait resolves. */
+  rerun(session: SessionId, call: CallId): Promise<void>;
 }
 
 export interface DurableProvider {

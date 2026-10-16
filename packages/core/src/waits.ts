@@ -20,7 +20,6 @@ import { lapsed } from "./durable.ts";
 import { dev } from "./dev-log.ts";
 import { SdkError } from "./error.ts";
 import type { Kernel } from "./kernel.ts";
-import { rerunAction } from "./part-handle.ts";
 import { storedAnswer } from "./parts.ts";
 import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "./records.ts";
 import type { CallRecord, RunRecord } from "./records.ts";
@@ -493,9 +492,9 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       if (resumer !== undefined) resumer.resume();
       else
-        void rerunAction(kernel, session, call).catch((error: unknown) =>
-          dev("waits", "rerun failed", { call, error: String(error) }),
-        );
+        void kernel.parts
+          .rerun(session, call)
+          .catch((error: unknown) => dev("waits", "rerun failed", { call, error: String(error) }));
     },
     onWoken(session, call, resume) {
       const key = formatWaitKey(session, call);

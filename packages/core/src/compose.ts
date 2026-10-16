@@ -37,7 +37,7 @@ import { createModelState } from "./model-state.ts";
 import { createConfigurationResolver, createModelsApi } from "./models.ts";
 import { createPartDefinitions } from "./part-definitions.ts";
 import type { PartDefinitions } from "./part-definitions.ts";
-import { createPart, partHandle } from "./part-handle.ts";
+import { createPart, partHandle, rerunAction } from "./part-handle.ts";
 import { createPartTable } from "./parts.ts";
 import {
   checkPlugins,
@@ -454,6 +454,7 @@ export function createKernel(input: KernelOptions): Kernel {
     parts: {
       create: (context, session, kind, value) => createPart(kernel, context, session, kind, value),
       part: (context, session, id) => partHandle(kernel, context, session, id),
+      rerun: (session, call) => rerunAction(kernel, session, call),
     },
     get partDefinitions() {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
