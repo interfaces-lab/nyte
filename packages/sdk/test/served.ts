@@ -116,7 +116,7 @@ function aborted(signal: AbortSignal): Promise<never> {
   });
 }
 
-export function operationOf(request: Request): string {
+export function readOperation(request: Request): string {
   return new URL(request.url).pathname.slice(1);
 }
 

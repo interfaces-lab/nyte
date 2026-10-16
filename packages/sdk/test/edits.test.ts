@@ -4,7 +4,7 @@ import type { Connection } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
-import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served, until } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -67,7 +67,7 @@ function paused(host: Served, ...rest: string[]) {
 }
 
 const failing = async (request: Request, next: (request: Request) => Promise<Response>) => {
-  if (operationOf(request) === "head.send") throw new TypeError("fetch failed");
+  if (readOperation(request) === "head.send") throw new TypeError("fetch failed");
 
   return next(request);
 };
@@ -124,7 +124,7 @@ describe("edits", () => {
     let posts = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.send") posts += 1;
+      if (readOperation(request) === "head.send") posts += 1;
 
       return next(request);
     });

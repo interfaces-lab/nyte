@@ -8,7 +8,7 @@ import type { Kernel } from "@nyte-ai/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
-import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served, until } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -154,7 +154,7 @@ describe("live parts across a reconnect", () => {
     let opens = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch" && ++opens === 2) patch("B");
+      if (readOperation(request) === "head.watch" && ++opens === 2) patch("B");
 
       return next(request);
     });
@@ -195,7 +195,7 @@ describe("live parts across a reconnect", () => {
     let opens = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch" && ++opens === 2) {
+      if (readOperation(request) === "head.watch" && ++opens === 2) {
         await updatePart(kernel, session.id, record, { markdown: "X", signature: null });
         patch("B");
       }
@@ -246,7 +246,7 @@ describe("live parts across a reconnect", () => {
     let opens = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch" && ++opens === 2) report("B");
+      if (readOperation(request) === "head.watch" && ++opens === 2) report("B");
 
       return next(request);
     });

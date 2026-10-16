@@ -13,7 +13,7 @@ const WALKED: Readonly<Record<string, string>> = {
 
 const SPECIFIER = /^(?:import|export)\s[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;
 
-function fileOf(from: string, specifier: string): string | null {
+function resolveSpecifier(from: string, specifier: string): string | null {
   if (specifier.startsWith(".")) return resolve(dirname(from), specifier);
   const entry = WALKED[specifier];
 
@@ -36,7 +36,7 @@ function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
     seen.set(file, specifiers);
 
     for (const specifier of specifiers) {
-      const next = fileOf(file, specifier);
+      const next = resolveSpecifier(file, specifier);
 
       if (next !== null) queue.push(next);
     }

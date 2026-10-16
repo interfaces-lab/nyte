@@ -5,7 +5,7 @@ import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal, journalLoop } from "../src/journal.ts";
 import { createLink, createRows } from "../src/rows.ts";
 import { createHeadViews, watchHead } from "../src/watch.ts";
-import { BASE, operationOf, TOKEN_SECRET, until } from "./served.ts";
+import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { answer, cleanups, client, closeOpened, open, tapped, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
@@ -19,14 +19,14 @@ describe("client streaming", () => {
     const appended: string[] = [];
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch") {
+      if (readOperation(request) === "head.watch") {
         const id = request.headers.get(STREAM_HEADER);
         assert(id !== null);
         heads.add(id);
       }
       const response = await next(request);
 
-      if (operationOf(request) !== CHANNEL_PATH || response.body === null) return response;
+      if (readOperation(request) !== CHANNEL_PATH || response.body === null) return response;
 
       return new Response(
         tapped(response.body, (chunk, id) => {
@@ -74,7 +74,7 @@ describe("client streaming", () => {
       let firstHead: string | undefined;
 
       host.intercept(async (request, next) => {
-        if (operationOf(request) === "head.watch") {
+        if (readOperation(request) === "head.watch") {
           const id = request.headers.get(STREAM_HEADER);
           assert(id !== null);
           const kinds: string[] = [];
@@ -82,7 +82,7 @@ describe("client streaming", () => {
           heads.set(id, kinds);
           firstHead ??= id;
         }
-        if (operationOf(request) !== CHANNEL_PATH) return next(request);
+        if (readOperation(request) !== CHANNEL_PATH) return next(request);
         const response = await next(request);
         assert(response.body !== null);
 
@@ -195,7 +195,7 @@ describe("client streaming", () => {
     });
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch" && ++opens === 2) {
+      if (readOperation(request) === "head.watch" && ++opens === 2) {
         gap.resolve();
         await paused.promise;
       }
@@ -234,8 +234,8 @@ describe("client streaming", () => {
     let closed = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch") opened += 1;
-      if (operationOf(request) === CHANNEL_PATH)
+      if (readOperation(request) === "head.watch") opened += 1;
+      if (readOperation(request) === CHANNEL_PATH)
         request.signal.addEventListener(
           "abort",
           () => {

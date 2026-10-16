@@ -3,7 +3,7 @@ import type { SessionView } from "@nyte-ai/schema";
 import { decodeInput } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal } from "../src/journal.ts";
-import { operationOf, until } from "./served.ts";
+import { readOperation, until } from "./served.ts";
 import { client, closeOpened, open, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
@@ -23,7 +23,7 @@ describe("client send journal", () => {
     });
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "head.send") return next(request);
+      if (readOperation(request) !== "head.send") return next(request);
       sends += 1;
 
       if (sends === 3) {
@@ -79,7 +79,7 @@ describe("client send journal", () => {
     let posts = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "head.send") return next(request);
+      if (readOperation(request) !== "head.send") return next(request);
       posts += 1;
 
       if (posts === 1) {
@@ -150,7 +150,7 @@ describe("client send journal", () => {
     const lost = Promise.withResolvers<void>();
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "head.send") return next(request);
+      if (readOperation(request) !== "head.send") return next(request);
       const body: unknown = await request.clone().json();
       const { content, options } = decodeInput("head.send", body);
       assert(typeof content === "string" && options?.id !== undefined);
@@ -213,7 +213,7 @@ describe("client send journal", () => {
     });
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "head.send") return next(request);
+      if (readOperation(request) !== "head.send") return next(request);
       posts += 1;
 
       if (posts === 1) {
@@ -263,7 +263,7 @@ describe("client send journal", () => {
     let down = true;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+      if (readOperation(request) === "head.send" && down) throw new TypeError("fetch failed");
 
       return next(request);
     });
@@ -294,7 +294,7 @@ describe("client send journal", () => {
     let posts = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "head.send") return next(request);
+      if (readOperation(request) !== "head.send") return next(request);
       posts += 1;
       const response = await next(request);
 
@@ -325,7 +325,7 @@ describe("client send journal", () => {
     let down = true;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+      if (readOperation(request) === "head.send" && down) throw new TypeError("fetch failed");
 
       return next(request);
     });
@@ -429,7 +429,7 @@ describe("client send journal", () => {
     let down = true;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.send" && down) throw new TypeError("fetch failed");
+      if (readOperation(request) === "head.send" && down) throw new TypeError("fetch failed");
 
       return next(request);
     });

@@ -7,7 +7,7 @@ import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
-import { BASE, operationOf, TOKEN_SECRET, until } from "./served.ts";
+import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { cleanups, client, closeOpened, open, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
@@ -184,7 +184,7 @@ describe("client", () => {
     await views.next();
 
     host.intercept(async (request, next) =>
-      operationOf(request) === "sessions.list"
+      readOperation(request) === "sessions.list"
         ? Response.json(encodeError(new SdkError("unauthenticated", "Revoked.")), { status: 401 })
         : next(request),
     );
@@ -230,10 +230,11 @@ describe("client", () => {
     let injected = false;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) === "sessions.watch") streamId = request.headers.get(STREAM_HEADER);
+      if (readOperation(request) === "sessions.watch")
+        streamId = request.headers.get(STREAM_HEADER);
       const response = await next(request);
 
-      if (operationOf(request) !== CHANNEL_PATH || response.body === null) return response;
+      if (readOperation(request) !== CHANNEL_PATH || response.body === null) return response;
 
       return new Response(
         response.body.pipeThrough(
@@ -268,7 +269,7 @@ describe("client", () => {
     let opens = 0;
 
     host.intercept(async (request, next) =>
-      operationOf(request) === "sessions.watch" && ++opens > 1
+      readOperation(request) === "sessions.watch" && ++opens > 1
         ? Response.json(encodeError(new SdkError("unauthenticated", "Revoked.")), { status: 401 })
         : next(request),
     );
@@ -292,7 +293,7 @@ describe("client", () => {
     let waits = 0;
 
     host.intercept(async (request, next) => {
-      if (operationOf(request) !== "receipt.settled") return next(request);
+      if (readOperation(request) !== "receipt.settled") return next(request);
       waits += 1;
       failed.resolve();
 
@@ -398,7 +399,7 @@ describe("client", () => {
     host.intercept(async (request, next) => {
       const response = await next(request);
 
-      if (operationOf(request) !== "files.bytes") return response;
+      if (readOperation(request) !== "files.bytes") return response;
 
       return new Response(
         new ReadableStream<Uint8Array>({

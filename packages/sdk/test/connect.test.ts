@@ -8,7 +8,7 @@ import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
-import { BASE, TOKEN_SECRET, operationOf, served } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -207,7 +207,7 @@ describe("connect", () => {
     const names: string[] = [];
 
     host.intercept((request, next) => {
-      names.push(operationOf(request));
+      names.push(readOperation(request));
 
       return next(request);
     });
