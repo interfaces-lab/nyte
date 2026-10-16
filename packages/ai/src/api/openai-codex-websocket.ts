@@ -226,6 +226,7 @@ function openWebSocket(
     if (proxyUrl) init.proxy = proxyUrl.href;
   }
 
+  // oxlint-disable-next-line no-restricted-globals -- genuine reflection: the constructor's typing depends on the consumer's lib
   const socket: WebSocketLike = Reflect.construct(WebSocketClass, [url, init]);
 
   return socket;
