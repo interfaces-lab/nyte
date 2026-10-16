@@ -2,7 +2,7 @@ import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type { Authority, CallId, Json, PatchSet, RunId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
-import { createConnection, createHost } from "../src/api/connection.ts";
+import { createHost } from "../src/api/connection.ts";
 import { environmentPlugin } from "../src/builtins/environment.ts";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
@@ -21,7 +21,7 @@ import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
 import { main, until } from "../src/harness.ts";
 
 function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
-  return createConnection(kernel, {
+  return kernel.handles.connection({
     principal: asId("device"),
     authority: new Set(authority),
     credential: { kind: "token", token: "t" },

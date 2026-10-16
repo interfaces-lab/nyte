@@ -1,7 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { Authority, CommitId, Message } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { createConnection } from "../src/api/connection.ts";
 import { TOKEN } from "../src/server.ts";
 import { decodeInboxRecord, inboxRef, memoryStore } from "../src/store.ts";
 import type { Session } from "../src/index.ts";
@@ -506,7 +505,7 @@ describe("admission", () => {
     const { kernel } = await setup();
     const authority: ReadonlySet<Authority> = new Set(["participant"]);
 
-    const connection = createConnection(kernel, {
+    const connection = kernel.handles.connection({
       principal: TOKEN,
       authority,
       credential: { kind: "token", token: "t" },

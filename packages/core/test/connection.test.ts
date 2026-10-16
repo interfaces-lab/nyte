@@ -2,9 +2,14 @@ import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
-import { createConnection, createHost } from "../src/api/connection.ts";
+import { createHost } from "../src/api/connection.ts";
 import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "../src/contract/host.ts";
-import { authenticateToken, gated, redeemPairing } from "../src/engine/principals.ts";
+import {
+  authenticateToken,
+  createPrincipals,
+  gated,
+  redeemPairing,
+} from "../src/engine/principals.ts";
 import { ALL_AUTHORITY } from "../src/index.ts";
 import { hostPrincipalsRef, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
@@ -71,7 +76,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
 }
 
 function connectionAs(kernel: Kernel, authority: ReadonlySet<Authority>) {
-  return createConnection(kernel, {
+  return kernel.handles.connection({
     principal: asId("caller"),
     authority,
     credential: { kind: "token", token: "t" },
@@ -80,7 +85,7 @@ function connectionAs(kernel: Kernel, authority: ReadonlySet<Authority>) {
 }
 
 async function paired(kernel: Kernel): Promise<{ principal: PrincipalId; token: string }> {
-  const { code } = await kernel.principals.pair({ authority: new Set(["participant"]) });
+  const { code } = await createPrincipals(kernel).pair({ authority: new Set(["participant"]) });
   const redeemed = await redeemPairing(kernel, code);
   assert(redeemed !== null);
 
@@ -108,7 +113,7 @@ describe("connection gate (§52 rule 5)", () => {
     await expect(participant.principals.list()).rejects.toMatchObject({ code: "denied" });
 
     await expect(
-      createConnection(kernel, CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
+      kernel.handles.connection(CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
     ).rejects.toMatchObject({
       code: "denied",
       message: "plugins.replace needs maintenance authority.",
@@ -221,7 +226,7 @@ describe("principals", () => {
 
     const burst = await Promise.allSettled([
       ...Array.from({ length: 6 }, () => authenticateToken(kernel.store, device.token)),
-      kernel.principals.pair({ authority: new Set(["participant"]) }),
+      createPrincipals(kernel).pair({ authority: new Set(["participant"]) }),
     ]);
 
     expect(burst.map((outcome) => outcome.status)).toEqual(Array(7).fill("fulfilled"));
@@ -256,12 +261,12 @@ describe("principals", () => {
 
     const { kernel } = await setup({ store });
     const device = await paired(kernel);
-    revoke = () => kernel.principals.revoke(device.principal);
+    revoke = () => createPrincipals(kernel).revoke(device.principal);
 
     expect(await authenticateToken(kernel.store, device.token)).toMatchObject({
       principal: device.principal,
     });
-    expect(await kernel.principals.list()).toEqual([]);
+    expect(await createPrincipals(kernel).list()).toEqual([]);
 
     let closed = 0;
 

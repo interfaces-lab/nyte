@@ -27,7 +27,7 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
+import type { ModelsApi, OpenOptions } from "./contract/host.ts";
 import type {
   Kernel,
   PluginHost,
@@ -49,12 +49,11 @@ import type {
   McpHub,
   McpHubFactory,
   PageTable,
-  Workspaces,
 } from "./contract/workspace.ts";
 import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
 import { createJobTable } from "./engine/jobs.ts";
 import { createPartDefinitions } from "./engine/part-definitions.ts";
-import { createConnectionRegistry, createPrincipals } from "./engine/principals.ts";
+import { createConnectionRegistry } from "./engine/principals.ts";
 import { createWaitRegistry } from "./engine/waits.ts";
 import { createPageTable } from "./env/browser.ts";
 import { createEnvironmentRegistry } from "./env/environment.ts";
@@ -167,10 +166,12 @@ export async function composeServer(
     kernel.host.report(row);
   }
 
-  const added = await kernel.workspaces.add(options.workspace).catch((error: unknown) => ({
-    kind: "failed" as const,
-    reason: error instanceof Error ? error.message : String(error),
-  }));
+  const added = await createWorkspaces(kernel, CORE_CONTEXT)
+    .add(options.workspace)
+    .catch((error: unknown) => ({
+      kind: "failed" as const,
+      reason: error instanceof Error ? error.message : String(error),
+    }));
 
   if (added.kind !== "added" && added.kind !== "exists") {
     await release(kernel, null);
@@ -250,9 +251,11 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
     ),
   );
 
+  const settings = createSettingsApi(kernel);
+
   for (const [id, value] of Object.entries(seed.settings)) {
     if ((await readKv(kernel.store, kvRef("host", "settings", id))) !== undefined) continue;
-    const outcome = await kernel.settings.apply(id, value);
+    const outcome = await settings.apply(id, value);
 
     if (outcome.kind === "applied") applied += 1;
     else if (outcome.kind === "unknown")
@@ -363,12 +366,9 @@ export function createKernel(input: KernelOptions): Kernel {
   let builtins: readonly Plugin<"core">[] | null = null;
   let waits: WaitRegistry | null = null;
   let definitions: PartDefinitions | null = null;
-  let settings: SettingsApi | null = null;
-  let workspaces: Workspaces | null = null;
   let environments: EnvironmentRegistry | null = null;
   let jobs: JobTable | null = null;
   let pages: PageTable | null = null;
-  let principals: Kernel["principals"] | null = null;
 
   const kernel: Kernel = {
     hostId: input.hostId,
@@ -429,16 +429,7 @@ export function createKernel(input: KernelOptions): Kernel {
         rerunAction(kernel, session, call),
       ));
     },
-    get models() {
-      return (modelsApi ??= models === undefined ? NO_MODELS : createModelsApi(kernel, models));
-    },
     modelState: createModelState(() => bumpGeneration(kernel)),
-    get settings() {
-      return (settings ??= createSettingsApi(kernel));
-    },
-    get workspaces() {
-      return (workspaces ??= createWorkspaces(kernel, CORE_CONTEXT));
-    },
     get partDefinitions() {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
@@ -506,11 +497,13 @@ export function createKernel(input: KernelOptions): Kernel {
         input.loadPlugins ??
         (async () => unavailable("plugin files: this host has no plugin loader")),
     },
-    get principals() {
-      return (principals ??= createPrincipals(kernel));
-    },
     handles: {
-      connection: (context) => createConnection(kernel, context),
+      connection: (context) =>
+        createConnection(
+          kernel,
+          (modelsApi ??= models === undefined ? NO_MODELS : createModelsApi(kernel, models)),
+          context,
+        ),
       session: (context, session) => sessionHandle(kernel, context, session),
       activationSession: (context, session) => activationSession(kernel, context, session),
     },

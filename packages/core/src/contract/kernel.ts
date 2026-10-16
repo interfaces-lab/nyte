@@ -44,10 +44,8 @@ import type {
   ConnectionRegistry,
   Host,
   HostState,
-  ModelsApi,
   ModelState,
   OpenOptions,
-  SettingsApi,
 } from "./host.ts";
 import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
@@ -73,7 +71,6 @@ import type {
   JobTable,
   McpHub,
   PageTable,
-  Workspaces,
   WorkspaceState,
 } from "./workspace.ts";
 
@@ -125,12 +122,7 @@ export interface Kernel {
 
   readonly waits: WaitRegistry;
 
-  readonly models: ModelsApi;
   readonly modelState: ModelState;
-
-  readonly settings: SettingsApi;
-
-  readonly workspaces: Workspaces;
 
   readonly partDefinitions: PartDefinitions;
 
@@ -159,8 +151,6 @@ export interface Kernel {
   readonly mcp: McpHub | null;
 
   readonly plugins: PluginHost;
-
-  readonly principals: Host["principals"];
 
   /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
   readonly handles: Handles;

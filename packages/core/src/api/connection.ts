@@ -1,19 +1,31 @@
 import { SdkError } from "@nyte-ai/schema";
 import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
-import type { Connection, ConnectionContext, Host, PluginFile } from "../contract/host.ts";
+import type {
+  Connection,
+  ConnectionContext,
+  Host,
+  ModelsApi,
+  PluginFile,
+} from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin } from "../contract/plugin.ts";
 import type { Head, Session } from "../contract/session.ts";
 import type { Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
-import { gate, gated } from "../engine/principals.ts";
+import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
+import { createSettingsApi } from "../extend/settings.ts";
 import { inspect } from "../store/inspect.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 
-export function createConnection(kernel: Kernel, context: ConnectionContext): Connection {
+/** Returns the connection a caller holds under `context`, each api gated by its authority; `models` is the host's models api, built once over its providers. */
+export function createConnection(
+  kernel: Kernel,
+  models: ModelsApi,
+  context: ConnectionContext,
+): Connection {
   const { authority } = context;
   const streams = new Set<() => void>();
   const sessions = createSessions(kernel, context);
@@ -123,14 +135,14 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
 
       return reader;
     },
-    models: gated("models", kernel.models, authority, {
+    models: gated("models", models, authority, {
       login(input) {
         gate(authority, "models.login");
 
-        return kernel.models.login(input);
+        return models.login(input);
       },
     }),
-    settings: gated("settings", kernel.settings, authority),
+    settings: gated("settings", createSettingsApi(kernel), authority),
     plugins: gated(
       "plugins",
       {
@@ -141,7 +153,7 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
       },
       authority,
     ),
-    principals: gated("principals", kernel.principals, authority),
+    principals: gated("principals", createPrincipals(kernel), authority),
     close,
     [Symbol.asyncDispose]: close,
   };
@@ -151,7 +163,7 @@ export function createHost(
   kernel: Kernel,
   input: { readonly credential: CredentialSource },
 ): Omit<Host, "listen"> {
-  const connection = createConnection(kernel, {
+  const connection = kernel.handles.connection({
     principal: LOCAL,
     authority: ALL_AUTHORITY,
     credential: input.credential,
