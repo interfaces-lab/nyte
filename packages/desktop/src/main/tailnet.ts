@@ -44,7 +44,7 @@ function runFile(executable: string, arguments_: readonly string[]): Promise<str
   });
 }
 
-function isTailnetIpv4(value: string): boolean {
+function inTailnetRange(value: string): boolean {
   const octets = value.split(".").map(Number);
 
   if (octets.length !== 4) return false;
@@ -63,7 +63,7 @@ function parseStatus(output: string): TailnetLookup {
     return { kind: "unavailable", state: status.BackendState };
   }
 
-  const ip = status.TailscaleIPs?.find((candidate) => isTailnetIpv4(candidate));
+  const ip = status.TailscaleIPs?.find((candidate) => inTailnetRange(candidate));
 
   if (ip === undefined) return { kind: "unavailable", state: status.BackendState };
   const dnsName = status.Self?.DNSName?.replace(/\.$/, "");

@@ -85,8 +85,9 @@ function connect(clerk: Clerk, show: (command: AccountCommand | undefined) => vo
       return;
     }
 
-    // Signed out or a session task still open: the page shows Clerk until it is done.
-    if (session === undefined) return;
+    const clerkStillShown = session === undefined;
+
+    if (clerkStillShown) return;
 
     if (session.actor != null) {
       answer({ id, kind: "failed", reason: "impersonated" });

@@ -85,8 +85,8 @@ const bridge = {
   clientSurface: "desktop",
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
+    /** Only the main process sends this private channel; the IPC event is never exposed. */
     onMenuCommand(listener: (command: AppMenuCommand) => void) {
-      // Only the main process sends this private channel; never expose the IPC event.
       const wrapped = (_event: Electron.IpcRendererEvent, command: AppMenuCommand): void => {
         listener(command);
       };
@@ -156,8 +156,8 @@ const bridge = {
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
     },
+    /** HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent. */
     onEvent(listener: (event: HostEvent) => void) {
-      // HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent.
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);
       };
@@ -186,11 +186,13 @@ function syncWindowZoom(): void {
 
 window.addEventListener("resize", syncWindowZoom);
 
-// Only Nyte main sends this private channel, and only a boolean.
-ipcRenderer.on(WINDOW_FULLSCREEN_CHANNEL, (_event, fullscreen: boolean) => {
+/** Only Nyte main sends WINDOW_FULLSCREEN_CHANNEL, and only a boolean. */
+function markFullscreen(_event: Electron.IpcRendererEvent, fullscreen: boolean): void {
   if (fullscreen) document.documentElement.dataset["fullscreen"] = "";
   else delete document.documentElement.dataset["fullscreen"];
-});
+}
+
+ipcRenderer.on(WINDOW_FULLSCREEN_CHANNEL, markFullscreen);
 
 window.addEventListener(
   "DOMContentLoaded",

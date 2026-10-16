@@ -237,8 +237,9 @@ export class RelayServer {
         void this.options.authenticate({ environmentId, proof: frame.proof }).then((code) => {
           this.auths += 1;
 
-          // The desktop gave up on this socket while it was being checked.
-          if (socket.readyState !== socket.OPEN) return;
+          const desktopGaveUp = socket.readyState !== socket.OPEN;
+
+          if (desktopGaveUp) return;
 
           if (code !== undefined) {
             socket.close(code);

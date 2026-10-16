@@ -21,7 +21,7 @@ export function webUrl(input: string): string | undefined {
 }
 
 /** Dev servers rarely speak TLS, so local and intranet hosts stay plain. */
-export function isLocalHost(hostname: string): boolean {
+export function onLocalNetwork(hostname: string): boolean {
   const host = hostname.toLowerCase();
 
   if (host === "localhost" || host.endsWith(".localhost")) return true;
@@ -46,7 +46,7 @@ export function httpsUpgrade(url: string, plainHosts: ReadonlySet<string>): stri
 
   if (parsed.protocol !== "http:") return undefined;
 
-  if (isLocalHost(parsed.hostname) || plainHosts.has(parsed.host)) return undefined;
+  if (onLocalNetwork(parsed.hostname) || plainHosts.has(parsed.host)) return undefined;
   parsed.protocol = "https:";
 
   if (parsed.port === "80") parsed.port = "";

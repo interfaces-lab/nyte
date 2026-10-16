@@ -4,7 +4,7 @@ import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
 import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
 import {
   crashRetryDelay,
-  isLocalHost,
+  onLocalNetwork,
   plainRetry,
   rememberPressedKey,
   takePressedKey,
@@ -109,7 +109,7 @@ function wireTrust(registry: SurfaceRegistry, surface: Surface, contents: WebCon
       return;
     }
 
-    if (isMainFrame && isLocalHost(parsed.hostname)) surface.untrustedHost = parsed.host;
+    if (isMainFrame && onLocalNetwork(parsed.hostname)) surface.untrustedHost = parsed.host;
     callback(false);
   });
 }

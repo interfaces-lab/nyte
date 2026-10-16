@@ -7,6 +7,7 @@ import { Menu } from "electron";
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
 import type { CallInput, CallOutput } from "../shared/ipc.ts";
 
+/** Pop the menu and resolve the chosen item's index. Accelerators only label rows: the renderer owns the shortcuts. */
 export async function showContextMenu({
   window,
   input: { items, x, y },
@@ -27,7 +28,6 @@ export async function showContextMenu({
           return {
             label: item.label,
             accelerator: item.accelerator,
-            // The accelerator only labels the row; the renderer owns the shortcut.
             registerAccelerator: false,
             enabled: item.enabled ?? true,
             click: () => resolve(index),

@@ -13,6 +13,12 @@ export function canvasShellUrl(scheme: ReturnType<typeof accountScheme>): string
   return `${scheme}://${CANVAS_HOST}/index.html`;
 }
 
+/**
+ * Serve the renderer, account and canvas shell over the privileged scheme. The scheme keeps a code
+ * cache, since the renderer bundle is served by it and a launch would otherwise compile it again,
+ * which file: URLs never did. The sandboxed canvas frame's origin is opaque, so the shell's module
+ * script, stylesheet and fonts are CORS requests.
+ */
 export function registerRenderer(input: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly frontendApiHost: string | undefined;
@@ -27,8 +33,6 @@ export function registerRenderer(input: {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
-        // The renderer bundle is served by this scheme; without this a launch
-        // compiles it again, which file: URLs never did.
         codeCache: true,
       },
     },
@@ -86,8 +90,6 @@ export function registerRenderer(input: {
         if (!target.html && target.host === ACCOUNT_HOST) return response;
         const headers = new Headers(response.headers);
 
-        // The sandboxed frame's origin is opaque, so the shell's module
-        // script, stylesheet and fonts are CORS requests.
         if (target.host === CANVAS_HOST) headers.set("Access-Control-Allow-Origin", "*");
 
         if (target.html) headers.set("Content-Security-Policy", policies[target.host]);
