@@ -25,7 +25,7 @@ export type { OpenAICodexCompactResult } from "./api/openai-codex-compact.ts";
 
 export type { OpenAICodexResponsesOptions } from "./api/openai-codex-protocol.ts";
 
-export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
+export type { OpenAICompletionsOptions } from "./api/openai-completions-params.ts";
 
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 
