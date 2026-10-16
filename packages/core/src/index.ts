@@ -109,4 +109,8 @@ export { closable, coalesce } from "./util/iterable.ts";
 
 export { matchesOutput } from "./util/json-schema.ts";
 
+export { fitsActionOutput, fitsAnswer, fitsState } from "./api/part-schema.ts";
+
+export { callable } from "./util/callable.ts";
+
 export { lineDiff } from "./util/line-diff.ts";

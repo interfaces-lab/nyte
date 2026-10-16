@@ -16,7 +16,6 @@ import type {
   ActionSchemas,
   Answered,
   Part,
-  PartActions,
   PartDefinition,
   PartState,
   RegisteredDefinition,
@@ -43,14 +42,13 @@ import {
 } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
 import { objectId } from "../util/content.ts";
-import { check, convertJsonSchema, matchesOutput } from "../util/json-schema.ts";
+import { check, convertJsonSchema } from "../util/json-schema.ts";
+import { findAction, fitsActionOutput, fitsAnswer, fitsState } from "./part-schema.ts";
 
 type Performed =
   | { readonly kind: "returned"; readonly output: unknown }
   | { readonly kind: "threw"; readonly error: unknown }
   | { readonly kind: "closed" };
-
-type Answer<K extends PartDefinition> = NonNullable<Awaited<ReturnType<Part<K>["answer"]>>>;
 
 type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 
@@ -393,7 +391,7 @@ function partHandleFor<K extends PartDefinition>(
             };
       const output = performed.output;
 
-      if (!fitsActionOutput(kind, definition, action, output, handler !== null))
+      if (!fitsActionOutput(kind, action, output, handler === null ? null : (kind ?? definition)))
         return {
           kind: "failed",
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
@@ -653,15 +651,6 @@ async function actInput(
   return { value: checked.value };
 }
 
-function findAction(
-  definition: Pick<PartDefinition, "actions"> | null,
-  action: string,
-): ActionSchemas[string] | undefined {
-  return definition !== null && Object.hasOwn(definition.actions, action)
-    ? definition.actions[action]
-    : undefined;
-}
-
 function nextState<K extends PartDefinition>(
   kind: K | null,
   next: PartState<K> | ((current: PartState<K>) => PartState<K>),
@@ -670,37 +659,6 @@ function nextState<K extends PartDefinition>(
   if (!callable(next)) return { value: next };
 
   return fitsState(kind, current) ? { value: next(current) } : null;
-}
-
-/** Whether `value` fits `kind`'s state schema; a part opened without its definition takes any state. */
-// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- inlined, `kind === null ||` cannot narrow `value` to the generic `PartState<K>`
-function fitsState<K extends PartDefinition>(
-  kind: K | null,
-  value: Json,
-): value is Json & PartState<K> {
-  return kind === null || matchesOutput(kind.state, value);
-}
-
-function fitsAnswer<K extends PartDefinition>(
-  kind: K | null,
-  answer: Answered,
-): answer is Answered & Answer<K> {
-  if (kind === null) return true;
-  const spec = findAction(kind, answer.action);
-
-  return spec !== undefined && matchesOutput(spec.input, answer.input);
-}
-
-function fitsActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
-  kind: K | null,
-  definition: Pick<PartDefinition, "actions"> | null,
-  action: A,
-  value: unknown,
-  handled: boolean,
-): value is PartActions<K>[A]["output"] {
-  const output = handled ? findAction(kind ?? definition, String(action))?.output : undefined;
-
-  return output === undefined ? value === undefined : matchesOutput(output, value);
 }
 
 function issue(message: string): ValidationIssue {

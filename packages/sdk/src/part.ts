@@ -1,10 +1,8 @@
 import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type { Message, PartId, SessionId, ValidationIssue } from "@nyte-ai/schema";
-import { matchesOutput } from "@nyte-ai/core";
-import type { ActionSchemas, Part, PartActions, PartDefinition, PartState } from "@nyte-ai/core";
+import { callable, fitsActionOutput, fitsAnswer, fitsState } from "@nyte-ai/core";
+import type { Part, PartDefinition, PartState } from "@nyte-ai/core";
 import type { Rows } from "./rows.ts";
-
-type Answer<K extends PartDefinition> = NonNullable<Awaited<ReturnType<Part<K>["answer"]>>>;
 
 export function partHandle<K extends PartDefinition>(
   rows: Rows,
@@ -15,9 +13,7 @@ export function partHandle<K extends PartDefinition>(
   return {
     id,
     async update(next, options) {
-      const given = derivesState(next)
-        ? await derived(rows, session, id, kind, next)
-        : { value: next };
+      const given = callable(next) ? await derived(rows, session, id, kind, next) : { value: next };
 
       if (given === null) return { kind: "missing" };
 
@@ -35,9 +31,9 @@ export function partHandle<K extends PartDefinition>(
       if (outcome.kind !== "ok") return outcome;
       const absent = outcome.output === null ? undefined : outcome.output;
 
-      if (matchesActionOutput(kind, action, absent)) return { kind: "ok", output: absent };
+      if (fitsActionOutput(kind, action, absent)) return { kind: "ok", output: absent };
 
-      if (matchesActionOutput(kind, action, outcome.output))
+      if (fitsActionOutput(kind, action, outcome.output))
         return { kind: "ok", output: outcome.output };
 
       return { kind: "failed", message: `This handle cannot carry ${named}'s output.` };
@@ -46,7 +42,7 @@ export function partHandle<K extends PartDefinition>(
       try {
         const answer = await rows.wait("part.answer", { session, part: id }, options);
 
-        return answer !== null && matchesAnswer(kind, answer) ? answer : null;
+        return answer !== null && fitsAnswer(kind, answer) ? answer : null;
       } catch (error) {
         if (options?.signal?.aborted === true) return null;
 
@@ -77,44 +73,7 @@ async function derived<K extends PartDefinition>(
 
   if (current === undefined) return null;
 
-  return matchesState(kind, current.state) ? { value: next(current.state) } : null;
-}
-
-// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- typeof cannot narrow a generic state away from its updater
-function derivesState<S>(next: S | ((current: S) => S)): next is (current: S) => S {
-  return typeof next === "function";
-}
-
-// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- the predicate carries the schema check to PartState<K>
-function matchesState<K extends PartDefinition>(
-  kind: K | null,
-  value: unknown,
-): value is PartState<K> {
-  return kind === null || matchesOutput(kind.state, value);
-}
-
-function matchesActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
-  kind: K | null,
-  action: A,
-  value: unknown,
-): value is PartActions<K>[A]["output"] {
-  const output = kind === null ? undefined : findAction(kind, String(action))?.output;
-
-  return output === undefined ? value === undefined : matchesOutput(output, value);
-}
-
-function matchesAnswer<K extends PartDefinition>(
-  kind: K | null,
-  answer: { readonly action: PropertyKey; readonly input: unknown },
-): answer is Answer<K> {
-  if (kind === null) return true;
-  const spec = findAction(kind, String(answer.action));
-
-  return spec !== undefined && matchesOutput(spec.input, answer.input);
-}
-
-function findAction(kind: PartDefinition, name: string): ActionSchemas[string] | undefined {
-  return Object.hasOwn(kind.actions, name) ? kind.actions[name] : undefined;
+  return fitsState(kind, current.state) ? { value: next(current.state) } : null;
 }
 
 function issue(message: string): ValidationIssue {
