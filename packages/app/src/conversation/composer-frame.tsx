@@ -70,12 +70,12 @@ interface ComposerFrameProps {
   ) => boolean | Promise<boolean>;
   placeholder: string;
   disabled?: boolean;
-  /** A run is live: empty-input Esc and the stop button both request an abort. */
+  /** A run is live: Esc and the stop button both request an abort; the draft stays. */
   busy?: boolean;
   /** The abort is asked and not yet settled; Stop draws but takes no second request. */
   stopping?: boolean;
   onAbort?: () => void;
-  /** An open composer tray handles Escape before the empty-input abort shortcut. */
+  /** An open composer tray handles Escape before the abort shortcut. */
   onDismissTray?: () => boolean;
   floating?: boolean;
   /**
@@ -521,14 +521,7 @@ export function ComposerFrame({
                 return;
               }
 
-              if (
-                busy &&
-                !stopping &&
-                document.text.trim() === "" &&
-                attachments.length === 0 &&
-                references.length === 0 &&
-                onAbort !== undefined
-              ) {
+              if (busy && !stopping && onAbort !== undefined) {
                 event.preventDefault();
                 onAbort();
               }
