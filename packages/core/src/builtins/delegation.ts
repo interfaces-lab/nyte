@@ -15,6 +15,7 @@ import type { Plugin } from "../contract/plugin.ts";
 import type { SendReceipt, Session } from "../contract/session.ts";
 import type { ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import { extractUserText } from "../util/text.ts";
+import { followedTrace, traceReceipt } from "../util/trace.ts";
 
 const ANSWER_LIMIT = 16_000;
 
@@ -338,7 +339,10 @@ function sendOnce(
   child: Session,
   prompt: string,
 ): Promise<SendReceipt> {
-  return child.send(prompt, { id: asId<"receipt">(`${invocation.call}:${child.id}`) });
+  const id = asId<"receipt">(`${invocation.call}:${child.id}`);
+  traceReceipt(id, followedTrace(invocation.session.id));
+
+  return child.send(prompt, { id });
 }
 
 async function readSubagentReply(
