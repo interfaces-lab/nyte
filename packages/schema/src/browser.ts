@@ -1,41 +1,73 @@
-import type { DocumentRevision, PageId } from "./ids.ts";
+import { Type } from "typebox";
+import { idSchema } from "./ids.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
 
-export type PageInfo = {
-  readonly id: PageId;
-  readonly url: string;
-  readonly title: string;
-  readonly holders: number;
-};
-export type PageView = {
-  readonly id: PageId;
-  readonly url: string;
-  readonly title: string;
-  readonly loading: boolean;
-  readonly revision: DocumentRevision;
-  readonly canGoBack: boolean;
-  readonly canGoForward: boolean;
-};
-export type PageSnapshot = {
-  readonly revision: DocumentRevision;
-  readonly nodes: readonly {
-    readonly ref: string;
-    readonly role: string;
-    readonly name: string;
-    readonly editable: boolean;
-    readonly depth: number;
-  }[];
-};
-export type ConsoleEntry = {
-  readonly level: "log" | "info" | "warn" | "error";
-  readonly text: string;
-  readonly at: number;
-};
+export const PageInfoType = Type.Object({
+  id: idSchema<"page">(),
+  url: Type.String(),
+  title: Type.String(),
+  holders: Type.Number(),
+});
 
-export type PageOutcome =
-  | { readonly kind: "applied"; readonly snapshot: PageSnapshot }
-  | { readonly kind: "stale"; readonly revision: DocumentRevision }
-  | {
-      readonly kind: "refused";
-      readonly reason: "unknown-ref" | "occluded" | "not-visible" | "policy";
-    }
-  | { readonly kind: "closed"; readonly reason: "released" | "reclaimed" | "crashed" };
+export type PageInfo = Decoded<typeof PageInfoType>;
+
+export const PageViewType = Type.Object({
+  id: idSchema<"page">(),
+  url: Type.String(),
+  title: Type.String(),
+  loading: Type.Boolean(),
+  revision: idSchema<"document-revision">(),
+  canGoBack: Type.Boolean(),
+  canGoForward: Type.Boolean(),
+});
+
+export type PageView = Decoded<typeof PageViewType>;
+
+export const PageSnapshotType = Type.Object({
+  revision: idSchema<"document-revision">(),
+  nodes: Type.Array(
+    Type.Object({
+      ref: Type.String(),
+      role: Type.String(),
+      name: Type.String(),
+      editable: Type.Boolean(),
+      depth: Type.Number(),
+    }),
+  ),
+});
+
+export type PageSnapshot = Decoded<typeof PageSnapshotType>;
+
+export const ConsoleEntryType = Type.Object({
+  level: Type.Enum(["log", "info", "warn", "error"]),
+  text: Type.String(),
+  at: Type.Number(),
+});
+
+export type ConsoleEntry = Decoded<typeof ConsoleEntryType>;
+
+export const PageOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("applied"), snapshot: PageSnapshotType }),
+  Type.Object({ kind: Type.Literal("stale"), revision: idSchema<"document-revision">() }),
+  Type.Object({
+    kind: Type.Literal("refused"),
+    reason: Type.Enum(["unknown-ref", "occluded", "not-visible", "policy"]),
+  }),
+  Type.Object({
+    kind: Type.Literal("closed"),
+    reason: Type.Enum(["released", "reclaimed", "crashed"]),
+  }),
+]);
+
+export type PageOutcome = Decoded<typeof PageOutcomeType>;
+
+export const PageInfoSchema: Schema<PageInfo> = standard(PageInfoType);
+
+export const PageViewSchema: Schema<PageView> = standard(PageViewType);
+
+export const PageSnapshotSchema: Schema<PageSnapshot> = standard(PageSnapshotType);
+
+export const ConsoleEntrySchema: Schema<ConsoleEntry> = standard(ConsoleEntryType);
+
+export const PageOutcomeSchema: Schema<PageOutcome> = standard(PageOutcomeType);

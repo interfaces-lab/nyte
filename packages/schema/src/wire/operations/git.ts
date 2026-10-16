@@ -11,9 +11,9 @@ import {
   GitStatusSchema,
   GitWriteType,
   PatchSetWireSchema,
-} from "../git.ts";
-import { idSchema } from "../ids.ts";
-import { pagedSchema } from "../primitives.ts";
+} from "../../git.ts";
+import { idSchema } from "../../ids.ts";
+import { pagedSchema } from "../../primitives.ts";
 import { ON_PATH, ON_WORKSPACE, PATH, wireObject, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 

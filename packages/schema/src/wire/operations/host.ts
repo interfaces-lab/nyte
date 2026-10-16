@@ -1,31 +1,31 @@
 import { Type } from "typebox";
-import { ConfigurationPatchType, ConfigurationType } from "../configuration.ts";
-import { HostViewWireSchema, SettingOutcomeSchema } from "../connection.ts";
+import { ConfigurationPatchType, ConfigurationType } from "../../configuration.ts";
+import { HostViewWireSchema, SettingOutcomeSchema } from "../../connection.ts";
 import {
   AuthorityType,
   PluginCheckReportSchema,
   PluginReplacementReportSchema,
   PrincipalViewWireType,
-} from "../host.ts";
-import { idSchema } from "../ids.ts";
-import { JsonType } from "../json.ts";
+} from "../../host.ts";
+import { idSchema } from "../../ids.ts";
+import { JsonType } from "../../json.ts";
 import {
   LoginMethodType,
   ModelAccountType,
   ModelCatalogViewSchema,
   ModelRefType,
   ProviderUsageType,
-} from "../models.ts";
-import { PromptOverrideType } from "../plugins.ts";
-import { pagedSchema, ParentFilterType } from "../primitives.ts";
-import { SessionInfoType } from "../sessions.ts";
+} from "../../models.ts";
+import { PromptOverrideType } from "../../plugins.ts";
+import { pagedSchema, ParentFilterType } from "../../primitives.ts";
+import { SessionInfoType } from "../../sessions.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
   WorkspaceInfoType,
   WorkspaceInspectionSchema,
   WorkspaceTargetType,
-} from "../workspaces.ts";
+} from "../../workspaces.ts";
 import { BYTES, NOTHING, ON_SESSION, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 

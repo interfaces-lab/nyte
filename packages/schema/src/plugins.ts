@@ -1,10 +1,22 @@
-import type { Failure, Message as ModelMessage } from "./model/message.ts";
+import { Type } from "typebox";
+import type { Failure } from "./errors.ts";
+import type { Message as ModelMessage } from "./model/message.ts";
 import type { ModelRef, Thinking, Usage } from "./models.ts";
-import type { Schema } from "./schema.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
 
-export type PromptOverride =
-  | { readonly kind: "layer"; readonly text: string; readonly order?: number }
-  | { readonly kind: "replace"; readonly text: string };
+export const PromptOverrideType = Type.Union([
+  Type.Object({
+    kind: Type.Literal("layer"),
+    text: Type.String(),
+    order: Type.Optional(Type.Number()),
+  }),
+  Type.Object({ kind: Type.Literal("replace"), text: Type.String() }),
+]);
+
+export type PromptOverride = Decoded<typeof PromptOverrideType>;
+
+export const PromptOverrideSchema: Schema<PromptOverride> = standard(PromptOverrideType);
 
 export type ModelRequestInput<T = string> = {
   readonly model: ModelRef;

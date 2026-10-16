@@ -187,6 +187,7 @@ import type {
   ContextView,
   DurableEvent,
   Execution,
+  Failure,
   FileChange,
   HeadInfo,
   Hunk,
@@ -217,7 +218,6 @@ import type {
   ValidationIssue,
   WaitTarget,
 } from "../src/index.ts";
-import type { Failure } from "../src/model/index.ts";
 
 type Case = {
   readonly schema: Schema<unknown>;
@@ -2167,7 +2167,7 @@ const factories = {
   ),
 } satisfies Record<string, Case>;
 
-const wire = new URL("../src/wire/", import.meta.url);
+const wire = new URL("../src/", import.meta.url);
 
 describe("wire schemas", () => {
   it("covers every exported schema", () => {

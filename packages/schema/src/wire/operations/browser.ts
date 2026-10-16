@@ -6,9 +6,9 @@ import {
   PageOutcomeSchema,
   PageSnapshotSchema,
   PageViewSchema,
-} from "../browser.ts";
-import { idSchema } from "../ids.ts";
-import { JsonType } from "../json.ts";
+} from "../../browser.ts";
+import { idSchema } from "../../ids.ts";
+import { JsonType } from "../../json.ts";
 import { BYTES, NOTHING, ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 

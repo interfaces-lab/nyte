@@ -1,6 +1,6 @@
 import { Type } from "typebox";
-import { ConfigurationPatchType } from "../configuration.ts";
-import { ValidationIssueType } from "../errors.ts";
+import { ConfigurationPatchType } from "../../configuration.ts";
+import { ValidationIssueType } from "../../errors.ts";
 import {
   ConfigureOutcomeSchema,
   CreateHeadOutcomeSchema,
@@ -10,26 +10,26 @@ import {
   RemoveHeadOutcomeSchema,
   SendOptionsType,
   TreeViewSchema,
-} from "../heads.ts";
-import { idSchema } from "../ids.ts";
-import { JsonType, JsonValueSchema } from "../json.ts";
-import { PositionType, UserContentType } from "../messages.ts";
+} from "../../heads.ts";
+import { idSchema } from "../../ids.ts";
+import { JsonType, JsonValueSchema } from "../../json.ts";
+import { PositionType, UserContentType } from "../../messages.ts";
 import { nullable } from "../nullable.ts";
-import { actOutcomeSchema, PlacementType } from "../parts.ts";
-import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../runs.ts";
+import { actOutcomeSchema, PlacementType } from "../../parts.ts";
+import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
   CommandOutcomeSchema,
   RemoveSessionOutcomeSchema,
   SessionInfoSchema,
   UpdateOutcomeSchema,
-} from "../sessions.ts";
+} from "../../sessions.ts";
 import {
   MessageType,
   SessionViewSchema,
   UserStatusType,
   ViewFrameSchema,
   ViewOptionsType,
-} from "../views.ts";
+} from "../../views.ts";
 import { NOTHING, ON_SESSION, RECEIPT_ID, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 

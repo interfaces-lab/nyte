@@ -3,11 +3,11 @@ import type {
   AssistantMessage,
   AssistantMessageEvent,
   Context,
-  Failure,
   Model,
 } from "@nyte-ai/schema/model";
 import type {
   Delivery,
+  Failure,
   MessageId,
   MessageSource,
   ModelInfo,

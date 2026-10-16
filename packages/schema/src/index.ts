@@ -1,27 +1,55 @@
 export * from "./browser.ts";
+
 export * from "./configuration.ts";
+
 export * from "./connection.ts";
+
 export * from "./declaration.ts";
+
 export * from "./errors.ts";
+
 export * from "./events.ts";
+
 export * from "./files.ts";
+
 export * from "./git.ts";
+
 export * from "./heads.ts";
+
 export * from "./hooks.ts";
+
 export * from "./host.ts";
+
 export * from "./ids.ts";
+
+export * from "./json.ts";
+
 export * from "./jobs.ts";
+
 export * from "./mcp.ts";
+
 export * from "./messages.ts";
+
 export * from "./models.ts";
+
 export * from "./parts.ts";
+
 export * from "./plugins.ts";
+
 export * from "./primitives.ts";
+
 export * from "./runs.ts";
+
 export * from "./schema.ts";
+
 export * from "./sessions.ts";
+
 export * from "./store.ts";
+
 export * from "./tools.ts";
+
 export * from "./views.ts";
+
 export * from "./workspaces.ts";
-export * from "./wire/index.ts";
+
+export * from "./wire/operations/index.ts";

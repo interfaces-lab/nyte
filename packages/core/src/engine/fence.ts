@@ -1,5 +1,12 @@
-import type { Failure } from "@nyte-ai/schema/model";
-import type { HeadName, RefUpdate, RunEnd, RunId, SessionId, StopOutcome } from "@nyte-ai/schema";
+import type {
+  Failure,
+  HeadName,
+  RefUpdate,
+  RunEnd,
+  RunId,
+  SessionId,
+  StopOutcome,
+} from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";

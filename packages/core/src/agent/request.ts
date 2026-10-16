@@ -3,7 +3,6 @@ import type {
   Api,
   AssistantMessage,
   Context,
-  Failure,
   Message,
   Model,
   ProviderCheckpointMaterial,
@@ -11,6 +10,7 @@ import type {
 } from "@nyte-ai/schema/model";
 import type {
   DurableEvent,
+  Failure,
   HeadName,
   ModelInfo,
   ModelRequest,

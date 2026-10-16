@@ -1,7 +1,32 @@
-import type { BlobId, CommitId, JobId, RunId, SessionId } from "./ids.ts";
-import type { RunEnd } from "./runs.ts";
+import { Type } from "typebox";
+import { idSchema } from "./ids.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
 
-export type Delivery = "steer" | "queue" | "attach";
+export const DeliveryType = Type.Enum(["steer", "queue", "attach"]);
+
+export type Delivery = Decoded<typeof DeliveryType>;
+
+export const UserContentType = Type.Union([
+  Type.String(),
+  Type.Array(
+    Type.Union([
+      Type.Object({ kind: Type.Literal("text"), text: Type.String() }),
+      Type.Object({
+        kind: Type.Literal("file"),
+        blob: idSchema<"blob">(),
+        mime: Type.String(),
+        name: Type.String(),
+      }),
+      Type.Object({
+        kind: Type.Literal("reference"),
+        path: Type.String(),
+        blob: Type.Optional(idSchema<"blob">()),
+      }),
+      Type.Object({ kind: Type.Literal("skill"), name: Type.String(), location: Type.String() }),
+    ]),
+  ),
+]);
 
 /**
  * What a message says: text, or parts. A `file` is an attachment the client
@@ -11,35 +36,50 @@ export type Delivery = "steer" | "queue" | "attach";
  * cannot read, stays a bare mention). A `skill` asks the model to follow the
  * skill at `location`. Clients draw `reference` and `skill` as chips.
  */
-export type UserContent =
-  | string
-  | readonly (
-      | { readonly kind: "text"; readonly text: string }
-      | {
-          readonly kind: "file";
-          readonly blob: BlobId;
-          readonly mime: string;
-          readonly name: string;
-        }
-      | { readonly kind: "reference"; readonly path: string; readonly blob?: BlobId }
-      | { readonly kind: "skill"; readonly name: string; readonly location: string }
-    )[];
+export type UserContent = Decoded<typeof UserContentType>;
 
-export type Position =
-  | { readonly kind: "start" }
-  | { readonly kind: "commit"; readonly id: CommitId };
+export const PositionType = Type.Union([
+  Type.Object({ kind: Type.Literal("start") }),
+  Type.Object({ kind: Type.Literal("commit"), id: idSchema<"commit">() }),
+]);
 
-export type MessageSource =
-  | { readonly kind: "user" }
-  | { readonly kind: "child"; readonly session: SessionId; readonly end: RunEnd["kind"] }
-  | { readonly kind: "job"; readonly job: JobId }
-  | { readonly kind: "shell" }
-  | { readonly kind: "action"; readonly label: string; readonly command?: string };
+export type Position = Decoded<typeof PositionType>;
 
-export type Schedule =
-  | { readonly kind: "joined"; readonly run: RunId }
-  | {
-      readonly kind: "next-turn";
-      readonly reason: "requested" | "idle" | "run-ended" | "configuration";
-    }
-  | { readonly kind: "attached" };
+export const MessageSourceType = Type.Union([
+  Type.Object({ kind: Type.Literal("user") }),
+  Type.Object({
+    kind: Type.Literal("child"),
+    session: idSchema<"session">(),
+    end: Type.Enum(["completed", "stopped", "failed"]),
+  }),
+  Type.Object({ kind: Type.Literal("job"), job: idSchema<"job">() }),
+  Type.Object({ kind: Type.Literal("shell") }),
+  Type.Object({
+    kind: Type.Literal("action"),
+    label: Type.String(),
+    command: Type.Optional(Type.String()),
+  }),
+]);
+
+export type MessageSource = Decoded<typeof MessageSourceType>;
+
+export const ScheduleType = Type.Union([
+  Type.Object({ kind: Type.Literal("joined"), run: idSchema<"run">() }),
+  Type.Object({
+    kind: Type.Literal("next-turn"),
+    reason: Type.Enum(["requested", "idle", "run-ended", "configuration"]),
+  }),
+  Type.Object({ kind: Type.Literal("attached") }),
+]);
+
+export type Schedule = Decoded<typeof ScheduleType>;
+
+export const DeliverySchema: Schema<Delivery> = standard(DeliveryType);
+
+export const UserContentSchema: Schema<UserContent> = standard(UserContentType);
+
+export const PositionSchema: Schema<Position> = standard(PositionType);
+
+export const MessageSourceSchema: Schema<MessageSource> = standard(MessageSourceType);
+
+export const ScheduleSchema: Schema<Schedule> = standard(ScheduleType);

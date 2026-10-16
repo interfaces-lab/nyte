@@ -7,8 +7,8 @@ import {
   ScanFrameSchema,
   SearchFrameSchema,
   WriteOutcomeSchema,
-} from "../files.ts";
-import { BlobIdSchema, idSchema } from "../ids.ts";
+} from "../../files.ts";
+import { BlobIdSchema, idSchema } from "../../ids.ts";
 import { nullable } from "../nullable.ts";
 import {
   BYTES,

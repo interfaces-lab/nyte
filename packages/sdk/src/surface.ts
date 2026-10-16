@@ -121,6 +121,7 @@ export type {
   EndReason,
   EnvironmentIdentity,
   Execution,
+  Failure,
   ExecutionCoverage,
   FileDocument,
   FileEntryView,
@@ -260,8 +261,6 @@ export type {
   WorkspaceTarget,
   WriteOutcome,
 } from "@nyte-ai/schema";
-
-export type { Failure } from "@nyte-ai/schema/model";
 
 export { dev, SdkError } from "@nyte-ai/core";
 

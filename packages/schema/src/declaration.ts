@@ -1,6 +1,5 @@
+import type { Authority } from "./host.ts";
 import type { Schema } from "./schema.ts";
-
-export type Authority = "participant" | "owner" | "maintenance";
 
 export type Declaration<Input, Output> = {
   readonly input: Schema<Input>;
@@ -12,4 +11,3 @@ export type Declaration<Input, Output> = {
   readonly recovery?: "replay" | "never";
   readonly wait?: true;
 };
-

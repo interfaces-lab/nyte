@@ -5,6 +5,7 @@ import type {
   CommitId,
   Delivery,
   Execution,
+  Failure,
   FileChange,
   HeadInfo,
   HeadName,
@@ -23,7 +24,6 @@ import type {
   TurnId,
   TurnInfo,
 } from "@nyte-ai/schema";
-import type { Failure } from "@nyte-ai/schema/model";
 import { INDEX } from "../contract/fold.ts";
 import type {
   Draft,

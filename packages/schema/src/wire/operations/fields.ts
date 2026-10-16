@@ -3,8 +3,8 @@ import type { TProperties, TSchema } from "typebox";
 import type { Declaration } from "../../declaration.ts";
 import { standard } from "../../schema.ts";
 import { base64Bytes } from "../base64.ts";
-import { idSchema } from "../ids.ts";
-import { withJson } from "../json.ts";
+import { idSchema } from "../../ids.ts";
+import { withJson } from "../../json.ts";
 
 /** Returns a group of operation rows, each a declaration of its schemas, kind and access. */
 export type OperationRows = { readonly [name: string]: Declaration<unknown, unknown> };

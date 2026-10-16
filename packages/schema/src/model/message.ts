@@ -142,23 +142,6 @@ export interface AssistantMessage {
   timestamp: number;
 }
 
-export type FailureClass =
-  | "rate_limit"
-  | "auth"
-  | "quota"
-  | "context_window"
-  | "overloaded"
-  | "network"
-  | "aborted"
-  | "provider"
-  | "runner";
-
-export type Failure = {
-  readonly class: FailureClass;
-  readonly message: string;
-  readonly retryAfterMs?: number;
-};
-
 export interface ToolResultMessage<TDetails = any> {
   role: "toolResult";
   toolCallId: string;

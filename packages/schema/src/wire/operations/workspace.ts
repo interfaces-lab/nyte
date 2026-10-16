@@ -1,12 +1,12 @@
 import { Type } from "typebox";
-import { ChangeSetSchema, DiffOptionsType, PatchSetWireSchema } from "../git.ts";
-import { idSchema } from "../ids.ts";
-import { JobEndSchema, JobEndType, JobViewType, OutputFrameSchema } from "../jobs.ts";
-import { McpChangeSchema, McpServerConfigType, McpViewSchema } from "../mcp.ts";
+import { ChangeSetSchema, DiffOptionsType, PatchSetWireSchema } from "../../git.ts";
+import { idSchema } from "../../ids.ts";
+import { JobEndSchema, JobEndType, JobViewType, OutputFrameSchema } from "../../jobs.ts";
+import { McpChangeSchema, McpServerConfigType, McpViewSchema } from "../../mcp.ts";
 import { nullable } from "../nullable.ts";
-import { CapabilityWireSchema } from "../primitives.ts";
-import { stopOutcomeSchema } from "../runs.ts";
-import { WorkspaceInfoSchema } from "../workspaces.ts";
+import { CapabilityWireSchema } from "../../primitives.ts";
+import { stopOutcomeSchema } from "../../runs.ts";
+import { WorkspaceInfoSchema } from "../../workspaces.ts";
 import { NOTHING, ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 
