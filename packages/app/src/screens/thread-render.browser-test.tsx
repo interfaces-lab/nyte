@@ -310,28 +310,28 @@ let stage: Stage;
 
 const PROSE = "p:not([data-sticky-user-message] *)";
 
-function topOf(element: Element): number {
+function measureTop(element: Element): number {
   return Math.round(
     element.getBoundingClientRect().top - stage.viewport.getBoundingClientRect().top,
   );
 }
 
-function rowsOf(): HTMLElement[] {
+function listRows(): HTMLElement[] {
   return Array.from(stage.log.querySelectorAll<HTMLElement>("[data-message-id]")).sort(
     (first, second) => Number(first.dataset.index) - Number(second.dataset.index),
   );
 }
 
 function visible(selector: string): HTMLElement[] {
-  const bottom = topOf(stage.dock);
+  const bottom = measureTop(stage.dock);
 
   return Array.from(stage.log.querySelectorAll<HTMLElement>(selector))
     .filter((block) => {
       const height = block.getBoundingClientRect().height;
 
-      return height > 0 && topOf(block) >= 0 && topOf(block) + height <= bottom;
+      return height > 0 && measureTop(block) >= 0 && measureTop(block) + height <= bottom;
     })
-    .sort((first, second) => topOf(first) - topOf(second));
+    .sort((first, second) => measureTop(first) - measureTop(second));
 }
 
 function distance(): number {
@@ -345,7 +345,7 @@ function buttonShown(): boolean {
 }
 
 function checkFrame(label: string): void {
-  const rows = rowsOf();
+  const rows = listRows();
 
   for (const [index, below] of rows.entries()) {
     const above = rows[index - 1];
@@ -387,7 +387,7 @@ function checkFollowing(label: string): void {
     Math.abs(distance()) <= 1,
     `${label}: ${distance().toFixed(1)}px from the end while following`,
   );
-  const last = rowsOf().at(-1);
+  const last = listRows().at(-1);
   const gap =
     last === undefined
       ? 0
@@ -419,10 +419,10 @@ async function wheelUntil(found: () => boolean, delta = -300, limit = 60): Promi
 }
 
 async function holds(rule: string, element: Element, frames: number): Promise<void> {
-  const top = topOf(element);
+  const top = measureTop(element);
   await streamFrames(frames, (frame) => {
     checkFrame(frame);
-    expectRule(rule, near(topOf(element), top), `${frame}: ${moved(element, top)}`);
+    expectRule(rule, near(measureTop(element), top), `${frame}: ${moved(element, top)}`);
     expectRule("19", element.isConnected, `${frame}: the observed element left the DOM`);
   });
 }
@@ -476,7 +476,7 @@ async function type(text: string): Promise<void> {
 const near = (value: number, target: number): boolean => Math.abs(value - target) <= 1;
 
 const moved = (element: Element, top: number): string =>
-  `moved from ${String(top)} to ${String(topOf(element))}`;
+  `moved from ${String(top)} to ${String(measureTop(element))}`;
 
 function first<T>(value: T | undefined | null, what: string): T {
   if (value === undefined || value === null)
@@ -503,12 +503,12 @@ async function checkRules(): Promise<string> {
   try {
     stage = await firstPaintedRows(container);
     checkFollowing("initial");
-    expectRule("window", rowsOf().length < TURNS, "a long thread renders every row");
+    expectRule("window", listRows().length < TURNS, "a long thread renders every row");
 
     step = "7, 12";
     const editable = first(
       visible("[data-sticky-user-message]").findLast(
-        (row) => row.querySelector("[data-composer-readonly]") !== null && topOf(row) > 100,
+        (row) => row.querySelector("[data-composer-readonly]") !== null && measureTop(row) > 100,
       ),
       "an editable message below the top edge",
     );
@@ -532,18 +532,22 @@ async function checkRules(): Promise<string> {
     step = "6, 11";
     await toEnd();
     const trigger = first(visible("[aria-expanded='false']")[0], "a closed disclosure at the end");
-    const triggerTop = topOf(trigger);
+    const triggerTop = measureTop(trigger);
     trigger.click();
     await painted();
     checkFrame("expanded");
-    expectRule("6/11", near(topOf(trigger), triggerTop), `expanding ${moved(trigger, triggerTop)}`);
+    expectRule(
+      "6/11",
+      near(measureTop(trigger), triggerTop),
+      `expanding ${moved(trigger, triggerTop)}`,
+    );
     await holds("6/9", trigger, 3);
     trigger.click();
     await painted();
     checkFrame("collapsed");
     expectRule(
       "6/11",
-      near(topOf(trigger), triggerTop),
+      near(measureTop(trigger), triggerTop),
       `collapsing ${moved(trigger, triggerTop)}`,
     );
 
@@ -556,13 +560,13 @@ async function checkRules(): Promise<string> {
     );
     expectRule(
       "17",
-      latest.dataset.stickyDisabled === "true" && topOf(latest) < -1,
-      `the latest prompt sits at ${String(topOf(latest))}`,
+      latest.dataset.stickyDisabled === "true" && measureTop(latest) < -1,
+      `the latest prompt sits at ${String(measureTop(latest))}`,
     );
 
     step = "8";
     const paragraph = first(
-      visible(PROSE).find((block) => topOf(block) > 100),
+      visible(PROSE).find((block) => measureTop(block) > 100),
       "visible prose",
     );
     const selected = first(paragraph.closest<HTMLElement>("[data-message-id]"), "the prose's row");
@@ -578,7 +582,7 @@ async function checkRules(): Promise<string> {
     await wheel(-250);
     await holds("5/9", first(visible(PROSE)[0], "visible prose"), 6);
     const rowAbove = (): HTMLElement | undefined =>
-      rowsOf().find((row) => topOf(row) + row.getBoundingClientRect().height < 0);
+      listRows().find((row) => measureTop(row) + row.getBoundingClientRect().height < 0);
     await wheelUntil(() => rowAbove() !== undefined);
     const aboveIndex = Number(
       first(rowAbove(), "a turn row above the anchor").dataset.messageId?.replace(
@@ -587,7 +591,7 @@ async function checkRules(): Promise<string> {
       ),
     );
     const held = first(visible(PROSE)[0], "visible prose");
-    const heldTop = topOf(held);
+    const heldTop = measureTop(held);
 
     const grow = async (index: number): Promise<void> => {
       const grown = view(liveText);
@@ -609,9 +613,11 @@ async function checkRules(): Promise<string> {
 
     await grow(aboveIndex);
     checkFrame("row above grew");
-    expectRule("10", near(topOf(held), heldTop), `a row above grew: ${moved(held, heldTop)}`);
+    expectRule("10", near(measureTop(held), heldTop), `a row above grew: ${moved(held, heldTop)}`);
     const spanning = (): HTMLElement | undefined =>
-      rowsOf().find((row) => topOf(row) < 0 && topOf(row) + row.getBoundingClientRect().height > 0);
+      listRows().find(
+        (row) => measureTop(row) < 0 && measureTop(row) + row.getBoundingClientRect().height > 0,
+      );
     const lowerProse = (): HTMLElement | undefined =>
       visible(PROSE).find((block) => block.closest("[data-message-id]") !== spanning());
 
@@ -620,26 +626,28 @@ async function checkRules(): Promise<string> {
     const lower = first(lowerProse(), "prose below the spanning row");
     window.getSelection()?.setBaseAndExtent(lower, 0, lower, lower.childNodes.length);
     await painted();
-    const lowerTop = topOf(lower);
+    const lowerTop = measureTop(lower);
     await grow(Number(spanningRow.dataset.messageId?.replace("landing:prompt-", "")));
     checkFrame("spanning row grew while held");
     expectRule(
       "10/11",
-      near(topOf(lower), lowerTop),
+      near(measureTop(lower), lowerTop),
       `the spanning row grew under a hold: ${moved(lower, lowerTop)}`,
     );
     window.getSelection()?.removeAllRanges();
 
     step = "16, 18";
     const deep = (): HTMLElement | undefined =>
-      rowsOf().find(
-        (row) => topOf(row) < -100 && topOf(row) + row.getBoundingClientRect().height > 150,
+      listRows().find(
+        (row) =>
+          measureTop(row) < -100 && measureTop(row) + row.getBoundingClientRect().height > 150,
       );
     await wheelUntil(() => deep() !== undefined, -150);
     const stuck = Array.from(
       deep()?.querySelectorAll<HTMLElement>("[data-sticky-user-message]") ?? [],
     ).find(
-      (candidate) => Math.abs(topOf(candidate)) <= 2 && candidate.dataset.stickyActive === "true",
+      (candidate) =>
+        Math.abs(measureTop(candidate)) <= 2 && candidate.dataset.stickyActive === "true",
     );
     expectRule(
       "16",
@@ -661,11 +669,11 @@ async function checkRules(): Promise<string> {
       tall.getBoundingClientRect().height > stage.viewport.clientHeight,
       "the tall prompt's editor fits the viewport",
     );
-    await wheelUntil(() => topOf(tall) <= -200, 100, 20);
+    await wheelUntil(() => measureTop(tall) <= -200, 100, 20);
     expectRule(
       "18",
-      tall.dataset.stickyDisabled === "true" && topOf(tall) < -100,
-      `a tall prompt sticks at ${String(topOf(tall))}`,
+      tall.dataset.stickyDisabled === "true" && measureTop(tall) < -100,
+      `a tall prompt sticks at ${String(measureTop(tall))}`,
     );
     container.style.height = "700px";
     await painted();
@@ -674,7 +682,7 @@ async function checkRules(): Promise<string> {
     await toEnd();
     await wheel(-600);
     const nearEnd = first(visible(PROSE)[0], "visible prose above the end");
-    const nearEndTop = topOf(nearEnd);
+    const nearEndTop = measureTop(nearEnd);
 
     for (const height of ["850px", "700px"]) {
       container.style.height = height;
@@ -682,7 +690,7 @@ async function checkRules(): Promise<string> {
       checkFrame(`${height} viewport while reading`);
       expectRule(
         "21",
-        near(topOf(nearEnd), nearEndTop),
+        near(measureTop(nearEnd), nearEndTop),
         `${height}: ${moved(nearEnd, nearEndTop)}`,
       );
     }
@@ -700,7 +708,7 @@ async function checkRules(): Promise<string> {
     step = "15";
     await wheel(-200);
     const anchored = first(visible(PROSE)[0], "visible prose");
-    const anchoredTop = topOf(anchored);
+    const anchoredTop = measureTop(anchored);
     const dockHeight = stage.dock.getBoundingClientRect().height;
     await type(sentence.repeat(4));
     await until(
@@ -711,7 +719,7 @@ async function checkRules(): Promise<string> {
     checkFrame("composer grew while reading");
     expectRule(
       "15",
-      near(topOf(anchored), anchoredTop),
+      near(measureTop(anchored), anchoredTop),
       `composer grew: ${moved(anchored, anchoredTop)}`,
     );
     await toEnd();
@@ -741,14 +749,14 @@ async function checkRules(): Promise<string> {
       "a visible row",
     );
     const keptId = kept.dataset.messageId;
-    const keptTop = topOf(kept);
+    const keptTop = measureTop(kept);
     flushSync(() => root.unmount());
     root = mount(container);
     stage = await firstPaintedRows(container);
-    const restored = rowsOf().find((row) => row.dataset.messageId === keptId);
+    const restored = listRows().find((row) => row.dataset.messageId === keptId);
     expectRule(
       "20/24",
-      restored !== undefined && near(topOf(restored), keptTop),
+      restored !== undefined && near(measureTop(restored), keptTop),
       `${keptId ?? ""} reopened ${restored === undefined ? "nowhere" : moved(restored, keptTop)}`,
     );
     checkFrame("after remount");
@@ -768,18 +776,18 @@ async function checkRules(): Promise<string> {
     };
     stream.push(view(liveText, [action]));
     await until(
-      () => rowsOf().some((row) => row.dataset.messageId === "landing:action-1"),
+      () => listRows().some((row) => row.dataset.messageId === "landing:action-1"),
       "the landing row",
     );
     await painted();
     checkFollowing("landing row");
     const landingRow = first(
-      rowsOf().find((row) => row.dataset.messageId === "landing:action-1"),
+      listRows().find((row) => row.dataset.messageId === "landing:action-1"),
       "the landing row",
     );
     await wheel(-300);
     const beforeLanding = first(visible(PROSE)[0], "visible prose");
-    const beforeLandingTop = topOf(beforeLanding);
+    const beforeLandingTop = measureTop(beforeLanding);
     const landedTurn = asId<"turn">("landed");
     const landed: UserMessage = {
       ...action,
@@ -812,7 +820,7 @@ async function checkRules(): Promise<string> {
     checkFrame("landed");
     expectRule(
       "9",
-      near(topOf(beforeLanding), beforeLandingTop),
+      near(measureTop(beforeLanding), beforeLandingTop),
       "a landing message moved the view",
     );
     expectRule(

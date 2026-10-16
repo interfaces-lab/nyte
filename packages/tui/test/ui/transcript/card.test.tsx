@@ -5,7 +5,7 @@ import { createSignal } from "solid-js";
 import { shellCard } from "../../../src/lib/tool-card.ts";
 import { CardView } from "../../../src/ui/transcript/card.tsx";
 import { ready } from "../../model/support.ts";
-import { viewOf } from "../../fixture/view.ts";
+import { buildView } from "../../fixture/view.ts";
 import { mount } from "../chrome/support.tsx";
 
 const KEYWORD = RGBA.fromHex("#ff0000");
@@ -34,7 +34,7 @@ test("a shell command takes its bash highlights once they land", async () => {
   ];
 
   await using app = await mount(
-    ready(viewOf((v) => v)),
+    ready(buildView((v) => v)),
     () => <CardView id="card" card={card} />,
     { width: 60, height: 4 },
     { highlight: (text, filetype) => (landed() && filetype === "bash" ? highlighted(text) : null) },

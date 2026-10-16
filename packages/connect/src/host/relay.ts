@@ -65,7 +65,7 @@ interface Channel {
   responseEnded: boolean;
 }
 
-function headersOf(response: IncomingMessage): Headers {
+function copyHeaders(response: IncomingMessage): Headers {
   const headers = new Headers();
 
   for (const [name, value] of Object.entries(response.headers))
@@ -401,7 +401,7 @@ export class RelayConnection {
       t: "head",
       ch: channel.id,
       status,
-      headers: relayResponseHeaders(headersOf(response)),
+      headers: relayResponseHeaders(copyHeaders(response)),
     });
 
     if (hasNullBody(status)) {

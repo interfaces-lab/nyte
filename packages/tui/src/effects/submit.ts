@@ -1,7 +1,8 @@
 import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyte-ai/sdk";
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
-import type { State, Submission } from "../model/state.ts";
+import { indexSkills } from "../model/commands.ts";
+import type { Submission } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
@@ -45,7 +46,7 @@ export async function submit(
     const port = ports.host.session(submission.session);
 
     const content = await prepare(submission.snapshot, {
-      skills: skillsOf(read()),
+      skills: indexSkills(read()),
       upload: (bytes) => port.upload(bytes),
     });
 
@@ -122,10 +123,4 @@ async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promise<User
   );
 
   return draftContent(snapshot, { uploads: new Map(uploaded), skills: deps.skills });
-}
-
-function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
-  const skills = state.facts.session?.view?.catalog.skills ?? [];
-
-  return new Map(skills.map((skill) => [skill.name, skill]));
 }

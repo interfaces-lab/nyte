@@ -25,11 +25,11 @@ interface MermaidSegment {
   readonly source: string;
 }
 
-function mermaidOf(segment: Segment): MermaidSegment | undefined {
+function pickMermaid(segment: Segment): MermaidSegment | undefined {
   return segment.kind === "mermaid" ? segment : undefined;
 }
 
-function markdownOf(segment: Segment): MarkdownSegment | undefined {
+function pickMarkdown(segment: Segment): MarkdownSegment | undefined {
   return segment.kind === "markdown" ? segment : undefined;
 }
 
@@ -105,7 +105,7 @@ export function Markdown(props: {
       <Index each={segments()}>
         {(segment, index) => (
           <Switch>
-            <Match when={mermaidOf(segment())}>
+            <Match when={pickMermaid(segment())}>
               {(diagram: Accessor<MermaidSegment>) => (
                 <Mermaid
                   source={diagram().source}
@@ -113,7 +113,7 @@ export function Markdown(props: {
                 />
               )}
             </Match>
-            <Match when={markdownOf(segment())}>
+            <Match when={pickMarkdown(segment())}>
               {(block: Accessor<MarkdownSegment>) => (
                 <Show when={syntaxStyle()} keyed>
                   {(style: SyntaxStyle) => (

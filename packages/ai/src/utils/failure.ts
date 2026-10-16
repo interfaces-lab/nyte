@@ -192,7 +192,7 @@ function structuredClass(message: AssistantMessage): FailureClass | undefined {
   return undefined;
 }
 
-function classOf(text: string, provider: string): FailureClass {
+function classifyText(text: string, provider: string): FailureClass {
   if (
     !NOT_CONTEXT_WINDOW_PATTERN.test(text) &&
     (CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text)) ||
@@ -272,7 +272,7 @@ export function classifyAssistantFailure(
   const failure: Failure = {
     class: reportsQuotaExhaustion(text)
       ? "quota"
-      : (structuredClass(message) ?? classOf(text, message.provider)),
+      : (structuredClass(message) ?? classifyText(text, message.provider)),
     message: text,
   };
   const delay = retryAfterMs(message);

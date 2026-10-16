@@ -52,7 +52,7 @@ export const CATALOG: ModelCatalogView = {
   ],
 };
 
-export function stateOf(
+export function buildState(
   session: FollowedSession | null,
   overrides?: { readonly cwd?: string; readonly catalog?: ModelCatalogView | null },
 ): State {

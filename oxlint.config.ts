@@ -86,6 +86,7 @@ export default defineConfig({
     "nyte-code/no-cross-package-relative-imports": "error",
     "nyte-code/no-index-of": "error",
     "nyte-code/no-is-helper-names": "error",
+    "nyte-code/no-of-lookup-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
   },
   options: {
@@ -134,7 +135,6 @@ export default defineConfig({
         "anti-slop/no-known-value-widening": "warn",
         "anti-slop/no-module-mocking": "warn",
         "anti-slop/no-object-parameters": "warn",
-        "nyte-code/no-of-lookup-names": "warn",
         "anti-slop/no-reflect-apply": "warn",
         "anti-slop/no-reflect-get": "warn",
         "anti-slop/no-runtime-typeof": "warn",
@@ -144,23 +144,6 @@ export default defineConfig({
         "anti-slop/no-unknown-type-aliases": "warn",
         "anti-slop/no-unsafe-dictionary-type": "warn",
         "anti-slop/require-readable-spacing": "warn",
-      },
-    },
-    {
-      files: [
-        "packages/canvas/**",
-        "packages/connect-worker/**",
-        "packages/core/src/**",
-        "packages/demo/**",
-        "packages/host/**",
-        "packages/lab/**",
-        "packages/mobile/**",
-        "packages/protocol/**",
-        "packages/sdk/**",
-        "packages/service/**",
-      ],
-      rules: {
-        "nyte-code/no-of-lookup-names": "error",
       },
     },
     {

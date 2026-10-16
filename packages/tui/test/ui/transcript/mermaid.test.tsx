@@ -3,8 +3,8 @@ import type { App } from "../../../src/app/context.tsx";
 import { splitMermaid } from "../../../src/ui/transcript/markdown.tsx";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { frameShowing } from "../../fixture/render.tsx";
-import { stateOf } from "../../fixture/state.ts";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { buildState } from "../../fixture/state.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
 
 const TEXT = [
@@ -45,8 +45,10 @@ describe("mermaid", () => {
   });
 
   test("the diagram renders, and the toggle shows the source through a disclosure", async () => {
-    const view = viewOf((v) => v.turn("t1", (t) => t.user("draw").text(TEXT).ended("completed")));
-    const state = stateOf(followed(view));
+    const view = buildView((v) =>
+      v.turn("t1", (t) => t.user("draw").text(TEXT).ended("completed")),
+    );
+    const state = buildState(followed(view));
     await using app = await renderWithApp(state, transcript);
     const frame = await frameShowing(app, "mermaid · click for source");
 

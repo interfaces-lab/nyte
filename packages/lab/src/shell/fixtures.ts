@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { ModelInfo, Thinking } from "@nyte-ai/sdk";
-import { catalogOf, type DesktopModelOption } from "@nyte-ai/app/catalog.ts";
+import { toDesktopCatalog, type DesktopModelOption } from "@nyte-ai/app/catalog.ts";
 
 function model(
   provider: string,
@@ -23,7 +23,7 @@ function model(
   };
 }
 
-export const modelCatalog = catalogOf({
+export const modelCatalog = toDesktopCatalog({
   generation: asId<"catalog-generation">("lab"),
   default: { provider: "anthropic", id: "claude-opus" },
   providers: [

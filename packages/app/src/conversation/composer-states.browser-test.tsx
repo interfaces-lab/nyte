@@ -301,15 +301,15 @@ const WIDTHS = { wide: 760, narrow: 340 } satisfies Record<Width, number>;
 
 const HEIGHT = 560;
 
-const sessionOf = (state: ComposerState) => asId<"session">(`composer-${state.name}`);
+const stateSession = (state: ComposerState) => asId<"session">(`composer-${state.name}`);
 
 installConnection(
   scriptedConnection({
     sessions: STATES.map((state) =>
-      sessionRow(sessionOf(state), { name: `Composer ${state.name}` }),
+      sessionRow(stateSession(state), { name: `Composer ${state.name}` }),
     ),
     views: new Map(
-      STATES.map((state) => [sessionOf(state), state.view === undefined ? [] : [state.view]]),
+      STATES.map((state) => [stateSession(state), state.view === undefined ? [] : [state.view]]),
     ),
   }).connection,
 );
@@ -328,7 +328,7 @@ function seedQueries(): void {
 }
 
 function LoneComposer({ state }: { readonly state: ComposerState }): ReactElement {
-  const sessionId = sessionOf(state);
+  const sessionId = stateSession(state);
   const sessionView = useSessionView(sessionId);
   const messages = conversationMessages(sessionView);
 
@@ -353,7 +353,7 @@ function Stage({
 }): ReactElement {
   const [router] = useState(() =>
     createAppRouter({
-      history: createMemoryHistory({ initialEntries: [`/session/${sessionOf(state)}`] }),
+      history: createMemoryHistory({ initialEntries: [`/session/${stateSession(state)}`] }),
     }),
   );
 
@@ -361,7 +361,7 @@ function Stage({
     const controller = new PaneController({
       storageKey: `composer-states-${String((mounts += 1))}`,
     });
-    controller.selectSession(sessionOf(state));
+    controller.selectSession(stateSession(state));
 
     return controller;
   });

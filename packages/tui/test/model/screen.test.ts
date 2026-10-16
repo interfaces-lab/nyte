@@ -5,12 +5,12 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
 import { blockedBy } from "../../src/model/table-input.ts";
 import type { State } from "../../src/model/state.ts";
-import { followed, viewOf } from "../fixture/view.ts";
+import { followed, buildView } from "../fixture/view.ts";
 import { blank, play, ready, S1, typed } from "./support.ts";
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
-const working = viewOf((v) =>
+const working = buildView((v) =>
   v.turn("t1", (t) => t.user("hi").tool("bash", { running: true })).live(),
 );
 
@@ -91,7 +91,7 @@ describe("placeholder", () => {
   });
 
   test("a child's question names its owner once its panel is put away", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(
@@ -127,7 +127,7 @@ describe("placeholder", () => {
   });
 
   test("the head's question comes before a child's", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(
@@ -136,7 +136,7 @@ describe("placeholder", () => {
         ),
     );
 
-    const own = viewOf((v) =>
+    const own = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -220,7 +220,7 @@ describe("hints", () => {
 
 describe("footer and status", () => {
   test("the footer shows the configurator's selection and counts later-run rows only while busy", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -238,7 +238,7 @@ describe("footer and status", () => {
   });
 
   test("OSC 7501: a question blocks, a run works, a watched run that completed is done until a key", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -255,7 +255,7 @@ describe("footer and status", () => {
     });
     expect(deriveScreen(ready(working), null).program).toEqual({ state: "working" });
 
-    const done = viewOf((v) =>
+    const done = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").tool("bash").ended("completed"))
         .idle({ run: "run-t1", end: "completed" }),
@@ -270,7 +270,7 @@ describe("footer and status", () => {
   });
 
   test("the tasks line counts unfinished tasks", () => {
-    const busyChild = viewOf((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
+    const busyChild = buildView((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
 
     expect(
       deriveScreen(
@@ -287,7 +287,9 @@ describe("footer and status", () => {
 
 describe("identity", () => {
   test("unchanged queue rows and hints keep their identity across frames", () => {
-    const view = viewOf((v) => v.pending("a", { schedule: { kind: "next-turn", reason: "idle" } }));
+    const view = buildView((v) =>
+      v.pending("a", { schedule: { kind: "next-turn", reason: "idle" } }),
+    );
     const state = ready(view);
     const first = deriveScreen(state, null);
     const second = deriveScreen(play(state, { kind: "tick", now: 5 }).state, first);

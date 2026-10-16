@@ -5,7 +5,7 @@ import type { Effect } from "../model/effect.ts";
 import type { Notice, State } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
 import type { HandlerContext } from "./scope.ts";
-import { fallback, patchOf, refreshWorkspace, selectionOf } from "./session.ts";
+import { fallback, buildConfigPatch, refreshWorkspace, readSelection } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -91,8 +91,8 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
 
   if (followed === null || followed.id !== effect.session) return;
   const state = read();
-  const current = selectionOf(state, effect.session) ?? fallback(state);
-  const patch = patchOf(effect.selection, current, state.facts.catalog.catalog);
+  const current = readSelection(state, effect.session) ?? fallback(state);
+  const patch = buildConfigPatch(effect.selection, current, state.facts.catalog.catalog);
 
   if (patch.model === undefined && patch.thinkingLevel === undefined) return;
   const result = await followed.configurator.request(patch);
@@ -197,7 +197,7 @@ export async function changeDirectory(
   };
 
   if (path === cwd) {
-    finish(noticeOf(context, "info", `Already in ${path}`));
+    finish(stampNotice(context, "info", `Already in ${path}`));
 
     return;
   }
@@ -207,14 +207,14 @@ export async function changeDirectory(
     const outcome = await port.changeDirectory(path);
 
     if (outcome.kind === "refused") {
-      finish(noticeOf(context, "error", `error: ${outcome.reason}`));
+      finish(stampNotice(context, "error", `error: ${outcome.reason}`));
 
       return;
     }
 
     dispatch({ kind: "session-info", session: effect.session, info: await port.info() });
     await refreshWorkspace(context, outcome.cwd, { mentions: port, signal: context.signal });
-    finish(noticeOf(context, "ok", `Working directory: ${outcome.cwd}`));
+    finish(stampNotice(context, "ok", `Working directory: ${outcome.cwd}`));
   } catch (error) {
     finish(errorNotice(context, error));
   }
@@ -250,7 +250,7 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
     dispatch({
       kind: "op-finished",
       op: "reload",
-      notice: noticeOf(
+      notice: stampNotice(
         context,
         "ok",
         `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
@@ -279,12 +279,12 @@ function resolveDirectory(argument: string, cwd: string): string {
   return resolve(cwd, argument);
 }
 
-export function noticeOf(context: HandlerContext, tone: Notice["tone"], text: string): Notice {
+export function stampNotice(context: HandlerContext, tone: Notice["tone"], text: string): Notice {
   return { tone, text, at: context.ports.clock.now() };
 }
 
 export function errorNotice(context: HandlerContext, error: unknown): Notice {
-  return noticeOf(context, "error", `error: ${errorMessage(error)}`);
+  return stampNotice(context, "error", `error: ${errorMessage(error)}`);
 }
 
 export function rowStatus(

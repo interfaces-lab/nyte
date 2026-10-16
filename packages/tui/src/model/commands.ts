@@ -135,7 +135,7 @@ function setting(state: State, row: SettingRow, argument: string): Intent {
   return applyChoice(state, row, choice);
 }
 
-export function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
+export function indexSkills(state: State): ReadonlyMap<string, SkillInfo> {
   return new Map(
     (state.facts.session?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
   );
@@ -151,7 +151,7 @@ export function slashNamespace(state: State): readonly SlashCommand[] {
       pluginCommands(state).map((command) => [command.name, { description: command.description }]),
     ),
     settingRows(state).map((row) => ({ id: row.id, label: row.label })),
-    skillsOf(state),
+    indexSkills(state),
   );
 }
 
@@ -220,7 +220,7 @@ export function runnableCommand(
 
   if (entry === null || entry.prompt) return null;
 
-  if (entry.name !== "cd" && hasInlineSkills(text, skillsOf(state))) return null;
+  if (entry.name !== "cd" && hasInlineSkills(text, indexSkills(state))) return null;
 
   return { entry, argument: parsed.command.argument };
 }

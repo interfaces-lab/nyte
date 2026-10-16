@@ -1,6 +1,6 @@
 const HEADING = /^(?:\*\*(.+?)\*\*|#{1,6}\s+(.+))$/u;
 
-function headingOf(line: string): string | undefined {
+function readHeading(line: string): string | undefined {
   const match = HEADING.exec(line);
 
   return (match?.[1] ?? match?.[2])?.trim();
@@ -20,7 +20,7 @@ export function reasoningHeading(text: string) {
     const trimmed = line.trim();
 
     if (trimmed === "") continue;
-    const heading = headingOf(trimmed);
+    const heading = readHeading(trimmed);
 
     if (heading === undefined || heading === "") {
       hasBody = true;
@@ -40,7 +40,7 @@ export function reasoningHeading(text: string) {
   return {
     title,
     body:
-      headingOf(lines[first]?.trim() ?? "") === undefined
+      readHeading(lines[first]?.trim() ?? "") === undefined
         ? text
         : lines
             .slice(first + 1)

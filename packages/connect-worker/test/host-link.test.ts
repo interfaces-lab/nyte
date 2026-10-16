@@ -10,7 +10,7 @@ import { LinkTransactionLookup, keyFingerprint } from "@nyte-ai/connect";
 import type { ConnectLinking, ConnectView } from "@nyte-ai/connect";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type { ConnectFile, LinkAuthorizer } from "@nyte-ai/connect/host";
-import { createProof, keyThumbprint, publicKeyOf } from "@nyte-ai/connect/signing";
+import { createProof, keyThumbprint, toPublicJwk } from "@nyte-ai/connect/signing";
 import type { PrivateJwk } from "@nyte-ai/connect/signing";
 
 const disk = vi.hoisted(() => {
@@ -228,7 +228,7 @@ async function hostCall(
       : `/v1/link-transactions/${transactionId}/${step}`;
   const proof = await createProof({
     key,
-    issuer: await keyThumbprint(publicKeyOf(key)),
+    issuer: await keyThumbprint(toPublicJwk(key)),
     audience: workerd.origin,
     method,
     path,
@@ -268,7 +268,7 @@ test("the owner approves from a browser and the host is linked under the broker 
   if (pending?.kind !== "transaction") return;
   assert.equal(pending.userCode, awaiting.userCode);
   assert.equal(pending.transaction?.verifyUrl, awaiting.verifyUrl);
-  assert.equal(awaiting.fingerprint, keyFingerprint(await keyThumbprint(publicKeyOf(pending.key))));
+  assert.equal(awaiting.fingerprint, keyFingerprint(await keyThumbprint(toPublicJwk(pending.key))));
   const { lookup, status } = await browser({
     userId: "user_alice",
     userCode: awaiting.userCode,

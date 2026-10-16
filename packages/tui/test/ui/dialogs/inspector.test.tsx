@@ -4,8 +4,8 @@ import type { Task } from "../../../src/lib/tasks.ts";
 import type { InspectorDialog } from "../../../src/model/dialogs/tasks.ts";
 import { InspectorView } from "../../../src/ui/dialogs/inspector.tsx";
 import { frameShowing } from "../../fixture/render.tsx";
-import { stateOf } from "../../fixture/state.ts";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { buildState } from "../../fixture/state.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { DialogHost } from "../../../src/ui/dialogs/dialog-host.tsx";
 import { renderWithApp } from "../transcript/harness.tsx";
 import { renderDialog } from "./harness.tsx";
@@ -88,7 +88,7 @@ test("a job with no output yet says so", async () => {
 });
 
 test("the host resolves the task from the screen, with its elapsed time", async () => {
-  const base = stateOf(null);
+  const base = buildState(null);
   const job: Task = { ...JOB, job: { ...JOB.job, startedAt: -65_000 } };
 
   await using app = await renderDialog(DIALOG, {
@@ -103,10 +103,10 @@ test("the host resolves the task from the screen, with its elapsed time", async 
 });
 
 test("an agent's inspector draws the child's transcript", async () => {
-  const base = stateOf(null);
+  const base = buildState(null);
 
   const child = followed(
-    viewOf((v) => v.turn("t1", (t) => t.user("child task").text("child reply"))),
+    buildView((v) => v.turn("t1", (t) => t.user("child task").text("child reply"))),
     "c1",
   );
 

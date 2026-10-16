@@ -6,8 +6,8 @@ import { rowWeight } from "../../../src/model/transcript.ts";
 import { revealEarlier, revealLater, WINDOW } from "../../../src/model/window.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { frameShowing } from "../../fixture/render.tsx";
-import { stateOf } from "../../fixture/state.ts";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { buildState } from "../../fixture/state.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
 import type { TranscriptHarness } from "./harness.tsx";
 
@@ -16,7 +16,7 @@ const TURNS = 50;
 const MOUNTED = WINDOW.tail / 2;
 
 function conversation(turns: number) {
-  return viewOf((v) => {
+  return buildView((v) => {
     let built = v;
 
     for (let index = 1; index <= turns; index += 1)
@@ -102,13 +102,13 @@ function driver(
   };
 }
 
-function lineOf(frame: string, text: string): number {
+function findLine(frame: string, text: string): number {
   return frame.split("\n").findIndex((line) => line.includes(text));
 }
 
 describe("scroll", () => {
   test("only the tail window mounts, with an earlier-rows line above it", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
     const hidden = TURNS - MOUNTED;
@@ -120,7 +120,7 @@ describe("scroll", () => {
   });
 
   test("revealing earlier rows keeps the viewport still", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
     const first = `question ${String(TURNS - MOUNTED + 1)}`;
@@ -129,7 +129,7 @@ describe("scroll", () => {
     await app.renderOnce();
     await app.renderOnce();
     const before = app.captureCharFrame();
-    const row = lineOf(before, first);
+    const row = findLine(before, first);
 
     expect(row).toBeGreaterThanOrEqual(0);
     expect(row).toBeLessThan(5);
@@ -140,11 +140,11 @@ describe("scroll", () => {
     const after = app.captureCharFrame();
 
     expect(app.screen().transcript.window.start).toBe(TURNS - MOUNTED - WINDOW.step / 2);
-    expect(lineOf(after, first)).toBe(row);
+    expect(findLine(after, first)).toBe(row);
   });
 
   test("browsing far back unmounts the rows below, and revealing either way keeps the viewport still", async () => {
-    const state = stateOf(followed(conversation(150)));
+    const state = buildState(followed(conversation(150)));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
@@ -162,25 +162,25 @@ describe("scroll", () => {
     drive.reveal();
     await settled();
     drive.port().row("turn:t101");
-    const top = lineOf(await settled(), "question 101");
+    const top = findLine(await settled(), "question 101");
 
     drive.reveal();
 
-    expect(lineOf(await settled(), "question 101")).toBe(top);
+    expect(findLine(await settled(), "question 101")).toBe(top);
     expect(app.screen().transcript.window).toEqual({ start: 85, end: 115 });
     expect(app.renderer.root.findDescendantById("turn:t150")).toBeUndefined();
 
     drive.port().row("turn:t110");
-    const lower = lineOf(await settled(), "question 110");
+    const lower = findLine(await settled(), "question 110");
     drive.revealLater();
 
-    expect(lineOf(await settled(), "question 110")).toBe(lower);
+    expect(findLine(await settled(), "question 110")).toBe(lower);
     expect(app.screen().transcript.window).toEqual({ start: 100, end: 150 });
     expect(app.renderer.root.findDescendantById("turn:t86")).toBeUndefined();
   });
 
   test("wheel up near the top asks for earlier rows", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
@@ -193,7 +193,7 @@ describe("scroll", () => {
   });
 
   test("leaving the bottom reports scrolled(false); latest reports scrolled(true)", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
@@ -213,25 +213,25 @@ describe("scroll", () => {
   });
 
   test("by(lines) moves the viewport by whole rows", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
     drive.port().row("turn:t40");
     await app.renderOnce();
     await app.renderOnce();
-    const before = lineOf(app.captureCharFrame(), "question 40");
+    const before = findLine(app.captureCharFrame(), "question 40");
 
     drive.port().by(-2);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 40")).toBe(before + 2);
+    expect(findLine(app.captureCharFrame(), "question 40")).toBe(before + 2);
     expect(drive.scrolled.at(-1)).toBe(false);
   });
 
   test("turn jumps go to the previous and next turn from the one at the top", async () => {
-    const state = stateOf(followed(VIEW));
+    const state = buildState(followed(VIEW));
     const drive = driver(state, () => app);
     await using app = await renderWithApp(state, drive.node, { height: 20 });
 
@@ -239,19 +239,19 @@ describe("scroll", () => {
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 40")).toBeLessThan(5);
+    expect(findLine(app.captureCharFrame(), "question 40")).toBeLessThan(5);
 
     drive.port().turn(-1);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 39")).toBeLessThan(5);
+    expect(findLine(app.captureCharFrame(), "question 39")).toBeLessThan(5);
 
     drive.port().turn(1);
     drive.port().turn(1);
     await app.renderOnce();
     await app.renderOnce();
 
-    expect(lineOf(app.captureCharFrame(), "question 41")).toBeLessThan(5);
+    expect(findLine(app.captureCharFrame(), "question 41")).toBeLessThan(5);
   });
 });

@@ -19,7 +19,7 @@ import {
   relayAddress,
 } from "../index.ts";
 import type { LinkTransactionRequest, PublicJwk } from "../index.ts";
-import { createProof, keyThumbprint, publicKeyOf } from "../signing.ts";
+import { createProof, keyThumbprint, toPublicJwk } from "../signing.ts";
 import type { PrivateJwk } from "../signing.ts";
 
 export type BrokerFetch = (input: string, init: RequestInit) => Promise<Response>;
@@ -127,7 +127,7 @@ export class DesktopBroker {
     readonly sessionToken: string;
     readonly signal: AbortSignal;
   }): Promise<LinkResponse> {
-    const publicKey: PublicJwk = publicKeyOf(input.key);
+    const publicKey: PublicJwk = toPublicJwk(input.key);
 
     const answer = await this.request({
       key: input.key,
@@ -154,7 +154,7 @@ export class DesktopBroker {
     readonly userCode: string;
     readonly signal: AbortSignal;
   }): Promise<LinkTransactionOpened> {
-    const publicKey: PublicJwk = publicKeyOf(input.key);
+    const publicKey: PublicJwk = toPublicJwk(input.key);
     const body: LinkTransactionRequest = {
       publicKey,
       name: input.name,
@@ -218,7 +218,7 @@ export class DesktopBroker {
 
     return this.request({
       key: input.key,
-      issuer: await keyThumbprint(publicKeyOf(input.key)),
+      issuer: await keyThumbprint(toPublicJwk(input.key)),
       method: step === "cancel" ? "DELETE" : "POST",
       path,
       signal: input.signal,

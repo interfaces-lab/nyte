@@ -172,7 +172,7 @@ export function fakeModels(input?: {
           ? next(request)
           : next;
 
-    return streamOf(model, reply, options);
+    return streamReply(model, reply, options);
   };
 
   const provider: Provider = {
@@ -241,7 +241,7 @@ export async function open(
   });
 }
 
-function streamOf(
+function streamReply(
   model: Model<Api>,
   reply: Reply,
   options: SimpleStreamOptions | undefined,

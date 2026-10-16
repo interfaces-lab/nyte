@@ -3,11 +3,11 @@ import { ManualClock } from "@opentui/core/testing";
 import { createTickers } from "../../src/app/ticker.ts";
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../src/lib/constants.ts";
 import { Spinner } from "../../src/ui/chrome/spinner.tsx";
-import { stateOf } from "../fixture/state.ts";
+import { buildState } from "../fixture/state.ts";
 import { renderWithApp } from "./transcript/harness.tsx";
 
 test("spinner frames advance with the clock and the interval stops on unmount", async () => {
-  const app = await renderWithApp(stateOf(null), () => <Spinner />);
+  const app = await renderWithApp(buildState(null), () => <Spinner />);
 
   expect(app.captureCharFrame()).toContain(SPINNER_FRAMES[0]);
   expect(app.clock.pendingTimerCount).toBe(1);

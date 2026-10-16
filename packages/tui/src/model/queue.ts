@@ -25,7 +25,7 @@ export type Place =
   | { readonly kind: "sending"; readonly retryAt: number | null; readonly reason: string | null }
   | { readonly kind: "uncovered" };
 
-function placeOf(message: UserMessage): Place {
+function placeMessage(message: UserMessage): Place {
   const { status } = message;
 
   if (status.kind === "unsent")
@@ -72,7 +72,7 @@ export function queueRows(
   return queuedMessages(view).map((message) => ({
     id: message.id,
     text: queuedText(message),
-    place: placeOf(message),
+    place: placeMessage(message),
     delivery: message.delivery,
     withdrawable: message.status.kind === "pending",
     editable: message.source.kind !== "action",

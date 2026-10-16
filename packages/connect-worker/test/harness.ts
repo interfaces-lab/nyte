@@ -25,7 +25,7 @@ import {
   createProof,
   generateMachineKey,
   keyThumbprint,
-  publicKeyOf,
+  toPublicJwk,
   randomId,
   sha256,
   signClaims,
@@ -101,7 +101,7 @@ export class FakeDesktop {
   }
 
   get publicKey(): PublicJwk {
-    return publicKeyOf(this.key);
+    return toPublicJwk(this.key);
   }
 
   async handle(text: string, keys: BrokerKeys, now: () => number): Promise<Response> {

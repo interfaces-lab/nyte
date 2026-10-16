@@ -66,7 +66,7 @@ function said(text: string): AssistantMessage["content"][number] {
   return { type: "text", text };
 }
 
-function messageOf(content: AssistantMessage["content"]): AssistantMessage {
+function buildMessage(content: AssistantMessage["content"]): AssistantMessage {
   return {
     role: "assistant",
     content,
@@ -86,11 +86,11 @@ function messageOf(content: AssistantMessage["content"]): AssistantMessage {
   };
 }
 
-function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
+function streamReply(reply: Reply | undefined): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const content = reply?.content ?? [];
   const calls = content.some((block) => block.type === "toolCall");
-  const partial = messageOf(content);
+  const partial = buildMessage(content);
 
   stream.push({ type: "start", partial });
 
@@ -125,7 +125,7 @@ function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
 
 function abortable(signal: AbortSignal): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
-  const partial = messageOf([said("Hal")]);
+  const partial = buildMessage([said("Hal")]);
   stream.push({ type: "start", partial });
   stream.push({ type: "text_start", contentIndex: 0, partial });
   stream.push({ type: "text_delta", contentIndex: 0, delta: "Hal", partial });
@@ -180,7 +180,7 @@ function scripted(
         usage: () => ({ ...NONE, output: 1, total: 1 }),
       };
     },
-    stream: async () => respondWith(streamOf(queue.shift())),
+    stream: async () => respondWith(streamReply(queue.shift())),
     tools: {
       async execute(toolCall) {
         seen.executed.push(toolCall.name);
@@ -502,7 +502,7 @@ describe("agentLoop", () => {
   it("fails a stream that ends without done or error as a provider failure, never stopped (D7, A F15)", async () => {
     const { config, seen } = scripted([], {
       async stream() {
-        const events = streamOf({ content: [said("Half")] });
+        const events = streamReply({ content: [said("Half")] });
         const unfinished = createAssistantMessageEventStream();
 
         for await (const event of events) {

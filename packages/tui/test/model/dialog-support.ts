@@ -2,9 +2,11 @@ import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import type { ListDialog } from "../../src/model/dialogs/list.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
 import type { State } from "../../src/model/state.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 
-export const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+export const idle = buildView((v) =>
+  v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")),
+);
 
 export function top(state: State): Dialog | null {
   return deriveScreen(state, null).dialog;

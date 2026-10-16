@@ -12,7 +12,7 @@ import {
   taskTiming,
   unfinishedTask,
 } from "../lib/tasks.ts";
-import { commandRegistry, skillsOf } from "./commands.ts";
+import { commandRegistry, indexSkills } from "./commands.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { Choice, ListDialog, ListPurpose } from "./dialogs/list.ts";
 import { visibleChoices } from "./dialogs/list.ts";
@@ -119,7 +119,7 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
         ),
       ];
     case "skills":
-      return [...skillsOf(state).values()]
+      return [...indexSkills(state).values()]
         .toSorted((left, right) => left.name.localeCompare(right.name))
         .map((skill) => choice(skill.name, skill.name, skill.description));
     case "queue":

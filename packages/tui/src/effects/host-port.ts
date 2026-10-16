@@ -185,7 +185,7 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
 }
 
 function sessionPort(host: Connection, session: Session): SessionPort {
-  const receiptOf = (message: MessageId) => session.receipt(asId(message));
+  const readReceipt = (message: MessageId) => session.receipt(asId(message));
   let views: PagedViews | null = null;
 
   return {
@@ -211,7 +211,7 @@ function sessionPort(host: Connection, session: Session): SessionPort {
       return { message: receipt.message };
     },
     async withdraw(message) {
-      const receipt = receiptOf(message);
+      const receipt = readReceipt(message);
       const before = await receipt.status();
 
       if (before.kind === "missing") return "gone";
@@ -231,7 +231,7 @@ function sessionPort(host: Connection, session: Session): SessionPort {
         : "landed-first";
     },
     async revise(message, content, options) {
-      const status = await receiptOf(message).status();
+      const status = await readReceipt(message).status();
 
       if (status.kind === "missing") return "gone";
 

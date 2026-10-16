@@ -18,7 +18,7 @@ const caller: ConnectionContext = {
   origin: null,
 };
 
-async function* streamOf(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+async function* streamBytes(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
   yield bytes;
 }
 
@@ -62,7 +62,7 @@ async function tools(kernel: Kernel, session: SessionId) {
   };
 }
 
-function textOf(outcome: ToolOutcome): string {
+function readText(outcome: ToolOutcome): string {
   assert(outcome.kind === "ok");
 
   return outcome.content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n");
@@ -164,7 +164,7 @@ describe("file batches", () => {
     assert(capability.kind === "available");
     const files = capability.api;
     const bytes = new Uint8Array([0, 1, 2, 250]);
-    const blob = await files.upload(streamOf(bytes));
+    const blob = await files.upload(streamBytes(bytes));
     const reader = await host.blob(blob);
 
     expect(await collect(reader.chunks())).toEqual([bytes]);
@@ -195,13 +195,13 @@ describe("environment tools", () => {
     const image = new Uint8Array([137, 80, 78, 71]);
     disk.put("/work/project/logo.png", image);
 
-    expect(textOf(await call("read", { path: "src/a.ts" }))).toBe(
+    expect(readText(await call("read", { path: "src/a.ts" }))).toBe(
       "     1\talpha\n     2\tbeta\n     3\tgamma",
     );
-    expect(textOf(await call("read", { path: "src/a.ts", offset: 2, limit: 1 }))).toBe(
+    expect(readText(await call("read", { path: "src/a.ts", offset: 2, limit: 1 }))).toBe(
       "     2\tbeta\n… 1 more lines; continue with offset 3.",
     );
-    expect(textOf(await call("read", { path: "nope.ts" }))).toBe("nope.ts does not exist.");
+    expect(readText(await call("read", { path: "nope.ts" }))).toBe("nope.ts does not exist.");
 
     const binary = await call("read", { path: "logo.png" });
 
@@ -218,7 +218,7 @@ describe("environment tools", () => {
     const call = await tools(kernel, session.id);
 
     expect(
-      textOf(await call("write", { path: "deep/new.ts", content: "let a = 1;\nlet b = 1;\n" })),
+      readText(await call("write", { path: "deep/new.ts", content: "let a = 1;\nlet b = 1;\n" })),
     ).toBe("Wrote 22 bytes to deep/new.ts.");
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 1;\nlet b = 1;\n");
 
@@ -240,7 +240,7 @@ describe("environment tools", () => {
       { oldText: "let b = 1;", newText: "let b = 3;" },
     ];
 
-    expect(textOf(await call("edit", { path: "deep/new.ts", edits }))).toBe(
+    expect(readText(await call("edit", { path: "deep/new.ts", edits }))).toBe(
       "Edited deep/new.ts: 2 replacements.",
     );
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 2;\nlet b = 3;\n");
@@ -261,9 +261,9 @@ describe("environment tools", () => {
     disk.put("/work/project/src/lib/b.ts", "b\n");
     disk.put("/work/project/README.md", "r\n");
 
-    expect(textOf(await call("list", {}))).toBe("README.md\nsrc/");
-    expect(textOf(await call("list", { path: "src" }))).toBe("a.ts\nlib/");
-    expect(textOf(await call("list", { path: "src", limit: 1 }))).toBe(
+    expect(readText(await call("list", {}))).toBe("README.md\nsrc/");
+    expect(readText(await call("list", { path: "src" }))).toBe("a.ts\nlib/");
+    expect(readText(await call("list", { path: "src", limit: 1 }))).toBe(
       "a.ts\n… 1 more entries not shown.",
     );
 
@@ -279,10 +279,10 @@ describe("environment tools", () => {
       process.exit(0);
     };
 
-    expect(textOf(await call("bash", { command: "echo hi", description: "Greets" }))).toBe(
+    expect(readText(await call("bash", { command: "echo hi", description: "Greets" }))).toBe(
       "hi\n[exit code 0]",
     );
-    expect(textOf(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
+    expect(readText(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
   });
 
   it("publishes a running shell call's output tail as its part's progress", async () => {
@@ -300,7 +300,7 @@ describe("environment tools", () => {
       process.exit(0);
     };
 
-    expect(textOf(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
+    expect(readText(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
     expect(progress).toEqual(["one", "one\ntwo"]);
   });
 

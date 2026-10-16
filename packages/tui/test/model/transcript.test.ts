@@ -3,7 +3,7 @@ import { deriveTranscript, turnStatus } from "../../src/model/transcript.ts";
 import type { Row, TranscriptModel, TurnModel } from "../../src/model/transcript.ts";
 import type { ShellJob, TranscriptLocal } from "../../src/model/state.ts";
 import { mountWindow, revealEarlier, revealLater, WINDOW } from "../../src/model/window.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 
 const LOCAL: TranscriptLocal = {
   following: true,
@@ -31,7 +31,7 @@ function shell(id: string, startedAt: number): ShellJob {
 
 describe("rows", () => {
   test("turns in view order, notes before their turn, shells by start time; queued messages are not rows", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed"))
         .turn("t2", (t) =>
@@ -53,7 +53,7 @@ describe("rows", () => {
   });
 
   test("a turn with nothing landed yet is not a row: an ended one, or a queued message's", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.ended("stopped"))
         .turn("t2", (t) => t.user("x").ended("completed"))
@@ -65,7 +65,7 @@ describe("rows", () => {
   });
 
   test("a report that landed is a block of its turn, an action shows as its own block", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) =>
         t.report({ child: "s9" }, "ok").action("Fix lint", "prompt").ended("completed"),
       ),
@@ -78,7 +78,7 @@ describe("rows", () => {
   });
 
   test("unchanged rows and turns keep their identity across frames", () => {
-    const view = viewOf((v) => v.turn("t1", (t) => t.user("a").text("b").ended("completed")));
+    const view = buildView((v) => v.turn("t1", (t) => t.user("a").text("b").ended("completed")));
     const first = deriveTranscript(view, [], LOCAL, null);
     const second = deriveTranscript(view, [], LOCAL, first);
 
@@ -86,7 +86,7 @@ describe("rows", () => {
     expect(turnsIn(second)[0]).toBe(turnsIn(first)[0]);
   });
   test("a streaming delta rebuilds only the live turn; settled turns keep their row", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("a").text("b").ended("completed"))
         .turn("t2", (t) => t.user("c").text("d", { id: "live", live: true }))
@@ -117,7 +117,7 @@ describe("rows", () => {
 
 describe("turn status", () => {
   test("a settled turn reports Worked for from endedAt - startedAt", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed", { endedAt: 4_500 })),
     );
 
@@ -132,7 +132,7 @@ describe("turn status", () => {
   });
 
   test("a stop reads as an aborted failure", () => {
-    const view = viewOf((v) => v.turn("t1", (t) => t.user("a").text("b").ended("stopped")));
+    const view = buildView((v) => v.turn("t1", (t) => t.user("a").text("b").ended("stopped")));
     const model = deriveTranscript(view, [], LOCAL, null);
 
     expect(turnsIn(model)[0]?.status).toMatchObject({
@@ -143,19 +143,19 @@ describe("turn status", () => {
   });
 
   test("the live turn shows retrying, thinking or working; a lone prompt before its run is unanswered", () => {
-    const thinking = viewOf((v) =>
+    const thinking = buildView((v) =>
       v.turn("t1", (t) => t.user("a").thinking("hmm", { live: true })).live(),
     );
 
-    const retrying = viewOf((v) =>
+    const retrying = buildView((v) =>
       v.turn("t1", (t) => t.user("a")).retrying("rate limited", 9_000),
     );
 
-    const working = viewOf((v) =>
+    const working = buildView((v) =>
       v.turn("t1", (t) => t.user("a").activity("Exploring").tool("read", { running: true })).live(),
     );
 
-    const unanswered = viewOf((v) => v.turn("t1", (t) => t.user("a"), { run: undefined }));
+    const unanswered = buildView((v) => v.turn("t1", (t) => t.user("a"), { run: undefined }));
 
     const status = (view: typeof thinking) =>
       turnsIn(deriveTranscript(view, [], LOCAL, null))[0]?.status;
@@ -172,7 +172,7 @@ describe("turn status", () => {
   });
 
   test("a turn waiting on a question says so", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("a").waiting("q1"))
         .question(

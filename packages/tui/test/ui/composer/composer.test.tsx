@@ -6,11 +6,11 @@ import { DARK_THEME } from "../../../src/lib/theme.ts";
 import { NO_PARTS } from "../../../src/model/draft.ts";
 import type { Msg } from "../../../src/model/msg.ts";
 import { Composer } from "../../../src/ui/composer/composer.tsx";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { play, ready, S1 } from "../../model/support.ts";
 import { mount } from "../chrome/support.tsx";
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
 function child(view: SessionView): Task {
   const info: SessionInfo = { ...followed(view, "c1").info, parent: S1 };
@@ -43,7 +43,7 @@ describe("composer", () => {
   });
 
   test("the placeholder names whose question the composer answers", async () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(

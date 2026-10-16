@@ -42,12 +42,12 @@ export async function follow(
 
   const configurator = new SessionConfigurator({
     configure: (patch) => port.configure(configurePatch(patch)),
-    readSelected: () => toRunChoice(selectionOf(read(), id) ?? fallback(read())),
+    readSelected: () => toRunChoice(readSelection(read(), id) ?? fallback(read())),
     onChange: (selected) =>
       dispatch({
         kind: "selection",
         session: id,
-        selection: toSelection(selected, catalogOf(read())),
+        selection: toSelection(selected, readCatalog(read())),
       }),
     onAcknowledged: (choice, patch) => {
       if (patch.model !== undefined)
@@ -68,10 +68,10 @@ export async function follow(
 
   const views = each(port.watch(), controller.signal, (view) => {
     dispatch({ kind: "view", session: id, view });
-    const selected = choiceOf(view.configuration.selected ?? view.configuration.effective);
+    const selected = readRunChoice(view.configuration.selected ?? view.configuration.effective);
 
     if (selected !== null) configurator.observeSelected(selected);
-    const shown = toSelection(configurator.selected, catalogOf(read()));
+    const shown = toSelection(configurator.selected, readCatalog(read()));
     const current = read().facts.session;
     const unchanged =
       current !== null &&
@@ -222,25 +222,25 @@ async function each<T>(
   }
 }
 
-export function selectionOf(state: State, session: SessionId): Selection | null {
+export function readSelection(state: State, session: SessionId): Selection | null {
   const followed = state.facts.session;
 
   if (followed === null || followed.id !== session || followed.view === null) return null;
   const { selected: chosen, effective } = followed.view.configuration;
-  const selected = choiceOf(chosen ?? effective);
+  const selected = readRunChoice(chosen ?? effective);
 
-  return selected === null ? null : toSelection(selected, catalogOf(state));
+  return selected === null ? null : toSelection(selected, readCatalog(state));
 }
 
 export function fallback(state: State): Selection {
   const followed = state.facts.session;
   const configuration = followed?.view?.configuration;
-  const selected = choiceOf(configuration?.selected ?? configuration?.effective ?? null);
+  const selected = readRunChoice(configuration?.selected ?? configuration?.effective ?? null);
 
-  if (selected !== null) return toSelection(selected, catalogOf(state));
+  if (selected !== null) return toSelection(selected, readCatalog(state));
 
   return (
-    fallbackSelection(catalogOf(state), followed?.selection.effort ?? "medium") ??
+    fallbackSelection(readCatalog(state), followed?.selection.effort ?? "medium") ??
     PLACEHOLDER_SELECTION
   );
 }
@@ -273,7 +273,7 @@ function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selec
   return { model: choice.model, effort: choice.thinkingLevel, fast };
 }
 
-export function patchOf(
+export function buildConfigPatch(
   selection: Partial<Selection>,
   current: Selection,
   catalog: ModelCatalogView | null,
@@ -310,13 +310,13 @@ function configurePatch(patch: ConfigPatch): {
   };
 }
 
-function choiceOf(configuration: Configuration | null): RunChoice | null {
+function readRunChoice(configuration: Configuration | null): RunChoice | null {
   return configuration === null
     ? null
     : { model: configuration.model, thinkingLevel: configuration.thinking };
 }
 
-function catalogOf(state: State): ModelCatalogView | null {
+function readCatalog(state: State): ModelCatalogView | null {
   return state.facts.catalog.catalog;
 }
 
@@ -365,7 +365,7 @@ export async function createSession(
   const remembered = read().facts.settings.thinkingLevel;
 
   if (input.effort !== null || remembered === undefined) return id;
-  const catalog = catalogOf(read());
+  const catalog = readCatalog(read());
   const model = input.selection?.model ?? fallbackSelection(catalog, remembered)?.model;
   const info =
     model === undefined || catalog === null

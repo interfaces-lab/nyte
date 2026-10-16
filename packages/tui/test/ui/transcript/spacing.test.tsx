@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
-import { stateOf } from "../../fixture/state.ts";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { buildState } from "../../fixture/state.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
 
-const VIEW = viewOf((v) =>
+const VIEW = buildView((v) =>
   v.turn("t1", (t) =>
     t
       .user("First question, long enough to wrap onto several rows when the terminal is narrow")
@@ -22,7 +22,7 @@ describe("spacing", () => {
     "one blank row between every pair of blocks at width %i",
     async (width) => {
       await using app = await renderWithApp(
-        stateOf(followed(VIEW)),
+        buildState(followed(VIEW)),
         (current) => (
           <Transcript
             model={() => current.screen().transcript}

@@ -23,7 +23,7 @@ const question = definePart({
   fallback: (_state, { id }) => `Ask ${id}`,
 });
 
-function stepOf(session: SessionId, call: CallId): ConnectionContext {
+function stepContext(session: SessionId, call: CallId): ConnectionContext {
   let sequence = 0;
 
   return {
@@ -603,7 +603,7 @@ describe("jobs", () => {
     const body =
       (on: Kernel) =>
       async (durable: Durable): Promise<Json> => {
-        const job = await workspaceHandle(on, stepOf(session.id, call), workspace).jobs.start({
+        const job = await workspaceHandle(on, stepContext(session.id, call), workspace).jobs.start({
           command: "deploy --prod",
           session: session.id,
         });

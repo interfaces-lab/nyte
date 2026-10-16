@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { scheduler } from "node:timers/promises";
 import { keyFingerprint, randomUserCode } from "../index.ts";
 import type { LinkResponse, LinkTransactionState } from "../index.ts";
-import { generateMachineKey, keyThumbprint, publicKeyOf, randomId } from "../signing.ts";
+import { generateMachineKey, keyThumbprint, toPublicJwk, randomId } from "../signing.ts";
 import type { PrivateJwk } from "../signing.ts";
 import type { ConnectLinking } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
@@ -316,7 +316,7 @@ export class LinkFlow {
       kind: "awaiting_approval",
       verifyUrl: transaction.verifyUrl,
       userCode,
-      fingerprint: keyFingerprint(await keyThumbprint(publicKeyOf(key))),
+      fingerprint: keyFingerprint(await keyThumbprint(toPublicJwk(key))),
       expiresAt: transaction.expiresAt,
     };
 

@@ -37,7 +37,7 @@ import {
   createProof,
   generateMachineKey,
   keyThumbprint,
-  publicKeyOf,
+  toPublicJwk,
   signClaims,
   verifyClaims,
 } from "@nyte-ai/connect/signing";
@@ -524,7 +524,7 @@ export async function startWorkerdBroker(
         });
       const key = input.key ?? (await generateMachineKey());
       const body = JSON.stringify({
-        publicKey: publicKeyOf(key),
+        publicKey: toPublicJwk(key),
         name: input.name ?? "Studio Mac",
       });
       const response = await broker.fetch(`${origin}${BROKER_ROUTES.environments}`, {
@@ -534,7 +534,7 @@ export async function startWorkerdBroker(
           "content-type": "application/json",
           "nyte-proof": await createProof({
             key,
-            issuer: await keyThumbprint(publicKeyOf(key)),
+            issuer: await keyThumbprint(toPublicJwk(key)),
             audience: origin,
             method: "POST",
             path: BROKER_ROUTES.environments,

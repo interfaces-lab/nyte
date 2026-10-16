@@ -9,13 +9,13 @@ import { Hints } from "../../../src/ui/chrome/hints.tsx";
 import { NoticeLine } from "../../../src/ui/chrome/notice.tsx";
 import { TasksLine } from "../../../src/ui/chrome/tasks-line.tsx";
 import type { State } from "../../../src/model/state.ts";
-import { viewOf } from "../../fixture/view.ts";
+import { buildView } from "../../fixture/view.ts";
 import { play, ready, S1, typed } from "../../model/support.ts";
 import { mount } from "./support.tsx";
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
-const working = viewOf((v) =>
+const working = buildView((v) =>
   v.turn("t1", (t) => t.user("hi").tool("bash", { running: true })).live(),
 );
 

@@ -62,7 +62,7 @@ import {
   useWatchSelect,
 } from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
-import { catalogOf } from "./catalog.ts";
+import { toDesktopCatalog } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
 import { mentionFile } from "./conversation/message-references.ts";
 import { subagentActivity } from "./conversation/subagent-status.ts";
@@ -649,7 +649,7 @@ export function useCatalog(_sessionId?: SessionId) {
     queryFn: readModelCatalog,
     placeholderData: cachedModelCatalog,
     select: (view): DesktopCatalog => {
-      const catalog = catalogOf(view);
+      const catalog = toDesktopCatalog(view);
       const model = pending.at(-1)?.variables;
 
       return model === undefined || catalog.defaults === undefined

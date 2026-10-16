@@ -51,7 +51,7 @@ class VerificationFailed extends Error {
   }
 }
 
-export function publicKeyOf(key: PrivateJwk): PublicJwk {
+export function toPublicJwk(key: PrivateJwk): PublicJwk {
   return { kty: "OKP", crv: "Ed25519", x: key.x };
 }
 

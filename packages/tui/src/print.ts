@@ -26,7 +26,7 @@ export type PrintOutcome =
   | { readonly kind: "cancelled"; readonly signal?: "SIGINT" | "SIGTERM" }
   | { readonly kind: "input-required" };
 
-function outcomeOf(end: RunEnd): PrintOutcome {
+function toPrintOutcome(end: RunEnd): PrintOutcome {
   switch (end.kind) {
     case "completed":
       return { kind: "completed" };
@@ -125,7 +125,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
         return { kind: "input-required" };
       }
 
-      if (turn.state.kind === "ended") return outcomeOf(turn.state.end);
+      if (turn.state.kind === "ended") return toPrintOutcome(turn.state.end);
     }
   } catch (cause) {
     if (aborted()) {

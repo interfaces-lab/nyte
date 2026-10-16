@@ -3,7 +3,7 @@ import {
   BUSY_COMPOSER_PLACEHOLDER,
   COMPOSER_PLACEHOLDER,
 } from "../lib/constants.ts";
-import { statusOf } from "../lib/program-status.ts";
+import { readProgramStatus } from "../lib/program-status.ts";
 import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
@@ -190,7 +190,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     tasksLine: tasksLine(state, question),
     notice: state.local.notice,
     failure: state.local.failures.at(-1) ?? null,
-    program: statusOf(
+    program: readProgramStatus(
       {
         busy: input.run.kind !== "idle",
         execution,

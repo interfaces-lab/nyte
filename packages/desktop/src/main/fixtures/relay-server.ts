@@ -52,7 +52,7 @@ interface Exchange {
   reset: boolean;
 }
 
-function textOf(data: RawData): string {
+function decodeFrame(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
 
   return Buffer.isBuffer(data) ? data.toString("utf8") : Buffer.from(data).toString("utf8");
@@ -224,10 +224,10 @@ export class RelayServer {
     let state: "pending" | "verifying" | "ready" = "pending";
 
     socket.on("message", (data, isBinary) => {
-      const frame = isBinary ? undefined : parseDesktopFrame(textOf(data));
+      const frame = isBinary ? undefined : parseDesktopFrame(decodeFrame(data));
 
       if (frame === undefined) {
-        this.violation(socket, isBinary ? "binary" : textOf(data).slice(0, 200));
+        this.violation(socket, isBinary ? "binary" : decodeFrame(data).slice(0, 200));
 
         return;
       }

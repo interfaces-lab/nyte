@@ -6,10 +6,10 @@ import { indexedMention } from "../../src/model/completion.ts";
 import type { Effect } from "../../src/model/effect.ts";
 import { reduce } from "../../src/model/reduce.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 import { NOW, play, ready, S1, typed } from "./support.ts";
 
-const queued = viewOf((v) =>
+const queued = buildView((v) =>
   v
     .turn("t1", (t) => t.user("go"))
     .live()
@@ -27,7 +27,7 @@ const queued = viewOf((v) =>
     .unsent("sending", { id: "m4" }),
 );
 
-const idle = viewOf((v) =>
+const idle = buildView((v) =>
   v
     .turn("t1", (t) => t.user("first prompt").text("ok").ended("completed"))
     .turn("t2", (t) => t.report({ child: "s9" }, "report").text("noted").ended("completed"))
@@ -148,7 +148,7 @@ describe("queue operations", () => {
   });
 
   test("an action row cannot be edited", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .pending(
           "prompt",
@@ -287,7 +287,7 @@ describe("send", () => {
   });
 
   test("a typed answer clears the composer and keeps a snapshot to hand back", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -544,7 +544,7 @@ describe("completion", () => {
 });
 
 describe("plugin commands", () => {
-  const view = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+  const view = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
   const withProbe: SessionView = {
     ...view,
@@ -910,7 +910,7 @@ describe("session and view intents", () => {
   });
 
   test("Ctrl+End follows the latest again; revealing earlier keeps the viewport, then pages older messages in", () => {
-    const many = viewOf((v) => {
+    const many = buildView((v) => {
       let built = v;
 
       for (let index = 0; index < 30; index += 1)

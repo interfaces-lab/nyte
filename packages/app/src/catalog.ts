@@ -24,7 +24,7 @@ export interface DesktopCatalog {
   readonly defaults?: { readonly model: ModelRef; readonly thinkingLevel: Thinking | undefined };
 }
 
-export function catalogOf(view: ModelCatalogView): DesktopCatalog {
+export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
   const models = view.providers.flatMap((provider) =>
     provider.models.map((model): DesktopModelOption => ({
       key: `${model.ref.provider}/${model.ref.id}`,

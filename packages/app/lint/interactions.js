@@ -3,7 +3,7 @@ import { Value } from "typebox/value";
 
 const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.String() });
 
-const nameOf = (node) => {
+const readName = (node) => {
   if (node.type === "Identifier" || node.type === "JSXIdentifier") return node.name;
 
   if (node.type === "Literal") return node.value;
@@ -12,7 +12,7 @@ const nameOf = (node) => {
 };
 
 const attribute = (node, name) =>
-  node.attributes.find((item) => item.type === "JSXAttribute" && nameOf(item.name) === name);
+  node.attributes.find((item) => item.type === "JSXAttribute" && readName(item.name) === name);
 
 const literal = (node) =>
   node?.type === "JSXExpressionContainer"
@@ -27,7 +27,7 @@ const disabledFlag = (node) =>
   node.type === "UnaryExpression"
     ? disabledFlag(node.argument)
     : /(?:^d|D)isabled$/.test(
-        String(nameOf(node.type === "MemberExpression" ? node.property : node)),
+        String(readName(node.type === "MemberExpression" ? node.property : node)),
       );
 
 const visibleText = (node) =>
@@ -37,7 +37,7 @@ const visibleText = (node) =>
     !node.openingElement?.attributes.some(
       (item) =>
         item.type === "JSXSpreadAttribute" &&
-        item.argument.arguments?.some((argument) => nameOf(argument) === "srOnly"),
+        item.argument.arguments?.some((argument) => readName(argument) === "srOnly"),
     ) &&
     node.children.some((child) => child.type === "JSXText" && child.value.trim()));
 
@@ -84,10 +84,10 @@ export default {
   rules: {
     "no-clickable-non-control": rule("Use a control for a clickable target.", (context) => ({
       JSXOpeningElement(node) {
-        if (!nonControls.has(nameOf(node.name)) || !attribute(node, "onClick")) return;
+        if (!nonControls.has(readName(node.name)) || !attribute(node, "onClick")) return;
 
         if (["option", "treeitem"].includes(literal(attribute(node, "role")?.value))) return;
-        const element = nameOf(node.name);
+        const element = readName(node.name);
         context.report({
           node,
           message:
@@ -100,7 +100,7 @@ export default {
     })),
     "drag-only-touch-action": rule("Reserve touchAction none for drag handles.", (context) => ({
       Property(node) {
-        if (nameOf(node.key) !== "touchAction" || literal(node.value) !== "none") return;
+        if (readName(node.key) !== "touchAction" || literal(node.value) !== "none") return;
         const path = context.filename.replaceAll("\\", "/");
         const allowed = [...dragHandles].find(([file]) => path.endsWith(file))?.[1];
 
@@ -109,8 +109,8 @@ export default {
         for (let parent = node.parent; parent; parent = parent.parent) {
           if (parent.type !== "Property") continue;
 
-          if (allowed?.has(nameOf(parent.key))) return;
-          style ??= nameOf(parent.key);
+          if (allowed?.has(readName(parent.key))) return;
+          style ??= readName(parent.key);
         }
 
         context.report({
@@ -125,11 +125,11 @@ export default {
     })),
     "restore-popup-focus": rule("Return focus after closing a popup.", (context) => ({
       JSXAttribute(node) {
-        if (nameOf(node.name) !== "finalFocus" || literal(node.value) !== false) return;
+        if (readName(node.name) !== "finalFocus" || literal(node.value) !== false) return;
         context.report({
           node,
           message:
-            `finalFocus={false} on <${nameOf(node.parent.name)}> drops focus to the page when ` +
+            `finalFocus={false} on <${readName(node.parent.name)}> drops focus to the page when ` +
             `the popup closes, so a keyboard user loses their place. Omit finalFocus to return ` +
             `focus to the trigger, or pass a ref to the element that should take it.`,
         });
@@ -149,7 +149,7 @@ export default {
         },
         MemberExpression(node) {
           if (node.object.type !== "Identifier" || node.computed) return;
-          namespaces.get(node.object.name)?.used.add(nameOf(node.property));
+          namespaces.get(node.object.name)?.used.add(readName(node.property));
         },
         "Program:exit"() {
           for (const [local, { specifier, used }] of namespaces) {
@@ -173,7 +173,7 @@ export default {
       (context) => ({
         JSXOpeningElement(node) {
           if (
-            nameOf(node.name) !== "Pressable" ||
+            readName(node.name) !== "Pressable" ||
             attribute(node, "accessibilityRole") ||
             attribute(node, "accessibilityLabel")
           )
@@ -216,7 +216,7 @@ export default {
 
           if (
             parent?.type === "JSXAttribute" &&
-            !["meta", "description"].includes(nameOf(parent.name))
+            !["meta", "description"].includes(readName(parent.name))
           )
             return;
 
@@ -240,7 +240,7 @@ export default {
     ),
     "title-case-control-label": rule("Use Title Case for visible control labels.", (context) => ({
       JSXElement(node) {
-        if (!labels.has(nameOf(node.openingElement.name))) return;
+        if (!labels.has(readName(node.openingElement.name))) return;
 
         const children = node.children.filter(
           (child) => child.type !== "JSXText" || child.value.trim(),
@@ -270,7 +270,7 @@ export default {
         context.report({
           node: children[0],
           message:
-            `"${text}" on <${nameOf(node.openingElement.name)}> is not Title Case. Write ` +
+            `"${text}" on <${readName(node.openingElement.name)}> is not Title Case. Write ` +
             `"${titled}": button and menu labels capitalize every word except short ones such ` +
             `as a, of, and to after the first.`,
         });

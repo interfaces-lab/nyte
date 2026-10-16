@@ -14,7 +14,7 @@ const bridge = window.nyteAccount;
 const redirectUrl = new URL(window.location.pathname, window.location.href).href;
 
 /** The account's sign-in address and nothing more: no name, username, or photo. */
-function labelOf(user: User): string {
+function formatAccountLabel(user: User): string {
   return (
     user.primaryEmailAddress?.emailAddress ?? user.primaryPhoneNumber?.phoneNumber ?? "Nyte account"
   );
@@ -65,7 +65,7 @@ function connect(clerk: Clerk, show: (command: AccountCommand | undefined) => vo
 
     report(
       session !== undefined && user != null
-        ? { kind: "signed_in", label: labelOf(user) }
+        ? { kind: "signed_in", label: formatAccountLabel(user) }
         : { kind: "signed_out" },
     );
 

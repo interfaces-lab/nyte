@@ -5,7 +5,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { reduceList, visibleChoices } from "../../src/model/dialogs/list.ts";
 import { rowDraft, visibleModels } from "../../src/model/dialogs/model-picker.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { followed, viewOf } from "../fixture/view.ts";
+import { followed, buildView } from "../fixture/view.ts";
 import { play, ready, S1, typed } from "./support.ts";
 import { idle, top, key, list } from "./dialog-support.ts";
 
@@ -102,7 +102,7 @@ describe("the choice list", () => {
 
 describe("accepting a row", () => {
   test("the question panel answers, with a choice or typed words, and steps aside meanwhile", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -149,7 +149,7 @@ describe("accepting a row", () => {
   });
 
   test("grouped questions retain selections through Back and submit one complete group", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .question(
@@ -276,7 +276,7 @@ describe("accepting a row", () => {
   });
 
   test("editing custom text after Back preserves an offered option with the same label", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .question(
@@ -345,7 +345,7 @@ describe("accepting a row", () => {
   });
 
   test("a parent question preserves an unfinished child's group with the same part id", () => {
-    const childView = viewOf((v) =>
+    const childView = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(
@@ -379,7 +379,7 @@ describe("accepting a row", () => {
       { kind: "dialog", command: { kind: "pick", index: 0 } },
     );
 
-    const parent = viewOf((v) =>
+    const parent = buildView((v) =>
       v
         .turn("t1", (t) => t.user("parent"))
         .question(
@@ -416,7 +416,7 @@ describe("accepting a row", () => {
   });
 
   test("late answer outcomes release only their own request", () => {
-    const old = viewOf((v) =>
+    const old = buildView((v) =>
       v
         .turn("old", (t) => t.user("go"))
         .question(
@@ -426,7 +426,7 @@ describe("accepting a row", () => {
         .waiting("q-old"),
     );
 
-    const next = viewOf((v) =>
+    const next = buildView((v) =>
       v
         .turn("new", (t) => t.user("go"))
         .question(
@@ -511,7 +511,7 @@ describe("accepting a row", () => {
   });
 
   test("the queue list: Enter sends now, edit and delete close, earlier and later keep it open", () => {
-    const queued = viewOf((v) =>
+    const queued = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -620,7 +620,7 @@ describe("accepting a row", () => {
   });
 
   test("the tasks list switches sections, inspects a task and stops one without closing", () => {
-    const running = viewOf((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
+    const running = buildView((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
 
     const task: Task = {
       kind: "agent",

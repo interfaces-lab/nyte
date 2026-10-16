@@ -64,7 +64,10 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
   ) => {
     requests.push({ model, context, options });
 
-    return streamOf(model, queue.shift() ?? { error: "No reply was scripted for this request." });
+    return streamReply(
+      model,
+      queue.shift() ?? { error: "No reply was scripted for this request." },
+    );
   };
 
   registry.setProvider({
@@ -171,7 +174,7 @@ export async function until<T>(
   }
 }
 
-function streamOf(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
+function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
 
   const message: AssistantMessage = {

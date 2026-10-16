@@ -160,7 +160,7 @@ const EMPTY_SUMMARY: TurnInfo["summary"] = {
   removed: 0,
 };
 
-export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
+export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionView {
   const messages: Message[] = [];
   const parts: PartView[] = [];
   const turns: TurnInfo[] = [];
@@ -194,7 +194,7 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
       at: tick(),
       kind: "user",
       content: options?.content ?? text,
-      source: sourceOf(options?.source ?? { kind: "user" }),
+      source: buildSource(options?.source ?? { kind: "user" }),
       delivery: options?.delivery ?? "steer",
       status,
       siblings: SINGLE,
@@ -213,7 +213,7 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
     pending(text, status, options) {
       const message = input(text, options, {
         kind: "pending",
-        schedule: scheduleOf(status.schedule),
+        schedule: buildSchedule(status.schedule),
         covered: status.covered ?? true,
       });
 
@@ -309,7 +309,7 @@ export function viewOf(build: (view: ViewBuilder) => ViewBuilder): SessionView {
             ? null
             : {
                 id: asId(last.run),
-                end: endOf(last.end, undefined),
+                end: buildEnd(last.end, undefined),
                 endedAt: last.endedAt ?? clock,
               },
       };
@@ -461,7 +461,7 @@ function turnBuilder(
 
   const builder: TurnBuilder = {
     user(text, options) {
-      user(options?.content ?? text, sourceOf(options?.source ?? { kind: "user" }), {
+      user(options?.content ?? text, buildSource(options?.source ?? { kind: "user" }), {
         id: options?.id,
         delivery: options?.delivery,
       });
@@ -544,7 +544,7 @@ function turnBuilder(
     },
     ended(kind, options) {
       endedAt = options?.endedAt ?? shared.tick();
-      turnState = { kind: "ended", end: endOf(kind, options?.failure) };
+      turnState = { kind: "ended", end: buildEnd(kind, options?.failure) };
 
       return builder;
     },
@@ -581,7 +581,7 @@ function turnBuilder(
   };
 }
 
-function endOf(kind: "completed" | "failed" | "stopped", failure: string | undefined): RunEnd {
+function buildEnd(kind: "completed" | "failed" | "stopped", failure: string | undefined): RunEnd {
   if (kind === "completed") return { kind, usage: USAGE };
 
   if (kind === "stopped") return { kind };
@@ -589,11 +589,11 @@ function endOf(kind: "completed" | "failed" | "stopped", failure: string | undef
   return { kind, failure: { class: "runner", message: failure ?? "failed" } };
 }
 
-function scheduleOf(spec: ScheduleSpec): Schedule {
+function buildSchedule(spec: ScheduleSpec): Schedule {
   return spec.kind === "joined" ? { kind: "joined", run: asId(spec.run) } : spec;
 }
 
-function sourceOf(spec: SourceSpec): MessageSource {
+function buildSource(spec: SourceSpec): MessageSource {
   if (spec.kind === "child")
     return { kind: "child", session: asId(spec.session), end: spec.end ?? "completed" };
 

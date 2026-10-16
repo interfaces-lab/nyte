@@ -491,7 +491,7 @@ describe("integration of round 2 (§61–§63)", () => {
     const receipt = await session.send("Second?");
     stop = async () => {
       stop = async () => undefined;
-      await session.run(runOf((await session.view()).messages, "Second?")).stop();
+      await session.run(findRun((await session.view()).messages, "Second?")).stop();
     };
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
@@ -535,7 +535,7 @@ describe("integration of round 2 (§61–§63)", () => {
   });
 });
 
-function runOf(messages: readonly Message[], content: string): RunId {
+function findRun(messages: readonly Message[], content: string): RunId {
   for (const message of messages)
     if (
       message.kind === "user" &&

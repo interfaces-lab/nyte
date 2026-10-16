@@ -7,11 +7,11 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { shellCard, toolCard } from "../../src/lib/tool-card.ts";
 import type { ToolCardModel } from "../../src/lib/tool-card.ts";
 import type { ShellJob } from "../../src/model/state.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 import type { TurnBuilder } from "../fixture/view.ts";
 
-function toolOf(name: string, spec: Parameters<TurnBuilder["tool"]>[1]): ToolMessage {
-  const view = viewOf((v) => v.turn("t1", (t) => t.user("go").tool(name, spec)));
+function findTool(name: string, spec: Parameters<TurnBuilder["tool"]>[1]): ToolMessage {
+  const view = buildView((v) => v.turn("t1", (t) => t.user("go").tool(name, spec)));
   const message = view.messages.find((candidate) => showsTool(candidate));
 
   if (message === undefined || !showsTool(message)) throw new Error("no tool message");
@@ -59,7 +59,7 @@ const UNIFIED = [
 
 describe("toolCard", () => {
   test("a running call shows its progress inline, in the user colour", () => {
-    const running = toolOf("search", { running: true });
+    const running = findTool("search", { running: true });
 
     const card = toolCard(
       withState(running, { ...running.state, phase: "running", progress: { text: "scanning" } }),
@@ -73,7 +73,7 @@ describe("toolCard", () => {
   });
 
   test("a settled call with many lines says how many and previews head and tail", () => {
-    const card = toolCard(toolOf("search", { output: "1\n2\n3\n4\n5\n6\n7\n8" }), [], false);
+    const card = toolCard(findTool("search", { output: "1\n2\n3\n4\n5\n6\n7\n8" }), [], false);
 
     expect(text(card)).toBe("✓ ran search  8 lines");
     expect(card.body).toMatchObject({ kind: "text", role: "dim" });
@@ -83,20 +83,20 @@ describe("toolCard", () => {
   });
 
   test("expanded shows the whole output", () => {
-    const card = toolCard(toolOf("search", { output: "1\n2\n3\n4\n5\n6\n7\n8" }), [], true);
+    const card = toolCard(findTool("search", { output: "1\n2\n3\n4\n5\n6\n7\n8" }), [], true);
 
     expect(card.body.kind === "text" ? card.body.text : "").toBe("1\n2\n3\n4\n5\n6\n7\n8");
   });
 
   test("a failure is red with the reason as its body", () => {
-    const card = toolCard(toolOf("search", { failed: "boom" }), [], false);
+    const card = toolCard(findTool("search", { failed: "boom" }), [], false);
 
     expect(text(card)).toBe("✗ search  boom · failed");
     expect(card.heading[0]?.role).toBe("error");
   });
 
   test("a stopped custom call keeps its label and says stopped", () => {
-    const settled = toolOf("Search docs", {});
+    const settled = findTool("Search docs", {});
 
     const card = toolCard(
       withState(settled, {
@@ -114,7 +114,7 @@ describe("toolCard", () => {
   });
 
   test("an edit that settled with a patch reports +added -removed and draws the patch", () => {
-    const edit = toolOf("edit", { class: { kind: "edit", path: "src/a.ts" } });
+    const edit = findTool("edit", { class: { kind: "edit", path: "src/a.ts" } });
 
     const card = toolCard(
       withState(edit, {
@@ -140,14 +140,14 @@ describe("toolCard", () => {
   });
 
   test("a unified diff in any output counts its hunks and draws them", () => {
-    const card = toolCard(toolOf("git", { output: UNIFIED }), [], false);
+    const card = toolCard(findTool("git", { output: UNIFIED }), [], false);
 
     expect(text(card)).toBe("✓ ran git  2 hunks");
     expect(card.body.kind).toBe("diff");
   });
 
   test("a collapsed read names the size and the key that expands it, with no body", () => {
-    const read = toolOf("read", {
+    const read = findTool("read", {
       class: { kind: "read", path: "src/a.ts" },
       output: "line 1\nline 2\nline 3",
     });
@@ -162,7 +162,7 @@ describe("toolCard", () => {
   });
 
   test("shell output previews its tail and names the earlier lines", () => {
-    const shell = toolOf("bash", {
+    const shell = findTool("bash", {
       class: { kind: "shell", command: "ls" },
       output: "1\n2\n3\n4\n5\n6\n7\n8",
     });
@@ -178,12 +178,12 @@ describe("toolCard", () => {
   test("a delegation card finds its child by the call that created it", () => {
     const child = asId<"session">("child-1");
 
-    const create = toolOf("task", {
+    const create = findTool("task", {
       class: { kind: "delegate", role: "create", child: null, title: "explore" },
       running: true,
     });
 
-    const childView = viewOf((v) =>
+    const childView = buildView((v) =>
       v.turn("c1", (t) => t.user("look around").tool("grep", { running: true })).live(),
     );
 
@@ -222,7 +222,7 @@ describe("toolCard", () => {
       child: asId("child-1"),
       title: null,
     };
-    const send = toolOf("send", { class: sendClass, output: "" });
+    const send = findTool("send", { class: sendClass, output: "" });
     const card = toolCard(send, [], false);
 
     expect(text(card)).toBe("✓ messaged subagent");

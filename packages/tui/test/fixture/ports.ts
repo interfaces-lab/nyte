@@ -108,7 +108,7 @@ function queue<T>(): AsyncIterable<T> & {
   };
 }
 
-function infoOf(id: string): SessionInfo {
+function buildSessionInfo(id: string): SessionInfo {
   return {
     id: asId(id),
     name: null,
@@ -154,7 +154,7 @@ function fakeSession(id: string): FakeSession {
     watchTasks: () => tasks,
     watch: () => views,
     earlier: async () => 0,
-    info: async () => infoOf(id),
+    info: async () => buildSessionInfo(id),
     workspace: async () => ({ id: asId("workspace"), cwd: "/tmp/fake-workspace" }),
     async send(content, options) {
       calls.send.push({ content, delivery: options.delivery });
@@ -263,7 +263,7 @@ export function fakeHost(): FakeHost {
       return addSession(`created-${String(created)}`).id;
     },
     async *rootSessions() {
-      yield* [...sessions.keys()].map(infoOf);
+      yield* [...sessions.keys()].map(buildSessionInfo);
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,

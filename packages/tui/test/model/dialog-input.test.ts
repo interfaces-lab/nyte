@@ -4,7 +4,7 @@ import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import type { FieldEdit } from "../../src/model/dialogs/field.ts";
 import { visibleChoices } from "../../src/model/dialogs/list.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 import { play, ready } from "./support.ts";
 import { idle, top, key, list } from "./dialog-support.ts";
 
@@ -308,7 +308,7 @@ describe("typed field", () => {
   });
 
   test("typing in the question panel moves the answer into the composer", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t", (t) => t.user("go"))
         .question(

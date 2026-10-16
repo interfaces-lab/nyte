@@ -3,9 +3,9 @@ import type { Effect } from "../model/effect.ts";
 import type { Notice } from "../model/state.ts";
 import type { LoginDriver } from "../services/auth.ts";
 import { errorMessage } from "../lib/format.ts";
-import { errorNotice, noticeOf } from "./commands.ts";
+import { errorNotice, stampNotice } from "./commands.ts";
 import type { HandlerContext } from "./scope.ts";
-import { fallback, selectionOf } from "./session.ts";
+import { fallback, readSelection } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -105,7 +105,7 @@ export async function login(effect: Of<"login">, context: HandlerContext): Promi
       kind: "op-finished",
       op: "auth",
       notice: controller.signal.aborted
-        ? noticeOf(context, "info", "Authentication cancelled.")
+        ? stampNotice(context, "info", "Authentication cancelled.")
         : errorNotice(context, error),
     });
   } finally {
@@ -122,14 +122,14 @@ export async function mcpLogin(effect: Of<"mcp-login">, context: HandlerContext)
     dispatch({
       kind: "op-finished",
       op: "auth",
-      notice: noticeOf(context, "ok", `Signed in to ${effect.server}.`),
+      notice: stampNotice(context, "ok", `Signed in to ${effect.server}.`),
     });
   } catch (error) {
     dispatch({
       kind: "op-finished",
       op: "auth",
       notice: controller.signal.aborted
-        ? noticeOf(context, "info", "Sign-in cancelled.")
+        ? stampNotice(context, "info", "Sign-in cancelled.")
         : errorNotice(context, error),
     });
   } finally {
@@ -243,10 +243,10 @@ async function afterCredentials(
     const recovered = await recoverModel(context, action, provider);
 
     return recovered === null
-      ? noticeOf(context, "ok", done)
-      : noticeOf(context, recovered.tone, `${done}\n${recovered.text}`);
+      ? stampNotice(context, "ok", done)
+      : stampNotice(context, recovered.tone, `${done}\n${recovered.text}`);
   } catch (error) {
-    return noticeOf(
+    return stampNotice(
       context,
       "warning",
       `${done}\nModel selection could not refresh: ${errorMessage(error)}. Use /model to retry.`,
@@ -267,7 +267,7 @@ async function recoverModel(
 
   if (followed === null) return null;
   const state = read();
-  const current = selectionOf(state, followed.id) ?? fallback(state);
+  const current = readSelection(state, followed.id) ?? fallback(state);
   const models = availableModels(catalog);
 
   if (findModel(models, current.model) !== undefined) return null;
