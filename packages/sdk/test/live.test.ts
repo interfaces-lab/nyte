@@ -1,11 +1,10 @@
 import { asId } from "@nyte-ai/schema";
 import type { Json, PartId, RunId, SessionId, SessionView } from "@nyte-ai/schema";
 import { envelope, partRef } from "@nyte-ai/core/store";
-import { publishPatch } from "../../core/src/engine/runs.ts";
-import { publishSet } from "../../core/src/fold/watch.ts";
+import { publishPatch, publishSet } from "@nyte-ai/core/testing";
 import type { Connection } from "@nyte-ai/core";
 import type { PartRecord } from "@nyte-ai/core/store";
-import type { Kernel } from "../../core/src/contract/kernel.ts";
+import type { Kernel } from "@nyte-ai/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";

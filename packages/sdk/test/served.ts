@@ -7,11 +7,11 @@ import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection, Listener, Plugin } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
-import type { Kernel } from "../../core/src/contract/kernel.ts";
+import type { Kernel } from "@nyte-ai/core/testing";
 import { listenFetch, localProvider, seedSigner } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
-import { composeServer } from "../../core/src/compose.ts";
+import { composeServer } from "@nyte-ai/core/testing";
 
 export const TOKEN_SECRET = "a-token-of-at-least-16";
 

@@ -17,7 +17,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./store": "./src/store.ts"
+    "./store": "./src/store.ts",
+    "./testing": "./src/testing.ts"
   },
   "publishConfig": {
     "access": "public"

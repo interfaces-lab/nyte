@@ -25,7 +25,7 @@ import type {
 } from "@nyte-ai/core";
 import { createTransport } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
-import { composeServer } from "../../../core/src/compose.ts";
+import { composeServer } from "@nyte-ai/core/testing";
 import { createHandler } from "../../src/serve/handler.ts";
 import type { HandlerOptions } from "../../src/serve/handler.ts";
 

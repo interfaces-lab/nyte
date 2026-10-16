@@ -5,9 +5,9 @@ import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { BrowserApi, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
 import type { ComposeOptions, ServedHost } from "@nyte-ai/core/server";
-import type { Kernel } from "../../core/src/contract/kernel.ts";
+import type { Kernel } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
-import { composeServer } from "../../core/src/compose.ts";
+import { composeServer } from "@nyte-ai/core/testing";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
 
 export type Block =
