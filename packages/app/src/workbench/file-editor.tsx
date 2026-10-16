@@ -4,7 +4,7 @@ import type { EditorOptions, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useImperativeHandle,
@@ -14,7 +14,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
-import type { FileDocument } from "@nyte-ai/sdk";
+import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
 import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/styles.stylex.ts";
@@ -26,6 +26,7 @@ import {
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
 import {
+  keys,
   useHostState,
   useSaveWorkspaceFile,
   useWorkspaceFile,
@@ -33,6 +34,8 @@ import {
   workspaceGit,
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
+import { watchFamily } from "../sdk.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -42,6 +45,13 @@ import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+
+/** Disk events for one open file, so an edit made elsewhere reaches its editor. */
+const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
+  (async function* () {
+    yield* (await workspaceFiles()).watch({ paths: [path] });
+  })(),
+);
 
 export interface FileEditorHandle {
   save(): Promise<void>;
@@ -178,6 +188,22 @@ function replaceContents(
       newText: contents.slice(start, nextEnd),
     },
   ]);
+}
+
+/** While its tab is active, keeps the editor's copy of a file current with the disk. */
+function DiskSync({ path }: { readonly path: string }): null {
+  const queryClient = useQueryClient();
+
+  useMountEffect(() => {
+    const queryKey = keys.workspaceFile(path);
+    void queryClient.refetchQueries({ queryKey, exact: true, stale: true });
+
+    return diskEvents(path).subscribe(
+      () => void queryClient.refetchQueries({ queryKey, exact: true }),
+    );
+  });
+
+  return null;
 }
 
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
@@ -491,6 +517,7 @@ function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
+      {active && <DiskSync key={file.path} path={file.path} />}
       <PierreWorkerProvider>
         <EditProvider createEditor={createEditor}>
           <CodeView
