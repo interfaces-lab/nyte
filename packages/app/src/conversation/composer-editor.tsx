@@ -300,6 +300,7 @@ export function ComposerEditor({
       const references = composerReferences(state.doc);
 
       const previousReferences = lastReferences.current;
+
       const referencesChanged =
         references.length !== previousReferences.length ||
         references.some((reference, index) => reference !== previousReferences[index]);

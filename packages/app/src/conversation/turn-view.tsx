@@ -600,6 +600,7 @@ const ResponseView = memo(function ResponseView({
     () => messages.map((message) => message.state.markdown.trim()).join("\n\n"),
     [messages],
   );
+
   const streaming = messages.some((message) => message.status.kind === "live");
 
   return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
@@ -660,6 +661,7 @@ const TurnBody = memo(function TurnBody({
 
   if (drawsNothing(turn)) return null;
   const { state } = turn.info;
+
   const failure =
     state.kind === "ended" && state.end.kind === "failed"
       ? failureNotice(state.end.failure)

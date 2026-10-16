@@ -115,6 +115,7 @@ export function SessionStatusRows({
   const execution = view?.execution;
   const lastRun = execution?.kind === "idle" ? execution.lastRun : null;
   const usage = lastRun?.end.kind === "completed" ? lastRun.end.usage : undefined;
+
   const percent =
     context === undefined || context.window === 0
       ? undefined

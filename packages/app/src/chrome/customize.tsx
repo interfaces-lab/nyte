@@ -105,6 +105,7 @@ function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginVi
   const toggles = settings.filter(
     (setting) => setting.owner === plugin.id && typeof setting.value === "boolean",
   );
+
   const off = toggles.length > 0 && toggles.every((setting) => setting.value === false);
 
   return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };

@@ -425,10 +425,12 @@ function ChangesPanelView({
   const preparedPaths = useMemo((): readonly string[] => {
     if (!visible) return [];
     const collapsed = new Set(collapsedPaths);
+
     const active = Math.max(
       stackOrder.findIndex((path) => path === activePath),
       0,
     );
+
     const nearest: string[] = [];
 
     for (let distance = 0; nearest.length < stackOrder.length; distance += 1) {
@@ -455,6 +457,7 @@ function ChangesPanelView({
           activeScopeValue,
           ignoreWhitespace ? "ignore-whitespace" : "",
         ].join("\u0000");
+
   const whitespace = ignoreWhitespace ? "w" : "";
   const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${whitespace}`;
 
@@ -563,6 +566,7 @@ function ChangesPanelView({
   }, [rows, patchFor]);
 
   const transcriptError = queryError(turnsError);
+
   const vcsFailure =
     snapshot.data?.kind === "none"
       ? { text: "Couldn't read changes. Check that this folder is a Git repository." }
@@ -930,10 +934,12 @@ function SessionChangesPanel(
 ): ReactElement {
   const view = useSessionView(props.sessionId);
   const session = useSession(props.sessionId);
+
   const turns = useMemo(
     () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
     [view],
   );
+
   const execution = view?.execution;
 
   return (

@@ -392,13 +392,16 @@ export const ShellCallView = memo(function ShellCallView({
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
   const { state } = message;
+
   const raw = running
     ? state.phase === "running"
       ? (state.progress?.text ?? "")
       : ""
     : toolOutput(state);
+
   const durationMs =
     message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
+
   const output = useMemo(() => terminalText(raw).trim(), [raw]);
   const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
   const description = toolClass.description?.trim() ?? "";

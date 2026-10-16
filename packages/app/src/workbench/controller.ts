@@ -630,6 +630,7 @@ export function createWorkbenchController(
 ): WorkbenchController {
   let restored: WorkbenchSnapshot | null = null;
   const listeners = new Set<() => void>();
+
   const read = (): WorkbenchSnapshot =>
     (restored ??= restoreSnapshot(persistence?.read(), capabilities));
 

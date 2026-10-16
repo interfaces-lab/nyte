@@ -251,6 +251,7 @@ export function contentDraftText(content: UserContent): string {
 
           return `@${url.href}`;
         }
+
         case "skill":
           return referenceText({ kind: "skill", name: part.name, path: part.location });
         case "file":

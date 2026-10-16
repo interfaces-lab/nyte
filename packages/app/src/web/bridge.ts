@@ -172,7 +172,9 @@ export function createWebBridge(): WebBridge {
         credentials: { kind: "token", token },
         ...(options?.expect === undefined ? {} : { expect: { hostId: options.expect } }),
       };
+
       let connecting = true;
+
       const opened = await connectHost(next, {
         fetch: (resource, init) =>
           fetch(resource, {
@@ -181,6 +183,7 @@ export function createWebBridge(): WebBridge {
             signal: connecting ? (options?.signal ?? init?.signal) : init?.signal,
           }),
       });
+
       connecting = false;
       await connection?.close();
       connection = opened;

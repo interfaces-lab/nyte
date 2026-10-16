@@ -162,6 +162,7 @@ export async function run(): Promise<string> {
         }
 
         const [firstLine = "", ...laterLines] = text.split("\n");
+
         const anchorOffset =
           laterLines.length > 0
             ? firstLine.length + 1

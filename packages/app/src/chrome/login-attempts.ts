@@ -62,6 +62,7 @@ export async function startLogin(
     method: method.kind === "browser" ? { kind: "oauth" } : { kind: "key" },
     browser: LOOPBACK.has(endpoint.hostname) ? "host" : "elsewhere",
   });
+
   const steps = login.steps()[Symbol.asyncIterator]();
   const cancelled = Promise.withResolvers<"cancelled">();
 

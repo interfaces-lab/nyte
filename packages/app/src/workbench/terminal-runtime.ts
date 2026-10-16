@@ -283,6 +283,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const stopScrollback = preferences.terminalScrollback.subscribe(() => {
     terminal.options.scrollback = preferences.terminalScrollback.get();
   });
+
   document.fonts.addEventListener("loadingdone", scheduleFit);
   let pendingInput = Promise.resolve();
 

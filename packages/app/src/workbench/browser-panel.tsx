@@ -254,6 +254,7 @@ function useSurfaceBounds(
       };
 
       const last = lastRef.current;
+
       const unchanged =
         last !== undefined &&
         last.visible === message.visible &&
