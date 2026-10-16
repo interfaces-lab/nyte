@@ -136,7 +136,12 @@ type CallState =
 
 function call(spec: ToolSpec, state: CallState, seconds: number, output?: string): Message {
   const id = oid("call");
-  const base = { call: asId<"call">(spec.call ?? id), name: spec.name, args: spec.args, class: spec.class };
+  const base = {
+    call: asId<"call">(spec.call ?? id),
+    name: spec.name,
+    args: spec.args,
+    class: spec.class,
+  };
 
   const toolState: ToolPartState =
     "phase" in state
@@ -441,7 +446,6 @@ const LOG_OUTPUT = lines(
 
 const SWATCH = asId<"blob">("lab-swatch");
 
-
 function child(id: string, name: string, execution: Execution): SessionInfo {
   return {
     id: asId<"session">(id),
@@ -514,7 +518,6 @@ function delegate(
   );
 }
 
-
 function lone(id: string, title: string, source: string, message: Message): Specimen {
   return { id, title, source, scene: { turns: [turn([message])] } };
 }
@@ -543,7 +546,6 @@ const MARKDOWN = lines(
   "",
   "> A quote, for the blockquote style.",
 );
-
 
 export const SECTIONS: readonly Section[] = [
   {
