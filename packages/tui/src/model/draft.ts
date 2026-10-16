@@ -54,6 +54,7 @@ export interface MarkerSpan {
 
 export const NO_PARTS: DraftParts = new Map();
 
+/** A paste with more lines than this becomes a part, and a sent message folds past it. */
 export const PASTE_COLLAPSE_LINES = 8;
 
 /** A paste longer than this many characters becomes a part even on one line. */

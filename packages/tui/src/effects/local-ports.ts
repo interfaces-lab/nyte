@@ -13,8 +13,6 @@ import type { ShellProcess } from "../services/local-shell.ts";
 import { FileSettingsStore } from "../services/settings.ts";
 import type { FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
 
-const PASTE_COLLAPSE_LINES = 8;
-
 const MAX_ATTACHMENT_BYTES = 256_000;
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
@@ -142,9 +140,7 @@ export async function resolvePaste(
       : { kind: "part", part: image };
   }
 
-  return normalized.split("\n").length > PASTE_COLLAPSE_LINES
-    ? { kind: "part", part: { kind: "paste", text: normalized } }
-    : { kind: "text", text: normalized };
+  return { kind: "text", text: normalized };
 }
 
 function imagePart(bytes: Uint8Array): Extract<DraftPart, { readonly kind: "image" }> | null {
