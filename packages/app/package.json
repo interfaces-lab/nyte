@@ -8,6 +8,7 @@
     "./vite": "./vite.ts",
     "./dist/*": "./dist/*",
     "./e2e/errors": "./e2e/utils/errors.ts",
+    "./e2e/scenario-d": "./e2e/web/scenario-d.ts",
     "./e2e/scenario-u-fixture": "./e2e/web/scenario-u-fixture.ts",
     "./e2e/scenario-u-trace": "./e2e/web/scenario-u-trace.ts",
     "./*": "./src/*"

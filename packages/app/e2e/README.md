@@ -2,7 +2,7 @@
 
 Playwright tests for the web app, configured in `playwright.config.ts`. The desktop suite lives in `packages/desktop/e2e`.
 
-`server/start.ts` serves the built app and an in-memory SDK on `127.0.0.1:5181`. Its provider answers `Echo: <message>` without a network. The specs cover pairing links, reloads, wrong tokens, a first chat, and one workspace journey that reads, saves, blames, searches, and mentions a seeded Git workspace. `web/scenario-u.spec.ts` starts its own host over a SQLite file and runs scenario U from the keyboard through a host restart; set `NYTE_SCENARIO_U_OUT` to save each run's waterfall, and `NYTE_SCENARIO_U_MEASURE=1` to record without the budget gate. Run it with `--workers 1` when repeating it.
+`server/start.ts` serves the built app and an in-memory SDK on `127.0.0.1:5181`. Its provider answers `Echo: <message>` without a network. The specs cover pairing links, reloads, wrong tokens, a first chat, and one workspace journey that reads, saves, blames, searches, and mentions a seeded Git workspace. `web/scenario-u.spec.ts` starts its own host over a SQLite file and runs scenario U from the keyboard through a host restart; set `NYTE_SCENARIO_U_OUT` to save each run's waterfall, and `NYTE_SCENARIO_U_MEASURE=1` to record without the budget gate. Run it with `--workers 1` when repeating it. `web/scenario-d.spec.ts` does the same for scenario D over a temp git repo, with the CI MCP server and, in a second test, through `gh` without it; set `NYTE_WATERFALL_DIR` to save its waterfall and hop table.
 
 ## Prerequisites
 
