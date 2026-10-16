@@ -19,7 +19,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useSetting, type Setting } from "../preferences/index.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { available, type Capability } from "./pages.ts";
+import { available, type Capability } from "./capability.ts";
 import { settingsStyles } from "./settings.stylex.ts";
 
 /** Marks a rendered row, so an empty card can hide itself. */
