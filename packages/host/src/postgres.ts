@@ -24,6 +24,7 @@ import { Pool } from "pg";
 import {
   collect,
   decodeEvent,
+  loggedRow,
   memoryReader,
   mintRevision,
   numberOf,
@@ -120,6 +121,27 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
           ),
         )
       ).rows.map(storedRecordOf),
+    async *logs() {
+      const sessions = await withClient(pool, async (client) => {
+        const { rows } = await client.query("SELECT to_regclass('log') IS NOT NULL AS present");
+
+        return rows[0]?.present === true
+          ? (await client.query("SELECT DISTINCT session FROM log")).rows
+          : [];
+      });
+
+      for (const row of sessions) {
+        const session = textOf(row.session);
+
+        if (session === null) continue;
+
+        const { rows } = await withClient(pool, (client) =>
+          client.query("SELECT seq, event FROM log WHERE session = $1 ORDER BY seq", [session]),
+        );
+
+        yield { session, events: rows.map(loggedRow) };
+      }
+    },
     commit: (change) =>
       withClient(pool, async (client) => {
         await client.query("BEGIN");
@@ -152,6 +174,19 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
               return "conflict";
             }
             await updateSessionIndex(client, moved.name, moved.id, mintRevision());
+          }
+
+          for (const relog of change.relogs) {
+            const { rows } = await client.query(
+              "UPDATE log SET event = $1 WHERE session = $2 AND seq = $3 AND event = $4 RETURNING seq",
+              [relog.event, relog.session, relog.seq, relog.expect],
+            );
+
+            if (rows.length === 0) {
+              await client.query("ROLLBACK");
+
+              return "conflict";
+            }
           }
 
           if (change.reindexSessions) {

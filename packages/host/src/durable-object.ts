@@ -16,6 +16,7 @@ import type { CommitOutcome, MigrationTarget, Store, StoreConnection } from "@ny
 import {
   collect,
   decodeEvent,
+  loggedRow,
   memoryReader,
   mintRevision,
   numberOf,
@@ -93,6 +94,22 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
         "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
       ).map(storedRecordOf);
     },
+    async *logs() {
+      if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0)
+        return;
+
+      for (const row of rows("SELECT DISTINCT session FROM log")) {
+        const session = textOf(row.session);
+
+        if (session !== null)
+          yield {
+            session,
+            events: rows("SELECT seq, event FROM log WHERE session = ? ORDER BY seq", session).map(
+              loggedRow,
+            ),
+          };
+      }
+    },
     async commit(change) {
       return storage.transactionSync((): CommitOutcome => {
         if (storedVersion(storage) !== change.from) return "moved";
@@ -103,7 +120,17 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
               .length === 0,
         );
 
-        if (conflicted) return "conflict";
+        const relogged = change.relogs.every(
+          (relog) =>
+            rows(
+              "SELECT 1 FROM log WHERE session = ? AND seq = ? AND event = ?",
+              relog.session,
+              relog.seq,
+              relog.expect,
+            ).length > 0,
+        );
+
+        if (conflicted || !relogged) return "conflict";
 
         for (const statement of change.sql) rows(statement);
 
@@ -121,6 +148,14 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
           );
           updateSessionIndex(storage, moved.name, moved.id, mintRevision());
         }
+
+        for (const relog of change.relogs)
+          rows(
+            "UPDATE log SET event = ? WHERE session = ? AND seq = ?",
+            relog.event,
+            relog.session,
+            relog.seq,
+          );
 
         if (change.reindexSessions)
           for (const row of rows("SELECT name, target, revision FROM refs")) {

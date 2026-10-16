@@ -13,10 +13,12 @@ interface SchemaStep {
   readonly sql: { readonly [D in StoreDialect]: readonly string[] };
 }
 
+/** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or both. */
 interface RewriteStep {
   readonly kind: "rewrite";
   readonly name: string;
-  rewrite(record: Json): Json | null;
+  rewrite?(record: Json): Json | null;
+  rewriteLog?(events: readonly Json[]): readonly (Json | null)[];
 }
 
 type StoreStep = SchemaStep | RewriteStep;
@@ -39,12 +41,33 @@ interface Repoint {
   readonly body: string;
 }
 
+/** One logged event as the store keeps it. */
+export interface LoggedRow {
+  readonly seq: number;
+  readonly event: string;
+}
+
+/** A session's logged events, in seq order. */
+export interface SessionLog {
+  readonly session: string;
+  readonly events: readonly LoggedRow[];
+}
+
+/** A logged event rewritten in place: the event at `seq` of `session`, which must still read `expect`, becomes `event`. */
+export interface Relog {
+  readonly session: string;
+  readonly seq: number;
+  readonly expect: string;
+  readonly event: string;
+}
+
 export interface StoreChange {
   readonly from: number;
   readonly to: number;
 
   readonly sql: readonly string[];
   readonly repoints: readonly Repoint[];
+  readonly relogs: readonly Relog[];
   /** Rebuild the session read index from current refs inside the migration transaction. */
   readonly reindexSessions: boolean;
 }
@@ -55,14 +78,17 @@ export interface MigrationTarget {
   readonly dialect: StoreDialect;
   stamp(): Promise<StoreStamp>;
   records(): Promise<readonly StoredRecord[]>;
+  /** Every session's log, one session at a time; read only when a step rewrites logged events. */
+  logs(): AsyncIterable<SessionLog>;
   commit(change: StoreChange): Promise<CommitOutcome>;
   /**
-   * Saves the current rows of `refs`, the refs the next commit repoints, before
-   * it runs. Called only when a rewrite changes records: schema steps touch
-   * derived tables alone, and objects are never deleted, so these rows are
-   * enough to restore the records as they were.
+   * Saves the current rows of `refs`, the refs the next commit repoints, and
+   * the logged events it rewrites (their `expect`), before it runs. Called only
+   * when a rewrite changes records or events: schema steps touch derived tables
+   * alone, and objects are never deleted, so these rows are enough to restore
+   * the store as it was.
    */
-  backup?(from: number, to: number, refs: readonly string[]): Promise<void>;
+  backup?(from: number, to: number, refs: readonly string[], log: readonly Relog[]): Promise<void>;
 }
 
 const metaTable =
@@ -224,13 +250,21 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
     const rewrites = steps.flatMap((step) => (step.kind === "rewrite" ? [step] : []));
 
     const moved =
-      stamp.empty || rewrites.length === 0 ? [] : await repoints(rewrites, await target.records());
+      stamp.empty || !rewrites.some((step) => step.rewrite !== undefined)
+        ? []
+        : await repoints(rewrites, await target.records());
 
-    if (moved.length > 0)
+    const relogged =
+      stamp.empty || !rewrites.some((step) => step.rewriteLog !== undefined)
+        ? []
+        : await relogs(rewrites, target.logs());
+
+    if (moved.length > 0 || relogged.length > 0)
       await target.backup?.(
         stamp.version,
         STORE_VERSION,
         moved.map((repoint) => repoint.name),
+        relogged,
       );
 
     const outcome = await target.commit({
@@ -238,6 +272,7 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       to: STORE_VERSION,
       sql: steps.flatMap((step) => (step.kind === "schema" ? step.sql[target.dialect] : [])),
       repoints: moved,
+      relogs: relogged,
       reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
     });
 
@@ -260,7 +295,7 @@ async function repoints(
     const record = parsed(stored.body);
 
     if (record === null) continue;
-    const next = rewrites.reduce((value, step) => step.rewrite(value) ?? value, record);
+    const next = rewrites.reduce((value, step) => step.rewrite?.(value) ?? value, record);
 
     if (next === record) continue;
     moved.push({
@@ -272,6 +307,44 @@ async function repoints(
   }
 
   return moved;
+}
+
+async function relogs(
+  rewrites: readonly RewriteStep[],
+  logs: AsyncIterable<SessionLog>,
+): Promise<readonly Relog[]> {
+  const relogged: Relog[] = [];
+
+  for await (const log of logs) {
+    const rows = log.events.flatMap((row) => {
+      const event = parsed(row.event);
+
+      return event === null ? [] : [{ row, event }];
+    });
+
+    const rewritten = rewrites.reduce<readonly Json[]>(
+      (events, step) => {
+        const next = step.rewriteLog?.(events);
+
+        return next === undefined ? events : events.map((event, index) => next[index] ?? event);
+      },
+      rows.map((entry) => entry.event),
+    );
+
+    rows.forEach(({ row, event }, index) => {
+      const next = rewritten[index];
+
+      if (next === undefined || next === event) return;
+      relogged.push({
+        session: log.session,
+        seq: row.seq,
+        expect: row.event,
+        event: JSON.stringify(next),
+      });
+    });
+  }
+
+  return relogged;
 }
 
 function parsed(body: string): Json | null {

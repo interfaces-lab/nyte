@@ -442,10 +442,13 @@ describe("sqliteStore", () => {
     const backups = await readdir(join(dir, "backups"));
 
     expect(backups).toHaveLength(1);
-    expect(JSON.parse(await readFile(join(dir, "backups", backups[0] ?? ""), "utf8"))).toEqual([
-      { name: "sessions/s1/calls/c1", target: "old-call", revision: "r0" },
-      { name: "sessions/s1/inbox", target: "old-inbox", revision: "r0" },
-    ]);
+    expect(JSON.parse(await readFile(join(dir, "backups", backups[0] ?? ""), "utf8"))).toEqual({
+      refs: [
+        { name: "sessions/s1/calls/c1", target: "old-call", revision: "r0" },
+        { name: "sessions/s1/inbox", target: "old-inbox", revision: "r0" },
+      ],
+      log: [],
+    });
 
     const again = sqliteStore({ path });
     await again.open();

@@ -16,10 +16,11 @@ import {
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core";
-import type { MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+import type { MigrationTarget, Relog, Store, StoreConnection } from "@nyte-ai/core";
 import {
   collect,
   decodeEvent,
+  loggedRow,
   memoryReader,
   mintRevision,
   numberOf,
@@ -133,6 +134,16 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         .all()
         .map(storedRecordOf);
     },
+    async *logs() {
+      if (!hasTable(database, "log")) return;
+      const read = database.prepare("SELECT seq, event FROM log WHERE session = ? ORDER BY seq");
+
+      for (const row of database.prepare("SELECT DISTINCT session FROM log").all()) {
+        const session = textOf(row.session);
+
+        if (session !== null) yield { session, events: read.all(session).map(loggedRow) };
+      }
+    },
     async commit(change) {
       database.exec("BEGIN IMMEDIATE");
 
@@ -163,6 +174,18 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           updateSessionIndex(database, moved.name, moved.id, mintRevision());
         }
 
+        const relog = database.prepare(
+          "UPDATE log SET event = ? WHERE session = ? AND seq = ? AND event = ?",
+        );
+
+        for (const row of change.relogs) {
+          if (Number(relog.run(row.event, row.session, row.seq, row.expect).changes) === 0) {
+            database.exec("ROLLBACK");
+
+            return "conflict";
+          }
+        }
+
         if (change.reindexSessions)
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
             const ref = refOf(row);
@@ -187,7 +210,10 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
 
   if (path === null) return target;
 
-  return { ...target, backup: async (from, to, names) => backup(database, path, from, to, names) };
+  return {
+    ...target,
+    backup: async (from, to, names, log) => backup(database, path, from, to, names, log),
+  };
 }
 
 function backup(
@@ -196,6 +222,7 @@ function backup(
   from: number,
   to: number,
   names: readonly string[],
+  log: readonly Relog[],
 ): void {
   const folder = join(dirname(path), "backups");
   mkdirSync(folder, { recursive: true, mode: 0o700 });
@@ -210,7 +237,10 @@ function backup(
 
   writeFileSync(
     join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.json`),
-    JSON.stringify(rows),
+    JSON.stringify({
+      refs: rows,
+      log: log.map((row) => ({ session: row.session, seq: row.seq, event: row.expect })),
+    }),
     { mode: 0o600 },
   );
 

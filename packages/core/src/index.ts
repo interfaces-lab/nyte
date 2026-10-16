@@ -169,7 +169,13 @@ export { createFoldCache, pollStore, publishSet } from "./fold/watch.ts";
 export { admits, collectSessionEvents, decodeObject, loggedEvent } from "./store/log.ts";
 export { memoryStore } from "./store/memory-store.ts";
 export { STORE_VERSION, assertStoreVersion, migrateStore } from "./store/migrations.ts";
-export type { CommitOutcome, MigrationTarget, StoredRecord } from "./store/migrations.ts";
+export type {
+  CommitOutcome,
+  LoggedRow,
+  MigrationTarget,
+  Relog,
+  StoredRecord,
+} from "./store/migrations.ts";
 export { readModelSelection } from "./store/model-state.ts";
 export { failedParts } from "./store/parts.ts";
 export {
