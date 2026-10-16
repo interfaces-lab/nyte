@@ -1,10 +1,15 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const heading = create({
-  base: { margin: 0, color: role.contentPrimary, fontWeight: 600, textWrap: "balance" },
+  base: {
+    margin: 0,
+    color: role.contentPrimary,
+    fontWeight: type.weightSemibold,
+    textWrap: "balance",
+  },
   1: { fontSize: type.font2xl, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
   2: { fontSize: type.fontLg, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
   3: { fontSize: type.fontBase, lineHeight: type.leadingBase, letterSpacing: type.letterBase },
@@ -33,14 +38,15 @@ const text = create({
     color: role.contentPrimary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
   },
   xs: { fontSize: type.fontXs, lineHeight: type.leadingXs },
   sm: { fontSize: type.fontSm, lineHeight: type.leadingSm },
-  lg: { fontSize: type.fontLg, lineHeight: type.leadingLg },
+  lg: { fontSize: type.fontLg, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
   secondary: { color: role.contentSecondary },
   tertiary: { color: role.contentTertiary },
-  medium: { fontWeight: 500 },
-  semibold: { fontWeight: 600 },
+  medium: { fontWeight: type.weightMedium },
+  semibold: { fontWeight: type.weightSemibold },
   mono: {
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
@@ -95,9 +101,9 @@ export function Text({
 
 const code = create({
   inline: {
-    paddingBlock: 1,
-    paddingInline: 4,
-    borderRadius: radius.control,
+    paddingBlock: space.px,
+    paddingInline: space.s1,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
@@ -106,7 +112,8 @@ const code = create({
   },
   block: {
     margin: 0,
-    padding: "8px 10px",
+    paddingBlock: space.s2,
+    paddingInline: space.s2_5,
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",

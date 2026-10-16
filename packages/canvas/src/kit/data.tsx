@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { Meter as MeterControl } from "@nyte-ai/ui/meter";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -18,18 +18,18 @@ const tones = {
 } as const;
 
 const stat = create({
-  root: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  root: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   label: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
   value: {
     color: role.contentPrimary,
     fontSize: type.font2xl,
     lineHeight: type.leadingLg,
-    fontWeight: 600,
+    fontWeight: type.weightSemibold,
     letterSpacing: type.letterLg,
     fontVariantNumeric: "tabular-nums",
   },
   detail: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
-  detailToned: { color: role.contentSecondary, fontWeight: 500 },
+  detailToned: { color: role.contentSecondary, fontWeight: type.weightMedium },
 });
 
 export function Stat({
@@ -60,15 +60,15 @@ const badge = create({
   root: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     height: 20,
-    paddingInline: 8,
+    paddingInline: space.s2,
     borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     whiteSpace: "nowrap",
   },
   toned: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentSecondary },
@@ -87,7 +87,7 @@ export function Badge({
 }
 
 const meter = create({
-  head: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
+  head: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: space.s3 },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
 
@@ -132,21 +132,21 @@ const table = create({
     fontVariantNumeric: "tabular-nums",
   },
   head: {
-    paddingBlock: 6,
-    paddingInline: 8,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderPrimary,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     textAlign: "start",
     whiteSpace: "nowrap",
   },
   cell: {
-    paddingBlock: 6,
-    paddingInline: 8,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondary,
@@ -157,8 +157,8 @@ const table = create({
   lastRow: { borderBottomWidth: 0 },
   caption: {
     captionSide: "bottom",
-    paddingTop: 8,
-    paddingInline: 8,
+    paddingTop: space.s2,
+    paddingInline: space.s2,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
@@ -233,8 +233,9 @@ const callout = create({
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
-    padding: "10px 12px",
+    gap: space.s0_5,
+    paddingBlock: space.s2_5,
+    paddingInline: space.s3,
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
@@ -244,7 +245,7 @@ const callout = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
-  title: { color: role.contentSecondary, fontWeight: 600 },
+  title: { color: role.contentSecondary, fontWeight: type.weightSemibold },
 });
 
 export function Callout({
@@ -284,9 +285,9 @@ const card = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    paddingBlock: 10,
-    paddingInline: 16,
+    gap: space.s3,
+    paddingBlock: space.s2_5,
+    paddingInline: space.s4,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondary,
@@ -296,17 +297,17 @@ const card = create({
     color: role.contentPrimary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
-    fontWeight: 600,
+    fontWeight: type.weightSemibold,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  actions: { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 },
+  actions: { display: "flex", alignItems: "center", gap: space.s1, flexShrink: 0 },
   body: { minWidth: 0 },
   0: { padding: 0 },
-  2: { padding: 8 },
-  3: { padding: 12 },
-  4: { padding: 16 },
+  2: { padding: space.s2 },
+  3: { padding: space.s3 },
+  4: { padding: space.s4 },
 });
 
 export function Card({

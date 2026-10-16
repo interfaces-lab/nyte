@@ -281,6 +281,7 @@ export default defineConfig({
         "packages/app/src/**/*.{ts,tsx}",
         "packages/desktop/src/renderer/**/*.{ts,tsx}",
         "packages/ui/src/**/*.{ts,tsx}",
+        "packages/canvas/src/**/*.{ts,tsx}",
       ],
       excludeFiles: ["packages/ui/src/styles/**"],
       rules: {
