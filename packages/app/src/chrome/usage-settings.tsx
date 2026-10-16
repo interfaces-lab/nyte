@@ -74,7 +74,7 @@ function rowTint(row: UsageRow, rank: number): Tint | undefined {
   return row.share > 0 ? RANK_TINTS[rank] : undefined;
 }
 
-function percentOf(share: number): string {
+function shareWidth(share: number): string {
   return `${String(Math.min(Math.max(share, 0), 1) * 100)}%`;
 }
 
@@ -443,7 +443,7 @@ function BreakdownTable({
                     styles.shareFill,
                     tint === undefined && styles.dotIdle,
                   )}
-                  style={{ width: percentOf(row.share) }}
+                  style={{ width: shareWidth(row.share) }}
                 />
               </span>
             </span>

@@ -72,7 +72,7 @@ export function sessionIsDraft(session: SessionInfo): boolean {
  * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
  * on background work arrives here as `working`.
  */
-function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
+function deriveSessionStatus(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
   const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
@@ -101,7 +101,7 @@ export interface ShelfHold {
   readonly shelf: SessionShelf;
 }
 
-export function shelfOf(
+export function deriveShelf(
   session: SessionInfo,
   working: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
@@ -112,7 +112,7 @@ export function shelfOf(
 
   if (session.pinned) return "inbox";
 
-  const status = statusOf(session, working);
+  const status = deriveSessionStatus(session, working);
 
   switch (status) {
     case "needs-attention":
@@ -203,7 +203,9 @@ function groupSessions(
       };
 
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session, working) === status);
+        const members = sessions.filter(
+          (session) => deriveSessionStatus(session, working) === status,
+        );
 
         return members.length === 0
           ? []
@@ -264,7 +266,8 @@ export function sessionsForView(
 
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.length === 0 || settings.statuses.includes(statusOf(session, working)),
+      settings.statuses.length === 0 ||
+      settings.statuses.includes(deriveSessionStatus(session, working)),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));

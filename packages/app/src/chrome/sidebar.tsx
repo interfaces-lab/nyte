@@ -78,7 +78,7 @@ import {
   sessionOrder,
   sessionsForNavigation,
   sessionsForView,
-  shelfOf,
+  deriveShelf,
   type SessionViewSettings,
   type ShelfHold,
 } from "./sidebar-view.ts";
@@ -214,7 +214,10 @@ export function Sidebar(): ReactElement {
     setHold(
       paneSession === undefined
         ? undefined
-        : { sessionId: paneSession.id, shelf: shelfOf(paneSession, workingSessions, undefined) },
+        : {
+            sessionId: paneSession.id,
+            shelf: deriveShelf(paneSession, workingSessions, undefined),
+          },
     );
   }
 

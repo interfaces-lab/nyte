@@ -26,7 +26,7 @@ import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   hasSessionFilters,
   sessionsForView,
-  shelfOf,
+  deriveShelf,
   type SessionShelf,
   type SessionViewGroup,
   type SessionViewSettings,
@@ -270,7 +270,7 @@ export function ChatsList({
 
   if (view.grouping === "inbox") {
     const shelved = (shelf: SessionShelf): readonly ListedSession[] =>
-      rows.filter(({ session }) => shelfOf(session, rail.working, hold) === shelf);
+      rows.filter(({ session }) => deriveShelf(session, rail.working, hold) === shelf);
 
     const inbox = shelved("inbox");
 

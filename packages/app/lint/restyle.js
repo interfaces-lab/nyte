@@ -69,13 +69,13 @@ const CONCERNS = [
   ["states", /^[:@[]/],
 ];
 
-const concernOf = (property) =>
+const classifyConcern = (property) =>
   CONCERNS.find(([, pattern]) => pattern.test(property))?.[0] ?? "layout internals";
 
 const privateProperties = new Map();
 
 /** The custom properties a component declares for itself, such as `--_btn-height`. */
-const privatePropertiesOf = (file) => {
+const readPrivateProperties = (file) => {
   if (!privateProperties.has(file)) {
     const source = readFileSync(join(repoRoot, file), "utf8");
     privateProperties.set(file, new Set(source.match(/--_[\w-]+(?=["']:)/g) ?? []));
@@ -112,7 +112,7 @@ const styleObject = (node) => {
   return node.type === "ObjectExpression" ? node : null;
 };
 
-const propertiesOf = (object) =>
+const listPropertyNames = (object) =>
   object.properties.flatMap((member) => {
     const name = member.type === "Property" && !member.computed ? keyName(member.key) : null;
 
@@ -138,9 +138,11 @@ const advice = (component, contract, concerns) => {
   const options = contract.options.length
     ? `Choose its look with ${list(contract.options)}`
     : `It has no option for that`;
+
   const spacing = concerns.includes("spacing")
     ? `; space it with gap on the parent or a margin on <${component}>`
     : "";
+
   const missing = contract.options.length ? "an option" : "one";
 
   return (
@@ -200,6 +202,7 @@ const noRestyle = {
 
       if (node.object.type !== "Identifier") return;
       const owner = node.object.name;
+
       const key = node.computed
         ? node.property.type === "Literal"
           ? String(node.property.value)
@@ -218,7 +221,7 @@ const noRestyle = {
 
       for (const [name, object] of entries) {
         if (key !== null && name !== key) continue;
-        found.push({ label: `${owner}.${name}`, properties: propertiesOf(object) });
+        found.push({ label: `${owner}.${name}`, properties: listPropertyNames(object) });
       }
     };
 
@@ -255,6 +258,7 @@ const noRestyle = {
         if (node.id.type !== "Identifier" || !node.init) return;
 
         const { init } = node;
+
         const createsStyles =
           init.type === "CallExpression" &&
           (init.callee.type === "Identifier"
@@ -292,9 +296,11 @@ const noRestyle = {
 
         if (!imported) return;
         const component = element.part ? `${imported}.${element.part}` : imported;
+
         const variant = node.parent.attributes.find(
           (attribute) => attribute.type === "JSXAttribute" && attribute.name.name === "variant",
         )?.value;
+
         const contract =
           (variant?.type === "Literal" &&
             restyleContracts[`${component}[variant=${variant.value}]`]) ||
@@ -308,7 +314,7 @@ const noRestyle = {
           const found = [];
           resolve(node.value.expression, found);
           const allowed = allowedBy(contract);
-          const owned = privatePropertiesOf(contract.file);
+          const owned = readPrivateProperties(contract.file);
           const rejected = new Map();
 
           for (const { label, properties } of found) {
@@ -322,7 +328,7 @@ const noRestyle = {
           }
 
           if (rejected.size === 0) continue;
-          const concerns = [...new Set([...rejected.keys()].map(concernOf))];
+          const concerns = [...new Set([...rejected.keys()].map(classifyConcern))];
           const sources = [...new Set(rejected.values())];
 
           context.report({
