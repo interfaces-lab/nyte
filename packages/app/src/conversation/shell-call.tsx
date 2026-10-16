@@ -87,7 +87,7 @@ const styles = create({
     display: "block",
     paddingInline: space.s2,
     paddingBottom: space.s1_5,
-    color: role.contentTertiary,
+    color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
