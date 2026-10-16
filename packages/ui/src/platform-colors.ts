@@ -43,6 +43,7 @@ export const platformColors = {
     bgControlSelected: "#2c2c2b",
     bgControlSelectedHover: "#282827",
     bgControlSelectedPressed: "#232322",
+    chartSeries: "#7d7a75",
     buttonFill: "#6b6864",
     buttonFillHover: "#64615c",
     buttonFillPressed: "#5a5752",
@@ -94,6 +95,7 @@ export const platformColors = {
     bgControlSelected: "#5f5e59",
     bgControlSelectedHover: "#666560",
     bgControlSelectedPressed: "#6f6e69",
+    chartSeries: "#7d7a75",
     buttonFill: "#6b6864",
     buttonFillHover: "#64615c",
     buttonFillPressed: "#5a5752",
@@ -112,6 +114,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#1b12001c",
       bgInteractiveSecondaryTranslucent: "#3b14000d",
       bgInteractiveStrong: "#8e8b86",
+      chartSeries: "#7d7a75",
     },
     brown: {
       contentSecondary: "#6d5340",
@@ -119,6 +122,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#7f330028",
       bgInteractiveSecondaryTranslucent: "#7722000f",
       bgInteractiveStrong: "#b68965",
+      chartSeries: "#9f765a",
     },
     orange: {
       contentSecondary: "#9c4212",
@@ -126,6 +130,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#e6240034",
       bgInteractiveSecondaryTranslucent: "#ff1c0017",
       bgInteractiveStrong: "#f86100",
+      chartSeries: "#f75800",
     },
     yellow: {
       contentSecondary: "#955a14",
@@ -133,6 +138,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ffa61c55",
       bgInteractiveSecondaryTranslucent: "#ff900019",
       bgInteractiveStrong: "#f79000",
+      chartSeries: "#e28600",
     },
     green: {
       contentSecondary: "#116d3e",
@@ -140,6 +146,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#00690d28",
       bgInteractiveSecondaryTranslucent: "#006a0410",
       bgInteractiveStrong: "#00ab56",
+      chartSeries: "#179c5a",
     },
     blue: {
       contentSecondary: "#3c5f85",
@@ -147,6 +154,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#0d71c731",
       bgInteractiveSecondaryTranslucent: "#197cd613",
       bgInteractiveStrong: "#3884d2",
+      chartSeries: "#417ebf",
     },
     purple: {
       contentSecondary: "#5f4996",
@@ -154,6 +162,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#6200de24",
       bgInteractiveSecondaryTranslucent: "#7000fc0f",
       bgInteractiveStrong: "#a26cff",
+      chartSeries: "#8a64e3",
     },
     pink: {
       contentSecondary: "#8f355d",
@@ -161,6 +170,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#d8006a27",
       bgInteractiveSecondaryTranslucent: "#e5007110",
       bgInteractiveStrong: "#ff309b",
+      chartSeries: "#e80083",
     },
     red: {
       contentSecondary: "#a63536",
@@ -168,6 +178,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#f400002a",
       bgInteractiveSecondaryTranslucent: "#ff000010",
       bgInteractiveStrong: "#ff3042",
+      chartSeries: "#ee052f",
     },
     teal: {
       contentSecondary: "#006a5c",
@@ -175,6 +186,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#00a28b35",
       bgInteractiveSecondaryTranslucent: "#00a89017",
       bgInteractiveStrong: "#00ad97",
+      chartSeries: "#009481",
     },
   },
   dark: {
@@ -184,6 +196,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#fffff022",
       bgInteractiveSecondaryTranslucent: "#ffffff0f",
       bgInteractiveStrong: "#8e8b86",
+      chartSeries: "#7d7a75",
     },
     brown: {
       contentSecondary: "#bd9576",
@@ -191,6 +204,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ffb18231",
       bgInteractiveSecondaryTranslucent: "#ffab7718",
       bgInteractiveStrong: "#b68965",
+      chartSeries: "#9f765a",
     },
     orange: {
       contentSecondary: "#ff7836",
@@ -198,6 +212,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ff5f0040",
       bgInteractiveSecondaryTranslucent: "#ff5b001a",
       bgInteractiveStrong: "#f86100",
+      chartSeries: "#f75800",
     },
     yellow: {
       contentSecondary: "#ff9e22",
@@ -205,6 +220,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ffb5213d",
       bgInteractiveSecondaryTranslucent: "#ffc94b16",
       bgInteractiveStrong: "#f79000",
+      chartSeries: "#e28600",
     },
     green: {
       contentSecondary: "#3ec67a",
@@ -212,6 +228,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#00ff8328",
       bgInteractiveSecondaryTranslucent: "#00ff8114",
       bgInteractiveStrong: "#00ab56",
+      chartSeries: "#179c5a",
     },
     blue: {
       contentSecondary: "#669fde",
@@ -219,6 +236,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#4c9df13d",
       bgInteractiveSecondaryTranslucent: "#4a9cf11e",
       bgInteractiveStrong: "#3884d2",
+      chartSeries: "#417ebf",
     },
     purple: {
       contentSecondary: "#ad89ff",
@@ -226,6 +244,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#b765ff33",
       bgInteractiveSecondaryTranslucent: "#b658ff1c",
       bgInteractiveStrong: "#a26cff",
+      chartSeries: "#8a64e3",
     },
     pink: {
       contentSecondary: "#fe66aa",
@@ -233,6 +252,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ff00ae3b",
       bgInteractiveSecondaryTranslucent: "#ff00ab1d",
       bgInteractiveStrong: "#ff309b",
+      chartSeries: "#e80083",
     },
     red: {
       contentSecondary: "#ff4e54",
@@ -240,6 +260,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#ff1b403d",
       bgInteractiveSecondaryTranslucent: "#ff1e411d",
       bgInteractiveStrong: "#ff3042",
+      chartSeries: "#ee052f",
     },
     teal: {
       contentSecondary: "#15c2ac",
@@ -247,6 +268,7 @@ export const platformScopes = {
       bgInteractivePrimaryTranslucent: "#00ddbe33",
       bgInteractiveSecondaryTranslucent: "#00e6c618",
       bgInteractiveStrong: "#00ad97",
+      chartSeries: "#009481",
     },
   },
 } as const;

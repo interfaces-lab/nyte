@@ -49,6 +49,7 @@ export const role = defineConsts({
   layerHover: "var(--nyte-layer-hover)",
   layerPressed: "var(--nyte-layer-pressed)",
   scrollbarThumb: "var(--nyte-scrollbar-thumb)",
+  chartSeries: "var(--nyte-chart-series)",
   buttonFill: "var(--nyte-button-fill)",
   buttonFillHover: "var(--nyte-button-fill-hover)",
   buttonFillPressed: "var(--nyte-button-fill-pressed)",
