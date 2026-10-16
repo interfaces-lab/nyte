@@ -244,28 +244,8 @@ export const sidebarStyles = create({
   },
   draftRow: { color: role.contentSecondary },
   /** The status glyph's box, so a badge can sit on its corner without moving the label. */
-  sessionBadgeHost: {
-    position: "relative",
-    display: "grid",
-    placeItems: "center",
-    width: "100%",
-    height: "100%",
-  },
-  /** Where a chat runs, when that is not this machine. The sidebar fill rings it off the glyph. */
-  sessionBadge: {
-    position: "absolute",
-    insetInlineEnd: `calc(${space.s1} * -1)`,
-    insetBlockEnd: -3,
-    display: "grid",
-    placeItems: "center",
-    width: 12,
-    height: 12,
-    borderRadius: radius.pill,
-    backgroundColor: role.sidebarMaterial,
-    color: role.contentSecondary,
-  },
   /**
-   * A chat whose machine can't be reached keeps its place at half weight. The
+   * A chat whose folder can't be reached keeps its place at half weight. The
    * content fades, not the row, so a selected row keeps a solid selection.
    */
   sessionUnreachable: { opacity: 0.5 },
