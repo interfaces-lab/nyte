@@ -30,21 +30,22 @@ const Report = Type.Object({
 /** Two frames at 60Hz plus scheduling jitter; anything slower reads as lag. */
 const LATENCY_BUDGET_MS = 40;
 
-beforeAll(async () => {
-  directory = await mkdtemp(join(tmpdir(), "nyte-composer-latency-"));
-  await Promise.all([mkdir(join(directory, "profile")), mkdir(join(directory, "session"))]);
-  // Production mode: the measurement must not carry dev-only React checks.
+/**
+ * The harness builds in production mode, so the measurement carries no
+ * dev-only React checks. Vitest runs with NODE_ENV=test, which would otherwise
+ * pick the dev JSX runtime.
+ */
+async function buildHarness(outDir: string): Promise<void> {
   await build({
     configFile: false,
     resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
     mode: "production",
-    // Vitest runs with NODE_ENV=test, which would otherwise pick the dev JSX runtime.
     esbuild: { jsxDev: false },
     logLevel: "silent",
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
     plugins: [stylex.rollup({ devMode: "css-only" })],
     build: {
-      outDir: directory,
+      outDir,
       emptyOutDir: false,
       lib: {
         entry: fileURLToPath(new URL("./composer-latency.browser-test.tsx", import.meta.url)),
@@ -55,6 +56,15 @@ beforeAll(async () => {
       },
     },
   });
+}
+
+/** Other test files spawn their own Electron at the same time; a regression fails every attempt, contention fails one. */
+const CONTENDED_RUN = { timeout: 60_000, retry: 2 };
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "nyte-composer-latency-"));
+  await Promise.all([mkdir(join(directory, "profile")), mkdir(join(directory, "session"))]);
+  await buildHarness(directory);
   await writeFile(
     join(directory, "index.html"),
     `<!doctype html><html data-display-mode="light"><meta charset="utf-8"><link rel="stylesheet" href="latency.css"><body>
@@ -97,9 +107,7 @@ afterAll(async () => {
 
 test.each(["idle", "streaming"])(
   "every keystroke paints on its own frame while the chat is %s",
-  // Other test files spawn their own Electron at the same time; a regression
-  // fails every attempt, contention fails one.
-  { timeout: 60_000, retry: 2 },
+  CONTENDED_RUN,
   async (mode) => {
     const electronPath = Value.Parse(Type.String(), electron);
     const resultPath = join(directory, `${mode}.json`);

@@ -1,10 +1,10 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The `@` and `/` completion popup every composer editor shares: the message
  * composer and the in-transcript message edit. The hook owns the open token,
  * ranking, keyboard navigation, and the preview card; the caller wires it to
  * one `ComposerEditor` and renders `menu` beside it.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
@@ -118,11 +118,11 @@ const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web-search"]);
 /**
  * Scroll the popup's own list so the option is visible. `scrollIntoView` also
  * walks the fixed popup's ancestors and can drag the thread or the window with
- * it; this touches nothing but the list.
+ * it; this touches nothing but the list. The list is positioned, so option
+ * offsets are relative to it.
  */
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
-  // The list is positioned, so offsets are relative to it.
   const top = option.offsetTop;
   const bottom = top + option.offsetHeight;
 
@@ -424,6 +424,24 @@ interface ComposerSuggestions {
   readonly menu: ReactElement;
 }
 
+/**
+ * The `@` and `/` completion menu the composer drives.
+ *
+ * - Up to thousands of files rank per keystroke, so ranking stays off the
+ *   render path for renders that changed nothing it reads.
+ * - Inside Enter's key command a command's replacement is a queued nested
+ *   update; it commits before the microtask, so a running command submits the
+ *   command line.
+ * - A pressed row acts as itself or not at all, even when the list has not
+ *   caught up.
+ * - Plain Enter and Tab pick; a modifier keeps its meaning and sends past the
+ *   menu. When the token moved or went away under a stale menu, the key neither
+ *   picks nor sends.
+ * - The highlight belongs to the list on screen; a query the list has not
+ *   caught up with ranks afresh.
+ * - The editor drives the popup: a press or focus move inside the anchor is
+ *   editing, not dismissal, and `select` decides then.
+ */
 export function useComposerSuggestions({
   editorRef,
   anchorRef,
@@ -451,8 +469,6 @@ export function useComposerSuggestions({
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
   const kind = menu?.kind;
 
-  // Up to thousands of files rank per keystroke; keep that off the render path
-  // for renders that changed nothing the ranking reads.
   const suggestions = useMemo(
     () =>
       kind === undefined
@@ -518,8 +534,6 @@ export function useComposerSuggestions({
 
       editorRef.current?.replaceText(token.start, token.end, `/${suggestion.command.name} `);
 
-      // Inside Enter's key command the replacement is a queued nested update;
-      // it commits before the microtask, so the submit reads the command line.
       if (runs) queueMicrotask(onCommand);
     } else {
       addReference(suggestionReference(suggestion), token.start, token.end);
@@ -531,7 +545,6 @@ export function useComposerSuggestions({
   const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
     suggestionsFor(token.kind, token.query, commands, skills, rankMentions, hasConversationContext);
 
-  /** A pressed row acts as itself or not at all, even when the list has not caught up. */
   const click = (suggestion: ComposerSuggestion): void => {
     const document = editorRef.current?.readDocument();
 
@@ -595,7 +608,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // Plain Enter and Tab pick; the modifier keeps its meaning and sends past the menu.
     const picks =
       composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
 
@@ -603,7 +615,6 @@ export function useComposerSuggestions({
     const document = editorRef.current?.readDocument();
     const token = document === undefined ? undefined : liveToken(document, menu);
 
-    // The token moved or went away under a stale menu: neither pick nor send.
     if (token === undefined || document === undefined) {
       event.preventDefault();
       show(undefined);
@@ -611,7 +622,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // The highlight belongs to the list on screen; a query it has not caught up with ranks afresh.
     const active = token.query === deferredQuery ? suggestions[activeIndex] : rankLive(token)[0];
 
     if (active === undefined) {
@@ -633,8 +643,6 @@ export function useComposerSuggestions({
         modal={false}
         onOpenChange={(open, details) => {
           if (open) return;
-          // The editor drives this popup. A press or focus move inside
-          // the anchor is editing, not dismissal; `select` decides then.
           const target = details.event.target;
 
           if (

@@ -1,4 +1,3 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * Intermediate narration, reasoning, and tool calls form one work episode.
  * Compact mode keeps the episode in a clipped window
@@ -7,6 +6,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -81,6 +81,15 @@ function StepEntryView({
   return <ThinkingLine text={entry.markdown} streaming={streaming} />;
 }
 
+/**
+ * The preview follows new output. Scrolling away pauses that; ten seconds
+ * without another input, or a return to the bottom, resumes it.
+ *
+ * The disclosure controls the full list alone. The preview is the group's own
+ * window onto live work, so it neither reads as expanded nor closes on the
+ * trigger; opening from either state shows the list, and closing the list
+ * returns the group to whatever the density shows by default.
+ */
 export function StepGroupView({
   messages,
   cwd,
@@ -176,8 +185,6 @@ export function StepGroupView({
   const expanded = content === "open";
   const panelId = useId();
 
-  // The preview follows new output. Scrolling away pauses that; ten seconds
-  // without another input, or a return to the bottom, resumes it.
   const viewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const callsRef = useRef<HTMLDivElement>(null);
@@ -297,10 +304,6 @@ export function StepGroupView({
     );
   }
 
-  // The disclosure controls the full list alone. The preview is the group's
-  // own window onto live work, so it neither reads as expanded nor closes on
-  // the trigger; opening from either state shows the list, and closing the
-  // list returns the group to whatever the density shows by default.
   const disclosure = {
     variant: "plain",
     "aria-controls": expanded ? panelId : undefined,

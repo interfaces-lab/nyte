@@ -172,6 +172,7 @@ function ReferenceChip({
   );
 }
 
+/** Tiptap names every editor a textbox; a read-only message is text, and its row stays clickable. */
 export function useComposerSurface({
   text,
   files,
@@ -223,7 +224,6 @@ export function useComposerSurface({
           ...surface,
           editable: false,
           editorProps: {
-            // Tiptap names every editor a textbox; a message is text, and its row stays clickable.
             attributes: {
               role: "",
               class: props(composerStyles.readOnly).className ?? "",

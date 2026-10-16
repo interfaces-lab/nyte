@@ -347,7 +347,7 @@ function draftReference(
   return undefined;
 }
 
-/** Split draft text into plain runs and the chips its tokens stand for. */
+/** Split draft text into plain runs and the chips its tokens stand for. A skill link closes itself; the other tokens only end at a delimiter. */
 export function messageParts(text: string, options: DraftParseOptions): readonly MessagePart[] {
   const parts: MessagePart[] = [];
   let cursor = 0;
@@ -397,7 +397,6 @@ export function messageParts(text: string, options: DraftParseOptions): readonly
     }
 
     const end = token.index + token[0].length;
-    // A skill link closes itself; the other tokens only end at a delimiter.
     const open = reference.kind !== "skill" && end === text.length;
     const known = reference.kind === "file" && options.files?.has(reference.file.url) === true;
 

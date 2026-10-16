@@ -89,7 +89,8 @@ function nodeRects(node: Node): readonly DOMRect[] {
 /**
  * Where a collapsed selection sits. Chromium reports no usable box beside a
  * chip: the trailing <br> after it has zero height at the baseline, and an
- * empty text node has no rect at all. The neighbours know the line instead.
+ * empty text node has no rect at all. The neighbours know the line instead:
+ * after a line break the caret opens the next line at the block's start edge.
  */
 function caretBox(range: Range): CaretBox | undefined {
   const own = range.getClientRects()[0];
@@ -101,7 +102,6 @@ function caretBox(range: Range): CaretBox | undefined {
   const after = siblings[range.startOffset];
 
   if (before?.nodeName === "BR") {
-    // After a line break the caret opens the next line at the block's start edge.
     const line = nodeRects(before).at(-1);
     const block = container instanceof Element ? container.getBoundingClientRect() : undefined;
 
@@ -132,6 +132,21 @@ function caretBox(range: Range): CaretBox | undefined {
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
+/**
+ * The composer's editable surface.
+ *
+ * - `reported` is the last document this editor reported, so the parent's copy
+ *   of it is an echo, not an instruction. `observed` also holds composition
+ *   updates whose report is deliberately deferred.
+ * - Composition can end without a transaction, so `compositionend` reports too;
+ *   ProseMirror has cleared its composing flag by then.
+ * - A drop lands at the pointer, or at the caret on engines that lack
+ *   `caretPositionFromPoint`.
+ * - The drawn caret only mirrors the native selection and never sets it. An
+ *   invisible glyph measures the font so the caret keeps its height on an empty
+ *   line, and the native caret stays wherever Chromium reports no reliable box
+ *   or the caret scrolled away.
+ */
 export function ComposerEditor({
   ref,
   inputRef,
@@ -158,9 +173,7 @@ export function ComposerEditor({
   });
 
   const caretRef = useRef<HTMLSpanElement>(null);
-  /** The last document this editor reported; the parent's copy of it is an echo, not an instruction. */
   const reported = useRef<ComposerDocumentState | undefined>(undefined);
-  /** Includes composition updates whose parent report is deliberately deferred. */
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
 
@@ -197,7 +210,6 @@ export function ComposerEditor({
         const view = editor.view;
         const page = view.dom.ownerDocument;
 
-        // Older engines lack the standard call; there the drop lands at the caret.
         const caret =
           "caretPositionFromPoint" in page ? page.caretPositionFromPoint(clientX, clientY) : null;
 
@@ -307,7 +319,6 @@ export function ComposerEditor({
     const onTransaction = ({ transaction }: EditorEvents["transaction"]): void =>
       report(transaction.getMeta(COMPOSER_RESTORE) === true);
 
-    // Composition can end without a transaction; ProseMirror has cleared its flag by now.
     const onCompositionEnd = (): void => report(false);
     const root = editor.view.dom;
     editor.on("transaction", onTransaction);
@@ -336,7 +347,6 @@ export function ComposerEditor({
     view.updateState(clearComposerHistory(view.state));
   }, [editor, externalDocument]);
 
-  // The drawn caret only mirrors the native selection. It never sets it.
   useLayoutEffect(() => {
     const root = editor.view.dom;
     const caret = caretRef.current;
@@ -380,11 +390,9 @@ export function ComposerEditor({
         const typography = getComputedStyle(root);
         const lineHeight = Number.parseFloat(typography.lineHeight);
         caret.style.font = typography.font;
-        // The invisible glyph measures the font, so the caret keeps its height on an empty line.
         const height = Math.min(glyph.getBoundingClientRect().height || lineHeight, lineHeight);
         const x = box.x - bounds.left;
         const y = box.top - bounds.top + Math.max(0, (box.height - height) / 2);
-        // The native caret stays wherever Chromium reports no reliable box or the caret scrolled away.
         const inView = y >= 0 && y + height <= root.clientHeight + 1;
         caret.hidden = !inView;
         root.dataset["customCaret"] = String(inView);

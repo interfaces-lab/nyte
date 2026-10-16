@@ -14,9 +14,9 @@ export interface MentionPreviewRow {
   readonly label: string;
 }
 
+/** The mention itself always keeps its own row; only the folders above it collapse. */
 export function mentionPreviewRows(displayPath: string): readonly MentionPreviewRow[] {
   const segments = displayPath.split("/").filter((segment) => segment !== "");
-  // The mention itself always keeps its own row; only the folders above it collapse.
   const collapsed = Math.max(0, segments.length - 1 - MAX_FOLDER_ROWS);
 
   const shown =

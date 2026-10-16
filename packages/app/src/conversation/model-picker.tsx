@@ -103,6 +103,7 @@ interface ModelPickerProps {
   onChange: (change: ModelPickerChange) => void;
 }
 
+/** A model is an Autocomplete item inside a submenu, so its press must close the outer menu. */
 function ModelPickerView({
   catalog,
   current,
@@ -113,7 +114,6 @@ function ModelPickerView({
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
-  // A model is an Autocomplete item inside a submenu, so its press must close the outer menu.
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);

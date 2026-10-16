@@ -135,6 +135,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Typing starts once the first commit and the streaming load settle. A warm-up
+ * word absorbs one-time costs (history init, first layout of the frame): they
+ * belong to the app's first paint, not to the steady state a person types in.
+ */
 export async function run(streaming: boolean): Promise<LatencyReport> {
   const client = new QueryClient();
   const host = document.createElement("div");
@@ -157,15 +162,12 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
       </StrictMode>,
     ),
   );
-  // Let the first commit and the streaming load settle before typing starts.
   await wait(300);
 
   if (failure !== undefined) throw failure;
   const editor = editorElement();
   editor.focus();
 
-  // One-time costs (history init, first layout of the frame) belong to the app's
-  // first paint, not to the steady state a person types in.
   for (const character of "warm") {
     document.execCommand("insertText", false, character);
     await wait(KEY_INTERVAL_MS);

@@ -16,8 +16,10 @@ export interface ComposerImageAttachment {
   readonly content: ImageContent;
 }
 
-// BMP is accepted because the agent converts it to PNG before it reaches a
-// provider; Chromium renders it in the attachment preview meanwhile.
+/**
+ * BMP is accepted because the agent converts it to PNG before it reaches a
+ * provider; Chromium renders it in the attachment preview meanwhile.
+ */
 const INLINE_IMAGE_TYPE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["bmp", "image/bmp"],
   ["gif", "image/gif"],

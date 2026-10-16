@@ -43,6 +43,10 @@ interface BackgroundWorkProps {
   readonly viewport: HTMLElement | null;
 }
 
+/**
+ * Until the list lands there is nothing to say: most chats have no jobs, and
+ * a placeholder would sit under a transcript that already painted.
+ */
 export function BackgroundWork({
   sessionId,
   open,
@@ -91,8 +95,6 @@ export function BackgroundWork({
     if (held) requestAnimationFrame(() => pillRef.current?.focus());
   };
 
-  // Until the list lands there is nothing to say: most chats have no jobs, and
-  // a placeholder here would sit under a transcript that already painted.
   if (!hasTerminals) return null;
 
   return (

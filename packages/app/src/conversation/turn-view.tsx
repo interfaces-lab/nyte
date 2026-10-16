@@ -1,11 +1,11 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 /**
  * One transcript item. User prompts are the only ordinary contained message
  * region. Assistant prose stays flat, while reasoning, tools, and system
  * history use compact rows. Parts keep core's stable identity so settled and
  * streaming content exchange in place.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
@@ -56,7 +56,12 @@ import { contentDraftText } from "./message-references.ts";
 import { useBlobUrl } from "../use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import { USER_MESSAGE_PREVIEW_LINES, bubbleStyles, messageStyles, turnStyles } from "./turn.stylex.ts";
+import {
+  USER_MESSAGE_PREVIEW_LINES,
+  bubbleStyles,
+  messageStyles,
+  turnStyles,
+} from "./turn.stylex.ts";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
@@ -176,7 +181,8 @@ interface UserEditState extends BranchModelChoice {
  * One user row. Without `onEdit` it is read-only, which also draws a message
  * that has left the composer but has no commit yet. Editing is composing
  * again from the sent content, so it is the same frame the composer uses:
- * attachments, the `+` menu, `@` and `/` completion, the model picker.
+ * attachments, the `+` menu, `@` and `/` completion, the model picker. The edit
+ * sits in a thread, so a workspace is open behind it for `@` mentions.
  */
 export function UserMessageView({
   content,
@@ -218,7 +224,6 @@ export function UserMessageView({
   }, [canDismissEdit]);
   const original = contentDraftText(content);
   const pluginCatalog = usePluginCatalog();
-  // The edit sits in a thread, so a workspace is open behind it.
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {

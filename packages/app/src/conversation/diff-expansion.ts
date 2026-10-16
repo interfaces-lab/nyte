@@ -75,7 +75,10 @@ function textSide(
  * Builds the loader Pierre calls when a reader asks for more context.
  *
  * Pierre only calls it for changed and renamed files parsed from a patch;
- * added, deleted and untracked files already hold every line they have.
+ * added, deleted and untracked files already hold every line they have. A
+ * pure rename has no content change, and Pierre wants its old side left out
+ * rather than duplicated. A rename's previous contents live under the previous
+ * path; the new path has no old side there.
  */
 export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoader {
   return async (fileDiff) => {
@@ -83,12 +86,8 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
     const current = await source.readContents({ scope: source.scope, path });
     const newFile = fileSide(source, path, "new", textSide(current.new, path, "current"));
 
-    // A pure rename has no content change, and Pierre wants the old side left
-    // out rather than duplicated.
     if (fileDiff.type === "rename-pure") return { oldFile: null, newFile };
 
-    // A rename's previous contents live under the previous path; the new path
-    // has no old side there.
     const previousPath = fileDiff.prevName ?? path;
 
     const previous =
