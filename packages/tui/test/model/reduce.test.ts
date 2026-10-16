@@ -931,7 +931,7 @@ describe("session and view intents", () => {
     expect(revealed.effects).toEqual([{ kind: "scroll", op: { kind: "keep-viewport" } }]);
     expect(deriveScreen(revealed.state, null).transcript.window.start).toBe(0);
     expect(play(revealed.state, { kind: "reveal-earlier" }).effects).toEqual([
-      { kind: "load-earlier", session: revealed.state.facts.session?.id },
+      { kind: "load-earlier", session: S1 },
     ]);
     expect(
       play(revealed.state, { kind: "scroll", to: "latest" }).state.local.transcript.window,
