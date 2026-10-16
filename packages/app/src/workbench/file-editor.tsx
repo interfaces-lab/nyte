@@ -127,6 +127,7 @@ const styles = create({
     backgroundColor: role.bgBase,
   },
   error: { color: role.contentSecondary },
+  saveText: { flex: "0 1 auto" },
   statusText: {
     flex: 1,
     minWidth: 0,
@@ -516,43 +517,34 @@ function TextFileEditor({
           />
         </EditProvider>
       </PierreWorkerProvider>
-      {gitBlame && (
-        <div {...props(styles.status)} title={blameText}>
-          <span>Line {line}</span>
-          <span {...props(styles.statusText)}>{blameText}</span>
-        </div>
-      )}
-      {snapshot.status.kind !== "idle" && (
-        <div
-          role={
-            snapshot.status.kind === "error" || snapshot.status.kind === "conflict"
-              ? "alert"
-              : "status"
-          }
-          {...props(
-            (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
-              intent.danger,
-            styles.status,
-            (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
-              styles.error,
-          )}
+      <div {...props(styles.status)} title={gitBlame ? blameText : undefined}>
+        {gitBlame && (
+          <>
+            <span>Line {line}</span>
+            <span {...props(styles.statusText)}>{blameText}</span>
+          </>
+        )}
+        <span role="status" {...props(styles.statusText, styles.saveText)}>
+          {snapshot.status.kind === "saving"
+            ? "Saving…"
+            : snapshot.status.kind === "saved"
+              ? "Saved"
+              : ""}
+        </span>
+        <span
+          role="alert"
+          {...props(intent.danger, styles.error, styles.statusText, styles.saveText)}
         >
-          <span {...props(styles.statusText)}>
-            {snapshot.status.kind === "saving"
-              ? "Saving…"
-              : snapshot.status.kind === "saved"
-                ? dirty
-                  ? "Unsaved changes"
-                  : "Saved"
-                : snapshot.status.kind === "conflict"
-                  ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
-                  : snapshot.status.message}
-          </span>
-          {snapshot.status.kind === "error" && (
-            <Button onClick={() => void save()}>Retry Save</Button>
-          )}
-        </div>
-      )}
+          {snapshot.status.kind === "conflict"
+            ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
+            : snapshot.status.kind === "error"
+              ? snapshot.status.message
+              : ""}
+        </span>
+        {snapshot.status.kind === "error" && (
+          <Button onClick={() => void save()}>Retry Save</Button>
+        )}
+      </div>
     </div>
   );
 }
