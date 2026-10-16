@@ -85,6 +85,11 @@ function visit(
   return { history, historyIndex: history.length - 1 };
 }
 
+/**
+ * File tabs' runtime over the workbench controller's tabs. Opening a file
+ * changes both stores; the controller's notifications wait until the file's
+ * line has landed too, so a reader never sees the new tab at its old line.
+ */
 export function createFileTabStore(
   controller: Pick<WorkbenchController, "actions" | "getView" | "subscribe"> = workbenchController,
 ) {
@@ -98,6 +103,7 @@ export function createFileTabStore(
 
   const listeners = new Set<() => void>();
   let revision = 0;
+  let opening = false;
 
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
 
@@ -198,51 +204,55 @@ export function createFileTabStore(
   const open = (
     key: WorkbenchViewKey,
     location: FileLocation & { readonly preview?: boolean },
-    recordHistory: boolean,
+    next: (current: FileViewRuntime) => FileViewRuntime,
   ): void => {
-    const current = getRuntimeView(key);
     const preview = location.preview === true;
     const existing = find(key, location.path);
+    opening = true;
 
-    if (existing === undefined && preview) {
-      const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
+    try {
+      if (existing === undefined && preview) {
+        const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
 
-      if (replaceable !== undefined) {
-        controller.actions.closeTab({ view: key, id: replaceable.id });
-        documents.delete(replaceable.id);
+        if (replaceable !== undefined) {
+          controller.actions.closeTab({ view: key, id: replaceable.id });
+          documents.delete(replaceable.id);
+        }
       }
+
+      const id = controller.actions.openTab({
+        view: key,
+        tab: { kind: "file", path: location.path, preview },
+        activate: true,
+      });
+
+      const previous = runtime(id);
+      documents.set(id, {
+        ...previous,
+        line: location.line,
+        column: location.column,
+        length: location.length,
+        navigationRevision: previous.navigationRevision + 1,
+      });
+
+      if (existing !== undefined && !preview) pin(key, existing);
+    } finally {
+      opening = false;
     }
 
-    const id = controller.actions.openTab({
-      view: key,
-      tab: { kind: "file", path: location.path, preview },
-      activate: true,
-    });
-
-    const previous = runtime(id);
-    documents.set(id, {
-      ...previous,
-      line: location.line,
-      column: location.column,
-      length: location.length,
-      navigationRevision: previous.navigationRevision + 1,
-    });
-
-    if (existing !== undefined && !preview) pin(key, existing);
-    publish(key, recordHistory ? { ...current, ...visit(current, location) } : current);
+    publish(key, next(getRuntimeView(key)));
   };
 
   const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {
     const location = getRuntimeView(key).history[historyIndex];
 
     if (location === undefined) return;
-    open(key, location, false);
-    publish(key, { ...getRuntimeView(key), historyIndex });
+    open(key, location, (current) => ({ ...current, historyIndex }));
   };
 
   const actions = {
     open(key: WorkbenchViewKey, location: FileLocation & { readonly preview?: boolean }): void {
-      open(key, location, true);
+      open(key, location, (current) => ({ ...current, ...visit(current, location) }));
     },
     reveal(key: WorkbenchViewKey, displayPath: string): void {
       const current = getRuntimeView(key);
@@ -323,7 +333,10 @@ export function createFileTabStore(
     getView,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
-      const unsubscribe = controller.subscribe(listener);
+
+      const unsubscribe = controller.subscribe(() => {
+        if (!opening) listener();
+      });
 
       return () => {
         listeners.delete(listener);

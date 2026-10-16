@@ -116,4 +116,25 @@ describe("file runtime store", () => {
     store.actions.back(key);
     assert.equal(store.getView(key).tabs[0]?.line, 10);
   });
+
+  test("opening a file at a line publishes once, with the tab and its line together", () => {
+    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const store = createFileTabStore(controller);
+    store.actions.open(key, first);
+    const seen: [string | undefined, number | undefined][] = [];
+
+    const unsubscribe = store.subscribe(() => {
+      const active = store.getView(key).active;
+      seen.push([active?.path, active?.line]);
+    });
+
+    store.actions.open(key, { ...second, line: 5, preview: true });
+    store.actions.back(key);
+    unsubscribe();
+
+    assert.deepEqual(seen, [
+      [second.path, 5],
+      [first.path, undefined],
+    ]);
+  });
 });
