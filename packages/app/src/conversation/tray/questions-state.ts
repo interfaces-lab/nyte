@@ -109,7 +109,7 @@ export interface QuestionDock {
 export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
 
 function observeQuestionViews(stores: readonly ReturnType<typeof sessionWatch>[]) {
-  let views = stores.map((store) => store.getValue());
+  let views = stores.map((store) => store.value);
 
   return {
     subscribe: (notify: () => void) => {
@@ -120,7 +120,7 @@ function observeQuestionViews(stores: readonly ReturnType<typeof sessionWatch>[]
       };
     },
     snapshot: () => {
-      const next = stores.map((store) => store.getValue());
+      const next = stores.map((store) => store.value);
 
       if (next.some((view, index) => view !== views[index])) views = next;
 

@@ -280,9 +280,9 @@ const STATES: readonly ComposerState[] = [
     view: undefined,
     check: ({ editor, button }) => [
       ...(editor.getAttribute("aria-disabled") === "true"
-        ? []
-        : ["editor takes input before the view"]),
-      ...(inert(button("Add to message")) ? [] : ["Add is live before the view"]),
+        ? ["editor refuses input before the view"]
+        : []),
+      ...(inert(button("Add to message")) ? ["Add is dead before the view"] : []),
     ],
   },
 ];
@@ -336,7 +336,6 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
       execution={sessionView?.execution}
       pending={messages.queued}
       unsent={messages.unsent}
-      disabled={sessionView === undefined}
     />
   );
 }

@@ -28,13 +28,14 @@ import {
   useCatalog,
   COMPACT_COMMAND,
   useConfigureSession,
+  useHostLink,
   useHostState,
   useMentionFiles,
   usePluginCatalog,
   useSessionActions,
   useSessionChoice,
+  useSessionActivity,
   useSessionCommands,
-  useSessionView,
   useSetPreference,
 } from "../queries.ts";
 import { pickerDefaults } from "../preference-projection.ts";
@@ -84,7 +85,6 @@ import type { MessageReference } from "./message-references.ts";
 import { preferences, useSetting, type RunningMessagePreference } from "../preferences/index.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
-import { subagentActivity } from "./subagent-status.ts";
 import { composerStyles, markerStyles } from "./styles.stylex.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
@@ -848,6 +848,7 @@ export function Composer({
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
   const [activeQueued, setActiveQueued] = useState<string>();
   const host = useHostState();
+  const link = useHostLink();
   const queueRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
 
@@ -870,7 +871,7 @@ export function Composer({
   const focusAfterMove = useRef(false);
   const cwd = host.data?.workspace?.path;
 
-  const activity = subagentActivity(useSessionView(floating ? sessionId : undefined), cwd);
+  const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
   const attachInlineSlot = useCallback(
     (slot: HTMLDivElement | null): void => {
@@ -1591,6 +1592,20 @@ export function Composer({
                     aria-label="Dismiss notification"
                     onClick={() => setFeedback(undefined)}
                   />
+                </div>
+              )}
+
+              {link !== undefined && link.kind !== "connected" && (
+                <div
+                  role={link.kind === "closed" ? "alert" : "status"}
+                  {...props(composerStyles.queued)}
+                >
+                  <Icon name={link.kind === "closed" ? "warning" : "refresh"} />
+                  <span {...props(composerStyles.queuedText)}>
+                    {link.kind === "closed"
+                      ? "Disconnected from the host."
+                      : "Reconnecting to the host…"}
+                  </span>
                 </div>
               )}
 

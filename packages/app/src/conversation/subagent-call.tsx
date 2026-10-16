@@ -27,8 +27,8 @@ import {
   useCatalog,
   useChildSessions,
   useSession,
+  useSessionActivity,
   useSessionChoice,
-  useSessionView,
   useWorkspaces,
 } from "../queries.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
@@ -45,7 +45,6 @@ import {
   DELEGATE_NOUNS,
   DELEGATE_VERBS,
   sessionStatus,
-  subagentActivity,
 } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
@@ -136,7 +135,7 @@ function SubagentStatusLine({
   readonly watched: SessionId | undefined;
   readonly cwd: string | undefined;
 }): ReactElement {
-  const activity = subagentActivity(useSessionView(watched), cwd);
+  const activity = useSessionActivity(watched, cwd);
   const running = status.indicator === "running";
 
   return (

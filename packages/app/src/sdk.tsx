@@ -65,9 +65,16 @@ export function connection(): Connection {
   return installed;
 }
 
+/** A watch's latest frame and its failure; a new frame clears the failure. */
+export interface WatchState<T> {
+  readonly value: T | undefined;
+  readonly error: Error | undefined;
+}
+
+const UNSTARTED: WatchState<never> = { value: undefined, error: undefined };
+
 export class WatchStore<T> {
-  value: T | undefined = undefined;
-  error: Error | undefined = undefined;
+  private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | undefined;
   private readonly open: () => AsyncIterable<T>;
@@ -78,6 +85,14 @@ export class WatchStore<T> {
     this.idle = idle;
   }
 
+  get value(): T | undefined {
+    return this.state.value;
+  }
+
+  get error(): Error | undefined {
+    return this.state.error;
+  }
+
   get active(): boolean {
     return this.listeners.size > 0;
   }
@@ -85,10 +100,17 @@ export class WatchStore<T> {
   dispose(): void {
     this.stop?.();
     this.stop = undefined;
-    this.value = undefined;
-    this.error = undefined;
-    this.notify();
+    this.publish(UNSTARTED);
   }
+
+  /** Reopen a failed watch for its current subscribers, keeping the last frame on screen. */
+  retry = (): void => {
+    this.stop?.();
+    this.stop = undefined;
+    this.publish({ value: this.state.value, error: undefined });
+
+    if (this.listeners.size > 0) this.stop = this.start();
+  };
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -105,22 +127,24 @@ export class WatchStore<T> {
     };
   };
 
-  getValue = (): T | undefined => this.value;
+  getState = (): WatchState<T> => this.state;
 
   next(): Promise<T> {
     return new Promise((resolve, reject) => {
-      const seen = this.value;
+      const seen = this.state.value;
       const leave = this.subscribe(() => {
-        if (this.error !== undefined) {
+        const { value, error } = this.state;
+
+        if (error !== undefined) {
           leave();
-          reject(this.error);
+          reject(error);
 
           return;
         }
 
-        if (this.value === undefined || this.value === seen) return;
+        if (value === undefined || value === seen) return;
         leave();
-        resolve(this.value);
+        resolve(value);
       });
     });
   }
@@ -135,14 +159,14 @@ export class WatchStore<T> {
           const next = await iterator.next();
 
           if (stopped || next.done === true) return;
-          this.value = next.value;
-          this.error = undefined;
-          this.notify();
+          this.publish({ value: next.value, error: undefined });
         }
       } catch (cause) {
         if (stopped) return;
-        this.error = cause instanceof Error ? cause : new Error(String(cause));
-        this.notify();
+        this.publish({
+          value: this.state.value,
+          error: cause instanceof Error ? cause : new Error(String(cause)),
+        });
       }
     })();
 
@@ -152,7 +176,9 @@ export class WatchStore<T> {
     };
   }
 
-  private notify(): void {
+  private publish(state: WatchState<T>): void {
+    this.state = state;
+
     for (const listener of Array.from(this.listeners)) listener();
   }
 }
@@ -196,14 +222,35 @@ export function watchFamily<K extends string, T>(open: (key: K) => AsyncIterable
 
 const nothing = (): (() => void) => () => undefined;
 
-const none = (): undefined => undefined;
+const unstarted = (): WatchState<never> => UNSTARTED;
 
-export function useWatch<T>(store: WatchStore<T> | undefined): T | undefined {
-  return useSyncExternalStore(
+const noRetry = (): void => undefined;
+
+/** A watch's state plus `retry`, which reopens it after a failure. */
+export function useWatch<T>(
+  store: WatchStore<T> | undefined,
+): WatchState<T> & { readonly retry: () => void } {
+  const state = useSyncExternalStore(
     store?.subscribe ?? nothing,
-    store?.getValue ?? none,
-    store?.getValue ?? none,
+    store?.getState ?? unstarted,
+    store?.getState ?? unstarted,
   );
+
+  return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
+}
+
+/**
+ * One slice of a watch's state. The component re-renders only when the slice
+ * changes, so `select` must return a primitive or a part of the state, never
+ * a new object.
+ */
+export function useWatchSelect<T, S>(
+  store: WatchStore<T> | undefined,
+  select: (state: WatchState<T>) => S,
+): S {
+  const read = (): S => select(store?.getState() ?? UNSTARTED);
+
+  return useSyncExternalStore(store?.subscribe ?? nothing, read, read);
 }
 
 export function hostChanged(cause: unknown): boolean {

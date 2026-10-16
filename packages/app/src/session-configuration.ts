@@ -13,7 +13,7 @@ export interface SessionChoice {
 }
 
 export function projectSessionChoice(
-  view: SessionView,
+  view: Pick<SessionView, "configuration">,
   pending: readonly PendingConfiguration[],
 ): SessionChoice {
   const stored = view.configuration.selected ?? view.configuration.effective;

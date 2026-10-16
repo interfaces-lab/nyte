@@ -58,11 +58,13 @@ import {
   jobsWatch,
   sessionWatch,
   useWatch,
+  useWatchSelect,
 } from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 import { catalogOf } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
 import { mentionFile } from "./conversation/message-references.ts";
+import { subagentActivity } from "./conversation/subagent-status.ts";
 import type { MentionFile } from "./conversation/message-references.ts";
 import type { DesktopCatalog } from "./catalog.ts";
 
@@ -268,7 +270,7 @@ export function useForgetWorkspace() {
 
 export function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
-  const all = useWatch(directoryWatch("all"));
+  const all = useWatch(directoryWatch("all")).value;
 
   return useMemo(
     () =>
@@ -282,7 +284,7 @@ export function useRootSessions(): readonly SessionInfo[] | undefined {
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
 
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
-  const all = useWatch(directoryWatch("all"));
+  const all = useWatch(directoryWatch("all")).value;
 
   return useMemo(() => {
     if (all === undefined) return NO_SESSIONS;
@@ -338,7 +340,7 @@ export function useSessionSearch(search: string, enabled = true) {
 
 export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
-  const roots = useWatch(directoryWatch("all"));
+  const roots = useWatch(directoryWatch("all")).value;
   const listed = roots?.find((session) => session.id === sessionId);
 
   const read = useQuery({
@@ -355,8 +357,23 @@ export function useSession(sessionId: SessionId | undefined) {
   };
 }
 
-export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
+/** The session's live view with the watch's failure and a retry. */
+export function useSessionState(sessionId: SessionId | undefined) {
   return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId));
+}
+
+export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
+  return useSessionState(sessionId).value;
+}
+
+/** What a running session is doing now, in words; re-renders only when the words change. */
+export function useSessionActivity(
+  sessionId: SessionId | undefined,
+  cwd: string | undefined,
+): string | undefined {
+  return useWatchSelect(sessionId === undefined ? undefined : sessionWatch(sessionId), (state) =>
+    subagentActivity(state.value, cwd),
+  );
 }
 
 export async function warmSession(sessionId: SessionId): Promise<void> {
@@ -366,22 +383,29 @@ export async function warmSession(sessionId: SessionId): Promise<void> {
 }
 
 export function useSessionChoice(sessionId: SessionId) {
-  const view = useSessionView(sessionId);
+  const configuration = useWatchSelect(
+    sessionWatch(sessionId),
+    (state) => state.value?.configuration,
+  );
   const pending = useMutationState<PendingConfiguration>({
     filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },
   });
 
-  return view === undefined ? undefined : projectSessionChoice(view, pending);
+  return configuration === undefined
+    ? undefined
+    : projectSessionChoice({ configuration }, pending);
 }
 
 export function useChildSessions(sessionId: SessionId | undefined) {
-  const children = useWatch(sessionId === undefined ? undefined : childrenWatch(sessionId));
+  const children = useWatch(
+    sessionId === undefined ? undefined : childrenWatch(sessionId),
+  ).value;
 
   return { data: children };
 }
 
 export function useWorkspaceJobs(workspace: WorkspaceId | undefined) {
-  return useWatch(workspace === undefined ? undefined : jobsWatch(workspace));
+  return useWatch(workspace === undefined ? undefined : jobsWatch(workspace)).value;
 }
 
 export function useVcsChanges(
@@ -518,7 +542,8 @@ export function useVcsSnapshot(enabled: boolean) {
   const workspace = host.data?.workspace?.id;
 
   return {
-    data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined),
+    data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined)
+      .value,
   };
 }
 
@@ -606,8 +631,13 @@ export function useSaveWorkspaceFile() {
   });
 }
 
+/** The SDK's link to the host: connected, reconnecting after a loss, or closed for good. */
+export function useHostLink() {
+  return useWatchSelect(hostWatch("host"), (state) => state.value?.link);
+}
+
 function useCatalogGeneration(): string {
-  return useWatch(hostWatch("host"))?.catalog ?? "initial";
+  return useWatchSelect(hostWatch("host"), (state) => state.value?.catalog) ?? "initial";
 }
 
 export function useCatalog(_sessionId?: SessionId) {
@@ -706,7 +736,12 @@ export const COMPACT_COMMAND = {
 } satisfies CommandInfo;
 
 export function usePluginCatalog(sessionId?: SessionId) {
-  const catalog = useSessionView(sessionId)?.catalog;
+  const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
+  const catalog = useWatchSelect(store, (state) => state.value?.catalog);
+  const failed = useWatchSelect(
+    store,
+    (state) => state.value === undefined && state.error !== undefined,
+  );
 
   const data = useMemo(
     () =>
@@ -716,11 +751,14 @@ export function usePluginCatalog(sessionId?: SessionId) {
     [catalog],
   );
 
-  return { data, isError: false };
+  return { data, isError: failed };
 }
 
 export function useSessionCommands(sessionId: SessionId) {
-  const commands = useSessionView(sessionId)?.catalog.commands;
+  const commands = useWatchSelect(
+    sessionWatch(sessionId),
+    (state) => state.value?.catalog.commands,
+  );
 
   const data = useMemo(
     () => (commands === undefined ? undefined : [...commands, COMPACT_COMMAND]),

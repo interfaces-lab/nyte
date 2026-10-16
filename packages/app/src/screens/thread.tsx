@@ -69,7 +69,7 @@ import {
   useSetPreference,
   useSession,
   useSessionChoice,
-  useSessionView,
+  useSessionState,
 } from "../queries.ts";
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
@@ -311,7 +311,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
     [inputRef],
   );
 
-  const view = useSessionView(sessionId);
+  const { value: view, error: viewError, retry: retryView } = useSessionState(sessionId);
   const choice = useSessionChoice(sessionId);
 
   const turns = useMemo(
@@ -378,8 +378,8 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   const rows = useMemo(
     () =>
       transcriptRows({
-        loading: view === undefined,
-        failed: false,
+        loading: view === undefined && viewError === undefined,
+        failed: viewError !== undefined,
         turns,
         landing: messages.submitted,
         held: messages.held,
@@ -387,7 +387,16 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
         working,
         running: messages.running,
       }),
-    [view, turns, messages.submitted, messages.held, messages.running, retrying, working],
+    [
+      view,
+      viewError,
+      turns,
+      messages.submitted,
+      messages.held,
+      messages.running,
+      retrying,
+      working,
+    ],
   );
 
   const title = session.data?.name ?? "New chat";
@@ -479,14 +488,11 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
     [cwd],
   );
 
-  const snapshotError = false;
-  const refetchSnapshot = (): void => undefined;
-
   return (
     <SubagentSessionsProvider value={subagentSessions}>
       <div
         {...props(threadStyles.screen, presentation === "tray" && threadStyles.embeddedScreen)}
-        aria-busy={view === undefined}
+        aria-busy={view === undefined && viewError === undefined}
       >
         {presentation === "full" && layout.kind === "split" && (
           <PaneHeader
@@ -539,7 +545,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                 branchModel={branchModel}
                 onEditUser={editUserMessage}
                 onOpenChanges={openChanges}
-                onRetry={refetchSnapshot}
+                onRetry={retryView}
               />
 
               {presentation === "full" && (
@@ -549,7 +555,10 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                   backgroundWork={{
                     content: (
                       <>
-                        <QuestionTray disabled={snapshotError || navigating} viewport={scroll} />
+                        <QuestionTray
+                          disabled={viewError !== undefined || navigating}
+                          viewport={scroll}
+                        />
                         <SubagentTray
                           parentSessionId={sessionId}
                           agents={childSessions}
@@ -601,7 +610,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                   execution={view?.execution}
                   pending={messages.queued}
                   unsent={messages.unsent}
-                  disabled={view === undefined}
                   fileDropRoot={column}
                   initialViewState={viewStore.readSession(sessionId, paneId).composer}
                   onViewStateChange={(composer) =>

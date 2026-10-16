@@ -459,7 +459,7 @@ export function CustomizeSurface({
   const navigate = useNavigate();
   const projectSettings = usePluginSettingsProjection(sessionId);
 
-  const hostView = useWatch(hostWatch("host"));
+  const hostView = useWatch(hostWatch("host")).value;
   const view = useSessionView(sessionId);
 
   const inventory = {
