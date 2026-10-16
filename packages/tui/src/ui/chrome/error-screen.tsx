@@ -1,16 +1,10 @@
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { onMount } from "solid-js";
-
-const PALETTE = {
-  background: "#171717",
-  foreground: "#e5e5e5",
-  error: "#f87171",
-  dim: "#a3a3a3",
-  key: "#93c5fd",
-} as const;
+import type { CliTheme } from "../../lib/theme.ts";
 
 export function ErrorScreen(props: {
+  readonly theme: CliTheme;
   readonly error: unknown;
   readonly logPath: string;
   readonly reset: () => void;
@@ -37,7 +31,7 @@ export function ErrorScreen(props: {
       paddingRight={2}
       paddingTop={1}
       gap={1}
-      backgroundColor={PALETTE.background}
+      backgroundColor={props.theme.backdrop}
       onKeyDown={(key) => {
         if (key.ctrl || key.meta || key.super) return;
 
@@ -52,20 +46,20 @@ export function ErrorScreen(props: {
         }
       }}
     >
-      <text fg={PALETTE.error} flexShrink={0}>
+      <text fg={props.theme.error} flexShrink={0}>
         Something went wrong while drawing the screen.
       </text>
-      <text fg={PALETTE.foreground} flexShrink={1} minHeight={1}>
+      <text fg={props.theme.foreground} flexShrink={1} minHeight={1}>
         {message()}
       </text>
-      <text fg={PALETTE.dim} flexShrink={0}>
+      <text fg={props.theme.dim} flexShrink={0}>
         {`Details were written to ${props.logPath}`}
       </text>
       <text flexShrink={0} wrapMode="none">
-        <span style={{ fg: PALETTE.key }}>r</span>
-        <span style={{ fg: PALETTE.dim }}> reset · </span>
-        <span style={{ fg: PALETTE.key }}>q</span>
-        <span style={{ fg: PALETTE.dim }}> quit</span>
+        <span style={{ fg: props.theme.accent }}>r</span>
+        <span style={{ fg: props.theme.dim }}> reset · </span>
+        <span style={{ fg: props.theme.accent }}>q</span>
+        <span style={{ fg: props.theme.dim }}> quit</span>
       </text>
     </box>
   );

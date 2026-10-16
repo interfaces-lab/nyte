@@ -16,6 +16,8 @@ export function isThemeChoice(value: string): value is ThemeChoice {
 export interface CliTheme {
   readonly mode: ThemeMode;
   readonly transparent: "transparent";
+  /** What fills the screen: `background`, or `transparent` where the terminal's own shows through. */
+  readonly backdrop: string;
   readonly terminal: string;
   readonly background: string;
   readonly hover: string;
@@ -61,6 +63,7 @@ export interface CliTheme {
 export const DARK_THEME: CliTheme = Object.freeze({
   mode: "dark",
   transparent: "transparent",
+  backdrop: "#0a0a0a",
   terminal: "#171717",
   background: "#0a0a0a",
   hover: "#262626",
@@ -106,6 +109,7 @@ export const DARK_THEME: CliTheme = Object.freeze({
 const LIGHT_THEME: CliTheme = Object.freeze({
   mode: "light",
   transparent: "transparent",
+  backdrop: "#ffffff",
   terminal: "#f5f5f5",
   background: "#ffffff",
   hover: "#e5e5e5",
@@ -173,6 +177,7 @@ function monochrome(theme: CliTheme): CliTheme {
   return Object.freeze({
     mode: theme.mode,
     transparent: theme.transparent,
+    backdrop: gray(theme.backdrop),
     terminal: gray(theme.terminal),
     background: gray(theme.background),
     hover: gray(theme.hover),
@@ -216,9 +221,19 @@ function monochrome(theme: CliTheme): CliTheme {
   });
 }
 
-const DARK_MONOCHROME = monochrome(DARK_THEME);
+const THEMES = {
+  dark: { color: DARK_THEME, plain: monochrome(DARK_THEME) },
+  light: { color: LIGHT_THEME, plain: monochrome(LIGHT_THEME) },
+} as const;
 
-const LIGHT_MONOCHROME = monochrome(LIGHT_THEME);
+const SEE_THROUGH: ReadonlyMap<CliTheme, CliTheme> = new Map(
+  Object.values(THEMES).flatMap((forms) =>
+    Object.values(forms).map((theme) => [
+      theme,
+      Object.freeze({ ...theme, backdrop: theme.transparent }),
+    ]),
+  ),
+);
 
 function byName(raw: string | undefined): ThemeMode | undefined {
   const name = raw?.trim().toLowerCase();
@@ -260,17 +275,21 @@ export function resolveThemeMode(
 /** The theme for a terminal mode; NO_COLOR swaps in its monochrome form. */
 export function themeForMode(mode: ThemeMode, env: NodeJS.ProcessEnv = process.env): CliTheme {
   const noColor = env["NO_COLOR"];
-  const plain = noColor !== undefined && noColor !== "";
 
-  switch (mode) {
-    case "dark":
-      return plain ? DARK_MONOCHROME : DARK_THEME;
-    case "light":
-      return plain ? LIGHT_MONOCHROME : LIGHT_THEME;
-    default: {
-      const _exhaustive: never = mode;
+  return noColor === undefined || noColor === "" ? THEMES[mode].color : THEMES[mode].plain;
+}
 
-      return _exhaustive;
-    }
-  }
+/**
+ * The theme for a setting and the mode the terminal reported (`null` when it didn't). A theme in
+ * the terminal's own mode leaves the terminal's background showing; any other paints its own.
+ */
+export function themeFor(
+  choice: ThemeChoice,
+  reported: ThemeMode | null,
+  env: NodeJS.ProcessEnv = process.env,
+): CliTheme {
+  const mode = resolveThemeMode(choice, reported, env);
+  const theme = themeForMode(mode, env);
+
+  return mode === reported ? (SEE_THROUGH.get(theme) ?? theme) : theme;
 }

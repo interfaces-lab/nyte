@@ -25,7 +25,6 @@ import type { RunFlags } from "../flags.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
-import { resolveThemeMode } from "../lib/theme.ts";
 import type { PartMessage } from "../lib/view-helpers.ts";
 import type { Msg } from "../model/msg.ts";
 import { initialState } from "../model/state.ts";
@@ -445,7 +444,7 @@ function terminalFacts(renderer: CliRenderer): TerminalFacts {
   return {
     width: renderer.width,
     height: renderer.height,
-    theme: resolveThemeMode("auto", renderer.themeMode),
+    theme: renderer.themeMode,
     selection: renderer.hasSelection,
     dragging: selection?.isDragging ?? false,
   };

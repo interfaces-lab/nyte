@@ -12,6 +12,7 @@ import type {
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
+import type { ThemeMode } from "../lib/theme.ts";
 import type { CompletionState, MentionFile } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { ListDialog } from "./dialogs/list.ts";
@@ -94,7 +95,8 @@ export interface WorkspaceFacts {
 export interface TerminalFacts {
   readonly width: number;
   readonly height: number;
-  readonly theme: "dark" | "light";
+  /** The mode the terminal reported, or `null` when it hasn't. */
+  readonly theme: ThemeMode | null;
   readonly selection: boolean;
   readonly dragging: boolean;
 }

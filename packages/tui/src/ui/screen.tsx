@@ -42,7 +42,7 @@ export function Screen(): JSX.Element {
       width="100%"
       height="100%"
       flexDirection="column"
-      backgroundColor={app.kit.theme().background}
+      backgroundColor={app.kit.theme().backdrop}
     >
       <Show when={where() === "screen"}>
         <box id="screen" flexGrow={1} minHeight={0} flexDirection="column">
@@ -73,7 +73,7 @@ export function Screen(): JSX.Element {
         flexShrink={0}
         flexDirection="column"
         visible={where() !== "screen"}
-        backgroundColor={app.kit.theme().background}
+        backgroundColor={app.kit.theme().backdrop}
       >
         <Show when={!tiny() && screen().dialog === null}>
           <QueueRows />

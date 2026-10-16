@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js";
 import type { TerminalPort } from "../effects/ports.ts";
 import { TERMINAL_TITLE_BASE, terminalTitle } from "../lib/format.ts";
 import { CLEARED, encode } from "../lib/program-status.ts";
-import { resolveThemeMode, themeForMode } from "../lib/theme.ts";
+import { themeFor } from "../lib/theme.ts";
 import type { CliTheme } from "../lib/theme.ts";
 import type { Store } from "./store.ts";
 
@@ -24,7 +24,7 @@ export function installSinks(store: Store, terminal: TerminalPort): Sinks {
   const theme = createMemo(() => {
     const { settings, terminal: facts } = store.state().facts;
 
-    return themeForMode(resolveThemeMode(settings.theme, facts.theme));
+    return themeFor(settings.theme, facts.theme);
   });
 
   createEffect(() => {

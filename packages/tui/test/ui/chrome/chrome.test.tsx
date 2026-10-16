@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import { describe, expect, mock, test } from "bun:test";
 import { RGBA } from "@opentui/core";
 import { testRender } from "@opentui/solid";
-import { DARK_THEME } from "../../../src/lib/theme.ts";
+import { DARK_THEME, themeForMode } from "../../../src/lib/theme.ts";
 import { ErrorScreen } from "../../../src/ui/chrome/error-screen.tsx";
 import { Footer } from "../../../src/ui/chrome/footer.tsx";
 import { Hints } from "../../../src/ui/chrome/hints.tsx";
@@ -159,6 +159,7 @@ describe("error screen", () => {
     await using app = await testRender(
       () => (
         <ErrorScreen
+          theme={DARK_THEME}
           error={new Error("render exploded")}
           logPath="/home/.nyte/logs/tui.log"
           reset={reset}
@@ -181,5 +182,34 @@ describe("error screen", () => {
 
     app.mockInput.pressKey("q");
     expect(quit).toHaveBeenCalledTimes(1);
+  });
+
+  test("draws in the app theme, so NO_COLOR leaves it gray", async () => {
+    const plain = themeForMode("dark", { NO_COLOR: "1" });
+
+    await using app = await testRender(
+      () => (
+        <ErrorScreen
+          theme={plain}
+          error={new Error("render exploded")}
+          logPath="/home/.nyte/logs/tui.log"
+          reset={() => undefined}
+          quit={() => undefined}
+        />
+      ),
+      { width: 80, height: 20 },
+    );
+
+    await app.renderOnce();
+    const line = app
+      .captureSpans()
+      .lines.find((candidate) =>
+        candidate.spans.some((span) => span.text.includes("Something went wrong")),
+      );
+
+    const span = line?.spans.find((candidate) => candidate.text.includes("Something went wrong"));
+
+    expect(span?.fg.toString()).toBe(RGBA.fromHex(plain.error).toString());
+    expect(plain.error).toMatch(/^#(..)\1\1$/u);
   });
 });

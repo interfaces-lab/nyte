@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { themeForMode } from "../../src/lib/theme.ts";
+import { themeFor, themeForMode } from "../../src/lib/theme.ts";
 import type { CliTheme } from "../../src/lib/theme.ts";
 
 const TEXT = [
@@ -61,6 +61,19 @@ describe("NO_COLOR", () => {
 
   test("an empty NO_COLOR keeps color", () => {
     expect(themeForMode("dark", { NO_COLOR: "" }).ok).toBe(themeForMode("dark", {}).ok);
+  });
+});
+
+describe("backdrop", () => {
+  test("a theme in the terminal's own mode shows the terminal's background", () => {
+    expect(themeFor("auto", "dark", {}).backdrop).toBe("transparent");
+    expect(themeFor("light", "light", {}).backdrop).toBe("transparent");
+    expect(themeFor("auto", "dark", {})).toBe(themeFor("dark", "dark", {}));
+  });
+
+  test("a theme the terminal did not report paints its own background", () => {
+    expect(themeFor("light", "dark", {}).backdrop).toBe(themeForMode("light", {}).background);
+    expect(themeFor("auto", null, {}).backdrop).toBe(themeForMode("dark", {}).background);
   });
 });
 
