@@ -126,7 +126,10 @@ describe("listenFetch", () => {
       new Request("http://host.test/job.output", {
         method: "POST",
         headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: host.kernel.defaultWorkspace, job: "no-such-job" }),
+        body: JSON.stringify({
+          workspace: (await host.workspaces.list())[0]?.id,
+          job: "no-such-job",
+        }),
       }),
     );
 

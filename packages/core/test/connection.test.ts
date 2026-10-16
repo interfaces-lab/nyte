@@ -227,13 +227,15 @@ describe("principals", () => {
     const revision = async () => (await kernel.store.refs.get(hostPrincipalsRef()))?.revision;
 
     const burst = await Promise.allSettled([
-      ...Array.from({ length: 6 }, () => authenticateToken(kernel, device.token)),
+      ...Array.from({ length: 6 }, () => authenticateToken(kernel.store, device.token)),
       kernel.principals.pair({ authority: new Set(["participant"]) }),
     ]);
 
     expect(burst.map((outcome) => outcome.status)).toEqual(Array(7).fill("fulfilled"));
     const settled = await revision();
-    await Promise.all(Array.from({ length: 4 }, () => authenticateToken(kernel, device.token)));
+    await Promise.all(
+      Array.from({ length: 4 }, () => authenticateToken(kernel.store, device.token)),
+    );
     expect(await revision()).toBe(settled);
   });
 
@@ -263,7 +265,7 @@ describe("principals", () => {
     const device = await paired(kernel);
     revoke = () => kernel.principals.revoke(device.principal);
 
-    expect(await authenticateToken(kernel, device.token)).toMatchObject({
+    expect(await authenticateToken(kernel.store, device.token)).toMatchObject({
       principal: device.principal,
     });
     expect(await kernel.principals.list()).toEqual([]);
@@ -277,6 +279,6 @@ describe("principals", () => {
     ).toEqual({ kind: "revoked" });
     kernel.connections.revoke(device.principal);
     expect(closed).toBe(0);
-    expect(await authenticateToken(kernel, device.token)).toBeNull();
+    expect(await authenticateToken(kernel.store, device.token)).toBeNull();
   });
 });

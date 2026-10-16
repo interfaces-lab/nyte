@@ -19,9 +19,10 @@ import {
   parseOutputFrames,
   parseSse,
   withInputHeader,
-} from "../src/index.ts";
-import { parseJson } from "../src/json.ts";
-import { endless, post, served } from "./fakes.ts";
+} from "@nyte-ai/protocol";
+import { parseJson } from "@nyte-ai/protocol";
+import { endless } from "../../../protocol/test/endless.ts";
+import { post, served } from "./fakes.ts";
 
 const main: HeadName = asId("main");
 
@@ -32,7 +33,7 @@ const question = definePart({
   fallback: (state) => state.title,
 });
 
-async function errorOf(response: Response) {
+async function readError(response: Response) {
   return decodeError(parseJson(await response.text()), response.status);
 }
 
@@ -231,7 +232,10 @@ describe("handler", () => {
       const pending = handler(
         new Request(`http://host.test/${name}`, {
           ...init,
-          headers: { ...init.headers, Authorization: "Bearer owner" },
+          headers: new Headers([
+            ...Object.entries(init.headers),
+            ["Authorization", "Bearer owner"],
+          ]),
           signal: controller.signal,
         }),
       );
@@ -241,7 +245,7 @@ describe("handler", () => {
       const response = await pending;
       finish.resolve();
 
-      expect([name, response.status, (await errorOf(response)).code]).toEqual([
+      expect([name, response.status, (await readError(response)).code]).toEqual([
         name,
         503,
         "unavailable",
@@ -312,7 +316,7 @@ describe("handler", () => {
     );
 
     expect(denied.status).toBe(403);
-    expect(await errorOf(denied)).toMatchObject({ code: "denied" });
+    expect(await readError(denied)).toMatchObject({ code: "denied" });
 
     const unknown = await post(handler, "session.teleport", {});
     const unwatched = await post(handler, "head.watch", { session: "nope", head: "main" });
@@ -324,10 +328,10 @@ describe("handler", () => {
     expect([unknown.status, read.status, strict.status, large.status, anonymous.status]).toEqual([
       404, 404, 400, 413, 401,
     ]);
-    expect(await errorOf(unknown)).toMatchObject({ code: "unknown" });
+    expect(await readError(unknown)).toMatchObject({ code: "unknown" });
     expect(unwatched.status).toBe(404);
-    expect((await errorOf(strict)).issues.map((issue) => issue.path)).toEqual([["extra"]]);
-    expect(await errorOf(large)).toMatchObject({ code: "invalid" });
+    expect((await readError(strict)).issues.map((issue) => issue.path)).toEqual([["extra"]]);
+    expect(await readError(large)).toMatchObject({ code: "invalid" });
   });
 
   it("exposes X-Nyte-Host to an allowed origin", async () => {
@@ -452,7 +456,7 @@ describe("handler", () => {
       input: { state: null, placement: { kind: "modal" } },
     });
 
-    expect(await errorOf(missing)).toMatchObject({ code: "unknown" });
+    expect(await readError(missing)).toMatchObject({ code: "unknown" });
   });
 
   it("resolves a plugin's part kind for parts.create on a host that has not loaded the session yet (§48h)", async () => {
@@ -498,8 +502,8 @@ describe("handler", () => {
     const opened = await post(handler, "browser.open", { ...open, url: "https://b.test" });
 
     expect([batched.status, opened.status]).toEqual([400, 400]);
-    expect(await errorOf(batched)).toMatchObject({ code: "invalid" });
-    expect(await errorOf(opened)).toMatchObject({ code: "invalid" });
+    expect(await readError(batched)).toMatchObject({ code: "invalid" });
+    expect(await readError(opened)).toMatchObject({ code: "invalid" });
     expect(pages.opened).toHaveLength(1);
     expect(disk.has("/work/b.txt")).toBe(false);
   });

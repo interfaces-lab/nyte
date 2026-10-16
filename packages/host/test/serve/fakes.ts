@@ -5,7 +5,6 @@ import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
 import type {
   Authority,
-  ByteReader,
   FileVersion,
   JobEnd,
   OutputFrame,
@@ -13,7 +12,7 @@ import type {
   PrincipalId,
 } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model, TextContent } from "@nyte-ai/schema/model";
-import { SdkError, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
+import { SdkError, memoryStore } from "@nyte-ai/core";
 import type {
   BrowserApi,
   EnvironmentProvider,
@@ -24,8 +23,11 @@ import type {
   Plugin,
   Store,
 } from "@nyte-ai/core";
-import { createHandler, createTransport } from "../src/index.ts";
-import type { HandlerOptions, Transport } from "../src/index.ts";
+import { createTransport } from "@nyte-ai/protocol";
+import type { Transport } from "@nyte-ai/protocol";
+import { composeServer } from "../../../core/src/compose.ts";
+import { createHandler } from "../../src/serve/handler.ts";
+import type { HandlerOptions } from "../../src/serve/handler.ts";
 
 export type FakeModels = {
   readonly models: MutableModels;
@@ -202,7 +204,7 @@ export async function served(
   const disk = new Map<string, DiskFile>();
   const pages = { opened: new Array<PageId>(), closed: new Array<PageId>() };
 
-  const host = await composeHost({
+  const composed = await composeServer({
     store: options?.store ?? memoryStore(),
     models: fake.models,
     plugins: [
@@ -215,12 +217,14 @@ export async function served(
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 
+  const host = { ...composed.host, kernel: composed.kernel };
+
   const connect = (principal: string, authority: readonly Authority[]) => {
     const granted = new Set(authority);
     const id: PrincipalId = asId(principal);
 
     return {
-      connection: createConnection(host.kernel, {
+      connection: host.server.connect({
         principal: id,
         authority: granted,
         credential: { kind: "token", token: "" },
@@ -234,7 +238,7 @@ export async function served(
   const guest = connect("bob", ["participant"]);
 
   const handler = createHandler({
-    kernel: host.kernel,
+    server: host.server,
     origins: ["https://app.nyte.dev"],
     maxBodyBytes: options?.maxBodyBytes,
     connection: async (request) => {
@@ -469,24 +473,4 @@ async function refuse(): Promise<never> {
 
 function refuseStream(): AsyncIterable<never> {
   return { [Symbol.asyncIterator]: () => ({ next: refuse }) };
-}
-
-export function endless(): ByteReader & { closes(): number } {
-  let closes = 0;
-  const closed = Promise.withResolvers<void>();
-
-  return {
-    size: null,
-    mime: null,
-    async *chunks() {
-      yield Uint8Array.of(7);
-      await closed.promise;
-    },
-    close: async () => {
-      closes += 1;
-      closed.resolve();
-    },
-    closes: () => closes,
-    [Symbol.asyncDispose]: async () => undefined,
-  };
 }

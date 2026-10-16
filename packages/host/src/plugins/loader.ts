@@ -3,7 +3,7 @@ import { isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ValidationIssue } from "@nyte-ai/schema";
 import { SdkError, dev } from "@nyte-ai/core";
-import type { Kernel, Plugin } from "@nyte-ai/core";
+import type { ComposeOptions, Plugin } from "@nyte-ai/core";
 import { codeOf } from "../local/tree.ts";
 
 const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
@@ -23,8 +23,8 @@ export async function loadPluginDirectory(dir: string): Promise<{
   return importEach(await pluginFilesIn(dir));
 }
 
-/** Returns the kernel's `loadPlugins` (`composeHost({ loadPlugins })`), which `plugins.replace` and `plugins.check` load their files through (§40b, §47m): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
-export function pluginLoader(dirs: readonly string[]): Kernel["loadPlugins"] {
+/** Returns the host's `loadPlugins` (`composeHost({ loadPlugins })`), which `plugins.replace` and `plugins.check` load their files through (§40b, §47m): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
+export function pluginLoader(dirs: readonly string[]): NonNullable<ComposeOptions["loadPlugins"]> {
   return async (paths) => {
     const roots = (await Promise.all(dirs.map((dir) => realpath(dir).catch(() => null)))).filter(
       (root) => root !== null,

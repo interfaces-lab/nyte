@@ -1,9 +1,16 @@
 import { SdkError } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
-import { HOST_HEADER, createTransport, decodeOutput, outputFrames } from "../src/index.ts";
+import {
+  CHANNEL_HEADER,
+  CHANNEL_PATH,
+  HOST_HEADER,
+  STREAM_HEADER,
+  createTransport,
+  decodeOutput,
+  outputFrames,
+} from "@nyte-ai/protocol";
+import { createStreamChannels } from "../../src/serve/stream-server.ts";
 import { served } from "./fakes.ts";
-import { createStreamChannels } from "../src/stream-server.ts";
-import { CHANNEL_PATH, CHANNEL_HEADER, STREAM_HEADER } from "../src/stream-channel.ts";
 
 async function failure(run: () => Promise<unknown>): Promise<SdkError> {
   try {

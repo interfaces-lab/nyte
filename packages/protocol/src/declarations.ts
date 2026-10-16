@@ -19,3 +19,25 @@ export type OperationInput<N extends OperationName> = Frozen<Infer<Declarations[
 
 /** Returns one operation's decoded output, as its schema types it, read-only: its value, or one frame of a `watch` or `stream` row. */
 export type OperationOutput<N extends OperationName> = Frozen<Infer<Declarations[N]["output"]>>;
+
+/** Names the rows answered once with JSON: queries, commands and receipts. */
+export type CallName = {
+  [N in OperationName]: Declarations[N]["kind"] extends "query" | "command" | "receipt" ? N : never;
+}[OperationName];
+
+/** Names the stream rows whose frames are bytes, answered as a raw octet stream. */
+export type ByteName = {
+  [N in OperationName]: Declarations[N]["kind"] extends "stream"
+    ? OperationOutput<N> extends Uint8Array
+      ? N
+      : never
+    : never;
+}[OperationName];
+
+/** Names the rows answered with JSON frames over server-sent events: every watch and the JSON streams. */
+export type FrameName = Exclude<
+  {
+    [N in OperationName]: Declarations[N]["kind"] extends "watch" | "stream" ? N : never;
+  }[OperationName],
+  ByteName | "job.output"
+>;

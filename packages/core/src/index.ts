@@ -115,6 +115,7 @@ export type {
   SessionRecord,
   WorkspaceRecord,
 } from "./contract/records.ts";
+export type { ServedHost, ServerHost, Verdict, WireHost } from "./contract/server.ts";
 export type { Head, Receipt, Run, SendReceipt, Session, Sessions } from "./contract/session.ts";
 export type {
   ObjectStore,

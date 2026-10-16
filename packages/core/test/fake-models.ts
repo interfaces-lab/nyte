@@ -17,8 +17,9 @@ import type {
   ThinkingContent,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import { composeHost, memoryStore } from "../src/index.ts";
-import type { ComposeOptions, Plugin, Store } from "../src/index.ts";
+import { composeServer } from "../src/compose.ts";
+import { memoryStore } from "../src/index.ts";
+import type { ComposeOptions, Kernel, Plugin, ServedHost, Store } from "../src/index.ts";
 import { env } from "./harness.ts";
 
 export type Block =
@@ -209,6 +210,16 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
+/** A composed host with the kernel under it, for tests that read kernel state. */
+export type Composed = ServedHost & { readonly kernel: Kernel };
+
+/** Composes a host as `composeHost` does, with its kernel beside it. */
+export async function composed(options: ComposeOptions): Promise<Composed> {
+  const { host, kernel } = await composeServer(options);
+
+  return { ...host, kernel };
+}
+
 export async function open(
   fake: FakeModels,
   options?: {
@@ -216,8 +227,8 @@ export async function open(
     readonly store?: Store;
     readonly execution?: ComposeOptions["execution"];
   },
-): ReturnType<typeof composeHost> {
-  return composeHost({
+): Promise<Composed> {
+  return composed({
     store: options?.store ?? memoryStore(),
     models: fake.models,
     plugins: [chatOnly, ...(options?.plugins ?? [])],

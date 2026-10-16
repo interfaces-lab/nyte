@@ -3,7 +3,7 @@ import type { AdvanceReport, HeadName, Owned, SessionId } from "@nyte-ai/schema"
 import type { Models } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import { SdkError, composeHost } from "@nyte-ai/core";
-import type { Host, Kernel, Listener, OpenOptions, WaitRegistry } from "@nyte-ai/core";
+import type { Host, Listener, OpenOptions, ServedHost, ServerHost } from "@nyte-ai/core";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { Settings } from "typebox/system";
 import { credentialStore } from "@nyte-ai/host/credentials";
@@ -41,7 +41,7 @@ export type PassBudget = {
 };
 
 export type PassHost = Pick<Host, "execution"> & {
-  readonly kernel: { readonly waits: Pick<WaitRegistry, "tick"> };
+  readonly server: Pick<ServerHost, "tick">;
 };
 
 const PASS_BUDGET = { heads: 32, ms: 10_000 } as const;
@@ -74,7 +74,7 @@ export async function pass(
 ): Promise<number | null> {
   const began = Date.now();
   const schedule = scheduleOf(storage);
-  await host.kernel.waits.tick(began);
+  await host.server.tick(began);
 
   if (budget.repair) {
     let cursor: Parameters<Host["execution"]["repair"]>[0]["cursor"];
@@ -176,7 +176,7 @@ export default {
 };
 
 type Served = {
-  readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
+  readonly host: ServedHost;
   readonly listener: Listener;
   readonly coverage: Owned;
 };
@@ -206,7 +206,7 @@ async function compose(
     const coverage = await host.execution.cover({ kind: "all" });
     const schedule = scheduleOf(storage);
 
-    host.kernel.wakes.subscribe((session, head) => {
+    host.server.onWake((session, head) => {
       const now = Date.now();
       schedule.write(session, head, now);
       void storage.setAlarm(now);

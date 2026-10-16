@@ -141,7 +141,7 @@ describe("live parts across a reconnect", () => {
 
     cleanups.push(() => connection.close());
     const session = await connection.sessions.create();
-    const kernel = host.host.kernel;
+    const kernel = host.kernel;
     const part = asId<"part">("p4-stream");
     const run = asId<"run">("p4-run");
     const patch = (append: string) =>
@@ -182,7 +182,7 @@ describe("live parts across a reconnect", () => {
   it("resumes with a part's durably revised text, never the text streamed before it (AUDIT-D1-2 update, §54b)", async () => {
     const { host, connection } = await open();
     const session = await connection.sessions.create();
-    const kernel = host.host.kernel;
+    const kernel = host.kernel;
     const part = asId<"part">("revised");
     const run = asId<"run">("revised-run");
     const patch = (append: string) =>
@@ -225,7 +225,7 @@ describe("live parts across a reconnect", () => {
   it("resumes with a tool part's latest progress (AUDIT-D1-2 progress, §54b)", async () => {
     const { host, connection } = await open();
     const session = await connection.sessions.create();
-    const kernel = host.host.kernel;
+    const kernel = host.kernel;
     const part = asId<"part">("running");
     const run = asId<"run">("running-run");
     const report = (text: string) =>

@@ -148,11 +148,11 @@ export async function redeemPairing(
 }
 
 export async function authenticateToken(
-  kernel: Kernel,
+  store: StoreConnection,
   token: string,
 ): Promise<{ readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> } | null> {
   const digest = await sha256(token);
-  const { record } = await readPrincipals(kernel.store);
+  const { record } = await readPrincipals(store);
   const found = record.principals.find((principal) => principal.tokenDigest === digest);
 
   return found === undefined ? null : { principal: found.id, authority: new Set(found.authority) };

@@ -2,10 +2,17 @@ import { assert, expect, it } from "vitest";
 import { SdkError, definePart } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { createTransport, decodeOutput, parseSse, sseFrames } from "../src/index.ts";
-import { CHANNEL_HEADER, CHANNEL_PATH, STREAM_HEADER } from "../src/stream-channel.ts";
-import { createStreamChannels } from "../src/stream-server.ts";
-import { createStreamClient } from "../src/stream-client.ts";
+import {
+  CHANNEL_HEADER,
+  CHANNEL_PATH,
+  STREAM_HEADER,
+  createTransport,
+  decodeOutput,
+  parseSse,
+  sseFrames,
+} from "@nyte-ai/protocol";
+import { createStreamClient } from "../../../protocol/src/stream-client.ts";
+import { createStreamChannels } from "../../src/serve/stream-server.ts";
 import { served, post } from "./fakes.ts";
 
 it.each([1, 128])("delivers a large replay in %i frames and continues its peer", async (count) => {

@@ -28,7 +28,7 @@ export async function advanceHead(input: {
   const coverage = await host.execution.cover({ kind: "sessions", sessions: [input.session] });
 
   try {
-    await host.kernel.waits.tick(Date.now());
+    await host.server.tick(Date.now());
 
     return await host.execution.advance(input);
   } finally {

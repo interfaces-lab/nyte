@@ -4,7 +4,6 @@ import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
   SdkError,
-  composeHost,
   decodePartRecord,
   definePart,
   partRef,
@@ -16,7 +15,7 @@ import {
   text,
 } from "../src/index.ts";
 import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
-import { chatOnly, fakeModels, open } from "./fake-models.ts";
+import { chatOnly, composed, fakeModels, open } from "./fake-models.ts";
 import { label, until } from "./harness.ts";
 
 const echo: ToolDefinition<{ readonly text: string }> = {
@@ -374,7 +373,7 @@ describe("composeHost", () => {
       code: "invalid",
     });
 
-    const refused = composeHost({
+    const refused = composed({
       store: memoryStore(),
       models: fake.models,
       plugins: [chatOnly],
@@ -420,7 +419,7 @@ describe("composeHost", () => {
     };
 
     const seeded = (settings: Record<string, Json>) =>
-      composeHost({
+      composed({
         store,
         models: fakeModels().models,
         plugins: [chatOnly, looks],
@@ -465,7 +464,7 @@ describe("composeHost", () => {
     const good: Plugin<"core"> = { id: "good" };
 
     const compose = (sources: Map<Plugin<"core">, { source: "user"; path: string }>) =>
-      composeHost({
+      composed({
         store: memoryStore(),
         models: fakeModels().models,
         plugins: [chatOnly, bad, good],
@@ -506,7 +505,7 @@ describe("composeHost", () => {
   it("checks plugin objects and files alike in-process, each file through loadPlugins in order (§47l)", async () => {
     const loaded: string[] = [];
 
-    await using host = await composeHost({
+    await using host = await composed({
       store: memoryStore(),
       models: fakeModels().models,
       plugins: [chatOnly],

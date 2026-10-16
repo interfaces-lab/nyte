@@ -1,15 +1,12 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { SdkError } from "@nyte-ai/core";
-import type { Host, Kernel, ListenOptions, Listener } from "@nyte-ai/core";
+import type { ListenOptions, Listener, ServedHost } from "@nyte-ai/core";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { listenFetch } from "./listen-fetch.ts";
 
 /** Serves a composed host, the `Host.listen` `openHost` attaches: everything but the socket is `listenFetch`'s, and the `fetch` transport answers with it directly. The `http` transport binds `node:http` on `hostname` (default 127.0.0.1) and `port` (default 0), streaming each request body in and each response body out chunk by chunk, with a client gone aborting its request; a failed bind throws `SdkError("unavailable")` after releasing the execution. `disconnectClients()` also destroys every open Node response, and `close()` closes the socket once. */
-export async function listen(
-  host: Omit<Host, "listen"> & { readonly kernel: Kernel },
-  options: ListenOptions,
-): Promise<Listener> {
+export async function listen(host: ServedHost, options: ListenOptions): Promise<Listener> {
   const inner = await listenFetch(host, { ...options, transport: { kind: "fetch" } });
 
   if (options.transport.kind === "fetch") return inner;

@@ -1,8 +1,10 @@
 import { asId } from "@nyte-ai/schema";
 import { LOCAL, headRef, memoryStore, pollStore } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
-import { main, setup } from "../../core/test/harness.ts";
-import { createHandler, createTransport } from "../src/index.ts";
+import { createTransport } from "@nyte-ai/protocol";
+import { createServerHost } from "../../../core/src/api/server.ts";
+import { main, setup } from "../../../core/test/harness.ts";
+import { createHandler } from "../../src/serve/handler.ts";
 
 describe("head revisions across instances", () => {
   it("shows the store's head revision on the view and the wire after another instance's run is stopped, and an edit expecting it lands (ADV A P2)", async () => {
@@ -30,7 +32,7 @@ describe("head revisions across instances", () => {
     const authority = new Set(["participant", "owner", "maintenance"] as const);
 
     const handler = createHandler({
-      kernel: a.kernel,
+      server: createServerHost(a.kernel),
       connection: async () => ({ connection: a.host, authority }),
     });
 

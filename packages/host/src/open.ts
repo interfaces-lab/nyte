@@ -76,7 +76,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
  * of `@nyte-ai/plugin` that `plugins` does not replace by id, then `plugins`
  * and `filePlugins`' files, `settingsSeed`'s seed and
  * `hostDescription()`; each file that did not load becomes a
- * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
+ * `server.report` row. The host's `loadPlugins` is `pluginLoader` over
  * the plugin directories (§47l), which `watchPlugins` watches for hot reload
  * (§49a). `listen` defaults `identity` to `identitySigner(host.hostId, home)`
  * and `describe` to the description; nothing here reads the secrets key, even
@@ -174,10 +174,10 @@ async function composeOpen(
         : [],
     );
 
-  for (const row of files.failed) host.kernel.host.report(row);
+  for (const row of files.failed) host.server.report(row);
 
   if (settings.issue !== null)
-    host.kernel.host.report({
+    host.server.report({
       id: "settings",
       source: "user",
       path: settingsPath(home),
@@ -192,9 +192,9 @@ async function composeOpen(
   });
 
   const reported = new Map(
-    host.kernel.host
-      .current()
-      .plugins.filter((row) => row.path !== null && row.id === row.path)
+    host.server
+      .pluginRows()
+      .filter((row) => row.path !== null && row.id === row.path)
       .map((row) => [row.id, row]),
   );
 
@@ -206,15 +206,15 @@ async function composeOpen(
     const failed = [...next.failed, ...refused(next, report)];
 
     for (const [id, row] of reported)
-      if (!failed.some((row) => row.id === id)) host.kernel.host.report({ ...row, issues: [] });
+      if (!failed.some((row) => row.id === id)) host.server.report({ ...row, issues: [] });
 
-    for (const row of failed) host.kernel.host.report(row);
+    for (const row of failed) host.server.report(row);
     reported.clear();
 
     for (const row of failed) reported.set(row.id, row);
 
     for (const plugin of files.sources.keys())
-      if (!host.kernel.hostPlugins.includes(plugin)) files.sources.delete(plugin);
+      if (!host.server.loaded(plugin)) files.sources.delete(plugin);
     dev("open", "plugins reloaded", {
       generation: report.generation,
       pluginFiles: next.plugins.length,

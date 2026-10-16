@@ -17,7 +17,7 @@ import {
   withInputHeader,
 } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
-import { endless } from "./fakes.ts";
+import { endless } from "./endless.ts";
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 

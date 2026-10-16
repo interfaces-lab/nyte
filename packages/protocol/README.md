@@ -6,8 +6,8 @@ table. `declarations` names every served operation by its Connection path
 from `@nyte-ai/schema`, its kind (`query`, `command`, `receipt`, `watch`,
 `stream`), the authority it needs and its recovery; `Signatures` types each row
 as core's signatures do, and a test checks the two agree both ways. The host
-serves the table with `createHandler`: exactly `POST /<name>` (a prefix is the
-host's mount), gated by the row's authority, input decoded strictly (an unknown
+(`@nyte-ai/host`'s `createHandler`) serves the table: exactly `POST /<name>` (a
+prefix is the host's mount), gated by the row's authority, input decoded strictly (an unknown
 field is `invalid`), output encoded leniently, a watch as server-sent events
 (`head.watch` sends the head's view from the host's fold whole, then each later
 view as what changed, so a reconnect simply starts over from the current view),

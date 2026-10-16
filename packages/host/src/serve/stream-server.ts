@@ -1,9 +1,7 @@
 import { SdkError } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
-import { CHANNEL_HEADER } from "./stream-channel.ts";
-import type { StreamFrame } from "./stream-channel.ts";
-import { streamBuffer } from "./stream-buffer.ts";
-import { asSdkError, encodeError } from "./wire.ts";
+import { CHANNEL_HEADER, asSdkError, encodeError, streamBuffer } from "@nyte-ai/protocol";
+import type { StreamFrame } from "@nyte-ai/protocol";
 
 const encoder = new TextEncoder();
 

@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import type { HostView, SessionView } from "@nyte-ai/schema";
-import { SdkError, createConnection, dev, isPart, text as textPart } from "@nyte-ai/core";
+import { SdkError, dev, isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { createTransport, decodeInput, encodeError, parseSse } from "@nyte-ai/protocol";
 import { CHANNEL_PATH, STREAM_HEADER, readStreamFrame } from "../../protocol/src/stream-channel.ts";
@@ -679,12 +679,14 @@ describe("client", () => {
     expect((await ops.principals.list()).some((view) => view.id === denied.principal)).toBe(false);
 
     const remote = await ops.plugins.check([{ path: "/plugins/extra.ts" }]);
-    const local = await createConnection(host.host.kernel, {
-      principal: ops.principal,
-      authority: new Set(["maintenance"]),
-      credential: { kind: "token", token: "" },
-      origin: null,
-    }).plugins.check([{ path: "/plugins/extra.ts" }]);
+    const local = await host.host.server
+      .connect({
+        principal: ops.principal,
+        authority: new Set(["maintenance"]),
+        credential: { kind: "token", token: "" },
+        origin: null,
+      })
+      .plugins.check([{ path: "/plugins/extra.ts" }]);
 
     expect(loaded).toEqual(["/plugins/extra.ts", "/plugins/extra.ts"]);
     expect(remote.plugins.map((outcome) => outcome.id)).toEqual(["file:/plugins/extra.ts"]);

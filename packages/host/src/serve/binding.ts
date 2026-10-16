@@ -16,26 +16,26 @@ import type {
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import { SdkError, applyBatch, heldReceipt, move, sendReceipt } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
 import type {
   BrowserApi,
   Connection,
   FilesApi,
   GitApi,
   Job,
-  Kernel,
   Login,
   Page,
   Receipt,
+  ServerHost,
 } from "@nyte-ai/core";
+import { mapped, viewFrames } from "@nyte-ai/protocol";
 import type {
-  Declarations,
+  ByteName,
+  CallName,
+  FrameName,
   OperationInput,
-  OperationName,
   OperationOutput,
-} from "./declarations.ts";
-import { mapped } from "./streams.ts";
-import { viewFrames } from "./view-frames.ts";
+} from "@nyte-ai/protocol";
 
 /** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
@@ -48,28 +48,6 @@ export type ByteBody = {
   readonly reader: ByteReader;
   readonly headers?: Readonly<Record<string, string>>;
 };
-
-/** Names the rows answered once with JSON: queries, commands and receipts. */
-export type CallName = {
-  [N in OperationName]: Declarations[N]["kind"] extends "query" | "command" | "receipt" ? N : never;
-}[OperationName];
-
-/** Names the stream rows whose frames are bytes, answered as a raw octet stream. */
-export type ByteName = {
-  [N in OperationName]: Declarations[N]["kind"] extends "stream"
-    ? OperationOutput<N> extends Uint8Array
-      ? N
-      : never
-    : never;
-}[OperationName];
-
-/** Names the rows answered with JSON frames over server-sent events: every watch and the JSON streams. */
-export type FrameName = Exclude<
-  {
-    [N in OperationName]: Declarations[N]["kind"] extends "watch" | "stream" ? N : never;
-  }[OperationName],
-  ByteName | "job.output"
->;
 
 /** Returns the bindings of the rows answered once. */
 export type CallBinding = {
@@ -106,9 +84,9 @@ export type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the kernel, for the rows that carry a wire-only id (§40o) and `parts.create`. */
+/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`. */
 export type BindingOptions = {
-  readonly kernel: Kernel;
+  readonly server: ServerHost;
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -119,18 +97,18 @@ type Attempt = {
   steps: AsyncIterator<OperationOutput<"login.steps">> | null;
 };
 
-const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
+const attempts = new WeakMap<ServerHost, Map<string, Attempt>>();
 
-const holds = new WeakMap<Kernel, Map<string, Page[]>>();
+const holds = new WeakMap<ServerHost, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through core's kernel-level functions with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through the server port's wire operations with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
-  const { kernel } = options;
+  const { wire } = options.server;
   const { principal } = connection;
-  const logins = attempts.get(kernel) ?? new Map<string, Attempt>();
-  attempts.set(kernel, logins);
-  const pages = holds.get(kernel) ?? new Map<string, Page[]>();
-  holds.set(kernel, pages);
+  const logins = attempts.get(options.server) ?? new Map<string, Attempt>();
+  attempts.set(options.server, logins);
+  const pages = holds.get(options.server) ?? new Map<string, Page[]>();
+  holds.set(options.server, pages);
 
   const session = (id: SessionId) => connection.session(id);
   const workspace = (id: WorkspaceId) => connection.workspace(id);
@@ -144,20 +122,20 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
 
-  const attemptOf = (provider: string): Attempt =>
-    logins.get(keyOf(principal, provider)) ??
+  const findLogin = (provider: string): Attempt =>
+    logins.get(principalKey(principal, provider)) ??
     fail("unknown", `No login for ${provider} is in progress.`);
 
   const endLogin = (provider: string, attempt: Attempt): void => {
     clearTimeout(attempt.timer);
-    const key = keyOf(principal, provider);
+    const key = principalKey(principal, provider);
 
     if (logins.get(key) === attempt) logins.delete(key);
     void attempt.steps?.return?.();
   };
 
   const hold = (page: Page): Page => {
-    const key = keyOf(principal, page.id);
+    const key = principalKey(principal, page.id);
     const known = pages.get(key) ?? [];
     pages.set(key, known.includes(page) ? known : [...known, page]);
 
@@ -165,7 +143,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 
   const release = async (page: PageId): Promise<void> => {
-    const key = keyOf(principal, page);
+    const key = principalKey(principal, page);
     const [last, ...rest] = [...(pages.get(key) ?? [])].reverse();
 
     if (rest.length === 0) pages.delete(key);
@@ -173,27 +151,22 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     await last?.close();
   };
 
-  const pageOf = async (at: WorkspaceId, id: PageId): Promise<Page> =>
-    pages.get(keyOf(principal, id))?.[0] ??
-    kernel.pages.page(id) ??
+  const findPage = async (at: WorkspaceId, id: PageId): Promise<Page> =>
+    pages.get(principalKey(principal, id))?.[0] ??
+    wire.page(id) ??
     hold(await (await browser(at)).adopt(id));
 
-  const infoOf = async (page: Page): Promise<PageInfo> => {
+  const describePage = async (page: Page): Promise<PageInfo> => {
     const view = await page.view();
 
-    return {
-      id: page.id,
-      url: view.url,
-      title: view.title,
-      holders: kernel.pages.holders(page.id),
-    };
+    return { id: page.id, url: view.url, title: view.title, holders: wire.holders(page.id) };
   };
 
-  const receiptOf = (at: SessionId | null, id: ReceiptId): Receipt<unknown> | undefined =>
-    at === null ? heldReceipt(kernel, id) : session(at).receipt(id);
+  const findReceipt = (at: SessionId | null, id: ReceiptId): Receipt<unknown> | undefined =>
+    at === null ? wire.batchReceipt(id) : session(at).receipt(id);
 
-  const jobOf = (job: Job): OperationOutput<"jobs.start"> => ({
-    ...(kernel.jobs.get(job.id)?.view ?? fail("unknown", `Job ${job.id} is gone.`)),
+  const startedJob = (job: Job): OperationOutput<"jobs.start"> => ({
+    ...(wire.job(job.id) ?? fail("unknown", `Job ${job.id} is gone.`)),
     key: job.key,
   });
 
@@ -219,7 +192,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "models.login": async (input) => {
       const { provider } = input;
       const login = connection.models.login(input);
-      const key = keyOf(principal, provider);
+      const key = principalKey(principal, provider);
       const previous = logins.get(key);
 
       if (previous !== undefined) endLogin(provider, previous);
@@ -240,7 +213,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return null;
     },
     "login.steps": async ({ provider }) => {
-      const attempt = attemptOf(provider);
+      const attempt = findLogin(provider);
 
       if (attempt.steps !== null)
         fail("invalid", `The login for ${provider} is already streaming.`);
@@ -266,7 +239,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       };
     },
     "login.answer": async ({ provider, code }) => {
-      await attemptOf(provider).login.answer(code);
+      await findLogin(provider).login.answer(code);
 
       return null;
     },
@@ -304,7 +277,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       session(id).head(head).history({ before, limit }),
     "head.tree": ({ session: id, head }) => session(id).head(head).tree(),
     "head.move": async ({ session: id, head, position, options, id: receipt }) => ({
-      receipt: (await move(kernel, id, head, position, { ...options, id: receipt })).id,
+      receipt: (await wire.move(id, head, position, { ...options, id: receipt })).id,
     }),
     "head.compact": ({ session: id, head, instructions }) =>
       session(id).head(head).compact({ instructions }),
@@ -317,52 +290,50 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "run.settled": ({ session: id, run }, { signal }) => session(id).run(run).settled({ signal }),
 
     "receipt.status": async ({ session: id, receipt }) => {
-      const status = (await receiptOf(id, receipt)?.status()) ?? { kind: "missing" };
+      const status = (await findReceipt(id, receipt)?.status()) ?? { kind: "missing" };
 
       return status.kind === "settled"
-        ? { kind: "settled", outcome: jsonOf(status.outcome) }
+        ? { kind: "settled", outcome: toJson(status.outcome) }
         : status;
     },
     "receipt.settled": async ({ session: id, receipt }, { signal }) => {
-      const handle = receiptOf(id, receipt) ?? fail("unknown", `No receipt has the id ${receipt}.`);
+      const handle =
+        findReceipt(id, receipt) ?? fail("unknown", `No receipt has the id ${receipt}.`);
 
-      return jsonOf(await handle.settled({ signal }));
+      return toJson(await handle.settled({ signal }));
     },
     "receipt.stop": async ({ session: id, receipt }) => {
-      const stopped = (await receiptOf(id, receipt)?.stop()) ?? { kind: "missing" };
+      const stopped = (await findReceipt(id, receipt)?.stop()) ?? { kind: "missing" };
 
       return stopped.kind === "settled"
-        ? { kind: "settled", outcome: jsonOf(stopped.outcome) }
+        ? { kind: "settled", outcome: toJson(stopped.outcome) }
         : stopped;
     },
     "receipt.landed": async ({ session: id, receipt }) =>
-      sendReceipt(
-        kernel,
-        id ?? fail("invalid", "Only a send's receipt has landed."),
-        receipt,
-      ).landed(),
+      wire
+        .sendReceipt(id ?? fail("invalid", "Only a send's receipt has landed."), receipt)
+        .landed(),
 
     "parts.create": async ({ session: id, kind, input }) => {
-      await kernel.pluginsFor(id).ready;
-      const registered = kernel.partDefinitions.get(kind);
+      const definition =
+        (await wire.partDefinition(id, kind)) ??
+        fail("unknown", `No part definition has the kind ${kind}.`);
 
-      if (registered === undefined) fail("unknown", `No part definition has the kind ${kind}.`);
-
-      return { part: (await session(id).parts.create(registered.definition, input)).id };
+      return { part: (await session(id).parts.create(definition, input)).id };
     },
     "part.update": ({ session: id, part, next, options }) =>
       session(id).part(part).update(next, options),
     "part.act": async ({ session: id, part, action, input }) => {
       const outcome = await session(id).part(part).act(action, input);
 
-      return outcome.kind === "ok" ? { kind: "ok", output: jsonOf(outcome.output) } : outcome;
+      return outcome.kind === "ok" ? { kind: "ok", output: toJson(outcome.output) } : outcome;
     },
     "part.answer": async ({ session: id, part }, { signal }) => {
       const answer = await session(id).part(part).answer({ signal });
 
       return answer === null
         ? null
-        : { action: String(answer.action), input: jsonOf(answer.input) };
+        : { action: String(answer.action), input: toJson(answer.input) };
     },
     "part.close": async ({ session: id, part }) => {
       await session(id).part(part).close();
@@ -378,7 +349,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       workspace(id).mcp.setEnabled(server, enabled),
     "mcp.login": async ({ workspace: id, server }) => {
       const login = JSON.stringify(["mcp", id, server]);
-      const previous = logins.get(keyOf(principal, login));
+      const previous = logins.get(principalKey(principal, login));
 
       if (previous !== undefined) endLogin(login, previous);
 
@@ -388,7 +359,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
         timer: setTimeout(() => endLogin(login, attempt), LOGIN_LIFETIME),
       };
 
-      logins.set(keyOf(principal, login), attempt);
+      logins.set(principalKey(principal, login), attempt);
 
       return { login };
     },
@@ -406,11 +377,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspace.browser": async ({ workspace: id }) => capabilityWire(await workspace(id).browser()),
 
     "jobs.start": async ({ workspace: id, command, session, title, pty, id: job }) =>
-      jobOf(await workspace(id).jobs.start({ command, session, title, pty, id: job })),
+      startedJob(await workspace(id).jobs.start({ command, session, title, pty, id: job })),
     "jobs.recover": async ({ workspace: id, key }) => {
       const recovered = await workspace(id).jobs.recover(key);
 
-      return "id" in recovered ? jobOf(recovered) : recovered;
+      return "id" in recovered ? startedJob(recovered) : recovered;
     },
     "jobs.list": ({ workspace: id }) => workspace(id).jobs.list(),
     "jobs.watch": async ({ workspace: id }) => workspace(id).jobs.watch(),
@@ -418,7 +389,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "job.write": async ({ workspace: id, job }, { body }) => {
       await workspace(id)
         .job(job)
-        .write(await bytesOf(body));
+        .write(await readBytes(body));
 
       return null;
     },
@@ -440,13 +411,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
     "files.stat": async ({ workspace: id, path }) => (await files(id)).stat(path),
     "files.write": async ({ workspace: id, path, options }, { body }) =>
-      (await files(id)).write(path, await bytesOf(body), options),
+      (await files(id)).write(path, await readBytes(body), options),
     "files.remove": async ({ workspace: id, path, options }) =>
       (await files(id)).remove(path, options),
     "files.batch": async ({ workspace: id, entries, id: receipt }) => ({
-      receipt: (
-        await applyBatch(kernel, { workspace: id }, await files(id), entries, { id: receipt })
-      ).id,
+      receipt: (await wire.batch(id, await files(id), entries, receipt)).id,
     }),
     "files.format": async ({ workspace: id, path, contents }) =>
       (await files(id)).format(path, contents),
@@ -457,7 +426,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "files.search": async ({ workspace: id, query, limit }) =>
       (await files(id)).search({ query, limit }),
     "files.watch": async ({ workspace: id, paths }) => (await files(id)).watch({ paths }),
-    "files.upload": async ({ workspace: id }, { body }) => (await files(id)).upload(chunksOf(body)),
+    "files.upload": async ({ workspace: id }, { body }) =>
+      (await files(id)).upload(readChunks(body)),
 
     "git.status": async ({ workspace: id }) => (await git(id)).status(),
     "git.watch": async ({ workspace: id }) => (await git(id)).watch(),
@@ -485,9 +455,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "browser.open": async ({ workspace: id, url, id: key }) => {
       const api = await browser(id);
 
-      return infoOf(
+      return describePage(
         hold(
-          await kernel.pages.open({
+          await wire.openPage({
             id: key,
             input: { workspace: id, url },
             open: () => api.open({ url }),
@@ -496,36 +466,37 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       );
     },
     "browser.adopt": async ({ workspace: id, id: page }) =>
-      infoOf(hold(await (await browser(id)).adopt(page))),
+      describePage(hold(await (await browser(id)).adopt(page))),
     "browser.list": async ({ workspace: id }) => (await browser(id)).list(),
     "browser.watch": async ({ workspace: id }) => (await browser(id)).watch(),
 
-    "page.view": async ({ workspace: id, page }) => (await pageOf(id, page)).view(),
-    "page.watch": async ({ workspace: id, page }) => (await pageOf(id, page)).watch(),
+    "page.view": async ({ workspace: id, page }) => (await findPage(id, page)).view(),
+    "page.watch": async ({ workspace: id, page }) => (await findPage(id, page)).watch(),
     "page.snapshot": async ({ workspace: id, page, ref }) =>
-      (await pageOf(id, page)).snapshot({ ref }),
-    "page.navigate": async ({ workspace: id, page, url }) => (await pageOf(id, page)).navigate(url),
-    "page.back": async ({ workspace: id, page }) => (await pageOf(id, page)).back(),
-    "page.forward": async ({ workspace: id, page }) => (await pageOf(id, page)).forward(),
-    "page.reload": async ({ workspace: id, page }) => (await pageOf(id, page)).reload(),
-    "page.stopLoading": async ({ workspace: id, page }) => (await pageOf(id, page)).stopLoading(),
+      (await findPage(id, page)).snapshot({ ref }),
+    "page.navigate": async ({ workspace: id, page, url }) =>
+      (await findPage(id, page)).navigate(url),
+    "page.back": async ({ workspace: id, page }) => (await findPage(id, page)).back(),
+    "page.forward": async ({ workspace: id, page }) => (await findPage(id, page)).forward(),
+    "page.reload": async ({ workspace: id, page }) => (await findPage(id, page)).reload(),
+    "page.stopLoading": async ({ workspace: id, page }) => (await findPage(id, page)).stopLoading(),
     "page.click": async ({ workspace: id, page, ref, button, double, expect }) =>
-      (await pageOf(id, page)).click({ ref, button, double, expect }),
+      (await findPage(id, page)).click({ ref, button, double, expect }),
     "page.type": async ({ workspace: id, page, ref, text, clear, submit, expect }) =>
-      (await pageOf(id, page)).type({ ref, text, clear, submit, expect }),
+      (await findPage(id, page)).type({ ref, text, clear, submit, expect }),
     "page.press": async ({ workspace: id, page, key, ref }) =>
-      (await pageOf(id, page)).press({ key, ref }),
+      (await findPage(id, page)).press({ key, ref }),
     "page.scroll": async ({ workspace: id, page, direction, ref, pages: count }) =>
-      (await pageOf(id, page)).scroll({ direction, ref, pages: count }),
+      (await findPage(id, page)).scroll({ direction, ref, pages: count }),
     "page.wait": async ({ workspace: id, page, condition }) =>
-      (await pageOf(id, page)).wait(condition),
+      (await findPage(id, page)).wait(condition),
     "page.console": async ({ workspace: id, page, limit, clear }) =>
-      (await pageOf(id, page)).console({ limit, clear }),
+      (await findPage(id, page)).console({ limit, clear }),
     "page.capture": async ({ workspace: id, page }) => ({
-      reader: await (await pageOf(id, page)).capture(),
+      reader: await (await findPage(id, page)).capture(),
     }),
     "page.evaluate": async ({ workspace: id, page, expression, options }) =>
-      (await pageOf(id, page)).evaluate(expression, options),
+      (await findPage(id, page)).evaluate(expression, options),
     "page.close": async ({ page }) => {
       await release(page);
 
@@ -550,7 +521,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   };
 }
 
-async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
+async function* readChunks(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
   if (body === null) return;
   const reader = body.getReader();
 
@@ -566,10 +537,10 @@ async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerato
   }
 }
 
-async function bytesOf(body: ReadableStream<Uint8Array> | null): Promise<Uint8Array> {
+async function readBytes(body: ReadableStream<Uint8Array> | null): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
 
-  for await (const chunk of chunksOf(body)) chunks.push(chunk);
+  for await (const chunk of readChunks(body)) chunks.push(chunk);
   const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
   let offset = 0;
 
@@ -603,11 +574,11 @@ function available<T>(capability: Capability<T>, what: string): T {
   return fail("unavailable", `${what}: ${capability.reason}`);
 }
 
-function jsonOf(value: unknown): Json {
+function toJson(value: unknown): Json {
   return isJson(value) ? value : null;
 }
 
-function keyOf(principal: PrincipalId, name: string): string {
+function principalKey(principal: PrincipalId, name: string): string {
   return JSON.stringify([principal, name]);
 }
 

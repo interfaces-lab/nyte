@@ -538,11 +538,11 @@ describe("principals", () => {
     );
 
     expect(stored).not.toContain(redeemed.token);
-    expect(await authenticateToken(kernel, redeemed.token)).toEqual({
+    expect(await authenticateToken(kernel.store, redeemed.token)).toEqual({
       principal: redeemed.principal,
       authority: new Set(["participant"]),
     });
-    expect(await authenticateToken(kernel, "forged")).toBeNull();
+    expect(await authenticateToken(kernel.store, "forged")).toBeNull();
 
     let dropped = 0;
     kernel.connections.register(redeemed.principal, () => {
@@ -560,7 +560,7 @@ describe("principals", () => {
 
     expect(dropped).toBe(1);
     expect(await host.principals.list()).toEqual([]);
-    expect(await authenticateToken(kernel, redeemed.token)).toBeNull();
+    expect(await authenticateToken(kernel.store, redeemed.token)).toBeNull();
   });
 
   it("revokes an id no paired principal holds as a success, writing and marking nothing (§65, ADV C N3, probe N2)", async () => {

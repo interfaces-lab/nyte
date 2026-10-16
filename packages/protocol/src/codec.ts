@@ -4,7 +4,13 @@ import { Guard } from "typebox/guard";
 import { OPERATIONS } from "@nyte-ai/schema";
 import type { Declaration, Json, Schema, ValidationIssue } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
-import type { OperationInput, OperationName, OperationOutput } from "./declarations.ts";
+import type {
+  ByteName,
+  CallName,
+  OperationInput,
+  OperationName,
+  OperationOutput,
+} from "./declarations.ts";
 
 type Node = { readonly [key: string]: unknown };
 
@@ -48,6 +54,29 @@ const rows: {
 } = OPERATIONS;
 
 const plans = new WeakMap<Schema<unknown>, Plan>();
+
+const BYTE_ROWS = {
+  "connection.blob": true,
+  "files.bytes": true,
+  "page.capture": true,
+} as const satisfies { readonly [N in ByteName]: true };
+
+/** Whether `name` names a row of the operations table. */
+export function namesOperation(name: string): name is OperationName {
+  return Object.hasOwn(OPERATIONS, name);
+}
+
+/** Whether a row is answered once with JSON: a query, command or receipt. */
+export function answersOnce(name: OperationName): name is CallName {
+  const { kind } = OPERATIONS[name];
+
+  return kind === "query" || kind === "command" || kind === "receipt";
+}
+
+/** Whether a row is a stream of bytes, answered as a raw octet stream. */
+export function answersBytes(name: OperationName): name is ByteName {
+  return Object.hasOwn(BYTE_ROWS, name);
+}
 
 /** Decodes an operation's input strictly: a value failing the row's input schema, or carrying a field the schema does not name, throws `SdkError("invalid")` with its issues. */
 export function decodeInput<N extends OperationName>(name: N, value: unknown): OperationInput<N> {

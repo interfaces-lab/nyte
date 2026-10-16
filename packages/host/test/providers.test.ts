@@ -50,8 +50,8 @@ async function hostOver(
   });
 
   cleanups.push(() => host.close());
-  const workspace = host.kernel.defaultWorkspace;
-  assert(workspace !== null);
+  const workspace = (await host.workspaces.list())[0]?.id;
+  assert(workspace !== undefined);
 
   return { host, workspace };
 }

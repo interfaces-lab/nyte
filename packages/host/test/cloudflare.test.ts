@@ -21,11 +21,9 @@ function fakeHost(input: {
     advanced,
     ticks,
     repairs: 0,
-    kernel: {
-      waits: {
-        tick: async (now: number) => {
-          ticks.push(now);
-        },
+    server: {
+      tick: async (now: number) => {
+        ticks.push(now);
       },
     },
     execution: {

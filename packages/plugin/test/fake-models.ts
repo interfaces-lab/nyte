@@ -2,9 +2,18 @@ import type { SimpleStreamOptions } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
-import { composeHost, memoryStore } from "@nyte-ai/core";
-import type { BrowserApi, ComposeOptions, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core";
+import type {
+  BrowserApi,
+  ComposeOptions,
+  ExecutionEnv,
+  Kernel,
+  Plugin,
+  ServedHost,
+  Store,
+} from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
+import { composeServer } from "../../core/src/compose.ts";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
 
 export type Block =
@@ -104,6 +113,15 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
+/** Composes a host as `composeHost` does, with its kernel beside it, for tests that read kernel state. */
+async function composed(
+  options: ComposeOptions,
+): Promise<ServedHost & { readonly kernel: Kernel }> {
+  const { host, kernel } = await composeServer(options);
+
+  return { ...host, kernel };
+}
+
 export function open(
   fake: FakeModels,
   plugins: readonly Plugin<"core">[],
@@ -113,10 +131,10 @@ export function open(
     readonly execution?: ComposeOptions["execution"];
     readonly poll?: number;
   },
-): ReturnType<typeof composeHost> {
+): Promise<ServedHost & { readonly kernel: Kernel }> {
   const browser = options?.browser;
 
-  return composeHost({
+  return composed({
     store: options?.store ?? memoryStore(),
     execution: options?.execution,
     poll: options?.poll,

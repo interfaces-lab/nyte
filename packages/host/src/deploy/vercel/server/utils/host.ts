@@ -1,7 +1,7 @@
 import process from "node:process";
 import { createModels } from "@nyte-ai/ai/models";
 import { SdkError, composeHost } from "@nyte-ai/core";
-import type { Host, Kernel, Listener, OpenOptions } from "@nyte-ai/core";
+import type { Host, Listener, OpenOptions, ServedHost } from "@nyte-ai/core";
 import { postgresStore } from "@nyte-ai/host";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { seedSigner } from "@nyte-ai/host/identity";
@@ -13,7 +13,7 @@ import { driveHead } from "../workflows/drive.ts";
 import { answerRepair } from "./repair.ts";
 
 type Served = {
-  readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
+  readonly host: ServedHost;
   readonly listener: Listener;
 };
 

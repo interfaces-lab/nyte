@@ -18,6 +18,7 @@ import { stoppableTool } from "./agent/tool-runner.ts";
 import { createTurnDriver } from "./agent/turn.ts";
 import { createConnection, createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
+import { createServerHost } from "./api/server.ts";
 import { createPart, partHandle, rerunAction } from "./api/part.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
 import { delegationPlugin } from "./builtins/delegation.ts";
@@ -26,9 +27,10 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { Host, ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
+import type { ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
 import type { Kernel, PluginRuntime, RunTable, WaitRegistry, Wakes } from "./contract/kernel.ts";
 import type { PartDefinitions } from "./contract/parts.ts";
+import type { ServedHost } from "./contract/server.ts";
 import type { Plugin } from "./contract/plugin.ts";
 import { decodeHostIdentity, envelope } from "./contract/records.ts";
 import type { HostIdentity } from "./contract/records.ts";
@@ -111,9 +113,15 @@ const BUILTINS: readonly Plugin<"core">[] = [
   delegationPlugin,
 ];
 
-export async function composeHost(
+/** Composes a host over `options.store`, with the server port a listener serves it through. */
+export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
+  return (await composeServer(options)).host;
+}
+
+/** Composes a host and returns the kernel under it too, for tests that drive the kernel; everything else takes {@link composeHost}. */
+export async function composeServer(
   options: ComposeOptions,
-): Promise<Omit<Host, "listen"> & { readonly kernel: Kernel }> {
+): Promise<{ readonly host: ServedHost; readonly kernel: Kernel }> {
   const outcomes = checkPlugins([...BUILTINS, ...options.plugins]).plugins;
   const fromFile = (index: number) =>
     index < BUILTINS.length
@@ -195,7 +203,10 @@ export async function composeHost(
     return closing;
   };
 
-  return { ...host, kernel, close, [Symbol.asyncDispose]: close };
+  return {
+    host: { ...host, server: createServerHost(kernel), close, [Symbol.asyncDispose]: close },
+    kernel,
+  };
 }
 
 export async function hostIdentity(store: StoreConnection): Promise<HostIdentity> {

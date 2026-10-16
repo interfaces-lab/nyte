@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
 import type { Store } from "@nyte-ai/core";
-import { hostPrincipalsRef, memoryStore, redeemPairing } from "@nyte-ai/core";
+import { hostPrincipalsRef, memoryStore } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
 import { listen } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
@@ -48,7 +48,7 @@ describe("revoke fence", () => {
     try {
       const session = await host.sessions.create();
       const { code } = await host.principals.pair({ authority: new Set(["participant"]) });
-      const device = await redeemPairing(host.kernel, code);
+      const device = await host.server.redeem(code);
       assert(device !== null);
       revoke = () => host.principals.revoke(device.principal);
 
