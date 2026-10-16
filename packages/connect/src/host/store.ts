@@ -16,6 +16,7 @@ import {
   Uuid,
 } from "../index.ts";
 import { PrivateJwk } from "../signing.ts";
+import { storeFailed } from "./errors.ts";
 
 /** Local revocations whose broker revoke has not been confirmed. */
 export const REVOCATION_LIMIT = 64;
@@ -172,14 +173,26 @@ export async function writePrivateFile(input: {
   await syncDirectory(directory);
 }
 
+/**
+ * The Connect state file as every part of the runtime reads and changes it. `origin` is the
+ * broker this build talks to, so a link through any other is not current; `onFailed` runs when a
+ * `change` fails, before the caller hears `storeFailed`.
+ */
 export class ConnectStore {
   private readonly path: string;
+  private readonly origin: string | undefined;
+  private readonly onFailed: () => void;
   private loading: Promise<ConnectRead> | undefined;
   private loaded: ConnectRead | undefined;
   private writes: Promise<unknown> = Promise.resolve();
 
-  constructor(path: string) {
+  constructor(
+    path: string,
+    owner: { readonly origin?: string; readonly onFailed?: () => void } = {},
+  ) {
     this.path = path;
+    this.origin = owner.origin;
+    this.onFailed = owner.onFailed ?? (() => undefined);
   }
 
   /** The file as the last write left it; the disk is read once. */
@@ -197,6 +210,40 @@ export class ConnectStore {
   /** What the last read or write left, without waiting; undefined before the first read. */
   snapshot(): ConnectRead | undefined {
     return this.loaded;
+  }
+
+  /** The file, or `storeFailed` when it cannot be used. */
+  async ready(): Promise<ConnectFile> {
+    const read = await this.read();
+
+    if (read.kind === "failed") throw storeFailed();
+
+    return read.file;
+  }
+
+  /** The file as the last read or write left it, without waiting; undefined before the first read or after a failure. */
+  loadedFile(): ConnectFile | undefined {
+    return this.loaded?.kind === "ready" ? this.loaded.file : undefined;
+  }
+
+  /** The stored link when it is the one for `environmentId` through this build's broker. */
+  currentLink(environmentId: string): StoredLink | undefined {
+    const link = this.loadedFile()?.link ?? null;
+
+    return link !== null && link.environment.id === environmentId && link.origin === this.origin
+      ? link
+      : undefined;
+  }
+
+  /** Applies `change` as `update` does; a failure runs `onFailed` and rejects with `storeFailed`. */
+  async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
+    try {
+      await this.update((file) => ({ file: change(file), result: undefined }));
+    } catch (cause) {
+      if (!(cause instanceof ConnectStoreFailed)) throw cause;
+      this.onFailed();
+      throw storeFailed();
+    }
   }
 
   /**

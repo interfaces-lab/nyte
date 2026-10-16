@@ -1,8 +1,5 @@
 import { HEARTBEAT_INTERVAL_SECONDS, LINK_POLL_INTERVAL_SECONDS } from "../index.ts";
-import { storeFailed } from "./errors.ts";
 import type { RelayTiming } from "./relay.ts";
-import { ConnectStoreFailed } from "./store.ts";
-import type { ConnectFile, ConnectRead, ConnectStore, StoredLink } from "./store.ts";
 
 export interface ConnectTiming {
   readonly heartbeatMs: number;
@@ -35,60 +32,3 @@ export const DEFAULT_TIMING: ConnectTiming = {
   dropDelayMs: 250,
   linkPollMs: LINK_POLL_INTERVAL_SECONDS * 1_000,
 };
-
-/**
- * The Connect state file as every part of the runtime reads and changes it. A
- * write that fails takes remote access down through `onFailed` before the
- * caller hears `storeFailed`.
- */
-export class ConnectFiles {
-  readonly store: ConnectStore;
-  /** The broker this build talks to; a link through any other is not current. */
-  private readonly origin: string | undefined;
-  private readonly onFailed: () => void;
-
-  constructor(store: ConnectStore, origin: string | undefined, onFailed: () => void) {
-    this.store = store;
-    this.origin = origin;
-    this.onFailed = onFailed;
-  }
-
-  read(): Promise<ConnectRead> {
-    return this.store.read();
-  }
-
-  /** The file, or `storeFailed` when it cannot be used. */
-  async ready(): Promise<ConnectFile> {
-    const read = await this.store.read();
-
-    if (read.kind === "failed") throw storeFailed();
-
-    return read.file;
-  }
-
-  /** The file as the last read or write left it, without waiting; undefined before the first read or after a failure. */
-  loaded(): ConnectFile | undefined {
-    const read = this.store.snapshot();
-
-    return read?.kind === "ready" ? read.file : undefined;
-  }
-
-  /** The stored link when it is the one for `environmentId` through this build's broker. */
-  currentLink(environmentId: string): StoredLink | undefined {
-    const link = this.loaded()?.link ?? null;
-
-    return link !== null && link.environment.id === environmentId && link.origin === this.origin
-      ? link
-      : undefined;
-  }
-
-  async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
-    try {
-      await this.store.update((file) => ({ file: change(file), result: undefined }));
-    } catch (cause) {
-      if (!(cause instanceof ConnectStoreFailed)) throw cause;
-      this.onFailed();
-      throw storeFailed();
-    }
-  }
-}

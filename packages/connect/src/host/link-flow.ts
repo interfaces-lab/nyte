@@ -8,12 +8,11 @@ import type { ConnectLinking } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
 import type { AccountSession } from "./account.ts";
 import type { DesktopBroker } from "./broker.ts";
-import type { ConnectFiles } from "./context.ts";
 import { originChanged, unavailable } from "./errors.ts";
 import { machineName } from "./machine-name.ts";
 import type { ConnectOutbox } from "./outbox.ts";
 import { UNLINK_LIMIT } from "./store.ts";
-import type { LinkKey } from "./store.ts";
+import type { ConnectStore, LinkKey } from "./store.ts";
 import { LinkStopped, linkFailure, refusedCode, sessionSubject } from "./tokens.ts";
 
 /**
@@ -30,7 +29,7 @@ export type LinkAuthorizer =
     };
 
 export interface LinkFlowOptions {
-  readonly files: ConnectFiles;
+  readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly authorizer: LinkAuthorizer | undefined;
   /** This host's name at the broker; defaults to the machine's. */
@@ -93,11 +92,11 @@ export class LinkFlow {
       return;
     }
 
-    const { files, outbox } = this.options;
+    const { store, outbox } = this.options;
 
-    if ((await files.ready()).unlinks.length >= UNLINK_LIMIT) await outbox.retryUnlinks();
+    if ((await store.ready()).unlinks.length >= UNLINK_LIMIT) await outbox.retryUnlinks();
 
-    if ((await files.ready()).unlinks.length >= UNLINK_LIMIT) {
+    if ((await store.ready()).unlinks.length >= UNLINK_LIMIT) {
       this.setLinking({ kind: "failed", reason: "refused" });
 
       return;
@@ -151,7 +150,7 @@ export class LinkFlow {
       } else this.setLinking({ kind: "idle" });
     } catch (cause) {
       if (refusedCode(cause) === "revoked") {
-        await this.options.files
+        await this.options.store
           .change((file) => ({ ...file, linkKey: null }))
           .catch(() => undefined);
       } else if (authorizer?.kind === "transaction") {
@@ -174,7 +173,7 @@ export class LinkFlow {
   }
 
   private async clearEndedTransaction(): Promise<void> {
-    await this.options.files
+    await this.options.store
       .change((current) =>
         current.linkKey?.kind === "transaction"
           ? { ...current, linkKey: this.nextOperation(current.linkKey) }
@@ -211,14 +210,14 @@ export class LinkFlow {
     attempt: LinkAttempt,
   ): Promise<void> {
     const { controller } = attempt;
-    const { files } = this.options;
+    const { store } = this.options;
     this.setLinking({ kind: "waiting_for_account" });
     const sessionToken = await account.requestSessionToken({ signal: controller.signal });
 
     if (controller.signal.aborted) throw new AccountCancelled();
     await this.options.serial(async () => {
       if (this.stopped(controller.signal)) throw new AccountCancelled();
-      const file = await files.ready();
+      const file = await store.ready();
 
       if (file.link !== null) return;
       this.setLinking({ kind: "linking" });
@@ -234,7 +233,7 @@ export class LinkFlow {
       const key = resumable ? pending.key : await generateMachineKey();
 
       if (!resumable)
-        await files.change((current) => ({
+        await store.change((current) => ({
           ...current,
           linkKey: { kind: "session", origin: broker.origin, key, owner },
         }));
@@ -258,12 +257,12 @@ export class LinkFlow {
   ): Promise<void> {
     this.setLinking({ kind: "linking" });
     const { signal } = attempt.controller;
-    const { files } = this.options;
+    const { store } = this.options;
 
     const prepared = await this.options.serial(
       async (): Promise<TransactionLinkKey | undefined> => {
         if (this.stopped(signal)) throw new AccountCancelled();
-        const file = await files.ready();
+        const file = await store.ready();
 
         if (file.link !== null) return undefined;
         let pending = file.linkKey;
@@ -301,7 +300,7 @@ export class LinkFlow {
           }
 
           if (intent !== pending)
-            await files.change((current) => ({ ...current, linkKey: intent }));
+            await store.change((current) => ({ ...current, linkKey: intent }));
           const { kept, state } = await this.open(intent, broker, signal);
 
           if (state === "pending") return kept;
@@ -350,7 +349,7 @@ export class LinkFlow {
     this.setLinking({ kind: "linking" });
     await this.options.serial(async () => {
       if (this.stopped(signal)) throw new AccountCancelled();
-      const file = await files.ready();
+      const file = await store.ready();
 
       if (file.link !== null) return;
 
@@ -390,7 +389,7 @@ export class LinkFlow {
     };
 
     const kept: TransactionLinkKey = { ...intent, transaction };
-    await this.options.files.change((current) =>
+    await this.options.store.change((current) =>
       sameOperation(current.linkKey, intent)
         ? { ...current, linkKey: { ...kept, abandoned: current.linkKey.abandoned } }
         : current,
@@ -453,14 +452,14 @@ export class LinkFlow {
 
   private async abandonTransaction(broker: DesktopBroker | undefined): Promise<void> {
     if (broker === undefined) return;
-    const pending = this.options.files.loaded()?.linkKey ?? null;
+    const pending = this.options.store.loadedFile()?.linkKey ?? null;
 
     if (pending === null || pending.kind !== "transaction" || pending.origin !== broker.origin)
       return;
     const abandoned: TransactionLinkKey = { ...pending, abandoned: true };
 
     try {
-      await this.options.files.change((current) =>
+      await this.options.store.change((current) =>
         sameOperation(current.linkKey, pending)
           ? { ...current, linkKey: { ...current.linkKey, abandoned: true } }
           : current,
@@ -475,7 +474,7 @@ export class LinkFlow {
     signal: AbortSignal,
   ): Promise<"cancelled" | "unlinked"> {
     const { transaction, key } = pending;
-    const { files } = this.options;
+    const { store } = this.options;
 
     if (transaction === null) return "cancelled";
 
@@ -494,7 +493,7 @@ export class LinkFlow {
 
       if (completion.state === "consumed") {
         const { environment } = completion.link;
-        await files.change((current) => ({
+        await store.change((current) => ({
           ...current,
           linkKey: null,
           unlinks: [
@@ -508,7 +507,7 @@ export class LinkFlow {
       }
     }
 
-    await files.change((current) =>
+    await store.change((current) =>
       current.linkKey?.kind === "transaction" && current.linkKey.transaction?.id === transaction.id
         ? { ...current, linkKey: null }
         : current,
@@ -523,7 +522,7 @@ export class LinkFlow {
     origin: string,
     attempt: LinkAttempt | undefined,
   ): Promise<void> {
-    await this.options.files.change((current) => {
+    await this.options.store.change((current) => {
       if (current.linkKey === null) throw new AccountCancelled();
 
       return {

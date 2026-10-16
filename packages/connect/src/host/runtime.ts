@@ -4,7 +4,7 @@ import { AccountCancelled } from "./account.ts";
 import type { AccountSession } from "./account.ts";
 import { DesktopBroker } from "./broker.ts";
 import type { BrokerFetch } from "./broker.ts";
-import { ConnectFiles, DEFAULT_TIMING } from "./context.ts";
+import { DEFAULT_TIMING } from "./context.ts";
 import type { ConnectTiming } from "./context.ts";
 import { closed, notLinked, originChanged, unavailable } from "./errors.ts";
 import { LinkFlow } from "./link-flow.ts";
@@ -48,7 +48,7 @@ export interface ConnectRuntimeOptions {
 export class ConnectRuntime {
   private readonly options: ConnectRuntimeOptions;
   private readonly timing: ConnectTiming;
-  private readonly files: ConnectFiles;
+  private readonly store: ConnectStore;
   private readonly broker: DesktopBroker | undefined;
   private readonly keyring: BrokerKeyring | undefined;
   private readonly lifetime = new AbortController();
@@ -75,19 +75,18 @@ export class ConnectRuntime {
 
     this.broker = broker;
 
-    this.files = new ConnectFiles(
-      new ConnectStore(options.storePath ?? join(options.home, "connect.json")),
-      broker?.origin,
-      () => this.failClosed(),
-    );
+    this.store = new ConnectStore(options.storePath ?? join(options.home, "connect.json"), {
+      origin: broker?.origin,
+      onFailed: () => this.failClosed(),
+    });
 
     this.keyring =
       broker === undefined
         ? undefined
-        : new BrokerKeyring(broker, this.files, this.timing.keysMs, this.lifetime.signal);
+        : new BrokerKeyring(broker, this.store, this.timing.keysMs, this.lifetime.signal);
 
     this.outbox = new ConnectOutbox({
-      files: this.files,
+      store: this.store,
       broker,
       unlinkRetryMs: this.timing.unlinkRetryMs,
       signal: this.lifetime.signal,
@@ -97,7 +96,7 @@ export class ConnectRuntime {
     });
 
     this.links = new LinkFlow({
-      files: this.files,
+      store: this.store,
       broker,
       authorizer: options.authorizer,
       name: options.name,
@@ -127,7 +126,7 @@ export class ConnectRuntime {
 
     if (broker === undefined || reason !== undefined)
       return { kind: "unavailable", reason: reason ?? "not_configured" };
-    const read = await this.files.read();
+    const read = await this.store.read();
 
     if (read.kind === "failed") return { kind: "unavailable", reason: "store_failed" };
     const account = this.account?.state() ?? { kind: "unavailable" };
@@ -205,23 +204,23 @@ export class ConnectRuntime {
       this.denyAll();
       await this.serial(async () => {
         await this.stopServing();
-        await this.files.change((file) => (file.enabled ? { ...file, enabled: false } : file));
+        await this.store.change((file) => (file.enabled ? { ...file, enabled: false } : file));
       });
     } else {
       await this.serial(async () => {
         if (this.closed) throw closed();
 
-        const file = await this.files.ready();
+        const file = await this.store.ready();
 
         if (file.link === null) throw notLinked();
-        await this.files.change((current) =>
+        await this.store.change((current) =>
           current.enabled ? current : { ...current, enabled: true },
         );
 
         try {
           await this.startServing(input.share);
         } catch (cause) {
-          await this.files
+          await this.store
             .change((current) => ({ ...current, enabled: false }))
             .catch(() => undefined);
           throw cause;
@@ -263,7 +262,7 @@ export class ConnectRuntime {
 
     if (this.unavailableReason() !== undefined) return;
     await this.serial(async () => {
-      const read = await this.files.read();
+      const read = await this.store.read();
 
       if (read.kind === "failed" || !read.file.enabled || read.file.link === null) return;
 
@@ -371,7 +370,7 @@ export class ConnectRuntime {
     this.lifetime.abort();
     await this.serial(() => this.stopServing());
     await this.outbox.close();
-    await this.files.store.idle();
+    await this.store.idle();
     await this.account?.close();
   }
 
@@ -379,12 +378,12 @@ export class ConnectRuntime {
   private async queueUnlink(expected: string | undefined): Promise<void> {
     this.denyAll();
     await this.serial(async () => {
-      const file = await this.files.ready();
+      const file = await this.store.ready();
       const { link } = file;
 
       if (link === null || (expected !== undefined && link.environment.id !== expected)) return;
       await this.stopServing();
-      await this.files.change((current) =>
+      await this.store.change((current) =>
         current.link === null
           ? current
           : {
@@ -413,7 +412,7 @@ export class ConnectRuntime {
 
     if (this.serving !== undefined) return;
     const { broker, keyring } = this;
-    const { link } = await this.files.ready();
+    const { link } = await this.store.ready();
 
     if (broker === undefined || keyring === undefined) throw unavailable();
 
@@ -425,7 +424,7 @@ export class ConnectRuntime {
     const session = new ServingSession({
       epoch,
       environmentId: link.environment.id,
-      files: this.files,
+      store: this.store,
       broker,
       keyring,
       trust: this.trust,
@@ -475,7 +474,7 @@ export class ConnectRuntime {
       this.serving === serving &&
       !serving.halted &&
       serving.epoch === this.epoch &&
-      this.files.loaded() !== undefined
+      this.store.loadedFile() !== undefined
     );
   }
 
@@ -513,8 +512,8 @@ export class ConnectRuntime {
   }
 
   private async recordRemoval(deviceId: string, kind: "release" | "revoke"): Promise<void> {
-    await this.files.ready();
-    await this.files.change((file) => {
+    await this.store.ready();
+    await this.store.change((file) => {
       const link = file.link;
 
       if (link === null) return file;
@@ -553,11 +552,11 @@ export class ConnectRuntime {
     if (this.serving?.environmentId === environmentId) this.denyAll();
 
     return this.serial(async () => {
-      const read = await this.files.read();
+      const read = await this.store.read();
 
       if (read.kind === "failed" || read.file.link?.environment.id !== environmentId) return;
       await this.stopServing();
-      await this.files.change((file) =>
+      await this.store.change((file) =>
         file.link?.environment.id === environmentId
           ? { ...file, enabled: false, link: null }
           : file,
@@ -605,7 +604,7 @@ export class ConnectRuntime {
     if (this.closed) throw closed();
 
     if (this.broker === undefined) throw unavailable();
-    const file = await this.files.ready();
+    const file = await this.store.ready();
 
     if (file.link !== null && file.link.origin !== this.broker.origin) throw originChanged();
 

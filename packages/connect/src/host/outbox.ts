@@ -1,12 +1,12 @@
+import type { ConnectStore } from "./store.ts";
 import type { DesktopBroker } from "./broker.ts";
-import type { ConnectFiles } from "./context.ts";
 import { refusedCode } from "./tokens.ts";
 
 /** Least time between two passes over the revocations a lease reminds this host of. */
 const REVOCATION_REMINDER_MS = 60_000;
 
 export interface ConnectOutboxOptions {
-  readonly files: ConnectFiles;
+  readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly unlinkRetryMs: number;
   /** Ends with the runtime. */
@@ -80,12 +80,12 @@ export class ConnectOutbox {
   }
 
   private async sendRevocationsOnce(): Promise<void> {
-    const { broker, files } = this.options;
+    const { broker, store } = this.options;
 
     if (broker === undefined || this.options.closed()) return;
     this.revocationsSentAt = Date.now();
-    const stored = files.loaded()?.link ?? null;
-    const link = stored === null ? undefined : files.currentLink(stored.environment.id);
+    const stored = store.loadedFile()?.link ?? null;
+    const link = stored === null ? undefined : store.currentLink(stored.environment.id);
 
     if (link === undefined || link.revocations.length === 0) return;
 
@@ -112,7 +112,7 @@ export class ConnectOutbox {
         if (code !== "not_found") return;
       }
 
-      await files
+      await store
         .change((file) =>
           file.link?.environment.id === link.environment.id
             ? {
@@ -134,10 +134,10 @@ export class ConnectOutbox {
   }
 
   private async sendUnlinks(): Promise<void> {
-    const { broker, files } = this.options;
+    const { broker, store } = this.options;
 
     if (broker === undefined || this.options.closed()) return;
-    const read = await files.read();
+    const read = await store.read();
 
     if (read.kind === "failed" || read.file.unlinks.length === 0) return;
     let remaining = 0;
@@ -163,7 +163,7 @@ export class ConnectOutbox {
         continue;
       }
 
-      await files
+      await store
         .change((file) => ({
           ...file,
           unlinks: file.unlinks.filter((entry) => entry.environmentId !== pending.environmentId),

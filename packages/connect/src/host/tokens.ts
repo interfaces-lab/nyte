@@ -8,8 +8,7 @@ import type { TokenType } from "../signing.ts";
 import type { ConnectLinkFailure } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
 import type { DesktopBroker } from "./broker.ts";
-import type { ConnectFiles } from "./context.ts";
-import type { StoredLink } from "./store.ts";
+import type { ConnectStore, StoredLink } from "./store.ts";
 
 /** A broker link transaction ended in `state` before this host linked. */
 export class LinkStopped extends Error {
@@ -138,14 +137,14 @@ export class LinkTrust {
  */
 export class BrokerKeyring {
   private readonly broker: DesktopBroker;
-  private readonly files: ConnectFiles;
+  private readonly store: ConnectStore;
   private readonly keysMs: number;
   private readonly signal: AbortSignal;
   private keysReadAt = Number.NEGATIVE_INFINITY;
 
-  constructor(broker: DesktopBroker, files: ConnectFiles, keysMs: number, signal: AbortSignal) {
+  constructor(broker: DesktopBroker, store: ConnectStore, keysMs: number, signal: AbortSignal) {
     this.broker = broker;
-    this.files = files;
+    this.store = store;
     this.keysMs = keysMs;
     this.signal = signal;
   }
@@ -190,7 +189,7 @@ export class BrokerKeyring {
     const key = brokerKey(keys, token);
 
     if (key === undefined) return undefined;
-    await this.files
+    await this.store
       .change((file) =>
         file.link?.environment.id === environmentId
           ? { ...file, link: { ...file.link, brokerKeys: keys } }

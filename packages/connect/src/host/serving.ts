@@ -14,14 +14,14 @@ import type { DeviceRole, ReceiptClaims } from "../index.ts";
 import { nowSeconds, signClaims } from "../signing.ts";
 import type { ConnectLease, ConnectRelay } from "../view.ts";
 import type { DesktopBroker, LeaseAnswer } from "./broker.ts";
-import type { ConnectFiles, ConnectTiming } from "./context.ts";
+import type { ConnectTiming } from "./context.ts";
 import type { ConnectOutbox } from "./outbox.ts";
 import { RelayConnection } from "./relay.ts";
 import type { RelayDial } from "./relay.ts";
 import { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
 import type { AuthorizingRequest, RouteAnswer } from "./routes.ts";
 import { CONSUMED_LIMIT, REVOCATION_LIMIT } from "./store.ts";
-import type { StoredDevice, StoredLink } from "./store.ts";
+import type { ConnectStore, StoredDevice, StoredLink } from "./store.ts";
 import { refusedCode } from "./tokens.ts";
 import type { BrokerKeyring, LinkTrust } from "./tokens.ts";
 
@@ -73,7 +73,7 @@ export interface ServingOwner {
 export interface ServingSessionOptions {
   readonly epoch: number;
   readonly environmentId: string;
-  readonly files: ConnectFiles;
+  readonly store: ConnectStore;
   readonly broker: DesktopBroker;
   readonly keyring: BrokerKeyring;
   readonly trust: LinkTrust;
@@ -170,13 +170,13 @@ export class ServingSession {
 
   /** Serve the bound listener through a relay socket to `url`. Nothing dials until `start`. */
   attach(local: ConnectListener, url: string, dial: RelayDial | undefined): void {
-    const { broker, files, owner, timing } = this.options;
+    const { broker, store, owner, timing } = this.options;
 
     const relay = new RelayConnection({
       url,
       port: local.port,
       proof: async () => {
-        const current = files.currentLink(this.environmentId);
+        const current = store.currentLink(this.environmentId);
 
         if (current === undefined || !this.live()) throw new Error("Not serving");
 
@@ -267,8 +267,8 @@ export class ServingSession {
   }
 
   private async renew(): Promise<BeatOutcome> {
-    const { broker, files, owner } = this.options;
-    const link = files.currentLink(this.environmentId);
+    const { broker, store, owner } = this.options;
+    const link = store.currentLink(this.environmentId);
 
     if (link === undefined) return "failed";
 
@@ -351,8 +351,8 @@ export class ServingSession {
 
   /** Forget devices the broker stopped listing once their enrollment could no longer be in flight. */
   private pruneInactive(lease: HeldLease): void {
-    const { files, owner } = this.options;
-    const link = files.currentLink(this.environmentId);
+    const { store, owner } = this.options;
+    const link = store.currentLink(this.environmentId);
     const settled = lease.sentAt - (ENROLLMENT_LIFETIME_SECONDS + CLOCK_TOLERANCE_SECONDS) * 1_000;
 
     const inactive = new Set(
@@ -363,7 +363,7 @@ export class ServingSession {
 
     if (inactive.size === 0) return;
     this.disconnectClients();
-    void files
+    void store
       .change((file) =>
         file.link?.environment.id === this.environmentId
           ? {
@@ -425,7 +425,7 @@ export class ServingSession {
   /** The stored device whose bearer digest is `digest`, compared in constant time; none once refused here. */
   private deviceFor(digest: Buffer): StoredDevice | undefined {
     if (!this.live()) return undefined;
-    const link = this.options.files.currentLink(this.environmentId);
+    const link = this.options.store.currentLink(this.environmentId);
 
     if (link === undefined) return undefined;
     let match: StoredDevice | undefined;
@@ -481,10 +481,10 @@ export class ServingSession {
   }
 
   private async enroll(authorization: string): Promise<RouteAnswer> {
-    const { broker, files, keyring, trust, owner } = this.options;
+    const { broker, store, keyring, trust, owner } = this.options;
 
     if (!this.live()) return refused(403, "forbidden");
-    const link = files.currentLink(this.environmentId);
+    const link = store.currentLink(this.environmentId);
 
     if (link === undefined) return refused(404, "not_found");
 
@@ -504,7 +504,7 @@ export class ServingSession {
     let outcome: "recorded" | "replaced" | "gone" | "conflict" | "limit";
 
     try {
-      outcome = await files.store.update((file) => {
+      outcome = await store.update((file) => {
         const current = file.link;
 
         if (current === null || current.environment.id !== this.environmentId)
