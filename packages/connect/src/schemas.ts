@@ -15,10 +15,6 @@
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 
-// ---------------------------------------------------------------------------
-// Lifetimes and limits
-// ---------------------------------------------------------------------------
-
 /** A signed request proof is accepted for this long after `iat`. */
 export const PROOF_LIFETIME_SECONDS = 60;
 
@@ -64,10 +60,6 @@ export const TOKEN_TYPES = {
   receipt: "nyte-receipt+jwt",
   lease: "nyte-lease+jwt",
 } as const;
-
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
 
 /**
  * Broker routes, relative to `CONNECT_ORIGIN`. Ids are UUIDs checked before
@@ -168,10 +160,6 @@ export const DESKTOP_ROUTES = {
   device: "/_nyte/connect/device",
 } as const;
 
-// ---------------------------------------------------------------------------
-// Primitives
-// ---------------------------------------------------------------------------
-
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
 
@@ -233,10 +221,6 @@ export const BrokerKeys = Type.Object({
 
 export type BrokerKeys = Static<typeof BrokerKeys>;
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 export const ERROR_CODES = [
   /** No credential, or one that does not verify. */
   "unauthorized",
@@ -270,10 +254,6 @@ export const ErrorBody = Type.Object({
 });
 
 export type ErrorBody = Static<typeof ErrorBody>;
-
-// ---------------------------------------------------------------------------
-// Desktop ↔ broker (machine-key proofs)
-// ---------------------------------------------------------------------------
 
 /**
  * `POST /v1/environments` with `Authorization: Bearer <Clerk session JWT>` and a
@@ -461,10 +441,6 @@ export const ProofClaims = Type.Object({
 
 export type ProofClaims = Static<typeof ProofClaims>;
 
-// ---------------------------------------------------------------------------
-// Phone ↔ broker (Clerk session JWT)
-// ---------------------------------------------------------------------------
-
 export const EnvironmentSummary = Type.Object({
   id: Uuid,
   name: Name,
@@ -504,10 +480,6 @@ export const EnrollResponse = Type.Object({
 });
 
 export type EnrollResponse = Static<typeof EnrollResponse>;
-
-// ---------------------------------------------------------------------------
-// Broker → desktop (over the relay)
-// ---------------------------------------------------------------------------
 
 /** `POST /_nyte/connect/enroll` body, relayed by the broker itself and never from a phone. */
 export const EnrollEnvelope = strict({ authorization: CompactJws });
