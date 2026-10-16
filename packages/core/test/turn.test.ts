@@ -71,11 +71,7 @@ describe("turn", () => {
       role: "answer",
       status: { kind: "settled" },
     });
-    expect(answer.state).toEqual({
-      markdown: "Calling echo.",
-      signature: "msg-1",
-      usage: expect.objectContaining({ input: 100, output: 20, total: 120 }),
-    });
+    expect(answer.state).toEqual({ markdown: "Calling echo.", signature: "msg-1" });
     assert(call !== undefined && isPart(call, tool));
     expect(call.id).toBe(`${run}:1:call-1`);
     expect(call.state).toMatchObject({

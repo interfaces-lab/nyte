@@ -116,7 +116,7 @@ export async function endRun(
       ...current.record,
       lastActivityAt: endedAt,
       heads: current.record.heads.map((entry) =>
-        entry.name === head ? { ...entry, lastRun } : entry,
+        entry.name === head ? { ...entry, lastRun, response: found.record.response } : entry,
       ),
     };
 

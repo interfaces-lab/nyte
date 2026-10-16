@@ -53,7 +53,7 @@ import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./comp
 import { calculateUsage, charge, providerContext, requestEvent, RETRY_POLICY } from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
-import { estimateTranscriptTokens, requestBody, withReportedUsage } from "./transcript.ts";
+import { estimateTranscriptTokens, requestBody } from "./transcript.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
 
 type ThoughtSignature = {
@@ -176,7 +176,6 @@ async function turn(
   let state = await resumed(context, given);
   let charged = { total: ZERO_USAGE, requests: 0 };
   let callIds = new Map<ModelToolCall, CallId>();
-  let reported: AssistantMessage["usage"] | null = null;
 
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
@@ -195,11 +194,7 @@ async function turn(
           return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
         const input = { session, head, run: state.run, configuration };
 
-        const body = async () => {
-          const built = await requestBody(kernel, models, runtime, input);
-
-          return { ...built, transcript: withReportedUsage(built.transcript, reported) };
-        };
+        const body = () => requestBody(kernel, models, runtime, input);
 
         const compacting = (
           built: Awaited<ReturnType<typeof body>>,
@@ -324,7 +319,6 @@ async function turn(
 
     async settleResponse({ message, calls, usage, prepared }) {
       observe(context, prepared, usage);
-      reported = message.usage;
       closeThoughts(state);
 
       await changeRun(context, run, async (record) => {
@@ -358,14 +352,14 @@ async function turn(
             );
 
         return {
-          record: executing ? { ...next, phase: "executing" } : next,
+          record: { ...next, response: usage, phase: executing ? "executing" : next.phase },
           events: [
             requestEvent(head, "assistant", usage, prepared.info),
             ...(executing
               ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
               : []),
           ],
-          updates: [...(await settledParts(context, state.opened, usage)), ...intents],
+          updates: [...(await settledParts(context, state.opened)), ...intents],
         };
       });
 
@@ -651,11 +645,10 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** The writes that settle a response's open parts on the head, each in its own commit, the last carrying the response's `usage`; a part the stop fence already failed keeps its text. */
+/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. */
 async function settledParts(
   context: Turn,
   opened: readonly OpenPart[],
-  usage: Usage,
 ): Promise<readonly RefUpdate[]> {
   const { kernel, session, head } = context;
 
@@ -679,7 +672,7 @@ async function settledParts(
       continue;
     }
 
-    const state = buildPartState(entry, entry === opened.at(-1) ? usage : null);
+    const state = buildPartState(entry);
     const version = part.record.version + 1;
 
     const landed = await settling(kernel.store, {
@@ -724,13 +717,8 @@ function assignCallIds(
   );
 }
 
-function buildPartState(entry: OpenPart, usage: Usage | null): Json {
-  if (entry.kind === "text")
-    return {
-      markdown: entry.markdown,
-      signature: entry.textSignature,
-      ...(usage !== null && { usage }),
-    };
+function buildPartState(entry: OpenPart): Json {
+  if (entry.kind === "text") return { markdown: entry.markdown, signature: entry.textSignature };
 
   return {
     markdown: entry.markdown,
@@ -738,7 +726,6 @@ function buildPartState(entry: OpenPart, usage: Usage | null): Json {
     signature: entry.thoughts.some((thought) => thought.signature !== null || thought.redacted)
       ? entry.thoughts.map((thought) => ({ ...thought }))
       : null,
-    ...(usage !== null && { usage }),
   };
 }
 
@@ -762,7 +749,7 @@ async function keep(
   const { record } = found;
   const name = partRef(session, entry.part);
   const part = entry.part;
-  const state = buildPartState(entry, null);
+  const state = buildPartState(entry);
   const version = record.version + 1;
   const live = record.status.kind === "live" || record.status.kind === "waiting";
   const status = live ? { kind: "failed", run: record.run, failure } : record.status;

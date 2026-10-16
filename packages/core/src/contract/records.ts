@@ -53,6 +53,8 @@ const HeadRecordType = record({
   lastRun: nullable(
     record({ id: idSchema<"run">(), end: typed<RunEnd>()(RunEndType), endedAt: Type.Number() }),
   ),
+  /** The usage the last run's latest response reported, which a rebuilt transcript anchors its token estimate on. */
+  response: Type.Optional(typed<Usage>()(UsageType)),
 });
 
 export type HeadRecord = Static<typeof HeadRecordType>;
@@ -107,6 +109,8 @@ const RunRecordType = record({
   lastSnapshot: nullable(idSchema<"snapshot">()),
   usage: nullable(typed<Usage>()(UsageType)),
   requests: Type.Number(),
+  /** The usage the run's latest response reported. */
+  response: Type.Optional(typed<Usage>()(UsageType)),
 
   parked: list(idSchema<"call">()),
 });

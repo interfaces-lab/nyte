@@ -29,9 +29,9 @@ it("keeps every stored shape until a store change is decided", () => {
     part: "5f3515658627af7c",
     principals: "103773fcbe00ed1c",
     receipt: "d31ca04a07027010",
-    run: "9624153663213368",
+    run: "134334f92f462db0",
     seen: "d56e60a18cd524d4",
-    session: "708fc13db82324a1",
+    session: "dc5c6aed2eb9eb18",
     workspace: "1f30e2f3b518d3a3",
   });
 });
