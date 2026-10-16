@@ -28,7 +28,7 @@ import type {
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
 import { intendedCall } from "../engine/durable.ts";
-import { abortHere, unfenced } from "../engine/fence.ts";
+import { abortHere, stopRequested, unfenced } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
@@ -408,7 +408,7 @@ async function turn(
     case "parked":
       return { kind: "parked" };
     case "stopped": {
-      const stopping = kernel.runs.isStopping(run);
+      const stopping = await stopRequested(kernel, session, run);
 
       if (stopping || end.response !== null)
         await failOpen(context, run, stopping ? state.opened : [], ABORTED, end.response);
@@ -464,7 +464,7 @@ async function updated(
   state: AttemptState,
   event: AssistantMessageEvent,
 ): Promise<void> {
-  if (context.kernel.runs.isStopping(state.run.id)) return;
+  if (context.kernel.runs.fenced(state.run.id)) return;
 
   switch (event.type) {
     case "text_delta":

@@ -22,6 +22,7 @@ import { decodeLease, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
 import { LEASE_MS } from "../engine/durable.ts";
+import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import type { Lease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
@@ -524,9 +525,8 @@ async function settleLive(
   if (kernel.driving.has(run))
     return (await holding(kernel, session, head, live.record)) ?? { kind: "idle" };
 
-  if (live.record.stopping || kernel.runs.isStopping(run)) {
-    kernel.runs.markStopping(run);
-    kernel.runs.abort(run);
+  if (live.record.stopping) {
+    kernel.runs.start(session, run).abort();
     await kernel.waits.runStopped(session, run);
     const refused = await resume(kernel, session, head, run);
 
@@ -574,10 +574,7 @@ async function resume(
   run: RunId,
 ): Promise<Refused | null> {
   const renewal = holdHead(kernel, session, head);
-  const signal = AbortSignal.any([
-    kernel.runs.signal(run) ?? kernel.runs.start(run).signal,
-    renewal.lease.signal,
-  ]);
+  const signal = AbortSignal.any([kernel.runs.start(session, run).signal, renewal.lease.signal]);
   const runtime = kernel.pluginsFor(session);
   const release = runtime.hold();
 
@@ -651,7 +648,7 @@ async function drive(
   const renewal = holdHead(kernel, session, head);
 
   const signal = AbortSignal.any([
-    kernel.runs.signal(run.id) ?? kernel.runs.start(run.id).signal,
+    kernel.runs.start(session, run.id).signal,
     closing,
     renewal.lease.signal,
   ]);
@@ -683,7 +680,7 @@ async function drive(
   });
 
   const ended = await Promise.race([turned, closed]);
-  const stopping = kernel.runs.isStopping(run.id);
+  const stopping = await stopRequested(kernel, session, run.id);
   const refused = renewal.refused();
 
   if (refused !== null) {
@@ -791,8 +788,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   if (kernel.driving.has(run)) return { kind: "idle" };
   const calls = await owedCalls(kernel, session, run);
 
-  if (record.stopping || kernel.runs.isStopping(run) || calls.some((call) => !call.parked))
-    return { kind: "continue" };
+  if (record.stopping || calls.some((call) => !call.parked)) return { kind: "continue" };
 
   if (record.waiting !== null || calls.length > 0)
     return waitingOn(kernel, session, head, record.waiting);

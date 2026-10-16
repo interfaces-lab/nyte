@@ -230,18 +230,17 @@ export interface Handles {
   activationSession(context: ConnectionContext, session: SessionId): Session;
 }
 
+/** This process's abort controllers for the runs it works on. Whether a run is stopping is its record's `stopping`; this table only follows that record's logged stop fence. */
 export interface RunTable {
-  get(run: RunId): { readonly controller: AbortController; readonly stopping: boolean } | undefined;
-
-  start(run: RunId): AbortController;
-
-  markStopping(run: RunId): Disposer;
+  /** The controller of a run this process works on, created on first use, following the session's bus for the run's stop fence. */
+  start(session: SessionId, run: RunId): AbortController;
 
   abort(run: RunId): void;
 
-  isStopping(run: RunId): boolean;
-
   signal(run: RunId): AbortSignal | null;
+
+  /** Whether the run's stop fence reached this process's bus, or its work here was aborted. */
+  fenced(run: RunId): boolean;
 
   end(run: RunId): void;
 }

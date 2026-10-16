@@ -78,7 +78,7 @@ export async function newRun(
 }
 
 export function begin(kernel: Kernel, session: SessionId, view: RunView): void {
-  kernel.runs.start(view.id);
+  kernel.runs.start(session, view.id);
   void kernel.runtimes().get(session)?.hooks.observe("run_started", view, {
     session,
     head: view.head,
@@ -231,7 +231,7 @@ export function publishPatch(
   run: RunId,
   patch: PatchEvent,
 ): void {
-  if (kernel.runs.isStopping(run)) return;
+  if (kernel.runs.fenced(run)) return;
   kernel.bus.publish(session, patch);
 }
 

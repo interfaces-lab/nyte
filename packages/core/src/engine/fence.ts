@@ -29,11 +29,9 @@ export async function stopRun(
   session: SessionId,
   run: RunId,
 ): Promise<StopOutcome<RunEnd>> {
-  const unmark = kernel.runs.get(run) === undefined ? null : kernel.runs.markStopping(run);
-  let fenced: Exclude<Fence, { readonly kind: "live" }>;
-
-  try {
-    fenced = await attempt(`Stopping run ${run}`, async () => {
+  const fenced = await attempt(
+    `Stopping run ${run}`,
+    async (): Promise<Exclude<Fence, { readonly kind: "live" }> | typeof STALE> => {
       const read = await fence(kernel, session, run);
 
       if (read.kind !== "live") return read;
@@ -41,12 +39,8 @@ export async function stopRun(
       return (await commit(kernel, read.updates)).kind === "set"
         ? { kind: "stopping", head: read.head }
         : STALE;
-    });
-  } catch (error) {
-    unmark?.();
-
-    throw error;
-  }
+    },
+  );
 
   if (fenced.kind === "ended") {
     const end = await readRunEnd(kernel, session, run);
@@ -117,8 +111,22 @@ export async function unfenced(
     : { name: found.ref.name, target: found.ref.target, expect: found.ref.revision };
 }
 
+/** Whether the run's stop fence is set in the store, the one record of a stop; a run whose record is gone has ended and is not stopping. */
+export async function stopRequested(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+): Promise<boolean> {
+  const found = await load(
+    kernel,
+    await kernel.store.refs.get(runRef(session, run)),
+    decodeRunRecord,
+  );
+
+  return found?.record.stopping === true;
+}
+
+/** Stops this process's work on a run whose stop fence a write found already set. */
 export function abortHere(kernel: Kernel, run: RunId): void {
-  if (kernel.runs.get(run) === undefined) return;
-  kernel.runs.markStopping(run);
   kernel.runs.abort(run);
 }

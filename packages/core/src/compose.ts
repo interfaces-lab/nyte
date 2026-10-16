@@ -1,6 +1,7 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
+  Disposer,
   HeadName,
   HostDescription,
   Json,
@@ -23,7 +24,7 @@ import { delegationPlugin } from "./builtins/delegation.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
 import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
-import type { Follow } from "./contract/fold.ts";
+import type { Follow, SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
 import type { Host, ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
 import type { Kernel, PluginRuntime, RunTable, WaitRegistry, Wakes } from "./contract/kernel.ts";
@@ -408,7 +409,7 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     defaultWorkspace: input.defaultWorkspace ?? null,
     execution: input.execution ?? RUN_ALL,
-    runs: createRunTable(),
+    runs: createRunTable(bus),
     wakes: createWakes(),
     get turn() {
       return (turn ??=
@@ -591,33 +592,39 @@ async function storedIdentity(store: StoreConnection): Promise<HostIdentity | nu
   return ref?.target ? decodeHostIdentity(await store.objects.get(ref.target)) : null;
 }
 
-function createRunTable(): RunTable {
-  const live = new Map<RunId, { readonly controller: AbortController; stopping: boolean }>();
-
-  const enter = (run: RunId): { readonly controller: AbortController; stopping: boolean } => {
-    const entry = live.get(run) ?? { controller: new AbortController(), stopping: false };
-    live.set(run, entry);
-
-    return entry;
-  };
+function createRunTable(bus: SessionBus): RunTable {
+  const live = new Map<
+    RunId,
+    {
+      readonly controller: AbortController;
+      readonly fenced: () => boolean;
+      readonly unsubscribe: Disposer;
+    }
+  >();
 
   return {
-    get: (run) => live.get(run),
-    start: (run) => enter(run).controller,
-    markStopping(run) {
-      const entry = enter(run);
-      entry.stopping = true;
+    start(session, run) {
+      const held = live.get(run);
 
-      return () => {
-        entry.stopping = false;
-      };
+      if (held !== undefined) return held.controller;
+      const controller = new AbortController();
+      let fenced = false;
+
+      const unsubscribe = bus.subscribe(session, (event) => {
+        if (event.kind === "run" && event.run === run && event.change === "stopping") fenced = true;
+      });
+
+      live.set(run, { controller, fenced: () => fenced || controller.signal.aborted, unsubscribe });
+
+      return controller;
     },
     abort(run) {
       live.get(run)?.controller.abort();
     },
-    isStopping: (run) => live.get(run)?.stopping ?? false,
     signal: (run) => live.get(run)?.controller.signal ?? null,
+    fenced: (run) => live.get(run)?.fenced() ?? false,
     end(run) {
+      live.get(run)?.unsubscribe();
       live.delete(run);
     },
   };

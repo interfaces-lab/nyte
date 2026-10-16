@@ -104,7 +104,7 @@ describe("ADV A-3", () => {
     expect(await store.refs.get(callRef(session.id, asId("c1")))).not.toBeNull();
     expect(part?.status.kind).toBe("failed");
     expect(part?.state).toMatchObject({ phase: "settled", outcome: { kind: "stopped" } });
-    expect(a.kernel.runs.isStopping(run.id)).toBe(true);
+    expect(a.kernel.runs.signal(run.id)?.aborted).toBe(true);
   });
 
   it("ends a fenced run whose response calls a write tool stopped, the tool unrun and shown stopped, one request sent (A-3 S1, probe a3f)", async () => {

@@ -372,7 +372,7 @@ describe("liveness across instances (D2)", () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(await stepped).toEqual({ kind: "fenced" });
-    expect(a.kernel.runs.get(first.input.run.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(first.input.run.id)).toBeNull();
 
     const resumed = b.host.execution.advance({ session: session.id, head: main });
     const next = await b.script.started(1);
@@ -420,7 +420,7 @@ describe("liveness across instances (D2)", () => {
     );
 
     expect(await stopRun(a.kernel, session.id, run.id)).toEqual({ kind: "requested" });
-    expect(a.kernel.runs.get(run.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(run.id)).toBeNull();
   });
 
   it("5.6 (F F1): a duplicate move with the same id replays the first receipt and moves once", async () => {
@@ -582,7 +582,7 @@ describe("liveness across instances (D2)", () => {
 
     expect(await receipt.settled()).toMatchObject({ kind: "moved" });
     await endRun(b.kernel, session.id, moved.id, { kind: "stopped" });
-    expect(a.kernel.runs.get(moved.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(moved.id)).toBeNull();
 
     const again = await session.send("Two.");
     await landing(b.kernel, session.id, main, [again.message], null);
@@ -596,6 +596,6 @@ describe("liveness across instances (D2)", () => {
     await a.host.session(session.id).send("Edit.", { replace: again.message });
     await endRun(b.kernel, session.id, edited.id, { kind: "stopped" });
 
-    expect(a.kernel.runs.get(edited.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(edited.id)).toBeNull();
   });
 });

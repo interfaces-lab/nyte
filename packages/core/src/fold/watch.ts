@@ -703,7 +703,7 @@ export function pollStore(kernel: Kernel): Disposer {
 
 async function rereadFences(kernel: Kernel): Promise<void> {
   for (const [run, session] of Array.from(kernel.driving)) {
-    if (kernel.runs.isStopping(run)) continue;
+    if (kernel.runs.signal(run)?.aborted === true) continue;
 
     const found = await load(
       kernel,
@@ -713,7 +713,6 @@ async function rereadFences(kernel: Kernel): Promise<void> {
 
     if (found !== null && !found.record.stopping) continue;
     dev("poll", "fenced", { session, run });
-    kernel.runs.markStopping(run);
     kernel.runs.abort(run);
     await kernel.waits.runStopped(session, run);
   }
