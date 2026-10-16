@@ -856,7 +856,20 @@ describe("plugin api", () => {
 
   it("derives against siblings materialised earlier in the pass, and drops a failing derive's edits", async () => {
     const { kernel, runtime } = await loaded([
-      systemPromptPlugin,
+      {
+        id: "lister",
+        activate(api) {
+          api.contribute.prompt.add((draft, siblings) => {
+            draft.set("tools", {
+              id: "tools",
+              text: siblings.tools
+                .list()
+                .map((tool) => `${tool.name}: ${tool.exposure ?? "model"}`)
+                .join("\n"),
+            });
+          });
+        },
+      },
       {
         id: "mcp",
         contribute: { tools: [echo] },
@@ -875,11 +888,7 @@ describe("plugin api", () => {
 
     expect(runtime.registries.tools.list().map((tool) => tool.name)).toEqual(["echo", "search"]);
     expect(runtime.registries.prompt.list().find((section) => section.id === "tools")?.text).toBe(
-      [
-        "Tools in this session:",
-        "- echo: Echo the text.",
-        "Deferred until activated: search.",
-      ].join("\n"),
+      "echo: model\nsearch: deferred",
     );
     expect(kernel.host.current().plugins.find((row) => row.id === "mcp")?.issues).toEqual([
       {

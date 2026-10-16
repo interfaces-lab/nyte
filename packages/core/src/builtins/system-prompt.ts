@@ -26,25 +26,4 @@ export const systemPromptPlugin: Plugin<"core"> = {
       },
     ],
   },
-  activate(api) {
-    api.contribute.prompt.add((draft, siblings) => {
-      const tools = siblings.tools.list();
-      const listed = tools.filter((tool) => (tool.exposure ?? "model") === "model");
-      const deferred = tools.filter((tool) => tool.exposure === "deferred");
-
-      if (listed.length === 0 && deferred.length === 0) return;
-
-      draft.set("tools", {
-        id: "tools",
-        order: 1,
-        text: [
-          "Tools in this session:",
-          ...listed.map((tool) => `- ${tool.name}: ${tool.description.split("\n")[0]}`),
-          ...(deferred.length === 0
-            ? []
-            : [`Deferred until activated: ${deferred.map((tool) => tool.name).join(", ")}.`]),
-        ].join("\n"),
-      });
-    });
-  },
 };
