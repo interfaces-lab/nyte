@@ -21,6 +21,7 @@ import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
 import type { ComposeOptions } from "@nyte-ai/core/server";
+import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 
 /** One content block a scripted reply streams. */
 export type Block =
@@ -102,6 +103,26 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
     maxTokens: 4_096,
     ...overrides,
   };
+}
+
+/** The text of a request's last user message, its text parts joined; empty when it has none. */
+export function lastUserText(request: Request): string {
+  const message = request.context.messages.findLast((candidate) => candidate.role === "user");
+
+  if (message?.role !== "user") return "";
+
+  return typeof message.content === "string"
+    ? message.content
+    : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+/** The title a chat-title request gets: the chat's first line without its `User: ` label; null for any other request. */
+export function titleReply(request: Request): string | null {
+  const first = request.context.messages[0];
+
+  if (first?.role !== "system" || first.content !== TITLE_PROMPT) return null;
+
+  return (lastUserText(request).split("\n")[0] ?? "").replace(/^User: /u, "");
 }
 
 /** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback` (a function sees the request), else the provider error "No reply was scripted for this request.". */

@@ -1,7 +1,6 @@
-import { fakeModels, testModel } from "@nyte-ai/host/bench";
-import type { Reply, Request } from "@nyte-ai/host/bench";
+import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
+import type { Reply } from "@nyte-ai/host/bench";
 import type { ToolResultMessage } from "@nyte-ai/schema/model";
-import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import type { ModelRef } from "@nyte-ai/schema";
 
 export const E2E_PROVIDER = "e2e";
@@ -44,16 +43,6 @@ export function greet(name: string): string {
 
 Final paragraph.
 `;
-
-function lastUserText(request: Request): string {
-  const message = request.context.messages.findLast((candidate) => candidate.role === "user");
-
-  if (message?.role !== "user") return "";
-
-  return typeof message.content === "string"
-    ? message.content
-    : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-}
 
 function paragraphs(count: number): string {
   return Array.from(
@@ -137,12 +126,6 @@ function delegationStep(results: readonly ToolResultMessage[]): Reply {
   return { content: [{ type: "text", text: "Both agents are working in the background." }] };
 }
 
-function titleRequest(request: Request): boolean {
-  const first = request.context.messages[0];
-
-  return first?.role === "system" && first.content === TITLE_PROMPT;
-}
-
 export function e2eModels() {
   return fakeModels({
     id: E2E_PROVIDER,
@@ -161,10 +144,9 @@ export function e2eModels() {
 
       if (results.length > 0) return delegationStep(results);
 
-      if (!titleRequest(request)) return scriptedReply(text);
-      const title = (text.split("\n")[0] ?? "").replace(/^User: /u, "");
+      const title = titleReply(request);
 
-      return { content: [{ type: "text", text: title }] };
+      return title === null ? scriptedReply(text) : { content: [{ type: "text", text: title }] };
     },
   });
 }

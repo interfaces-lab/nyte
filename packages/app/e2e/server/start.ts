@@ -6,8 +6,7 @@ import { extname, join, normalize } from "node:path";
 import process from "node:process";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import { localProvider, sqliteStore } from "@nyte-ai/host";
-import { fakeModels, testModel } from "@nyte-ai/host/bench";
-import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
+import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
 
@@ -20,22 +19,9 @@ const { models } = fakeModels({
     credentials: new InMemoryCredentialStore(),
     modelsStore: new InMemoryModelsStore(),
   }),
-  fallback: (request) => {
-    const [first] = request.context.messages;
-    const message = request.context.messages.findLast((candidate) => candidate.role === "user");
-
-    const said =
-      message?.role !== "user"
-        ? ""
-        : Array.isArray(message.content)
-          ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-          : message.content;
-
-    const titled = first?.role === "system" && first.content === TITLE_PROMPT;
-    const text = titled ? (said.split("\n")[0] ?? "").replace(/^User: /u, "") : said;
-
-    return { content: [{ type: "text", text: `Echo: ${text}` }] };
-  },
+  fallback: (request) => ({
+    content: [{ type: "text", text: `Echo: ${titleReply(request) ?? lastUserText(request)}` }],
+  }),
 });
 
 const appRoot = join(import.meta.dirname, "../../dist");
