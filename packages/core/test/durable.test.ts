@@ -11,7 +11,8 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
+import { holdLease } from "../src/engine/lease.ts";
 import {
   callRef,
   createKernel,
@@ -878,5 +879,39 @@ describe("durable steps", () => {
       waiting: far,
       parked: ["a"],
     });
+  });
+});
+
+describe("holdLease", () => {
+  it("aborts its work once a renewal is refused, or none lands before the claim lapses", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const answers = [true, false];
+      const refused = holdLease("refused", async () => answers.shift() ?? false, {
+        every: 10,
+        lapse: 100,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(refused.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(refused.signal.aborted).toBe(true);
+
+      const failing = holdLease(
+        "failing",
+        async () => {
+          throw new Error("The store is down.");
+        },
+        { every: 10, lapse: 35 },
+      );
+
+      await vi.advanceTimersByTimeAsync(30);
+      expect(failing.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(failing.signal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

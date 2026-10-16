@@ -22,6 +22,7 @@ import { load, put, readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
 import { isJsonObject } from "../util/json-schema.ts";
+import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
 
 export type ActionIntent = {
@@ -182,13 +183,16 @@ export async function runAction(
   );
 
   try {
-    for (let reserved = true; ; reserved = await reserveRerun(kernel, input.session, input.call)) {
-      if (reserved) {
+    for (let rerun = false; ; rerun = true) {
+      if (!rerun || (await reserveRerun(kernel, input.session, input.call))) {
         const thrown: { readonly error: unknown }[] = [];
 
-        const renewal = setInterval(() => {
-          renewRerun(kernel, input.session, input.call).catch(() => undefined);
-        }, LEASE_MS / 3);
+        const lease = rerun
+          ? holdLease(`re-run ${input.call}`, () => renewRerun(kernel, input.session, input.call), {
+              every: LEASE_MS / 3,
+              lapse: LEASE_MS,
+            })
+          : null;
 
         const outcome = await runStep<{ readonly output: unknown; readonly failed: string | null }>(
           kernel,
@@ -201,7 +205,7 @@ export async function runAction(
             replay: "safe",
             intent: { part: input.part, action: input.action },
             part: input.part,
-            signal: input.signal,
+            signal: lease === null ? input.signal : AbortSignal.any([input.signal, lease.signal]),
             body: async (durable) => {
               try {
                 return { output: await input.body(durable), failed: null };
@@ -239,7 +243,7 @@ export async function runAction(
                   }
                 : null,
           },
-        ).finally(() => clearInterval(renewal));
+        ).finally(() => lease?.stop());
 
         if (outcome.kind === "done") {
           const [threw] = thrown;
@@ -264,14 +268,17 @@ export async function runAction(
   }
 }
 
-async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
-  await changeCall(kernel, session, call, async (current) =>
+/** Extends this instance's claim to re-run a call; false once the claim is another's or the call settled. */
+async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<boolean> {
+  const renewed = await changeCall(kernel, session, call, async (current) =>
     current === null || current.result !== null || current.reran?.holder !== kernel.instance
       ? null
       : {
           record: { ...current, reran: { ...current.reran, expiresAt: Date.now() + LEASE_MS } },
         },
   );
+
+  return renewed.wrote;
 }
 
 export async function reserveRerun(

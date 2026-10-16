@@ -22,6 +22,8 @@ import { decodeLease, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
 import { LEASE_MS } from "../engine/durable.ts";
+import { holdLease } from "../engine/lease.ts";
+import type { Lease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
 import { loadWaits } from "../engine/waits.ts";
@@ -51,6 +53,8 @@ const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 
 type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
 
+const FENCED: Refused = { kind: "fenced" };
+
 export function createExecutionState(): ExecutionState {
   return {
     held: new Map(),
@@ -70,9 +74,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   const handle = {};
   state.covers.set(handle, { ...coverage });
 
-  state.timer ??= setInterval(() => {
-    renew(kernel).catch(() => undefined);
-  }, RENEW_MS);
+  state.timer ??= setInterval(() => void renewIdle(kernel), RENEW_MS);
 
   let closing: Promise<void> | null = null;
 
@@ -411,17 +413,18 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
   return inOrder(kernel, leaseRef(session, head), () => releaseNow(kernel, session, head));
 }
 
-async function renew(kernel: Kernel): Promise<void> {
-  const held = kernel.executionState.held;
+/** Renews the leases a cover holds between steps. Nothing runs under them, so a refusal only drops the entry (claimNow does); a step in flight renews its own lease. */
+async function renewIdle(kernel: Kernel): Promise<void> {
+  const { held, advancing } = kernel.executionState;
 
   for (const name of Array.from(held.keys()))
     await inOrder(kernel, name, async () => {
       const entry = held.get(name);
 
-      return entry === undefined || entry.owners.size === 0
+      return entry === undefined || entry.owners.size === 0 || advancing.has(name)
         ? null
         : claimNow(kernel, entry.session, entry.head);
-    });
+    }).catch((error) => dev("execution", "renewal failed", { name, error: formatError(error) }));
 }
 
 function inOrder<T>(kernel: Kernel, name: string, task: () => Promise<T>): Promise<T> {
@@ -570,10 +573,10 @@ async function resume(
   head: HeadName,
   run: RunId,
 ): Promise<Refused | null> {
-  const renewal = renewing(kernel, session, head);
+  const renewal = holdHead(kernel, session, head);
   const signal = AbortSignal.any([
     kernel.runs.signal(run) ?? kernel.runs.start(run).signal,
-    renewal.signal,
+    renewal.lease.signal,
   ]);
   const runtime = kernel.pluginsFor(session);
   const release = runtime.hold();
@@ -582,7 +585,7 @@ async function resume(
     await runtime.ready;
 
     for (const owed of await owedCalls(kernel, session, run)) {
-      if (renewal.signal.aborted) break;
+      if (renewal.lease.signal.aborted) break;
 
       if (owed.parked) continue;
 
@@ -605,7 +608,7 @@ async function resume(
       });
     }
   } finally {
-    renewal.stop();
+    renewal.lease.stop();
     release();
   }
 
@@ -616,22 +619,25 @@ async function resume(
   return refused;
 }
 
-function renewing(kernel: Kernel, session: SessionId, head: HeadName) {
-  const fenced = new AbortController();
+/** Holds a head's lease while a run is resumed or driven; `refused` says why it was lost. */
+function holdHead(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+): { readonly lease: Lease; refused(): Refused | null } {
   let refused: Refused | null = null;
 
-  const timer = setInterval(() => {
-    claim(kernel, session, head).then(
-      (report) => {
-        if (report === null) return;
-        refused = report;
-        fenced.abort();
-      },
-      () => undefined,
-    );
-  }, RENEW_MS);
+  const lease = holdLease(
+    leaseRef(session, head),
+    async () => {
+      refused = await claim(kernel, session, head);
 
-  return { signal: fenced.signal, refused: () => refused, stop: () => clearInterval(timer) };
+      return refused === null;
+    },
+    { every: RENEW_MS, lapse: LEASE_MS },
+  );
+
+  return { lease, refused: () => refused ?? (lease.signal.aborted ? FENCED : null) };
 }
 
 async function drive(
@@ -642,15 +648,15 @@ async function drive(
 ): Promise<Refused | null> {
   kernel.driving.set(run.id, session);
   const closing = kernel.executionState.closing.signal;
-  const renewal = renewing(kernel, session, head);
+  const renewal = holdHead(kernel, session, head);
 
   const signal = AbortSignal.any([
     kernel.runs.signal(run.id) ?? kernel.runs.start(run.id).signal,
     closing,
-    renewal.signal,
+    renewal.lease.signal,
   ]);
 
-  const unrenew = (): void => renewal.stop();
+  const unrenew = (): void => renewal.lease.stop();
   closing.addEventListener("abort", unrenew, { once: true });
 
   const turned = kernel.turn
