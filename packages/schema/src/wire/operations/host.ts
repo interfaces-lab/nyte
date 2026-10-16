@@ -202,7 +202,7 @@ export const HOST_OPERATIONS = {
     kind: "receipt",
     recovery: "replay",
     input: wireObject({
-      id: Type.Optional(idSchema<"session">()),
+      id: idSchema<"session">(),
       name: Type.Optional(Type.String()),
       workspace: Type.Optional(idSchema<"workspace">()),
       parent: Type.Optional(idSchema<"session">()),
