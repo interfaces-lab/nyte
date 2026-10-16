@@ -681,14 +681,13 @@ export class DesktopHost {
   }
 
   async #remoteState(): Promise<RemoteAccessState> {
-    const active = await this.#activeRemote();
+    const [active, cloudflare, tailnet] = await Promise.all([
+      this.#activeRemote(),
+      this.#deps.remoteAccessPlugins?.cloudflare.view() ?? { kind: "unregistered" as const },
+      tailnetAvailability(),
+    ]);
 
-    const cloudflare = (await this.#deps.remoteAccessPlugins?.cloudflare.view()) ?? {
-      kind: "unregistered",
-    };
-
-    if (active === undefined)
-      return { kind: "off", tailnet: await tailnetAvailability(), cloudflare };
+    if (active === undefined) return { kind: "off", tailnet, cloudflare };
 
     if (active.kind === "plugin")
       return {
