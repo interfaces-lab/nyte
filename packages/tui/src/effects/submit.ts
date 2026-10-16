@@ -22,16 +22,19 @@ export async function submit(
     const starting = scope.starting;
 
     if (starting?.id === chat.id) {
-      await starting.done;
+      if (await starting.done) return submit(submission, delivery, context);
+      refuse("The chat didn't start. Your message is back in the composer.");
 
-      return submit(submission, delivery, context);
+      return;
     }
 
     const done = start(chat, submission, delivery, context);
-    scope.starting = { id: chat.id, done: done.catch(() => undefined) };
+    scope.starting = { id: chat.id, done: done.catch(() => false) };
 
     try {
-      return await done;
+      await done;
+
+      return;
     } finally {
       if (scope.starting?.id === chat.id) scope.starting = null;
     }
@@ -109,13 +112,13 @@ export async function submit(
   }
 }
 
-/** Starts a blank chat with the submission as its first message, then follows it; a failed start leaves the chat blank, its id kept for the retry. */
+/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A failed start leaves the chat blank, its id kept for the retry. */
 async function start(
   chat: BlankChat,
   submission: Submission,
   delivery: Delivery,
   context: HandlerContext,
-): Promise<void> {
+): Promise<boolean> {
   const { dispatch, ports, read, scope } = context;
   const refuse = (reason: string): void => refuseSubmission(submission, reason, context);
 
@@ -133,7 +136,7 @@ async function start(
     if (decision.kind === "reject") {
       refuse(decision.reason);
 
-      return;
+      return false;
     }
 
     const current = read().facts.chat;
@@ -141,7 +144,7 @@ async function start(
     if (current?.kind !== "blank" || current.id !== chat.id) {
       refuse("The chat changed before the message was sent.");
 
-      return;
+      return false;
     }
 
     const { message } = await ports.host.start({
@@ -158,6 +161,8 @@ async function start(
   }
 
   await follow(chat.id, false, context);
+
+  return true;
 }
 
 function refuseSubmission(submission: Submission, reason: string, context: HandlerContext): void {
