@@ -1,6 +1,7 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { props } from "@stylexjs/stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +16,17 @@ import { mountTerminal } from "./terminal-runtime";
 import { isJobTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
+
+/** "Starting terminal…" lies over the canvas, so the grid keeps its size when the shell comes up. */
+const startingStyles = create({
+  overlay: {
+    position: "absolute",
+    insetBlockStart: 0,
+    insetInline: 0,
+    zIndex: 1,
+    backgroundColor: role.bgBase,
+  },
+});
 
 function TerminalCanvas({
   id,
@@ -105,7 +117,7 @@ function TerminalStatus({
   switch (tab.state.kind) {
     case "starting":
       return (
-        <div role="status" {...props(text.sm, terminalStyles.state)}>
+        <div role="status" {...props(text.sm, terminalStyles.state, startingStyles.overlay)}>
           Starting terminal…
         </div>
       );
