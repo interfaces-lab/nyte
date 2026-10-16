@@ -21,7 +21,7 @@ import { createLink, createRows } from "./rows.ts";
 import type { Rows } from "./rows.ts";
 import { workspaceHandle } from "./workspace.ts";
 
-export type ClientContext = {
+type ClientContext = {
   readonly hostId: HostId;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
