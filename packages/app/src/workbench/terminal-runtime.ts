@@ -1,6 +1,7 @@
 import { FitAddon, Ghostty, Terminal } from "ghostty-web";
 import type { ITheme } from "ghostty-web";
 import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
+import { serial } from "@nyte-ai/schema";
 import { toast } from "@nyte-ai/ui/toast";
 import { preferences } from "../preferences/index.ts";
 import { errorMessage } from "../errors.ts";
@@ -285,11 +286,8 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   });
 
   document.fonts.addEventListener("loadingdone", scheduleFit);
-  let pendingInput = Promise.resolve();
-
-  const data = terminal.onData((value) => {
-    pendingInput = pendingInput.then(() => sendInput(id, value));
-  });
+  const input = serial();
+  const data = terminal.onData((value) => void input.run(() => sendInput(id, value)));
 
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
 

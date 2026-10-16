@@ -4,6 +4,7 @@ import { app, dialog } from "electron";
 import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
+import { serial } from "@nyte-ai/schema";
 import { createUpdateController } from "./update-controller.ts";
 import type { UpdateLogDetails } from "./update-controller.ts";
 import { updateLabel } from "@nyte-ai/app/updates.ts";
@@ -45,11 +46,11 @@ export function registerUpdates({
   }
 
   const logPath = join(app.getPath("userData"), "updates.log");
-  let logTail = Promise.resolve();
+  const logWrites = serial();
 
   const log = (event: string, details: UpdateLogDetails = {}): void => {
     const line = `${JSON.stringify({ time: new Date().toISOString(), event, ...details })}\n`;
-    logTail = logTail.then(() => appendFile(logPath, line)).catch(() => undefined);
+    void logWrites.run(() => appendFile(logPath, line)).catch(() => undefined);
   };
 
   const logError = (message: string): void => log("error", { message });

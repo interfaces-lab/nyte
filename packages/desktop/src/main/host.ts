@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
+import { serial } from "@nyte-ai/schema";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
@@ -315,7 +316,7 @@ export class DesktopHost {
   #rowsWatch: AbortController | undefined;
   #awake = false;
   #remote: Promise<ActiveRemote> | undefined;
-  #remoteLock: Promise<void> = Promise.resolve();
+  readonly #remoteOperations = serial();
   #server: Promise<ServerWatch | undefined> | undefined;
   #closing: Promise<void> | undefined;
 
@@ -452,24 +453,28 @@ export class DesktopHost {
       this.#deps.emitHostEvent({ kind: "server_changed" });
     },
     "host.remote.state": () => this.#remoteState(),
-    "host.remote.start": (_window, { reach }) => this.#remoteSerial(() => this.#startRemote(reach)),
-    "host.remote.stop": () => this.#remoteSerial(() => this.#stopRemote()),
+    "host.remote.start": (_window, { reach }) =>
+      this.#remoteOperations.run(() => this.#startRemote(reach)),
+    "host.remote.stop": () => this.#remoteOperations.run(() => this.#stopRemote()),
     "host.remote.configure": async (_window, { plugin, ...settings }) => {
-      await this.#remoteSerial(() => this.#remotePlugin(plugin).configure(settings));
+      await this.#remoteOperations.run(() => this.#remotePlugin(plugin).configure(settings));
       this.#remoteChanged();
     },
     "host.remote.clear": async (_window, { plugin }) => {
-      await this.#remoteSerial(() => this.#remotePlugin(plugin).clear());
+      await this.#remoteOperations.run(() => this.#remotePlugin(plugin).clear());
       this.#remoteChanged();
     },
     "host.remote.pair": async (_window, { plugin, name }) => {
-      const pairing = await this.#remoteSerial(() => this.#remotePlugin(plugin).pair({ name }));
+      const pairing = await this.#remoteOperations.run(() =>
+        this.#remotePlugin(plugin).pair({ name }),
+      );
+
       this.#remoteChanged();
 
       return pairing;
     },
     "host.remote.revoke": (_window, input) =>
-      this.#remoteSerial(() => this.#revokeRemoteDevice(input)),
+      this.#remoteOperations.run(() => this.#revokeRemoteDevice(input)),
     "host.connect.state": async () =>
       this.#deps.connect?.view() ?? { kind: "unavailable", reason: "not_configured" },
     "host.connect.link": () => this.#connect().link(),
@@ -491,7 +496,7 @@ export class DesktopHost {
       this.#watching.abort();
       this.#holdAwake();
       await this.#deps.connect?.close().catch(() => undefined);
-      await this.#remoteSerial(() => this.#stopRemote()).catch(() => undefined);
+      await this.#remoteOperations.run(() => this.#stopRemote()).catch(() => undefined);
       const opened = await this.#opened.catch(() => undefined);
       await this.#usageScan.close();
       await opened?.host.close();
@@ -690,16 +695,6 @@ export class DesktopHost {
   readonly #remoteChanged = (): void => {
     this.#deps.emitHostEvent({ kind: "remote_access_changed" });
   };
-
-  #remoteSerial<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.#remoteLock.then(operation, operation);
-    this.#remoteLock = result.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    return result;
-  }
 
   #remotePlugin(id: RemoteAccessPluginId): RemoteAccessPlugins[RemoteAccessPluginId] {
     const plugin = this.#deps.remoteAccessPlugins?.[id];

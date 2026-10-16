@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import type { Json } from "@nyte-ai/sdk";
-import { isJsonObject } from "@nyte-ai/schema";
+import { isJsonObject, serial } from "@nyte-ai/schema";
 import { toJson } from "../json.ts";
 import { parseSettingsFile } from "../lib/settings-schema.ts";
 import type { ResolvedSettings, SettingsFile, SettingsPatch } from "../lib/settings-schema.ts";
@@ -62,14 +62,14 @@ async function writeSettingsPatch(path: string, patch: SettingsPatch): Promise<v
 
 export class FileSettingsStore {
   private readonly globalPath: string;
-  private writes = Promise.resolve();
+  private readonly writes = serial();
 
   constructor(globalPath: string = defaultSettingsPath()) {
     this.globalPath = globalPath;
   }
 
   async read(cwd: string): Promise<ResolvedSettings> {
-    await this.writes;
+    await this.writes.settled();
 
     const [global, project] = await Promise.all([
       readSettings(this.globalPath),
@@ -80,13 +80,9 @@ export class FileSettingsStore {
   }
 
   updateGlobal(patch: SettingsPatch): Promise<void> {
-    const next = this.writes.then(async () => {
+    return this.writes.run(async () => {
       await readSettings(this.globalPath);
       await writeSettingsPatch(this.globalPath, patch);
     });
-
-    this.writes = next.catch(() => undefined);
-
-    return next;
   }
 }

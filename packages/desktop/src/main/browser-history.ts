@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { serial } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { BrowserHistoryEntry } from "@nyte-ai/app/bridge.ts";
@@ -59,7 +60,7 @@ export class BrowserHistoryStore {
   private readonly write: Writer;
   private readonly delay: number;
   private loaded: Promise<History> | undefined;
-  private tail: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
   private dirty = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly unpublished = new Set<string | null>();
@@ -125,18 +126,20 @@ export class BrowserHistoryStore {
   }
 
   flush(): Promise<void> {
-    return this.queue(async () => {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-      const history = await this.read();
-      this.publish(history);
+    return this.writes
+      .run(async () => {
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        const history = await this.read();
+        this.publish(history);
 
-      if (this.dirty) await this.save(history);
-    }).catch((cause: unknown) => retainDiagnostic({ correlationId: "browser-history", cause }));
+        if (this.dirty) await this.save(history);
+      })
+      .catch((cause: unknown) => retainDiagnostic({ correlationId: "browser-history", cause }));
   }
 
   private change(owner: BrowserOwner, change: Change): Promise<void> {
-    return this.queue(async () => {
+    return this.writes.run(async () => {
       const history = await this.read();
       const key = ownerKey(owner);
       const next = change(history.get(key) ?? []);
@@ -150,7 +153,7 @@ export class BrowserHistoryStore {
   }
 
   private commit(owner: BrowserOwner, change: Change): Promise<void> {
-    return this.queue(async () => {
+    return this.writes.run(async () => {
       const history = await this.read();
       const key = ownerKey(owner);
       const next = change(history.get(key) ?? []);
@@ -163,13 +166,6 @@ export class BrowserHistoryStore {
       this.unpublished.add(key);
       this.publish(history);
     });
-  }
-
-  private queue(task: () => Promise<void>): Promise<void> {
-    const run = this.tail.then(task);
-    this.tail = run.catch(() => undefined);
-
-    return run;
   }
 
   private publish(history: History): void {

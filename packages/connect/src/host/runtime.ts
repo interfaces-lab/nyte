@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { serial } from "@nyte-ai/schema";
 import type { ConnectNotice, ConnectUnavailable, ConnectView } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
 import type { AccountSession } from "./account.ts";
@@ -56,7 +57,7 @@ export class ConnectRuntime {
   private readonly outbox: ConnectOutbox;
   private readonly links: LinkFlow;
   private readonly servingOwner: ServingOwner;
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly operations = serial();
   private epoch = 0;
   private serving: ServingSession | undefined;
   private readonly accountOpens = new Set<AbortController>();
@@ -103,7 +104,7 @@ export class ConnectRuntime {
       linkPollMs: this.timing.linkPollMs,
       signal: this.lifetime.signal,
       closed: () => this.closed,
-      serial: (operation) => this.serial(operation),
+      serial: (operation) => this.operations.run(operation),
       changed: () => this.changed(),
       outbox: this.outbox,
       unlink: (environmentId) => this.queueUnlink(environmentId),
@@ -202,12 +203,12 @@ export class ConnectRuntime {
 
     if (!input.enabled) {
       this.denyAll();
-      await this.serial(async () => {
+      await this.operations.run(async () => {
         await this.stopServing();
         await this.store.change((file) => (file.enabled ? { ...file, enabled: false } : file));
       });
     } else {
-      await this.serial(async () => {
+      await this.operations.run(async () => {
         if (this.closed) throw closed();
 
         const file = await this.store.ready();
@@ -235,7 +236,7 @@ export class ConnectRuntime {
 
   async serve(share: ConnectShare): Promise<ConnectView> {
     await this.requireUsable();
-    await this.serial(async () => {
+    await this.operations.run(async () => {
       if (this.closed) throw closed();
       await this.startServing(share);
     });
@@ -246,7 +247,7 @@ export class ConnectRuntime {
 
   async stop(): Promise<ConnectView> {
     this.denyAll();
-    await this.serial(() => this.stopServing());
+    await this.operations.run(() => this.stopServing());
     this.changed();
 
     return this.view();
@@ -261,7 +262,7 @@ export class ConnectRuntime {
     void this.outbox.retryUnlinks();
 
     if (this.unavailableReason() !== undefined) return;
-    await this.serial(async () => {
+    await this.operations.run(async () => {
       const read = await this.store.read();
 
       if (read.kind === "failed" || !read.file.enabled || read.file.link === null) return;
@@ -368,7 +369,7 @@ export class ConnectRuntime {
     for (const controller of this.accountOpens) controller.abort();
     await linking;
     this.lifetime.abort();
-    await this.serial(() => this.stopServing());
+    await this.operations.run(() => this.stopServing());
     await this.outbox.close();
     await this.store.idle();
     await this.account?.close();
@@ -377,7 +378,7 @@ export class ConnectRuntime {
   /** Unlink as the user would; with `expected`, only while that environment is still the link. */
   private async queueUnlink(expected: string | undefined): Promise<void> {
     this.denyAll();
-    await this.serial(async () => {
+    await this.operations.run(async () => {
       const file = await this.store.ready();
       const { link } = file;
 
@@ -551,20 +552,22 @@ export class ConnectRuntime {
   private environmentRevoked(environmentId: string): Promise<void> {
     if (this.serving?.environmentId === environmentId) this.denyAll();
 
-    return this.serial(async () => {
-      const read = await this.store.read();
+    return this.operations
+      .run(async () => {
+        const read = await this.store.read();
 
-      if (read.kind === "failed" || read.file.link?.environment.id !== environmentId) return;
-      await this.stopServing();
-      await this.store.change((file) =>
-        file.link?.environment.id === environmentId
-          ? { ...file, enabled: false, link: null }
-          : file,
-      );
-      this.forgetLink();
-      this.notice = { kind: "revoked" };
-      this.changed();
-    }).catch(() => undefined);
+        if (read.kind === "failed" || read.file.link?.environment.id !== environmentId) return;
+        await this.stopServing();
+        await this.store.change((file) =>
+          file.link?.environment.id === environmentId
+            ? { ...file, enabled: false, link: null }
+            : file,
+        );
+        this.forgetLink();
+        this.notice = { kind: "revoked" };
+        this.changed();
+      })
+      .catch(() => undefined);
   }
 
   /** The link is gone or replaced: forget what it taught, and any notice about the last one. */
@@ -575,21 +578,13 @@ export class ConnectRuntime {
 
   private failClosed(defer = false): void {
     this.denyAll(defer ? this.timing.dropDelayMs : 0);
-    const stop = (): void => void this.serial(() => this.stopServing()).catch(() => undefined);
+
+    const stop = (): void =>
+      void this.operations.run(() => this.stopServing()).catch(() => undefined);
 
     if (defer) setTimeout(stop, this.timing.dropDelayMs);
     else stop();
     this.changed();
-  }
-
-  private serial<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(operation, operation);
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    return result;
   }
 
   private changed(): void {

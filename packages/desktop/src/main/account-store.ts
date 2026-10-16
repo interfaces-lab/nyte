@@ -1,4 +1,5 @@
 import { readFile, rm } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { writePrivateFile } from "@nyte-ai/connect/private-file";
@@ -23,7 +24,7 @@ export interface SecretSealer {
 export class AccountStore {
   private readonly path: string;
   private readonly sealer: SecretSealer;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
 
   constructor(options: { readonly path: string; readonly sealer: SecretSealer }) {
     this.path = options.path;
@@ -49,7 +50,7 @@ export class AccountStore {
    * keychain cannot seal rejects and leaves the saved one as it was.
    */
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
-    const run = this.writes.then(async () => {
+    return this.writes.run(async () => {
       if (signIn === undefined) return rm(this.path, { force: true });
       const sealed = await this.sealer.seal(signIn.token);
 
@@ -58,9 +59,5 @@ export class AccountStore {
         text: `${JSON.stringify({ sealed, label: signIn.label })}\n`,
       });
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 }

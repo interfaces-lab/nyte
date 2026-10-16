@@ -1,4 +1,5 @@
 import { open } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 import { Compile } from "typebox/compile";
@@ -141,7 +142,7 @@ export class ConnectStore {
   private readonly onFailed: () => void;
   private loading: Promise<ConnectRead> | undefined;
   private loaded: ConnectRead | undefined;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
 
   constructor(
     path: string,
@@ -210,7 +211,7 @@ export class ConnectStore {
   update<T>(
     change: (file: ConnectFile) => { readonly file: ConnectFile; readonly result: T },
   ): Promise<T> {
-    const run = this.writes.then(async () => {
+    return this.writes.run(async () => {
       const loaded = await this.read();
 
       if (loaded.kind === "failed") throw new ConnectStoreFailed();
@@ -234,20 +235,11 @@ export class ConnectStore {
 
       return next.result;
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 
   /** Settles once every change queued so far, and any queued while waiting, has landed or failed. */
   async idle(): Promise<void> {
-    let tail: Promise<unknown>;
-
-    do {
-      tail = this.writes;
-      await tail;
-    } while (tail !== this.writes);
+    while (this.writes.busy) await this.writes.settled();
   }
 
   private async load(): Promise<ConnectRead> {

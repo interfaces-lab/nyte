@@ -10,6 +10,7 @@
  * accepted and nothing is overwritten until the user fixes it and restarts.
  */
 import { open, readFile, rm } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema";
 import { dirname } from "node:path";
 import { writePrivateFile } from "@nyte-ai/connect/private-file";
 import { Type } from "typebox";
@@ -83,7 +84,7 @@ async function syncDirectory(path: string): Promise<void> {
 export class CloudflareTunnelStore {
   private readonly path: string;
   private current: Promise<TunnelRead> | undefined;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
 
   constructor(path: string) {
     this.path = path;
@@ -106,7 +107,7 @@ export class CloudflareTunnelStore {
       readonly result: T;
     },
   ): Promise<T> {
-    const run = this.writes.then(async () => {
+    return this.writes.run(async () => {
       const loaded = await this.read();
 
       if (loaded.kind === "failed") throw new TunnelStoreFailed();
@@ -125,10 +126,6 @@ export class CloudflareTunnelStore {
 
       return next.result;
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 
   private async load(): Promise<TunnelRead> {

@@ -3,6 +3,7 @@
  * publications apply in order and only for the current run, and the cached catalog is restored
  * before credentials are resolved or the network is used.
  */
+import { keyedSerial } from "@nyte-ai/schema";
 import { ModelsError } from "./auth/resolve.ts";
 import type { Credential, CredentialAccounts } from "./auth/types.ts";
 import type { ModelsStore } from "./models-store.ts";
@@ -14,7 +15,7 @@ export class CatalogRefreshes {
   private controllers = new Map<string, AbortController>();
   /** Settles once the running refresh for a provider has restored its cached catalog. */
   private restorations = new Map<string, Promise<void>>();
-  private publications = new Map<string, Promise<unknown>>();
+  private readonly publications = keyedSerial<string>();
   private readonly modelsStore: ModelsStore;
   private readonly catalog: RefreshModelsContext["catalog"];
 
@@ -48,11 +49,7 @@ export class CatalogRefreshes {
     signal: AbortSignal,
     publication: ModelsPublication,
   ): Promise<boolean> {
-    const previous = this.publications.get(providerId) ?? Promise.resolve();
-
-    const queued = (async () => {
-      await previous.catch(() => undefined);
-
+    const queued = this.publications.run(providerId, async () => {
       if (signal.aborted || this.generations.get(providerId) !== generation) return false;
 
       if (publication.persist === null) {
@@ -65,12 +62,6 @@ export class CatalogRefreshes {
       publication.update?.();
 
       return true;
-    })();
-
-    const tail = queued.catch(() => undefined);
-    this.publications.set(providerId, tail);
-    void tail.then(() => {
-      if (this.publications.get(providerId) === tail) this.publications.delete(providerId);
     });
 
     return raceWithAbortSignal(queued, signal);
