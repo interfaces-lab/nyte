@@ -1,7 +1,5 @@
 import type { ReactElement } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { BlobId, UserContent } from "@nyte-ai/sdk";
-import { connection } from "../sdk.tsx";
+import type { UserContent } from "@nyte-ai/sdk";
 import { ComposerReadOnly } from "./composer-surface.tsx";
 
 export type MessageFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
@@ -40,24 +38,4 @@ export function messageFiles(content: UserContent): readonly MessageFile[] {
   if (typeof content === "string") return [];
 
   return content.flatMap((part) => (part.kind === "file" ? [part] : []));
-}
-
-async function readBlobUrl(blob: BlobId): Promise<string> {
-  const reader = await connection().blob(blob);
-  const chunks: Uint8Array<ArrayBuffer>[] = [];
-
-  for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
-
-  return URL.createObjectURL(new Blob(chunks, { type: reader.mime ?? "" }));
-}
-
-export function useBlobUrl(blob: BlobId): string | undefined {
-  const read = useQuery({
-    queryKey: ["blob", blob],
-    queryFn: () => readBlobUrl(blob),
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-
-  return read.data;
 }

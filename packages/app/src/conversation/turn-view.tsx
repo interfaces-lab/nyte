@@ -48,11 +48,11 @@ import {
   UserMessageText,
   messageFiles,
   messageImages,
-  useBlobUrl,
   userMessageText,
 } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
 import { messageDraftText } from "./message-references.ts";
+import { useBlobUrl } from "../use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
 import {
