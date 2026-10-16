@@ -1,5 +1,5 @@
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
 /** Settings navigation in the persistent sidebar and route-owned page content. */
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -50,8 +50,10 @@ export const settingsStyles = create({
     paddingBlock: `${space.s1_5} ${space.s3}`,
   },
   back: { marginBlockEnd: sidebar.sectionGap },
-  // The field is one row tall on the rail's grid, and its glyph and placeholder
-  // sit on the icon and label edges the rows below it use.
+  /**
+   * The field is one row tall on the rail's grid, and its glyph and placeholder
+   * sit on the icon and label edges the rows below it use.
+   */
   search: {
     gap: sidebar.rowGap,
     marginBlockEnd: space.s4,
@@ -65,8 +67,10 @@ export const settingsStyles = create({
     width: sidebar.iconSlot,
     flexShrink: 0,
   },
-  // Headerless groups read their breaks from the gap, so it has to beat the
-  // gap between two rows of one group.
+  /**
+   * Headerless groups read their breaks from the gap, so it has to beat the
+   * gap between two rows of one group.
+   */
   navGroups: {
     display: "flex",
     flexDirection: "column",

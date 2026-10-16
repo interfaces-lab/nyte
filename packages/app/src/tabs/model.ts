@@ -385,6 +385,7 @@ function reduceLayout(
   return withTab(state, recordLayout(tab, view, layout, action));
 }
 
+/** `activate-index` counts from the first tab: the ninth shortcut means the ninth tab, not the last. */
 export function reduce(
   state: WindowState,
   action: WindowAction,
@@ -474,7 +475,6 @@ export function reduce(
         ? { ...state, activeTabId: action.tabId }
         : state;
     case "activate-index": {
-      // The ninth shortcut means the ninth tab, not the last.
       const tab = state.tabs[action.index];
 
       return tab === undefined || tab.id === state.activeTabId

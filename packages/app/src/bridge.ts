@@ -256,10 +256,6 @@ export type AppMenuCommand =
   | { readonly kind: "action"; readonly action: AppMenuAction }
   | { readonly kind: "about"; readonly info: AppInfo };
 
-// ---------------------------------------------------------------------------
-// host types
-// ---------------------------------------------------------------------------
-
 /** The server the desktop reaches, without its token; the renderer never reads that back. */
 export type ServerState =
   | { readonly kind: "none" }
@@ -478,10 +474,6 @@ export type OpenWorkspaceOutcome =
   | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
-
-// ---------------------------------------------------------------------------
-// browser surfaces
-// ---------------------------------------------------------------------------
 
 /** One embedded page. The surface id is the workbench view key. */
 export interface BrowserSurfaceState {

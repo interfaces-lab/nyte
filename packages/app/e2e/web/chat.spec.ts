@@ -15,12 +15,12 @@ test("a new chat shows the reply and takes its title from the provider", async (
   const pane = page.getByRole("region", { name: "Active chat pane" });
   await expect(pane.getByText("Echo: hello", { exact: true })).toBeVisible();
   await expect(page.getByRole("banner").getByText("Echo: hello", { exact: true })).toBeVisible();
-  // The server outlives a test, so earlier runs may have left chats with the same title.
   await expect(
     page
       .getByRole("navigation", { name: "Sessions and workspaces" })
       .getByRole("button", { name: "Echo: hello" })
       .and(page.locator("[aria-current=page]")),
+    "the server outlives a test, so only the current chat counts among same-titled ones",
   ).toBeVisible();
   await expect(page).toHaveURL(/\/session\/[^/?#]+$/u);
   const sessionUrl = page.url();

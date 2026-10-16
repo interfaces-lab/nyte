@@ -158,9 +158,10 @@ if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
     if (event.storageArea !== storage()) return;
 
+    const cleared = event.key === null;
+
     for (const preference of reloadable) {
-      // A null key is `storage.clear()`.
-      if (event.key === null || event.key === preference.key) preference.reload();
+      if (cleared || event.key === preference.key) preference.reload();
     }
   });
 }

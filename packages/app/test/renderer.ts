@@ -12,6 +12,13 @@ import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
 
+/**
+ * Electron's Chromium, as the app build targets. Older targets make
+ * lightningcss polyfill the tokens' light-dark() with variables only its own
+ * color-scheme rules define.
+ */
+const ELECTRON_CHROMIUM = 152 << 16;
+
 export async function testRenderer(
   entry: URL,
   setup = "",
@@ -41,10 +48,7 @@ export async function testRenderer(
       plugins: [
         stylex.rollup({
           devMode: "css-only",
-          // Electron's Chromium, as the app build targets. Older targets make
-          // lightningcss polyfill the tokens' light-dark() with variables only
-          // its own color-scheme rules define.
-          lightningcssOptions: { targets: { chrome: 152 << 16 } },
+          lightningcssOptions: { targets: { chrome: ELECTRON_CHROMIUM } },
         }),
       ],
       build: {

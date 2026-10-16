@@ -241,12 +241,11 @@ function readStored(persistence: Persistence, key: string): string | null {
   }
 }
 
+/** A denied or full local store must not drop the in-memory draft. */
 function writeStored(persistence: Persistence, key: string, value: string): void {
   try {
     persistence.storage.setItem(key, value);
-  } catch {
-    // A denied or full local store must not drop the in-memory draft.
-  }
+  } catch {}
 }
 
 function imagesKey(persistence: Persistence): string {

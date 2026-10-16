@@ -14,7 +14,7 @@ const styles = create({
   morph: { position: "absolute", top: 0, left: 0 },
 });
 
-/** Mounts are static; only value updates morph. */
+/** Mounts are static; only value updates morph. The text is the ungrouped count, which filename premeasurement reads. */
 export function AnimatedNumber({ value }: { readonly value: number }) {
   const element = useRef<HTMLSpanElement>(null);
   const morph = useRef<TextMorph | null>(null);
@@ -41,7 +41,6 @@ export function AnimatedNumber({ value }: { readonly value: number }) {
   }, []);
 
   useLayoutEffect(() => {
-    // String preserves the ungrouped counts used by filename premeasurement.
     if (morph.current !== null) morph.current.update(String(value));
     else if (element.current !== null) element.current.textContent = String(value);
   }, [value]);

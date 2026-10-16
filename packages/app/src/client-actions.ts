@@ -231,6 +231,11 @@ type ActionKeyEvent = Pick<
   | "isComposing"
 >;
 
+/**
+ * Ghostty prevents the default for the Backquote chord it hands back to the
+ * shell; other consumed events stay with the editor or terminal that handled
+ * them. The workbench chord has always accepted Shift as well.
+ */
 export function resolveClientAction(
   event: ActionKeyEvent,
   mac: boolean,
@@ -244,8 +249,6 @@ export function resolveClientAction(
     if (!("chord" in action) || !clientActionAvailable(action, stage, capabilities)) return false;
     const terminal = action.chord === "control" || action.chord === "control-shift";
 
-    // Ghostty prevents the default for the Backquote chord it hands back to the shell.
-    // Other consumed events must remain with the editor or terminal that handled them.
     if (event.defaultPrevented && !terminal) return false;
 
     if (terminal ? event.code !== "Backquote" : key !== action.key) return false;
@@ -263,7 +266,6 @@ export function resolveClientAction(
 
     if (!(mac ? event.metaKey : event.ctrlKey)) return false;
 
-    // The workbench chord has always accepted Shift as well.
     if (action.chord === "primary-alt") return event.altKey;
 
     return !event.altKey && event.shiftKey === (action.chord === "primary-shift");

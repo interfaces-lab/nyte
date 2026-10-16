@@ -137,12 +137,11 @@ function read(store: Storage | undefined, key: string): string | null {
   }
 }
 
+/** A full or denied store keeps the strip for this window only. */
 function write(store: Storage | undefined, key: string, value: string): void {
   try {
     store?.setItem(key, value);
-  } catch {
-    // A full or denied store keeps the strip for this window only.
-  }
+  } catch {}
 }
 
 /** The ids a strip still refers to: open tabs and the reopen list. */
@@ -150,7 +149,7 @@ function knownTabIds(state: WindowState): ReadonlySet<string> {
   return new Set([...state.tabs, ...state.closed.map(({ tab }) => tab)].map((tab) => tab.id));
 }
 
-/** Drop the stored drafts of tabs no strip refers to any more. */
+/** Drop the stored drafts of tabs no strip refers to any more; a failure leaves them, and they only cost space. */
 function forgetTabs(shouldForget: (tabId: string) => boolean): void {
   const local = storage("localStorage");
 
@@ -165,9 +164,7 @@ function forgetTabs(shouldForget: (tabId: string) => boolean): void {
     );
 
     for (const key of stale) local.removeItem(key);
-  } catch {
-    // Stale drafts only cost space.
-  }
+  } catch {}
 }
 
 /** Whether no other window of this launch is open; it then adopts the saved strip. */

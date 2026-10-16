@@ -177,6 +177,7 @@ export function mount(): void {
   );
 }
 
+/** A disabled control dims as a whole; only the glyph's own opacity must not leak into its ink. */
 export async function run(): Promise<string> {
   mount();
 
@@ -263,7 +264,6 @@ export async function run(): Promise<string> {
           );
 
           if (!reference) throw new Error("Missing button reference");
-          // A disabled control dims as a whole; only the glyph's own opacity must not leak.
           const dimming = Number(getComputedStyle(control).opacity);
           check(
             Math.abs(actual.ink / ((await raster(reference)).ink * dimming) - 1) < 0.05,

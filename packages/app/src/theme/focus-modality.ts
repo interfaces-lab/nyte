@@ -1,3 +1,9 @@
+/**
+ * Focus rings follow the input that moved focus. A window launches quiet, so
+ * one that autofocuses its composer does not open ringed; the first Tab earns
+ * the ring, and it survives until a pointer takes over. The listeners capture,
+ * so the modality is settled before any handler moves focus.
+ */
 import { applyFocusModality } from "./appearance.ts";
 
 /** Input types that hold no caret: a keypress there is navigation, not typing. */
@@ -50,11 +56,8 @@ function setModality(modality: "keyboard" | "pointer"): void {
   applyFocusModality(modality);
 }
 
-// Launch quiet: a window that autofocuses its composer should not open ringed.
-// The first Tab earns the ring, and it survives until a pointer takes over.
 setModality("pointer");
 
-// Capture, so the modality is settled before any handler moves focus.
 window.addEventListener("pointerdown", () => setModality("pointer"), { capture: true });
 
 window.addEventListener(

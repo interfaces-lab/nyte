@@ -46,9 +46,11 @@ test("back walks the focused pane, then returns from a page to the exact split",
   expect(activeTab(state).views[activeTab(state).index]).toBe(split);
   expect(tabPlaces(activeTab(state))).toEqual([chat("c"), chat("b")]);
 
-  // The new pane's own entries come first: c, then the new chat it started as.
   state = run([{ kind: "travel", step: -1 }], state);
-  expect(tabPlace(activeTab(state))).toEqual({ kind: "blank" });
+  expect(
+    tabPlace(activeTab(state)),
+    "the new pane's own entries come first: c, then the new chat it started as",
+  ).toEqual({ kind: "blank" });
   expect(canTravel(state, -1)).toBe(false);
 
   state = run([pane(state, { kind: "focus", paneId: "primary" })], state);

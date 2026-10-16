@@ -241,10 +241,10 @@ function FontFamilyRows(): ReactElement {
   );
 }
 
+/** `-webkit-font-smoothing` only does anything on macOS. */
 function FontSmoothingRow(): ReactElement | null {
   const smoothing = useSetting(preferences.fontSmoothing);
 
-  // `-webkit-font-smoothing` only does anything on macOS.
   if (!macPlatform(undefined)) return null;
 
   return (

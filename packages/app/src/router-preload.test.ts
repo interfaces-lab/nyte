@@ -44,8 +44,11 @@ test("overlapping intent and navigation share one SDK read and cache its result"
     assert.deepEqual(await navigation, info);
     assert.deepEqual(await readRouteSession({ client, sessionId: id, read }), info);
     assert.deepEqual(client.getQueryData(keys.session(id)), info);
-    // SDK request count is the preload contract, not an internal cache call sequence.
-    assert.equal(reads, 1);
+    assert.equal(
+      reads,
+      1,
+      "SDK request count is the preload contract, not an internal cache call sequence",
+    );
   } finally {
     client.clear();
   }

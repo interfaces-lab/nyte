@@ -7,10 +7,12 @@ export const keys = {
   workspaces: ["workspaces"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
-  // Usage reads everything once. A read walks every stored commit whatever
-  // window it is asked for, so the window buys nothing on the way in and costs
-  // a full re-read on every range press. The day is the key, so the page reads
-  // again after midnight and not before.
+  /**
+   * Usage reads everything once. A read walks every stored commit whatever
+   * window it is asked for, so the window buys nothing on the way in and costs
+   * a full re-read on every range press. The day is the key, so the page reads
+   * again after midnight and not before.
+   */
   usage: (untilDay: string) => ["usage", untilDay] as const,
   github: ["github"] as const,
   server: ["server"] as const,

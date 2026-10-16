@@ -1,4 +1,4 @@
-// The bridge goes in before `theme/boot.ts` or any screen reads it.
+/** The browser entry. The bridge goes in before `theme/boot.ts` or any screen reads it. */
 import "./install.ts";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
@@ -124,6 +124,10 @@ function showConnectScreen(initial?: Connection, failure?: ConnectFailure): void
   );
 }
 
+/**
+ * A refused saved token never works again: a local or Tailscale token ends with
+ * its share, and a removed device's token stays revoked, so it is forgotten.
+ */
 async function resume(connection: Connection, fromLink: boolean): Promise<void> {
   if (fromLink) await releaseStoredAccountDevice(accountConfig);
 
@@ -132,8 +136,6 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   } catch (cause) {
     const refused = connectionProblem(cause).kind === "authentication";
 
-    // A refused saved token never works again: a local or Tailscale token ends
-    // with its share, and a removed device's token stays revoked.
     if (refused && !fromLink) forgetConnection();
     showConnectScreen(
       refused ? { url: connection.url, token: "" } : connection,

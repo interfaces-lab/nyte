@@ -94,6 +94,7 @@ export class PaneController {
     return this.#viewState;
   }
 
+  /** A denied or full local store must not break pane navigation. */
   dispatch(action: PaneLayoutAction): PaneLayout {
     const current = this.#snapshot.layout;
     this.#rememberLayout(current);
@@ -134,9 +135,7 @@ export class PaneController {
     try {
       if (this.#route === undefined)
         this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
-    } catch {
-      // A denied or full local store must not break pane navigation.
-    }
+    } catch {}
 
     for (const listener of this.#listeners) listener();
 

@@ -63,8 +63,10 @@ const styles = create({
 const STATUS_MARK_LABEL = {
   idle: "Idle",
   working: "Running",
-  // `sessionMark` reports this only for a run parked on a reply. A run parked on
-  // background work reads as running, because nothing is being asked of anyone.
+  /**
+   * `sessionMark` reports this only for a run parked on a reply. A run parked on
+   * background work reads as running, because nothing is being asked of anyone.
+   */
   waiting: "Needs attention",
   retry: "Retrying",
   failed: "Failed",

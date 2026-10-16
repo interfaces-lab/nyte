@@ -82,6 +82,7 @@ function useHeldKeys(): HeldKeys {
   return held;
 }
 
+/** Middle-click closes, and the browser's autoscroll must not start first. */
 function TabItem({
   tab,
   position,
@@ -117,7 +118,6 @@ function TabItem({
               active && stripStyles.tabActive,
             )}
             onMouseDown={(event) => {
-              // Middle-click closes; stop the browser's autoscroll from starting first.
               if (event.button === 1) event.preventDefault();
             }}
             onAuxClick={(event) => {

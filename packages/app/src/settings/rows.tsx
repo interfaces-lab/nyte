@@ -180,7 +180,11 @@ export function SelectRow<T extends string>(
   );
 }
 
-/** min, max, and step bound the control; the setting's schema bounds what is stored. */
+/**
+ * min, max, and step bound the control; the setting's schema bounds what is
+ * stored. The field is keyed by the value, so a change from another window
+ * remounts it.
+ */
 export function NumberRow(
   input: Bound<number> & { readonly min: number; readonly max: number; readonly step?: number },
 ): ReactElement | null {
@@ -191,7 +195,6 @@ export function NumberRow(
   return (
     <SettingsRow title={input.title} description={input.description}>
       <NumberField
-        // Keyed by the value, so a change from another window remounts the field.
         key={value}
         defaultValue={value}
         min={input.min}
