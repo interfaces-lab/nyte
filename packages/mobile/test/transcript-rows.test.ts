@@ -1,24 +1,36 @@
+import { canvas } from "@nyte-ai/plugin/canvas/schema";
+import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
+import { text } from "@nyte-ai/plugin/client";
+import type { PartDefinition, PartState } from "@nyte-ai/plugin/client";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { Message, SessionView } from "@nyte-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { conversationRows } from "../src/chat/transcript-rows.ts";
 
+type PartMessage = Extract<Message, { readonly kind: "part" }>;
+
 const turn = asId<"turn">("turn-1");
 
-function part(id: string, partKind: string, state: unknown): Message {
+function part<K extends PartDefinition>(
+  id: string,
+  definition: K,
+  state: PartState<K>,
+): PartMessage {
   return {
     id: asId<"message">(id),
     turn,
     at: 1,
     kind: "part",
     part: asId<"part">(id),
-    partKind,
+    partKind: definition.kind,
     role: "answer",
     state,
     version: 1,
     status: { kind: "settled", commit: asId<"commit">(`${id}-commit`), endedAt: 1 },
   };
 }
+
+const untouched = { count: 0, paths: [] };
 
 function view(messages: readonly Message[]): SessionView {
   return {
@@ -51,7 +63,20 @@ function view(messages: readonly Message[]): SessionView {
         endedAt: 1,
         steps: 0,
         thinkingOnly: false,
-        summary: { byClass: {}, failed: 0, stopped: 0, added: 0, removed: 0 },
+        summary: {
+          byClass: {
+            read: untouched,
+            list: untouched,
+            edit: untouched,
+            shell: untouched,
+            delegate: untouched,
+            custom: untouched,
+          },
+          failed: 0,
+          stopped: 0,
+          added: 0,
+          removed: 0,
+        },
       },
     ],
     execution: { kind: "idle", lastRun: null },
@@ -64,7 +89,7 @@ function view(messages: readonly Message[]): SessionView {
   };
 }
 
-const canvas = {
+const usage: CanvasState = {
   runtime: 1,
   title: "Usage",
   code: "export default () => null",
@@ -76,24 +101,24 @@ describe("conversationRows", () => {
   it("draws a canvas part as a canvas row carrying its part id and state", () => {
     const rows = conversationRows(
       view([
-        part("text-1", "text", { markdown: "Here it is" }),
-        part("canvas-1", "canvas", canvas),
+        part("text-1", text, { markdown: "Here it is", signature: null }),
+        part("canvas-1", canvas, usage),
       ]),
     );
 
     expect(rows.slice(0, 2)).toEqual([
       { kind: "assistant", id: "text-1", text: "Here it is", streaming: false },
-      { kind: "canvas", id: "canvas-1", part: "canvas-1", ...canvas },
+      { kind: "canvas", id: "canvas-1", part: "canvas-1", ...usage },
     ]);
   });
 
   it("keeps a canvas row's identity while its message is unchanged, and makes a new one when it is replaced", () => {
-    const message = part("canvas-1", "canvas", canvas);
-    const first = conversationRows(view([message]))[0];
-    const again = conversationRows(view([message]))[0];
+    const drawn = part("canvas-1", canvas, usage);
+    const first = conversationRows(view([drawn]))[0];
+    const again = conversationRows(view([drawn]))[0];
 
     const replaced = conversationRows(
-      view([part("canvas-1", "canvas", { ...canvas, code: "export default () => 1" })]),
+      view([part("canvas-1", canvas, { ...usage, code: "export default () => 1" })]),
     )[0];
 
     expect(again).toBe(first);
@@ -106,6 +131,8 @@ describe("conversationRows", () => {
   });
 
   it("still skips part kinds this app has no row for", () => {
-    expect(conversationRows(view([part("other-1", "maps/places", {})]))).toEqual([]);
+    expect(
+      conversationRows(view([{ ...part("other-1", canvas, usage), partKind: "maps/places" }])),
+    ).toEqual([]);
   });
 });
