@@ -104,6 +104,7 @@ export function pasteMessage(event: PasteEvent): {
     : { kind: "terminal", text: decodePasteBytes(event.bytes), bytes: null };
 }
 
+/** The composer's text area. It syncs mention markers only once a draft has had one: reading extmarks wraps the editor's edit methods. */
 export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JSX.Element {
   const app = useApp();
   const renderer = useRenderer();
@@ -120,8 +121,9 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
   const sync = (): void => {
     if (area === undefined || area.isDestroyed || attachment === null) return;
 
-    // Reading extmarks wraps the editor's edit methods; a draft that never had a marker skips it.
-    if (props.markers.length === 0 && !marked) return;
+    const neverMarked = props.markers.length === 0 && !marked;
+
+    if (neverMarked) return;
     marked = true;
     syncMarkers(area, attachment.id, props.markers);
   };

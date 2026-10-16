@@ -79,10 +79,8 @@ export function parseFlags(args: readonly string[]): RunFlags {
   return flags;
 }
 
-/** Open the durable session in a terminal without admitting the original prompt again. */
+/** Open the durable session in a terminal without admitting the original prompt again. The id rides as an inline option value, so one starting with a dash still parses, and the command POSIX-quotes it, so shell syntax and single quotes in it stay literal. */
 export function sessionRecovery(id: SessionId) {
-  // An inline option value also handles IDs starting with a dash. POSIX quoting
-  // keeps shell syntax in an ID literal, including embedded single quotes.
   const argv = ["nyte", `--session=${id}`];
 
   return {

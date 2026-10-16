@@ -9,6 +9,7 @@ import type { CliRenderer } from "@opentui/core";
 import open from "open";
 import type { TerminalPort } from "./ports.ts";
 
+/** The terminal's port over the renderer. `copy` drops NUL first: OpenTUI rejects it before any destination, and host clipboard text cannot hold it. */
 export function terminalPort(
   renderer: CliRenderer,
   options: { readonly write: (text: string) => void },
@@ -27,7 +28,6 @@ export function terminalPort(
       if (sound && process.stdout.isTTY) process.stdout.write("\u0007");
     },
     copy(text) {
-      // OpenTUI rejects NUL before any destination; host clipboard text cannot contain it.
       void clipboard
         .writeText(text.replaceAll("\0", ""), {
           destination: "all-available",

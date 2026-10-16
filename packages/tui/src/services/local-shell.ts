@@ -58,6 +58,13 @@ function listDescendants(root: number): Promise<number[]> {
   });
 }
 
+/**
+ * Runs a `!` command through the local shell, keeping a byte-limited output tail (cut back to the
+ * first whole UTF-8 character) with one decoder per stream, so a partial character on stdout never
+ * takes stderr bytes. Its process group is killed on exit without waiting for close, since
+ * descendants can still hold the pipes open; a cancelled command then destroys its output streams
+ * after 100 ms, since output stays open while any descendant, even one out of reach, holds them.
+ */
 export function startLocalShell(options: {
   readonly command: string;
   readonly cwd: string;
@@ -96,7 +103,6 @@ export function startLocalShell(options: {
         ? tail.subarray(0, length)
         : Buffer.concat([tail.subarray(cursor), tail.subarray(0, cursor)]);
 
-    // A byte-limited tail can start partway through a UTF-8 character.
     let start = 0;
 
     while (start < bytes.length && (bytes[start] ?? 0) >> 6 === 2) start++;
@@ -163,7 +169,6 @@ export function startLocalShell(options: {
     });
   }
 
-  /** Output stays open while any descendant, even one out of reach, holds the pipe. */
   function releaseOutput() {
     child?.stdout?.destroy();
     child?.stderr?.destroy();
@@ -281,8 +286,6 @@ export function startLocalShell(options: {
       child = launched;
       ownedPid = launched.pid;
 
-      // Each stream needs its own decoder. A partial stdout character must not
-      // consume stderr bytes, and vice versa.
       for (const stream of [launched.stdout, launched.stderr]) {
         if (!stream) continue;
         const decoder = new StringDecoder("utf8");
@@ -301,7 +304,6 @@ export function startLocalShell(options: {
       });
       launched.once("exit", () => {
         exited = true;
-        // Do not wait for close: descendants can still hold these pipes open.
         killOwnedProcesses();
         launched.stdio[3]?.destroy();
 

@@ -57,6 +57,7 @@ export class PrintInvocation {
     return this.finishing;
   }
 
+  /** Runs every cleanup, then settles the terminal record. A diagnostic sink that throws is recorded, never in the way of cleanup or the record; a signal received meanwhile turns the record `cancelled` but never hides a cleanup failure. */
   private async complete(outcome: PrintOutcome | undefined): Promise<number | undefined> {
     let terminal =
       this.received === undefined
@@ -76,7 +77,6 @@ export class PrintInvocation {
     if (this.recordedFailures.length > 0) {
       terminal = { kind: "failed", code: "cleanup_failed", message: "Resource cleanup failed." };
 
-      // A broken diagnostic sink must not prevent cleanup or the machine terminal record.
       try {
         this.output.error("Resource cleanup failed.");
       } catch (cause) {
@@ -84,7 +84,6 @@ export class PrintInvocation {
       }
     }
 
-    // A signal can arrive while cleanup is pending, but cannot hide cleanup failure.
     if (this.received !== undefined && terminal?.kind !== "failed") {
       terminal = { kind: "cancelled", signal: this.received };
     }
