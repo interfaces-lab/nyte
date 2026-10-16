@@ -347,10 +347,16 @@ export function createWaitRegistry(
           const woken = readWoken(ref.name);
 
           if (woken === null) return;
-          const found = await readCall(kernel.store, woken.session, woken.call);
+          const record = (await readCall(kernel.store, woken.session, woken.call))?.record ?? null;
 
-          if (found !== null && found.record.waiting === null)
-            wake(kernel, woken.session, found.record);
+          const owed =
+            record !== null &&
+            record.result === null &&
+            (record.run === null ||
+              (await kernel.store.refs.get(runRef(woken.session, record.run))) !== null);
+
+          if (!owed) await commit(kernel, [{ name: ref.name, target: null, expect: ref.revision }]);
+          else if (record.waiting === null) wake(kernel, woken.session, record);
         }),
       );
 

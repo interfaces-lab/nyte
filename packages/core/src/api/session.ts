@@ -36,6 +36,7 @@ import { dropScans } from "../extend/resources.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
 import { releaseParts } from "../store/parts.ts";
+import { WOKEN } from "../store/wait-index.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
@@ -515,6 +516,7 @@ async function remove(
     const refs = [
       ...(await kernel.store.refs.list(`${sessionRef(session)}/`)),
       ...(await kernel.store.refs.list(`kv/session:${session}/`)),
+      ...(await kernel.store.refs.list(`${WOKEN}${session}/`)),
     ];
 
     const outcome = await commit(kernel, [

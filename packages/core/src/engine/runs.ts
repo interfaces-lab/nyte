@@ -20,6 +20,7 @@ import { commit } from "../fold/commit.ts";
 import { liveParts, readRunEnd, withFold } from "../fold/reads.ts";
 import { failedParts } from "../store/parts.ts";
 import { inboxRef, liveRef, runRef, sessionRef } from "../store/refs.ts";
+import { wokenIndex } from "../store/wait-index.ts";
 import {
   attempt,
   inboxWithout,
@@ -174,7 +175,7 @@ export async function endRun(
             final.kind === "failed" ? final.failure : FENCED,
           )),
       ...receipts.flat(),
-      ...(await unopenedCalls(kernel.store, session, run)),
+      ...(await abandonedCalls(kernel.store, session, run)),
     ]);
 
     return outcome.kind === "set"
@@ -208,8 +209,8 @@ export async function endRun(
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
 
-/** Deletes the calls an ended run recorded but never opened: nothing owes them once the run is over. */
-async function unopenedCalls(
+/** Deletes the calls an ended run recorded but never opened, and the woken index of those it woke but never stepped: nothing owes them once the run is over. */
+async function abandonedCalls(
   store: StoreConnection,
   session: SessionId,
   run: RunId,
@@ -220,11 +221,18 @@ async function unopenedCalls(
     refs.map(async (ref) => ({ ref, call: await load(store, ref, decodeCallRecord) })),
   );
 
-  return found.flatMap(({ ref, call }) =>
-    call !== null && call.record.run === run && call.record.kind === "intent"
-      ? [{ name: ref.name, target: null, expect: ref.revision }]
-      : [],
-  );
+  return found.flatMap(({ ref, call }): readonly RefUpdate[] => {
+    if (call === null || call.record.run !== run) return [];
+
+    if (call.record.kind === "intent")
+      return [{ name: ref.name, target: null, expect: ref.revision }];
+
+    return call.record.result === null &&
+      call.record.waiting === null &&
+      call.record.waits.length > 0
+      ? [{ name: wokenIndex(session, call.record.id), target: null }]
+      : [];
+  });
 }
 
 export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {

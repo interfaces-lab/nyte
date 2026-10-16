@@ -97,4 +97,19 @@ describe("woken calls", () => {
     expect(await waitStep(kernel, session.id, "c1", twice)).toEqual({ kind: "parked" });
     expect(await wokenNames(kernel)).toEqual([]);
   });
+
+  it("drops a woken call's index with its session", async () => {
+    const { kernel, host } = await setup();
+    const session = await host.sessions.create();
+    const soon = Date.now() + 1;
+
+    await waitStep(kernel, session.id, "c1", async (durable) =>
+      durable.wait({ kind: "timer", until: soon }),
+    );
+    await kernel.waits.tick(soon + 1);
+    expect(await wokenNames(kernel)).toEqual([wokenIndex(session.id, asId("c1"))]);
+
+    expect(await host.session(session.id).remove()).toEqual({ kind: "removed" });
+    expect(await wokenNames(kernel)).toEqual([]);
+  });
 });
