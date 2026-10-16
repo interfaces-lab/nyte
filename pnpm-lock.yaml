@@ -879,6 +879,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.8
         version: 0.5.8
+      '@nyte-ai/connect':
+        specifier: workspace:*
+        version: link:../connect
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
