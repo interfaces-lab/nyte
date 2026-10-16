@@ -15,11 +15,6 @@ export type Submission = {
   readonly replace: MessageId | null;
 };
 
-export type ModelContext = {
-  readonly system: string;
-  readonly messages: readonly ModelMessage[];
-};
-
 export type Transcript = {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly ToolInfo[];

@@ -27,7 +27,6 @@ export type {
 export type {
   CompactionPlan,
   Decision,
-  ModelContext,
   ModelRequest,
   Submission,
   ToolCall,

@@ -171,7 +171,6 @@ export type {
   MessageSource,
   ModelAccount,
   ModelCatalogView,
-  ModelContext,
   ModelInfo,
   ModelRef,
   ModelRequest,
