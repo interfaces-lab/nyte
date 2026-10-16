@@ -81,7 +81,7 @@ function deviceToken(transport: Transport, kept: string | undefined): string {
 }
 
 async function firstView(transport: Transport): Promise<HostViewWire> {
-  const frames = transport.watch("connection.watch", {})[Symbol.asyncIterator]();
+  const frames = transport.frames("connection.watch", {})[Symbol.asyncIterator]();
 
   try {
     const next = await frames.next();
@@ -89,7 +89,7 @@ async function firstView(transport: Transport): Promise<HostViewWire> {
     if (next.done === true)
       throw new SdkError("unavailable", "The host closed the connection before it answered.");
 
-    return decodeOutput("connection.watch", next.value.data);
+    return decodeOutput("connection.watch", next.value);
   } finally {
     await frames.return?.();
   }

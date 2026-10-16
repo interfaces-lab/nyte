@@ -16,7 +16,7 @@ import type {
 } from "./binding.ts";
 import { decodeInput, encodeOutput } from "./codec.ts";
 import type { OperationName } from "./declarations.ts";
-import { isRecord, parseJson } from "./json.ts";
+import { parseJson } from "./json.ts";
 import { abortable, mapped } from "./streams.ts";
 import {
   HOST_HEADER,
@@ -29,7 +29,6 @@ import {
   readInputHeader,
   sseFrames,
 } from "./wire.ts";
-import type { SseFrame } from "./wire.ts";
 import { CANCEL_PATH, CHANNEL_HEADER, CHANNEL_PATH, STREAM_HEADER } from "./stream-channel.ts";
 import { createStreamChannels } from "./stream-server.ts";
 
@@ -58,13 +57,13 @@ const UPLOADS: ReadonlySet<string> = new Set([
   "files.upload",
 ] satisfies readonly CallName[]);
 
-const ALLOWED_HEADERS = `Authorization, Content-Type, Last-Event-ID, ${INPUT_HEADER}, ${CHANNEL_HEADER}, ${STREAM_HEADER}`;
+const ALLOWED_HEADERS = `Authorization, Content-Type, ${INPUT_HEADER}, ${CHANNEL_HEADER}, ${STREAM_HEADER}`;
 
 const EXPOSED_HEADERS = `X-Nyte-Version, X-Nyte-Mime, X-Nyte-Credential, ${HOST_HEADER}, ${CHANNEL_HEADER}`;
 
 const tooLarge = new WeakSet<SdkError>();
 
-/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events (`Last-Event-ID` resuming `head.watch`), byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
+/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events, byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
 export function createHandler(options: HandlerOptions): (request: Request) => Promise<Response> {
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const bindings = new WeakMap<Connection, Binding>();
@@ -184,9 +183,7 @@ async function serve(
 
   if (isBytes(name)) return octetStream(await bytes(binding, name, value, context), request.signal);
 
-  const resumed = name === "head.watch" ? resumeOf(value, request) : value;
-
-  return new Response(sseFrames(ending(await frames(binding, name, resumed, context), signal)), {
+  return new Response(sseFrames(ending(await frames(binding, name, value, context), signal)), {
     status: 200,
     headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
   });
@@ -215,12 +212,10 @@ async function frames<N extends FrameName>(
   name: N,
   value: unknown,
   request: BindingRequest,
-): Promise<AsyncIterable<SseFrame>> {
-  return mapped(await binding[name](decodeInput(name, value), request), (frame) => {
-    const data = encodeOutput(name, frame);
-
-    return { id: idOf(name, data), data };
-  });
+): Promise<AsyncIterable<Json>> {
+  return mapped(await binding[name](decodeInput(name, value), request), (frame) =>
+    encodeOutput(name, frame),
+  );
 }
 
 function ending<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncIterable<T> {
@@ -244,22 +239,6 @@ function ending<T>(source: AsyncIterable<T>, signal: AbortSignal): AsyncIterable
       };
     },
   };
-}
-
-function idOf(name: OperationName, data: Json): string | null {
-  if (name !== "head.watch" || !isRecord(data) || data.kind === "patch") return null;
-
-  return typeof data.seq === "number" && data.seq > 0 ? String(data.seq) : null;
-}
-
-function resumeOf(value: unknown, request: Request): unknown {
-  const header = request.headers.get("Last-Event-ID");
-  const after = header === null ? Number.NaN : Number(header);
-
-  if (!Number.isSafeInteger(after) || after < 0 || typeof value !== "object" || value === null)
-    return value;
-
-  return { ...value, after };
 }
 
 async function bodyOf(request: Request, limit: number): Promise<unknown> {

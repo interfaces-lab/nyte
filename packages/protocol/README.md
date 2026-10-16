@@ -9,7 +9,8 @@ as core's signatures do, and a test checks the two agree both ways. The host
 serves the table with `createHandler`: exactly `POST /<name>` (a prefix is the
 host's mount), gated by the row's authority, input decoded strictly (an unknown
 field is `invalid`), output encoded leniently, a watch as server-sent events
-with `id: <seq>` on logged session events and `Last-Event-ID` resuming after it,
+(`head.watch` sends the head's view from the host's fold whole, then each later
+view as what changed, so a reconnect simply starts over from the current view),
 bytes as `application/octet-stream` (the reader's mime in `X-Nyte-Mime`, the
 JSON input in `X-Nyte-Input` when bytes are the body), `job.output` as
 length-prefixed frames, and every failure as the encoded `SdkError` at its

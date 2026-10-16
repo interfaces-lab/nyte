@@ -1,7 +1,15 @@
 import { Type } from "typebox";
+import type { TSchema } from "typebox";
 import { standard } from "../schema.ts";
 import type { Schema } from "../schema.ts";
-import type { Message, SessionView, TurnInfo, UserStatus, ViewOptions } from "../views.ts";
+import type {
+  Message,
+  SessionView,
+  TurnInfo,
+  UserStatus,
+  ViewFrame,
+  ViewOptions,
+} from "../views.ts";
 import { ConfigurationType } from "./configuration.ts";
 import { FileChangeType } from "./files.ts";
 import { SeqType, idSchema } from "./ids.ts";
@@ -111,6 +119,35 @@ export const SessionViewType = Type.Object({
   catalog: SessionCatalogViewType,
 });
 
+const VIEW = SessionViewType.properties;
+
+function viewSplice<T extends TSchema>(item: T) {
+  return Type.Object({ runs: Type.Array(Type.Number()), items: Type.Array(item) });
+}
+
+export const ViewFrameType = Type.Union([
+  Type.Object({ kind: Type.Literal("view"), view: SessionViewType }),
+  Type.Object({
+    kind: Type.Literal("delta"),
+    seq: SeqType,
+    revision: Type.Optional(VIEW.revision),
+    activation: Type.Optional(VIEW.activation),
+    messages: Type.Optional(viewSplice(MessageType)),
+    appends: Type.Optional(
+      Type.Array(Type.Object({ at: Type.Number(), append: Type.String(), version: Type.Number() })),
+    ),
+    parts: Type.Optional(viewSplice(PartViewType)),
+    turns: Type.Optional(viewSplice(TurnInfoType)),
+    execution: Type.Optional(VIEW.execution),
+    background: Type.Optional(viewSplice(BackgroundItemType)),
+    configuration: Type.Optional(VIEW.configuration),
+    context: Type.Optional(VIEW.context),
+    heads: Type.Optional(viewSplice(HeadInfoType)),
+    changes: Type.Optional(viewSplice(FileChangeType)),
+    catalog: Type.Optional(VIEW.catalog),
+  }),
+]);
+
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);
 
 export const UserStatusSchema: Schema<UserStatus> = standard(UserStatusType);
@@ -120,3 +157,5 @@ export const MessageSchema: Schema<Message> = standard(MessageType);
 export const TurnInfoSchema: Schema<TurnInfo> = standard(TurnInfoType);
 
 export const SessionViewSchema: Schema<SessionView> = standard(withJson(SessionViewType));
+
+export const ViewFrameSchema: Schema<ViewFrame> = standard(withJson(ViewFrameType));

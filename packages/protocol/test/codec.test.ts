@@ -1,5 +1,5 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { Json, PatchSetWire, SessionEvent } from "@nyte-ai/schema";
+import type { Json, PatchSetWire, ViewFrame } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
 import { decodeInput, decodeOutput, encodeInput, encodeOutput } from "../src/index.ts";
@@ -28,27 +28,24 @@ describe("codec", () => {
       content: [{ kind: "text", text: "Hi." }],
       options: { delivery: "queue", id: asId("r1") },
     };
-    const watch: OperationInput<"head.watch"> = { session, head, after: asSeq(4) };
+    const watch: OperationInput<"head.watch"> = { session, head, options: { tail: 4 } };
     const patches: PatchSetWire = {
       revision: asId("g1"),
       entries: {
         "a.ts": { path: "a.ts", status: "added", digest: "d", kind: "binary", fresh: true },
       },
     };
-    const event: SessionEvent = {
+    const frame: ViewFrame = {
+      kind: "delta",
       seq: asSeq(3),
-      at: 1,
-      head,
-      kind: "run",
-      run: asId("r1"),
-      change: "phase",
-      phase: "responding",
+      revision: null,
+      appends: [{ at: 0, append: "x", version: 2 }],
     };
 
     expect(decodeInput("head.send", encodeInput("head.send", send))).toEqual(send);
     expect(decodeInput("head.watch", encodeInput("head.watch", watch))).toEqual(watch);
     expect(decodeOutput("git.patches", encodeOutput("git.patches", patches))).toEqual(patches);
-    expect(decodeOutput("head.watch", encodeOutput("head.watch", event))).toEqual(event);
+    expect(decodeOutput("head.watch", encodeOutput("head.watch", frame))).toEqual(frame);
     expect(
       decodeOutput(
         "receipt.status",

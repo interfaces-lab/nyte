@@ -5,15 +5,14 @@ import type {
   HostId,
   JournalEntry,
   Json,
-  Message,
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
 import { SdkError, closable, dev } from "@nyte-ai/core";
 import type { Connection, Head, Login, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import type { OperationOutput, Transport } from "@nyte-ai/protocol";
-import { createFolds, watchHead, watchHost, withUnsent } from "./fold.ts";
-import type { Folds } from "./fold.ts";
+import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
+import type { HeadViews } from "./watch.ts";
 import { journalLoop } from "./journal.ts";
 import type { JournalLoop } from "./journal.ts";
 import { partHandle } from "./part.ts";
@@ -33,7 +32,7 @@ export type ClientContext = {
 type Bound = {
   readonly rows: Rows;
   readonly journal: JournalLoop;
-  readonly folds: Folds;
+  readonly views: HeadViews;
 };
 
 const MAIN = asId<"head">("main");
@@ -45,7 +44,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   const bound: Bound = {
     rows,
     journal: journalLoop(rows, context.journal),
-    folds: createFolds(rows, context.principal),
+    views: createHeadViews(rows),
   };
 
   bound.journal.replay(context.journaled);
@@ -181,15 +180,12 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });
+      journal.landed(session, head, view);
+      const ids = new Set(view.messages.map((message) => message.id));
 
-      const known = (id: Message["id"]): boolean =>
-        view.messages.some((message) => message.id === id);
-
-      journal.landed(known);
-
-      return withUnsent(view, journal.unsent(session, head), known);
+      return withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
     },
-    watch: (options) => watchHead(bound.folds, journal, { session, head, options }),
+    watch: (options) => watchHead(bound.views, journal, { session, head, options }),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {

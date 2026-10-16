@@ -76,7 +76,7 @@ export function createStreamClient(post: Post) {
         ready.resolve(id);
 
         for await (const envelope of parseSse(networkBody(response.body))) {
-          const frame = readStreamFrame(envelope.data);
+          const frame = readStreamFrame(envelope);
           const stream = current.streams.get(frame.stream);
 
           if (stream === undefined) continue;
@@ -134,7 +134,6 @@ export function createStreamClient(post: Post) {
     name: string,
     input: Json,
     signal: AbortSignal,
-    headers: Readonly<Record<string, string>> = {},
   ): Promise<ReadableStream<Uint8Array>> => {
     signal.throwIfAborted();
     const current = open();
@@ -162,7 +161,6 @@ export function createStreamClient(post: Post) {
           ...json(input),
           headers: {
             "Content-Type": "application/json",
-            ...headers,
             [CHANNEL_HEADER]: channelId,
             [STREAM_HEADER]: id,
           },

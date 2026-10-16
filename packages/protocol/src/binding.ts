@@ -1,10 +1,8 @@
-import { asId, asSeq, isJson } from "@nyte-ai/schema";
+import { isJson } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Capability,
   CapabilityWire,
-  CommitId,
-  HeadName,
   HostView,
   HostViewWire,
   Json,
@@ -18,21 +16,10 @@ import type {
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import {
-  SdkError,
-  advanceSeen,
-  applyBatch,
-  dev,
-  headRef,
-  heldReceipt,
-  move,
-  sendReceipt,
-  sessionEvents,
-} from "@nyte-ai/core";
+import { SdkError, applyBatch, heldReceipt, move, sendReceipt } from "@nyte-ai/core";
 import type {
   BrowserApi,
   Connection,
-  FeedItem,
   FilesApi,
   GitApi,
   Job,
@@ -48,6 +35,7 @@ import type {
   OperationOutput,
 } from "./declarations.ts";
 import { mapped } from "./streams.ts";
+import { viewFrames } from "./view-frames.ts";
 
 /** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
@@ -118,14 +106,12 @@ export type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the kernel, for the rows that carry a wire-only id (§40o), `head.watch` and `parts.create`. */
+/** Describes what a binding needs beyond the connection: the kernel, for the rows that carry a wire-only id (§40o) and `parts.create`. */
 export type BindingOptions = {
   readonly kernel: Kernel;
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
-
-const SEEN_DELAY = 16;
 
 type Attempt = {
   readonly login: Login;
@@ -137,7 +123,7 @@ const attempts = new WeakMap<Kernel, Map<string, Attempt>>();
 
 const holds = new WeakMap<Kernel, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through core's kernel-level functions with their wire id (§40o, §40x). `head.watch` sends the watched head's pair first, then `sessionEvents` after `after` with each head-moving event's pair behind it, and marks the principal's seen tip from the live feed only (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through core's kernel-level functions with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { kernel } = options;
   const { principal } = connection;
@@ -309,20 +295,10 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
     "head.configure": ({ session: id, head, patch }) => session(id).head(head).configure(patch),
     "head.view": ({ session: id, head, options }) => session(id).head(head).view(options),
-    "head.watch": async ({ session: id, head, after }) => {
+    "head.watch": async ({ session: id, head, options }) => {
       await session(id).info();
-      const ref = await kernel.store.refs.get(headRef(id, head));
-      const events = sessionEvents(kernel, id, after ?? asSeq(0));
 
-      const pair =
-        ref === null || ref.target === null
-          ? { tip: null, revision: asId<"revision">("") }
-          : { tip: asId<"commit">(ref.target), revision: ref.revision };
-
-      return revisions(
-        { kind: "revision", head, ...pair },
-        seeing(kernel, principal, id, head, events),
-      );
+      return viewFrames(session(id).head(head).watch(options));
     },
     "head.history": ({ session: id, head, before, limit }) =>
       session(id).head(head).history({ before, limit }),
@@ -570,122 +546,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       await connection.principals.revoke(id);
 
       return null;
-    },
-  };
-}
-
-function seeing(
-  kernel: Kernel,
-  principal: PrincipalId,
-  session: SessionId,
-  head: HeadName,
-  source: AsyncIterable<FeedItem>,
-): AsyncIterable<FeedItem> {
-  return {
-    [Symbol.asyncIterator]() {
-      const iterator = source[Symbol.asyncIterator]();
-      let live = false;
-      let tip: CommitId | null | undefined;
-      let seen: CommitId | null | undefined;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let writing: Promise<void> = Promise.resolve();
-
-      const write = (): Promise<void> => {
-        clearTimeout(timer);
-        timer = undefined;
-        const commit = tip;
-
-        if (!live || commit === undefined || commit === seen) return writing;
-        seen = commit;
-
-        writing = writing
-          .then(() => advanceSeen(kernel, { session, principal, head, commit }))
-          .catch(() => dev("binding", "seen failed", { session, head }));
-
-        return writing;
-      };
-
-      const schedule = (): void => {
-        clearTimeout(timer);
-        timer = setTimeout(() => void write(), SEEN_DELAY);
-      };
-
-      return {
-        async next() {
-          const next = await iterator.next();
-
-          if (next.done === true) {
-            await write();
-
-            return next;
-          }
-
-          const event = next.value.event;
-
-          if (event.kind === "seen" && event.head === head && event.principal === principal)
-            seen = event.commit;
-          else if ((event.kind === "commit" || event.kind === "head") && event.head === head) {
-            tip = event.kind === "commit" ? event.id : event.to;
-
-            if (live) schedule();
-          }
-
-          if (!live && (event.kind === "patch" || event.seq === 0)) {
-            live = true;
-            schedule();
-          }
-
-          return next;
-        },
-        async return() {
-          await iterator.return?.();
-          await write();
-
-          return { done: true, value: undefined };
-        },
-      };
-    },
-  };
-}
-
-function revisions(
-  first: OperationOutput<"head.watch">,
-  source: AsyncIterable<FeedItem>,
-): AsyncIterable<OperationOutput<"head.watch">> {
-  return {
-    [Symbol.asyncIterator]() {
-      const iterator = source[Symbol.asyncIterator]();
-      let after: OperationOutput<"head.watch"> | null = first;
-
-      return {
-        async next(): Promise<IteratorResult<OperationOutput<"head.watch">>> {
-          if (after !== null) {
-            const value = after;
-            after = null;
-
-            return { done: false, value };
-          }
-
-          const next = await iterator.next();
-
-          if (next.done === true) return next;
-          const { event, head: pair } = next.value;
-
-          if (
-            (event.kind === "commit" || event.kind === "head") &&
-            event.head !== null &&
-            pair !== null
-          )
-            after = { kind: "revision", head: event.head, ...pair };
-
-          return { done: false, value: event };
-        },
-        async return() {
-          await iterator.return?.();
-
-          return { done: true, value: undefined };
-        },
-      };
     },
   };
 }

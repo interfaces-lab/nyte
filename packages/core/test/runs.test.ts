@@ -10,18 +10,14 @@ import {
   decodeRunRecord,
   driveInProcess,
   endRun,
-  emptyFold,
   envelope,
-  fold,
   isPart,
   memoryStore,
   partRef,
   publishPatch,
-  project,
   receiptRef,
   runRef,
   runStep,
-  sessionEvents,
   text,
 } from "../src/index.ts";
 import type { Kernel, StoreConnection } from "../src/index.ts";
@@ -137,7 +133,7 @@ describe("runs", () => {
     hold.release();
   });
 
-  it("seeds a live text part emptied while a watcher was away, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
+  it("shows a live text part emptied before a watch opened, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
     const { kernel, host, script: turns } = await setup();
     const session = await host.sessions.create();
     await session.send("Write it.");
@@ -146,38 +142,23 @@ describe("runs", () => {
     const run = turn.input.run.id;
     const part = asId<"part">(`${run}:1:0`);
     await livePart(kernel, session.id, run, part, "A");
-    const resume = await kernel.store.refs.tail(session.id);
-    let state = emptyFold({ session: session.id, principal: LOCAL });
-
-    for (const event of await kernel.store.refs.log(session.id, asSeq(0), 1000))
-      state = fold(state, event);
-
-    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "A" } });
     publishPatch(kernel, session.id, run, { kind: "patch", part, markdown: "" });
+    const views = session.watch()[Symbol.asyncIterator]();
 
-    const iterator = sessionEvents(kernel, session.id, resume)[Symbol.asyncIterator]();
-
-    for (;;) {
-      const next = await iterator.next();
+    const shown = async (): Promise<string | null> => {
+      const next = await views.next();
       assert(next.done !== true);
-      const event = next.value.event;
-      state = fold(state, event);
+      const message = next.value.messages.find(
+        (candidate) => isPart(candidate, text) && candidate.part === part,
+      );
 
-      if (event.kind === "catalog")
-        publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
+      return message !== undefined && isPart(message, text) ? message.state.markdown : null;
+    };
 
-      if (
-        project(state, main).messages.some(
-          (message) =>
-            isPart(message, text) && message.part === part && message.state.markdown === "B",
-        )
-      )
-        break;
-    }
-
-    await iterator.return?.();
-
-    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "B" } });
+    expect(await shown()).toBe("");
+    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
+    expect(await shown()).toBe("B");
+    await views.return?.();
     turn.finish(completed);
     await step;
   });

@@ -4,11 +4,13 @@ import { asId } from "@nyte-ai/schema";
 import type { HostView, SessionView } from "@nyte-ai/schema";
 import { SdkError, createConnection, dev, isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
-import { decodeInput, encodeError, parseSse } from "@nyte-ai/protocol";
+import { createTransport, decodeInput, encodeError, parseSse } from "@nyte-ai/protocol";
 import { CHANNEL_PATH, STREAM_HEADER, readStreamFrame } from "../../protocol/src/stream-channel.ts";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
-import { createSendJournal } from "../src/journal.ts";
+import { createSendJournal, journalLoop } from "../src/journal.ts";
+import { createLink, createRows } from "../src/rows.ts";
+import { createHeadViews, watchHead } from "../src/watch.ts";
 import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
 import type { Served } from "./served.ts";
 
@@ -74,7 +76,7 @@ function tapped(
         controller.close();
         return;
       }
-      const frame = readStreamFrame(next.value.data);
+      const frame = readStreamFrame(next.value);
       const counted = frame.kind === "chunk" && (cut === undefined || cut.when(frame.stream));
       if (cut !== undefined && counted && chunks >= cut.after) {
         if (cut.kind === "reset") controller.error(new TypeError("terminated"));
@@ -85,7 +87,7 @@ function tapped(
       if (counted) chunks += 1;
       if (frame.kind === "chunk")
         seen(decoder.decode(Uint8Array.fromBase64(frame.data)), frame.stream);
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value.data)}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
     },
     cancel: () => frames.return(undefined).then(() => undefined),
   });
@@ -133,13 +135,12 @@ describe("client", () => {
     await watching.return?.();
   });
 
-  it("coalesces a burst of token patches into fewer views than patches", async () => {
+  it("streams a reply's text as appends on the message the first frame sent, never the whole text again", async () => {
     const host = await open();
     const connection = await client(host);
     const session = await connection.sessions.create();
-    const views: SessionView[] = [];
-    let patches = 0;
     const heads = new Set<string>();
+    const appended: string[] = [];
 
     host.intercept(async (request, next) => {
       if (operationOf(request) === "head.watch") {
@@ -153,13 +154,22 @@ describe("client", () => {
 
       return new Response(
         tapped(response.body, (chunk, id) => {
-          if (heads.has(id)) patches += chunk.split('"kind":"patch"').length - 1;
+          if (heads.has(id))
+            appended.push(
+              ...[...chunk.matchAll(/"append":"(x*)"/g)].map((match) => match[1] ?? ""),
+            );
         }),
         response,
       );
     });
 
-    host.fake.reply({ content: [{ type: "text", text: "x".repeat(400) }], tokens: 400 });
+    host.fake.reply({
+      content: [{ type: "text", text: "x".repeat(400) }],
+      tokens: 20,
+      tap: () => new Promise((resolve) => setTimeout(resolve, 20)),
+    });
+
+    const views: SessionView[] = [];
 
     const done = until(session.watch(), (view) => {
       views.push(view);
@@ -170,32 +180,30 @@ describe("client", () => {
     await (await session.send("Stream.")).settled();
     await done;
 
-    expect(patches).toBeGreaterThan(10);
-    expect(views.length).toBeLessThan(patches);
+    expect(appended.length).toBeGreaterThan(5);
+    expect(appended.join("").length).toBeLessThanOrEqual(400);
     expect(views.at(-1)?.messages.at(-1)).toMatchObject({ state: { markdown: "x".repeat(400) } });
   });
 
   it.each(["reset", "end", "disconnect"] as const)(
-    "resumes a head.watch after a %s with Last-Event-ID: no gap, no repeat, the link reported",
+    "reopens a head.watch after a %s from the host's whole view and reports the link",
     async (cut) => {
       const host = await open();
       const connection = await client(host);
       host.fake.reply(text("One."), text("Two."));
       const session = await connection.sessions.create();
       await (await session.send("First.")).settled();
-      const resumes: (string | null)[] = [];
-      const opens: number[][] = [];
-      const heads = new Map<string, number[]>();
+      const opens: string[][] = [];
+      const heads = new Map<string, string[]>();
       let firstHead: string | undefined;
 
       host.intercept(async (request, next) => {
         if (operationOf(request) === "head.watch") {
-          resumes.push(request.headers.get("Last-Event-ID"));
           const id = request.headers.get(STREAM_HEADER);
           assert(id !== null);
-          const ids: number[] = [];
-          opens.push(ids);
-          heads.set(id, ids);
+          const kinds: string[] = [];
+          opens.push(kinds);
+          heads.set(id, kinds);
           firstHead ??= id;
         }
         if (operationOf(request) !== CHANNEL_PATH) return next(request);
@@ -207,29 +215,37 @@ describe("client", () => {
           (chunk, id) =>
             heads
               .get(id)
-              ?.push(...[...chunk.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]))),
+              ?.push(
+                ...[...chunk.matchAll(/^data: \{"kind":"(\w+)"/gm)].map((match) => match[1] ?? ""),
+              ),
           cut !== "disconnect"
-            ? { after: 6, kind: cut, when: (id) => id === firstHead }
+            ? { after: 2, kind: cut, when: (id) => id === firstHead }
             : undefined,
         );
 
         return new Response(body, response);
       });
 
+      const link = createLink();
       const links: HostView["link"]["kind"][] = [];
-      const hostViews = connection.watch()[Symbol.asyncIterator]();
+      link.subscribe((state) => links.push(state.kind));
 
-      void (async () => {
-        for (;;) {
-          const next = await hostViews.next();
+      const rows = createRows(
+        createTransport({
+          url: BASE,
+          headers: async () => ({ Authorization: `Bearer ${TOKEN_SECRET}` }),
+          fetch: host.fetch,
+        }),
+        link,
+      );
 
-          if (next.done === true) return;
-          links.push(next.value.link.kind);
-        }
-      })();
+      cleanups.push(async () => link.close("client"));
 
       const resumed = until(
-        session.watch(),
+        watchHead(createHeadViews(rows), journalLoop(rows, createSendJournal()), {
+          session: session.id,
+          head: asId("main"),
+        }),
         async (view) =>
           JSON.stringify(view) === JSON.stringify(await host.view(session.id)) &&
           users(view).length === 2,
@@ -240,15 +256,9 @@ describe("client", () => {
       if (cut === "disconnect") host.listener.disconnectClients();
       await (await session.send("Second.", { delivery: "queue" })).settled();
       const view = await resumed;
-      await expect.poll(() => links.at(-1)).toBe("connected");
-      await hostViews.return?.();
 
       expect(opens.length).toBeGreaterThanOrEqual(2);
-      expect(resumes[0]).toBeNull();
-      const cursor = Number(resumes[1]);
-      expect(cursor).toBeGreaterThan(0);
-      expect(cursor).toBeLessThanOrEqual(opens[0]?.at(-1) ?? 0);
-      expect(opens[1]?.every((id) => id > cursor)).toBe(true);
+      expect(opens.map((kinds) => kinds[0])).toEqual(opens.map(() => "view"));
       expect(users(view)).toEqual(["First.", "Second."]);
       expect(links).toContain("reconnecting");
       expect(links.at(-1)).toBe("connected");

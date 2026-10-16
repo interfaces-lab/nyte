@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { ByteReader, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
+import type { ByteReader, Json, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
 import { SdkError, dev } from "@nyte-ai/core";
 import type { SdkErrorCode } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
@@ -16,7 +16,6 @@ import {
   statusCode,
   withInputHeader,
 } from "../src/index.ts";
-import type { SseFrame } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
 import { endless } from "./fakes.ts";
 
@@ -96,16 +95,16 @@ describe("errors", () => {
 });
 
 describe("server-sent events", () => {
-  it("frames ids and data and parses them back across any chunking", async () => {
-    const sent: readonly SseFrame[] = [
-      { id: "3", data: { kind: "run", seq: 3, text: "é\nline" } },
-      { id: null, data: { kind: "patch", append: "x" } },
-      { id: "4", data: [1, null, "two"] },
+  it("frames data and parses it back across any chunking", async () => {
+    const sent: readonly Json[] = [
+      { kind: "run", seq: 3, text: "é\nline" },
+      null,
+      [1, null, "two"],
     ];
     const bytes = await bytesOf(sseFrames(frames(...sent)));
     const text = new TextDecoder().decode(bytes);
 
-    expect(text.startsWith('id: 3\ndata: {"kind":"run"')).toBe(true);
+    expect(text.startsWith('data: {"kind":"run"')).toBe(true);
     expect(await collect(parseSse(trickle(bytes, 1)))).toEqual(sent);
     expect(await collect(parseSse(trickle(bytes, 7)))).toEqual(sent);
   });
@@ -113,9 +112,7 @@ describe("server-sent events", () => {
   it("skips comments and parses CRLF line ends and multi-line data", async () => {
     const raw = ': ping\r\n\r\nid: 9\r\ndata: {"a":\r\ndata: 1}\r\n\r\n';
 
-    expect(await collect(parseSse(trickle(new TextEncoder().encode(raw), 3)))).toEqual([
-      { id: "9", data: { a: 1 } },
-    ]);
+    expect(await collect(parseSse(trickle(new TextEncoder().encode(raw), 3)))).toEqual([{ a: 1 }]);
   });
 
   it("sends a ping while the source waits", async () => {
@@ -123,7 +120,7 @@ describe("server-sent events", () => {
       {
         async *[Symbol.asyncIterator]() {
           await new Promise((resolve) => setTimeout(resolve, 40));
-          yield { id: null, data: 1 };
+          yield 1;
         },
       },
       { heartbeatMs: 5 },
@@ -137,23 +134,23 @@ describe("server-sent events", () => {
   it("ends with an error event the parser throws as the same SdkError", async () => {
     const source = {
       async *[Symbol.asyncIterator]() {
-        yield { id: "1", data: "first" };
+        yield "first";
         throw new SdkError("stale", "Moved.");
       },
     };
-    const parsed: SseFrame[] = [];
+    const parsed: Json[] = [];
 
     await expect(async () => {
       for await (const frame of parseSse(sseFrames(source))) parsed.push(frame);
     }).rejects.toMatchObject({ code: "stale", message: "Moved." });
-    expect(parsed).toEqual([{ id: "1", data: "first" }]);
+    expect(parsed).toEqual(["first"]);
   });
 
   it("returns the source when the stream is cancelled", async () => {
     let returned = false;
-    const source: AsyncIterable<SseFrame> = {
+    const source: AsyncIterable<Json> = {
       [Symbol.asyncIterator]: () => ({
-        next: async () => ({ done: false, value: { id: null, data: 1 } }),
+        next: async () => ({ done: false, value: 1 }),
         return: async () => {
           returned = true;
 

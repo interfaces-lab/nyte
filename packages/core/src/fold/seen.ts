@@ -19,7 +19,7 @@ import { withFold } from "./reads.ts";
 
 const SEEN_DELAY = 16;
 
-export async function advanceSeen(
+async function advanceSeen(
   kernel: Kernel,
   input: {
     readonly session: SessionId;

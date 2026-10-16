@@ -159,6 +159,7 @@ import {
   UserContentSchema,
   UserStatusSchema,
   ValidationIssueSchema,
+  ViewFrameSchema,
   ViewOptionsSchema,
   WaitOutcomeSchema,
   WaitTargetSchema,
@@ -892,13 +893,19 @@ const operations = {
   ),
   "head.watch input": operation(
     OPERATIONS["head.watch"].input,
-    { ...headInput, options: { tail: 20 }, after: asSeq(12) },
-    { ...headInput, after: -1 },
+    { ...headInput, options: { tail: 20 } },
+    { ...headInput, options: { tail: "20" } },
   ),
   "head.watch output": operation(
     OPERATIONS["head.watch"].output,
-    { kind: "revision", head, tip: null, revision },
-    { kind: "revision", head, revision },
+    {
+      kind: "delta",
+      seq: asSeq(12),
+      revision,
+      messages: { runs: [0, 2, -1, 1], items: [userMessage] },
+      appends: [{ at: 1, append: "more", version: 3 }],
+    },
+    { kind: "delta", seq: asSeq(12), messages: { runs: [0, 1] } },
   ),
   "head.history input": operation(
     OPERATIONS["head.history"].input,
@@ -1893,6 +1900,17 @@ const cases = {
     { kind: "has-children" },
   ),
   ViewOptionsSchema: sample(ViewOptionsSchema, { tail: 50 }, { tail: "all" }),
+  ViewFrameSchema: sample(
+    ViewFrameSchema,
+    {
+      kind: "delta",
+      seq: asSeq(5),
+      execution: { kind: "idle", lastRun: null },
+      turns: { runs: [-1, 1], items: [turnInfo] },
+      changes: { runs: [], items: [] },
+    },
+    { kind: "delta", seq: asSeq(5), turns: { runs: [-1, 1], items: [{ id: "t" }] } },
+  ),
   UserStatusSchema: sample(
     UserStatusSchema,
     { kind: "unsent", attempts: 2, retrying: { at: 3, reason: "Offline." } },

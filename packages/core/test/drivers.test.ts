@@ -1,15 +1,6 @@
-import { asId, asSeq } from "@nyte-ai/schema";
-import type {
-  CallId,
-  HeadName,
-  Json,
-  PatchEvent,
-  RunId,
-  SessionEvent,
-  SessionId,
-  WaitTarget,
-} from "@nyte-ai/schema";
-import { describe, expect, it } from "vitest";
+import { asId } from "@nyte-ai/schema";
+import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
+import { assert, describe, expect, it } from "vitest";
 import {
   driveInProcess,
   endRun,
@@ -20,7 +11,6 @@ import {
   memoryStore,
   pollStore,
   runStep,
-  sessionEvents,
 } from "../src/index.ts";
 import type { Durable, Kernel, StoreConnection } from "../src/index.ts";
 import { isCovered } from "../src/store/session.ts";
@@ -451,38 +441,34 @@ describe("dispatch (§42p, §42s)", () => {
 });
 
 describe("poll (§42h, §42u)", () => {
-  it("brings another instance's commits to a polling kernel's session events, with their revisions", async () => {
+  it("brings another instance's commits to a polling kernel's head watch, with their revisions", async () => {
     const store = await memoryStore().open();
     const writer = await setup({ store });
     const reader = await setup({ store, poll: 10 });
     const session = await writer.host.sessions.create();
-    const seen: (SessionEvent | PatchEvent)[] = [];
-    const events = sessionEvents(reader.kernel, session.id, asSeq(0))[Symbol.asyncIterator]();
+    const views = reader.host.session(session.id).watch()[Symbol.asyncIterator]();
+    await views.next();
     const unpoll = pollStore(reader.kernel);
-
-    void (async () => {
-      for (;;) {
-        const next = await events.next();
-
-        if (next.done) return;
-        seen.push(next.value.event);
-      }
-    })();
 
     await session.send("Hello.");
     const step = writer.host.execution.advance({ session: session.id, head: main });
     (await writer.script.started(1)).finish();
     await step;
-    await until(() => (seen.some((event) => event.kind === "commit") ? true : undefined));
     const tip = await store.refs.get(headRef(session.id, main));
+    let view = await views.next();
 
-    expect(seen.filter((event) => event.kind === "input").map((event) => event.seq)).toEqual([
-      ...new Set(seen.filter((event) => event.kind === "input").map((event) => event.seq)),
-    ]);
-    expect((await reader.host.session(session.id).head(main).view()).revision).toBe(tip?.revision);
+    while (
+      view.done !== true &&
+      (view.value.heads[0]?.tip.kind !== "commit" || view.value.revision !== tip?.revision)
+    )
+      view = await views.next();
+
+    assert(view.done !== true);
+    expect(view.value.messages.map((message) => message.kind)).toContain("user");
+    expect(view.value.heads[0]?.tip).toEqual({ kind: "commit", id: tip?.target });
 
     unpoll();
-    await events.return?.();
+    await views.return?.();
   });
 
   it("wakes a wait parked in a polling kernel once another instance ends its target", async () => {

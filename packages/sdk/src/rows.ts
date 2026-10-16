@@ -16,7 +16,6 @@ import type {
   OperationInput,
   OperationName,
   OperationOutput,
-  SseFrame,
   Transport,
 } from "@nyte-ai/protocol";
 
@@ -193,7 +192,7 @@ export function createRows(transport: Transport, link: Link): Rows {
     watch: (name, input) =>
       through(
         resumable(transport, link, name, encodeInput(name, input)),
-        (frame) => decoded(name, frame.data),
+        (frame) => decoded(name, frame),
         link.signal,
       ),
     output: (input) =>
@@ -205,17 +204,17 @@ export function createRows(transport: Transport, link: Link): Rows {
   };
 }
 
+/** Returns a watch's frames across link losses: each loss reports the link and reopens the watch after a backoff, and its first frame restores the link; the host answers a reopened watch from its current state. */
 function resumable(
   transport: Transport,
   link: Link,
   name: OperationName,
   input: Json,
-): AsyncIterable<SseFrame> {
-  return closable<SseFrame>(() => {
+): AsyncIterable<Json> {
+  return closable<Json>(() => {
     const stop = new AbortController();
     const signal = AbortSignal.any([stop.signal, link.signal]);
-    let frames: AsyncIterator<SseFrame> | null = null;
-    let last: string | undefined;
+    let frames: AsyncIterator<Json> | null = null;
     let attempts = 0;
 
     const release = (): void => {
@@ -228,9 +227,9 @@ function resumable(
       async pull() {
         for (;;) {
           if (signal.aborted) return DONE;
-          const current = frames ?? transport.watch(name, input, last)[Symbol.asyncIterator]();
+          const current = frames ?? transport.frames(name, input)[Symbol.asyncIterator]();
           frames = current;
-          let next: IteratorResult<SseFrame> = DONE;
+          let next: IteratorResult<Json> = DONE;
 
           try {
             next = await current.next();
@@ -251,27 +250,12 @@ function resumable(
           }
 
           if (next.done !== true) {
-            const { id, data } = next.value;
-
-            const progressed =
-              name !== "head.watch" ||
-              (id !== null
-                ? Number(id) > Number(last ?? 0)
-                : data !== null &&
-                  typeof data === "object" &&
-                  "kind" in data &&
-                  data.kind !== "revision");
-
-            if (progressed) {
-              if (attempts > 0) {
-                dev("sdk", "watch resumed", { name, attempts, after: last ?? null });
-                link.restored();
-              }
-
-              attempts = 0;
+            if (attempts > 0) {
+              dev("sdk", "watch resumed", { name, attempts });
+              link.restored();
             }
 
-            if (id !== null && progressed) last = id;
+            attempts = 0;
 
             return next;
           }
@@ -280,7 +264,7 @@ function resumable(
 
           if (signal.aborted) return DONE;
           attempts += 1;
-          dev("sdk", "watch reconnecting", { name, attempts, after: last ?? null });
+          dev("sdk", "watch reconnecting", { name, attempts });
           link.lost();
           await backoff(link, retryDelay(attempts), signal);
         }

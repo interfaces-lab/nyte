@@ -5,7 +5,7 @@ import { main, setup } from "../../core/test/harness.ts";
 import { createHandler, createTransport } from "../src/index.ts";
 
 describe("head revisions across instances", () => {
-  it("shows the store's head revision on the view and the resumed wire after another instance's run is stopped, and an edit expecting it lands (ADV A P2)", async () => {
+  it("shows the store's head revision on the view and the wire after another instance's run is stopped, and an edit expecting it lands (ADV A P2)", async () => {
     const store = await memoryStore().open();
     const a = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
     const b = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
@@ -40,9 +40,8 @@ describe("head revisions across instances", () => {
       fetch: async (input, init) => handler(new Request(input, init)),
     });
 
-    const tail = await store.refs.tail(session.id);
     const frames = transport
-      .watch("head.watch", { session: session.id, head: main }, String(tail))
+      .frames("head.watch", { session: session.id, head: main })
       [Symbol.asyncIterator]();
 
     const frame = await frames.next();
@@ -52,11 +51,12 @@ describe("head revisions across instances", () => {
     });
 
     expect(view.revision).toBe(stored?.revision);
-    expect(frame.done !== true && frame.value.data).toEqual({
-      kind: "revision",
-      head: main,
-      tip: stored?.target,
-      revision: stored?.revision,
+    expect(frame.done !== true && frame.value).toMatchObject({
+      kind: "view",
+      view: {
+        revision: stored?.revision,
+        heads: [{ name: main, tip: { kind: "commit", id: stored?.target } }],
+      },
     });
     expect(edited.message).not.toBe(asId(""));
     await frames.return?.();

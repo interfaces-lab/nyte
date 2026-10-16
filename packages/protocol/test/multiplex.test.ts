@@ -33,7 +33,7 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
           sseFrames({
             async *[Symbol.asyncIterator]() {
               for (let index = 0; index < (path === "large" ? count : 1); index += 1)
-                yield { id: String(1039 + index), data: path === "large" ? content : "peer" };
+                yield path === "large" ? content : "peer";
             },
           }),
         ),
@@ -48,13 +48,10 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
 
     const frames = parseSse(large);
     const peers = parseSse(peer);
-    expect(await peers.next()).toEqual({ done: false, value: { id: "1039", data: "peer" } });
+    expect(await peers.next()).toEqual({ done: false, value: "peer" });
 
     for (let index = 0; index < count; index += 1)
-      expect(await frames.next()).toEqual({
-        done: false,
-        value: { id: String(1039 + index), data: content },
-      });
+      expect(await frames.next()).toEqual({ done: false, value: content });
     expect(await frames.next()).toEqual({ done: true, value: undefined });
     expect(await peers.next()).toEqual({ done: true, value: undefined });
   } finally {
@@ -189,12 +186,12 @@ it("keeps twelve watches on one response while commands and other watches contin
   });
 
   const watches = Array.from({ length: 12 }, () =>
-    transport.watch("sessions.watch", {})[Symbol.asyncIterator](),
+    transport.frames("sessions.watch", {})[Symbol.asyncIterator](),
   );
 
   try {
     const initial = await Promise.all(watches.map((watch) => watch.next()));
-    expect(initial.every((frame) => !frame.done && Array.isArray(frame.value.data))).toBe(true);
+    expect(initial.every((frame) => !frame.done && Array.isArray(frame.value))).toBe(true);
     expect([channels, open]).toEqual([1, 1]);
     const first = watches[0];
     assert(first !== undefined);
@@ -211,9 +208,7 @@ it("keeps twelve watches on one response while commands and other watches contin
 
     for (const frame of changed) {
       assert(!frame.done);
-      expect(decodeOutput("sessions.watch", frame.value.data).map((row) => row.id)).toEqual([
-        session,
-      ]);
+      expect(decodeOutput("sessions.watch", frame.value).map((row) => row.id)).toEqual([session]);
     }
 
     expect([channels, open]).toEqual([1, 1]);
@@ -330,7 +325,7 @@ it("preserves a revocation error for all logical streams", async () => {
   });
 
   const watches = Array.from({ length: 3 }, () =>
-    transport.watch("sessions.watch", {})[Symbol.asyncIterator](),
+    transport.frames("sessions.watch", {})[Symbol.asyncIterator](),
   );
 
   await Promise.all(watches.map((watch) => watch.next()));

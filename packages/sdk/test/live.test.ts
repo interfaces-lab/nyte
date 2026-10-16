@@ -1,26 +1,8 @@
 import { asId } from "@nyte-ai/schema";
-import type {
-  CommitId,
-  Json,
-  PartId,
-  RefUpdate,
-  RunId,
-  SessionId,
-  SessionView,
-} from "@nyte-ai/schema";
-import {
-  TOKEN,
-  closable,
-  envelope,
-  headRef,
-  partRef,
-  publishPatch,
-  publishSet,
-} from "@nyte-ai/core";
+import type { Json, PartId, RunId, SessionId, SessionView } from "@nyte-ai/schema";
+import { envelope, partRef, publishPatch, publishSet } from "@nyte-ai/core";
 import type { Connection, Kernel, PartRecord } from "@nyte-ai/core";
-import { createTransport, decodeInput } from "@nyte-ai/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient } from "../src/client.ts";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served, until } from "./served.ts";
@@ -48,38 +30,6 @@ async function open(): Promise<{ readonly host: Served; readonly connection: Con
   cleanups.push(() => connection.close());
 
   return { host, connection };
-}
-
-async function land(kernel: Kernel, session: SessionId, text: string): Promise<CommitId> {
-  const ref = await kernel.store.refs.get(headRef(session, main));
-  const parent = ref === null || ref.target === null ? null : asId<"commit">(ref.target);
-  const at = Date.now();
-
-  const body = {
-    kind: "user",
-    message: asId<"message">(crypto.randomUUID()),
-    content: text,
-    source: { kind: "user" },
-    delivery: "steer",
-    siblings: [],
-  } as const;
-
-  const id = asId<"commit">(
-    await kernel.store.objects.put(envelope("commit", { parent, at, run: null, body }, at)),
-  );
-
-  const updates: readonly RefUpdate[] = [
-    {
-      name: headRef(session, main),
-      target: asId<"object">(id),
-      expect: ref === null ? "absent" : ref.revision,
-      event: { head: main, kind: "commit", id, parent, run: null, body } as const,
-    },
-  ];
-
-  await publishSet(kernel, updates, await kernel.store.refs.set(updates));
-
-  return id;
 }
 
 async function livePart(
@@ -174,41 +124,6 @@ function markdown(view: SessionView, part: PartId): string | null {
 }
 
 describe("live parts across a reconnect", () => {
-  it("replays evicted histories while recent inactive heads resume and retain their messages", async () => {
-    const { host, connection } = await open();
-    const sessions = [];
-    const requests: { readonly session: SessionId; readonly after: number | null }[] = [];
-
-    host.intercept(async (request, next) => {
-      if (operationOf(request) === "head.watch") {
-        const input = decodeInput("head.watch", await request.clone().json());
-        requests.push({ session: input.session, after: input.after ?? null });
-      }
-
-      return next(request);
-    });
-
-    for (let index = 0; index < 20; index += 1) {
-      const session = await connection.sessions.create();
-      sessions.push(session);
-      await land(host.host.kernel, session.id, index === 0 ? "Oldest chat." : "Recent chat.");
-      await until(session.watch(), (view) => view.messages.length === 1);
-    }
-
-    const first = sessions[0];
-    const recent = sessions.at(-1);
-
-    if (first === undefined || recent === undefined) throw new Error("No sessions were created.");
-    const restored = await until(first.watch(), (view) => view.messages.length === 1);
-    expect(restored.messages[0]).toMatchObject({ kind: "user", content: "Oldest chat." });
-    expect(requests.at(-1)).toEqual({ session: first.id, after: null });
-
-    const resumed = await until(recent.watch(), (view) => view.messages.length === 1);
-    expect(resumed.messages[0]).toMatchObject({ kind: "user", content: "Recent chat." });
-    expect(requests.at(-1)?.session).toBe(recent.id);
-    expect(requests.at(-1)?.after).toBeGreaterThan(0);
-  });
-
   it("resumes a head.watch with the text a part streamed while the link was down, from any publisher (ADV F P4, §54b)", async () => {
     const host = await served();
     cleanups.push(() => host.close());
@@ -349,96 +264,5 @@ describe("live parts across a reconnect", () => {
     });
 
     expect(opens).toBe(2);
-  });
-
-  it("shows a landed tip only with its own revision when the pair frame is held on the wire (AUDIT-D1-2 delayed frame, §54a)", async () => {
-    const { host, connection } = await open();
-    const created = await connection.sessions.create();
-    const kernel = host.host.kernel;
-    const transport = createTransport({
-      url: BASE,
-      headers: async () => ({ Authorization: `Bearer ${TOKEN_SECRET}` }),
-      fetch: host.fetch,
-    });
-
-    let armed = false;
-
-    const client = createClient(
-      {
-        ...transport,
-        watch(name, input, last) {
-          const source = transport.watch(name, input, last);
-
-          if (name !== "head.watch") return source;
-
-          return closable(() => {
-            const iterator = source[Symbol.asyncIterator]();
-
-            return {
-              async pull() {
-                const next = await iterator.next();
-
-                if (
-                  next.done !== true &&
-                  armed &&
-                  JSON.stringify(next.value.data).includes('"kind":"revision"')
-                ) {
-                  armed = false;
-                  await new Promise((resolve) => setTimeout(resolve, 100));
-                }
-
-                return next;
-              },
-              async close() {
-                await iterator.return?.();
-              },
-            };
-          });
-        },
-      },
-      {
-        hostId: kernel.hostId,
-        principal: TOKEN,
-        credential: { kind: "token", token: TOKEN_SECRET },
-        journal: createSendJournal(),
-        journaled: [],
-      },
-    );
-
-    cleanups.push(() => client.close());
-    const session = client.session(created.id);
-    const old = await land(kernel, created.id, "Old.");
-    const tipOf = (view: SessionView) => {
-      const tip = view.heads[0]?.tip;
-
-      return tip?.kind === "commit" ? tip.id : null;
-    };
-
-    const views = session.watch()[Symbol.asyncIterator]();
-    const next = async (tip: CommitId): Promise<SessionView> => {
-      for (;;) {
-        const step = await views.next();
-
-        if (step.done === true) throw new Error("The watch ended.");
-
-        if (tipOf(step.value) === tip) return step.value;
-      }
-    };
-
-    await next(old);
-    armed = true;
-    const fresh = await land(kernel, created.id, "New.");
-    const shown = await next(fresh);
-    const stored = await kernel.store.refs.get(headRef(created.id, main));
-
-    expect(shown.revision).toBe(stored?.revision);
-    expect(
-      (
-        await (
-          await session.move({ kind: "start" }, { expect: shown.revision ?? undefined })
-        ).settled()
-      ).kind,
-    ).toBe("moved");
-    await views.return?.();
   });
 });

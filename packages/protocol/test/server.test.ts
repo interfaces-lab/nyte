@@ -1,5 +1,5 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { HeadName } from "@nyte-ai/schema";
+import type { HeadName, Json } from "@nyte-ai/schema";
 import {
   SdkError,
   decodeSeenRecord,
@@ -20,7 +20,6 @@ import {
   parseSse,
   withInputHeader,
 } from "../src/index.ts";
-import type { SseFrame } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
 import { endless, post, served } from "./fakes.ts";
 
@@ -37,11 +36,8 @@ async function errorOf(response: Response) {
   return decodeError(parseJson(await response.text()), response.status);
 }
 
-async function until(
-  response: Response,
-  done: (frame: SseFrame) => boolean,
-): Promise<readonly SseFrame[]> {
-  const frames: SseFrame[] = [];
+async function until(response: Response, done: (frame: Json) => boolean): Promise<readonly Json[]> {
+  const frames: Json[] = [];
 
   assert(response.body !== null);
 
@@ -54,15 +50,22 @@ async function until(
   return frames;
 }
 
-function kindOf(frame: SseFrame): string | null {
-  const data = frame.data;
-
-  return typeof data === "object" &&
-    data !== null &&
-    "kind" in data &&
-    typeof data.kind === "string"
-    ? data.kind
+function kindOf(frame: Json): string | null {
+  return typeof frame === "object" &&
+    frame !== null &&
+    "kind" in frame &&
+    typeof frame.kind === "string"
+    ? frame.kind
     : null;
+}
+
+async function firstView(response: Response) {
+  const [first] = await until(response, () => true);
+  const frame = decodeOutput("head.watch", first);
+
+  assert(frame.kind === "view");
+
+  return frame.view;
 }
 
 function changed(change: (opened: StoreConnection) => StoreConnection): Store {
@@ -87,7 +90,7 @@ async function sent(handler: (request: Request) => Promise<Response>) {
 }
 
 describe("handler", () => {
-  it("creates, sends, streams the session's events with ids on logged ones, and settles", async () => {
+  it("creates, sends, settles, and streams the head's view whole first, marking its tip seen", async () => {
     const { handler, fake, host } = await served();
     fake.reply("Hello there.");
     const { session, receipt } = await sent(handler);
@@ -101,115 +104,14 @@ describe("handler", () => {
     const watch = await post(handler, "head.watch", { session, head: main });
 
     expect(watch.headers.get("Content-Type")).toBe("text/event-stream");
-    const frames = await until(watch, (frame) => kindOf(frame) === "catalog");
-    const logged = frames.filter((frame) => frame.id !== null);
-
-    expect(logged.length).toBeGreaterThan(3);
-
-    for (const frame of logged) expect(frame.data).toMatchObject({ seq: Number(frame.id) });
-    expect(frames.slice(-2).map((frame) => [kindOf(frame), frame.id])).toEqual([
-      ["activation", null],
-      ["catalog", null],
-    ]);
-    expect(frames.map(kindOf)).toContain("run");
-    expect(frames.some((frame) => JSON.stringify(frame.data).includes('"change":"ended"'))).toBe(
-      true,
-    );
-    await expect
-      .poll(() => host.kernel.store.refs.get(seenRef(session, asId("ada"), main)))
-      .not.toBeNull();
-  });
-
-  it("sends each head's ref pair first and after each commit, with no id (§40s, §54a)", async () => {
-    const { handler, fake, host } = await served();
-    fake.reply("Landed.");
-    const { session, receipt } = await sent(handler);
-    await post(handler, "receipt.settled", { session, receipt });
+    const view = await firstView(watch);
     const ref = await host.kernel.store.refs.get(headRef(session, main));
-    const frames = await until(
-      await post(handler, "head.watch", { session, head: main }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-    const landing = frames.findIndex(
-      (frame) => kindOf(frame) === "commit" && JSON.stringify(frame.data).includes('"kind":"user"'),
-    );
-    const pair = { kind: "revision", head: main, tip: ref?.target, revision: ref?.revision };
+    const tip = view.heads[0]?.tip;
 
-    assert(ref !== null && landing > 0);
-    expect(frames[0]).toEqual({ id: null, data: pair });
-    expect(frames[landing + 1]).toEqual({ id: null, data: pair });
-    expect(
-      frames.every(
-        (frame, index) =>
-          kindOf(frame) !== "commit" || kindOf(frames[index + 1] ?? frame) === "revision",
-      ),
-    ).toBe(true);
-  });
-
-  it("sends the watched head's pair as the first frame, not another head's (§54a)", async () => {
-    const { handler, fake, host } = await served();
-    fake.reply("Landed.");
-    const { session, receipt } = await sent(handler);
-    await post(handler, "receipt.settled", { session, receipt });
-    const side: HeadName = asId("side");
-    await host.session(session).heads.create(side);
-    const ref = await host.kernel.store.refs.get(headRef(session, side));
-    const frames = await until(
-      await post(handler, "head.watch", { session, head: side }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-
-    assert(ref !== null);
-    expect(frames[0]?.data).toEqual({
-      kind: "revision",
-      head: side,
-      tip: ref.target,
-      revision: ref.revision,
-    });
-    expect(kindOf(frames[1] ?? { id: null, data: null })).not.toBe("revision");
-  });
-
-  it("resumes a watch after Last-Event-ID from the log", async () => {
-    const { handler, fake } = await served();
-    fake.reply("One.");
-    const { session, receipt } = await sent(handler);
-    await post(handler, "receipt.settled", { session, receipt });
-
-    const first = await until(
-      await post(handler, "head.watch", { session, head: main }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-    const ids = first.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-    const resume = ids[2];
-
-    assert(resume !== undefined);
-    const resumed = await until(
-      await post(handler, "head.watch", { session, head: main }, { "Last-Event-ID": resume }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-
-    const replayed = resumed.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-
-    expect(replayed.slice(0, ids.length - 3)).toEqual(ids.slice(3));
-    expect(
-      replayed.slice(ids.length - 3).map((id) => resumed.find((frame) => frame.id === id)?.data),
-    ).toEqual([expect.objectContaining({ kind: "seen", principal: "ada" })]);
-  });
-
-  it("moves the seen mark for tips forwarded live, never for replayed history (§40x)", async () => {
-    const { handler, fake, host } = await served();
-    fake.reply("One.", "Two.");
-    const { session, receipt } = await sent(handler);
-    await post(handler, "receipt.settled", { session, receipt });
-
-    const again = decodeOutput(
-      "head.send",
-      await (await post(handler, "head.send", { session, head: main, content: "Again." })).json(),
-    );
-
-    await post(handler, "receipt.settled", { session, receipt: again.receipt });
-
-    const tip = (await host.kernel.store.refs.get(headRef(session, main)))?.target;
+    expect(view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
+    expect(view.execution.kind).toBe("idle");
+    expect(view.revision).toBe(ref?.revision);
+    expect(tip?.kind === "commit" ? tip.id : null).toBe(ref?.target);
 
     const seen = async () => {
       const target =
@@ -220,24 +122,24 @@ describe("handler", () => {
         : decodeSeenRecord(await host.kernel.store.objects.get(target))?.commit;
     };
 
-    await until(
-      await post(handler, "head.watch", { session, head: main }),
-      (frame) => kindOf(frame) === "catalog",
+    await expect.poll(seen).toBe(ref?.target);
+  });
+
+  it("sends the watched head's view with that head's revision, not another head's (§54a)", async () => {
+    const { handler, fake, host } = await served();
+    fake.reply("Landed.");
+    const { session, receipt } = await sent(handler);
+    await post(handler, "receipt.settled", { session, receipt });
+    const side: HeadName = asId("side");
+    await host.session(session).heads.create(side);
+    const ref = await host.kernel.store.refs.get(headRef(session, side));
+    const view = await firstView(await post(handler, "head.watch", { session, head: side }));
+
+    assert(ref !== null);
+    expect(view.revision).toBe(ref.revision);
+    expect(view.revision).not.toBe(
+      (await host.kernel.store.refs.get(headRef(session, main)))?.revision,
     );
-    await expect.poll(seen).toBe(tip);
-
-    const controller = new AbortController();
-
-    const replayed = await until(
-      await post(handler, "head.watch", { session, head: main }, undefined, controller.signal),
-      (frame) => kindOf(frame) === "commit",
-    );
-
-    controller.abort();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(replayed.at(-1)?.data).not.toMatchObject({ id: tip });
-    expect(await seen()).toBe(tip);
   });
 
   it("writes a dev line when a seen mark fails, instead of swallowing it (ADV C 9)", async () => {
@@ -262,14 +164,13 @@ describe("handler", () => {
       fake.reply("Seen.");
       const { session, receipt } = await sent(handler);
       await post(handler, "receipt.settled", { session, receipt });
-      await until(
-        await post(handler, "head.watch", { session, head: main }),
-        (frame) => kindOf(frame) === "catalog",
-      );
+      await firstView(await post(handler, "head.watch", { session, head: main }));
 
       await expect
-        .poll(() => lines.filter((line) => line.startsWith("DEV:binding seen failed")))
-        .toEqual([`DEV:binding seen failed {"session":"${session}","head":"main"}`]);
+        .poll(() => lines.filter((line) => line.startsWith("DEV:watch seen failed")))
+        .toEqual([
+          `DEV:watch seen failed {"session":"${session}","head":"main","error":"Error: The seen write was refused."}`,
+        ]);
     } finally {
       dev.sink = sink;
     }
@@ -367,9 +268,7 @@ describe("handler", () => {
 
     assert(response.body !== null);
     const frames = parseSse(response.body)[Symbol.asyncIterator]();
-    let frame = await frames.next();
-
-    while (frame.done !== true && kindOf(frame.value) !== "catalog") frame = await frames.next();
+    await frames.next();
     controller.abort(new SdkError("unauthenticated", "The principal was revoked."));
 
     await expect(
@@ -488,8 +387,8 @@ describe("handler", () => {
     const scan = await post(handler, "files.scan", { workspace });
     const frames = await until(scan, (frame) => kindOf(frame) === "complete");
 
-    expect(frames.map((frame) => frame.id)).toEqual([null, null]);
-    expect(frames[0]?.data).toMatchObject({ kind: "entries", entries: [{ path: "notes.txt" }] });
+    expect(frames).toHaveLength(2);
+    expect(frames[0]).toMatchObject({ kind: "entries", entries: [{ path: "notes.txt" }] });
   });
 
   it("frames a job's output end to end through the environment's exec", async () => {
@@ -518,11 +417,11 @@ describe("handler", () => {
     host.kernel.partDefinitions.register(question, null);
     const view = await until(await post(handler, "connection.watch", {}), () => true);
 
-    expect(view[0]?.data).toMatchObject({
+    expect(view[0]).toMatchObject({
       id: host.hostId,
       authority: ["participant", "owner", "maintenance"],
     });
-    expect(view[0]?.data).toHaveProperty("principal");
+    expect(view[0]).toHaveProperty("principal");
 
     const { session } = decodeOutput(
       "sessions.create",

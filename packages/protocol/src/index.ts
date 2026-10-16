@@ -4,3 +4,4 @@ export * from "./codec.ts";
 export * from "./declarations.ts";
 export * from "./server.ts";
 export * from "./wire.ts";
+export * from "./view-frames.ts";

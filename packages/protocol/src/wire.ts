@@ -15,9 +15,6 @@ export const errorStatus = {
   unavailable: 503,
 } as const satisfies Record<SdkErrorCode, number> satisfies Record<SdkErrorWire["code"], number>;
 
-/** One frame of a server-sent event stream: a logged event's seq as its id, or null, and its JSON data. */
-export type SseFrame = { readonly id: string | null; readonly data: Json };
-
 /** Names the request header that carries an operation's JSON input when the body carries its bytes. */
 export const INPUT_HEADER = "X-Nyte-Input";
 
@@ -69,9 +66,9 @@ export function statusCode(status: number): SdkErrorCode {
   return "internal";
 }
 
-/** Frames JSON values as server-sent events: `id:` when the frame has one (a logged event's seq), then `data:` with the JSON; a `: ping` comment every `heartbeatMs` while it waits; an error the source throws is the last frame, an `error` event carrying the wire error. Cancelling the stream returns the source. */
+/** Frames JSON values as server-sent events, each one `data:` line; a `: ping` comment every `heartbeatMs` while it waits; an error the source throws is the last frame, an `error` event carrying the wire error. Cancelling the stream returns the source. */
 export function sseFrames(
-  source: AsyncIterable<SseFrame>,
+  source: AsyncIterable<Json>,
   options?: { readonly heartbeatMs?: number },
 ): ReadableStream<Uint8Array> {
   const iterator = source[Symbol.asyncIterator]();
@@ -96,8 +93,7 @@ export function sseFrames(
           return;
         }
 
-        const id = next.value.id === null ? "" : `id: ${next.value.id}\n`;
-        controller.enqueue(encoder.encode(`${id}data: ${JSON.stringify(next.value.data)}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
       } catch (error) {
         clearInterval(timer);
         const wire = JSON.stringify(encodeError(asSdkError(error)));
@@ -112,8 +108,8 @@ export function sseFrames(
   });
 }
 
-/** Parses a server-sent event stream into its frames: each one's id, or null, and its JSON data; comments are skipped, and an `error` event throws the `SdkError` it carries. Returning early cancels the stream. */
-export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+/** Parses a server-sent event stream into each frame's JSON data; comments and any other field are skipped, and an `error` event throws the `SdkError` it carries. Returning early cancels the stream. */
+export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<Json> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -128,7 +124,7 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
       for (const block of blocks) {
         const frame = frameOf(block);
 
-        if (frame !== null) yield frame;
+        if (frame !== null) yield frame.data;
       }
 
       if (read.done) return;
@@ -328,8 +324,7 @@ function isCode(code: string): code is SdkErrorCode {
   return Object.hasOwn(errorStatus, code);
 }
 
-function frameOf(block: string): SseFrame | null {
-  let id: string | null = null;
+function frameOf(block: string): { readonly data: Json } | null {
   let event = "message";
   const data: string[] = [];
 
@@ -339,8 +334,7 @@ function frameOf(block: string): SseFrame | null {
     const field = colon < 0 ? line : line.slice(0, colon);
     const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
 
-    if (field === "id") id = value;
-    else if (field === "event") event = value;
+    if (field === "event") event = value;
     else if (field === "data") data.push(value);
   }
 
@@ -349,7 +343,7 @@ function frameOf(block: string): SseFrame | null {
 
   if (event === "error") throw decodeError(json);
 
-  return { id, data: json };
+  return { data: json };
 }
 
 function controlOf(value: Json): OutputFrame | null {

@@ -6,6 +6,7 @@ import type {
   Authority,
   ExecutionCoverage,
   HeadName,
+  Json,
   Owned,
   PrincipalId,
   ReceiptId,
@@ -14,7 +15,6 @@ import type {
 import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
 import { SdkError, memoryStore } from "@nyte-ai/core";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
-import type { SseFrame } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
@@ -81,22 +81,17 @@ async function codeOf(response: Response): Promise<string> {
   return decodeError(JSON.parse(await response.text()), response.status).code;
 }
 
-function kindOf(frame: SseFrame): string | null {
-  const data = frame.data;
-
-  return typeof data === "object" &&
-    data !== null &&
-    "kind" in data &&
-    typeof data.kind === "string"
-    ? data.kind
+function kindOf(frame: Json): string | null {
+  return typeof frame === "object" &&
+    frame !== null &&
+    "kind" in frame &&
+    typeof frame.kind === "string"
+    ? frame.kind
     : null;
 }
 
-async function until(
-  response: Response,
-  done: (frame: SseFrame) => boolean,
-): Promise<readonly SseFrame[]> {
-  const frames: SseFrame[] = [];
+async function until(response: Response, done: (frame: Json) => boolean): Promise<readonly Json[]> {
+  const frames: Json[] = [];
   assert(response.body !== null);
 
   for await (const frame of parseSse(response.body)) {
@@ -145,7 +140,7 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   ]);
 }
 
-async function endOf(frames: AsyncIterator<SseFrame>): Promise<string> {
+async function endOf(frames: AsyncIterator<Json>): Promise<string> {
   try {
     while ((await frames.next()).done !== true);
 
@@ -246,11 +241,10 @@ describe("listen", () => {
         headers: async () => ({ Authorization: `Bearer ${token}` }),
         fetch: async (input, init) => listener.fetch(new Request(input, init)),
       });
-      const frames = transport.watch("head.watch", { session, head: main })[Symbol.asyncIterator]();
-      let seen = (await frames.next()).value;
-
-      while (seen !== undefined && kindOf(seen) !== "catalog") seen = (await frames.next()).value;
-      expect(seen).toBeDefined();
+      const frames = transport
+        .frames("head.watch", { session, head: main })
+        [Symbol.asyncIterator]();
+      expect(kindOf((await frames.next()).value ?? null)).toBe("view");
 
       return frames;
     };
@@ -262,19 +256,19 @@ describe("listen", () => {
     await host.principals.revoke(id);
 
     expect(await within(endOf(revoked), 100)).toBe("unauthenticated");
-    await post(listener, "session.update", { session, patch: { name: "Renamed" } });
+    await post(listener, "head.send", { session, head: main, content: "Still here." });
 
-    const renamed = within(
+    const delivered = within(
       (async () => {
         for (let next = await kept.next(); next.done !== true; next = await kept.next())
-          if (kindOf(next.value) === "session") return next.value.id;
+          if (JSON.stringify(next.value).includes("Still here.")) return kindOf(next.value);
 
         return "ended";
       })(),
       1_000,
     );
 
-    expect(await renamed).toBe("3");
+    expect(await delivered).toBe("delta");
     await kept.return?.(undefined);
   });
 
@@ -325,10 +319,7 @@ describe("listen", () => {
 
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    let frame = (await frames.next()).value;
-
-    while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
-    expect(frame).toBeDefined();
+    expect(kindOf((await frames.next()).value ?? null)).toBe("view");
 
     const ended = endOf(frames);
 
@@ -367,10 +358,7 @@ describe("listen", () => {
     expect(watch.headers.get("X-Nyte-Credential")).not.toBeNull();
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    let frame = (await frames.next()).value;
-
-    while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
-    expect(frame).toBeDefined();
+    expect(kindOf((await frames.next()).value ?? null)).toBe("view");
 
     const ended = endOf(frames);
     const [paired] = await other.principals.list();
@@ -569,7 +557,7 @@ describe("listen", () => {
     expect([response.status, await codeOf(response)]).toEqual([413, "invalid"]);
   });
 
-  it("serves over node:http and resumes a head.watch stream after Last-Event-ID", async () => {
+  it("serves a head.watch over node:http, the head's whole view first", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Hello there." }] });
     const listener = await serve(await compose(fake), { transport: { kind: "http" } });
@@ -581,24 +569,15 @@ describe("listen", () => {
     const settled = await post(address, "receipt.settled", { session, receipt });
     expect(await json(settled)).toMatchObject({ kind: "completed" });
 
-    const first = await until(
+    const [first] = await until(
       await post(address, "head.watch", { session, head: main }),
-      (frame) => kindOf(frame) === "catalog",
+      () => true,
     );
 
-    const ids = first.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-    const resume = ids[2];
-    assert(resume !== undefined && ids.length > 3);
-
-    const resumed = await until(
-      await post(address, "head.watch", { session, head: main }, { "Last-Event-ID": resume }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-
-    const replayed = resumed.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-
-    expect(replayed.slice(0, ids.length - 3)).toEqual(ids.slice(3));
-    expect(replayed.every((id) => Number(id) > Number(resume))).toBe(true);
+    expect(first).toMatchObject({
+      kind: "view",
+      view: { messages: [{ kind: "user", content: "Hi." }, { kind: "part" }] },
+    });
   });
 
   it("streams events as they happen over node:http without buffering, and disconnects clients", async () => {
@@ -621,7 +600,8 @@ describe("listen", () => {
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
     let seen = (await frames.next()).value;
 
-    while (seen !== undefined && kindOf(seen) !== "run") seen = (await frames.next()).value;
+    while (seen !== undefined && !JSON.stringify(seen).includes('"kind":"live"'))
+      seen = (await frames.next()).value;
     expect(seen).toBeDefined();
 
     listener.disconnectClients();

@@ -1,7 +1,6 @@
 import { SdkError } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
 import { HOST_HEADER, createTransport, decodeOutput, outputFrames } from "../src/index.ts";
-import type { SseFrame } from "../src/index.ts";
 import { served } from "./fakes.ts";
 import { createStreamChannels } from "../src/stream-server.ts";
 import { CHANNEL_PATH, CHANNEL_HEADER, STREAM_HEADER } from "../src/stream-channel.ts";
@@ -31,14 +30,8 @@ async function take<T>(
   return values;
 }
 
-function kindOf(frame: SseFrame): unknown {
-  return typeof frame.data === "object" && frame.data !== null && "kind" in frame.data
-    ? frame.data.kind
-    : null;
-}
-
 describe("transport", () => {
-  it("invokes a row, watches it, resumes after an id, and rethrows errors as SdkError", async () => {
+  it("invokes a row, watches it, and rethrows errors as SdkError", async () => {
     const { transport, fake } = await served();
     const owner = transport("Bearer owner");
     fake.reply("Hello.");
@@ -54,23 +47,11 @@ describe("transport", () => {
       kind: "completed",
     });
 
-    const first = await take(
-      owner.watch("head.watch", { session, head: "main" }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-    const ids = first.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-    const last = ids.at(-1);
+    const [first] = await take(owner.frames("head.watch", { session, head: "main" }), () => true);
+    const frame = decodeOutput("head.watch", first);
 
-    assert(last !== undefined);
-    const resumed = await take(
-      owner.watch("head.watch", { session, head: "main" }, last),
-      (frame) => kindOf(frame) === "catalog",
-    );
-
-    expect(resumed.every((frame) => frame.id === null || Number(frame.id) > Number(last))).toBe(
-      true,
-    );
-    expect(resumed.map(kindOf).slice(-2)).toEqual(["activation", "catalog"]);
+    assert(frame.kind === "view");
+    expect(frame.view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
 
     const denied = await failure(() => transport("Bearer guest").invoke("principals.list", {}));
     const unknown = await failure(() => owner.invoke("session.info", { session: "nope" }));
@@ -88,32 +69,30 @@ describe("transport", () => {
     const { transport, host } = await served();
     const owner = transport("Bearer owner");
     const { session } = decodeOutput("sessions.create", await owner.invoke("sessions.create", {}));
-    const { bus } = host.kernel;
-    const subscribe = bus.subscribe.bind(bus);
-    let subscribed = 0;
+    const { folds } = host.kernel;
+    const acquire = folds.acquire.bind(folds);
+    let held = 0;
 
-    bus.subscribe = (id, listener) => {
-      const dispose = subscribe(id, listener);
-      let disposed = false;
-      subscribed += 1;
+    folds.acquire = (id, principal) => {
+      const hold = acquire(id, principal);
+      let released = false;
+      held += 1;
 
-      return () => {
-        if (!disposed) subscribed -= 1;
-        disposed = true;
-        dispose();
+      return {
+        ...hold,
+        release() {
+          if (!released) held -= 1;
+          released = true;
+          hold.release();
+        },
       };
     };
 
-    const watch = owner.watch("head.watch", { session, head: "main" })[Symbol.asyncIterator]();
-
-    for (;;) {
-      const next = await watch.next();
-
-      if (next.done === true || kindOf(next.value) === "catalog") break;
-    }
+    const watch = owner.frames("head.watch", { session, head: "main" })[Symbol.asyncIterator]();
+    await watch.next();
 
     assert(watch.return !== undefined);
-    expect(subscribed).toBe(1);
+    expect(held).toBe(1);
 
     const pending = watch.next();
 
@@ -124,7 +103,7 @@ describe("transport", () => {
 
     expect(returned).toBe("returned");
     expect(await pending).toEqual({ done: true, value: undefined });
-    await expect.poll(() => subscribed).toBe(0);
+    await expect.poll(() => held).toBe(0);
   });
 
   it("uploads bytes, reads them back with their version, and streams frames", async () => {

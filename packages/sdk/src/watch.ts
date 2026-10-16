@@ -4,73 +4,49 @@ import type {
   HostView,
   HostViewWire,
   Message,
-  PrincipalId,
   SessionId,
   SessionView,
   ViewOptions,
 } from "@nyte-ai/schema";
-import { closable, coalesce, emptyFold, fold, project, withPair } from "@nyte-ai/core";
-import type { FoldState } from "@nyte-ai/core";
-import type { OperationOutput } from "@nyte-ai/protocol";
+import { closable, coalesce } from "@nyte-ai/core";
+import { applyViewFrame } from "@nyte-ai/protocol";
 import type { JournalLoop } from "./journal.ts";
 import type { Rows } from "./rows.ts";
 
 export type Sink<T> = {
   next(value: T): void;
   end(): void;
-  fail(error: unknown): void;
+  fail(error: Error): void;
 };
 
 const DONE = { done: true, value: undefined } as const;
 
-const PARKED_FOLDS = 16;
-
-const PARKED_LINGER = 30_000;
-
-export interface FoldHold {
-  state(): FoldState | null;
-  subscribe(sink: Sink<FoldState>): Disposer;
+/** One `head.watch` shared by every watcher of a head in this client: the latest view and its subscribers. */
+export interface ViewHold {
+  view(): SessionView | null;
+  subscribe(sink: Sink<SessionView>): Disposer;
 }
 
-export interface Folds {
-  acquire(session: SessionId, head: HeadName): FoldHold;
+/** Returns the client's open `head.watch`es, one per head and tail, each closed when its last watcher leaves. */
+export interface HeadViews {
+  acquire(session: SessionId, head: HeadName, options?: ViewOptions): ViewHold;
 }
 
-export function createFolds(rows: Rows, principal: PrincipalId): Folds {
-  const open = new Map<string, FoldHold>();
+/** Returns the head watches of one client over `rows`: a hold applies the host's frames in order, a reconnect starting again from the whole view the host sends. */
+export function createHeadViews(rows: Rows): HeadViews {
+  const open = new Map<string, ViewHold>();
 
-  const parked = new Map<
-    string,
-    { readonly state: FoldState; readonly timer: ReturnType<typeof setTimeout> }
-  >();
+  const start = (
+    key: string,
+    session: SessionId,
+    head: HeadName,
+    options: ViewOptions | undefined,
+  ): ViewHold => {
+    const sinks = new Set<Sink<SessionView>>();
+    let view: SessionView | null = null;
+    const frames = rows.watch("head.watch", { session, head, options })[Symbol.asyncIterator]();
 
-  rows.link.signal.addEventListener(
-    "abort",
-    () => {
-      for (const entry of parked.values()) clearTimeout(entry.timer);
-      parked.clear();
-    },
-    { once: true },
-  );
-
-  const start = (session: SessionId, head: HeadName, key: string): FoldHold => {
-    const sinks = new Set<Sink<FoldState>>();
-    const resumed = parked.get(key);
-    clearTimeout(resumed?.timer);
-    parked.delete(key);
-    let state = resumed?.state ?? emptyFold({ session, principal });
-    let live = false;
-    let unpaired = false;
-    let closed = false;
-
-    const frames = rows
-      .watch(
-        "head.watch",
-        resumed === undefined ? { session, head } : { session, head, after: resumed.state.seq },
-      )
-      [Symbol.asyncIterator]();
-
-    const finish = (end: (sink: Sink<FoldState>) => void): void => {
+    const finish = (end: (sink: Sink<SessionView>) => void): void => {
       if (open.get(key) === hold) open.delete(key);
 
       for (const sink of sinks) end(sink);
@@ -81,24 +57,21 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
         for (;;) {
           const next = await frames.next();
 
-          if (next.done === true || closed) break;
-          const frame = next.value;
-          state = applied(state, frame);
+          if (next.done === true) break;
+          const current = applyViewFrame(view, next.value);
+          view = current;
 
-          if (frame.kind === "patch" || (frame.kind !== "revision" && frame.seq === 0)) live = true;
-          unpaired = (frame.kind === "commit" || frame.kind === "head") && frame.head !== null;
-
-          if (live && !unpaired) for (const sink of sinks) sink.next(state);
+          for (const sink of sinks) sink.next(current);
         }
 
         finish((sink) => sink.end());
       } catch (error) {
-        finish((sink) => sink.fail(error));
+        finish((sink) => sink.fail(error instanceof Error ? error : new Error(String(error))));
       }
     })();
 
-    const hold: FoldHold = {
-      state: () => (live ? state : null),
+    const hold: ViewHold = {
+      view: () => view,
       subscribe(sink) {
         sinks.add(sink);
 
@@ -106,25 +79,8 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
           sinks.delete(sink);
 
           if (sinks.size > 0) return;
-          closed = true;
 
-          if (open.get(key) === hold) {
-            open.delete(key);
-
-            if (live && !rows.link.signal.aborted) {
-              const timer = setTimeout(() => parked.delete(key), PARKED_LINGER);
-
-              if (typeof timer === "object") timer.unref();
-              parked.set(key, { state, timer });
-
-              for (const [oldest, entry] of parked) {
-                if (parked.size <= PARKED_FOLDS) break;
-                clearTimeout(entry.timer);
-                parked.delete(oldest);
-              }
-            }
-          }
-
+          if (open.get(key) === hold) open.delete(key);
           void frames.return?.();
         };
       },
@@ -134,12 +90,12 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
   };
 
   return {
-    acquire(session, head) {
-      const key = JSON.stringify([session, head]);
+    acquire(session, head, options) {
+      const key = JSON.stringify([session, head, options?.tail ?? null]);
       const known = open.get(key);
 
       if (known !== undefined) return known;
-      const created = start(session, head, key);
+      const created = start(key, session, head, options);
       open.set(key, created);
 
       return created;
@@ -147,8 +103,9 @@ export function createFolds(rows: Rows, principal: PrincipalId): Folds {
   };
 }
 
+/** Returns a head's views from its shared hold, each with the journal's unsent messages for the head merged in. */
 export function watchHead(
-  folds: Folds,
+  views: HeadViews,
   journal: JournalLoop,
   input: {
     readonly session: SessionId;
@@ -159,25 +116,20 @@ export function watchHead(
   return coalesce(
     pushed<SessionView>((sink) => {
       const { session, head, options } = input;
-      const hold = folds.acquire(session, head);
+      const hold = views.acquire(session, head, options);
       let shown: SessionView | null = null;
 
       const emit = (): void => {
-        const state = hold.state();
+        const view = hold.view();
 
-        if (state === null) return;
-        const known = (id: Message["id"]): boolean => state.messages.has(id);
-        journal.landed(known);
+        if (view === null) return;
+        journal.landed(session, head, view);
+        const ids = new Set(view.messages.map((message) => message.id));
+        const next = withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
 
-        const view = withUnsent(
-          project(state, head, options),
-          journal.unsent(session, head),
-          known,
-        );
-
-        if (view === shown) return;
-        shown = view;
-        sink.next(view);
+        if (next === shown) return;
+        shown = next;
+        sink.next(next);
       };
 
       const leave = hold.subscribe({
@@ -215,7 +167,7 @@ export function watchHost(rows: Rows): AsyncIterable<HostView> {
 
           sink.end();
         } catch (error) {
-          sink.fail(error);
+          sink.fail(error instanceof Error ? error : new Error(String(error)));
         }
       })();
 
@@ -259,14 +211,6 @@ export function withUnsent(
   };
 }
 
-function applied(state: FoldState, frame: OperationOutput<"head.watch">): FoldState {
-  if (frame.kind === "revision") return withPair(state, frame.head, frame);
-
-  if (frame.kind !== "patch" && frame.seq > 0 && frame.seq <= state.seq) return state;
-
-  return fold(state, frame);
-}
-
 function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
   return {
     id: wire.id,
@@ -284,7 +228,7 @@ function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
 function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
   return closable<T>(() => {
     let slot: { readonly value: T } | null = null;
-    let ending: { readonly error: unknown } | "ended" | null = null;
+    let ending: { readonly error: Error } | "ended" | null = null;
     let wake: (() => void) | null = null;
 
     const signal = (): void => {

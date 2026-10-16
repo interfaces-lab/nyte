@@ -93,3 +93,30 @@ export type TurnInfo = {
     readonly removed: number;
   };
 };
+
+/** One array of a view as the previous frame's array spliced: `runs` holds `[from, count]` pairs, each copying `count` items of the previous array from `from`, or with `from` -1 taking the next `count` of `items`. */
+export type ViewSplice<T> = { readonly runs: readonly number[]; readonly items: readonly T[] };
+
+/** Text a streaming part streamed since the previous frame: the message at `at` of the spliced messages, its `state.markdown` grown by `append`, now at `version`. */
+export type ViewAppend = { readonly at: number; readonly append: string; readonly version: number };
+
+/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged. */
+export type ViewFrame =
+  | { readonly kind: "view"; readonly view: SessionView }
+  | {
+      readonly kind: "delta";
+      readonly seq: Seq;
+      readonly revision?: Revision | null;
+      readonly activation?: Activation;
+      readonly messages?: ViewSplice<Message>;
+      readonly appends?: readonly ViewAppend[];
+      readonly parts?: ViewSplice<PartView>;
+      readonly turns?: ViewSplice<TurnInfo>;
+      readonly execution?: Execution;
+      readonly background?: ViewSplice<BackgroundItem>;
+      readonly configuration?: SessionView["configuration"];
+      readonly context?: ContextView;
+      readonly heads?: ViewSplice<HeadInfo>;
+      readonly changes?: ViewSplice<FileChange>;
+      readonly catalog?: SessionCatalogView;
+    };

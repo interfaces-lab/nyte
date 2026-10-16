@@ -1,7 +1,6 @@
 import { Type } from "typebox";
 import { ConfigurationPatchType } from "../configuration.ts";
 import { ValidationIssueType } from "../errors.ts";
-import { PatchEventType, SessionEventType } from "../events.ts";
 import {
   ConfigureOutcomeSchema,
   CreateHeadOutcomeSchema,
@@ -12,7 +11,7 @@ import {
   SendOptionsType,
   TreeViewSchema,
 } from "../heads.ts";
-import { idSchema, SeqType } from "../ids.ts";
+import { idSchema } from "../ids.ts";
 import { JsonType, JsonValueSchema } from "../json.ts";
 import { PositionType, UserContentType } from "../messages.ts";
 import { nullable } from "../nullable.ts";
@@ -24,7 +23,13 @@ import {
   SessionInfoSchema,
   UpdateOutcomeSchema,
 } from "../sessions.ts";
-import { MessageType, SessionViewSchema, UserStatusType, ViewOptionsType } from "../views.ts";
+import {
+  MessageType,
+  SessionViewSchema,
+  UserStatusType,
+  ViewFrameSchema,
+  ViewOptionsType,
+} from "../views.ts";
 import { NOTHING, ON_SESSION, RECEIPT_ID, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 
@@ -124,23 +129,8 @@ export const SESSION_OPERATIONS = {
   "head.watch": {
     ...PARTICIPANT,
     kind: "watch",
-    input: wireObject({
-      ...HEAD,
-      options: Type.Optional(ViewOptionsType),
-      after: Type.Optional(SeqType),
-    }),
-    output: wireSchema(
-      Type.Union([
-        SessionEventType,
-        PatchEventType,
-        Type.Object({
-          kind: Type.Literal("revision"),
-          head: idSchema<"head">(),
-          tip: nullable(idSchema<"commit">()),
-          revision: idSchema<"revision">(),
-        }),
-      ]),
-    ),
+    input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
+    output: ViewFrameSchema,
   },
   "head.history": {
     ...PARTICIPANT,
