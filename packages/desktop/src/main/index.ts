@@ -56,6 +56,7 @@ import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { models } from "./models.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
+import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-env.ts";
 
@@ -149,6 +150,8 @@ app.setPath(
 );
 
 if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
+
+const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-state.json"));
 
 const home = updateTest ? app.getPath("userData") : homedir();
 
@@ -445,6 +448,7 @@ function registerIpc(): void {
 
     if (!themePreference.Check(value)) return;
     nativeTheme.themeSource = value;
+    launchState.setTheme(value);
   });
 
   ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
@@ -642,6 +646,7 @@ if (!hasSingleInstanceLock) {
 
   void app.whenReady().then(async () => {
     performance.mark("nyte:electron-ready");
+    nativeTheme.themeSource = launchState.theme();
     registerIpc();
 
     // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.

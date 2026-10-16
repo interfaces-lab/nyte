@@ -10,6 +10,7 @@ import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
+import { themeSource } from "./launch-state.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "../shared/ipc.ts";
 import type { BrowserBoundsMessage, BrowserFocusMessage, BrowserKey } from "@nyte-ai/app/bridge.ts";
@@ -303,6 +304,4 @@ export function decodeBrowserKey(input: BrowserKey): BrowserKey {
   return checked(browserKey, input);
 }
 
-export const themePreference = Compile(
-  Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
-);
+export const themePreference = Compile(themeSource);
