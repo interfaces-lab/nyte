@@ -54,6 +54,7 @@ it("shows the model a mentioned file as it was at send, and a skill as a pointer
     home: null,
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
+
   const session = await host.sessions.create();
 
   await (
