@@ -25,7 +25,7 @@ import type { MentionFile } from "./message-references.ts";
 import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const URL_PATTERN =
   /((https?:\/\/(www\.)?)|(www\.))[-\p{L}\p{N}@:%._+~#=]{1,256}\.[\p{L}\p{N}]{1,6}(?:[-\p{L}\p{N}()@:%_+.~#?&//=]*[\p{L}\p{N}()@_~#?&//=])?/gu;

@@ -13,7 +13,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { loadDeferred } from "../deferred.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { codeBlockStyles } from "./styles.stylex.ts";
+import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {
   readonly code: string;

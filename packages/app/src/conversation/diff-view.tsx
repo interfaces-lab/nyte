@@ -22,7 +22,7 @@ import {
 import { preferences, useSetting } from "../preferences/index.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
-import { diffStyles } from "./styles.stylex.ts";
+import { diffStyles } from "./diff.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
 
 type DiffViewVariant = "inline" | "card" | "workbench" | "stack";

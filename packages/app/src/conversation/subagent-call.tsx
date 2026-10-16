@@ -33,7 +33,9 @@ import {
 } from "../queries.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { modelDisplayName, providerIcon, THINKING_LABELS } from "./model-picker-state.ts";
-import { activityStyles, proseStyles, subagentCallStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
+import { proseStyles } from "./prose.stylex.ts";
+import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import {
   useCalledChild,
   useChildSession,

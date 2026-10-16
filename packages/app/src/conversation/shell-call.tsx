@@ -20,7 +20,7 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { activityStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 

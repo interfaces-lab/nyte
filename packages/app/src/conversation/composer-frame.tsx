@@ -24,7 +24,7 @@ import {
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";
 

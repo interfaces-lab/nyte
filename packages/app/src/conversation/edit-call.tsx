@@ -19,7 +19,7 @@ import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { activityStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
 export type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;

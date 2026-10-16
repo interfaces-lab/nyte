@@ -16,7 +16,7 @@ import {
   EXPANSION_LINE_COUNT,
   adaptDiffExpanders,
 } from "../conversation/diff-view.tsx";
-import { diffStyles } from "../conversation/styles.stylex.ts";
+import { diffStyles } from "../conversation/diff.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { preferences, useSetting } from "../preferences/index.ts";

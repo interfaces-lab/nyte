@@ -41,7 +41,7 @@ import type { MessageReference } from "./message-references.ts";
 import type { MentionFile } from "./message-references.ts";
 import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { proseStyles } from "./styles.stylex.ts";
+import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);

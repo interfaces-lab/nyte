@@ -37,7 +37,8 @@ import { contentDraftText } from "./message-references.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
-import { composerStyles, markerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
+import { markerStyles } from "./activity.stylex.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
 

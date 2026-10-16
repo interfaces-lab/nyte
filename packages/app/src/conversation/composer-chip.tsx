@@ -11,7 +11,7 @@ import { isFolder, referenceLabel, referenceTitle } from "./message-references.t
 import type { MessageReference } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 function referenceIcon(reference: MessageReference): IconName {
   switch (reference.kind) {

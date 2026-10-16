@@ -28,7 +28,7 @@ import type {
 import { editorContentStyle, focusComposer, useComposerSurface } from "./composer-surface.tsx";
 import { clipboardReferenceFromPaste } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 export interface ComposerEditorHandle {
   /** The editable root, or null once the editor is destroyed. */

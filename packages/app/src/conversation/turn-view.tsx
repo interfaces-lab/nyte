@@ -56,12 +56,7 @@ import { contentDraftText } from "./message-references.ts";
 import { useBlobUrl } from "../use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import {
-  USER_MESSAGE_PREVIEW_LINES,
-  bubbleStyles,
-  messageStyles,
-  turnStyles,
-} from "./styles.stylex.ts";
+import { USER_MESSAGE_PREVIEW_LINES, bubbleStyles, messageStyles, turnStyles } from "./turn.stylex.ts";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";

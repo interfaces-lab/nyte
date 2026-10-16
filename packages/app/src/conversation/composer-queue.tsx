@@ -10,7 +10,7 @@ import { trayStyles } from "../theme/tray.stylex.ts";
 import { deliveryChoices } from "./composer-keys.ts";
 import { UserMessageText, messageImages } from "./message-content.tsx";
 import { contentDraftText } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 /** What one queued row is doing right now; absent means idle. */
 export type PendingRowAction =

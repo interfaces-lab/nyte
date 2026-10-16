@@ -25,7 +25,7 @@ import { composerEnterAction } from "./composer-keys.ts";
 import { mentionPreviewRows } from "./mention-preview.ts";
 import { CONVERSATION_MENTION, isFolder, sameReference } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const NONE: readonly never[] = [];
 

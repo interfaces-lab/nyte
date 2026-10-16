@@ -21,7 +21,7 @@ import { flushSync } from "react-dom";
 import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
-import { messageScrollerStyles } from "./styles.stylex.ts";
+import { messageScrollerStyles } from "./transcript.stylex.ts";
 import type { TranscriptRow } from "./transcript-rows.ts";
 import {
   navigates,
