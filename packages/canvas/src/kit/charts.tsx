@@ -97,7 +97,7 @@ const ReadoutContext = createContext<ReadoutContextValue>({
   layers: [],
 });
 
-const tintOf = (layers: ReadoutContextValue["layers"], key: string): Tint =>
+const findTint = (layers: ReadoutContextValue["layers"], key: string): Tint =>
   layers.find((layer) => layer.key === key)?.tint ?? "blue";
 
 const theme = {
@@ -189,7 +189,7 @@ function SliceTip({ slice }: SliceTooltipProps<LineSeries>): ReactElement {
       title={slice.points[0]?.data.xFormatted ?? ""}
       rows={slice.points.map((point) => ({
         id: String(point.seriesId),
-        tint: tintOf(layers, String(point.seriesId)),
+        tint: findTint(layers, String(point.seriesId)),
         value: point.data.yFormatted,
       }))}
     />
@@ -222,7 +222,7 @@ function PieTip({ datum }: PieTooltipProps<PieDatum>): ReactElement {
       rows={[
         {
           id: String(datum.id),
-          tint: tintOf(layers, String(datum.id)),
+          tint: findTint(layers, String(datum.id)),
           value: format(datum.value),
         },
       ]}
