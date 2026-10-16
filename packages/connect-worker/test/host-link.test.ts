@@ -69,6 +69,9 @@ async function stillPending(promise: Promise<unknown>): Promise<boolean> {
   return !settled;
 }
 
+/** Room for a check that waits on workerd round trips while the other broker-backed files run beside this one. */
+const brokerWait = { timeout: 10_000 } as const;
+
 let workerd: WorkerdBroker;
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -253,7 +256,7 @@ test("the owner approves from a browser and the host is linked under the broker 
   const { opened, start, file } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const [awaiting] = opened;
 
   if (awaiting === undefined) throw new Error("unreachable");
@@ -292,7 +295,7 @@ test("a denied or expired transaction fails the link and leaves no environment",
   const { opened, start } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "deny" });
   const view = await linking;
   assert.equal(view.kind, "unlinked");
@@ -306,14 +309,17 @@ test("cancelling tells the broker and forgets the transaction; a late approval c
   const { opened, start, file } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await runtime.cancel();
   const view = await linking;
   assert.equal(view.kind, "unlinked");
 
   if (view.kind !== "unlinked") return;
   assert.deepEqual(view.linking, { kind: "failed", reason: "cancelled" });
-  await vi.waitFor(async () => assert.equal(row((await transactions())[0], "state"), "cancelled"));
+  await vi.waitFor(
+    async () => assert.equal(row((await transactions())[0], "state"), "cancelled"),
+    brokerWait,
+  );
   assert.equal((await file()).linkKey, null);
   const late = await workerd.fetch(`${workerd.origin}/v1/link-transactions/lookup`, {
     method: "POST",
@@ -330,7 +336,7 @@ test("a completion answer the host lost is recovered by its next completion, not
   const { opened, start, file } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const kept = (await file()).linkKey;
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
@@ -350,7 +356,7 @@ test("a cancel the broker never heard is settled before a new transaction; a com
   const { opened, start, file, faults } = await fixture();
   const first = start();
   const linking = first.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const kept = (await file()).linkKey;
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
@@ -364,9 +370,13 @@ test("a cancel the broker never heard is settled before a new transaction; a com
 
   const second = start();
   const again = second.link();
-  await vi.waitFor(() => assert.equal(opened.length, 2));
-  await vi.waitFor(async () =>
-    assert.deepEqual(await workerd.query("SELECT state FROM environments"), [{ state: "revoked" }]),
+  await vi.waitFor(() => assert.equal(opened.length, 2), brokerWait);
+  await vi.waitFor(
+    async () =>
+      assert.deepEqual(await workerd.query("SELECT state FROM environments"), [
+        { state: "revoked" },
+      ]),
+    brokerWait,
   );
   const replacement = (await file()).linkKey;
 
@@ -388,7 +398,7 @@ test("a lost completion answer keeps the intent: the retry recovers the same lin
   const { opened, start, faults, file } = await fixture();
   const first = start();
   const linking = first.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const kept = (await file()).linkKey;
 
   if (kept?.kind !== "transaction" || kept.transaction === null) throw new Error("unreachable");
@@ -418,7 +428,7 @@ test("a lost open answer replays the same operation and code instead of opening 
   assert.equal((await transactions()).length, 1);
 
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
   assert.equal((await linking).kind, "linked");
   assert.equal((await transactions()).length, 1);
@@ -431,7 +441,7 @@ test("closing joins the attempt: nothing is written after close resolves, and th
   const linking = runtime.link().then(() => {
     settled = true;
   });
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await runtime.close();
   assert.equal(settled, true);
   await linking;
@@ -445,7 +455,7 @@ test("a link or pending intent made with another broker is unavailable here, nev
   const { opened, start, file, faults } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await runtime.close();
   await linking;
   const intent = JSON.stringify((await file()).linkKey);
@@ -503,7 +513,7 @@ test("every close waits for one teardown that joins a cancellation still writing
   const { opened, start, file, storePath } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const write = holdNextWrite(storePath);
   const cancelling = runtime.cancel();
   await write.reached;
@@ -526,7 +536,7 @@ test("close joins an unlink acknowledgement already being written", async () => 
   const { opened, start, file, storePath } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
   assert.equal((await linking).kind, "linked");
   const queued = holdNextWrite(storePath);
@@ -574,7 +584,7 @@ test("a cancel while the completed link is being written still wins: the link is
   const { opened, start, file, storePath, faults } = await fixture();
   const runtime = start();
   const linking = runtime.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   const write = holdNextWrite(storePath);
   await browser({ userId: "user_alice", userCode: opened[0]!.userCode, decision: "approve" });
   await write.reached;
@@ -601,7 +611,7 @@ test("a cancel while a recovered completion is being written queues that link fo
   const { opened, start, file, storePath, faults } = await fixture();
   const first = start();
   const linking = first.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
   await first.close();
   await linking;
   const kept = (await file()).linkKey;
@@ -656,7 +666,7 @@ test("a cancel before the open's answer is kept on disk; the next run recovers t
   const { transactionId } = await cancelBeforeOpenAnswer(context);
   const second = start();
   const linking = second.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
 
   const rows = await workerd.query("SELECT id, state FROM link_transactions ORDER BY created_at");
 
@@ -680,9 +690,13 @@ test("a cancel before the open's answer whose transaction was completed anyway u
 
   const second = start();
   const linking = second.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
-  await vi.waitFor(async () =>
-    assert.deepEqual(await workerd.query("SELECT state FROM environments"), [{ state: "revoked" }]),
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
+  await vi.waitFor(
+    async () =>
+      assert.deepEqual(await workerd.query("SELECT state FROM environments"), [
+        { state: "revoked" },
+      ]),
+    brokerWait,
   );
   const [, replacement] = await workerd.query(
     "SELECT thumbprint FROM link_transactions ORDER BY created_at",
@@ -706,7 +720,7 @@ test("an open answer lost until its transaction expired is recovered as expired,
 
   const second = start(undefined, workerd.origin, "Renamed box");
   const linking = second.link();
-  await vi.waitFor(() => assert.equal(opened.length, 1));
+  await vi.waitFor(() => assert.equal(opened.length, 1), brokerWait);
 
   const rows = await workerd.query(
     "SELECT id, name, state FROM link_transactions ORDER BY created_at",
