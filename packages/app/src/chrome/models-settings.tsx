@@ -19,6 +19,7 @@ import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "./connection-li
 import { cancelLogin, startLogin, useLoginAttempt } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -272,6 +273,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                 render={
                   <Button variant="outline" loading={login.isPending} disabled={busy}>
                     Connect Provider
+                    <span {...props(srOnly)}> {provider.name}</span>
                     <Icon name="chevron-down" size={12} />
                   </Button>
                 }
@@ -304,6 +306,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               }}
             >
               Connect Provider
+              <span {...props(srOnly)}> {provider.name}</span>
             </Button>
           )
         ) : !canSignOut ? undefined : (
