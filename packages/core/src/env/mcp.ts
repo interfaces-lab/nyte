@@ -31,9 +31,9 @@ const READY_MS = 5000;
 
 /**
  * Waits, at most five seconds and never past `signal`, for the session's MCP
- * servers that are still on their first connection attempt, then re-derives
- * the session's tools so the request built next carries theirs. A server that
- * failed, or is retrying, is not waited for.
+ * servers that are still on their first connection attempt, then, when it
+ * waited, re-derives the session's tools so the request built next carries
+ * theirs. A server that failed, or is retrying, is not waited for.
  */
 export async function awaitMcpServers(
   kernel: Kernel,
@@ -44,8 +44,8 @@ export async function awaitMcpServers(
   if (kernel.mcp === null) return;
   const { workspace } = (await requireSession(kernel, session)).record;
 
-  await kernel.mcp.ready(workspace, AbortSignal.any([signal, AbortSignal.timeout(READY_MS)]));
-  await runtime.registries.materialize();
+  if (await kernel.mcp.ready(workspace, AbortSignal.any([signal, AbortSignal.timeout(READY_MS)])))
+    await runtime.registries.materialize();
 }
 
 /** The `workspace(id).mcp` of a workspace on this kernel, over its hub. */

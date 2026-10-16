@@ -589,11 +589,13 @@ export interface McpHub {
   /**
    * Resolves once every server of the workspace's watched connections has
    * finished its first connection attempt (connected, failed or waiting for
-   * sign-in), or when `signal` aborts. A server retrying after a failure is
-   * not waited for. Core awaits it, bounded, before each model request so the
-   * first request after launch carries the servers' tools.
+   * sign-in), or when `signal` aborts: true when it waited on a first attempt
+   * or on `mcp.json`, so the tools may have changed, and false when nothing
+   * was pending. A server retrying after a failure is not waited for. Core
+   * awaits it, bounded, before each model request so the first request after
+   * launch carries the servers' tools, and re-derives them only on true.
    */
-  ready(workspace: WorkspaceId, signal: AbortSignal): Promise<void>;
+  ready(workspace: WorkspaceId, signal: AbortSignal): Promise<boolean>;
 
   /**
    * What the model is told about each of the workspace's servers besides its

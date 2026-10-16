@@ -77,8 +77,8 @@ type Link = {
   /** The server's last OAuth challenge, which a sign-in follows for its scope and metadata. */
   readonly challenge: () => OAuthChallenge | null;
   readonly tools: () => readonly ToolDefinition[];
-  /** Settles once the first connection attempt has connected, failed or asked for sign-in, or the link closed. */
-  readonly attempted: Promise<void>;
+  /** The first connection attempt while it runs, or null once it has connected, failed or asked for sign-in, or the link closed. */
+  readonly attempting: () => Promise<void> | null;
   close(): Promise<void>;
 };
 
@@ -88,6 +88,8 @@ type Pool = {
   readonly files: readonly Omit<McpFile, "contents">[];
   config: McpConfig;
   readonly loaded: Promise<void>;
+  /** True until `mcp.json` has been read and the links reconciled. */
+  loading: boolean;
   readonly links: Map<string, Link>;
   readonly listeners: Set<() => void>;
   holders: number;
@@ -154,12 +156,18 @@ function hub(input: {
     let delay = 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const attempted = Promise.withResolvers<void>();
+    let attempting: Promise<void> | null = attempted.promise;
+
+    const attempt = (): void => {
+      attempting = null;
+      attempted.resolve();
+    };
 
     const set = (next: LinkState): void => {
       if (ended) return;
       state = next;
 
-      if (next.kind !== "connecting") attempted.resolve();
+      if (next.kind !== "connecting") attempt();
       notify(pool);
     };
 
@@ -303,10 +311,10 @@ function hub(input: {
 
         return bridged.tools;
       },
-      attempted: attempted.promise,
+      attempting: () => attempting,
       async close() {
         ended = true;
-        attempted.resolve();
+        attempt();
         clearTimeout(timer);
         const previous = client;
         client = null;
@@ -405,8 +413,11 @@ function hub(input: {
       files,
       config: { servers: new Map(), issues: [] },
       loaded: load(unread).then(() => {
+        pool.loading = false;
+
         if (pools.get(key) === pool) reconcile(pool);
       }),
+      loading: true,
       links: new Map(),
       listeners: new Set(),
       holders: 0,
@@ -564,24 +575,24 @@ function hub(input: {
             .toSorted((a, b) => a.name.localeCompare(b.name));
     },
     async ready(workspace, signal) {
-      const attempts = Promise.all(
-        [...pools.values()].flatMap((pool) =>
-          pool.workspace.id === workspace
-            ? [
-                pool.loaded.then(() =>
-                  Promise.all([...pool.links.values()].map((link) => link.attempted)),
-                ),
-              ]
-            : [],
-        ),
+      const watched = [...pools.values()].filter((pool) => pool.workspace.id === workspace);
+
+      const attempting = (pool: Pool): Promise<void>[] =>
+        [...pool.links.values()].flatMap((link) => link.attempting() ?? []);
+
+      const attempts = watched.flatMap((pool) =>
+        pool.loading
+          ? [pool.loaded.then(() => Promise.all(attempting(pool))).then(() => undefined)]
+          : attempting(pool),
       );
 
+      if (attempts.length === 0 || signal.aborted) return false;
       const aborted = Promise.withResolvers<void>();
 
       signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+      await Promise.race([Promise.all(attempts), aborted.promise]);
 
-      if (signal.aborted) return;
-      await Promise.race([attempts, aborted.promise]);
+      return true;
     },
     reconnect: (workspace, server) =>
       held(workspace, async (pool) => {
