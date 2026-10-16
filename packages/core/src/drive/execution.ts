@@ -156,7 +156,7 @@ export async function advance(
     for (const [handle, coverage] of state.covers)
       if (await covers(kernel, coverage, session)) owners?.add(handle);
 
-    report = await step(kernel, session, head).catch((error: unknown) =>
+    report = await step(kernel, session, head).catch((error) =>
       failStep(kernel, session, head, error),
     );
     dev("execution", "advance", { session, head, report: report.kind });
@@ -200,13 +200,13 @@ async function failStep(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
-  error: unknown,
+  cause: unknown,
 ): Promise<AdvanceReport> {
-  dev("execution", "step failed", { session, head, error: formatError(error) });
+  dev("execution", "step failed", { session, head, error: formatError(cause) });
   const live = await liveRun(kernel, session, head);
 
-  if (live === null || kernel.driving.has(live.record.view.id)) throw error;
-  await endRun(kernel, session, live.record.view.id, failed(error));
+  if (live === null || kernel.driving.has(live.record.view.id)) throw cause;
+  await endRun(kernel, session, live.record.view.id, failed(cause));
 
   return next(kernel, session, head);
 }
@@ -334,7 +334,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
       failures.delete(key);
     })()
-      .catch((error: unknown) => {
+      .catch((error) => {
         const failed = (failures.get(key) ?? 0) + 1;
         failures.set(key, failed);
         dev("execution", "advance failed", { session, head, error: formatError(error) });
@@ -373,7 +373,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       do {
         cursor = (await repair(kernel, { cursor, limit: PAGE })).next ?? undefined;
       } while (cursor !== undefined && !closed);
-    })().catch((error: unknown) => dev("execution", "repair failed", { error: formatError(error) }));
+    })().catch((error) => dev("execution", "repair failed", { error: formatError(error) }));
 
   let closing: Promise<void> | null = null;
 
@@ -819,8 +819,8 @@ function failed(error: unknown): RunEnd {
   return { kind: "failed", failure: { class: "runner", message: formatError(error) } };
 }
 
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function formatError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 const DISPATCH_RETRIES = 3;

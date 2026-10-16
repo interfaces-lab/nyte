@@ -163,13 +163,18 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
 
     if (opened === null) return { kind: "nothing-to-compact" };
 
-    if (opened === "stopped") throw new SdkError("internal", "A manual compaction has no run to stop.");
+    if (opened === "stopped")
+      throw new SdkError("internal", "A manual compaction has no run to stop.");
     const here = running.get(kernel) ?? new Set<PartId>();
     running.set(kernel, here.add(opened.part));
 
     void finishCompaction(kernel, models, runtime, opened, kernel.executionState.closing.signal)
       .catch((error) =>
-        dev("compaction", "failed", { session, part: opened.part, error: formatErrorMessage(error) }),
+        dev("compaction", "failed", {
+          session,
+          part: opened.part,
+          error: formatErrorMessage(error),
+        }),
       )
       .finally(() => here.delete(opened.part));
 
@@ -362,7 +367,9 @@ async function finishCompaction(
   runtime: PluginRuntime,
   opened: Opened,
   signal: AbortSignal,
-): Promise<{ readonly kind: "compacted" } | { readonly kind: "failed"; readonly failure: Failure }> {
+): Promise<
+  { readonly kind: "compacted" } | { readonly kind: "failed"; readonly failure: Failure }
+> {
   const { session, head, run, part } = opened;
   const where = { session, head, run, principal: LOCAL };
   let failure: Failure;
@@ -463,7 +470,8 @@ async function writeCompaction(
       : null;
 
   if (live === null || replaces === null) {
-    const failure = live?.record.status.kind === "live" && fence?.stopping !== true ? MOVED : STOPPED;
+    const failure =
+      live?.record.status.kind === "live" && fence?.stopping !== true ? MOVED : STOPPED;
 
     const outcome = await commit(kernel, [
       ...(await failedParts(kernel, session, head, [part], failure)),

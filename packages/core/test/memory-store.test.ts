@@ -220,7 +220,10 @@ describe("attempt", () => {
 
         return STALE;
       }),
-    ).rejects.toMatchObject({ code: "stale", message: "Racing lost to concurrent writes 8 times." });
+    ).rejects.toMatchObject({
+      code: "stale",
+      message: "Racing lost to concurrent writes 8 times.",
+    });
     expect(tries).toBe(8);
   });
 });
