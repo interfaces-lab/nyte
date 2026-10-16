@@ -626,17 +626,21 @@ function sameTabUpdate(tab: WorkbenchTab, input: WorkbenchTabUpdate): boolean {
   }
 }
 
+/** Returns a workbench controller that restores the persisted snapshot on its first read, so creating one reads neither storage nor the client's capabilities. */
 export function createWorkbenchController(
   capabilities: () => ClientCapabilities,
   persistence?: WorkbenchPersistence,
 ): WorkbenchController {
-  let snapshot = restoreSnapshot(persistence?.read(), capabilities);
+  let restored: WorkbenchSnapshot | null = null;
   const listeners = new Set<() => void>();
+  const read = (): WorkbenchSnapshot =>
+    (restored ??= restoreSnapshot(persistence?.read(), capabilities));
 
   const publish = (key: WorkbenchViewKey, view: WorkbenchViewState): void => {
-    const views = new Map(snapshot.views);
+    const views = new Map(read().views);
     views.set(key, freezeView(view));
-    snapshot = Object.freeze({ views });
+    const snapshot = Object.freeze({ views });
+    restored = snapshot;
     persistence?.write(persistable(snapshot));
 
     for (const listener of listeners) listener();
@@ -646,7 +650,7 @@ export function createWorkbenchController(
     key: WorkbenchViewKey,
     change: (current: WorkbenchViewState) => WorkbenchViewState,
   ): void => {
-    const current = snapshot.views.get(key) ?? DEFAULT_VIEW;
+    const current = read().views.get(key) ?? DEFAULT_VIEW;
     const next = change(current);
 
     if (next !== current) publish(key, next);
@@ -654,7 +658,7 @@ export function createWorkbenchController(
 
   const actions: WorkbenchController["actions"] = {
     openTab({ view, tab, activate }) {
-      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
+      const current = read().views.get(view) ?? DEFAULT_VIEW;
       const existing = current.tabs.find((candidate) => sameTab(candidate, tab));
 
       if (existing !== undefined) {
@@ -814,8 +818,8 @@ export function createWorkbenchController(
 
       return () => listeners.delete(listener);
     },
-    getSnapshot: () => snapshot,
-    getView: (key: WorkbenchViewKey) => snapshot.views.get(key) ?? DEFAULT_VIEW,
+    getSnapshot: read,
+    getView: (key: WorkbenchViewKey) => read().views.get(key) ?? DEFAULT_VIEW,
     actions: Object.freeze(actions),
   });
 }

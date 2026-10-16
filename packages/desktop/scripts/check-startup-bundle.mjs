@@ -17,7 +17,7 @@ const budgets = {
   main: 99 * KIB,
   host: 1_020 * KIB,
   preload: 8 * KIB,
-  renderer: 2_990 * KIB,
+  renderer: 2_840 * KIB,
   css: 190 * KIB,
 };
 

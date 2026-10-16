@@ -77,12 +77,7 @@ const DEFERRED_URLS = normalizePath(
  * with their URLs, which `loadDeferred` injects as module scripts. The build
  * fails if a listed package reaches the startup chunks, so a static import
  * cannot quietly pull a deferred surface back into startup.
- *
- * The modules a deferred entry shares with startup move into chunks of their
- * own, which the browser evaluates before the startup entry's earlier
- * side-effect imports: a module that read the desktop bridge as it loaded ran
- * before `install-bridge.ts` had installed it. `strictExecutionOrder` keeps
- * every module body in source order whatever chunk it lands in.
+
  */
 export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>): Plugin {
   const modules = Object.entries(entries).map(
@@ -101,9 +96,6 @@ export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>)
     name: "nyte:deferred-chunks",
     configResolved(config) {
       serving = config.command === "serve";
-    },
-    outputOptions(options) {
-      return { ...options, strictExecutionOrder: true };
     },
     load(id) {
       if (normalizePath(id.split("?", 1)[0] ?? id) !== DEFERRED_URLS) return;
