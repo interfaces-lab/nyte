@@ -17,6 +17,7 @@ import type {
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
@@ -233,6 +234,11 @@ const host = { workspace: undefined, platform: "linux" } satisfies HostState;
 
 let renderFailure: unknown;
 
+/** One controller for every mount, so a reopened chat finds the anchors it left. */
+const panes = new PaneController({ storageKey: "thread-render-test" });
+
+panes.selectSession(ID);
+
 function mount(container: HTMLElement): Root {
   queryClient.setQueryData(keys.host, host);
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
@@ -252,9 +258,9 @@ function mount(container: HTMLElement): Root {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider workspaceKey="thread-render-test">
+            <PaneControllerProvider controller={panes}>
               <SessionDndProvider>
-                <ThreadScreen routeSessionId={ID} />
+                <ThreadScreen />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>

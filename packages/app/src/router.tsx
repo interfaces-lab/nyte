@@ -16,12 +16,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
-import {
-  applyShellStage,
-  shellActions,
-  subscribeShellStage,
-  useShellState,
-} from "./chrome/shell-state.ts";
+import { shellActions, useAbout, useStagePage } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -32,10 +27,10 @@ import { queryClient, readSession, useHostState } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
-import { preferences } from "./preferences/index.ts";
+import { preferences, useSetting } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import type { ShellSearch } from "./shell/search.ts";
-import { WorkspaceStage } from "./shell/workspace-stage.tsx";
+import { ThreadScreen } from "./screens/thread.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell } from "./theme/schema.stylex.ts";
@@ -44,7 +39,7 @@ import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
-import { activeTab, currentView, tabPlace } from "./tabs/model.ts";
+import { activeTab, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
 import { useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
 import { windowTabs } from "./tabs/window-tabs.ts";
@@ -132,19 +127,9 @@ function ConnectionFailure(): ReactElement | null {
 
 /** `appIcon` is the host's product mark, shown in About; the host bundles it. */
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
-  const host = useHostState();
-
-  const activeTabId = useSyncExternalStore(
-    windowTabs.subscribe,
-    () => windowTabs.getSnapshot().activeTabId,
-  );
-
   return (
     <TooltipProvider>
-      <PaneControllerProvider
-        workspaceKey={host.data?.workspace?.path}
-        controller={windowTabs.enabled ? windowTabs.controller(activeTabId) : undefined}
-      >
+      <PaneControllerProvider>
         <ShellChrome appIcon={appIcon} />
       </PaneControllerProvider>
     </TooltipProvider>
@@ -152,55 +137,21 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
 }
 
 /**
- * The window chrome around the stage. Customize and Environments cover the
- * stage; Back and a sidebar row both leave them, except in a tab, whose page
- * is left by the navigation the row makes rather than by the click.
+ * The window chrome around the stage. Customize and Environments are pages of
+ * the active tab that cover the stage; Back and a sidebar row leave them by
+ * navigating the tab.
  */
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
   const shellRouter = useRouter();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
-  const { stage: shellStage, about, sidebarVisible } = useShellState();
-  const stageOpen = shellStage.kind !== "workspace";
+  const page = useStagePage();
+  const about = useAbout();
+  const sidebarVisible = useSetting(preferences.sidebarVisible);
   const mac = macPlatform(host.data?.platform);
-  const tabbed = windowTabs.enabled;
+  const strip = windowTabs.strip;
   useWindowTabsSync();
-
-  useEffect(() => {
-    restoreChromeStage(shellRouter);
-
-    return subscribeShellStage((stage) => {
-      const search = shellRouter.state.location.search;
-
-      if (
-        (stage.kind === "customize" &&
-          search.customize !== undefined &&
-          search.environment === undefined) ||
-        (stage.kind === "environments" &&
-          search.environment !== undefined &&
-          search.customize === undefined) ||
-        (stage.kind === "workspace" &&
-          search.customize === undefined &&
-          search.environment === undefined)
-      )
-        return;
-
-      void shellRouter.navigate({
-        to: ".",
-        search: (previous) => {
-          const { customize, environment, ...rest } = previous;
-
-          if (stage.kind === "customize") return { ...rest, customize: customize ?? "plugins" };
-
-          if (stage.kind === "environments")
-            return { ...rest, environment: environment ?? "connections" };
-
-          return rest;
-        },
-      });
-    });
-  }, [shellRouter]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -215,7 +166,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         return;
       }
 
-      const shortcut = tabbed && !settingsOpen ? resolveTabShortcut(event, mac) : undefined;
+      const shortcut = strip && !settingsOpen ? resolveTabShortcut(event, mac) : undefined;
 
       if (shortcut !== undefined) {
         event.preventDefault();
@@ -227,14 +178,14 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       const action = resolveClientAction(
         event,
         mac,
-        settingsOpen ? "settings" : shellStage.kind,
+        settingsOpen ? "settings" : (page?.kind ?? "workspace"),
         clientCapabilities(nyte.host),
       );
 
       if (action === undefined) return;
 
       if (action.id === "new-tab" || action.id === "close-tab" || action.id === "reopen-tab") {
-        if (!tabbed) return;
+        if (!strip) return;
         event.preventDefault();
 
         if (action.id === "new-tab") windowTabs.dispatch({ kind: "new-tab" });
@@ -265,19 +216,9 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       } else if (action.id === "back" && settingsOpen) {
         event.preventDefault();
         closeSettings(shellRouter);
-      } else if ((action.id === "back" || action.id === "forward") && tabbed) {
-        if (settingsOpen) return;
+      } else if ((action.id === "back" || action.id === "forward") && !settingsOpen) {
         event.preventDefault();
         windowTabs.dispatch({ kind: "travel", step: action.id === "back" ? -1 : 1 });
-      } else if (action.id === "back" && shellRouter.history.canGoBack()) {
-        event.preventDefault();
-        shellRouter.history.back();
-      } else if (action.id === "back" && stageOpen) {
-        event.preventDefault();
-        shellActions.showWorkspace();
-      } else if (action.id === "forward") {
-        event.preventDefault();
-        shellRouter.history.forward();
       } else if (action.id === "sidebar") {
         event.preventDefault();
         shellActions.toggleSidebar();
@@ -295,25 +236,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [canSplit, stageOpen, mac, panes, shellRouter, shellStage.kind, tabbed]);
+  }, [canSplit, mac, page?.kind, panes, shellRouter, strip]);
 
   return (
     <div data-nyte-shell {...props(styles.shell)}>
       <Titlebar />
-      <div
-        {...props(styles.stage)}
-        onClickCapture={(event) => {
-          if (tabbed || !stageOpen || !(event.target instanceof Element)) return;
-
-          const sidebarAction = event.target.closest(
-            'nav[aria-label="Sessions and workspaces"] button',
-          );
-
-          if (sidebarAction === null || sidebarAction.getAttribute("aria-haspopup") === "dialog")
-            return;
-          shellActions.showWorkspace();
-        }}
-      >
+      <div {...props(styles.stage)}>
         <SessionDndProvider>
           <SidebarPane>
             <Sidebar />
@@ -321,8 +249,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
           <main
             {...props(
               styles.surface,
-              tabbed && styles.card,
-              tabbed && !sidebarVisible && styles.cardSidebarHidden,
+              strip && styles.card,
+              strip && !sidebarVisible && styles.cardSidebarHidden,
             )}
           >
             <ConnectionFailure />
@@ -342,18 +270,19 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 }
 
+/** The panes stay mounted under a page, so a chat keeps its state through Customize. */
 function WorkspaceRouteStage(): ReactElement {
-  const { stage: shellStage } = useShellState();
+  const page = useStagePage();
 
-  switch (shellStage.kind) {
-    case "workspace":
-      return <WorkspaceStage />;
+  if (page === undefined) return <ThreadScreen />;
+
+  switch (page.kind) {
     case "customize":
-      return <CustomizeSurface sessionId={shellStage.sessionId} />;
+      return <CustomizeSurface sessionId={page.sessionId} />;
     case "environments":
       return <EnvironmentsSurface />;
     default: {
-      const _exhaustive: never = shellStage;
+      const _exhaustive: never = page;
 
       return _exhaustive;
     }
@@ -396,7 +325,7 @@ const indexRoute = createRoute({
     if (preload || !context.startup.pending) return;
     context.startup.pending = false;
 
-    if (windowTabs.enabled && !windowTabs.startupDestination) return;
+    if (!windowTabs.startupDestination) return;
 
     if (search.customize !== undefined || search.environment !== undefined) return;
 
@@ -565,36 +494,16 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
   router.subscribe("onResolved", () => {
     if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
       rememberWorkspaceHref(router.state.location.href);
-    restoreChromeStage(router);
     leaveMissingChat(router);
   });
-
-  restoreChromeStage(router);
 
   return router;
 }
 
 export type AppRouter = ReturnType<typeof createAppRouter>;
 
-function restoreChromeStage(router: AppRouter): void {
-  const { customize, environment } = router.state.location.search;
-
-  if (customize !== undefined)
-    applyShellStage({ kind: "customize", sessionId: customizeSession(router) });
-  else if (environment !== undefined) applyShellStage({ kind: "environments" });
-  else applyShellStage({ kind: "workspace" });
-}
-
-/** A tab's Customize page remembers the chat it opened from; elsewhere the route names it. */
-function customizeSession(router: AppRouter): SessionId | undefined {
-  if (!windowTabs.enabled) return currentRouteSession(router);
-  const view = currentView(activeTab(windowTabs.getSnapshot()));
-
-  return view.kind === "page" && view.page.kind === "customize" ? view.page.sessionId : undefined;
-}
-
 /** The chat the current location shows, if it is one. */
-export function currentRouteSession(router: AppRouter): SessionId | undefined {
+function currentRouteSession(router: AppRouter): SessionId | undefined {
   for (const match of router.state.matches) {
     if (match.routeId === threadRoute.id) return match.params.sessionId;
   }

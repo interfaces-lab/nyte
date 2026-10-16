@@ -44,13 +44,11 @@ import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import {
-  activePaneController,
-  paneControllerForWorkspace,
+  hideFromPanes,
   usePaneActions,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
 } from "../layout/pane-context.tsx";
-import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { activePane } from "../layout/pane-layout.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { macPlatform } from "../platform.ts";
@@ -90,7 +88,8 @@ import {
   type ShelfHold,
 } from "./sidebar-view.ts";
 import { closeSettings, SettingsNavigation, type SettingsSection } from "../settings/index.ts";
-import { shellActions, useShellState } from "./shell-state.ts";
+import { shellActions, useStagePage } from "./shell-state.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -114,9 +113,9 @@ function sessionPage(total: number, base: number, revealed: number) {
   return { visible, next: fit(base + revealed + SESSION_PAGE_SIZE) - visible };
 }
 
-/** With window tabs, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
+/** With a tab strip, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
 function openTarget(event: MouseEvent): OpenTarget {
-  if (!windowTabs.enabled) return "here";
+  if (!windowTabs.strip) return "here";
 
   if (event.button === 1) return "background";
 
@@ -275,7 +274,6 @@ type SidebarConfirmation =
   | { readonly kind: "closed" }
   | {
       readonly kind: "delete-session";
-      readonly workspacePath: string | null;
       readonly sessionId: SessionId;
       readonly title: string;
     }
@@ -299,7 +297,6 @@ export function Sidebar(): ReactElement {
     server.data?.kind === "unavailable" ? server.data.problem.message : undefined;
 
   const sessionActions = useSessionActions();
-  const removeSession = useSessionRemoval();
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
@@ -316,7 +313,9 @@ export function Sidebar(): ReactElement {
   const footerRowRef = useRef<HTMLDivElement>(null);
   const workspaceCollectionID = useId();
   const [collectionExpanded, setCollectionExpanded] = useState(true);
-  const { stage, homeVisible, sidebarVisible } = useShellState();
+  const page = useStagePage();
+  const homeVisible = useSetting(preferences.homeVisible);
+  const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
   const settingsOpen = useMatch({ from: "/settings/$section", shouldThrow: false }) !== undefined;
 
@@ -355,7 +354,7 @@ export function Sidebar(): ReactElement {
   const workingSessions = useWorkingSessionIds();
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
-  const onWorkspace = stage.kind === "workspace";
+  const onWorkspace = page === undefined;
   const activeSessionId = onWorkspace ? paneSessionId : undefined;
 
   const [hold, setHold] = useState<ShelfHold | undefined>();
@@ -381,7 +380,7 @@ export function Sidebar(): ReactElement {
 
   const activeDraftId =
     onWorkspace && selection.kind === "blank"
-      ? activePaneController(workspacePath).viewState.readBlank(activePane(layout).id).id
+      ? draftStore.readBlank(activePane(layout).id).id
       : undefined;
 
   const mac = macPlatform(host.data?.platform);
@@ -417,30 +416,23 @@ export function Sidebar(): ReactElement {
     )
       return;
 
-    if (windowTabs.enabled) {
-      const controller = windowTabs.controller();
-
-      if (beside)
-        controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
-      else windowTabs.dispatch({ kind: "open", place: { kind: "session", sessionId }, target });
+    if (!beside) {
+      windowTabs.dispatch({ kind: "open", place: { kind: "session", sessionId }, target });
 
       return;
     }
 
-    const controller = paneControllerForWorkspace(path ?? undefined);
-
-    if (beside) controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
-    else controller.selectSession(sessionId);
-    shellActions.showWorkspace();
-    await router.navigate({ to: "/session/$sessionId", params: { sessionId } });
+    const controller = windowTabs.controller();
+    controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
   };
 
-  const showDraft = async (draftId: string): Promise<void> => {
-    activePaneController(workspacePath).selectDraft(draftId);
-
-    if (windowTabs.enabled) return;
+  const showDraft = (draftId: string): void => {
     shellActions.showWorkspace();
-    await router.navigate({ to: "/" });
+    windowTabs.controller().selectDraft(draftId);
+  };
+
+  const removeDraft = (draftId: string): void => {
+    windowTabs.controller().removeDraft(draftId);
   };
 
   const newWorkspaceChat = async (
@@ -448,7 +440,7 @@ export function Sidebar(): ReactElement {
   ): Promise<void> => {
     if (!(await activateWorkspace(place.path))) return;
     setExpanded(place.workspace, true);
-    panes.newChat(place.path);
+    panes.newChat();
   };
 
   const closeConfirmation = (): void => {
@@ -475,9 +467,6 @@ export function Sidebar(): ReactElement {
     session: SessionInfo,
     layoutEnabled: boolean,
   ): ReactElement => {
-    const path =
-      place.kind === "local" ? (sessionFolderPath(session.id) ?? null) : (workspacePath ?? null);
-
     return (
       <SessionRow
         key={session.id}
@@ -501,7 +490,6 @@ export function Sidebar(): ReactElement {
         onDelete={() =>
           setConfirmation({
             kind: "delete-session",
-            workspacePath: path,
             sessionId: session.id,
             title: sessionTitle(session),
           })
@@ -514,7 +502,7 @@ export function Sidebar(): ReactElement {
         }}
         onArchive={() => {
           recordArchive(1);
-          sessionActions.archive([session.id], !session.archived, (id) => removeSession(path, id));
+          sessionActions.archive([session.id], !session.archived, hideFromPanes);
         }}
       />
     );
@@ -595,8 +583,8 @@ export function Sidebar(): ReactElement {
         draft={draft}
         selected={draft.id === activeDraftId}
         layoutEnabled={layoutEnabled}
-        onOpen={() => void showDraft(draft.id)}
-        onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
+        onOpen={() => showDraft(draft.id)}
+        onDelete={() => removeDraft(draft.id)}
       />
     ));
 
@@ -761,8 +749,8 @@ export function Sidebar(): ReactElement {
                 draft={draft}
                 selected={draft.id === activeDraftId}
                 layoutEnabled={sidebarVisible && collectionExpanded && !collapsed}
-                onOpen={() => void showDraft(draft.id)}
-                onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
+                onOpen={() => showDraft(draft.id)}
+                onDelete={() => removeDraft(draft.id)}
               />
             ))}
           </div>
@@ -815,7 +803,7 @@ export function Sidebar(): ReactElement {
     showDrafts && activeWorkspaceDrafts.some((draft) => draft.id === activeDraftId);
 
   const newChatActive =
-    stage.kind === "workspace" &&
+    page === undefined &&
     selection.kind === "blank" &&
     !activeDraftIsListed &&
     !paletteOpen;
@@ -847,20 +835,13 @@ export function Sidebar(): ReactElement {
               sessionQueriesAvailable={host.data !== undefined}
               recentSessions={rows?.map(({ session }) => session)}
               onOpenChange={setPaletteOpen}
-              onOpenSession={(sessionId) => {
-                if (windowTabs.enabled) {
-                  windowTabs.dispatch({
-                    kind: "open",
-                    place: { kind: "session", sessionId },
-                    target: "here",
-                  });
-
-                  return;
-                }
-
-                shellActions.showWorkspace();
-                panes.openSession(sessionId);
-              }}
+              onOpenSession={(sessionId) =>
+                windowTabs.dispatch({
+                  kind: "open",
+                  place: { kind: "session", sessionId },
+                  target: "here",
+                })
+              }
               onNewChat={() => panes.newChat()}
               onOpenFolder={openFolder}
               onOpenHome={
@@ -888,9 +869,9 @@ export function Sidebar(): ReactElement {
 
             <Row
               variant="nav"
-              selected={stage.kind === "customize"}
+              selected={page?.kind === "customize"}
               aria-haspopup="dialog"
-              aria-current={stage.kind === "customize" ? "page" : undefined}
+              aria-current={page?.kind === "customize" ? "page" : undefined}
               xstyle={styles.navRow}
               onClick={() => shellActions.openCustomize(paneSessionId)}
             >
@@ -903,9 +884,9 @@ export function Sidebar(): ReactElement {
             {nyte.clientSurface === "desktop" && (
               <Row
                 variant="nav"
-                selected={stage.kind === "environments"}
+                selected={page?.kind === "environments"}
                 aria-haspopup="dialog"
-                aria-current={stage.kind === "environments" ? "page" : undefined}
+                aria-current={page?.kind === "environments" ? "page" : undefined}
                 xstyle={styles.navRow}
                 onClick={() => shellActions.openEnvironments()}
               >
@@ -951,7 +932,7 @@ export function Sidebar(): ReactElement {
                   <WorkspaceControls
                     value={view}
                     homeVisible={homeVisible}
-                    onHomeVisibleChange={shellActions.setHomeVisible}
+                    onHomeVisibleChange={preferences.homeVisible.set}
                     filterDisabled={sessionDirectory.data === undefined}
                     onChange={setSessionView}
                     onOpenFolder={openFolder}
@@ -1026,7 +1007,7 @@ export function Sidebar(): ReactElement {
                               }
                               onRemove={
                                 entry.kind === "home"
-                                  ? () => shellActions.setHomeVisible(false)
+                                  ? () => preferences.homeVisible.set(false)
                                   : () => forgetWorkspace.mutate(entry.id)
                               }
                             >
@@ -1103,9 +1084,9 @@ export function Sidebar(): ReactElement {
             if (!nextOpen) closeConfirmation();
           }}
           onConfirm={() => {
-            const { sessionId, workspacePath: deletedWorkspacePath } = confirmation;
+            const { sessionId } = confirmation;
             closeConfirmation();
-            sessionActions.delete(sessionId, (id) => removeSession(deletedWorkspacePath, id));
+            sessionActions.delete(sessionId, hideFromPanes);
           }}
         />
       )}
@@ -1125,9 +1106,7 @@ export function Sidebar(): ReactElement {
           onConfirm={() => {
             closeConfirmation();
             recordArchive(confirmation.sessionIds.length);
-            sessionActions.archive(confirmation.sessionIds, true, (id) =>
-              removeSession(sessionFolderPath(id) ?? null, id),
-            );
+            sessionActions.archive(confirmation.sessionIds, true, hideFromPanes);
           }}
         />
       )}
@@ -1555,7 +1534,7 @@ function SessionRow({
         aria-current={selected ? "page" : undefined}
         onClick={(event) => onOpen(openTarget(event))}
         onAuxClick={(event) => {
-          if (event.button === 1 && windowTabs.enabled) onOpen("background");
+          if (event.button === 1 && windowTabs.strip) onOpen("background");
         }}
         {...listeners}
       >

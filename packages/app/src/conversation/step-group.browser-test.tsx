@@ -10,6 +10,7 @@ import type { StepMessage } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS } from "./step-group-follow.ts";
 import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { TranscriptProvider } from "./transcript.tsx";
 
 function check(condition: boolean, message: string): void {
@@ -214,10 +215,11 @@ export async function run() {
       "Settling a streamed thought preserves its row",
     );
 
+    const panes = new PaneController({ storageKey: "step-group-test" });
     const transcript = (node: ReactNode) =>
       flushSync(() =>
         root.render(
-          <PaneControllerProvider workspaceKey="step-group-test">
+          <PaneControllerProvider controller={panes}>
             <TranscriptProvider paneId="primary" sessionId={asId<"session">("step-group-test")}>
               {node}
             </TranscriptProvider>

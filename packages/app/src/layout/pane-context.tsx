@@ -1,75 +1,36 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import { useRouter } from "@tanstack/react-router";
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { PaneController } from "./pane-controller.ts";
-import type { PaneControllerSnapshot } from "./pane-controller.ts";
-import { activePane, activeSelection, canSplitPane } from "./pane-layout.ts";
-import type {
-  DropPlacement,
-  PaneId,
-  PaneLayout,
-  PaneSelection,
-  SplitDirection,
-} from "./pane-layout.ts";
+import type { PaneController, PaneControllerSnapshot } from "./pane-controller.ts";
+import { activePane, canSplitPane } from "./pane-layout.ts";
+import type { DropPlacement, PaneId, SplitDirection } from "./pane-layout.ts";
 import type { SessionViewStateStore } from "./session-view-state.ts";
 import { shellActions } from "../chrome/shell-state.ts";
-import { routeShows } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-
-const controllerCache = new Map<string, PaneController>();
 
 const PaneControllerContext = createContext<PaneController | undefined>(undefined);
 
-function browserStorage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
+function activeTabId(): string {
+  return windowTabs.getSnapshot().activeTabId;
 }
 
-export function paneControllerForWorkspace(workspacePath: string | undefined): PaneController {
-  const workspaceKey = workspacePath ?? "no-workspace";
-  const existing = controllerCache.get(workspaceKey);
-
-  if (existing !== undefined) return existing;
-
-  const controller = new PaneController({
-    storage: browserStorage(),
-    storageKey: `nyte.desktop.panes.v1:${workspaceKey}`,
-  });
-
-  controllerCache.set(workspaceKey, controller);
-
-  return controller;
-}
-
-/** The controller showing now: the active window tab's on the desktop, else the folder's. */
-export function activePaneController(workspacePath: string | null | undefined): PaneController {
-  return windowTabs.enabled
-    ? windowTabs.controller()
-    : paneControllerForWorkspace(workspacePath ?? undefined);
-}
-
+/** Provide the active window tab's panes; a test passes a controller of its own. */
 export function PaneControllerProvider({
-  workspaceKey,
-  controller: tabController,
+  controller,
   children,
 }: {
-  workspaceKey: string | undefined;
-  /** A window tab's controller, which wins over the folder's. */
   controller?: PaneController;
   children: ReactNode;
 }): ReactElement {
-  const controller = useMemo(
-    () => tabController ?? paneControllerForWorkspace(workspaceKey),
-    [tabController, workspaceKey],
-  );
+  const tabId = useSyncExternalStore(windowTabs.subscribe, activeTabId, activeTabId);
+  const value = controller ?? windowTabs.controller(tabId);
 
-  return (
-    <PaneControllerContext.Provider value={controller}>{children}</PaneControllerContext.Provider>
-  );
+  return <PaneControllerContext.Provider value={value}>{children}</PaneControllerContext.Provider>;
+}
+
+/** Take a deleted or archived chat out of the active tab's panes; the undo puts it back. */
+export function hideFromPanes(sessionId: SessionId): () => boolean {
+  return windowTabs.controller().removeSessionWithUndo(sessionId);
 }
 
 function useController(): PaneController {
@@ -107,15 +68,8 @@ export function usePaneViewStateStore(): SessionViewStateStore {
   return useController().viewState;
 }
 
-function activePath(layout: PaneLayout): string {
-  const selection = activeSelection(layout);
-
-  return selection.kind === "blank" ? "/" : `/session/${selection.sessionId}`;
-}
-
 export interface PaneActions {
-  syncRoute(selection: PaneSelection): void;
-  newChat(workspacePath?: string | null): void;
+  newChat(): void;
   openSession(sessionId: SessionId): void;
   openSessionInPane(paneId: PaneId, sessionId: SessionId): void;
   split(direction: SplitDirection): void;
@@ -129,70 +83,34 @@ export interface PaneActions {
 
 export function usePaneActions(): PaneActions {
   const controller = useController();
-  const router = useRouter();
-
-  const navigateToActive = useCallback(
-    (layout: PaneLayout): void => {
-      // Window tabs move the route themselves once the tab has settled.
-      if (windowTabs.enabled) return;
-      const path = activePath(layout);
-
-      if (router.state.location.pathname === path) return;
-      const selection = activeSelection(layout);
-
-      if (selection.kind === "blank") {
-        void router.navigate({ to: "/" });
-      } else {
-        void router.navigate({
-          to: "/session/$sessionId",
-          params: { sessionId: selection.sessionId },
-        });
-      }
-    },
-    [router],
-  );
 
   return useMemo(
     () => ({
-      syncRoute(selection) {
-        // A route that resolves after its tab moved on is stale, not a navigation.
-        if (windowTabs.enabled && !routeShows(router, selection)) return;
-        controller.syncSelection(selection);
-      },
-      newChat(workspacePath) {
+      newChat() {
         shellActions.showWorkspace();
-
-        const target =
-          workspacePath === undefined ? controller : activePaneController(workspacePath);
-
-        navigateToActive(target.newChat());
+        controller.newChat();
       },
       openSession(sessionId) {
-        navigateToActive(controller.selectSession(sessionId));
+        controller.selectSession(sessionId);
       },
       openSessionInPane(paneId, sessionId) {
-        navigateToActive(controller.selectSessionInPane(paneId, sessionId));
+        controller.selectSessionInPane(paneId, sessionId);
       },
       split(direction) {
         if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return;
-        navigateToActive(controller.split(direction));
+        controller.split(direction);
       },
       close(paneId) {
-        navigateToActive(controller.close(paneId));
+        controller.close(paneId);
       },
       focus(paneId) {
-        const current = controller.getSnapshot().layout;
-        const layout = controller.focus(paneId);
-
-        if (layout !== current) navigateToActive(layout);
+        controller.focus(paneId);
       },
       focusNext() {
         const layout = controller.getSnapshot().layout;
 
         if (layout.kind !== "split") return false;
-        navigateToActive(
-          controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary"),
-        );
+        controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary");
 
         return true;
       },
@@ -200,12 +118,12 @@ export function usePaneActions(): PaneActions {
         controller.resize(ratio);
       },
       drop(sessionId, targetPaneId, placement) {
-        navigateToActive(controller.drop(sessionId, targetPaneId, placement));
+        controller.drop(sessionId, targetPaneId, placement);
       },
       removeSession(sessionId) {
-        navigateToActive(controller.removeSession(sessionId));
+        controller.removeSession(sessionId);
       },
     }),
-    [controller, navigateToActive, router],
+    [controller],
   );
 }

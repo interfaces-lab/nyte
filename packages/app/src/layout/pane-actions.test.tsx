@@ -8,10 +8,11 @@ import {
   RouterContextProvider,
 } from "@tanstack/react-router";
 import { asId } from "@nyte-ai/schema";
-import { shellActions, useShellState } from "../chrome/shell-state.ts";
+import { shellActions, useStagePage } from "../chrome/shell-state.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
+import { PaneController } from "./pane-controller.ts";
 import {
   PaneControllerProvider,
-  paneControllerForWorkspace,
   usePaneActions,
   useCanSplitPane,
   usePaneControllerSnapshot,
@@ -28,8 +29,7 @@ vi.hoisted(() => {
 test.each([560, 640])("split availability and execution agree at window width %s", (width) => {
   vi.stubGlobal("window", { innerWidth: width });
   shellActions.showWorkspace();
-  const workspaceKey = `split-action-${String(width)}`;
-  const controller = paneControllerForWorkspace(workspaceKey);
+  const controller = new PaneController({ storageKey: `split-action-${String(width)}` });
 
   const router = createRouter({
     routeTree: createRootRoute(),
@@ -51,7 +51,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
 
   renderToStaticMarkup(
     <RouterContextProvider router={router}>
-      <PaneControllerProvider workspaceKey={workspaceKey}>
+      <PaneControllerProvider controller={controller}>
         <Probe
           inspect={(actions, available) => {
             selected = { actions, available };
@@ -75,8 +75,7 @@ test.each([560, 640])("split availability and execution agree at window width %s
 afterAll(() => vi.unstubAllGlobals());
 
 test("new chat leaves Customize and selects the blank pane through the shared pane action", () => {
-  const workspaceKey = "new-chat-action-fixture";
-  const controller = paneControllerForWorkspace(workspaceKey);
+  const controller = windowTabs.controller();
   const id = asId<"session">("previous-chat");
   controller.selectSession(id);
   shellActions.openCustomize(id);
@@ -91,12 +90,12 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
 
   function Probe({ inspect }: { readonly inspect: (value: PaneActions) => void }) {
     inspect(usePaneActions());
-    const shell = useShellState();
+    const page = useStagePage();
     const snapshot = usePaneControllerSnapshot();
 
     return (
       <span>
-        {shell.stage.kind}:{snapshot.layout.kind}
+        {page?.kind ?? "workspace"}:{snapshot.layout.kind}
       </span>
     );
   }
@@ -104,7 +103,7 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   const render = () =>
     renderToStaticMarkup(
       <RouterContextProvider router={router}>
-        <PaneControllerProvider workspaceKey={workspaceKey}>
+        <PaneControllerProvider>
           <Probe
             inspect={(value) => {
               actions = value;

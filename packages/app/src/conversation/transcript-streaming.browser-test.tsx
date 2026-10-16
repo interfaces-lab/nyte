@@ -10,6 +10,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
@@ -177,15 +178,17 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
+  const panes = new PaneController({ storageKey: "transcript-streaming-test" });
+  panes.selectSession(ID);
 
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider workspaceKey="transcript-streaming-test">
+            <PaneControllerProvider controller={panes}>
               <SessionDndProvider>
-                <ThreadScreen routeSessionId={ID} />
+                <ThreadScreen />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>

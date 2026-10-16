@@ -1,13 +1,14 @@
 /**
- * The desktop window's tabs. One store per renderer: it owns the strip, gives
- * each tab its own pane controller, keeps the strip in sessionStorage for a
- * reload, and mirrors the focused window's strip to localStorage, which the
- * first window of the next launch adopts. The web app never starts it.
+ * The window's tabs, the one navigation model. One store per renderer: it owns
+ * the tabs and gives each its own pane controller. A desktop window starts it:
+ * the strip shows, survives a reload in sessionStorage, and is mirrored from
+ * the focused window to localStorage, which the first window of the next
+ * launch adopts. The web app shows its single tab as the page, which the URL
+ * keeps.
  */
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { routeShellPages } from "../chrome/shell-state.ts";
 import { PaneController } from "../layout/pane-controller.ts";
 import { paneLayoutSchema, paneSelectionSchema } from "../layout/pane-layout.ts";
 import type { PaneLayout, PaneLayoutAction } from "../layout/pane-layout.ts";
@@ -188,15 +189,16 @@ async function firstWindow(): Promise<boolean> {
 }
 
 class WindowTabs {
-  #enabled = false;
+  #strip = false;
   #state: WindowState = initialWindow("tab");
-  /** True only for the first window of a launch with nothing saved: the startup chat applies. */
-  #startupDestination = false;
+  /** False once a started window restores a strip: the startup chat applies to a fresh one only. */
+  #startupDestination = true;
   readonly #controllers = new Map<string, PaneController>();
   readonly #listeners = new Set<() => void>();
 
-  get enabled(): boolean {
-    return this.#enabled;
+  /** A started window draws the strip and takes tab commands; the web's one tab never does. */
+  get strip(): boolean {
+    return this.#strip;
   }
 
   get startupDestination(): boolean {
@@ -205,24 +207,11 @@ class WindowTabs {
 
   /** Restore a reload synchronously; resolves once a first window has adopted the saved strip. */
   start(): Promise<void> {
-    this.#enabled = true;
+    this.#strip = true;
+    this.#startupDestination = false;
     const reloaded = parseStrip(read(storage("sessionStorage"), STRIP_KEY));
     this.#state = reloaded ?? initialWindow(crypto.randomUUID());
     window.addEventListener("focus", () => this.#mirror());
-    routeShellPages((page) =>
-      this.dispatch(
-        page === undefined
-          ? { kind: "leave-page" }
-          : {
-              kind: "open",
-              target: "here",
-              place:
-                page.kind === "customize"
-                  ? { kind: "customize", section: undefined, sessionId: page.sessionId }
-                  : { kind: "environments", section: undefined },
-            },
-      ),
-    );
 
     return firstWindow().then((first) => {
       if (!first || reloaded !== undefined) return;
@@ -322,13 +311,14 @@ class WindowTabs {
   }
 
   #save(): void {
+    if (!this.#strip) return;
     write(storage("sessionStorage"), STRIP_KEY, this.#serialized());
 
     if (document.hasFocus()) this.#mirror();
   }
 
   #mirror(): void {
-    if (this.#enabled) write(storage("localStorage"), STRIP_KEY, this.#serialized());
+    write(storage("localStorage"), STRIP_KEY, this.#serialized());
   }
 
   #serialized(): string {

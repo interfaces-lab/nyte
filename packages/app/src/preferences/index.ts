@@ -28,6 +28,11 @@ const FILES = "nyte:desktop:file-preferences:v1";
 
 const CHANGES = "nyte:changes:v1";
 
+const SIDEBAR = "nyte.desktop.sidebar.v3";
+
+/** The rail's width in pixels: what a drag or the keyboard can reach. */
+export const SIDEBAR_WIDTH = { min: 214, max: 400, step: 8 } as const;
+
 const integer = (minimum: number, maximum: number) => Type.Integer({ minimum, maximum });
 
 export const preferences = {
@@ -118,6 +123,13 @@ export const preferences = {
     false,
   ),
   changesWordWrap: definePreference({ key: CHANGES, field: "wordWrap" }, Type.Boolean(), true),
+  sidebarVisible: definePreference({ key: SIDEBAR, field: "visible" }, Type.Boolean(), true),
+  sidebarWidth: definePreference(
+    { key: SIDEBAR, field: "width" },
+    integer(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
+    220,
+  ),
+  homeVisible: definePreference({ key: SIDEBAR, field: "homeVisible" }, Type.Boolean(), true),
 } as const;
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;

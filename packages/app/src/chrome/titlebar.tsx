@@ -5,7 +5,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
  * actions and the stage-level workbench entry stay at the trailing edge.
  */
 import { props } from "@stylexjs/stylex";
-import { createLink, useCanGoBack, useMatch, useRouter } from "@tanstack/react-router";
+import { createLink, useMatch, useRouter } from "@tanstack/react-router";
 import { closeSettings } from "../settings/index.ts";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
@@ -36,7 +36,8 @@ import {
 } from "../workbench/controller.ts";
 import { terminalActions } from "../workbench/terminal-store.ts";
 import { folderPicker } from "./open-workspace.tsx";
-import { shellActions, useShellState } from "./shell-state.ts";
+import { shellActions, useStagePage } from "./shell-state.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import {
   clientActionAriaShortcut,
   clientActionShortcut,
@@ -133,7 +134,8 @@ export function Titlebar(): ReactElement {
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
   const workbench = useWorkbenchSnapshot();
-  const { sidebarVisible, stage } = useShellState();
+  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const page = useStagePage();
   const mac = macPlatform(host.data?.platform);
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
@@ -150,17 +152,12 @@ export function Titlebar(): ReactElement {
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
-  const workspaceVisible = !settingsOpen && stage.kind === "workspace";
+  const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
-  const historyCanGoBack = useCanGoBack();
-  const tabbed = windowTabs.enabled;
+  const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
-
-  const canGoBack = tabbed
-    ? canTravel(tabs, -1)
-    : stage.kind !== "workspace" || settingsOpen || historyCanGoBack;
 
   const openTerminal = useCallback((): void => {
     if (nyte.host.terminal === undefined) return;
@@ -295,7 +292,7 @@ export function Titlebar(): ReactElement {
     return (
       <header {...props(titlebarStyles.bar)}>
         <span {...props(titlebarStyles.sidebarSlot)} />
-        <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)} />
+        <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)} />
       </header>
     );
   }
@@ -333,23 +330,9 @@ export function Titlebar(): ReactElement {
                   iconOnly
                   icon="arrow-left"
                   aria-label="Go back"
-                  disabled={!canGoBack}
+                  disabled={!canTravel(tabs, -1)}
                   aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
-                  onClick={() => {
-                    if (tabbed) {
-                      windowTabs.dispatch({ kind: "travel", step: -1 });
-
-                      return;
-                    }
-
-                    if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
-                      shellActions.showWorkspace();
-
-                      return;
-                    }
-
-                    shellRouter.history.back();
-                  }}
+                  onClick={() => windowTabs.dispatch({ kind: "travel", step: -1 })}
                   title={undefined}
                 />
               }
@@ -366,12 +349,8 @@ export function Titlebar(): ReactElement {
                   icon="arrow-right"
                   aria-label="Go forward"
                   aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                  disabled={tabbed && !canTravel(tabs, 1)}
-                  onClick={() =>
-                    tabbed
-                      ? windowTabs.dispatch({ kind: "travel", step: 1 })
-                      : shellRouter.history.forward()
-                  }
+                  disabled={!canTravel(tabs, 1)}
+                  onClick={() => windowTabs.dispatch({ kind: "travel", step: 1 })}
                   title={undefined}
                 />
               }
@@ -380,9 +359,9 @@ export function Titlebar(): ReactElement {
           </Tooltip>
         </span>
       </span>
-      <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)}>
+      <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
         <span {...props(titlebarStyles.center, !workspaceVisible && titlebarStyles.centerTrailing)}>
-          {tabbed ? (
+          {strip ? (
             <TitlebarTabStrip state={tabs} mac={mac} />
           ) : (
             <span {...props(titlebarStyles.titleSlot)}>
@@ -391,7 +370,7 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || tabbed) &&
+          {(workspaceVisible || strip) &&
             layout.kind === "single" &&
             !(workbenchOpen && maximized) && (
               <span {...props(titlebarStyles.actionTrack)}>
@@ -424,7 +403,7 @@ export function Titlebar(): ReactElement {
             {...props(
               titlebarStyles.workbenchSlot,
               workbenchOpen && titlebarStyles.workbenchSlotOpen,
-              workbenchOpen && tabbed && titlebarStyles.workbenchSlotOpenTabbed,
+              workbenchOpen && strip && titlebarStyles.workbenchSlotOpenTabbed,
             )}
           >
             {workbenchOpen && (

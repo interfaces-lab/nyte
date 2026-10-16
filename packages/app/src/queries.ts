@@ -132,14 +132,13 @@ export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
+/** The folder a chat lives in: null for Home, undefined until the directory and folders load. */
 export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
   const session = directoryWatch("all").value?.find((candidate) => candidate.id === sessionId);
+  const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
 
-  if (session === undefined) return undefined;
-
-  const workspace = queryClient
-    .getQueryData<readonly WorkspaceInfo[]>(keys.workspaces)
-    ?.find((candidate) => candidate.id === session.workspace);
+  if (session === undefined || workspaces === undefined) return undefined;
+  const workspace = workspaces.find((candidate) => candidate.id === session.workspace);
 
   return workspace === undefined || workspace.availability.kind === "unavailable"
     ? null

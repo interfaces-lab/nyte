@@ -73,10 +73,11 @@ export function samePlaceAt(place: Place, location: Place): boolean {
   return sameSelection(place, location);
 }
 
+/** Move the route to a place; each move is a history entry, so the web's Back walks them. */
 export function navigateTo(router: AppRouter, place: Place): void {
   switch (place.kind) {
     case "blank":
-      void router.navigate({ to: "/", search: {}, replace: true });
+      void router.navigate({ to: "/", search: {} });
 
       return;
     case "session":
@@ -84,16 +85,15 @@ export function navigateTo(router: AppRouter, place: Place): void {
         to: "/session/$sessionId",
         params: { sessionId: place.sessionId },
         search: {},
-        replace: true,
       });
 
       return;
     case "customize":
-      void router.navigate({ to: "/", search: { customize: pageSection(place) }, replace: true });
+      void router.navigate({ to: "/", search: { customize: pageSection(place) } });
 
       return;
     case "environments":
-      void router.navigate({ to: "/", search: { environment: pageSection(place) }, replace: true });
+      void router.navigate({ to: "/", search: { environment: pageSection(place) } });
 
       return;
     default: {
@@ -102,11 +102,4 @@ export function navigateTo(router: AppRouter, place: Place): void {
       return _exhaustive;
     }
   }
-}
-
-/** Whether the route already shows `selection`, so a route sync is not a stale one. */
-export function routeShows(router: AppRouter, selection: Place): boolean {
-  const location = locationPlace(router);
-
-  return location !== undefined && samePlaceAt(selection, location);
 }

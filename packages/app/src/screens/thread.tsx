@@ -44,6 +44,7 @@ import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import {
+  hideFromPanes,
   usePaneActions,
   useCanSplitPane,
   usePaneControllerSnapshot,
@@ -51,7 +52,6 @@ import {
 } from "../layout/pane-context.tsx";
 import {
   activePane,
-  BLANK_SELECTION,
   clampSplitRatio,
   clampSplitRatioForSize,
   orderedPanes,
@@ -72,7 +72,6 @@ import {
   useSessionChoice,
   useSessionState,
 } from "../queries.ts";
-import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
 import { connected, connection } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
@@ -288,7 +287,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   const children = useChildSessions(sessionId);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
-  const removeSession = useSessionRemoval();
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
@@ -639,7 +637,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
             onConfirm={() => {
               const { sessionId: targetSessionId } = deletion;
               setDeletion({ kind: "closed" });
-              sessionActions.delete(targetSessionId, (id) => removeSession(cwd ?? null, id));
+              sessionActions.delete(targetSessionId, hideFromPanes);
             }}
           />
         )}
@@ -1227,13 +1225,12 @@ function SplitSash({
   );
 }
 
-export function ThreadScreen({
-  routeSessionId,
-}: {
-  routeSessionId: SessionId | undefined;
-}): ReactElement {
+/**
+ * One workspace-lifetime stage for blank and session places. The active tab's
+ * panes decide what it shows; the route follows them.
+ */
+export function ThreadScreen(): ReactElement {
   const { layout } = usePaneControllerSnapshot();
-  const actions = usePaneActions();
   const host = useHostState();
   const containerRef = useRef<HTMLDivElement>(null);
   const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
@@ -1258,22 +1255,6 @@ export function ThreadScreen({
       "browser"
       ? floatingMount
       : null;
-
-  const syncedRoute = useRef<{ readonly sessionId: SessionId | undefined } | undefined>(undefined);
-  useLayoutEffect(() => {
-    // A folder switch rebinds `actions` to a controller whose selection was
-    // made before the switch; the route follows it. Only a changed route
-    // reselects, and the first run aligns a restored layout with the route.
-    const synced = syncedRoute.current;
-
-    if (synced !== undefined && synced.sessionId === routeSessionId) return;
-    syncedRoute.current = { sessionId: routeSessionId };
-    actions.syncRoute(
-      routeSessionId === undefined
-        ? BLANK_SELECTION
-        : { kind: "session", sessionId: routeSessionId },
-    );
-  }, [actions, routeSessionId]);
 
   return (
     <div {...props(threadStyles.stage)}>

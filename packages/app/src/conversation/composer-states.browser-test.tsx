@@ -17,6 +17,7 @@ import type {
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient, useSessionView } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
@@ -355,18 +356,25 @@ function Stage({
     }),
   );
 
-  const [workspaceKey] = useState(() => `composer-states-${String((mounts += 1))}`);
+  const [panes] = useState(() => {
+    const controller = new PaneController({
+      storageKey: `composer-states-${String((mounts += 1))}`,
+    });
+    controller.selectSession(sessionOf(state));
+
+    return controller;
+  });
 
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <PaneControllerProvider workspaceKey={workspaceKey}>
+          <PaneControllerProvider controller={panes}>
             <SessionDndProvider>
               {layer === "composer" ? (
                 <LoneComposer state={state} />
               ) : (
-                <ThreadScreen routeSessionId={sessionOf(state)} />
+                <ThreadScreen />
               )}
             </SessionDndProvider>
           </PaneControllerProvider>
