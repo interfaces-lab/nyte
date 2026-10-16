@@ -25,7 +25,7 @@ export function appLink(path: string): string {
   return `${resolveScheme({})}://${path}`;
 }
 
-function titleOf(session: SessionInfo): string {
+function describeSession(session: SessionInfo): string {
   return session.name || "Untitled conversation";
 }
 
@@ -53,7 +53,7 @@ function lockScreenUi(working: readonly SessionInfo[], attention: readonly Sessi
         return (
           <Voltra.HStack key={session.id} style={{ gap: 8, alignItems: "center" }}>
             <Voltra.Text style={{ color: FOREGROUND, fontSize: 15, flex: 1 }} numberOfLines={1}>
-              {titleOf(session)}
+              {describeSession(session)}
             </Voltra.Text>
             {waiting ? (
               <Voltra.Text style={{ color: WARNING, fontSize: 13 }}>Needs input</Voltra.Text>
@@ -101,7 +101,7 @@ export function workLiveActivityVariants(
         trailing: <Voltra.Text style={{ color: FOREGROUND }}>{String(count)}</Voltra.Text>,
         center: (
           <Voltra.Text style={{ color: FOREGROUND }} numberOfLines={1}>
-            {lead === undefined ? "Nyte" : titleOf(lead)}
+            {lead === undefined ? "Nyte" : describeSession(lead)}
           </Voltra.Text>
         ),
         bottom: (

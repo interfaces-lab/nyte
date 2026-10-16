@@ -201,7 +201,7 @@ function Output({ text }: { text: string }) {
   );
 }
 
-function outputOf(outcome: ToolOutcome): string | undefined {
+function readOutput(outcome: ToolOutcome): string | undefined {
   switch (outcome.kind) {
     case "ok":
       return outcome.content
@@ -234,7 +234,7 @@ const ActivityDetail = memo(function ActivityDetail({
   const state = activityState(part, delegateNames);
   const tool = part.kind === "tool" ? part.state : undefined;
   const progress = tool?.phase === "running" ? tool.progress?.text : undefined;
-  const output = tool?.phase === "settled" ? outputOf(tool.outcome) : undefined;
+  const output = tool?.phase === "settled" ? readOutput(tool.outcome) : undefined;
 
   const file =
     tool?.phase === "settled" && tool.changes !== null && tool.class.kind === "edit"

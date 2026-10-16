@@ -38,7 +38,7 @@ export async function uploadDraft(
         ? part
         : {
             kind: "file" as const,
-            blob: await files.api.upload(bytesOf(part.data)),
+            blob: await files.api.upload(decodeBase64(part.data)),
             mime: part.mime,
             name: `photo-${String(index + 1)}.jpg`,
           },
@@ -46,7 +46,7 @@ export async function uploadDraft(
   );
 }
 
-async function* bytesOf(data: string): AsyncIterable<Uint8Array> {
+async function* decodeBase64(data: string): AsyncIterable<Uint8Array> {
   yield Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
 }
 

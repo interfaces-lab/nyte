@@ -49,9 +49,9 @@ export function useMessageScrollerProvider({
       setFollowing(true);
       void scrollMessageToEnd({ animated: false, closeKeyboard: false });
     },
-    anchorSend: async (sent: Promise<boolean>, keyOf: () => string | undefined) => {
+    anchorSend: async (sent: Promise<boolean>, readKey: () => string | undefined) => {
       const accepted = await sent;
-      const key = keyOf();
+      const key = readKey();
 
       if (accepted && key !== undefined) {
         anchorScrollPending.current = true;

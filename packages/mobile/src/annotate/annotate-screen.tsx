@@ -66,7 +66,7 @@ type ResponderDeps = {
 };
 
 /** Touch position as a fraction of the canvas, so marks survive resizing. */
-function spotOf(x: number, y: number, size: Canvas): Spot {
+function toSpot(x: number, y: number, size: Canvas): Spot {
   return {
     x: Math.min(1, Math.max(0, x / size.width)),
     y: Math.min(1, Math.max(0, y / size.height)),
@@ -89,12 +89,12 @@ function createAnnotateResponder(deps: ResponderDeps) {
     onMoveShouldSetPanResponder: () => false,
     onPanResponderGrant: (event) => {
       if (size === undefined) return;
-      start = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
+      start = toSpot(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
       stroke = null;
     },
     onPanResponderMove: (event) => {
       if (start === null || size === undefined) return;
-      const at = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
+      const at = toSpot(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
 
       if (stroke === null) {
         const dx = (at.x - start.x) * size.width;
@@ -122,7 +122,7 @@ function createAnnotateResponder(deps: ResponderDeps) {
         return;
       }
 
-      const at = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
+      const at = toSpot(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
       let nearest: AnnotationPoint | undefined;
       let distance = controls.touchTarget / 2;
       for (const point of points) {

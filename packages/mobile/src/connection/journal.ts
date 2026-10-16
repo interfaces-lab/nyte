@@ -9,7 +9,7 @@ export interface JournalStorage {
 }
 
 export function createJournal(storage: JournalStorage, prefix: string): RequestJournal {
-  const keyOf = (id: string) => JSON.stringify([prefix, id]);
+  const encodeKey = (id: string) => JSON.stringify([prefix, id]);
   const head = `${JSON.stringify([prefix]).slice(0, -1)},`;
 
   return {
@@ -18,7 +18,7 @@ export function createJournal(storage: JournalStorage, prefix: string): RequestJ
 
       for (const key of storage.getAllKeys().filter((key) => key.startsWith(head))) {
         const text = storage.getString(key);
-        const entry = text === undefined ? null : entryOf(text);
+        const entry = text === undefined ? null : parseEntry(text);
 
         if (entry === null) storage.remove(key);
         else entries.push(entry);
@@ -27,15 +27,15 @@ export function createJournal(storage: JournalStorage, prefix: string): RequestJ
       return entries.sort((left, right) => left.at - right.at);
     },
     async put(entry) {
-      storage.set(keyOf(entry.id), JSON.stringify(entry));
+      storage.set(encodeKey(entry.id), JSON.stringify(entry));
     },
     async remove(id) {
-      storage.remove(keyOf(id));
+      storage.remove(encodeKey(id));
     },
   };
 }
 
-function entryOf(text: string): JournalEntry | null {
+function parseEntry(text: string): JournalEntry | null {
   let value: unknown;
 
   try {

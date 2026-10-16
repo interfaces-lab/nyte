@@ -30,13 +30,13 @@ import {
   typography,
 } from "../theme.ts";
 
-function folderOf(path: string): string {
+function dirname(path: string): string {
   const slash = path.lastIndexOf("/");
 
   return slash <= 0 ? "" : path.slice(0, slash);
 }
 
-function basenameOf(path: string): string {
+function basename(path: string): string {
   const slash = path.lastIndexOf("/");
 
   return slash < 0 ? path : path.slice(slash + 1);
@@ -223,9 +223,9 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                   <IconTile name="doc.text" />
                   <html.div style={styles.fileText}>
                     <html.span style={[textStyles.secondary, styles.fileName]}>
-                      {basenameOf(file.path)}
+                      {basename(file.path)}
                     </html.span>
-                    <html.span style={textStyles.caption}>{folderOf(file.path)}</html.span>
+                    <html.span style={textStyles.caption}>{dirname(file.path)}</html.span>
                   </html.div>
                   <html.span style={[textStyles.caption, styles.totals]}>
                     <html.span style={styles.added}>{`+${String(file.added)} `}</html.span>
