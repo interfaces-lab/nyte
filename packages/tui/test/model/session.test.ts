@@ -2,6 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
 import { followed, buildView } from "../fixture/view.ts";
+import type { ViewBuilder } from "../fixture/view.ts";
 import { blank, CATALOG, play, ready, S1, typed } from "./support.ts";
 
 const working = buildView((v) => v.turn("t1", (t) => t.user("hi")).live());
@@ -108,16 +109,34 @@ describe("views", () => {
   });
 });
 
+function answered(v: ViewBuilder): ViewBuilder {
+  return v.turn("t0", (t) => t.user("first").text("ok").ended("completed"));
+}
+
 describe("run ended", () => {
-  test("a stop with an empty composer retracts the lone prompt; it lands once the view drops it", () => {
-    const ended = play(ready(working), { kind: "view", session: S1, view: stopped });
+  test("a stop with an empty composer retracts the prompt; it lands once the view drops it", () => {
+    const later = buildView((v) =>
+      answered(v)
+        .turn("t1", (t) => t.user("hi"))
+        .live(),
+    );
+
+    const ended = play(ready(later), {
+      kind: "view",
+      session: S1,
+      view: buildView((v) =>
+        answered(v)
+          .turn("t1", (t) => t.user("hi").ended("stopped"))
+          .idle({ run: "run-t1", end: "stopped" }),
+      ),
+    });
 
     expect(ended.effects).toEqual([
       { kind: "refresh-workspace", cwd: "/w" },
       {
         kind: "move",
         session: S1,
-        position: { kind: "commit", id: asId("commit-1") },
+        position: { kind: "commit", id: asId("commit-3") },
         options: {},
         handback: null,
       },
@@ -128,7 +147,7 @@ describe("run ended", () => {
       outcome: {
         kind: "moved",
         revision: asId("rev-2"),
-        position: { kind: "start" },
+        position: { kind: "commit", id: asId("commit-2") },
         summary: null,
         handback: "hi",
       },
@@ -136,8 +155,8 @@ describe("run ended", () => {
     });
 
     expect(outcome.effects).toEqual([]);
-
-    const landed = play(outcome.state, { kind: "view", session: S1, view: retracted });
+    const dropped = buildView((v) => answered(v).idle({ run: "run-t1", end: "stopped" }));
+    const landed = play(outcome.state, { kind: "view", session: S1, view: dropped });
 
     expect(landed.effects).toContainEqual({
       kind: "composer",
@@ -146,9 +165,15 @@ describe("run ended", () => {
     expect(landed.state.local.notice?.text).toBe("Stopped. Message is back in the composer.");
     expect(landed.state.local.draft.text).toBe("hi");
 
-    const again = play(landed.state, { kind: "view", session: S1, view: retracted });
+    const again = play(landed.state, { kind: "view", session: S1, view: dropped });
 
     expect(again.effects.filter((effect) => effect.kind === "composer")).toEqual([]);
+  });
+
+  test("a stop on the chat's first message keeps it: the chat would be empty", () => {
+    const ended = play(ready(working), { kind: "view", session: S1, view: stopped });
+
+    expect(ended.effects).toEqual([{ kind: "refresh-workspace", cwd: "/w" }]);
   });
 
   test("a stop with text in the composer retracts nothing", () => {

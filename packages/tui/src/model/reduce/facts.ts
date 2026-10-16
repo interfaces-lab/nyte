@@ -276,7 +276,12 @@ function runEnded(before: SessionView | null, after: SessionView, next: State, n
   const request = unansweredRequest(after);
   const commit = after.messages.find((message) => message.id === request?.message);
 
-  if (request === null || commit?.kind !== "user" || commit.status.kind !== "landed")
+  if (
+    request === null ||
+    commit?.kind !== "user" ||
+    commit.status.kind !== "landed" ||
+    after.messages.find((message) => message.kind === "user") === commit
+  )
     return refresh;
 
   return {

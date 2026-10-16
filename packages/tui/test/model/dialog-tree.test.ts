@@ -100,7 +100,7 @@ describe("tree", () => {
     expect(moved.state.local.dialogs).toEqual([]);
   });
 
-  test("a lone user message at the tip can be moved back to edit", () => {
+  test("the first message can't move back: the chat would be empty", () => {
     const moved = play(
       treeState("", {
         revision: asId("rev-1"),
@@ -110,13 +110,14 @@ describe("tree", () => {
       key("picker.accept"),
     );
 
-    expect(moved.effects).toMatchObject([
-      { kind: "move", position: { kind: "commit", id: asId("u1") } },
-    ]);
+    expect(moved.effects).toEqual([]);
+    expect(moved.state.local.notice?.text).toBe(
+      "The first message starts the chat and can't move back. /new starts another",
+    );
   });
 
   test("a user message needs an empty composer", () => {
-    const state = selectTree(treeState("draft"), "c1");
+    const state = selectTree(treeState("draft"), "c3");
 
     expect(play(state, key("picker.accept")).state.local.notice?.text).toBe(
       "Clear the composer before editing a message",
@@ -162,16 +163,11 @@ describe("tree", () => {
   });
 
   test("moving to a user message hands it back once the view no longer shows it landed", () => {
-    const state = selectTree(treeState(), "c1");
-
-    const moving = play(state, key("picker.accept"), {
-      kind: "dialog",
-      command: { kind: "key", name: "picker.accept" },
-    });
+    const moving = play(treeState(), key("picker.accept"));
 
     expect(moving.effects[0]).toMatchObject({
       kind: "move",
-      position: { kind: "commit", id: "c1" },
+      position: { kind: "commit", id: "c3" },
     });
 
     const outcome = play(moving.state, {
@@ -179,9 +175,9 @@ describe("tree", () => {
       outcome: {
         kind: "moved",
         revision: asId("rev-8"),
-        position: { kind: "start" },
+        position: { kind: "commit", id: asId("c2") },
         summary: null,
-        handback: "first",
+        handback: "second",
       },
       handback: null,
     });
@@ -189,7 +185,7 @@ describe("tree", () => {
     expect(outcome.state.local.notice?.text).toBe(
       "Message moved back to the composer. Enter sends it again.",
     );
-    expect(outcome.state.local.draft.text).toBe("first");
+    expect(outcome.state.local.draft.text).toBe("second");
   });
 
   test("filters toggle, folds and search interact, Ctrl+X copies", () => {
