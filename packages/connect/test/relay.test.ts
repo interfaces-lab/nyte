@@ -255,7 +255,6 @@ describe("headers and refusals", () => {
     expect(relayRequestHeaders(request)).toEqual({
       authorization: "Bearer t",
       accept: "text/event-stream",
-      "last-event-id": "7",
       "x-nyte-input": "e30",
     });
     expect(relayResponseHeaders(response)).toEqual({

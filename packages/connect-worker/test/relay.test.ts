@@ -382,7 +382,7 @@ describe("browser clients", () => {
       };
 
       const relayHeaders = {
-        requested: "Authorization, Content-Type, Last-Event-ID, X-Nyte-Input",
+        requested: "Authorization, Content-Type, X-Nyte-Input",
         allowed: RELAY_REQUEST_HEADER_NAMES.join(", "),
       };
 
@@ -658,7 +658,6 @@ describe("phone requests", () => {
           authorization: `Bearer ${bearer}`,
           accept: "application/json",
           "content-type": "application/octet-stream",
-          "last-event-id": "7",
           "x-nyte-input": "eyJwYXRoIjoiYSJ9",
         },
       },
