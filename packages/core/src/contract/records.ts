@@ -17,7 +17,6 @@ import {
   PromptOverrideType,
   RunEndType,
   RunViewType,
-  ToolOutcomeType,
   UsageType,
   WaitOutcomeType,
   WaitTargetType,
@@ -37,7 +36,6 @@ import type {
   PromptOverride,
   RunEnd,
   RunView,
-  ToolOutcome,
   Usage,
   WaitOutcome,
   WaitTarget,
@@ -210,7 +208,6 @@ const CallRecordType = record({
   ),
 
   partial: list(nullable(WaitOutcomeRef)),
-  nested: Type.Record(Type.String(), typed<ToolOutcome>()(ToolOutcomeType)),
   acquisitions: Type.Record(Type.String(), JsonType),
   result: nullable(JsonType),
   replay: Type.Enum(["safe", "never"]),

@@ -371,9 +371,17 @@ describe("tool calls", () => {
     });
     expect(runs).toBe(2);
     expect(echoes.slice(ran)).toEqual(["a", "b"]);
-    expect((await readCall(kernel, session.id, "p1")).nested).toEqual({
-      0: { kind: "ok", content: [{ kind: "text", text: "a" }], output: null, parts: [] },
-      second: { kind: "ok", content: [{ kind: "text", text: "b" }], output: null, parts: [] },
+    expect((await readCall(kernel, session.id, "p1:0")).result).toEqual({
+      kind: "ok",
+      content: [{ kind: "text", text: "a" }],
+      output: null,
+      parts: [],
+    });
+    expect((await readCall(kernel, session.id, "p1:second")).result).toEqual({
+      kind: "ok",
+      content: [{ kind: "text", text: "b" }],
+      output: null,
+      parts: [],
     });
     expect((await readCall(kernel, session.id, "p1:second")).intent).toMatchObject({
       name: "echo",

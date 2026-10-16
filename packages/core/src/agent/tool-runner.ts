@@ -41,7 +41,7 @@ import type { ExecutionEnv } from "../contract/workspace.ts";
 import { isParked, parkStep, runStep } from "../engine/durable.ts";
 import { abortHere, FENCED, unfenced } from "../engine/fence.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { changeCall, commit } from "../fold/commit.ts";
+import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
 import { changesRef, partRef, runRef } from "../store/refs.ts";
 import {
@@ -146,27 +146,6 @@ export async function executeCall(
 
     if (controllers.size === 0 && live.get(call) === controllers) live.delete(call);
   }
-}
-
-async function executeNested(
-  kernel: Kernel,
-  input: Where & { readonly args: Json; readonly key: string; readonly runtime: PluginRuntime },
-): Promise<ToolOutcome | typeof PARKED> {
-  const { session, call, key } = input;
-  const nested = (await readCall(kernel, session, call))?.record.nested;
-
-  if (nested !== undefined && Object.hasOwn(nested, key)) return nested[key];
-  const outcome = await executeCall(kernel, { ...input, call: asId<"call">(`${call}:${key}`) });
-
-  if (outcome.kind === "parked") return outcome;
-
-  await changeCall(kernel, session, call, async (current) =>
-    current === null || Object.hasOwn(current.nested, key)
-      ? null
-      : { record: { ...current, nested: { ...current.nested, [key]: outcome } } },
-  );
-
-  return outcome;
 }
 
 export async function owedCalls(
@@ -836,11 +815,11 @@ export function createInvocation(
         const key = options?.key ?? `${calls}`;
         calls += 1;
 
-        const outcome = await executeNested(kernel, {
+        const outcome = await executeCall(kernel, {
           session,
           head,
           run,
-          call,
+          call: asId<"call">(`${call}:${key}`),
           name,
           args,
           context: input.context,
@@ -848,7 +827,6 @@ export function createInvocation(
           covered: input.covered,
           signal:
             options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]),
-          key,
         });
 
         return outcome.kind === "parked" ? parkStep(durable) : outcome;

@@ -600,7 +600,6 @@ function callRecord(input: {
     waits: [],
     waiting: null,
     partial: [],
-    nested: {},
     acquisitions: {},
     result: null,
     replay: input.replay,
