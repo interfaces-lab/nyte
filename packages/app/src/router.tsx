@@ -29,16 +29,17 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider, usePaneActions, useCanSplitPane } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { queryClient, readSession, useHostState, warmSession } from "./queries.ts";
+import { queryClient, readSession, useHostState } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
+import { startupConnection } from "./startup.ts";
 import { preferences } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell } from "./theme/schema.stylex.ts";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
@@ -101,7 +102,33 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontBase,
   },
+  connectionFailure: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.s3,
+    flexShrink: 0,
+    paddingBlock: space.s2,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+  },
 });
+
+/** The host connection failed after the shell mounted; the stage stays, drafts included. */
+function ConnectionFailure(): ReactElement | null {
+  const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+
+  if (connection.kind !== "failed") return null;
+
+  return (
+    <div role="alert" {...props(styles.connectionFailure)}>
+      <span>Couldn&rsquo;t open your workspace.</span>
+      <Button variant="outline" onClick={connection.retry}>
+        Try Again
+      </Button>
+    </div>
+  );
+}
 
 /** `appIcon` is the host's product mark, shown in About; the host bundles it. */
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
@@ -124,13 +151,17 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   );
 }
 
+/**
+ * The window chrome around the stage. Customize and Environments cover the
+ * stage; Back and a sidebar row both leave them, except in a tab, whose page
+ * is left by the navigation the row makes rather than by the click.
+ */
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
   const shellRouter = useRouter();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
   const { stage: shellStage, about, sidebarVisible } = useShellState();
-  // Customize and Environments cover the stage; Back and a sidebar row both leave them.
   const stageOpen = shellStage.kind !== "workspace";
   const mac = macPlatform(host.data?.platform);
   const tabbed = windowTabs.enabled;
@@ -272,7 +303,6 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <div
         {...props(styles.stage)}
         onClickCapture={(event) => {
-          // A tab's page is left by the navigation the row makes, not by the click.
           if (tabbed || !stageOpen || !(event.target instanceof Element)) return;
 
           const sidebarAction = event.target.closest(
@@ -295,6 +325,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
               tabbed && !sidebarVisible && styles.cardSidebarHidden,
             )}
           >
+            <ConnectionFailure />
             <Matches />
           </main>
         </SessionDndProvider>
@@ -340,7 +371,13 @@ const shellSearch = Type.Object({
 
 export type ShellSearch = Static<typeof shellSearch>;
 
-const rootRoute = createRootRouteWithContext<{ startup: { pending: boolean } }>()({
+interface StartupContext {
+  pending: boolean;
+  /** Move to the last chat once the directory arrives, if the user has not started on a new one. */
+  readonly openLastChatOnArrival: () => void;
+}
+
+const rootRoute = createRootRouteWithContext<{ startup: StartupContext }>()({
   errorComponent: RouteError,
   notFoundComponent: RouteNotFound,
   validateSearch: (search): ShellSearch => ({
@@ -368,17 +405,20 @@ const indexRoute = createRoute({
     if (preload || !context.startup.pending) return;
     context.startup.pending = false;
 
-    // A restored strip, or a window opened beside others, already knows what it shows.
     if (windowTabs.enabled && !windowTabs.startupDestination) return;
 
     if (search.customize !== undefined || search.environment !== undefined) return;
 
     if (preferences.startupDestination.get() === "new-chat") return;
+    const directory = directoryWatch("all").value;
 
-    // The directory is newest-first, so its first open item is the last chat.
-    const sessionId = directoryWatch("all").value?.find(
-      (session) => session.parent === null && !session.archived,
-    )?.id;
+    if (directory === undefined) {
+      context.startup.openLastChatOnArrival();
+
+      return;
+    }
+
+    const sessionId = lastChat(directory);
 
     if (sessionId !== undefined) {
       throw redirect({
@@ -389,6 +429,38 @@ const indexRoute = createRoute({
     }
   },
 });
+
+/** The directory is newest-first, so its first open root is the last chat. */
+function lastChat(directory: readonly SessionInfo[]): SessionId | undefined {
+  return directory.find((session) => session.parent === null && !session.archived)?.id;
+}
+
+/**
+ * Startup shows a new chat until the directory arrives, then moves to the
+ * last chat, unless the user has started typing or clicking in the meantime:
+ * a draft in the new chat outranks the startup destination.
+ */
+function openLastChatOnArrival(router: AppRouter): void {
+  const directory = directoryWatch("all");
+  const controller = new AbortController();
+  const options = { capture: true, signal: controller.signal } as const;
+  const stop = (): void => controller.abort();
+  window.addEventListener("keydown", stop, options);
+  window.addEventListener("pointerdown", stop, options);
+
+  const leave = directory.subscribe(() => {
+    const { value, error } = directory;
+
+    if (value === undefined && error === undefined) return;
+    stop();
+    const sessionId = value === undefined ? undefined : lastChat(value);
+
+    if (sessionId === undefined || router.state.location.pathname !== "/") return;
+    void router.navigate({ to: threadRoute.to, params: { sessionId }, replace: true });
+  });
+
+  controller.signal.addEventListener("abort", leave, { once: true });
+}
 
 function RouteError(): ReactElement {
   const router = useRouter();
@@ -423,18 +495,30 @@ const threadRoute = createRoute({
     parse: (params) => ({ sessionId: asId<"session">(params.sessionId) }),
     stringify: ({ sessionId }) => ({ sessionId }),
   },
-  beforeLoad: async ({ params }) => {
-    const session = await readRouteSession({
-      client: queryClient,
-      sessionId: params.sessionId,
-      read: () => readSession(params.sessionId),
-    });
-
-    if (session === null) throw redirect({ to: indexRoute.to, replace: true });
-  },
   errorComponent: RouteError,
-  loader: ({ params }) => warmSession(params.sessionId),
 });
+
+/**
+ * A chat route renders at once, before the host has said the chat exists;
+ * one it no longer has returns the window to a new chat when the answer
+ * arrives.
+ */
+function leaveMissingChat(router: AppRouter): void {
+  const sessionId = currentRouteSession(router);
+
+  if (sessionId === undefined) return;
+  void readRouteSession({
+    client: queryClient,
+    sessionId,
+    read: () => readSession(sessionId),
+  }).then(
+    (session) => {
+      if (session === null && currentRouteSession(router) === sessionId)
+        void router.navigate({ to: indexRoute.to, replace: true });
+    },
+    () => undefined,
+  );
+}
 
 export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -475,7 +559,12 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
   const router = createRouter({
     routeTree,
     history,
-    context: { startup: { pending: history.location.pathname === "/" } },
+    context: {
+      startup: {
+        pending: history.location.pathname === "/",
+        openLastChatOnArrival: () => openLastChatOnArrival(router),
+      },
+    },
     defaultPreload: "intent",
     defaultPreloadDelay: 0,
     defaultPreloadStaleTime: 0,
@@ -486,6 +575,7 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
     if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
       rememberWorkspaceHref(router.state.location.href);
     restoreChromeStage(router);
+    leaveMissingChat(router);
   });
 
   restoreChromeStage(router);

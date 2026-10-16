@@ -2,7 +2,7 @@ import type { CommandInfo, Delivery, SessionId, UserContent } from "@nyte-ai/sdk
 import type { ImageContent } from "@nyte-ai/schema/model";
 import { errorMessage } from "../errors.ts";
 import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
-import { connection, sessionWatch } from "../sdk.tsx";
+import { connected, sessionWatch } from "../sdk.tsx";
 import type { UserMessage } from "../view-helpers.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import { messageFiles } from "./message-content.tsx";
@@ -91,7 +91,7 @@ export async function sendComposerMessage(
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
 ): Promise<void> {
   const content = await uploadComposerContent(plan.content);
-  await connection().session(sessionId).send(content, { delivery: plan.delivery });
+  await (await connected()).session(sessionId).send(content, { delivery: plan.delivery });
 }
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
@@ -114,9 +114,10 @@ export interface ComposerDelivery {
   /** The queued message this submit replaces; a replacement never runs a command. */
   readonly replacing: UserMessage | undefined;
   /**
-   * Runs once the submit is known to leave, before the host answers. The
-   * composer clears its draft there: the outbox row already shows the
-   * message, and the next thought never waits.
+   * Runs once the submit is known to leave and the host connection is open,
+   * before the host answers. The composer clears its draft there: the outbox
+   * row already shows the message, and the next thought never waits. Until
+   * then the draft stays in the composer, sending.
    */
   readonly onLeave: () => void;
 }
@@ -170,6 +171,7 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
           : "Commands can't run from a queued message.",
     };
 
+  await connected();
   input.onLeave();
 
   if (plan.kind === "message") return deliverMessage(sessionId, plan, replacing);
@@ -202,7 +204,9 @@ async function deliverMessage(
       files: messageFiles(replacing.content),
     });
 
-    await connection()
+    await (
+      await connected()
+    )
       .session(sessionId)
       .send(content, { replace: replacing.id, delivery: plan.delivery });
 
@@ -216,7 +220,7 @@ async function runCommand(
   sessionId: SessionId,
   { name, argument }: ParsedPluginCommand,
 ): Promise<DeliveryOutcome> {
-  const session = connection().session(sessionId);
+  const session = (await connected()).session(sessionId);
 
   if (name === COMPACT_COMMAND.name) {
     const outcome = await session.compact(argument === "" ? {} : { instructions: argument });

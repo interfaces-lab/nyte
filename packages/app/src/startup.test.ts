@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { startRendererStartup } from "./startup.ts";
+import { startRendererStartup, startupConnection } from "./startup.ts";
 
-test("the interface mounts once, after the caches, the initial route, and its screen are ready", async () => {
+test("the interface mounts once its local resources and route are ready, then connects", async () => {
   const resources = Promise.withResolvers<void>();
   const route = Promise.withResolvers<void>();
   const ready = Promise.withResolvers<void>();
   let mounts = 0;
+  let connects = 0;
 
   startRendererStartup({
     mountShell: () => {
@@ -17,6 +18,11 @@ test("the interface mounts once, after the caches, the initial route, and its sc
     },
     loadRouter: async () => {
       await route.promise;
+    },
+    connect: () => {
+      connects += 1;
+
+      return new Promise<void>(() => undefined);
     },
     showError: () => assert.fail("startup should succeed"),
     onReady: () => ready.resolve(),
@@ -29,6 +35,46 @@ test("the interface mounts once, after the caches, the initial route, and its sc
   route.resolve();
   await ready.promise;
   assert.equal(mounts, 1);
+  assert.equal(connects, 1);
+  assert.equal(startupConnection.read().kind, "connecting");
+});
+
+test("a failed connection leaves the shell mounted and retries on request", async () => {
+  let attempts = 0;
+  const ready = Promise.withResolvers<void>();
+
+  const settled = (kind: "failed" | "connected") =>
+    new Promise<void>((resolve) => {
+      const leave = startupConnection.subscribe(() => {
+        if (startupConnection.read().kind !== kind) return;
+        leave();
+        resolve();
+      });
+    });
+
+  const failed = settled("failed");
+
+  startRendererStartup({
+    mountShell: () => undefined,
+    loadResources: async () => undefined,
+    loadRouter: async () => undefined,
+    connect: async () => {
+      attempts += 1;
+
+      if (attempts === 1) throw new Error("host unavailable");
+    },
+    showError: () => assert.fail("local startup should succeed"),
+    onReady: () => ready.resolve(),
+  });
+
+  await Promise.all([failed, ready.promise]);
+  const state = startupConnection.read();
+
+  if (state.kind !== "failed") assert.fail("the connection should have failed");
+  const connected = settled("connected");
+  state.retry();
+  await connected;
+  assert.equal(attempts, 2);
 });
 
 for (const failure of ["resources", "route"] as const) {

@@ -23,7 +23,7 @@ import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
 import { mountClientPlugins, observeRunEnds } from "./client-plugins.tsx";
-import { directoryWatch } from "./sdk.tsx";
+import { connected, directoryWatch } from "./sdk.tsx";
 
 /**
  * The route owns what the stage shows. A folder the host opened on its own
@@ -133,7 +133,7 @@ function useHostEvents(router: AppRouter): void {
 
 function useClientPlugins(): void {
   useMountEffect(() => {
-    mountClientPlugins(focusedSession);
+    void connected().then(() => mountClientPlugins(focusedSession));
     const directory = directoryWatch("all");
     let previous = directory.value ?? [];
 

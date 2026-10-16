@@ -74,7 +74,7 @@ import {
 } from "../queries.ts";
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
-import { connection } from "../sdk.tsx";
+import { connected, connection } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../catalog.ts";
 import { conversationTurns } from "../view-helpers.ts";
@@ -713,7 +713,7 @@ function BlankConversation({
     });
 
     try {
-      const session = await connection().sessions.create({
+      const session = await (await connected()).sessions.create({
         ...(workspace === undefined ? {} : { workspace: workspace.id }),
         ...(defaults === undefined
           ? {}

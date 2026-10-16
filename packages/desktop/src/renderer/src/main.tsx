@@ -11,7 +11,8 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import {
   App,
-  loadLocalResources,
+  connectLocalHost,
+  loadHostState,
   createAppRouter,
   startRendererStartup,
   startWindowTabs,
@@ -72,7 +73,7 @@ startRendererStartup({
   },
   loadResources: () =>
     Promise.all([
-      loadLocalResources(),
+      loadHostState(),
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
       windowTabsReady,
@@ -82,6 +83,7 @@ startRendererStartup({
 
     return router.load();
   },
+  connect: () => connectLocalHost().then(() => undefined),
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
 

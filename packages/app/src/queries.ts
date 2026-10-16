@@ -50,7 +50,7 @@ import { nyte } from "./nyte.ts";
 import {
   childrenWatch,
   connectHost,
-  connection,
+  connected,
   currentConnection,
   directoryWatch,
   gitStatusWatch,
@@ -110,12 +110,13 @@ function useSessionProjection() {
 
 const readHost = () => nyte.host.state();
 
-const readWorkspaces = () => connection().workspaces.list();
+const readWorkspaces = async () => (await connected()).workspaces.list();
 
-const readModelCatalog = () => connection().models.list();
+const readModelCatalog = async () => (await connected()).models.list();
 
 function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
   if (previous !== undefined) return previous;
+
   const recent = queryClient
     .getQueryCache()
     .findAll({ queryKey: ["catalog", "models"] })
@@ -149,7 +150,7 @@ export async function workspaceFiles(): Promise<FilesApi> {
   const id = selectedWorkspaceId();
 
   if (id === undefined) throw new Error("Open a workspace to read its files");
-  const capability = await connection().workspace(id).files();
+  const capability = await (await connected()).workspace(id).files();
 
   if (capability.kind !== "available") throw new Error(capability.reason);
 
@@ -160,14 +161,15 @@ export async function workspaceGit(): Promise<GitApi> {
   const id = selectedWorkspaceId();
 
   if (id === undefined) throw new Error("Open a workspace to read its repository");
-  const capability = await connection().workspace(id).git();
+  const capability = await (await connected()).workspace(id).git();
 
   if (capability.kind !== "available") throw new Error(capability.reason);
 
   return capability.api;
 }
 
-export const readSession = (sessionId: SessionId) => connection().session(sessionId).info();
+export const readSession = async (sessionId: SessionId) =>
+  (await connected()).session(sessionId).info();
 
 export function useHostState() {
   return useQuery({ queryKey: keys.host, queryFn: readHost });
@@ -243,7 +245,7 @@ export function useForgetWorkspace() {
   return useMutation({
     mutationKey: ["workspace", "forget"],
     mutationFn: async (id: WorkspaceId) => {
-      const outcome = await connection().workspaces.forget(id);
+      const outcome = await (await connected()).workspaces.forget(id);
 
       if (outcome.kind === "busy") throw new Error("Chats still use this workspace");
     },
@@ -376,30 +378,21 @@ export function useSessionActivity(
   );
 }
 
-export async function warmSession(sessionId: SessionId): Promise<void> {
-  const store = sessionWatch(sessionId);
-
-  if (store.value === undefined) await store.next();
-}
-
 export function useSessionChoice(sessionId: SessionId) {
   const configuration = useWatchSelect(
     sessionWatch(sessionId),
     (state) => state.value?.configuration,
   );
+
   const pending = useMutationState<PendingConfiguration>({
     filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },
   });
 
-  return configuration === undefined
-    ? undefined
-    : projectSessionChoice({ configuration }, pending);
+  return configuration === undefined ? undefined : projectSessionChoice({ configuration }, pending);
 }
 
 export function useChildSessions(sessionId: SessionId | undefined) {
-  const children = useWatch(
-    sessionId === undefined ? undefined : childrenWatch(sessionId),
-  ).value;
+  const children = useWatch(sessionId === undefined ? undefined : childrenWatch(sessionId)).value;
 
   return { data: children };
 }
@@ -470,10 +463,10 @@ export function useRunChanges(input: {
 
   return useQuery<ChangeSet>({
     queryKey: keys.runChanges(workspace, runId, live),
-    queryFn: () => {
+    queryFn: async () => {
       if (workspace === undefined || runId === undefined) throw new Error("No run to compare");
 
-      return connection().workspace(workspace).changes(runId);
+      return (await connected()).workspace(workspace).changes(runId);
     },
     enabled: enabled && workspace !== undefined && runId !== undefined,
     staleTime: live ? 0 : "static",
@@ -505,14 +498,16 @@ export async function readGitPatches(
   return firstPatches((await workspaceGit()).patches(scope, paths, { ignoreWhitespace }), paths);
 }
 
-export function readRunPatches(
+export async function readRunPatches(
   workspace: WorkspaceId,
   run: RunId,
   paths: readonly string[],
   ignoreWhitespace: boolean,
 ): Promise<readonly PatchEntry[]> {
+  const current = await connected();
+
   return firstPatches(
-    connection().workspace(workspace).patches(run, paths, { ignoreWhitespace }),
+    current.workspace(workspace).patches(run, paths, { ignoreWhitespace }),
     paths,
   );
 }
@@ -647,6 +642,7 @@ function useCatalogGeneration(): string {
 
 export function useCatalog(_sessionId?: SessionId) {
   const generation = useCatalogGeneration();
+
   const pending = useMutationState<MutationState<unknown, Error, ModelRef>>({
     filters: { mutationKey: ["catalog", "default"], status: "pending" },
   });
@@ -721,7 +717,7 @@ export function useUsageReport(untilDay: string): UsageQueryView {
 export function accountLimitsOptions(generation: string) {
   return {
     queryKey: keys.accountLimits(generation),
-    queryFn: () => connection().models.usage(),
+    queryFn: async () => (await connected()).models.usage(),
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
   } as const;
@@ -743,6 +739,7 @@ export const COMPACT_COMMAND = {
 export function usePluginCatalog(sessionId?: SessionId) {
   const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
   const catalog = useWatchSelect(store, (state) => state.value?.catalog);
+
   const failed = useWatchSelect(
     store,
     (state) => state.value === undefined && state.error !== undefined,
@@ -766,7 +763,7 @@ export function useSetPreference() {
     mutationKey: ["catalog", "default"],
     scope: { id: "catalog-default" },
     mutationFn: async (model: ModelRef) => {
-      const outcome = await connection().models.setDefault(model);
+      const outcome = await (await connected()).models.setDefault(model);
 
       if (outcome.kind === "unknown-model") throw new Error("That model is no longer available");
     },
@@ -784,47 +781,66 @@ export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): v
   );
 }
 
-let connecting: Promise<unknown> | Connection | undefined;
+let connecting: Promise<Connection> | undefined;
 
 /**
- * Connect once, then refill workspace caches after a host transition,
- * committing host state last.
+ * Connect to this window's host once. A failed attempt is forgotten, so the
+ * next call tries again.
+ */
+export function connectLocalHost(): Promise<Connection> {
+  const current = currentConnection();
+
+  if (current !== undefined) return Promise.resolve(current);
+
+  connecting ??= nyte.host
+    .endpoint()
+    .then((endpoint) => connectHost(endpoint, { remember: nyte.host.remember }))
+    .then((opened) => {
+      performance.mark("nyte:sdk-connected");
+
+      return opened;
+    })
+    .catch((cause: unknown) => {
+      connecting = undefined;
+      throw cause;
+    });
+
+  return connecting;
+}
+
+/** Host state is a local answer, given before the host has opened; the first frame reads it. */
+export async function loadHostState(): Promise<void> {
+  queryClient.setQueryData(keys.host, await readHost());
+}
+
+/**
+ * Refill the workspace caches after a host transition, committing host state
+ * last. Every read waits for the connection on its own and runs alongside
+ * the others.
  */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
+  const host = hostWatch("host");
+  const directory = directoryWatch("all");
 
-  connecting ??=
-    currentConnection() ??
-    nyte.host
-      .endpoint()
-      .then((endpoint) => connectHost(endpoint, { remember: nyte.host.remember }))
-      .catch((cause: unknown) => {
-        connecting = undefined;
-        throw cause;
-      });
-  await connecting;
-  if (version === 1) performance.mark("nyte:sdk-connected");
-
-  const [host, workspaces, catalog] = await Promise.all([
+  const [state, workspaces, catalog] = await Promise.all([
     readHost(),
     readWorkspaces(),
     readModelCatalog(),
-    hostWatch("host").value === undefined ? hostWatch("host").next() : undefined,
+    host.value === undefined ? host.next() : undefined,
+    directory.value === undefined
+      ? directory.next().then(() => performance.mark("nyte:directory-ready"))
+      : undefined,
   ]);
 
   if (version !== localLoadVersion) return;
-
   const workspaceScopes = new Set(["git", "files", "github", "customize"]);
   queryClient.removeQueries({
     predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
   });
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
-  if (version === 1) performance.mark("nyte:catalog-ready");
-
-  if (directoryWatch("all").value === undefined) await directoryWatch("all").next();
-  if (version === 1) performance.mark("nyte:directory-ready");
-  queryClient.setQueryData(keys.host, host);
+  queryClient.setQueryData(keys.host, state);
 }
 
 /** Share pending configuration with the draft-to-session handoff. */
@@ -867,7 +883,7 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
     networkMode: "always",
     mutationFn: async ({ id, value }: ApplyPluginSettingInput) => {
       if (sessionId === undefined) {
-        const outcome = await connection().settings.apply(id, value);
+        const outcome = await (await connected()).settings.apply(id, value);
 
         if (outcome.kind === "unknown") throw new Error("That setting is no longer available");
 
@@ -876,7 +892,9 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
         return;
       }
 
-      const outcome = await connection()
+      const outcome = await (
+        await connected()
+      )
         .session(sessionId)
         .configure({ settings: { [id]: value } });
 

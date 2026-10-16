@@ -27,11 +27,10 @@ export function chatRow(page: Page, name: string): Locator {
 
 export async function openChat(page: Page, name: string): Promise<void> {
   const row = chatRow(page, name);
+  const done = sidebar(page).getByRole("button", { name: /^Done \d+$/u });
+  await expect(row.or(done).first()).toBeVisible();
 
-  if (!(await row.isVisible()))
-    await sidebar(page)
-      .getByRole("button", { name: /^Done \d+$/u })
-      .click();
+  if (!(await row.isVisible())) await done.click();
 
   await row.click();
   await expect(chatTab(page, name)).toHaveAttribute("aria-selected", "true");

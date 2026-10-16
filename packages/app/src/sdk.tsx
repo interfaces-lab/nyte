@@ -27,6 +27,11 @@ export interface ConnectionProblem {
 
 let installed: Connection | undefined;
 
+const first = Promise.withResolvers<Connection>();
+
+let ready = first.promise;
+
+/** Opens a host connection and installs it. A desktop or web shell calls this once it knows the endpoint. */
 export async function connectHost(
   endpoint: HostEndpoint,
   options: {
@@ -50,15 +55,28 @@ export async function connectHost(
 }
 
 export function installConnection(connection: Connection): void {
+  const replaced = installed !== undefined;
   installed = connection;
+  first.resolve(connection);
+  ready = Promise.resolve(connection);
 
-  for (const stores of registries) stores.clear();
+  if (replaced) for (const stores of registries) stores.clear();
+}
+
+/**
+ * The installed connection, once there is one. The shell mounts before the
+ * host answers, so anything that can run that early (a watch, a query, a
+ * send typed during startup) waits here rather than failing.
+ */
+export function connected(): Promise<Connection> {
+  return ready;
 }
 
 export function currentConnection(): Connection | undefined {
   return installed;
 }
 
+/** The installed connection, for actions that only a mounted, connected screen can start. */
 export function connection(): Connection {
   if (installed === undefined) throw new Error("No Nyte connection is installed");
 
@@ -77,10 +95,14 @@ export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | undefined;
-  private readonly open: () => AsyncIterable<T>;
+  private readonly open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>;
   private readonly idle: () => void;
 
-  constructor(open: () => AsyncIterable<T>, idle: () => void = () => undefined) {
+  /** `open` may wait before it has a source, as a family's watch waits for its connection. */
+  constructor(
+    open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>,
+    idle: () => void = () => undefined,
+  ) {
     this.open = open;
     this.idle = idle;
   }
@@ -97,10 +119,15 @@ export class WatchStore<T> {
     return this.listeners.size > 0;
   }
 
+  /**
+   * Stop and forget the watch. Subscribers get a new, empty state even when
+   * nothing had arrived, so they render again and reach the store that
+   * replaces this one.
+   */
   dispose(): void {
     this.stop?.();
     this.stop = undefined;
-    this.publish(UNSTARTED);
+    this.publish({ value: undefined, error: undefined });
   }
 
   /** Reopen a failed watch for its current subscribers, keeping the last frame on screen. */
@@ -132,6 +159,7 @@ export class WatchStore<T> {
   next(): Promise<T> {
     return new Promise((resolve, reject) => {
       const seen = this.state.value;
+
       const leave = this.subscribe(() => {
         const { value, error } = this.state;
 
@@ -151,10 +179,15 @@ export class WatchStore<T> {
 
   private start(): () => void {
     let stopped = false;
-    const iterator = this.open()[Symbol.asyncIterator]();
+    let iterator: AsyncIterator<T> | undefined;
 
     void (async () => {
       try {
+        const source = await this.open();
+
+        if (stopped) return;
+        iterator = source[Symbol.asyncIterator]();
+
         for (;;) {
           const next = await iterator.next();
 
@@ -172,7 +205,7 @@ export class WatchStore<T> {
 
     return () => {
       stopped = true;
-      void iterator.return?.();
+      void iterator?.return?.();
     };
   }
 
@@ -187,7 +220,10 @@ const registries = new Set<{ clear(): void }>();
 
 const RETAINED_WATCHES = 16;
 
-export function watchFamily<K extends string, T>(open: (key: K) => AsyncIterable<T>) {
+/** One watch per key, opened once a connection is installed and dropped when a new one replaces it. */
+export function watchFamily<K extends string, T>(
+  open: (connection: Connection, key: K) => AsyncIterable<T>,
+) {
   const stores = new Map<K, WatchStore<T>>();
 
   const prune = (): void => {
@@ -211,7 +247,7 @@ export function watchFamily<K extends string, T>(open: (key: K) => AsyncIterable
   return (key: K): WatchStore<T> => {
     const existing = stores.get(key);
 
-    const store = existing ?? new WatchStore(() => open(key), prune);
+    const store = existing ?? new WatchStore(async () => open(await connected(), key), prune);
     stores.delete(key);
     stores.set(key, store);
     prune();
@@ -302,31 +338,34 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
   }
 }
 
-export const hostWatch = watchFamily((_key: "host"): AsyncIterable<HostView> =>
-  connection().watch(),
+export const hostWatch = watchFamily((current, _key: "host"): AsyncIterable<HostView> =>
+  current.watch(),
 );
 
-export const directoryWatch = watchFamily((_key: "all"): AsyncIterable<readonly SessionInfo[]> =>
-  connection().sessions.watch({ parents: { kind: "all" } }),
+export const directoryWatch = watchFamily(
+  (current, _key: "all"): AsyncIterable<readonly SessionInfo[]> =>
+    current.sessions.watch({ parents: { kind: "all" } }),
 );
 
 export const childrenWatch = watchFamily(
-  (session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
-    connection().sessions.watch({ parents: { kind: "children", session } }),
+  (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
+    current.sessions.watch({ parents: { kind: "children", session } }),
 );
 
-export const sessionWatch = watchFamily((session: SessionId): AsyncIterable<SessionView> =>
-  connection().session(session).watch(),
+export const sessionWatch = watchFamily((current, session: SessionId): AsyncIterable<SessionView> =>
+  current.session(session).watch(),
 );
 
-export const jobsWatch = watchFamily((workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
-  connection().workspace(workspace).jobs.watch(),
+export const jobsWatch = watchFamily(
+  (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
+    current.workspace(workspace).jobs.watch(),
 );
 
-export const gitStatusWatch = watchFamily((workspace: WorkspaceId): AsyncIterable<GitStatus> =>
-  (async function* () {
-    const git = await connection().workspace(workspace).git();
+export const gitStatusWatch = watchFamily(
+  (current, workspace: WorkspaceId): AsyncIterable<GitStatus> =>
+    (async function* () {
+      const git = await current.workspace(workspace).git();
 
-    if (git.kind === "available") yield* git.api.watch();
-  })(),
+      if (git.kind === "available") yield* git.api.watch();
+    })(),
 );
