@@ -96,7 +96,7 @@ export function BlankConversation({
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
-  const workspace = host.data?.workspace;
+  const workspace = host.data.workspace;
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
   const actions = usePaneActions();
@@ -231,7 +231,7 @@ export function BlankConversation({
     [updateViewState],
   );
 
-  const dropDisabled = sending || host.data === undefined;
+  const dropDisabled = sending;
   useLayoutEffect(() => {
     const element = blankRef.current;
 
@@ -272,7 +272,7 @@ export function BlankConversation({
             }
             onSubmit={start}
             placeholder="Ask Nyte, or type / for skills and @ for context"
-            disabled={sending || host.data === undefined}
+            disabled={sending}
             suggestionCatalog={composerSource({ commands: NO_COMMANDS, skills: [] }, false)}
             mentionFiles={
               workspace === undefined
@@ -308,7 +308,7 @@ export function BlankConversation({
                 current={current}
                 thinkingLevel={defaults?.thinkingLevel}
                 fast={selected?.fast === true}
-                disabled={sending || host.data === undefined}
+                disabled={sending}
                 onChange={(change) => {
                   const model = pickerDefaults(
                     {

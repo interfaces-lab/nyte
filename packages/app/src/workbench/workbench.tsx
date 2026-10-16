@@ -742,7 +742,7 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
             scope={current ? workbenchScope(viewWorkspacePath) : { kind: "pathless" }}
             sessionId={current ? sessionId : undefined}
             stageWidth={stageWidth}
-            workspaceName={host.data?.workspace?.name}
+            workspaceName={host.data.workspace?.name}
             capabilities={capabilities}
             workspacePath={viewWorkspacePath ?? null}
           />

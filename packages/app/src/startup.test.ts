@@ -1,73 +1,62 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { startRendererStartup, startupConnection } from "./startup.ts";
 
-test("the interface mounts once its local resources and route are ready, then connects", async () => {
-  const resources = Promise.withResolvers<void>();
-  const route = Promise.withResolvers<void>();
-  const ready = Promise.withResolvers<void>();
-  let mounts = 0;
-  let connects = 0;
+const fonts = { load: vi.fn(async () => []) };
+
+vi.stubGlobal("document", { fonts });
+
+function settled(kind: "failed" | "connected"): Promise<void> {
+  return new Promise((resolve) => {
+    const leave = startupConnection.subscribe(() => {
+      if (startupConnection.read().kind !== kind) return;
+      leave();
+      resolve();
+    });
+  });
+}
+
+test("the interface mounts while the host connection never settles", async () => {
+  const mounted = Promise.withResolvers<void>();
+  const order: string[] = [];
 
   startRendererStartup({
+    fonts: ['13px "Inter Variable"'],
+    router: { load: async () => void order.push("route") },
     mountShell: () => {
-      mounts += 1;
-    },
-    loadResources: async () => {
-      await resources.promise;
-    },
-    loadRouter: async () => {
-      await route.promise;
+      order.push("mount");
+      mounted.resolve();
     },
     connect: () => {
-      connects += 1;
+      order.push("connect");
 
       return new Promise<void>(() => undefined);
     },
     showError: () => assert.fail("startup should succeed"),
-    onReady: () => ready.resolve(),
   });
 
-  assert.equal(mounts, 0);
-  resources.resolve();
-  await Promise.resolve();
-  assert.equal(mounts, 0);
-  route.resolve();
-  await ready.promise;
-  assert.equal(mounts, 1);
-  assert.equal(connects, 1);
+  await mounted.promise;
+  assert.deepEqual(order, ["route", "mount", "connect"]);
   assert.equal(startupConnection.read().kind, "connecting");
 });
 
 test("a failed connection leaves the shell mounted and retries on request", async () => {
   let attempts = 0;
-  const ready = Promise.withResolvers<void>();
-
-  const settled = (kind: "failed" | "connected") =>
-    new Promise<void>((resolve) => {
-      const leave = startupConnection.subscribe(() => {
-        if (startupConnection.read().kind !== kind) return;
-        leave();
-        resolve();
-      });
-    });
-
   const failed = settled("failed");
 
   startRendererStartup({
+    fonts: [],
+    router: { load: async () => undefined },
     mountShell: () => undefined,
-    loadResources: async () => undefined,
-    loadRouter: async () => undefined,
     connect: async () => {
       attempts += 1;
 
       if (attempts === 1) throw new Error("host unavailable");
     },
     showError: () => assert.fail("local startup should succeed"),
-    onReady: () => ready.resolve(),
   });
 
-  await Promise.all([failed, ready.promise]);
+  await failed;
   const state = startupConnection.read();
 
   if (state.kind !== "failed") assert.fail("the connection should have failed");
@@ -77,30 +66,25 @@ test("a failed connection leaves the shell mounted and retries on request", asyn
   assert.equal(attempts, 2);
 });
 
-for (const failure of ["resources", "route"] as const) {
-  test(`a ${failure} failure keeps the startup shell up with a retry that can finish startup`, async () => {
-    let available = false;
-    const failed = Promise.withResolvers<() => void>();
-    const ready = Promise.withResolvers<void>();
-    let mounts = 0;
-    startRendererStartup({
-      mountShell: () => {
-        mounts += 1;
+test("a route failure shows a retry that can finish startup", async () => {
+  let available = false;
+  const failed = Promise.withResolvers<() => void>();
+  const mounted = Promise.withResolvers<void>();
+
+  startRendererStartup({
+    fonts: [],
+    router: {
+      load: async () => {
+        if (!available) throw new Error("route unavailable");
       },
-      loadResources: async () => {
-        if (!available && failure === "resources") throw new Error("disk unavailable");
-      },
-      loadRouter: async () => {
-        if (!available && failure === "route") throw new Error("route unavailable");
-      },
-      showError: (retry) => failed.resolve(retry),
-      onReady: () => ready.resolve(),
-    });
-    const retry = await failed.promise;
-    assert.equal(mounts, 0);
-    available = true;
-    retry();
-    await ready.promise;
-    assert.equal(mounts, 1);
+    },
+    mountShell: () => mounted.resolve(),
+    connect: async () => undefined,
+    showError: (retry) => failed.resolve(retry),
   });
-}
+
+  const retry = await failed.promise;
+  available = true;
+  retry();
+  await mounted.promise;
+});

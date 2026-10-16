@@ -517,7 +517,7 @@ export function FilesPanel({
             >
               <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
                 <div {...props(styles.explorerHeader)}>
-                  {host.data?.workspace?.name ?? "Workspace"}
+                  {host.data.workspace?.name ?? "Workspace"}
                 </div>
                 {files.isError && (
                   <div role="alert" {...props(styles.empty)}>

@@ -142,7 +142,7 @@ export function Composer({
 
   const inlineSlot = useRef<HTMLDivElement | null>(null);
   const focusAfterMove = useRef(false);
-  const cwd = host.data?.workspace?.path;
+  const cwd = host.data.workspace?.path;
   const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
   const attachInlineSlot = useCallback(

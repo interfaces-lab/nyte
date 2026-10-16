@@ -129,7 +129,7 @@ export function Titlebar(): ReactElement {
   const mac = macPlatform(nyte.platform);
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
-  const workspacePath = host.data?.workspace?.path;
+  const workspacePath = host.data.workspace?.path;
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
 

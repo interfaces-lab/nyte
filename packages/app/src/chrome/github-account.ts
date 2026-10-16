@@ -37,7 +37,7 @@ export function useGitHubState(github: GitHubBridge | undefined) {
   const pending = usePendingAuth();
 
   return useQuery({
-    queryKey: [...keys.github, host.data?.workspace?.path ?? null],
+    queryKey: [...keys.github, host.data.workspace?.path ?? null],
     queryFn: github === undefined ? skipToken : () => github.state(),
     staleTime: 30_000,
     refetchOnMount: true,

@@ -266,7 +266,7 @@ export function WorkspaceSearch({
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
-  const root = useHostState().data?.workspace?.path ?? "";
+  const root = useHostState().data.workspace?.path ?? "";
 
   const state: SearchState =
     query === ""

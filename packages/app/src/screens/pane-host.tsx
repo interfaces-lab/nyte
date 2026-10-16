@@ -94,7 +94,7 @@ export function PaneHost({
   }, []);
 
   const host = useHostState();
-  const workspacePath = host.data?.workspace?.path;
+  const workspacePath = host.data.workspace?.path;
 
   const referenceOpener = useMemo(
     () => workbenchReferenceOpener({ viewKey: workbenchViewKey(workspacePath), workspacePath }),

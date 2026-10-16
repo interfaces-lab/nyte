@@ -27,7 +27,6 @@ interface SearchPaletteProps {
   readonly trigger: ReactElement;
   readonly open: boolean;
   readonly platform: NodeJS.Platform | undefined;
-  readonly sessionQueriesAvailable: boolean;
   /** The sidebar's chat rows, in its order. Undefined while they load. */
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -85,7 +84,6 @@ export function SearchPalette({
   trigger,
   open,
   platform,
-  sessionQueriesAvailable,
   recentSessions,
   onOpenChange,
   onOpenSession,
@@ -109,7 +107,7 @@ export function SearchPalette({
 
   const includesAgents = tab === "all" || tab === "agents";
   const searchingAgents = includesAgents && query.trim() !== "";
-  const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
+  const sessionSearch = useSessionSearch(query, open && searchingAgents);
 
   const sessions = searchingAgents
     ? sessionsForNavigation(sessionSearch.data?.items ?? [])
@@ -187,7 +185,7 @@ export function SearchPalette({
     : recentSessions === undefined;
 
   const emptyMessage = (): string => {
-    if (includesAgents && (!sessionQueriesAvailable || chatsPending)) return "Loading chats…";
+    if (includesAgents && chatsPending) return "Loading chats…";
 
     if (tab === "agents")
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";

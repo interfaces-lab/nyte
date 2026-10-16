@@ -110,7 +110,7 @@ export function ThreadScreen(): ReactElement {
   const leading = panes[0] ?? activePane(layout);
   const trailing = layout.kind === "split" ? panes[1] : undefined;
   const activeSelection = activePane(layout).selection;
-  const workspacePath = host.data?.workspace?.path;
+  const workspacePath = host.data.workspace?.path;
 
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);

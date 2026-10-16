@@ -21,7 +21,7 @@ import { EnvironmentMenu } from "./environment-menu.tsx";
 
 export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
-  const workspace = host.data?.workspace;
+  const workspace = host.data.workspace;
   const workspaces = useWorkspaces();
   const vcs = useVcsSnapshot(workspace !== undefined);
   const github = useGitHubState(nyte.host.github);
@@ -58,8 +58,6 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       <span title={candidate.path}>{candidate.name}</span>
     </MenuRadioItem>
   ));
-
-  if (host.data === undefined) return null;
 
   return (
     <div {...props(contextStyles.row)}>

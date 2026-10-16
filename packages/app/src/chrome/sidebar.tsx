@@ -163,7 +163,7 @@ export function Sidebar(): ReactElement {
   const workspaceCollectionID = useId();
   const panes = usePaneActions();
   const host = useHostState();
-  const open = host.data?.workspace;
+  const open = host.data.workspace;
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
   const server = useServerState(false);
@@ -386,7 +386,6 @@ export function Sidebar(): ReactElement {
           <SearchPalette
             open={paletteOpen}
             platform={nyte.platform}
-            sessionQueriesAvailable={host.data !== undefined}
             recentSessions={listed?.map(({ session }) => session)}
             onOpenChange={shellActions.setSearchOpen}
             onOpenSession={(sessionId) =>
@@ -503,48 +502,42 @@ export function Sidebar(): ReactElement {
               </div>
 
               <Collapsible.Panel id={workspaceCollectionID} {...props(styles.workspaceCollection)}>
-                {host.isPending && (
-                  <div aria-busy="true" {...props(text.base, styles.quiet)}>
-                    Loading…
-                  </div>
-                )}
-                {host.data !== undefined &&
-                  (flat ? (
-                    <ChatsList
-                      listId={`${sessionListId}-chats`}
-                      listed={listed}
-                      hold={hold}
-                      layoutEnabled={sidebarVisible && collectionExpanded}
-                      context={context}
-                    />
-                  ) : (
-                    <>
-                      {folders}
-                      {server.data !== undefined &&
-                        server.data.kind !== "none" &&
-                        cloudFailure !== undefined && (
-                          <WorkspaceRow
-                            name="Cloud"
-                            path={server.data.baseUrl}
-                            available={false}
-                            unavailableDetail="server unavailable"
-                            active={false}
-                            expanded={!cloudCollapsed}
-                            onExpandedChange={(next) => setCloudCollapsed(!next)}
-                            onNewChat={undefined}
-                            onArchiveAll={undefined}
-                            onRemove={() => void nyte.host.server.disconnect()}
+                {flat ? (
+                  <ChatsList
+                    listId={`${sessionListId}-chats`}
+                    listed={listed}
+                    hold={hold}
+                    layoutEnabled={sidebarVisible && collectionExpanded}
+                    context={context}
+                  />
+                ) : (
+                  <>
+                    {folders}
+                    {server.data !== undefined &&
+                      server.data.kind !== "none" &&
+                      cloudFailure !== undefined && (
+                        <WorkspaceRow
+                          name="Cloud"
+                          path={server.data.baseUrl}
+                          available={false}
+                          unavailableDetail="server unavailable"
+                          active={false}
+                          expanded={!cloudCollapsed}
+                          onExpandedChange={(next) => setCloudCollapsed(!next)}
+                          onNewChat={undefined}
+                          onArchiveAll={undefined}
+                          onRemove={() => void nyte.host.server.disconnect()}
+                        >
+                          <div
+                            role="status"
+                            {...props(text.base, styles.quiet, styles.sessionQuiet)}
                           >
-                            <div
-                              role="status"
-                              {...props(text.base, styles.quiet, styles.sessionQuiet)}
-                            >
-                              {cloudFailure}
-                            </div>
-                          </WorkspaceRow>
-                        )}
-                    </>
-                  ))}
+                            {cloudFailure}
+                          </div>
+                        </WorkspaceRow>
+                      )}
+                  </>
+                )}
               </Collapsible.Panel>
             </Collapsible.Root>
           </section>

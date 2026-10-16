@@ -12,7 +12,6 @@ import { focusManager } from "@tanstack/react-query";
 import {
   App,
   connectLocalHost,
-  loadHostState,
   createAppRouter,
   startRendererStartup,
   startWindowTabs,
@@ -61,6 +60,8 @@ applyStartupTheme({ shell: startupShell, retry: startupRetry });
 performance.mark("nyte:startup");
 
 startRendererStartup({
+  fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
+  router,
   mountShell: () => {
     createRoot(container).render(
       <StrictMode>
@@ -70,13 +71,6 @@ startRendererStartup({
       </StrictMode>,
     );
   },
-  loadResources: () =>
-    Promise.all([
-      loadHostState(),
-      document.fonts.load('13px "Inter Variable"'),
-      document.fonts.load('12px "JetBrains Mono Variable"'),
-    ]).then(() => undefined),
-  loadRouter: () => router.load(),
   connect: () => connectLocalHost().then(() => undefined),
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
@@ -91,5 +85,4 @@ startRendererStartup({
       { once: true },
     );
   },
-  onReady: () => performance.mark("nyte:resources-ready"),
 });

@@ -82,6 +82,8 @@ function start(
   performance.mark("nyte:startup");
 
   startRendererStartup({
+    fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
+    router,
     mountShell: () => {
       mount(
         <StrictMode>
@@ -90,13 +92,7 @@ function start(
         </StrictMode>,
       );
     },
-    loadResources: () =>
-      Promise.all([
-        loadLocalResources(),
-        document.fonts.load('13px "Inter Variable"'),
-        document.fonts.load('12px "JetBrains Mono Variable"'),
-      ]).then(() => undefined),
-    loadRouter: () => router.load(),
+    connect: loadLocalResources,
     showError: (retry) => {
       mount(
         <main {...props(styles.failure)}>
@@ -105,7 +101,6 @@ function start(
         </main>,
       );
     },
-    onReady: () => performance.mark("nyte:resources-ready"),
   });
 }
 

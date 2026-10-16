@@ -171,8 +171,16 @@ export async function workspaceGit(): Promise<GitApi> {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
+/** A window opens on Home, so its host state is known before the host answers; workspace events replace it. */
+const OPENING_HOST_STATE: HostState = { workspace: undefined };
+
 export function useHostState() {
-  return useQuery({ queryKey: keys.host, queryFn: readHost });
+  return useQuery({
+    queryKey: keys.host,
+    queryFn: readHost,
+    initialData: OPENING_HOST_STATE,
+    staleTime: Infinity,
+  });
 }
 
 export function useUpdateState() {
@@ -407,7 +415,7 @@ export function useVcsChanges(
   enabled: boolean,
 ) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery<ChangeSet>({
     queryKey: keys.gitChanges(workspace, scope, ignoreWhitespace, revision),
@@ -426,7 +434,7 @@ export function useVcsLog(
   enabled: boolean,
 ) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery({
     queryKey: keys.gitLog(workspace, input.limit, input.cursor),
@@ -533,7 +541,7 @@ export async function refreshVcs(): Promise<void> {
 
 export function useVcsSnapshot(enabled: boolean) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return {
     data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined)
@@ -584,7 +592,7 @@ async function searchWorkspace(input: SearchInput) {
 
 export function useWorkspaceSearch(input: SearchInput | undefined, enabled = true) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery({
     queryKey: keys.workspaceSearch(workspace ?? "", input),
@@ -763,9 +771,7 @@ export function useSetPreference() {
 let localLoadVersion = 0;
 
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
-  queryClient.setQueryData<HostState>(keys.host, (host) =>
-    host === undefined ? host : { ...host, workspace },
-  );
+  queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
 }
 
 let connecting: Promise<Connection> | undefined;
@@ -793,11 +799,6 @@ export function connectLocalHost(): Promise<Connection> {
     });
 
   return connecting;
-}
-
-/** Host state is a local answer, given before the host has opened; the first frame reads it. */
-export async function loadHostState(): Promise<void> {
-  queryClient.setQueryData(keys.host, await readHost());
 }
 
 /**

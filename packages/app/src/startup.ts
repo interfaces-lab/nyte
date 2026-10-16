@@ -1,18 +1,23 @@
+import type { AppRouter } from "./router.tsx";
+
+/**
+ * What a renderer's first frame waits for. Only local work fits here: the
+ * fonts it draws in and its route. Nothing the host answers can hold the
+ * shell back; host data fills in underneath it.
+ */
 interface RendererStartupOptions {
-  /** Replace the startup shell with the interface. Runs once, when the local work below has landed. */
+  readonly fonts: readonly string[];
+  readonly router: Pick<AppRouter, "load">;
+  /** Replace the empty page with the interface. Runs once, when the local work has landed. */
   readonly mountShell: () => void;
-  /** What the first frame needs that no host connection gates: fonts, the window's tabs, host state. */
-  readonly loadResources: () => Promise<void>;
-  readonly loadRouter: () => Promise<void>;
   /**
    * The host connection. It opens once the shell has mounted: the composer
    * takes input while it runs, and the connection's own main-thread work
    * cannot hold back the first frame.
    */
-  readonly connect?: () => Promise<void>;
-  /** The local work failed; the startup shell shows it and offers `retry`. */
+  readonly connect: () => Promise<void>;
+  /** The local work failed; show it and offer `retry`. */
   readonly showError: (retry: () => void) => void;
-  readonly onReady?: () => void;
 }
 
 /** Whether the host connection behind a mounted shell has opened. */
@@ -46,17 +51,16 @@ function mark(name: string): void {
 }
 
 /**
- * Mounts the interface as soon as its local resources and route are ready,
- * then opens the host connection under it. A local failure keeps the startup
- * shell up with a retry; a connection failure leaves the shell mounted and
- * publishes a retry through `startupConnection`.
+ * Mounts the interface as soon as its fonts and route are ready, then opens
+ * the host connection under it. A local failure shows a retry; a connection
+ * failure leaves the shell mounted and publishes a retry through
+ * `startupConnection`.
  */
 export function startRendererStartup(options: RendererStartupOptions): void {
   const { connect } = options;
   let loading = false;
 
   const open = (): void => {
-    if (connect === undefined) return;
     publish({ kind: "connecting" });
     connect().then(
       () => publish({ kind: "connected" }),
@@ -69,9 +73,9 @@ export function startRendererStartup(options: RendererStartupOptions): void {
     loading = true;
     void (async () => {
       try {
-        await options.loadResources();
+        await Promise.all(options.fonts.map((font) => document.fonts.load(font)));
         mark("nyte:startup-resources-loaded");
-        await options.loadRouter();
+        await options.router.load();
         mark("nyte:route-ready");
       } catch {
         loading = false;
@@ -82,7 +86,7 @@ export function startRendererStartup(options: RendererStartupOptions): void {
 
       loading = false;
       options.mountShell();
-      options.onReady?.();
+      mark("nyte:resources-ready");
       open();
     })();
   };
