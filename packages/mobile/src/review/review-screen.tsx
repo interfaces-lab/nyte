@@ -5,7 +5,7 @@ import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/sdk";
-import { executionMark } from "@nyte-ai/plugin/client/presentation";
+import { executionMark, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -14,7 +14,7 @@ import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
-import { formatDuration, latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
+import { latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/markdown.tsx";
@@ -84,7 +84,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
         headline: "Agent is working",
         symbol: "clock",
         tint: theme.muted,
-        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatDuration(now - run.startedAt)}`}`,
+        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
       }
     : waiting !== undefined
       ? {
@@ -121,7 +121,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                 detail:
                   changedTurn === undefined || changedTurn.endedAt === null
                     ? "Finished"
-                    : `Finished in ${formatDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
+                    : `Finished in ${formatWholeDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
               };
 
   async function merge() {

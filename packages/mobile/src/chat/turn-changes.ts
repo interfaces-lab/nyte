@@ -36,15 +36,3 @@ export function fileStatus(status: FileStatus): "A" | "M" | "D" | "R" {
     }
   }
 }
-
-/** A turn's runtime: 42s, 5m, 1h 12m. Zero means nothing followed the commit. */
-export function formatDuration(ms: number): string {
-  const seconds = Math.round(ms / 1000);
-
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) return `${String(minutes)}m`;
-
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
-}
