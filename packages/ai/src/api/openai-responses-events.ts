@@ -180,7 +180,5 @@ const ResponsesStreamEventSchema = Type.Union([
   }),
 ]);
 
-export type ResponsesStreamEvent = Static<typeof ResponsesStreamEventSchema>;
-
 /** Checks a raw event; compiled once because it runs for every streamed delta. */
 export const ResponsesStreamEventCheck = Compile(ResponsesStreamEventSchema);

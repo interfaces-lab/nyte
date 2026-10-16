@@ -67,7 +67,7 @@ const CheckpointItemsSchema = Type.Array(ReplayedItemSchema);
 /** A reasoning item stored whole in a thinking signature by the stream processor. */
 const ReplayedReasoningSchema = Type.Object({ type: Type.Literal("reasoning") });
 
-export type ReplayedResponsesItem = Static<typeof ReplayedItemSchema>;
+type ReplayedResponsesItem = Static<typeof ReplayedItemSchema>;
 
 export type ResponsesInputItem =
   | ResponseInputItem
@@ -136,7 +136,7 @@ function convertToolResultOutput<TApi extends Api>(
   return output;
 }
 
-export interface ConvertResponsesMessagesOptions {
+interface ConvertResponsesMessagesOptions {
   includeSystemPrompt?: boolean;
   grammarToolInputProperties?: ReadonlyMap<string, string>;
   /** Whether later system messages are sent in place; otherwise they are folded into the leading prompt. */
@@ -148,7 +148,7 @@ export interface ConvertResponsesMessagesOptions {
   toolOptions?: ConvertResponsesToolsOptions;
 }
 
-export interface ConvertResponsesToolsOptions {
+interface ConvertResponsesToolsOptions {
   strict?: boolean | null;
   supportsStrictMode?: boolean;
   supportsOpenAIGrammarTools?: boolean;

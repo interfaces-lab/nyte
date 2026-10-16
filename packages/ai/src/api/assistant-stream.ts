@@ -12,7 +12,7 @@ export function emptyCost(): Usage["cost"] {
 }
 
 /** Usage with every count and cost at zero. */
-export function emptyUsage(): Usage {
+function emptyUsage(): Usage {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: emptyCost() };
 }
 

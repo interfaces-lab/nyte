@@ -42,7 +42,7 @@ import {
   parseCopilotReasoningOpaque,
 } from "./openai-completions-reasoning.ts";
 
-export interface ConvertCompletionsMessagesOptions {
+interface ConvertCompletionsMessagesOptions {
   grammarToolInputProperties?: ReadonlyMap<string, string>;
 }
 

@@ -4,7 +4,7 @@
 
 export const MAX_PROVIDER_ERROR_BODY_CHARS = 4000;
 
-export interface NormalizedProviderError {
+interface NormalizedProviderError {
   /** HTTP status code, when one could be extracted from the SDK error object. */
   status?: number;
   /** Raw HTTP body reason, already trimmed and truncated to the cap. */
@@ -141,7 +141,7 @@ export function formatProviderError(norm: NormalizedProviderError, prefix?: stri
     : `${norm.status}: ${norm.body}`;
 }
 
-export function truncateErrorText(text: string, maxChars: number): string {
+function truncateErrorText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
 
   return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;

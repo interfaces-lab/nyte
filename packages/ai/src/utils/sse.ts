@@ -3,7 +3,7 @@
  */
 
 /** One dispatched server-sent event. */
-export interface ServerSentEvent {
+interface ServerSentEvent {
   /** The `event` field, or null when the event had none. */
   event: string | null;
   /** The event's `data` lines joined with newlines. */
