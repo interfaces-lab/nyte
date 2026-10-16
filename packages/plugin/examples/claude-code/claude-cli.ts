@@ -22,7 +22,7 @@ import {
   rewriteInitialRequest,
 } from "./replay.ts";
 import { TurnRelay } from "./turn-relay.ts";
-import { isRecord, parseOutputEvent } from "./wire.ts";
+import { matchesRecord, parseOutputEvent } from "./wire.ts";
 import type {
   AnthropicStreamEvent,
   JsonRecord,
@@ -179,7 +179,7 @@ function canonicalJson(value: unknown): string {
 
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
 
-  if (!isRecord(value)) throw new Error("Expected a JSON value");
+  if (!matchesRecord(value)) throw new Error("Expected a JSON value");
 
   return `{${Object.entries(value)
     .filter(([, child]) => child !== undefined)

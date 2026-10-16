@@ -1,11 +1,11 @@
-import { isRecord, parseRequest, parseRequestMessages } from "./wire.ts";
+import { matchesRecord, parseRequest, parseRequestMessages } from "./wire.ts";
 import type { JsonRecord } from "./wire.ts";
 import type { NativeSystemInjection } from "./transcript.ts";
 
 function withoutCacheControl(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withoutCacheControl);
 
-  if (!isRecord(value)) return value;
+  if (!matchesRecord(value)) return value;
   const output: JsonRecord = {};
 
   for (const [key, child] of Object.entries(value)) {
@@ -77,7 +77,7 @@ function contentText(content: unknown): string {
   if (!Array.isArray(content)) return "";
 
   return content
-    .map((block) => (isRecord(block) && typeof block.text === "string" ? block.text : ""))
+    .map((block) => (matchesRecord(block) && typeof block.text === "string" ? block.text : ""))
     .join("");
 }
 
@@ -93,7 +93,7 @@ function setCacheBreakpoint(message: NativeRequestMessage): void {
   if (!Array.isArray(message.content) || message.content.length === 0) return;
   const last = message.content.at(-1);
 
-  if (!isRecord(last)) return;
+  if (!matchesRecord(last)) return;
   last.cache_control = { type: "ephemeral", ttl: "1h" };
 }
 
@@ -136,10 +136,10 @@ function removeRepeatedUserReminders(
     if (JSON.stringify(leading) === normalizedPrefix) message.content.splice(0, prefix.length);
 
     const toolResult = message.content.findLast(
-      (block) => isRecord(block) && block.type === "tool_result",
+      (block) => matchesRecord(block) && block.type === "tool_result",
     );
 
-    if (!isRecord(toolResult)) continue;
+    if (!matchesRecord(toolResult)) continue;
 
     const suffix = `\n${reminder}`;
 
@@ -148,7 +148,7 @@ function removeRepeatedUserReminders(
     } else if (Array.isArray(toolResult.content)) {
       const final = toolResult.content.at(-1);
 
-      if (isRecord(final) && final.type === "text" && typeof final.text === "string") {
+      if (matchesRecord(final) && final.type === "text" && typeof final.text === "string") {
         if (final.text === reminder) toolResult.content.pop();
         else if (final.text.endsWith(suffix)) final.text = final.text.slice(0, -suffix.length);
       }
@@ -198,12 +198,12 @@ function normalizeLeadingSystemCache(system: unknown): void {
   if (!Array.isArray(system)) return;
 
   for (const block of system) {
-    if (isRecord(block)) delete block.cache_control;
+    if (matchesRecord(block)) delete block.cache_control;
   }
 
   const last = system.at(-1);
 
-  if (isRecord(last)) {
+  if (matchesRecord(last)) {
     last.cache_control = { type: "ephemeral", ttl: "1h" };
   }
 }
@@ -236,7 +236,7 @@ export function rewriteInitialRequest(
     );
 
     const initialText = initialSystemMessages
-      .map((message) => (isRecord(message) ? contentText(message.content) : ""))
+      .map((message) => (matchesRecord(message) ? contentText(message.content) : ""))
       .join("\n");
 
     while (messages.at(-1)?.role === "system") {
