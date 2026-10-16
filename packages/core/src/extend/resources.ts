@@ -8,6 +8,7 @@ import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
+import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 type Skill = Resources["skills"][number];
@@ -47,7 +48,11 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
   const moved = (): void => {
     if (table.get(session) !== entry) return;
     dropScans(kernel, (key) => key === session);
-    void kernel.plugins.reload(session).catch(() => undefined);
+    void kernel.plugins
+      .reload(session)
+      .catch((error: unknown) =>
+        dev("resources", "reload failed", { session, error: String(error) }),
+      );
   };
 
   entry.resources.then(
