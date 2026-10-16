@@ -77,7 +77,7 @@ function sendableCode(code: number): number {
     : 1000;
 }
 
-function attachmentOf(socket: WebSocket): Attachment | undefined {
+function readAttachment(socket: WebSocket): Attachment | undefined {
   const value: unknown = socket.deserializeAttachment();
 
   return Value.Check(Attachment, value) ? value : undefined;
@@ -158,7 +158,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
   }
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const attachment = attachmentOf(socket);
+    const attachment = readAttachment(socket);
     const frame = parseDesktopFrame(message);
 
     if (attachment === undefined || frame === undefined) {
@@ -183,7 +183,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   #sockets(): Socket[] {
     return this.ctx.getWebSockets().flatMap((socket) => {
-      const attachment = attachmentOf(socket);
+      const attachment = readAttachment(socket);
 
       return attachment === undefined || socket.readyState !== OPEN ? [] : [{ socket, attachment }];
     });
@@ -436,7 +436,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   /** End a socket's channels and, for the authenticated one, its D1 session. */
   #end(socket: WebSocket): void {
-    const attachment = attachmentOf(socket);
+    const attachment = readAttachment(socket);
 
     if (attachment === undefined) return;
 
