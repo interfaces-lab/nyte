@@ -41,6 +41,29 @@ function contrast(left: string, right: string): number {
   return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
 }
 
+describe("NO_COLOR", () => {
+  test("swaps every color for a gray of the same luminance", () => {
+    for (const mode of ["dark", "light"] as const) {
+      const plain = themeForMode(mode, { NO_COLOR: "1" });
+      const colored = themeForMode(mode, {});
+
+      const hues = Object.values(plain).filter(
+        (value) => value.startsWith("#") && !/^#(..)\1\1$/u.test(value),
+      );
+
+      expect(hues).toEqual([]);
+      expect(contrast(plain.warning, plain.background)).toBeCloseTo(
+        contrast(colored.warning, colored.background),
+        1,
+      );
+    }
+  });
+
+  test("an empty NO_COLOR keeps color", () => {
+    expect(themeForMode("dark", { NO_COLOR: "" }).ok).toBe(themeForMode("dark", {}).ok);
+  });
+});
+
 describe("theme contrast", () => {
   for (const mode of ["dark", "light"] as const) {
     const theme = themeForMode(mode);

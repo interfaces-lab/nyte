@@ -148,6 +148,78 @@ const LIGHT_THEME: CliTheme = Object.freeze({
   diffRemovedEmphasis: "#fcc6c5",
 });
 
+function gray(hex: string): string {
+  const linear = [1, 3, 5].map((at) => {
+    const value = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+
+    return value <= 0.040_45 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+
+  const [red = 0, green = 0, blue = 0] = linear;
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+
+  const level =
+    luminance <= 0.003_130_8 ? 12.92 * luminance : 1.055 * luminance ** (1 / 2.4) - 0.055;
+
+  const channel = Math.round(level * 255)
+    .toString(16)
+    .padStart(2, "0");
+
+  return `#${channel}${channel}${channel}`;
+}
+
+/** The theme with every color replaced by the gray of equal luminance, so contrast is unchanged. */
+function monochrome(theme: CliTheme): CliTheme {
+  return Object.freeze({
+    mode: theme.mode,
+    transparent: theme.transparent,
+    terminal: gray(theme.terminal),
+    background: gray(theme.background),
+    hover: gray(theme.hover),
+    codeBackground: gray(theme.codeBackground),
+    foreground: gray(theme.foreground),
+    dim: gray(theme.dim),
+    muted: gray(theme.muted),
+    accent: gray(theme.accent),
+    moon: gray(theme.moon),
+    user: gray(theme.user),
+    thinking: gray(theme.thinking),
+    tool: gray(theme.tool),
+    error: gray(theme.error),
+    warning: gray(theme.warning),
+    ok: gray(theme.ok),
+    running: gray(theme.running),
+    link: gray(theme.link),
+    path: gray(theme.path),
+    code: gray(theme.code),
+    number: gray(theme.number),
+    string: gray(theme.string),
+    type: gray(theme.type),
+    operator: gray(theme.operator),
+    promptBorder: gray(theme.promptBorder),
+    promptBorderFocused: gray(theme.promptBorderFocused),
+    selectionBackground: gray(theme.selectionBackground),
+    selectionForeground: gray(theme.selectionForeground),
+    userBackground: gray(theme.userBackground),
+    pasteBackground: gray(theme.pasteBackground),
+    pasteForeground: gray(theme.pasteForeground),
+    scrollbarTrack: gray(theme.scrollbarTrack),
+    scrollbarThumb: gray(theme.scrollbarThumb),
+    diffAdded: gray(theme.diffAdded),
+    diffRemoved: gray(theme.diffRemoved),
+    diffAddedBackground: gray(theme.diffAddedBackground),
+    diffRemovedBackground: gray(theme.diffRemovedBackground),
+    diffAddedGutterBackground: gray(theme.diffAddedGutterBackground),
+    diffRemovedGutterBackground: gray(theme.diffRemovedGutterBackground),
+    diffAddedEmphasis: gray(theme.diffAddedEmphasis),
+    diffRemovedEmphasis: gray(theme.diffRemovedEmphasis),
+  });
+}
+
+const DARK_MONOCHROME = monochrome(DARK_THEME);
+
+const LIGHT_MONOCHROME = monochrome(LIGHT_THEME);
+
 function byName(raw: string | undefined): ThemeMode | undefined {
   const name = raw?.trim().toLowerCase();
 
@@ -185,12 +257,16 @@ export function resolveThemeMode(
   );
 }
 
-export function themeForMode(mode: ThemeMode): CliTheme {
+/** The theme for a terminal mode; NO_COLOR swaps in its monochrome form. */
+export function themeForMode(mode: ThemeMode, env: NodeJS.ProcessEnv = process.env): CliTheme {
+  const noColor = env["NO_COLOR"];
+  const plain = noColor !== undefined && noColor !== "";
+
   switch (mode) {
     case "dark":
-      return DARK_THEME;
+      return plain ? DARK_MONOCHROME : DARK_THEME;
     case "light":
-      return LIGHT_THEME;
+      return plain ? LIGHT_MONOCHROME : LIGHT_THEME;
     default: {
       const _exhaustive: never = mode;
 
