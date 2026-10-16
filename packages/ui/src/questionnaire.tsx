@@ -24,18 +24,17 @@ const styles = create({
     color: role.contentPrimary,
   },
   item: { display: "contents" },
+  inset: { paddingInline: space.s1_5 },
   progress: { color: role.contentSecondary },
   title: {
     flexShrink: 0,
     minWidth: 0,
     margin: 0,
-    paddingInline: space.s1_5,
     fontWeight: type.weightSemibold,
     textWrap: "pretty",
   },
   description: {
     margin: 0,
-    paddingInline: space.s1_5,
     color: role.contentSecondary,
     overflowWrap: "anywhere",
   },
@@ -119,7 +118,7 @@ const styles = create({
     backgroundColor: "currentColor",
   },
   check: { display: "var(--_question-check-display)" },
-  error: { margin: 0, paddingInline: space.s1_5, color: role.contentInteractiveTertiary },
+  error: { margin: 0, color: role.contentInteractiveTertiary },
   actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: space.s2 },
 });
 
@@ -237,7 +236,7 @@ export function QuestionnaireTitle({
     <Questionnaire.Title
       data-slot="questionnaire-title"
       {...componentProps}
-      {...mergeStyleProps(props(text.base, styles.title, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.inset, styles.title, xstyle), className, style)}
     />
   );
 }
@@ -252,7 +251,11 @@ export function QuestionnaireDescription({
     <Questionnaire.Description
       data-slot="questionnaire-description"
       {...componentProps}
-      {...mergeStyleProps(props(text.sm, styles.description, xstyle), className, style)}
+      {...mergeStyleProps(
+        props(text.sm, styles.inset, styles.description, xstyle),
+        className,
+        style,
+      )}
     />
   );
 }
@@ -342,7 +345,11 @@ export function QuestionnaireError({
     <Questionnaire.Error
       data-slot="questionnaire-error"
       {...componentProps}
-      {...mergeStyleProps(props(intent.danger, text.sm, styles.error, xstyle), className, style)}
+      {...mergeStyleProps(
+        props(intent.danger, text.sm, styles.inset, styles.error, xstyle),
+        className,
+        style,
+      )}
     />
   );
 }

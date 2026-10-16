@@ -32,11 +32,11 @@ export const trayParts = create({
   listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   row: {
     minHeight: tray.rowHeight,
-    "--_row-padding-inline": tray.rowInset,
+    "--_row-padding-inline": `calc(${tray.paddingInline} - ${tray.rowInset})`,
   },
   notice: {
     paddingBlock: space.s2,
-    paddingInline: space.s3,
+    paddingInline: tray.paddingInline,
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },

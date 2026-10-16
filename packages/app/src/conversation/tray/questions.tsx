@@ -26,7 +26,7 @@ const styles = create({
     flexShrink: 0,
     alignItems: "center",
     gap: space.s2,
-    paddingInline: space.s1_5,
+    paddingInlineEnd: space.s1_5,
   },
   summary: { flex: 1 },
   progress: { display: "flex", alignItems: "center", gap: space.px },

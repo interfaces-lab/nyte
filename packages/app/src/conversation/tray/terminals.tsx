@@ -16,7 +16,7 @@ import { readDeferred } from "../../deferred.tsx";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
-  actions: { marginInlineEnd: `calc(${space.s1} - ${tray.rowInset})` },
+  actions: { marginInlineEnd: `calc(${space.s1} + ${tray.rowInset} - ${tray.paddingInline})` },
 });
 
 function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
