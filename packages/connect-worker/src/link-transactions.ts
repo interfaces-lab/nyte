@@ -22,16 +22,16 @@ import type { Context } from "./context.ts";
 import { claimRefusal } from "./environments.ts";
 import { Refusal, json, parseBody, requestText } from "./http.ts";
 import { verifyLinkProof } from "./proof.ts";
+import { claimEnvironment } from "./store/environments.ts";
 import {
   approveLinkTransaction,
   cancelLinkTransaction,
-  claimEnvironment,
   denyLinkTransaction,
   findLinkTransaction,
   findPendingLinkTransaction,
   openLinkTransaction,
-} from "./store.ts";
-import type { LinkTransaction } from "./store.ts";
+} from "./store/link-transactions.ts";
+import type { LinkTransaction } from "./store/rows.ts";
 
 function verifyUrl(context: Context): string {
   const origins = context.config.webOrigins;

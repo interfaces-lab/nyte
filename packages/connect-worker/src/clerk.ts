@@ -14,9 +14,9 @@ import {
   confirmSessionRevoked,
   deferSessionRevocation,
   findOwner,
-  isSessionDenied,
+  sessionDenied,
   recordOwnerCheck,
-} from "./store.ts";
+} from "./store/owners.ts";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
@@ -146,7 +146,7 @@ export async function verifySession(context: Context, request: Request): Promise
 
   if (owner !== undefined && owner.status !== "active") throw new Refusal("owner_disabled");
 
-  if (await isSessionDenied(context.db, { sessionId: claims.sid, now: context.now() }))
+  if (await sessionDenied(context.db, { sessionId: claims.sid, now: context.now() }))
     throw new Refusal("session_revoked");
 
   return {

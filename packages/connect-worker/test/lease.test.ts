@@ -2,7 +2,7 @@ import { ErrorBody, LEASE_LIFETIME_SECONDS } from "@nyte-ai/connect";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { OWNER_FRESHNESS_MS } from "../src/clerk.ts";
-import { attachRelay, detachRelay } from "../src/store.ts";
+import { attachRelay, detachRelay } from "../src/store/environments.ts";
 import { ORIGIN, createHarness, read } from "./harness.ts";
 import type { FakeDesktop, Harness } from "./harness.ts";
 

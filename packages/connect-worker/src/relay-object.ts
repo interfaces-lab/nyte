@@ -42,7 +42,7 @@ import { consoleLogger, errorName } from "./log.ts";
 import { verifyRelayProof } from "./proof.ts";
 import { RelayChannel } from "./relay-channel.ts";
 import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "./relay-stub.ts";
-import { attachRelay, detachRelay } from "./store.ts";
+import { attachRelay, detachRelay } from "./store/environments.ts";
 
 const Attachment = Type.Union([
   Type.Object({

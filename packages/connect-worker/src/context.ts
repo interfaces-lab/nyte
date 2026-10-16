@@ -8,7 +8,7 @@ import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import type { Logger } from "./log.ts";
 import type { RelayStub } from "./relay-stub.ts";
-import { hit } from "./store.ts";
+import { hit } from "./store/replays.ts";
 
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 

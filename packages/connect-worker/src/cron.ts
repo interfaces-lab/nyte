@@ -2,12 +2,10 @@ import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
 import { settleSessionRevocation } from "./clerk.ts";
 import type { Context } from "./context.ts";
 import { errorName } from "./log.ts";
-import {
-  expireLinkTransactions,
-  expireReservations,
-  pendingSessionRevocations,
-  purge,
-} from "./store.ts";
+import { expireReservations } from "./store/devices.ts";
+import { expireLinkTransactions } from "./store/link-transactions.ts";
+import { pendingSessionRevocations } from "./store/owners.ts";
+import { purge } from "./store/replays.ts";
 
 const BATCH = 20;
 
