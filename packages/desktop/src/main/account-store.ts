@@ -34,18 +34,19 @@ export class AccountStore {
     }
   }
 
-  open(sealed: string): Promise<string | undefined> {
-    return openSecret(this.secrets, sealed).catch(() => undefined);
+  /** The token a saved sign-in sealed; rejects when the keychain cannot open it now. */
+  open(sealed: string): Promise<string> {
+    return openSecret(this.secrets, sealed);
   }
 
+  /**
+   * Seals and writes the sign-in, or removes the file for none. A sign-in the
+   * keychain cannot seal rejects and leaves the saved one as it was.
+   */
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
     const run = this.writes.then(async () => {
-      const sealed =
-        signIn === undefined
-          ? undefined
-          : await sealSecret(this.secrets, signIn.token).catch(() => undefined);
-
-      if (signIn === undefined || sealed === undefined) return rm(this.path, { force: true });
+      if (signIn === undefined) return rm(this.path, { force: true });
+      const sealed = await sealSecret(this.secrets, signIn.token);
 
       return writePrivateFile({
         path: this.path,

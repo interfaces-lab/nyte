@@ -41,7 +41,7 @@ const saved = join(directory, "profile", "account.json");
 class CountingStore extends AccountStore {
   opens = 0;
 
-  override open(sealed: string): Promise<string | undefined> {
+  override open(sealed: string): Promise<string> {
     this.opens += 1;
 
     return super.open(sealed);

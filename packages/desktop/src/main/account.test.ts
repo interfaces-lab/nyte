@@ -272,7 +272,7 @@ describe("account operations", () => {
 
 const execute = promisify(execFile);
 
-test("a secrets key that cannot be read leaves no sign-in on disk", async () => {
+test("a secrets key that cannot be read keeps the saved sign-in", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
   const path = join(directory, "account.json");
 
@@ -286,10 +286,13 @@ test("a secrets key that cannot be read leaves no sign-in on disk", async () => 
   });
 
   try {
-    await writeFile(path, JSON.stringify({ sealed: "older", label: "ada@example.com" }));
-    await store.save({ token: "client.one", label: "ada@example.com" });
-    await expect(readFile(path, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await store.open("older")).toBeUndefined();
+    const saved = JSON.stringify({ sealed: "older", label: "ada@example.com" });
+    await writeFile(path, saved);
+    await expect(store.save({ token: "client.one", label: "ada@example.com" })).rejects.toThrow(
+      "No key.",
+    );
+    expect(await readFile(path, "utf8")).toBe(saved);
+    await expect(store.open("older")).rejects.toThrow();
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

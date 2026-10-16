@@ -37,6 +37,20 @@ export function registerAccount(options: {
   /** What this run last saved; undefined before then, when the file may hold a restored token. */
   let kept: { readonly signIn: Parameters<AccountStore["save"]>[0] } | undefined;
 
+  let storeWarned = false;
+
+  /**
+   * The saved sign-in could not be sealed, opened, or written. Whatever is on disk
+   * stays for a later run, and the failure is reported once per run.
+   */
+  const storeFailed = (cause: unknown): void => {
+    if (storeWarned) return;
+    storeWarned = true;
+    process.emitWarning(`The saved sign-in could not be kept: ${String(cause)}`, {
+      code: "NYTE_ACCOUNT_STORE",
+    });
+  };
+
   /** Bring the store in line with memory: a sign-in once both token and address describe one. */
   const keep = (): void => {
     if (store === undefined || sealed !== undefined) return;
@@ -50,7 +64,10 @@ export function registerAccount(options: {
 
     if (Value.Equal(kept, next)) return;
     kept = next;
-    void store.save(next.signIn).catch(() => undefined);
+    void store.save(next.signIn).catch((cause: unknown) => {
+      if (kept === next) kept = undefined;
+      storeFailed(cause);
+    });
   };
 
   const setState = (next: AccountState): void => {
@@ -74,7 +91,14 @@ export function registerAccount(options: {
     const restored = sealed;
 
     if (store === undefined || restored === undefined) return;
-    const opened = await store.open(restored);
+
+    let opened: string | undefined;
+
+    try {
+      opened = await store.open(restored);
+    } catch (cause) {
+      storeFailed(cause);
+    }
 
     if (sealed !== restored) return;
     sealed = undefined;
@@ -85,8 +109,8 @@ export function registerAccount(options: {
       return;
     }
 
-    setState({ kind: "signed_out" });
-    keep();
+    state = { kind: "signed_out" };
+    options.onChange();
   };
 
   const bridge = createClerkBridge({
