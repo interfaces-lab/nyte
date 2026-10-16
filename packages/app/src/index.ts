@@ -7,3 +7,5 @@ export { connectLocalHost, loadHostState, queryClient, setUpdateStateForDemo } f
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
 export { startRendererStartup } from "./startup.ts";
+
+export { restoreFocusedFolder } from "./tabs/use-window-tabs.tsx";

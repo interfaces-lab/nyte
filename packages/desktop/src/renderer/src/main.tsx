@@ -14,6 +14,7 @@ import {
   connectLocalHost,
   loadHostState,
   createAppRouter,
+  restoreFocusedFolder,
   startRendererStartup,
   startWindowTabs,
   windowTabRoute,
@@ -73,10 +74,9 @@ startRendererStartup({
   },
   loadResources: () =>
     Promise.all([
-      loadHostState(),
+      Promise.all([loadHostState(), windowTabsReady]).then(restoreFocusedFolder),
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
-      windowTabsReady,
     ]).then(() => undefined),
   loadRouter: () => {
     router.history.replace(windowTabRoute());
