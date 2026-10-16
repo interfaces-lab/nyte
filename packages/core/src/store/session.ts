@@ -48,6 +48,10 @@ export const START: Position = { kind: "start" };
 
 export const STALE: unique symbol = Symbol("stale");
 
+const WRITE_TRIES = 8;
+
+const WRITE_BACKOFF_MS = 5;
+
 export interface Found<T> {
   readonly ref: Ref;
   readonly record: T;
@@ -190,12 +194,18 @@ export async function put(
   return id;
 }
 
+/** Runs a compare-and-set write until it lands, backing off with jitter after each lost race; a write that keeps losing fails `stale` rather than spinning. */
 export async function attempt<T>(what: string, write: () => Promise<T | typeof STALE>): Promise<T> {
-  for (;;) {
+  for (let tries = 1; ; tries += 1) {
     const result = await write();
 
     if (result !== STALE) return result;
-    dev("store", "lost", { what });
+    dev("store", "lost", { what, tries });
+
+    if (tries === WRITE_TRIES)
+      throw new SdkError("stale", `${what} lost to concurrent writes ${WRITE_TRIES} times.`);
+    const backoff = WRITE_BACKOFF_MS * 2 ** (tries - 1) * (0.5 + Math.random());
+    await new Promise((resolve) => setTimeout(resolve, backoff));
   }
 }
 

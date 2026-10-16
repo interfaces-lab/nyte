@@ -2,6 +2,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { memoryStore, objectId } from "../src/index.ts";
+import { attempt, STALE } from "../src/store/session.ts";
 
 const session: SessionId = asId("s1");
 
@@ -202,5 +203,24 @@ describe("memoryStore", () => {
     expect(reader.size).toBe(5);
     expect(reader.mime).toBeNull();
     expect(chunks.map((chunk) => new TextDecoder().decode(chunk))).toEqual(["hello"]);
+  });
+});
+
+describe("attempt", () => {
+  it("retries a lost write until it lands, and fails stale once it keeps losing", async () => {
+    let lost = 2;
+
+    expect(await attempt("Landing", async () => (lost-- > 0 ? STALE : "landed"))).toBe("landed");
+
+    let tries = 0;
+
+    await expect(
+      attempt("Racing", async () => {
+        tries += 1;
+
+        return STALE;
+      }),
+    ).rejects.toMatchObject({ code: "stale", message: "Racing lost to concurrent writes 8 times." });
+    expect(tries).toBe(8);
   });
 });
