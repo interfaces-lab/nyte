@@ -50,6 +50,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
     { readonly session: SessionId; readonly call: CallId; readonly resume: () => void }
   >();
 
+  const receipts = new Map<string, Set<() => void>>();
+
   const resumed = async (session: SessionId, current: CallRecord): Promise<readonly RefUpdate[]> =>
     current.run === null
       ? []
@@ -354,6 +356,21 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
           .rerun(session, call)
           .catch((error: unknown) => dev("waits", "rerun failed", { call, error: String(error) }));
     },
+    onReceipt(session, id, listener) {
+      const key = `${session}/${id}`;
+      const listeners = receipts.get(key) ?? new Set<() => void>();
+      listeners.add(listener);
+      receipts.set(key, listeners);
+
+      return () => {
+        listeners.delete(listener);
+
+        if (listeners.size === 0 && receipts.get(key) === listeners) receipts.delete(key);
+      };
+    },
+    receiptSettled(session, id) {
+      for (const listener of receipts.get(`${session}/${id}`) ?? []) listener();
+    },
     onWoken(session, call, resume) {
       const key = formatWaitKey(session, call);
       const resumer = { session, call, resume };
@@ -429,28 +446,6 @@ export async function earliestWake(
   });
 
   return due.length === 0 ? null : Math.min(...due);
-}
-
-export function onReceipt(
-  kernel: Kernel,
-  session: SessionId,
-  id: string,
-  listener: () => void,
-): Disposer {
-  const key = `${session}/${id}`;
-  const listeners = kernel.receipts.get(key) ?? new Set<() => void>();
-  listeners.add(listener);
-  kernel.receipts.set(key, listeners);
-
-  return () => {
-    listeners.delete(listener);
-
-    if (listeners.size === 0 && kernel.receipts.get(key) === listeners) kernel.receipts.delete(key);
-  };
-}
-
-export function notifyReceipt(kernel: Kernel, session: SessionId, id: string): void {
-  for (const listener of kernel.receipts.get(`${session}/${id}`) ?? []) listener();
 }
 
 export function waitFor<T>(input: {

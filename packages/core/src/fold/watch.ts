@@ -51,10 +51,9 @@ interface FoldFeed {
   dispose(): void;
 }
 
-type Feeds = Pick<
-  Kernel,
-  "store" | "bus" | "publisher" | "streams" | "sessions" | "jobs" | "pages"
->;
+type Feeds = Pick<Kernel, "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages">;
+
+type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
 
 /** One session's publishing: the last seq on the bus, the highest this process logged, and the publishes in line. */
 type Sequence = {
@@ -75,13 +74,14 @@ const NO_PAIRS: ReadonlyMap<HeadName, HeadPair> = new Map();
 
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<SessionId, Entry>();
+  const streams = trackStreams(kernel.bus);
 
   const build = (session: SessionId, principal: PrincipalId): Entry => {
     const entry: Entry = {
       state: emptyFold({ session, principal }),
       holders: 0,
       linger: undefined,
-      feed: openFoldFeed(kernel, session, ({ event, head }) => {
+      feed: openFoldFeed(kernel, streams, session, ({ event, head }) => {
         const folded = fold(entry.state, event);
         const name = movedHead(event);
         const next = head === null || name === null ? folded : withPair(folded, name, head);
@@ -296,7 +296,7 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
   };
 }
 
-export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveStream>> {
+function trackStreams(bus: SessionBus): LiveStreams {
   const streams = new Map<SessionId, Map<PartId, LiveStream>>();
 
   bus.subscribeAll((session, event) => {
@@ -353,7 +353,12 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
   return streams;
 }
 
-function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) => void): FoldFeed {
+function openFoldFeed(
+  kernel: Feeds,
+  streams: LiveStreams,
+  session: SessionId,
+  push: (item: FeedItem) => void,
+): FoldFeed {
   let through = 0;
   let open = true;
   let held: FeedItem[] | null = [];
@@ -461,7 +466,7 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
       release();
 
       if (open)
-        for (const [part, live] of kernel.streams.get(session) ?? []) {
+        for (const [part, live] of streams.get(session) ?? []) {
           if (live.markdown !== null)
             push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
 
@@ -619,7 +624,7 @@ export function pollStore(kernel: Kernel): Disposer {
 }
 
 async function rereadFences(kernel: Kernel): Promise<void> {
-  for (const [run, session] of Array.from(kernel.driving)) {
+  for (const [run, session] of Array.from(kernel.executionState.driving)) {
     if (kernel.runs.signal(run)?.aborted === true) continue;
 
     const found = await load(

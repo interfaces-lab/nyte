@@ -26,7 +26,7 @@ import {
   STALE,
 } from "../store/session.ts";
 import { stopRun } from "./fence.ts";
-import { notifyReceipt, onReceipt, waitFor } from "./waits.ts";
+import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 type Landing = Awaited<ReturnType<SendReceipt["landed"]>>;
@@ -79,7 +79,7 @@ export async function settleReceipt(
     return result.kind === "set" ? true : STALE;
   });
 
-  if (settled) notifyReceipt(kernel, session, id);
+  if (settled) kernel.waits.receiptSettled(session, id);
 }
 
 export async function reserve(
@@ -149,7 +149,7 @@ export function typedReceipt<O extends Json>(
         },
         subscribe: (trigger) =>
           both(
-            onReceipt(kernel, session, target, trigger),
+            kernel.waits.onReceipt(session, target, trigger),
             kernel.bus.subscribe(session, (event) => {
               if (RECEIPT_EVENTS.has(event.kind)) trigger();
             }),
@@ -208,7 +208,7 @@ async function landed(
       subscribe: (trigger) =>
         both(
           hold.subscribe(() => trigger()),
-          onReceipt(kernel, session, id, trigger),
+          kernel.waits.onReceipt(session, id, trigger),
         ),
     });
   } finally {
@@ -264,7 +264,7 @@ export async function withdraw(
     return outcome.kind === "set" ? due : STALE;
   });
 
-  for (const message of withdrawn) notifyReceipt(kernel, session, asId<"receipt">(message));
+  for (const message of withdrawn) kernel.waits.receiptSettled(session, asId<"receipt">(message));
 
   return withdrawn;
 }

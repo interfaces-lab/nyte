@@ -77,7 +77,7 @@ import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
 import { EMPTY_CATALOG } from "./fold/fold.ts";
-import { createFoldCache, createLogPublisher, pollStore, trackStreams } from "./fold/watch.ts";
+import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
@@ -347,7 +347,6 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const publisher = createLogPublisher({ store: input.store, bus });
-  const streams = trackStreams(bus);
   const sessions = createSessionDirectory(bus);
   const models = input.models;
 
@@ -391,7 +390,6 @@ export function createKernel(input: KernelOptions): Kernel {
       store: input.store,
       bus,
       publisher,
-      streams,
       sessions,
       get jobs() {
         return kernel.jobs;
@@ -400,11 +398,8 @@ export function createKernel(input: KernelOptions): Kernel {
         return kernel.pages;
       },
     }),
-    streams,
-    driving: new Map(),
     executionState: createExecutionState(),
     workspaceState: createWorkspaceState(),
-    receipts: new Map(),
     calls: new Map(),
     sessions,
     defaultWorkspace: input.defaultWorkspace ?? null,

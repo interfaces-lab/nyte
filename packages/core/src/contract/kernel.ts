@@ -40,7 +40,7 @@ import type {
   ValidationIssue,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import type { FoldCache, LiveStream, LogPublisher, SessionBus } from "./fold.ts";
+import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
 import type {
   Connection,
   ConnectionContext,
@@ -103,13 +103,8 @@ export interface Kernel {
 
   readonly folds: FoldCache;
 
-  readonly streams: Map<SessionId, Map<PartId, LiveStream>>;
-
-  readonly driving: Map<RunId, SessionId>;
   readonly executionState: ExecutionState;
   readonly workspaceState: WorkspaceState;
-
-  readonly receipts: Map<string, Set<() => void>>;
 
   readonly calls: Map<string, Set<AbortController>>;
 
@@ -449,6 +444,12 @@ export interface WaitRegistry {
 
   /** Registers this process's live loop for an action call, resumed when its wait completes. */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
+
+  /** Calls `listener` each time this process settles the receipt, until disposed. */
+  onReceipt(session: SessionId, receipt: string, listener: () => void): Disposer;
+
+  /** Tells this process's listeners of the receipt that it settled. */
+  receiptSettled(session: SessionId, receipt: string): void;
 }
 
 export interface PluginRuntime {
@@ -599,6 +600,8 @@ interface Held {
 
 export interface ExecutionState {
   readonly held: Map<string, Held>;
+  /** The runs this process drives a turn of, with their sessions. */
+  readonly driving: Map<RunId, SessionId>;
   readonly covers: Map<object, ExecutionCoverage>;
   readonly advancing: Set<string>;
   readonly leaseQueue: KeyedSerial<string>;

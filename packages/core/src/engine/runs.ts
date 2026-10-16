@@ -35,7 +35,7 @@ import {
 } from "../store/session.ts";
 import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
-import { notifyReceipt, waitFor } from "./waits.ts";
+import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const REPORT_LIMIT = 4096;
@@ -199,7 +199,7 @@ export async function endRun(
     .get(session)
     ?.hooks.observe("run_ended", ended.end, { session, head: ended.head, run, principal: LOCAL });
 
-  for (const id of ended.settled) notifyReceipt(kernel, session, id);
+  for (const id of ended.settled) kernel.waits.receiptSettled(session, id);
 
   const woke = await kernel.waits.runEnded(session, run, ended.end);
 

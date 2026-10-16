@@ -57,6 +57,7 @@ const FENCED: Refused = { kind: "fenced" };
 export function createExecutionState(): ExecutionState {
   return {
     held: new Map(),
+    driving: new Map(),
     covers: new Map(),
     advancing: new Set(),
     leaseQueue: keyedSerial(),
@@ -206,7 +207,7 @@ async function failStep(
   dev("execution", "step failed", { session, head, error: formatError(cause) });
   const live = await liveRun(kernel.store, session, head);
 
-  if (live === null || kernel.driving.has(live.record.view.id)) throw cause;
+  if (live === null || kernel.executionState.driving.has(live.record.view.id)) throw cause;
   await endRun(kernel, session, live.record.view.id, failed(cause));
 
   return next(kernel, session, head);
@@ -271,7 +272,7 @@ async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise
   if (live === null) return (await dueInputs(kernel, session, head)) !== null;
 
   return (
-    !kernel.driving.has(live.record.view.id) &&
+    !kernel.executionState.driving.has(live.record.view.id) &&
     (live.record.stopping ||
       live.record.waiting === null ||
       (await owedCalls(kernel.store, session, live.record.view.id)).some((call) => !call.parked))
@@ -513,7 +514,7 @@ async function settleLive(
 ): Promise<AdvanceReport | null> {
   const run = live.record.view.id;
 
-  if (kernel.driving.has(run))
+  if (kernel.executionState.driving.has(run))
     return (await holding(kernel.store, session, live.record)) ?? { kind: "idle" };
 
   if (live.record.stopping) {
@@ -631,7 +632,7 @@ async function drive(
   head: HeadName,
   run: RunView,
 ): Promise<Refused | null> {
-  kernel.driving.set(run.id, session);
+  kernel.executionState.driving.set(run.id, session);
   const closing = kernel.executionState.closing.signal;
   const renewal = holdHead(kernel, session, head);
 
@@ -659,7 +660,7 @@ async function drive(
     .finally(() => {
       unrenew();
       closing.removeEventListener("abort", unrenew);
-      kernel.driving.delete(run.id);
+      kernel.executionState.driving.delete(run.id);
     });
 
   const closed = new Promise<null>((resolve) => {
@@ -773,7 +774,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const { record } = live;
   const run = record.view.id;
 
-  if (kernel.driving.has(run)) return { kind: "idle" };
+  if (kernel.executionState.driving.has(run)) return { kind: "idle" };
   const calls = await owedCalls(kernel.store, session, run);
 
   if (record.stopping || calls.some((call) => !call.parked)) return { kind: "continue" };
