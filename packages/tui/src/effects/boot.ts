@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
-import { availableModels, clampThinking, defaultThinking } from "../lib/catalog.ts";
+import { availableModels, clampThinking } from "../lib/catalog.ts";
 import type { Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
 import { checkForUpdate } from "../version.ts";
@@ -163,7 +163,7 @@ function flagSelection(
     model: found.ref,
     effort:
       options.effort ??
-      (remembered === undefined ? defaultThinking(found) : clampThinking(found, remembered)),
+      (remembered === undefined ? found.defaultThinking : clampThinking(found, remembered)),
     fast: false,
   };
 }

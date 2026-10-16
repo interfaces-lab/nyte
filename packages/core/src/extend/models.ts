@@ -376,7 +376,8 @@ function projectModel(
     ref: { provider: model.provider, id: model.id },
     name: model.name,
     reasoning: model.reasoning,
-    thinking: ["off", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")],
+    thinking: acceptedThinkingLevels(model),
+    defaultThinking: defaultThinkingLevel(model),
     fast,
     contextWindow: policy?.contextWindow ?? model.contextWindow,
     compactAt: policy?.compactAt ?? Math.floor(model.contextWindow * 0.8),
@@ -611,17 +612,25 @@ function selectThinkingLevel(
   given: Thinking | null | undefined,
   kept: Thinking | undefined,
 ): Thinking | null {
-  const accepted: readonly Thinking[] = [
-    "off",
-    ...getSupportedThinkingLevels(model).filter((level) => level !== "off"),
-  ];
+  const accepted = acceptedThinkingLevels(model);
 
   if (given !== undefined && given !== null) return accepted.includes(given) ? given : null;
 
   if (given === undefined && kept !== undefined)
     return accepted.includes(kept) ? kept : clampThinkingLevel(model, kept);
 
-  return model.reasoning ? (accepted.find((level) => level !== "off") ?? "off") : "off";
+  return defaultThinkingLevel(model);
+}
+
+function acceptedThinkingLevels(model: Model<Api>): Thinking[] {
+  return ["off", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")];
+}
+
+/** A reasoning model's lowest level above off, else off. */
+function defaultThinkingLevel(model: Model<Api>): Thinking {
+  return model.reasoning
+    ? (acceptedThinkingLevels(model).find((level) => level !== "off") ?? "off")
+    : "off";
 }
 
 function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {

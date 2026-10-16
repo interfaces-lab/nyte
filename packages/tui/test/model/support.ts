@@ -18,6 +18,7 @@ export function model(
     name: id,
     reasoning: true,
     thinking,
+    defaultThinking: thinking.find((level) => level !== "off") ?? "off",
     fast: null,
     contextWindow: 100_000,
     compactAt: 90_000,

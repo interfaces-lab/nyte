@@ -86,6 +86,7 @@ describe("models", () => {
     expect(test.models.map((model) => model.ref.id)).toEqual(["model", "smart"]);
     expect(test.models[0]).toMatchObject({
       thinking: ["off"],
+      defaultThinking: "off",
       fast: null,
       contextWindow: 50_000,
       compactAt: 10_000,
@@ -95,6 +96,7 @@ describe("models", () => {
       name: "Smart",
       reasoning: true,
       thinking: ["off", "low", "medium", "high", "xhigh"],
+      defaultThinking: "low",
       fast: { provider: "test", id: "smart-fast" },
       contextWindow: 200_000,
       compactAt: 160_000,

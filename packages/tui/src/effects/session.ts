@@ -7,7 +7,7 @@ import type {
   SessionInfo,
   Thinking,
 } from "@nyte-ai/sdk";
-import { availableModels, clampThinking, defaultThinking, findModel } from "../lib/catalog.ts";
+import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
 import { errorMessage, shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
 import { chatWorkspace, followedSession } from "../model/state.ts";
@@ -72,7 +72,7 @@ export function defaultSelection(
 
   return {
     ...selection,
-    effort: remembered === undefined ? defaultThinking(model) : clampThinking(model, remembered),
+    effort: remembered === undefined ? model.defaultThinking : clampThinking(model, remembered),
   };
 }
 
