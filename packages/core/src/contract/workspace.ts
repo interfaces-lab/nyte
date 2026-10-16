@@ -577,10 +577,12 @@ export interface McpHub {
   watch(workspace: McpWorkspace): AsyncIterable<McpView>;
 
   /**
-   * Returns the tools of the workspace's connected servers, named
+   * Returns the tools of the workspace's servers, named
    * `mcp__<server>__<tool>` with each server's exposure applied, or `[]` when
-   * nothing watches the workspace. It is synchronous and never waits for a
-   * connection, so call it on every tool derive and reload on each view.
+   * nothing watches the workspace. A server keeps its last listing's tools
+   * while it reconnects; a call made then fails saying why. It is synchronous
+   * and never waits for a connection, so call it on every tool derive and
+   * reload on each view.
    */
   tools(workspace: McpWorkspace): readonly ToolDefinition[];
 
