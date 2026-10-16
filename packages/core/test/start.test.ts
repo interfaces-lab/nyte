@@ -62,7 +62,19 @@ describe("sessions.start", () => {
     expect((await first.session.view()).messages).toHaveLength(1);
     await expect(host.sessions.start({ id, content: "Twice." })).rejects.toMatchObject({
       code: "invalid",
+      message: `Session ${id} already exists.`,
     });
+
+    const other = asId<"session">("chat-2");
+
+    const raced = await Promise.allSettled([
+      host.sessions.start({ id: other, content: "A." }),
+      host.sessions.start({ id: other, content: "B." }),
+    ]);
+
+    expect(raced.filter((result) => result.status === "rejected")).toMatchObject([
+      { reason: { code: "invalid", message: `Session ${other} already exists.` } },
+    ]);
   });
 
   it("takes the start's configuration as the head's selection and the message's", async () => {

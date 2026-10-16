@@ -110,7 +110,9 @@ export async function readProviderUsage(connection: Connection, provider: string
  * and admits that message in one commit, so no session exists without one.
  * Until then the chat is the client's draft, stored and synced nowhere.
  * `id` keys the draft and makes the start idempotent: the same id and input
- * return the same start. The receipt and the first message share that id.
+ * return the same start, and other input under a taken id is refused as
+ * invalid: that chat already exists. The receipt and the first message share
+ * that id.
  * Start resolves once the session's before_send hooks decided the message;
  * a refusal removes the session and throws.
  *

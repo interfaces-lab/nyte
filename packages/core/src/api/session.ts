@@ -29,7 +29,7 @@ import type { MessageRecord } from "../engine/admission.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
-import { known, receiptHandle, sendReceipt, withdraw } from "../engine/receipts.ts";
+import { receiptHandle, sendReceipt, withdraw } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
 import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
 import { runCommand } from "../extend/registry.ts";
@@ -44,6 +44,7 @@ import {
   MAIN,
   put,
   readInbox,
+  readReceipt,
   readSession,
   requireSession,
   sessionEvent,
@@ -365,7 +366,9 @@ async function start(
   return traced("host.admit", receipt, { session: id }, async () => {
     await attempt(`Starting ${id}`, async () => {
       if ((await readSession(kernel.store, id)) !== null) {
-        if (await known(kernel.store, id, receipt, "send", digest)) return id;
+        const started = (await readReceipt(kernel.store, id, receipt))?.record;
+
+        if (started?.kind === "send" && started.digest === digest) return id;
 
         throw new SdkError("invalid", `Session ${id} already exists.`);
       }
