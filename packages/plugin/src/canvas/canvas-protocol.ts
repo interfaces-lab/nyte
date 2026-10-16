@@ -138,7 +138,7 @@ export const KIT = {
   SelectContent: "see Select",
   SelectItem: "{ value: string, children }",
   ToggleGroup:
-    "{ value?: string[], defaultValue?: string[], onValueChange?: (value: string[]) => void, toggleMultiple?: boolean, children: Toggle[] }",
+    "{ value?: string[], defaultValue?: string[], onValueChange?: (value: string[]) => void, multiple?: boolean, children: Toggle[] }",
   Toggle: "{ value: string, size?: as Button, tone?: as Button, children }",
   Switch:
     "{ label: string, checked?, defaultChecked?, onCheckedChange?: (checked: boolean) => void, disabled? }",
