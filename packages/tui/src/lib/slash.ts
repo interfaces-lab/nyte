@@ -268,7 +268,8 @@ interface SkillToken {
   readonly skill: SkillInfo;
 }
 
-function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
+/** Each `/name` in `text` that names one of `skills`, at the start or after whitespace. */
+export function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
   const tokens: SkillToken[] = [];
 
   for (const match of text.matchAll(INLINE_SKILL_PATTERN)) {
@@ -280,70 +281,9 @@ function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): Skil
 
   return tokens;
 }
+
 export function hasInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): boolean {
   return skillTokens(text, skills).some((token) => !opensDraft(text, token.start));
-}
-
-export function expandInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): string {
-  let expanded = "";
-  let cursor = 0;
-
-  for (const token of skillTokens(text, skills)) {
-    expanded += text.slice(cursor, token.start) + formatSkillInvocation(token.skill);
-    cursor = token.end;
-  }
-
-  return expanded + text.slice(cursor);
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-export function formatSkillInvocation(skill: SkillInfo, additionalInstructions?: string): string {
-  const block =
-    `<skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.location)}">\n` +
-    `Read the skill's file at its location and follow it.\n</skill>`;
-
-  return additionalInstructions === undefined || additionalInstructions === ""
-    ? block
-    : `${block}\n\n${additionalInstructions}`;
-}
-
-interface SkillInvocation {
-  readonly source: string;
-  readonly name: string;
-  readonly path: string;
-}
-
-const SKILL_INVOCATION_PATTERN =
-  /<skill name="([^"\n]*)" location="([^"\n]*)">\n[\s\S]*?\n<\/skill>/g;
-
-function unescapeXml(value: string): string {
-  return value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
-}
-
-export function extractSkillInvocations(text: string): SkillInvocation[] {
-  const invocations: SkillInvocation[] = [];
-
-  for (const match of text.matchAll(SKILL_INVOCATION_PATTERN)) {
-    const [source, name, path] = match;
-
-    if (name === undefined || path === undefined) continue;
-    invocations.push({ source, name: unescapeXml(name), path: unescapeXml(path) });
-  }
-
-  return invocations;
 }
 
 export function slashCommandLabel(command: SlashCommand): string {

@@ -5,34 +5,39 @@ import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
 import { connected, sessionWatch } from "../sdk.tsx";
 import type { UserMessage } from "../view-helpers.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
+import type { ContentPart } from "./message-references.ts";
 import { messageFiles } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
 
 export interface ComposerContent {
-  readonly text: string;
+  readonly parts: readonly ContentPart[];
   readonly images: readonly ImageContent[];
   readonly files: readonly MessageFile[];
 }
 
 export function composerMessageContent(
-  text: string,
+  parts: readonly ContentPart[],
   attachments: readonly { readonly content: ImageContent }[],
   files: readonly MessageFile[] = [],
 ): ComposerContent {
-  return { text, images: attachments.map((attachment) => attachment.content), files };
+  return { parts, images: attachments.map((attachment) => attachment.content), files };
 }
 
 export function composerContentEmpty(content: ComposerContent): boolean {
-  return content.text.trim() === "" && content.images.length === 0 && content.files.length === 0;
+  return content.parts.length === 0 && content.images.length === 0 && content.files.length === 0;
 }
 
 export async function uploadComposerContent(content: ComposerContent): Promise<UserContent> {
-  if (content.images.length === 0 && content.files.length === 0) return content.text;
-  const text = content.text === "" ? [] : [{ kind: "text" as const, text: content.text }];
+  const [only, ...rest] = content.parts;
+  const attached = content.images.length > 0 || content.files.length > 0;
 
-  if (content.images.length === 0) return [...text, ...content.files];
+  if (!attached && only === undefined) return "";
+
+  if (!attached && only?.kind === "text" && rest.length === 0) return only.text;
+
+  if (content.images.length === 0) return [...content.parts, ...content.files];
   const files = await workspaceFiles();
 
   const uploaded = await Promise.all(
@@ -49,7 +54,7 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
     }),
   );
 
-  return [...text, ...content.files, ...uploaded];
+  return [...content.parts, ...content.files, ...uploaded];
 }
 
 type ComposerSendPlan =
@@ -68,9 +73,9 @@ export function composerSendPlan(input: {
   readonly delivery: Delivery;
 }): ComposerSendPlan {
   const text = input.submission.text.trim();
-  const references = input.submission.references;
+  const { references, parts } = input.submission;
 
-  if (text === "" && input.attachments.length === 0) return { kind: "empty" };
+  if (parts.length === 0 && input.attachments.length === 0) return { kind: "empty" };
 
   const command =
     references.every((reference) => reference.kind === "file") && input.attachments.length === 0
@@ -81,7 +86,7 @@ export function composerSendPlan(input: {
 
   return {
     kind: "message",
-    content: composerMessageContent(text, input.attachments),
+    content: composerMessageContent(parts, input.attachments),
     delivery: input.delivery,
   };
 }

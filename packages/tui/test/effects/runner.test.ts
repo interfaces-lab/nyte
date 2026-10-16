@@ -177,6 +177,11 @@ test("revise re-checks the row the same way and never edits a landed message", a
   });
 });
 
+const NOTES = [
+  { kind: "text", text: "hello " },
+  { kind: "reference", path: "/tmp/notes.md" },
+] as const;
+
 const SUBMISSION: Submission = {
   id: "sub-1",
   session: asId("s1"),
@@ -207,14 +212,13 @@ test("a plugin reject answers send-refused with the snapshot and sends nothing",
 
   expect(session.calls.send).toEqual([]);
   expect(app.ports.plugins.submitted).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "steer", session: asId("s1") },
+    { content: NOTES, delivery: "steer", session: asId("s1") },
   ]);
 });
 
-test("a plugin that throws is a refusal with its message, and file bodies inline when readable", async () => {
+test("a plugin that throws is a refusal with its message", async () => {
   const app = harness(stateOf(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
-  app.ports.files.texts.set("/tmp/notes.md", "line one");
   app.ports.plugins.decision = { kind: "throw", message: "hook exploded" };
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -222,9 +226,7 @@ test("a plugin that throws is a refusal with its message, and file bodies inline
   await app.runner.settled();
 
   expect(app.dispatched.at(-1)).toMatchObject({ kind: "send-refused", reason: "hook exploded" });
-  expect(app.ports.plugins.submitted[0]?.content).toBe(
-    'hello <file src="file:///tmp/notes.md">\nline one\n</file>',
-  );
+  expect(app.ports.plugins.submitted[0]?.content).toEqual(NOTES);
   expect(session.calls.send).toEqual([]);
   expect(app.ports.log.entries).toEqual([]);
 });
@@ -236,9 +238,7 @@ test("an accepted send reaches the session with its delivery and answers sent", 
   await app.runner.settled();
   app.runner.run({ kind: "send", submission: SUBMISSION, delivery: "queue" });
   await app.runner.settled();
-  expect(session.calls.send).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "queue" },
-  ]);
+  expect(session.calls.send).toEqual([{ content: NOTES, delivery: "queue" }]);
   expect(app.dispatched.at(-1)).toEqual({
     kind: "sent",
     submission: "sub-1",
@@ -254,9 +254,7 @@ test("a saved edit sends with replace while its message is pending, and is refus
   const edit: Submission = { ...SUBMISSION, id: "sub-2", replace: asId("m2") };
   app.runner.run({ kind: "send", submission: edit, delivery: "queue" });
   await app.runner.settled();
-  expect(session.calls.send).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "queue" },
-  ]);
+  expect(session.calls.send).toEqual([{ content: NOTES, delivery: "queue" }]);
   expect(app.dispatched.at(-1)).toMatchObject({ kind: "sent", submission: "sub-2" });
 
   app.set(stateOf(followed(LANDED)));

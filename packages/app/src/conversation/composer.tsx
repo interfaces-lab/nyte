@@ -33,8 +33,7 @@ import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliverSubmission } from "./composer-send.ts";
-import { userMessageText } from "./message-content.tsx";
-import { messageDraftText } from "./message-references.ts";
+import { contentDraftText } from "./message-references.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
@@ -386,7 +385,7 @@ export function Composer({
 
   const beginEdit = (item: UserMessage): void => {
     if (!canBeginEdit || item.source.kind === "action") return;
-    const draft = messageDraftText(userMessageText(item.content));
+    const draft = contentDraftText(item.content);
     setPendingEdit({ message: item, delivery: item.delivery });
     setFeedback(undefined);
     updateViewState((current) => ({

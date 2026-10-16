@@ -44,14 +44,9 @@ import {
 } from "./composer-send.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
-import {
-  UserMessageText,
-  messageFiles,
-  messageImages,
-  userMessageText,
-} from "./message-content.tsx";
+import { UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
-import { messageDraftText } from "./message-references.ts";
+import { contentDraftText } from "./message-references.ts";
 import { useBlobUrl } from "../use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
@@ -227,18 +222,20 @@ export function UserMessageView({
 
     return () => row.ownerDocument.removeEventListener("click", dismiss);
   }, [canDismissEdit]);
-  const original = userMessageText(content);
+  const original = contentDraftText(content);
   const pluginCatalog = usePluginCatalog();
   // The edit sits in a thread, so a workspace is open behind it.
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {
-    const text = messageDraftText(original);
-
     if (rowRef.current !== null) transcript.hold(rowRef.current);
     flushSync(() =>
       setEdit({
-        document: { text, selectionStart: text.length, selectionEnd: text.length },
+        document: {
+          text: original,
+          selectionStart: original.length,
+          selectionEnd: original.length,
+        },
         attachments: [],
         kept: messageFiles(content),
         attachmentReads: 0,
@@ -275,7 +272,7 @@ export function UserMessageView({
 
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
     if (edit === undefined || edit.saving || onEdit === undefined) return false;
-    const draft = composerMessageContent(submission.text.trim(), edit.attachments, edit.kept);
+    const draft = composerMessageContent(submission.parts, edit.attachments, edit.kept);
 
     if (composerContentEmpty(draft)) {
       setEdit({ ...edit, error: "A message cannot be empty." });

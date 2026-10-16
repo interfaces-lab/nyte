@@ -1,5 +1,5 @@
 import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyte-ai/sdk";
-import { draftContent, pendingUploads, unreadFiles } from "../model/draft.ts";
+import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import type { State, Submission } from "../model/state.ts";
 import { rowStatus } from "./commands.ts";
@@ -46,7 +46,6 @@ export async function submit(
 
     const content = await prepare(submission.snapshot, {
       skills: skillsOf(read()),
-      readText: (path) => ports.files.readText(path),
       upload: (bytes) => port.upload(bytes),
     });
 
@@ -112,20 +111,17 @@ export async function beforeSubmit(
 
 export interface PrepareDeps {
   readonly skills: ReadonlyMap<string, SkillInfo>;
-  readonly readText: (path: string) => Promise<string | null>;
   readonly upload: (bytes: Uint8Array) => Promise<BlobId>;
 }
 
 export async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promise<UserContent> {
-  const bodies = new Map<string, string | null>();
+  const uploaded = await Promise.all(
+    pendingUploads(snapshot).map(
+      async (pending) => [pending.marker, await deps.upload(pending.bytes)] as const,
+    ),
+  );
 
-  for (const path of unreadFiles(snapshot)) bodies.set(path, await deps.readText(path));
-  const uploads = new Map<string, BlobId>();
-
-  for (const pending of pendingUploads(snapshot))
-    uploads.set(pending.marker, await deps.upload(pending.bytes));
-
-  return draftContent(snapshot, { bodies, uploads, skills: deps.skills });
+  return draftContent(snapshot, { uploads: new Map(uploaded), skills: deps.skills });
 }
 
 export function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {

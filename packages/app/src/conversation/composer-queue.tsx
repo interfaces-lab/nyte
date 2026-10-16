@@ -8,7 +8,8 @@ import { Button } from "@nyte-ai/ui/button";
 import type { UserMessage } from "../view-helpers.ts";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { deliveryChoices } from "./composer-keys.ts";
-import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
+import { UserMessageText, messageImages } from "./message-content.tsx";
+import { contentDraftText } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
 /** What one queued row is doing right now; absent means idle. */
@@ -44,7 +45,7 @@ interface ComposerQueueProps {
 }
 
 function QueuedMessageContent({ content }: { readonly content: UserContent }): ReactElement {
-  const words = userMessageText(content);
+  const words = contentDraftText(content);
 
   if (words === "") {
     const imageCount = messageImages(content).length;

@@ -99,6 +99,8 @@ export function userText(content: UserContent): string {
           return part.mime.startsWith("image/") ? "[image]" : `[${part.name}]`;
         case "reference":
           return `@${part.path}`;
+        case "skill":
+          return `/${part.name}`;
         default: {
           const _exhaustive: never = part;
 

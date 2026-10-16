@@ -48,6 +48,7 @@ import { SdkError } from "../util/error.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
 import { collectContributions, refusalError } from "./contributions.ts";
 import { abortHere, fence, unfenced } from "./fence.ts";
+import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 
 interface Sending {
@@ -638,18 +639,19 @@ async function gate(
     signal: sending.kernel.executionState.closing.signal,
   });
 
-  switch (decision.action) {
-    case "continue":
-      return submission;
-    case "modify":
-      return decision.value;
-    case "reject":
-      dev("admission", "refused", { session: sending.session, message });
+  if (decision.action === "reject") {
+    dev("admission", "refused", { session: sending.session, message });
 
-      throw new SdkError("invalid", decision.reason);
-    case "error":
-      throw new SdkError("internal", decision.message);
+    throw new SdkError("invalid", decision.reason);
   }
+
+  if (decision.action === "error") throw new SdkError("internal", decision.message);
+  const admitted = decision.action === "modify" ? decision.value : submission;
+
+  return {
+    ...admitted,
+    content: await freezeMentions(sending.kernel, sending.session, admitted.content),
+  };
 }
 
 async function resolve(

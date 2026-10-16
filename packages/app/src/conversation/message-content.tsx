@@ -16,16 +16,6 @@ export function UserMessageText({ text }: { readonly text: string }): ReactEleme
   );
 }
 
-export function userMessageText(content: UserContent): string {
-  if (typeof content === "string") return content;
-
-  return content
-    .flatMap((part) =>
-      part.kind === "text" ? [part.text] : part.kind === "reference" ? [`@${part.path}`] : [],
-    )
-    .join("");
-}
-
 export function messageImages(content: UserContent): readonly MessageFile[] {
   if (typeof content === "string") return [];
 

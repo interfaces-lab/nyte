@@ -8,11 +8,11 @@ import type { Command, Transaction } from "@tiptap/pm/state";
 import { Value } from "typebox/value";
 import { completionTrigger } from "../view-helpers.ts";
 import type { CompletionTrigger } from "../view-helpers.ts";
-import type { MentionFile } from "./message-references.ts";
+import type { ContentPart, MentionFile } from "./message-references.ts";
 import {
   messageParts,
   messageReferenceSchema,
-  referencePromptText,
+  referencePart,
   referenceText,
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
@@ -36,13 +36,6 @@ function draftLeafText(node: ProseMirrorNode): string {
   const reference = composerReference(node);
 
   return reference === undefined ? "" : referenceText(reference);
-}
-
-function promptLeafText(node: ProseMirrorNode): string {
-  if (node.type.name === HARD_BREAK) return "\n";
-  const reference = composerReference(node);
-
-  return reference === undefined ? "" : referencePromptText(reference);
 }
 
 export const ComposerDocument = Node.create({ name: "doc", topNode: true, content: "paragraph" });
@@ -139,9 +132,11 @@ export function sameComposerDocument(
 }
 
 export interface ComposerSubmission {
-  /** Provider text: file tokens stay, skill chips become instructions in place, and context mentions drop. */
+  /** The draft text, each chip as its token: what a command line is read from. */
   readonly text: string;
   readonly references: readonly MessageReference[];
+  /** What the message sends, trimmed: text runs, and each chip as its part. */
+  readonly parts: readonly ContentPart[];
 }
 
 export interface ComposerCompletion extends CompletionTrigger {
@@ -163,9 +158,53 @@ export function composerReferences(doc: ProseMirrorNode): readonly MessageRefere
 /** A typed lookalike is text and stays text. */
 export function composerSubmission(doc: ProseMirrorNode): ComposerSubmission {
   return {
-    text: doc.textBetween(0, doc.content.size, "\n\n", promptLeafText),
+    text: doc.textBetween(0, doc.content.size, "\n\n", draftLeafText),
     references: composerReferences(doc),
+    parts: submissionParts(doc),
   };
+}
+
+function submissionParts(doc: ProseMirrorNode): readonly ContentPart[] {
+  const parts: ContentPart[] = [];
+  let text = "";
+
+  const flush = (): void => {
+    if (text !== "") parts.push({ kind: "text", text });
+    text = "";
+  };
+
+  doc.forEach((paragraph, _offset, index) => {
+    if (index > 0) text += "\n\n";
+
+    paragraph.forEach((node) => {
+      if (node.type.name === HARD_BREAK) text += "\n";
+      const reference = composerReference(node);
+      const part = reference === undefined ? null : referencePart(reference);
+
+      if (node.isText) text += node.text ?? "";
+      else if (part?.kind === "text") text += part.text;
+      else if (part !== null) {
+        flush();
+        parts.push(part);
+      }
+    });
+  });
+  flush();
+
+  return trimParts(parts);
+}
+
+function trimParts(parts: readonly ContentPart[]): readonly ContentPart[] {
+  const first = parts.at(0);
+  const last = parts.at(-1);
+
+  return parts.flatMap((part): readonly ContentPart[] => {
+    if (part.kind !== "text") return [part];
+    const start = part === first ? part.text.trimStart() : part.text;
+    const trimmed = part === last ? start.trimEnd() : start;
+
+    return trimmed === "" ? [] : [{ kind: "text", text: trimmed }];
+  });
 }
 
 function draftOffset(doc: ProseMirrorNode, position: number): number {
@@ -251,7 +290,7 @@ function referenceContent(
   catalog: ComposerReferenceCatalog,
 ): (line: string) => readonly JSONContent[] {
   return (line) =>
-    messageParts(line, { form: "draft", ...catalog }).map((part) =>
+    messageParts(line, catalog).map((part) =>
       part.kind === "text"
         ? { type: "text", text: part.text }
         : { type: REFERENCE, attrs: { reference: part.reference } },

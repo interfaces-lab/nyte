@@ -356,7 +356,6 @@ async function conversation(
           role: "user",
           content: await userContent(
             kernel,
-            input.session,
             reportContent(body.source, body.content),
             input.images,
           ),
@@ -606,7 +605,6 @@ function reportContent(source: MessageSource, content: UserContent): UserContent
 
 async function userContent(
   kernel: Kernel,
-  session: SessionId,
   content: UserContent,
   images: boolean,
 ): Promise<UserMessage["content"]> {
@@ -620,7 +618,12 @@ async function userContent(
         case "file":
           return fileContent(kernel, item, images);
         case "reference":
-          return referenceContent(kernel, session, item.path);
+          return mentionContent(kernel, item);
+        case "skill":
+          return Promise.resolve({
+            type: "text",
+            text: `<skill name="${escapeAttribute(item.name)}" location="${escapeAttribute(item.location)}">\nRead the skill's file at its location and follow it.\n</skill>`,
+          });
       }
     }),
   );
@@ -684,19 +687,32 @@ async function fileContent(
   }
 }
 
-async function referenceContent(
+async function mentionContent(
   kernel: Kernel,
-  session: SessionId,
-  path: string,
+  mention: { readonly path: string; readonly blob?: BlobId },
 ): Promise<TextContent> {
-  const document = await kernel
-    .env(session)
-    .then((env) => env.files.read(path))
-    .catch(() => null);
+  const reader = mention.blob === undefined ? null : await kernel.store.objects.blob(mention.blob);
 
-  return document?.kind === "text"
-    ? { type: "text", text: `<file path="${path}">\n${document.contents}\n</file>` }
-    : { type: "text", text: `[Reference: ${path}]` };
+  if (reader === null) return { type: "text", text: `[Reference: ${mention.path}]` };
+
+  try {
+    const chunks: Uint8Array[] = [];
+
+    for await (const chunk of reader.chunks()) chunks.push(chunk);
+    const decoder = new TextDecoder();
+    const contents = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
+
+    return {
+      type: "text",
+      text: `<file path="${escapeAttribute(mention.path)}">\n${contents}${decoder.decode()}\n</file>`,
+    };
+  } finally {
+    await reader.close();
+  }
+}
+
+function escapeAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }
 
 function parseResponseIndex(call: string, run: RunId | null): string | null {

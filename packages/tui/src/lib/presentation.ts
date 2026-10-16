@@ -1,10 +1,7 @@
-import { fileURLToPath } from "node:url";
 import type { UserContent } from "@nyte-ai/sdk";
-import { extractSkillInvocations } from "./slash.ts";
 
 export interface PresentedFile {
   readonly path: string;
-  readonly text?: string;
 }
 
 export interface PresentedSkill {
@@ -28,19 +25,7 @@ export interface UserPresentation {
   readonly images: readonly AttachedFile[];
 }
 
-const FILE_ATTACHMENT_PATTERN = /<file src="(file:\/\/[^"\n]+)">\n([\s\S]*?)\n<\/file>/gu;
-
 const SHELL_BLOCK_PATTERN = /<shell command="([^"\n]*)" exit="(\d+)">\n([\s\S]*?)\n<\/shell>/gu;
-
-const FILE_MENTION_PATTERN = /@file:\/\/\S+/gu;
-
-function pathOf(url: string): string | undefined {
-  try {
-    return fileURLToPath(url);
-  } catch {
-    return undefined;
-  }
-}
 
 function commandFromAttribute(command: string): string {
   return command
@@ -52,36 +37,17 @@ function commandFromAttribute(command: string): string {
 }
 
 export function userPresentation(content: UserContent): UserPresentation {
-  let text =
-    typeof content === "string"
-      ? content
-      : content.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("");
+  const parts = typeof content === "string" ? [{ kind: "text" as const, text: content }] : content;
 
-  const skills: PresentedSkill[] = [];
+  let text = parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("");
 
-  for (const invocation of extractSkillInvocations(text)) {
-    skills.push({ name: invocation.name, path: invocation.path });
-    text = text.replace(invocation.source, "");
-  }
+  const skills = parts.flatMap((part): readonly PresentedSkill[] =>
+    part.kind === "skill" ? [{ name: part.name, path: part.location }] : [],
+  );
 
-  const files: PresentedFile[] = [];
-
-  for (const match of text.matchAll(FILE_ATTACHMENT_PATTERN)) {
-    const [source, url, body] = match;
-    const path = url === undefined ? undefined : pathOf(url);
-
-    if (path === undefined || body === undefined) continue;
-    files.push({ path, text: body });
-    text = text.replace(source, "");
-  }
-
-  for (const match of text.matchAll(FILE_MENTION_PATTERN)) {
-    const path = pathOf(match[0].slice(1));
-
-    if (path === undefined) continue;
-    files.push({ path });
-    text = text.replace(match[0], "");
-  }
+  const files = parts.flatMap((part): readonly PresentedFile[] =>
+    part.kind === "reference" ? [{ path: part.path }] : [],
+  );
 
   const shells: PresentedShell[] = [];
 
@@ -97,15 +63,9 @@ export function userPresentation(content: UserContent): UserPresentation {
     text = text.replace(source, "");
   }
 
-  const images =
-    typeof content === "string"
-      ? []
-      : content.flatMap((part) =>
-          part.kind === "file" && part.mime.startsWith("image/") ? [part] : [],
-        );
-
-  if (typeof content !== "string")
-    for (const part of content) if (part.kind === "reference") files.push({ path: part.path });
+  const images = parts.flatMap((part) =>
+    part.kind === "file" && part.mime.startsWith("image/") ? [part] : [],
+  );
 
   if (images.length > 0) text = text.replace(/\[Image \d+\]/gu, "");
 

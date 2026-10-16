@@ -3,6 +3,14 @@ import type { RunEnd } from "./runs.ts";
 
 export type Delivery = "steer" | "queue" | "attach";
 
+/**
+ * What a message says: text, or parts. A `file` is an attachment the client
+ * uploaded. A `reference` mentions a workspace file by `path`; the host reads
+ * it once when the message is sent and keeps that text as `blob`, so every
+ * request shows the model the file as it was then (a folder, or a file it
+ * cannot read, stays a bare mention). A `skill` asks the model to follow the
+ * skill at `location`. Clients draw `reference` and `skill` as chips.
+ */
 export type UserContent =
   | string
   | readonly (
@@ -13,7 +21,8 @@ export type UserContent =
           readonly mime: string;
           readonly name: string;
         }
-      | { readonly kind: "reference"; readonly path: string }
+      | { readonly kind: "reference"; readonly path: string; readonly blob?: BlobId }
+      | { readonly kind: "skill"; readonly name: string; readonly location: string }
     )[];
 
 export type Position =

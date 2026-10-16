@@ -3,7 +3,7 @@ import { isPart, text, thinking } from "@nyte-ai/plugin/client";
 import type { PartState } from "@nyte-ai/plugin/client";
 import { isToolMessage } from "../view-helpers.ts";
 import type { PartMessage, ToolMessage } from "../view-helpers.ts";
-import { messageParts } from "./message-references.ts";
+import { messageParts, referenceLabel } from "./message-references.ts";
 
 export type TextMessage = PartMessage & { readonly state: PartState<typeof text> };
 
@@ -96,58 +96,10 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   return display;
 }
 
-type UserTextSegment =
-  | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "reference"; readonly label: string; readonly target: string };
-
-/** Hide persisted skill plumbing while keeping its compact label available to assistive text. */
-export function userTextSegments(source: string): readonly UserTextSegment[] {
-  const text = source.replaceAll(/\n{3,}/gu, "\n\n");
-  const parts = messageParts(text, { form: "message" });
-  const segments: UserTextSegment[] = [];
-
-  const appendText = (value: string): void => {
-    if (value === "") return;
-    const previous = segments.at(-1);
-
-    if (previous?.kind === "text") {
-      segments[segments.length - 1] = { kind: "text", text: previous.text + value };
-
-      return;
-    }
-
-    segments.push({ kind: "text", text: value });
-  };
-
-  for (const [index, part] of parts.entries()) {
-    if (part.kind === "text") {
-      appendText(part.text);
-      continue;
-    }
-
-    if (part.reference.kind !== "skill") {
-      appendText(part.source);
-      continue;
-    }
-
-    segments.push({
-      kind: "reference",
-      label: `/${part.reference.name}`,
-      target: part.reference.path,
-    });
-
-    if (!part.source.endsWith("\n\n")) continue;
-    const next = parts[index + 1];
-    const separator = next?.kind === "text" ? "\n" : next?.kind === "reference" ? " " : "";
-    appendText(separator);
-  }
-
-  return segments.length === 0 ? [{ kind: "text", text }] : segments;
-}
-
+/** A sent message's draft text with each chip as its label, for assistive text. */
 export function userDisplayText(source: string): string {
-  return userTextSegments(source)
-    .map((segment) => (segment.kind === "text" ? segment.text : segment.label))
+  return messageParts(source.replaceAll(/\n{3,}/gu, "\n\n"), { complete: true })
+    .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("");
 }
 

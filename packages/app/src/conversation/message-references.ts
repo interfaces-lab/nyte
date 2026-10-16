@@ -3,12 +3,12 @@
  *
  * A draft is plain text: every chip owns an exact token in it (`@file://…`,
  * `[$skill](path)`, `@current-conversation`, `@clipboard/<n>:…`), so a draft
- * string restores its chips without a second document. A sent message keeps
- * the provider contract (text and images): skill chips become instruction
- * sentences where they were inserted, clipboard chips unwrap to their body,
- * and those sentences read back as chips.
+ * string restores its chips without a second document. A sent message carries
+ * file and skill chips as `reference` and `skill` parts, a clipboard chip as
+ * its body, and drops the conversation mention; a sent message's parts read
+ * back as the same tokens.
  */
-import type { FileEntryView } from "@nyte-ai/sdk";
+import type { FileEntryView, UserContent } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -83,10 +83,6 @@ const CLIPBOARD_TOKEN_PREFIX = "@clipboard/";
 /** `[$name](path)`: the persisted skill link the transcript already hides. */
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 
-/** The expanded form persisted by clients that load skill instructions before sending. */
-const SKILL_INVOCATION_PATTERN =
-  /<skill name="(?<invocationName>[^"\r\n]*)" location="(?<invocationPath>[^"\r\n]*)">\n[\s\S]*?\n<\/skill>(?:\n\n)?/gu;
-
 const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
 
 const DRAFT_TOKEN_PATTERN = new RegExp(
@@ -98,12 +94,6 @@ const DRAFT_TOKEN_PATTERN = new RegExp(
   ].join("|"),
   "gu",
 );
-
-const SKILL_INSTRUCTION_PATTERN = /Use the (?<instructionName>\S+) skill\./gu;
-
-export function skillInstruction(name: string): string {
-  return `Use the ${name} skill.`;
-}
 
 const clipboardBody = Type.String({ minLength: 1 });
 
@@ -227,7 +217,7 @@ export function referenceTitle(reference: MessageReference): string | undefined 
     case "file":
       return `${reference.file.path}${linesSuffix(reference.lines)}`;
     case "skill":
-      return reference.path === "" ? skillInstruction(reference.name) : reference.path;
+      return reference.path === "" ? undefined : reference.path;
     case "mention":
       return undefined;
     case "clipboard":
@@ -240,22 +230,56 @@ export function referenceTitle(reference: MessageReference): string | undefined 
   }
 }
 
-export function referencePromptText(reference: MessageReference): string {
+/** One part of a sent message. */
+export type ContentPart = Exclude<UserContent, string>[number];
+
+/** What a chip sends: a file mention, a skill, the text it stands for, or nothing. */
+export function referencePart(reference: MessageReference): ContentPart | null {
   switch (reference.kind) {
     case "file":
-      return referenceText(reference);
+      return { kind: "reference", path: reference.file.path };
     case "skill":
-      return skillInstruction(reference.name);
+      return { kind: "skill", name: reference.name, location: reference.path };
     case "clipboard":
-      return reference.body;
+      return { kind: "text", text: reference.body };
     case "mention":
-      return "";
+      return null;
     default: {
       const exhaustive: never = reference;
 
       return exhaustive;
     }
   }
+}
+
+/** A sent message as draft text: its text, and each mention and skill as its chip's token. */
+export function contentDraftText(content: UserContent): string {
+  if (typeof content === "string") return content;
+
+  return content
+    .map((part) => {
+      switch (part.kind) {
+        case "text":
+          return part.text;
+        case "reference": {
+          const url = new URL("file:///");
+
+          url.pathname = part.path;
+
+          return `@${url.href}`;
+        }
+        case "skill":
+          return referenceText({ kind: "skill", name: part.name, path: part.location });
+        case "file":
+          return "";
+        default: {
+          const exhaustive: never = part;
+
+          return exhaustive;
+        }
+      }
+    })
+    .join("");
 }
 
 export function sameReference(left: MessageReference, right: MessageReference): boolean {
@@ -311,26 +335,10 @@ export function fileFromUrl(url: string): MentionFile | undefined {
 }
 
 interface DraftParseOptions {
-  readonly form: "draft";
   /** Catalog entries by URL; a known file keeps its workspace label and relative path. */
   readonly files?: ReadonlyMap<string, MentionFile>;
   /** A token still being typed at the end of the text keeps its letters until a delimiter arrives. */
   readonly complete?: boolean;
-}
-
-interface MessageParseOptions {
-  readonly form: "message";
-}
-
-type MessageParseOptionsUnion = DraftParseOptions | MessageParseOptions;
-
-function unescapeXml(value: string): string {
-  return value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
 }
 
 function draftReference(
@@ -356,7 +364,8 @@ function draftReference(
   return undefined;
 }
 
-function draftParts(text: string, options: DraftParseOptions): readonly MessagePart[] {
+/** Split draft text into plain runs and the chips its tokens stand for. */
+export function messageParts(text: string, options: DraftParseOptions): readonly MessagePart[] {
   const parts: MessagePart[] = [];
   let cursor = 0;
   const tokens = [...text.matchAll(DRAFT_TOKEN_PATTERN)];
@@ -423,70 +432,9 @@ function draftParts(text: string, options: DraftParseOptions): readonly MessageP
   return parts;
 }
 
-/**
- * Split text into plain runs and references. A draft yields its chips back; a
- * sent message yields the skill chips its instruction sentences stand for,
- * the file mentions in its body, and any persisted skill link.
- */
-export function messageParts(
-  text: string,
-  options: MessageParseOptionsUnion,
-): readonly MessagePart[] {
-  if (options.form === "draft") return draftParts(text, options);
-  const parts: MessagePart[] = [];
-  let cursor = 0;
-
-  const pattern = new RegExp(
-    [
-      FILE_URL_PATTERN.source,
-      SKILL_LINK_PATTERN.source,
-      SKILL_INVOCATION_PATTERN.source,
-      SKILL_INSTRUCTION_PATTERN.source,
-    ].join("|"),
-    "gu",
-  );
-
-  for (const match of text.matchAll(pattern)) {
-    const groups = match.groups ?? {};
-    let reference: MessageReference | undefined;
-
-    if (match[0].startsWith("@file://")) {
-      const file = fileFromUrl(match[0].slice(1));
-      reference = file === undefined ? undefined : { kind: "file", file };
-    } else if (groups["invocationName"] !== undefined) {
-      reference = {
-        kind: "skill",
-        name: unescapeXml(groups["invocationName"]),
-        path: unescapeXml(groups["invocationPath"] ?? ""),
-      };
-    } else if (groups["name"] !== undefined) {
-      reference = { kind: "skill", name: groups["name"], path: groups["path"] ?? "" };
-    } else if (groups["instructionName"] !== undefined) {
-      reference = { kind: "skill", name: groups["instructionName"], path: "" };
-    }
-
-    if (reference === undefined) continue;
-
-    if (match.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, match.index) });
-    parts.push({ kind: "reference", reference, source: match[0] });
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < text.length) parts.push({ kind: "text", text: text.slice(cursor) });
-
-  return parts;
-}
-
-/** The draft that edits a sent message. */
-export function messageDraftText(text: string): string {
-  return messageParts(text, { form: "message" })
-    .map((part) => (part.kind === "text" ? part.text : referenceText(part.reference)))
-    .join("");
-}
-
 /** Sidebar drafts use the first visible line, including selected skills and file labels. */
 export function draftPreviewText(text: string): string {
-  const visible = messageParts(text, { form: "draft", files: new Map(), complete: true })
+  const visible = messageParts(text, { files: new Map(), complete: true })
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("")
     .trim();

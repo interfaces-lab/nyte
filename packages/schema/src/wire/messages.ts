@@ -17,7 +17,12 @@ export const UserContentType = Type.Union([
         mime: Type.String(),
         name: Type.String(),
       }),
-      Type.Object({ kind: Type.Literal("reference"), path: Type.String() }),
+      Type.Object({
+        kind: Type.Literal("reference"),
+        path: Type.String(),
+        blob: Type.Optional(idSchema<"blob">()),
+      }),
+      Type.Object({ kind: Type.Literal("skill"), name: Type.String(), location: Type.String() }),
     ]),
   ),
 ]);

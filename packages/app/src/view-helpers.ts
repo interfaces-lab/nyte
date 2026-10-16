@@ -210,6 +210,8 @@ export function userContentText(content: UserContent): string {
           return item.text;
         case "reference":
           return `@${item.path}`;
+        case "skill":
+          return `/${item.name}`;
         case "file":
           return "";
         default: {

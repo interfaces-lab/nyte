@@ -1,11 +1,5 @@
 import type { BlobId, SkillInfo, UserContent } from "@nyte-ai/sdk";
-import {
-  expandInlineSkills,
-  extractSkillInvocations,
-  formatSkillInvocation,
-  parseComposerSubmission,
-  promptDraft,
-} from "../lib/slash.ts";
+import { parseComposerSubmission, promptDraft, skillTokens } from "../lib/slash.ts";
 import type { Draft } from "./state.ts";
 
 export type DraftModel =
@@ -61,8 +55,6 @@ export interface MarkerSpan {
 export const NO_PARTS: DraftParts = new Map();
 
 export const PASTE_COLLAPSE_LINES = 8;
-
-const IMAGE_MARKER = /\[Image \d+\]/gu;
 
 export function draftModel(draft: Draft): DraftModel {
   if (draft.text === "") return { kind: "empty" };
@@ -249,8 +241,6 @@ function pathOfFileUrl(url: string): string | null {
   }
 }
 
-const FILE_ATTACHMENT_PATTERN = /<file src="(file:\/\/[^"\n]+)">\n([\s\S]*?)\n<\/file>/gu;
-
 const SHELL_BLOCK_PATTERN = /<shell command="([^"\n]*)" exit="(\d+)">\n([\s\S]*?)\n<\/shell>/gu;
 
 const FILE_MENTION_PATTERN = /@file:\/\/\S+/gu;
@@ -279,10 +269,6 @@ export function shellBlock(command: string, output: string, exit: number): strin
   return `<shell command="${shellAttribute(command)}" exit="${String(exit)}">\n${output}${closingBreak}</shell>`;
 }
 
-export function fileBlock(path: string, body: string): string {
-  return `<file src="${fileUrl(path)}">\n${body}\n</file>`;
-}
-
 export function draftFromContent(content: UserContent): DraftSnapshot {
   let parts: DraftParts = NO_PARTS;
   let text = "";
@@ -296,23 +282,20 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
 
   if (typeof content === "string") text = content;
   else {
-    for (const item of content) {
+    for (const [index, item] of content.entries()) {
       if (item.kind === "text") text += item.text;
       else if (item.kind === "reference") text += `@${fileUrl(item.path)}`;
-      else {
+      else if (item.kind === "skill") {
+        const next = content[index + 1];
+
+        text +=
+          next?.kind === "text" && /^\s/u.test(next.text) ? `/${item.name}` : `/${item.name} `;
+      } else {
         const marker = add({ kind: "image", bytes: null, blob: item.blob, mime: item.mime });
 
         if (!text.includes(marker)) text += marker;
       }
     }
-  }
-
-  for (const match of text.matchAll(FILE_ATTACHMENT_PATTERN)) {
-    const [source, url, body] = match;
-    const path = url === undefined ? null : pathOfFileUrl(url);
-
-    if (path === null || body === undefined) continue;
-    text = text.replace(source, add({ kind: "file", path, directory: false, body }));
   }
 
   for (const match of text.matchAll(SHELL_BLOCK_PATTERN)) {
@@ -330,13 +313,6 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
     );
   }
 
-  for (const invocation of extractSkillInvocations(text)) {
-    const withArgument = `${invocation.source}\n\n`;
-    text = text.includes(withArgument)
-      ? text.replace(withArgument, `/${invocation.name} `)
-      : text.replace(invocation.source, `/${invocation.name}`);
-  }
-
   for (const match of text.matchAll(FILE_MENTION_PATTERN)) {
     const path = pathOfFileUrl(match[0].slice(1));
 
@@ -345,12 +321,6 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
   }
 
   return { text: promptDraft(text), parts };
-}
-
-export function unreadFiles(draft: DraftSnapshot): readonly string[] {
-  return [...snapshot(draft).parts.values()].flatMap((part) =>
-    part.kind === "file" && !part.directory && part.body === undefined ? [part.path] : [],
-  );
 }
 
 export function pendingUploads(
@@ -364,72 +334,85 @@ export function pendingUploads(
 }
 
 export interface ContentInputs {
-  readonly bodies: ReadonlyMap<string, string | null>;
   readonly uploads: ReadonlyMap<string, BlobId>;
   readonly skills: ReadonlyMap<string, SkillInfo>;
 }
 
+type ContentPart = Exclude<UserContent, string>[number];
+
+/**
+ * What the draft sends: its text, a file or folder chip as a `reference`, a
+ * skill (leading or inline) as a `skill` part, an image as its uploaded
+ * `file`, and a paste or shell chip as its text.
+ */
 export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserContent {
   const text = draft.text.trim();
   const { parts } = snapshot(draft);
   const parsed = parseComposerSubmission(text);
   const leading = parsed.kind === "command" ? inputs.skills.get(parsed.command.name) : undefined;
+  const content: ContentPart[] = [];
 
-  const expandSkills = (segment: string, first: boolean): string =>
-    first && leading !== undefined && parsed.kind === "command"
-      ? formatSkillInvocation(
-          leading,
-          parsed.command.argument === "" ? undefined : parsed.command.argument,
-        )
-      : expandInlineSkills(segment, inputs.skills);
+  const say = (value: string): void => {
+    const last = content.at(-1);
 
-  const expandMarkers = (segment: string): string => {
-    let expanded = segment;
+    if (value === "") return;
 
-    for (const [marker, part] of parts) {
-      if (part.kind === "file") {
-        const body = part.body ?? inputs.bodies.get(part.path) ?? null;
-        expanded = expanded.replaceAll(
-          marker,
-          body === null || part.directory ? `@${fileUrl(part.path)}` : fileBlock(part.path, body),
-        );
-      } else if (part.kind === "paste") expanded = expanded.replaceAll(marker, part.text);
-      else if (part.kind === "shell")
-        expanded = expanded.replaceAll(marker, shellBlock(part.command, part.output, part.exit));
-    }
-
-    return expanded;
+    if (last?.kind === "text")
+      content[content.length - 1] = { kind: "text", text: last.text + value };
+    else content.push({ kind: "text", text: value });
   };
 
-  const images = [...parts].filter(([, part]) => part.kind === "image");
+  if (leading !== undefined)
+    content.push({ kind: "skill", name: leading.name, location: leading.location });
+  const rest = leading !== undefined && parsed.kind === "command" ? parsed.command.argument : text;
 
-  if (images.length === 0) return expandMarkers(expandSkills(text, true));
-  const content: Exclude<UserContent, string>[number][] = [];
+  const spans = [
+    ...liveMarkers({ text: rest, parts }).map((span) => ({
+      ...span,
+      part: parts.get(span.marker),
+      skill: undefined,
+    })),
+    ...skillTokens(rest, inputs.skills).map((token) => ({
+      from: token.start,
+      to: token.end,
+      marker: "",
+      part: undefined,
+      skill: token.skill,
+    })),
+  ].toSorted((left, right) => left.from - right.from);
+
   let cursor = 0;
 
-  for (const match of text.matchAll(IMAGE_MARKER)) {
-    const marker = match[0];
-    const part = parts.get(marker);
+  for (const span of spans) {
+    if (span.from < cursor) continue;
 
-    if (part?.kind !== "image") continue;
-    const blob = part.blob ?? inputs.uploads.get(marker);
+    say(rest.slice(cursor, span.from));
+    cursor = span.to;
 
-    if (blob === undefined) continue;
-    const before = expandMarkers(expandSkills(text.slice(cursor, match.index), cursor === 0));
+    const { part, skill } = span;
 
-    if (before !== "") content.push({ kind: "text", text: before });
-    content.push({
-      kind: "file",
-      blob,
-      mime: part.mime,
-      name: `${marker.slice(1, -1).toLowerCase().replace(" ", "-")}.${part.mime.slice("image/".length)}`,
-    });
-    cursor = match.index + marker.length;
+    const blob =
+      part?.kind === "image" ? (part.blob ?? inputs.uploads.get(span.marker)) : undefined;
+
+    if (skill !== undefined)
+      content.push({ kind: "skill", name: skill.name, location: skill.location });
+    else if (part?.kind === "file") content.push({ kind: "reference", path: part.path });
+    else if (part?.kind === "paste") say(part.text);
+    else if (part?.kind === "shell") say(shellBlock(part.command, part.output, part.exit));
+    else if (part?.kind === "image" && blob !== undefined)
+      content.push({
+        kind: "file",
+        blob,
+        mime: part.mime,
+        name: `${span.marker.slice(1, -1).toLowerCase().replace(" ", "-")}.${part.mime.slice("image/".length)}`,
+      });
+    else say(span.marker);
   }
 
-  const tail = expandMarkers(expandSkills(text.slice(cursor), cursor === 0));
+  say(rest.slice(cursor));
+  const [only] = content;
 
-  if (tail !== "") content.push({ kind: "text", text: tail });
+  if (only === undefined) return "";
 
-  return content;
+  return content.length === 1 && only.kind === "text" ? only.text : content;
 }

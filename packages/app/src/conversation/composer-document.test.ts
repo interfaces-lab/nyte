@@ -328,9 +328,22 @@ describe("composer document", () => {
     expect(editor.labels()).toEqual(["Clipboard (4 lines)"]);
     expect(editor.text()).toBe(token);
     expect(composerSubmission(editor.state.doc)).toEqual({
-      text: body,
+      text: token,
       references: [clipboard],
+      parts: [{ kind: "text", text: body }],
     });
+  });
+
+  it("submits file and skill chips as reference and skill parts between trimmed text", () => {
+    const editor = composer();
+    editor.restore(` ${referenceText(skillReference)} the diff in @${file.url} \n\nthanks `);
+
+    expect(composerSubmission(editor.state.doc).parts).toEqual([
+      { kind: "skill", name: "review", location: skillReference.path },
+      { kind: "text", text: " the diff in " },
+      { kind: "reference", path: file.path },
+      { kind: "text", text: " \n\nthanks" },
+    ]);
   });
 
   it("opens a completion for a trigger at the caret and never for a file URL", () => {

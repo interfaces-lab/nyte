@@ -122,10 +122,10 @@ describe("rows", () => {
     expect(queuedCount(queueRows(followed(view), null))).toBe(1);
   });
 
-  test("a file block in a queued message shows as its marker", () => {
+  test("a file mention in a queued message shows as its marker", () => {
     const view = viewOf((v) =>
       v
-        .pending('look <file src="file:///w/a.ts">\nbody\n</file>', {
+        .pending("look @file:///w/a.ts", {
           schedule: { kind: "next-turn", reason: "idle" },
         })
         .live("run-1"),
