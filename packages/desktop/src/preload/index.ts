@@ -97,6 +97,7 @@ const bridge = {
   clientSurface: "desktop",
   platform: process.platform,
   machineName: launch.machineName,
+  firstWindow: launch.firstWindow,
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
     /** Only the main process sends this private channel; the IPC event is never exposed. */

@@ -430,8 +430,8 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute])
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
 /** Desktop windows show tabs: restore this window's strip before the router starts. */
-export function startWindowTabs(): Promise<void> {
-  return windowTabs.start();
+export function startWindowTabs(firstWindow: boolean): void {
+  windowTabs.start(firstWindow);
 }
 
 /** The route the active window tab shows. */

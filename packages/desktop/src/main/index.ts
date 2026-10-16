@@ -594,7 +594,7 @@ function createWindow(): NyteWindow {
       preload: join(import.meta.dirname, "../preload/index.js"),
       additionalArguments: [
         `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
-        `${LAUNCH_ARGUMENT}=${JSON.stringify({ machineName: machineName() } satisfies LaunchFacts)}`,
+        `${LAUNCH_ARGUMENT}=${JSON.stringify({ machineName: machineName(), firstWindow: windows.size === 0 } satisfies LaunchFacts)}`,
       ],
       contextIsolation: true,
       nodeIntegration: false,

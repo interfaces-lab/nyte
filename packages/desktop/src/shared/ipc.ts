@@ -23,7 +23,11 @@ export const LAUNCH_ARGUMENT = "--nyte-launch";
 
 /** What main knows when it creates a window, handed to the preload so the first frame never asks. */
 export const LaunchFactsType = Type.Object(
-  { machineName: Type.String({ minLength: 1 }) },
+  {
+    machineName: Type.String({ minLength: 1 }),
+    /** No other window of this launch is open, so this one adopts the strip the last one saved. */
+    firstWindow: Type.Boolean(),
+  },
   { additionalProperties: false },
 );
 
@@ -95,6 +99,7 @@ export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
+  readonly firstWindow: boolean;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,
