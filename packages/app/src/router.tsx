@@ -24,7 +24,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { queryClient, readSession, useHostState } from "./queries.ts";
+import { queryClient, readSession } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
@@ -143,12 +143,11 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
  * navigating the tab.
  */
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
-  const host = useHostState();
   const shellRouter = useRouter();
   const page = useStagePage();
   const { about } = useOverlays();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
   const strip = windowTabs.strip;
   useWindowTabsSync();
 

@@ -6,7 +6,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { usePaneActions, useCanSplitPane } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
-import { useHostState } from "../queries.ts";
+import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 
 import { clientActions, clientActionShortcut } from "../client-actions.ts";
@@ -24,9 +24,8 @@ export function PaneHeader({
   menuTriggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
   const actions = usePaneActions();
-  const host = useHostState();
   const canSplit = useCanSplitPane();
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
 
   return (
     <div {...props(threadStyles.header)}>

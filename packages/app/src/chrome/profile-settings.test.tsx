@@ -10,7 +10,7 @@ import { createWebBridge } from "../web/bridge.ts";
 import { ProfileSettings } from "./profile-settings.tsx";
 import { settingsSectionGroups } from "../settings/index.ts";
 
-const web = createWebBridge().bridge;
+const web: NyteBridge = { ...createWebBridge().bridge, machineName: "Studio Mac" };
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
@@ -96,9 +96,7 @@ function render(github: GitHubProviderState, connect: ConnectView | undefined): 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
   client.setQueryData(keys.host, {
-    platform: "darwin",
     workspace: { id: asId<"workspace">("repo"), path: "/srv/repo", name: "repo" },
-    machineName: "Studio Mac",
   } satisfies HostState);
   client.setQueryData([...keys.github, "/srv/repo"], github);
 

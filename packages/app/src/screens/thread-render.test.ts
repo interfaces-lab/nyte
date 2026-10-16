@@ -5,7 +5,7 @@ test("the transcript follows, holds anchors, and keeps its rows", { timeout: 90_
   expect(
     await testRenderer(
       new URL("./thread-render.browser-test.tsx", import.meta.url),
-      `window.nyte = { clientSurface: "desktop", host: { setThemePreference() {} } };`,
+      `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
     ),
   ).toBe("passed");
 });

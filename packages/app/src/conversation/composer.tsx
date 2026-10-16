@@ -18,6 +18,7 @@ import {
   useSessionActivity,
 } from "../queries.ts";
 import { connection } from "../sdk.tsx";
+import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
@@ -124,7 +125,7 @@ export function Composer({
   const stopping = execution?.kind === "live" && execution.stopping;
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
   const host = useHostState();
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
   const link = useHostLink();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const questions = useQuestionDock(sessionId);

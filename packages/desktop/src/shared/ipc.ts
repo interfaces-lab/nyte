@@ -1,5 +1,7 @@
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 
 export const CALL_CHANNEL = "nyte:call";
 
@@ -16,6 +18,16 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
+
+export const LAUNCH_ARGUMENT = "--nyte-launch";
+
+/** What main knows when it creates a window, handed to the preload so the first frame never asks. */
+export const LaunchFactsType = Type.Object(
+  { machineName: Type.String({ minLength: 1 }) },
+  { additionalProperties: false },
+);
+
+export type LaunchFacts = Static<typeof LaunchFactsType>;
 
 /** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
 export const MAIN_OPERATION_PATHS = [
@@ -81,6 +93,8 @@ export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
 
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
+  readonly platform: NyteBridge["platform"];
+  readonly machineName: NyteBridge["machineName"];
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,

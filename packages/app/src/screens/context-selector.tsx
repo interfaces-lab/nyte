@@ -16,7 +16,6 @@ import {
 } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
-import { useHostState } from "../queries.ts";
 import { contextStyles } from "./context-selector.stylex.ts";
 
 function ContextHint({
@@ -54,8 +53,7 @@ export function ContextSelector({
   readonly active: boolean;
   readonly children: ReactNode;
 }) {
-  const host = useHostState();
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 

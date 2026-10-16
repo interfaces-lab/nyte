@@ -1,7 +1,5 @@
-import type { HostState } from "./bridge.ts";
-
 /** Platform-dependent chrome must not wait for the first host IPC round trip. */
-export function macPlatform(platform: HostState["platform"] | undefined): boolean {
+export function macPlatform(platform: NodeJS.Platform | undefined): boolean {
   if (platform !== undefined) return platform === "darwin";
   const bootPlatform = document.documentElement.dataset["platform"];
 

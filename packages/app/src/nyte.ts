@@ -18,6 +18,12 @@ export const nyte: NyteBridge = {
   get clientSurface() {
     return bridge().clientSurface;
   },
+  get platform() {
+    return bridge().platform;
+  },
+  get machineName() {
+    return bridge().machineName;
+  },
   get canvasShell() {
     return bridge().canvasShell;
   },

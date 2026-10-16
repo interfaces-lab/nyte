@@ -126,7 +126,7 @@ export function Titlebar(): ReactElement {
   const workbench = useWorkbenchSnapshot();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const page = useStagePage();
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;

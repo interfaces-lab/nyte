@@ -202,7 +202,7 @@ export function Sidebar(): ReactElement {
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeSessionId = page === undefined ? paneSessionId : undefined;
-  const mac = macPlatform(host.data?.platform);
+  const mac = macPlatform(nyte.platform);
 
   const paneSession =
     paneSessionId === undefined
@@ -385,7 +385,7 @@ export function Sidebar(): ReactElement {
 
           <SearchPalette
             open={paletteOpen}
-            platform={host.data?.platform}
+            platform={nyte.platform}
             sessionQueriesAvailable={host.data !== undefined}
             recentSessions={listed?.map(({ session }) => session)}
             onOpenChange={shellActions.setSearchOpen}

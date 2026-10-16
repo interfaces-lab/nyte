@@ -192,7 +192,7 @@ export function FilesPanel({
     context.close({ restoreFocus: false });
     const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
     const root = hostState.current?.workspace?.path;
-    const separator = hostState.current?.platform === "win32" ? "\\" : "/";
+    const separator = nyte.platform === "win32" ? "\\" : "/";
     const relative = item.path.replace(/\/$/, "");
 
     const absolutePath =
@@ -210,7 +210,7 @@ export function FilesPanel({
         absolutePath !== undefined &&
           revealPath !== undefined && {
             kind: "item",
-            label: revealLabel(hostState.current?.platform),
+            label: revealLabel(nyte.platform),
             run: () => void revealPath({ path: absolutePath }),
           },
         { kind: "separator" },
@@ -432,7 +432,7 @@ export function FilesPanel({
                   if (activeFile !== undefined) void revealPath({ path: activeFile.path });
                 }}
               >
-                {revealLabel(host.data?.platform)}
+                {revealLabel(nyte.platform)}
               </MenuItem>
             )}
             <MenuSeparator inset />

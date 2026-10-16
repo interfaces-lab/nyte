@@ -20,12 +20,20 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  LAUNCH_ARGUMENT,
   MAIN_OPERATION_PATHS,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
-import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
+import type {
+  CallHandler,
+  CallRequest,
+  CallTable,
+  LaunchFacts,
+  MainCallPath,
+} from "../shared/ipc.ts";
+import { machineName } from "@nyte-ai/connect/host";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
@@ -584,7 +592,10 @@ function createWindow(): NyteWindow {
     backgroundColor: windowBackgroundColor(),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.js"),
-      additionalArguments: [`${CANVAS_SHELL_ARGUMENT}=${canvasShell}`],
+      additionalArguments: [
+        `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
+        `${LAUNCH_ARGUMENT}=${JSON.stringify({ machineName: machineName() } satisfies LaunchFacts)}`,
+      ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

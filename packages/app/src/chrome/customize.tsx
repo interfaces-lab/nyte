@@ -8,12 +8,7 @@ import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
-import {
-  useApplyPluginSetting,
-  useHostState,
-  usePluginSettingsProjection,
-  useSessionView,
-} from "../queries.ts";
+import { useApplyPluginSetting, usePluginSettingsProjection, useSessionView } from "../queries.ts";
 import { hostWatch, useWatch } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
@@ -190,7 +185,6 @@ function Overview({
   readonly inventory: CustomizeInventory;
   readonly onOpen: (plugin: PluginView) => void;
 }): ReactElement {
-  const host = useHostState();
   const reveal = nyte.host.revealPath;
   const openPluginsFolder = nyte.host.openPluginsFolder;
   const plugins = inventory.plugins.flatMap((plugin) => present(plugin, inventory.settings) ?? []);
@@ -258,7 +252,7 @@ function Overview({
                     <Button
                       iconOnly
                       icon="folder-open"
-                      aria-label={revealLabel(host.data?.platform)}
+                      aria-label={revealLabel(nyte.platform)}
                       onClick={() => void reveal({ path: parentPath(skill.location) })}
                     />
                   )
@@ -336,7 +330,6 @@ function Detail({
   readonly onBack: () => void;
 }): ReactElement {
   const apply = useApplyPluginSetting(sessionId);
-  const host = useHostState();
   const reveal = nyte.host.revealPath;
   const { info } = plugin;
   const settings = inventory.settings.filter((setting) => setting.owner === info.id);
@@ -387,7 +380,7 @@ function Detail({
             <SettingsRow title="Location" description={path} controlWidth="wide">
               {reveal !== undefined && (
                 <Button variant="outline" icon="folder-open" onClick={() => void reveal({ path })}>
-                  {revealLabel(host.data?.platform)}
+                  {revealLabel(nyte.platform)}
                 </Button>
               )}
             </SettingsRow>

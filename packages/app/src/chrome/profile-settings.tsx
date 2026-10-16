@@ -25,7 +25,6 @@ import type {
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
-import { useHostState } from "../queries.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import {
@@ -520,10 +519,9 @@ function MacGroup({
   readonly connect: ConnectBridge;
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
-  const host = useHostState();
   const view = useConnectView(connect, true).data;
   const [trayOpen, setTrayOpen] = useState(false);
-  const name = host.data?.machineName ?? "This Mac";
+  const name = nyte.machineName ?? "This Mac";
 
   const environments = (
     <Button variant="ghost" onClick={onOpenEnvironments}>

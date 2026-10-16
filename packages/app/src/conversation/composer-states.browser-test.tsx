@@ -317,7 +317,6 @@ installConnection(
 function seedQueries(): void {
   queryClient.setQueryData(keys.host, {
     workspace: undefined,
-    platform: "linux",
   } satisfies HostState);
   queryClient.setQueryData(keys.modelCatalog("initial"), {
     generation: asId<"catalog-generation">("initial"),

@@ -8,7 +8,7 @@ import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
-import { ConnectError, hostShare, machineName } from "@nyte-ai/connect/host";
+import { ConnectError, hostShare } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type {
   HostEvent,
@@ -426,11 +426,7 @@ export class DesktopHost {
 
       return { url, credentials: { kind: "token", token }, expect: { hostId: host.hostId } };
     },
-    "host.state": async (window) => ({
-      workspace: this.#selections.get(window),
-      platform: process.platform,
-      machineName: machineName(),
-    }),
+    "host.state": async (window) => ({ workspace: this.#selections.get(window) }),
     "host.openWorkspace": (window, { path }) => this.#openWorkspace(window, path),
     "host.trustWorkspace": (window, { path }) => this.#openWorkspace(window, path, true),
     "host.closeWorkspace": async (window) => {

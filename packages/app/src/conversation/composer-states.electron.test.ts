@@ -11,7 +11,7 @@ test(
     expect(
       await testRenderer(
         new URL("./composer-states.browser-test.tsx", import.meta.url),
-        `window.nyte = { clientSurface: "desktop", host: { setThemePreference() {} } };`,
+        `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
         { studio },
       ),
     ).toBe("passed");

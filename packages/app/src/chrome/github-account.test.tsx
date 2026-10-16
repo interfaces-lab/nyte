@@ -35,7 +35,6 @@ function ready(name: string): GitHubProviderState {
 
 function selectWorkspace(client: QueryClient, path: string | null): void {
   client.setQueryData(keys.host, {
-    platform: "darwin",
     workspace: path === null ? undefined : { id: asId<"workspace">(path), path, name: path },
   } satisfies HostState);
 }

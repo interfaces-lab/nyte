@@ -231,7 +231,7 @@ const catalog = {
   default: { provider: "test", id: "test" },
 } satisfies ModelCatalogView;
 
-const host = { workspace: undefined, platform: "linux" } satisfies HostState;
+const host = { workspace: undefined } satisfies HostState;
 
 let renderFailure: unknown;
 
