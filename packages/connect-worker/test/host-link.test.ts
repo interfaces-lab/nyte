@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Value } from "typebox/value";
 import { afterAll, afterEach, beforeAll, beforeEach, test, vi } from "vitest";
-import { startWorkerdBroker } from "../../connect-worker/test/workerd.ts";
-import type { WorkerdBroker } from "../../connect-worker/test/workerd.ts";
-import { LinkTransactionLookup, keyFingerprint } from "../src/index.ts";
-import type { ConnectLinking, ConnectView } from "../src/index.ts";
-import { ConnectError, ConnectRuntime } from "../src/host/index.ts";
-import type { ConnectFile, LinkAuthorizer } from "../src/host/index.ts";
-import { createProof, keyThumbprint, publicKeyOf } from "../src/signing.ts";
-import type { PrivateJwk } from "../src/signing.ts";
+import { startWorkerdBroker } from "./workerd.ts";
+import type { WorkerdBroker } from "./workerd.ts";
+import { LinkTransactionLookup, keyFingerprint } from "@nyte-ai/connect";
+import type { ConnectLinking, ConnectView } from "@nyte-ai/connect";
+import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
+import type { ConnectFile, LinkAuthorizer } from "@nyte-ai/connect/host";
+import { createProof, keyThumbprint, publicKeyOf } from "@nyte-ai/connect/signing";
+import type { PrivateJwk } from "@nyte-ai/connect/signing";
 
 const disk = vi.hoisted(() => {
   const state: {

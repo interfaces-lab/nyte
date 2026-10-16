@@ -1,13 +1,13 @@
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
-import { createTransport } from "@nyte-ai/protocol";
-import { OPERATIONS } from "@nyte-ai/schema";
 import {
   CANCEL_PATH,
   CHANNEL_HEADER,
   CHANNEL_PATH,
   STREAM_HEADER,
-} from "../../protocol/src/stream-channel.ts";
+  createTransport,
+} from "@nyte-ai/protocol";
+import { OPERATIONS } from "@nyte-ai/schema";
 import {
   PUBLIC_RELAY_BEARER,
   RELAY_CHUNK_BYTES,
