@@ -34,11 +34,12 @@ If another task replaces build outputs or changes source during verification, re
 boundary. Use a pinned artifact for comparisons and rebuild once the source is stable.
 
 Desktop uses an offline scripted provider, a temporary HOME and an Electron profile created by
-`packages/desktop/e2e/launch.ts`. Build the three outputs in this order, then run one chapter.
+`packages/desktop/e2e/launch.ts`. Build the four outputs in this order, then run one chapter.
 All commands below run from the repository root.
 
 ```sh
 verification_root=$(mktemp -d /tmp/nyte-verification.XXXXXX)
+pnpm --dir packages/canvas build
 VITE_NYTE_CLERK_PUBLISHABLE_KEY= pnpm --dir packages/app build
 pnpm --dir packages/desktop build
 pnpm --dir packages/desktop build:e2e

@@ -23,6 +23,7 @@ The seeded home is built once by `baseline.ts` through `sdk.open` over the e2e c
 ## Prerequisites
 
 ```sh
+pnpm --dir packages/canvas build
 pnpm --dir packages/app build
 pnpm --dir packages/desktop build
 pnpm --dir packages/desktop build:e2e   # needs the regular build
@@ -31,7 +32,7 @@ pnpm --dir packages/desktop build:e2e   # needs the regular build
 ## Run
 
 ```sh
-pnpm e2e:desktop                       # builds the app, the desktop and its e2e entry first
+pnpm e2e:desktop                       # builds the canvas shell, the app, the desktop and its e2e entry first
 ```
 
 One chapter, against an existing build:

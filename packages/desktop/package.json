@@ -11,7 +11,7 @@
     "build": "node scripts/build.mjs",
     "build:e2e": "node scripts/build-e2e.mjs",
     "bench": "node --conditions=nyte-source e2e/bench-startup.ts",
-    "e2e": "pnpm --dir ../app build && pnpm build && pnpm build:e2e && playwright test --config e2e/playwright.config.ts",
+    "e2e": "pnpm --dir ../canvas build && pnpm --dir ../app build && pnpm build && pnpm build:e2e && playwright test --config e2e/playwright.config.ts",
     "dev": "install-electron && node scripts/build-adblock.mjs && node scripts/dev.mjs",
     "test": "vitest --run",
     "update:local": "node scripts/update-test.mjs",

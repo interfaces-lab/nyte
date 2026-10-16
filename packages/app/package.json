@@ -14,7 +14,7 @@
     "build": "vite build",
     "clean": "rm -rf node_modules .turbo dist",
     "dev": "vite",
-    "e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
+    "e2e": "pnpm --dir ../canvas build && pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
   },

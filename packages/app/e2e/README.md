@@ -8,13 +8,14 @@ Playwright tests for the web app, configured in `playwright.config.ts`. The desk
 
 ```sh
 pnpm --dir packages/app exec playwright install chromium
+pnpm --dir packages/canvas build        # the app build inlines the canvas shell
 pnpm --dir packages/app build
 ```
 
 ## Run
 
 ```sh
-pnpm e2e                               # builds the app first
+pnpm e2e                               # builds the canvas shell and the app first
 ```
 
 One spec, against an existing build:
@@ -25,7 +26,7 @@ pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts e
 
 `NYTE_E2E_TOKEN` overrides the web server's token. `NYTE_E2E_PORT` overrides its port, so two runs on one machine can each start their own server. Outside CI an already running server on that port is reused. Results land in `test-results/` and `playwright-report/`; pass `--output` and `--reporter=list` to keep a concurrent run's artifacts apart.
 
-CI's `e2e-web` job builds the app and runs only `web/workspace.spec.ts`. The other web specs run locally until they pass again.
+CI's `e2e-web` job builds the canvas shell and the app and runs only `web/workspace.spec.ts`. The other web specs run locally until they pass again.
 
 The web build must not carry account sign-in. With `VITE_NYTE_CLERK_PUBLISHABLE_KEY` set, for example from `.env.local`, `/` opens the account screen instead of the connect form and the pairing specs fail. Clear it for the build:
 
