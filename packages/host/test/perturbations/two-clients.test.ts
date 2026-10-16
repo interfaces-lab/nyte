@@ -237,6 +237,19 @@ function watch(transport: Transport, session: SessionId): Watch {
   };
 }
 
+/** What a view shows of the conversation, without `heads`, whose `unread` is each principal's own. */
+function transcript(view: SessionView | null) {
+  return JSON.parse(
+    JSON.stringify({
+      seq: view?.seq,
+      messages: view?.messages,
+      parts: view?.parts,
+      turns: view?.turns,
+      execution: view?.execution,
+    }),
+  );
+}
+
 it("keeps two clients' views of one session equal when the relayed one loses its stream mid-run and watches again", async () => {
   await using home = await restaurantHome({ env: { PLACES_DELAY_MS: "1500" } });
   const turns = restaurantScript({ skill: home.skills["restaurant-picker"], route: "direct" });
@@ -322,7 +335,7 @@ it("keeps two clients' views of one session equal when the relayed one loses its
   expect(desktop.attempts()).toBe(1);
   expect(desktop.errors).toEqual([]);
   expect(terminal.view()).toEqual(desktop.view());
-  expect(JSON.parse(JSON.stringify(desktop.view()))).toEqual(JSON.parse(JSON.stringify(fresh)));
+  expect(transcript(desktop.view())).toEqual(transcript(fresh));
   expect(fresh.messages.at(-1)).toMatchObject({ state: { markdown: RESTAURANT_ANSWER } });
   expect(fresh.execution.kind).toBe("idle");
 
