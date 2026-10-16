@@ -352,7 +352,9 @@ describe("durable steps", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.indexOf("run:stopping")).toBeGreaterThan(log.indexOf("run:waiting"));
+    expect(log.findIndex((entry) => entry === "run:stopping")).toBeGreaterThan(
+      log.findIndex((entry) => entry === "run:waiting"),
+    );
   });
 
   it("settles a never step with a pending wait as interrupted on its re-run", async () => {

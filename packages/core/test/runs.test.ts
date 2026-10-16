@@ -94,7 +94,7 @@ describe("runs", () => {
     expect(patches).toHaveLength(1);
 
     const fenced = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
-    const stopping = fenced.indexOf("run:stopping");
+    const stopping = fenced.findIndex((entry) => entry === "run:stopping");
 
     expect(fenced.slice(stopping, stopping + 3)).toEqual([
       "run:stopping",
@@ -106,8 +106,8 @@ describe("runs", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.indexOf("run:stopping")).toBe(stopping);
-    expect(log.indexOf("run:ended")).toBeGreaterThan(stopping + 2);
+    expect(log.findIndex((entry) => entry === "run:stopping")).toBe(stopping);
+    expect(log.findIndex((entry) => entry === "run:ended")).toBeGreaterThan(stopping + 2);
 
     for (const part of parts) {
       const ref = await kernel.store.refs.get(partRef(session.id, part));

@@ -51,8 +51,11 @@ describe("composeHost", () => {
         const outcome = await invocation.wait({ kind: "part", part: part.id });
         const input = outcome.kind === "part" ? outcome.answer?.input : null;
         const choice =
-          typeof input === "object" && input !== null && "choice" in input
-            ? String(input.choice)
+          typeof input === "object" &&
+          input !== null &&
+          "choice" in input &&
+          typeof input.choice === "string"
+            ? input.choice
             : "none";
 
         return { content: [{ kind: "text", text: choice }] };

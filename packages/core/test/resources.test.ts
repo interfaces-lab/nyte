@@ -313,9 +313,7 @@ describe("resources", () => {
 
     assert(context !== undefined && skills !== undefined);
     expect([context.order, skills.order]).toEqual([10, 90]);
-    expect(context.text.indexOf("# /home/ada/.nyte/AGENTS.md")).toBeLessThan(
-      context.text.indexOf("# /AGENTS.md"),
-    );
+    expect(context.text).toMatch(/# \/home\/ada\/\.nyte\/AGENTS\.md[\s\S]*# \/AGENTS\.md/u);
     expect(context.text).toContain("# /work/project/AGENTS.override.md\n\nProject override.");
     expect(skills.text).toContain(
       "- review: Reviews diffs. (/home/ada/.nyte/skills/review/SKILL.md)",

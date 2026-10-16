@@ -65,14 +65,16 @@ describe("the stop fence (ADV round 2)", () => {
     const opened = Promise.withResolvers<void>();
     const committed: (readonly string[])[] = [];
     let stop: ((run: ReturnType<typeof createdRun>) => Promise<unknown>) | null = null;
-    let stopped: Promise<unknown> | null = null;
+    const stopped = Promise.withResolvers<unknown>();
+    let stopping = false;
     let fenced = false;
 
     const store = hookedStore(async (updates, inner) => {
       const run = createdRun(updates);
 
-      if (run !== null && stop !== null && stopped === null) {
-        stopped = stop(run);
+      if (run !== null && stop !== null && !stopping) {
+        stopping = true;
+        stopped.resolve(stop(run));
         await fenceRead.promise;
         const outcome = await inner.set(updates);
         opened.resolve();
@@ -99,7 +101,7 @@ describe("the stop fence (ADV round 2)", () => {
     const receipt = await session.send("Go.");
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
-    expect(await stopped).toEqual({ kind: "requested" });
+    expect(await stopped.promise).toEqual({ kind: "requested" });
     expect(committed.find((set) => set.includes("run:stopping"))).toEqual(["run:stopping"]);
     expect(committed.some((set) => set.includes("part:failed"))).toBe(true);
 
