@@ -21,7 +21,6 @@ export {
   REVOCATION_LIMIT,
   UNLINK_LIMIT,
 } from "./store.ts";
-export { writePrivateFile } from "./private-file.ts";
 export type { ConnectFile, LinkKey, PendingUnlink, StoredDevice, StoredLink } from "./store.ts";
 export { DesktopBroker } from "./broker.ts";
 export type { BrokerFetch, LeaseAnswer } from "./broker.ts";

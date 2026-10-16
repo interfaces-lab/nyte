@@ -1,7 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { writePrivateFile } from "@nyte-ai/connect/host";
+import { writePrivateFile } from "@nyte-ai/connect/private-file";
 
 const savedSignIn = Compile(
   Type.Object(
