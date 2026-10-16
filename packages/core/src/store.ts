@@ -25,7 +25,13 @@ export type {
   WorkspaceRecord,
 } from "./contract/records.ts";
 
-export { admits, collectSessionEvents, decodeObject, loggedEvent } from "./store/log.ts";
+export {
+  admits,
+  collectSessionEvents,
+  decodeObject,
+  fenceNames,
+  loggedEvent,
+} from "./store/log.ts";
 
 export { memoryStore } from "./store/memory-store.ts";
 

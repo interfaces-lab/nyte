@@ -7,7 +7,7 @@ import { landing } from "../src/engine/admission.ts";
 import { stopRun } from "../src/engine/fence.ts";
 import { move } from "../src/engine/move.ts";
 import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
-import { callRef, decodePartRecord, headRef, memoryStore, partRef } from "../src/store.ts";
+import { callRef, headRef, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
 import type {
   ConnectionContext,
@@ -51,7 +51,7 @@ function source(definition: ToolDefinition): () => ToolSource {
 }
 
 describe("ADV A-3", () => {
-  it("settles a tool step stopped without running it once another instance fenced its run, and aborts the run here (A-3 S1, probe a3e)", async () => {
+  it("answers a tool step stopped, recording nothing and running nothing, once another instance fenced its run, and aborts the run here (A-3 S1, probe a3e)", async () => {
     const ran: string[] = [];
     const store = await memoryStore().open();
 
@@ -86,20 +86,13 @@ describe("ADV A-3", () => {
       signal: new AbortController().signal,
     });
 
-    const part = decodePartRecord(
-      await store.objects.get(
-        (await store.refs.get(partRef(session.id, asId("c1"))))?.target ?? asId("none"),
-      ),
-    );
-
     expect({ ran, outcome }).toEqual({ ran: [], outcome: { kind: "stopped" } });
-    expect(await store.refs.get(callRef(session.id, asId("c1")))).not.toBeNull();
-    expect(part?.status.kind).toBe("failed");
-    expect(part?.state).toMatchObject({ phase: "settled", outcome: { kind: "stopped" } });
+    expect(await store.refs.get(callRef(session.id, asId("c1")))).toBeNull();
+    expect(await store.refs.get(partRef(session.id, asId("c1")))).toBeNull();
     expect(a.kernel.runs.signal(run.id)?.aborted).toBe(true);
   });
 
-  it("ends a fenced run whose response calls a write tool stopped, the tool unrun and shown stopped, one request sent (A-3 S1, probe a3f)", async () => {
+  it("ends a fenced run whose response calls a write tool stopped, the tool unrun and unrecorded, one request sent (A-3 S1, probe a3f)", async () => {
     const ran: string[] = [];
     const plugin: Plugin<"core"> = { id: "writer", contribute: { tools: [writer(ran)] } };
     const connection = await memoryStore().open();
@@ -156,7 +149,7 @@ describe("ADV A-3", () => {
       ran: [],
       settled: { kind: "stopped" },
       requests: 1,
-      parts: ["text:failed", "tool:failed"],
+      parts: ["text:failed"],
     });
 
     const text = view.messages.find((message) => message.kind === "part");

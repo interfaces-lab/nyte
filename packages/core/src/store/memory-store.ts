@@ -2,7 +2,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { BlobId, ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
 import type { Store, StoreConnection } from "../contract/store.ts";
 import { blobId, objectId } from "../util/content.ts";
-import { admits, collectSessionEvents, decodeObject, loggedEvent } from "./log.ts";
+import { admits, collectSessionEvents, decodeObject, fenceNames, loggedEvent } from "./log.ts";
 import { parseSessionRef } from "./refs.ts";
 import { projectSessionIndex, sessionIndexRef } from "./session-index.ts";
 import type { SessionIndexEntry } from "./session-index.ts";
@@ -135,6 +135,9 @@ export function memoryStore(): Store {
           .sort((left, right) => byCodePoint(left.name, right.name)),
       async set(updates) {
         const logged = collectSessionEvents(updates);
+        const fenced = fenceNames(updates).find((name) => !refs.has(name));
+
+        if (fenced !== undefined) return { kind: "fenced", name: fenced };
         const stale = updates.find((update) => !admits(update, refs.get(update.name)));
 
         if (stale)

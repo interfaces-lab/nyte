@@ -25,7 +25,6 @@ import { decodePartRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { openAction, recordAcquisition, reserveRerun } from "../engine/durable.ts";
 import type { ActionIntent } from "../engine/durable.ts";
-import { unfenced } from "../engine/fence.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { commit } from "../fold/commit.ts";
 import { release, settle, storedAnswer } from "../store/parts.ts";
@@ -162,26 +161,25 @@ export async function createPart<K extends PartDefinition>(
         status: { kind: "live", run },
       };
 
-      const held = run === null ? null : await unfenced(kernel.store, session, run);
+      const outcome = await commit(
+        kernel,
+        [
+          {
+            name,
+            target: await put(
+              kernel.store,
+              "part",
+              definition === undefined ? stored : { ...stored, definition },
+              at,
+            ),
+            expect: "absent",
+            events: [{ head: null, ...created }],
+          },
+        ],
+        run === null ? null : { session, run },
+      );
 
-      if (run !== null && held === null) return;
-
-      const outcome = await commit(kernel, [
-        ...(held === null ? [] : [held]),
-        {
-          name,
-          target: await put(
-            kernel.store,
-            "part",
-            definition === undefined ? stored : { ...stored, definition },
-            at,
-          ),
-          expect: "absent",
-          events: [{ head: null, ...created }],
-        },
-      ]);
-
-      return outcome.kind === "set" ? undefined : STALE;
+      return outcome.kind === "stale" ? STALE : undefined;
     }
 
     const head = from?.head ?? MAIN;

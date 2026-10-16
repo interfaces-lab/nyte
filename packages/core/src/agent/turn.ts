@@ -29,7 +29,7 @@ import type {
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
 import { intendedCall } from "../engine/durable.ts";
-import { abortHere, stopRequested, unfenced } from "../engine/fence.ts";
+import { stopRequested } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
@@ -617,13 +617,9 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
     status: { kind: "live", run },
   };
 
-  const live = await attempt(`Opening part ${part}`, async () => {
-    const held = await unfenced(kernel.store, session, run);
-
-    if (held === null) return false;
-
-    const outcome = await commit(kernel, [
-      held,
+  const live = await commit(
+    kernel,
+    [
       {
         name: partRef(session, part),
         target: await put(kernel.store, "part", record),
@@ -643,10 +639,9 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
           },
         ],
       },
-    ]);
-
-    return outcome.kind === "set" ? true : STALE;
-  });
+    ],
+    { session, run },
+  );
 
   const opened: OpenPart = {
     part,
@@ -657,8 +652,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
     thoughts: [],
   };
 
-  if (live) state.opened.push(opened);
-  else abortHere(kernel, run);
+  if (live.kind === "set") state.opened.push(opened);
 
   return opened;
 }

@@ -11,6 +11,13 @@ export function admits(update: RefUpdate, current: Ref | undefined): boolean {
   return current?.revision === update.expect;
 }
 
+/** The fence refs `updates` need, each once: a set lands only while every one of them exists. */
+export function fenceNames(updates: readonly RefUpdate[]): readonly string[] {
+  return [
+    ...new Set(updates.flatMap((update) => (update.fence === undefined ? [] : [update.fence]))),
+  ];
+}
+
 export function collectSessionEvents(
   updates: readonly RefUpdate[],
 ): readonly { readonly session: SessionId; readonly event: DurableEvent }[] {

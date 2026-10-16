@@ -75,10 +75,11 @@ export async function runStep<T>(
     readonly part: PartId | null;
     readonly signal: AbortSignal;
 
-    readonly opening?: () => Promise<{
-      readonly updates: readonly RefUpdate[];
-      readonly result: Json | null;
-    }>;
+    /** The writes that open the step with its call record, landing under the step's run: once the run's stop fence is set they land nothing, and the step answers `fenced` as interrupted. */
+    readonly opening?: {
+      updates(): Promise<readonly RefUpdate[]>;
+      readonly fenced: T;
+    };
     body(durable: Durable): Promise<T>;
 
     settle(
@@ -92,6 +93,8 @@ export async function runStep<T>(
   const created = callRecord(input);
   let record = created;
 
+  const { opening, run } = input;
+
   const opened = await changeCall(kernel, session, call, async (current) => {
     if (current !== null && current.kind !== "intent") {
       record = current;
@@ -99,11 +102,14 @@ export async function runStep<T>(
       return null;
     }
 
-    const opening = await input.opening?.();
-    record = { ...created, result: opening?.result ?? null };
+    record = created;
 
-    return { record, updates: opening?.updates };
+    return opening === undefined || run === null
+      ? { record }
+      : { record, updates: await opening.updates(), under: { session, run } };
   });
+
+  if (opened.fenced && opening !== undefined) return { kind: "interrupted", value: opening.fenced };
 
   const read = (result: Json | null): T => {
     const value = result === null ? null : input.decode(result);

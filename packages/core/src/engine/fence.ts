@@ -12,7 +12,7 @@ import { decodeRunRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
 import { liveParts, readRunEnd } from "../fold/reads.ts";
 import { stoppedParts } from "../store/parts.ts";
-import { inboxRef, runRef } from "../store/refs.ts";
+import { inboxRef, liveRef, runRef } from "../store/refs.ts";
 import {
   attempt,
   inboxWithout,
@@ -56,7 +56,7 @@ export async function stopRun(
     return end === null ? { kind: "missing" } : { kind: "settled", outcome: end };
   }
 
-  kernel.runs.abort(run);
+  await finishFence(kernel, session, run);
   await kernel.waits.runStopped(session, run);
   kernel.wakes.notify(session, fenced.head);
 
@@ -97,22 +97,11 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
         expect: found.ref.revision,
         events: [{ head, kind: "run", run, change: "stopping" }],
       },
+      { name: liveRef(session, run), target: null },
       ...stopped,
       { name: inboxRef(session, head), target: rewritten, expect: readRefExpectation(inbox.ref) },
     ],
   };
-}
-
-export async function unfenced(
-  store: StoreConnection,
-  session: SessionId,
-  run: RunId,
-): Promise<RefUpdate | null> {
-  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
-
-  return found === null || found.record.stopping
-    ? null
-    : { name: found.ref.name, target: found.ref.target, expect: found.ref.revision };
 }
 
 /** Whether the run's stop fence is set in the store, the one record of a stop; a run whose record is gone has ended and is not stopping. */
@@ -126,7 +115,27 @@ export async function stopRequested(
   return found?.record.stopping === true;
 }
 
-/** Stops this process's work on a run whose stop fence a write found already set. */
-export function abortHere(kernel: Kernel, run: RunId): void {
+/** Stops this process's work on a run whose stop fence is set, and fails what the run opened between the fence's read and its write: with the live ref gone nothing opens under the run any more, so this pass sees the last of them. */
+export async function finishFence(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   kernel.runs.abort(run);
+
+  await attempt(`Failing what run ${run} opened while it stopped`, async () => {
+    const open = await liveParts(kernel, session, run);
+
+    if (open.length === 0) return undefined;
+    const found = await load(
+      kernel.store,
+      await kernel.store.refs.get(runRef(session, run)),
+      decodeRunRecord,
+    );
+
+    if (found === null) return undefined;
+    const head = found.record.view.head;
+    const tip = await readTip(kernel.store, session, head);
+    const updates = await stoppedParts(kernel.store, session, head, tip, open, FENCED);
+
+    if (updates.length === 0) return undefined;
+
+    return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
+  });
 }

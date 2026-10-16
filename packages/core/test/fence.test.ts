@@ -100,10 +100,8 @@ describe("the stop fence (ADV round 2)", () => {
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
     expect(await stopped).toEqual({ kind: "requested" });
-    expect(committed.find((set) => set.includes("run:stopping"))).toEqual([
-      "run:stopping",
-      "part:failed",
-    ]);
+    expect(committed.find((set) => set.includes("run:stopping"))).toEqual(["run:stopping"]);
+    expect(committed.some((set) => set.includes("part:failed"))).toBe(true);
 
     const part = (await session.view()).messages.find((message) => message.kind === "part");
 
@@ -346,7 +344,7 @@ describe("move receipts and summary guards (ADV F-2)", () => {
 });
 
 describe("integration of round 2 (§61–§63)", () => {
-  it("lands no input into a run another instance fenced: the landing expects the run unfenced (A-2 N4, N7)", async () => {
+  it("lands no input into a run another instance fenced: the landing lands under the run's fence (A-2 N4, N7)", async () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });

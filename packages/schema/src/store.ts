@@ -19,8 +19,10 @@ export const RefUpdateType = Type.Object({
   target: nullable(idSchema<"object">()),
   expect: Type.Optional(Type.Union([Type.Literal("absent"), idSchema<"revision">()])),
   events: Type.Optional(Type.Array(DurableEventType)),
+  fence: Type.Optional(Type.String()),
 });
 
+/** One ref a `RefStore.set` writes: its new target (null deletes it), the revision it must be at (`absent`: it must not exist), the events it logs to its session in order, and `fence`, a ref that must exist for the set to land (a run's live ref, which its stop deletes). */
 export type RefUpdate = Decoded<typeof RefUpdateType>;
 
 export const SetOutcomeType = Type.Union([
@@ -35,9 +37,10 @@ export const SetOutcomeType = Type.Union([
     name: Type.String(),
     revision: nullable(idSchema<"revision">()),
   }),
+  Type.Object({ kind: Type.Literal("fenced"), name: Type.String() }),
 ]);
 
-/** What `RefStore.set` did: `set` with the seq each event was logged at, in update order and each update's events in order, the time it logged them at, and each update's new revision; or `stale`, naming the first ref whose expectation failed. */
+/** What `RefStore.set` did: `set` with the seq each event was logged at, in update order and each update's events in order, the time it logged them at, and each update's new revision; `fenced`, naming the first fence ref an update needed that does not exist, checked before any expectation; or `stale`, naming the first ref whose expectation failed. A set that is not `set` wrote nothing. */
 export type SetOutcome = Decoded<typeof SetOutcomeType>;
 
 export const RefSchema: Schema<Ref> = standard(RefType);

@@ -19,7 +19,7 @@ import type { Run } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
 import { liveParts, readRunEnd, withFold } from "../fold/reads.ts";
 import { failedParts } from "../store/parts.ts";
-import { inboxRef, runRef, sessionRef } from "../store/refs.ts";
+import { inboxRef, liveRef, runRef, sessionRef } from "../store/refs.ts";
 import {
   attempt,
   inboxWithout,
@@ -48,7 +48,7 @@ export async function newRun(
   head: HeadName,
   origin: RunView["origin"],
   configuration: Configuration,
-): Promise<{ readonly view: RunView; readonly update: RefUpdate }> {
+): Promise<{ readonly view: RunView; readonly updates: readonly RefUpdate[] }> {
   const id = asId<"run">(crypto.randomUUID());
   const startedAt = Date.now();
   const view: RunView = { id, head, startedAt, attempt: 1, configuration, origin };
@@ -67,14 +67,19 @@ export async function newRun(
     parked: [],
   };
 
+  const target = await put(store, "run", record, startedAt);
+
   return {
     view,
-    update: {
-      name: runRef(session, id),
-      target: await put(store, "run", record, startedAt),
-      expect: "absent",
-      events: [{ head, kind: "run", run: id, change: "started", view }],
-    },
+    updates: [
+      {
+        name: runRef(session, id),
+        target,
+        expect: "absent",
+        events: [{ head, kind: "run", run: id, change: "started", view }],
+      },
+      { name: liveRef(session, id), target, expect: "absent" },
+    ],
   };
 }
 
@@ -150,6 +155,7 @@ export async function endRun(
         expect: found.ref.revision,
         events: [{ head, kind: "run", run, change: "ended", end: final }],
       },
+      { name: liveRef(session, run), target: null },
       {
         name: sessionRef(session),
         target: await put(kernel.store, "session", record, endedAt),

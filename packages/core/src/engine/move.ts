@@ -34,7 +34,7 @@ import type { MoveFailure, Tip } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
 import { holdSummary, summarizedMove, summaryHeld } from "./branch-summary.ts";
-import { abortHere, fence } from "./fence.ts";
+import { fence, finishFence } from "./fence.ts";
 import { known, reserve, settleReceipt, typedReceipt } from "./receipts.ts";
 
 interface Plan {
@@ -98,7 +98,7 @@ export async function move(
 
     case "moved":
       if (decided.stopped !== null) {
-        abortHere(kernel, decided.stopped);
+        await finishFence(kernel, session, decided.stopped);
         kernel.wakes.notify(session, head);
       }
 
@@ -145,7 +145,7 @@ export async function move(
             return summarized.kind === "failed" ? summarized.outcome : null;
 
           if (summarized.stopped !== null) {
-            abortHere(kernel, summarized.stopped);
+            await finishFence(kernel, session, summarized.stopped);
             kernel.wakes.notify(session, head);
           }
 
@@ -237,7 +237,7 @@ async function decide(
       },
     ]);
 
-    if (outcome.kind === "stale")
+    if (outcome.kind !== "set")
       return outcome.name === receiptRef(session, id) &&
         (await known(kernel.store, session, id, "move", digest))
         ? { kind: "replayed" }

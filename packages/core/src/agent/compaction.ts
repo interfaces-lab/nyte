@@ -40,7 +40,6 @@ import { compaction } from "../contract/parts.ts";
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { collectContributions } from "../engine/contributions.ts";
-import { unfenced } from "../engine/fence.ts";
 import { modelInfo } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
@@ -311,13 +310,9 @@ async function openCompaction(
 
   const target = await put(kernel.store, "part", record);
 
-  const opened = await attempt(`Opening compaction ${part}`, async () => {
-    const held = run === null ? null : await unfenced(kernel.store, session, run);
-
-    if (run !== null && held === null) return false;
-
-    const outcome = await commit(kernel, [
-      ...(held === null ? [] : [held]),
+  const opened = await commit(
+    kernel,
+    [
       {
         name: partRef(session, part),
         target,
@@ -337,12 +332,11 @@ async function openCompaction(
           },
         ],
       },
-    ]);
+    ],
+    run === null ? null : { session, run },
+  );
 
-    return outcome.kind === "set" ? true : STALE;
-  });
-
-  if (!opened) return "stopped";
+  if (opened.kind !== "set") return "stopped";
 
   return {
     session,

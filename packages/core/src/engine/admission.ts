@@ -47,7 +47,7 @@ import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
 import { collectContributions, refusalError } from "./contributions.ts";
-import { abortHere, fence, unfenced } from "./fence.ts";
+import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -159,7 +159,7 @@ export async function landing(
   head: HeadName,
   ids: readonly MessageId[],
   run: RunId | null,
-  start: RefUpdate | null = null,
+  start: readonly RefUpdate[] | null = null,
 ): Promise<readonly MessageId[]> {
   const landed = await attempt(`Landing on ${head}`, async () => {
     const [tip, inbox] = await Promise.all([
@@ -170,10 +170,6 @@ export async function landing(
     const due = inbox.messages.filter((message) => ids.includes(message));
 
     if (due.length === 0) return [];
-
-    const held = start ?? (run === null ? null : await unfenced(kernel.store, session, run));
-
-    if (run !== null && held === null) return [];
 
     const { inputs, siblings, starts } = await withFold(kernel, session, (state) => ({
       inputs: due.map((message) => state.inputs.get(message)),
@@ -252,9 +248,13 @@ export async function landing(
       },
     ]);
 
-    return (await commit(kernel, held === null ? updates : [held, ...updates])).kind === "set"
-      ? due
-      : STALE;
+    const outcome = await commit(
+      kernel,
+      [...(start ?? []), ...updates],
+      start === null && run !== null ? { session, run } : null,
+    );
+
+    return outcome.kind === "set" ? due : outcome.kind === "fenced" ? [] : STALE;
   });
 
   return landed;
@@ -581,7 +581,7 @@ async function editGated(
 
           if (summarized.kind !== "moved") return;
 
-          if (summarized.stopped !== null) abortHere(kernel, summarized.stopped);
+          if (summarized.stopped !== null) await finishFence(kernel, session, summarized.stopped);
           wake(summarized.stopped);
         })
         .catch(async (error: unknown) =>
@@ -599,7 +599,7 @@ async function editGated(
     }
 
     case "edited":
-      if (edited.stopped !== null) abortHere(kernel, edited.stopped);
+      if (edited.stopped !== null) await finishFence(kernel, session, edited.stopped);
       wake(edited.stopped);
   }
 

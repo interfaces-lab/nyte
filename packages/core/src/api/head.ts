@@ -203,7 +203,7 @@ export async function mergeHead(
     },
   ]);
 
-  if (outcome.kind === "stale")
+  if (outcome.kind !== "set")
     return {
       kind: "stale",
       revision: (await readTip(kernel.store, session, head)).ref?.revision ?? EMPTY_REVISION,

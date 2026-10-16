@@ -46,6 +46,11 @@ export function runRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/runs/${run}`;
 }
 
+/** A run's live ref: it exists from the run's start until its stop fence or its end, and every run-scoped write lands under it (`RefUpdate.fence`). */
+export function liveRef(id: SessionId, run: RunId): string {
+  return `sessions/${id}/live/${run}`;
+}
+
 export function partRef(id: SessionId, part: PartId): string {
   return `sessions/${id}/parts/${part}`;
 }

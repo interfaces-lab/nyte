@@ -125,7 +125,7 @@ export async function summarizedMove(
       })),
     ]);
 
-    if (outcome.kind === "stale")
+    if (outcome.kind !== "set")
       return outcome.name === headRef(session, head)
         ? { kind: "failed", outcome: await staleHead(kernel.store, session, head) }
         : STALE;

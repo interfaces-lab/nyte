@@ -39,7 +39,6 @@ import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { isParked, parkStep, runStep } from "../engine/durable.ts";
-import { abortHere, FENCED, unfenced } from "../engine/fence.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
@@ -242,7 +241,7 @@ async function perform(
     kind: "tool",
     replay: planned.kind === "execute" ? planned.definition.replay : "safe",
     intent,
-    opening: () => partOpening(kernel, where, planned),
+    opening: { updates: () => partOpening(kernel.store, where, planned), fenced: STOPPED },
     part: asId<"part">(call),
     signal,
     body:
@@ -355,102 +354,61 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
+/** The writes that open a tool call's part with its call record: the part, running, with its created and intent events. */
 async function partOpening(
-  kernel: Kernel,
+  store: StoreConnection,
   where: Where,
   planned: Plan,
-): Promise<{ readonly updates: readonly RefUpdate[]; readonly result: Json | null }> {
+): Promise<readonly RefUpdate[]> {
   const { session, head, run, call } = where;
   const part = asId<"part">(call);
   const name = partRef(session, part);
 
-  const [existing, held] = await Promise.all([
-    kernel.store.refs.get(name),
-    unfenced(kernel.store, session, run),
-  ]);
-
-  if (existing !== null) return { updates: [], result: null };
-  const at = Date.now();
+  if ((await store.refs.get(name)) !== null) return [];
   const fields = { call, name: where.name, args: planned.args, class: planned.class };
-  const calling: Json = { ...fields, phase: "calling" };
 
-  const record = (state: Json, version: number): PartRecord => ({
+  const record: PartRecord = {
     id: part,
     partKind: tool.kind,
     placement: STEP,
-    state,
-    version,
+    state: { ...fields, phase: "running", progress: null },
+    version: 2,
     owner: null,
     run,
     status: { kind: "live", run },
-  });
+  };
 
-  const opening: readonly DurableEvent[] = [
+  return [
     {
-      head,
-      kind: "part",
-      part,
-      change: "created",
-      partKind: tool.kind,
-      placement: STEP,
-      state: calling,
-      version: 1,
-      run,
-      owner: null,
-    },
-    {
-      head,
-      kind: "call",
-      call,
-      part,
-      change: "intent",
-      name: where.name,
-      args: planned.args,
-      class: planned.class,
+      name,
+      target: await put(store, "part", record, Date.now()),
+      expect: "absent",
+      events: [
+        {
+          head,
+          kind: "part",
+          part,
+          change: "created",
+          partKind: tool.kind,
+          placement: STEP,
+          state: { ...fields, phase: "calling" },
+          version: 1,
+          run,
+          owner: null,
+        },
+        {
+          head,
+          kind: "call",
+          call,
+          part,
+          change: "intent",
+          name: where.name,
+          args: planned.args,
+          class: planned.class,
+        },
+      ],
     },
   ];
-
-  if (held !== null) {
-    const running = await put(
-      kernel.store,
-      "part",
-      record({ ...fields, phase: "running", progress: null }, 2),
-      at,
-    );
-
-    return {
-      updates: [held, { name, target: running, expect: "absent", events: opening }],
-      result: null,
-    };
-  }
-
-  abortHere(kernel, run);
-  const settled = record({ ...fields, phase: "settled", outcome: STOPPED, changes: null }, 3);
-  const status = { kind: "failed", run, failure: FENCED } as const;
-
-  return {
-    updates: [
-      {
-        name,
-        target: await put(kernel.store, "part", { ...settled, status }, at),
-        expect: "absent",
-        events: [
-          ...opening,
-          {
-            head,
-            kind: "call",
-            call,
-            part,
-            change: "settled",
-            outcome: STOPPED,
-            changes: null,
-          },
-          { head, kind: "part", part, change: "failed", failure: FENCED },
-        ],
-      },
-    ],
-    result: STOPPED,
-  };
 }
 
 async function execute(

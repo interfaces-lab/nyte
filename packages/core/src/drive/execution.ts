@@ -190,7 +190,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   const run = await newRun(kernel.store, session, head, due.origin, due.input.configuration);
 
-  if ((await landing(kernel, session, head, due.ids, run.view.id, run.update)).length === 0)
+  if ((await landing(kernel, session, head, due.ids, run.view.id, run.updates)).length === 0)
     return next(kernel, session, head);
   begin(kernel, session, run.view);
 
@@ -489,7 +489,7 @@ async function claimNow(
 
   dev("execution", "claim", { session, head, outcome: outcome.kind });
 
-  if (outcome.kind === "stale") {
+  if (outcome.kind !== "set") {
     held.delete(name);
 
     return { kind: "fenced" };

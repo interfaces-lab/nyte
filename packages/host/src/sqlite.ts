@@ -7,6 +7,7 @@ import type { ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import {
   admits,
+  fenceNames,
   assertStoreVersion,
   blobId,
   decodeObject,
@@ -360,6 +361,14 @@ function connect(
 
           for (const update of updates)
             if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+          const fenced = fenceNames(updates).find((name) => ref(name) === null);
+
+          if (fenced !== undefined) {
+            database.exec("ROLLBACK");
+
+            return { kind: "fenced", name: fenced };
+          }
+
           const stale = updates.find((update) => !admits(update, before.get(update.name)));
 
           if (stale !== undefined) {

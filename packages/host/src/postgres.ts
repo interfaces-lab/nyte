@@ -10,6 +10,7 @@ import type {
 } from "@nyte-ai/schema";
 import {
   admits,
+  fenceNames,
   assertStoreVersion,
   blobId,
   decodeObject,
@@ -327,7 +328,8 @@ async function publish(
   tailOf: (client: PostgresClient, session: SessionId) => Promise<Seq>,
 ): Promise<SetOutcome> {
   const logged = collectSessionEvents(updates);
-  const names = [...new Set(updates.map((update) => update.name))];
+  const fences = fenceNames(updates);
+  const names = [...new Set([...updates.map((update) => update.name), ...fences])];
   const sessions = [
     ...new Set(
       updates.flatMap(({ name }) => {
@@ -367,6 +369,14 @@ async function publish(
         return [ref.name, ref];
       }),
     );
+
+    const fenced = fences.find((name) => !before.has(name));
+
+    if (fenced !== undefined) {
+      await client.query("ROLLBACK");
+
+      return { kind: "fenced", name: fenced };
+    }
 
     const stale = updates.find((update) => !admits(update, before.get(update.name)));
 

@@ -248,6 +248,24 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect(await refs.tail(session)).toBe(0);
     });
 
+    it("lands a set only while its fence refs exist, and answers fenced, writing nothing, once one is gone", async () => {
+      const { objects, refs } = await connect();
+      const target = await objects.put("value");
+      const live = "sessions/s1/live/r1";
+      await refs.set([{ name: live, target }]);
+      const part = { name: "sessions/s1/parts/p1", target, fence: live, events: [moved] };
+
+      expect((await refs.set([part])).kind).toBe("set");
+      await refs.set([{ name: live, target: null }]);
+
+      expect(await refs.set([{ ...part, name: "sessions/s1/parts/p2" }])).toEqual({
+        kind: "fenced",
+        name: live,
+      });
+      expect(await refs.get("sessions/s1/parts/p2")).toBeNull();
+      expect(await refs.tail(session)).toBe(1);
+    });
+
     it("deletes a ref when the target is null", async () => {
       const { objects, refs } = await connect();
       const target = await objects.put(1);
