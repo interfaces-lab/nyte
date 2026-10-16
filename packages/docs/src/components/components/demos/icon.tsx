@@ -6,7 +6,7 @@ export function IconDemo() {
   return (
     <>
       <Icon name="folder" />
-      <Icon name="folder" variant="filled" />
+      <Icon name="warning" variant="filled" />
       <Icon name="warning" size={14} label="Warning" />
       <Icon name="sparkle" size={12} />
     </>
